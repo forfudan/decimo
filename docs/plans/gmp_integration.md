@@ -1211,7 +1211,7 @@ python-flint wraps FLINT (which includes Arb) for Python.
 ## 14. Implementation Roadmap
 
 > BigFloat first (Phase 1), then BigDecimal `gmp=True` sugar (Phase 2), then BigInt
-> backend (Phase 3). MPFR has built-in sqrt, exp, ln, sin, cos, tan, π with correct
+> backend (Phase 3 or never). MPFR has built-in sqrt, exp, ln, sin, cos, tan, π with correct
 > rounding — so BigFloat operations are single MPFR calls, and BigDecimal sugar is
 > just BigFloat under the hood.
 
@@ -1306,7 +1306,7 @@ BigDecimal API unchanged for `gmp=False`.
 **Checkpoint test**: `pi(precision=10000, gmp=True)` matches known π digits and runs
 significantly faster than `pi(precision=10000)`.
 
-### Phase 3: BigInt GMP Backend (Deferred)
+### Phase 3: BigInt GMP Backend (Deferred, maybe never)
 
 **Goal**: GMP backend for BigInt (base-2³²) using `mpz_t`. Deferred — integer
 ops are less user-facing.
