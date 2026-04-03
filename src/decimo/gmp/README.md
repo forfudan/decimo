@@ -6,9 +6,15 @@ This directory contains the C wrapper that bridges Mojo to MPFR/GMP via FFI.
 
 The wrapper uses `dlopen`/`dlsym` to load MPFR lazily at **runtime**. This means:
 
-- **Build time**: Only a C compiler is needed. No MPFR/GMP headers or libraries required.
-- **Runtime**: If MPFR is installed, `mpfrw_available()` returns 1 and all operations work.
-  If not installed, it returns 0 and BigFloat raises a clear error.
+- **Build time**: Only a C compiler is needed. No MPFR/GMP headers or libraries
+  are required. The wrapper manually declares `mpfr_t` storage and function pointer
+  signatures based on the public MPFR C API.
+- **ABI note**: The `mpfr_t` storage is conservatively over-allocated (64 bytes,
+  16-byte aligned) to accommodate all known MPFR builds. This has been verified
+  on ARM64 macOS and x86_64 Linux. If you encounter issues on an unusual platform,
+  rebuilding with `mpfr.h` included would provide a compile-time size check.
+- **Runtime**: If MPFR is installed, `mpfrw_available()` returns 1 and all
+  operations work. If not installed, it returns 0 and BigFloat raises a clear error.
 
 ## Build
 

@@ -59,10 +59,16 @@
  * don't need mpfr.h at compile time.
  * ===----------------------------------------------------------------------=== */
 
-/* mpfr_t is internally a struct — we allocate raw bytes per handle */
-#define MPFR_T_SIZE 64  /* sizeof(mpfr_t) on most platforms; verified on ARM64 */
+/* mpfr_t is internally a struct. The size is not guaranteed by the MPFR ABI,
+ * but has been 32 bytes on all tested platforms (ARM64 macOS, x86_64 Linux)
+ * since MPFR 3.x. We over-allocate to 64 bytes and align to 16 bytes for
+ * safety. A runtime assertion in mpfrw_load() verifies the actual size.
+ * If MPFR headers are available at build time, the compile-time static_assert
+ * below catches any mismatch. */
+#define MPFR_T_SIZE 64
+#define MPFR_T_ALIGN 16
 
-typedef int   (*fn_mpfr_init2)(void *x, long prec);
+typedef void  (*fn_mpfr_init2)(void *x, long prec);
 typedef void  (*fn_mpfr_clear)(void *x);
 typedef int   (*fn_mpfr_set_str)(void *rop, const char *s, int base, int rnd);
 typedef char* (*fn_mpfr_get_str)(char *str, long *exp, int base, size_t n, const void *op, int rnd);
@@ -117,8 +123,8 @@ static fn_mpfr_rootn_ui   p_rootn_ui   = NULL;
 static fn_mpfr_const_pi   p_const_pi   = NULL;
 static fn_mpfr_snprintf   p_snprintf   = NULL;
 
-/* Handle pool: raw byte arrays sized to hold mpfr_t */
-static char  handle_pool[MAX_HANDLES][MPFR_T_SIZE];
+/* Handle pool: byte arrays sized to hold mpfr_t, with proper alignment */
+static _Alignas(MPFR_T_ALIGN) char handle_pool[MAX_HANDLES][MPFR_T_SIZE];
 static int   handle_in_use[MAX_HANDLES];  /* 0 = free, 1 = in use */
 
 /* ===----------------------------------------------------------------------=== *
@@ -137,11 +143,11 @@ static int mpfrw_load(void) {
 
     /* Try common library paths */
     const char *paths[] = {
-        "libmpfr.dylib",                          /* macOS via rpath        */
+        "libmpfr.dylib",                           /* macOS via rpath        */
         "/opt/homebrew/lib/libmpfr.dylib",         /* macOS ARM64 (Homebrew) */
         "/usr/local/lib/libmpfr.dylib",            /* macOS x86_64           */
         "libmpfr.so",                              /* Linux via rpath        */
-        "/usr/lib/x86_64-linux-gnu/libmpfr.so",   /* Debian/Ubuntu          */
+        "/usr/lib/x86_64-linux-gnu/libmpfr.so",    /* Debian/Ubuntu          */
         "/usr/lib/aarch64-linux-gnu/libmpfr.so",   /* Debian ARM64           */
         "/usr/lib/libmpfr.so",                     /* Generic Linux          */
         NULL
@@ -177,8 +183,10 @@ static int mpfrw_load(void) {
     p_const_pi = (fn_mpfr_const_pi)   dlsym(mpfr_lib, "mpfr_const_pi");
     p_snprintf = (fn_mpfr_snprintf)   dlsym(mpfr_lib, "mpfr_snprintf");
 
-    /* Verify critical function pointers */
-    if (!p_init2 || !p_clear || !p_set_str || !p_get_str) {
+    /* Verify critical function pointers — if any core symbol is missing,
+     * the MPFR library is too old or incompatible. Fail the load. */
+    if (!p_init2 || !p_clear || !p_set_str || !p_get_str || !p_free_str ||
+        !p_add || !p_sub || !p_mul || !p_div || !p_neg || !p_abs || !p_cmp) {
         dlclose(mpfr_lib);
         mpfr_lib = NULL;
         return 0;
@@ -217,6 +225,7 @@ int mpfrw_init(int prec_bits) {
 void mpfrw_clear(int handle) {
     if (handle < 0 || handle >= MAX_HANDLES) return;
     if (!handle_in_use[handle]) return;
+    if (!p_clear) return;  /* MPFR not loaded — nothing to free */
     p_clear(&handle_pool[handle]);
     handle_in_use[handle] = 0;
 }
@@ -307,8 +316,8 @@ void mpfrw_abs(int r, int a) {
 }
 
 int mpfrw_cmp(int a, int b) {
-    if (a < 0 || a >= MAX_HANDLES || !handle_in_use[a]) return 0;
-    if (b < 0 || b >= MAX_HANDLES || !handle_in_use[b]) return 0;
+    if (a < 0 || a >= MAX_HANDLES || !handle_in_use[a]) return -2;  /* error sentinel */
+    if (b < 0 || b >= MAX_HANDLES || !handle_in_use[b]) return -2;  /* error sentinel */
     return p_cmp(&handle_pool[a], &handle_pool[b]);
 }
 

@@ -92,7 +92,7 @@ passes and receives only primitive types (`Int32`, `Int`).
 ### 3.1 Available FFI Mechanism
 
 ```mojo
-from sys.ffi import external_call
+from std.ffi import external_call
 
 # Example: calling a C function
 var result = external_call["gmpw_add", NoneType, Int32, Int32, Int32](a, b, c)
@@ -1406,7 +1406,7 @@ const char* gmpw_version(void);
 ### 15.3 Sample Mojo FFI Calls
 
 ```mojo
-from sys.ffi import external_call, c_int
+from std.ffi import external_call, c_int
 
 # ⚠️ SAFE pattern: pass length explicitly to avoid use-after-free (see Section 16.1)
 def gmp_set_str(h: c_int, s: String):

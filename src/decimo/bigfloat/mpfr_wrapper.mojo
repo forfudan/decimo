@@ -144,7 +144,7 @@ fn mpfrw_abs(result: Int32, a: Int32):
 
 
 fn mpfrw_cmp(a: Int32, b: Int32) -> Int32:
-    """Compares a and b. Returns <0, 0, or >0."""
+    """Compares a and b. Returns <0, 0, or >0. Returns -2 on invalid handle."""
     return external_call["mpfrw_cmp", Int32](a, b)
 
 
