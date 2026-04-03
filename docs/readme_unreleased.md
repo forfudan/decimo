@@ -3,16 +3,16 @@
 An arbitrary-precision integer and decimal library for [Mojo](https://www.modular.com/mojo), inspired by Python's `int` and `Decimal`.
 
 [![Version](https://img.shields.io/github/v/tag/forfudan/decimo?label=version&color=blue)](https://github.com/forfudan/decimo/releases)
+[![Mojo](https://img.shields.io/badge/mojo-0.26.2-orange)](https://docs.modular.com/mojo/manual/)
 [![pixi](https://img.shields.io/badge/pixi%20add-decimo-purple)](https://prefix.dev/channels/modular-community/packages/decimo)
 [![CI](https://img.shields.io/github/actions/workflow/status/forfudan/decimo/run_tests.yaml?branch=main&label=tests)](https://github.com/forfudan/decimo/actions/workflows/run_tests.yaml)
-[![Last Commit](https://img.shields.io/github/last-commit/forfudan/decimo?color=red)](https://github.com/forfudan/decimo/commits/main)
 
 <!-- 
-[![Mojo](https://img.shields.io/badge/mojo-0.26.2-orange)](https://docs.modular.com/mojo/manual/)
 [![License](https://img.shields.io/github/license/forfudan/decimo)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/forfudan/decimo?style=flat)](https://github.com/forfudan/decimo/stargazers)
 [![Issues](https://img.shields.io/github/issues/forfudan/decimo)](https://github.com/forfudan/decimo/issues)
 ![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)
+[![Last Commit](https://img.shields.io/github/last-commit/forfudan/decimo?color=red)](https://github.com/forfudan/decimo/commits/main)
 -->
 
 <!-- 
@@ -40,23 +40,11 @@ The core types are[^auxiliary]:
 | `Decimal` | `BDec`, `BigDecimal` | Equivalent to Python's `decimal.Decimal` | Base-10^9               |
 | `Dec128`  | `Decimal128`         | 128-bit fixed-precision decimal type     | Triple 32-bit words     |
 
----
-
 **Decimo** combines "**Deci**mal" and "**Mo**jo" - reflecting its purpose and implementation language. "Decimo" is also a Latin word meaning "tenth" and is the root of the word "decimal".
 
----
+A CLI calculator tool, built on top of the Decimo library and powered by [ArgMojo](https://github.com/forfudan/argmojo) (a command-line argument parser library), is also available in this repository. It provides a convenient way to perform high-precision calculations directly from the command line.
 
-Decimo also includes **a command-line calculator application** that supports arbitrary-precision calculations, powered by [ArgMojo - a command-line argument parser library for Mojo](https://github.com/forfudan/argmojo).
-
-You can use it to evaluate complex mathematical expressions with high precision directly from your terminal. For example:
-
-```bash
-./decimo "2^10 + sqrt(pi) * ln(e^3) - root(125, 3) / abs(-5) + sin(pi/2)" -p 50 --scientific
-```
-
----
-
-Decimo also includes a built-in [TOML parser](./docs/readme_toml.md) (`decimo.toml`), a lightweight pure-Mojo implementation supporting TOML v1.0. It parses configuration files and test data, supporting basic types, arrays, and nested tables. While created for Decimo's testing framework, it offers general-purpose structured data parsing with a clean, simple API.
+This repository includes a built-in [TOML parser](./docs/readme_toml.md) (`decimo.toml`), a lightweight pure-Mojo implementation supporting TOML v1.0. It parses configuration files and test data, supporting basic types, arrays, and nested tables. While created for Decimo's testing framework, it offers general-purpose structured data parsing with a clean, simple API.
 
 ## Installation
 
@@ -383,6 +371,8 @@ If you find Decimo useful, consider listing it in your citations.
 ## License
 
 This repository and its contributions are licensed under the Apache License v2.0.
+
+The `BigFloat` type optionally uses the [GNU MPFR Library](https://www.mpfr.org/) (LGPLv3+) and [GMP](https://gmplib.org/) (LGPLv3+ or GPLv2+) at runtime. Decimo does not include or distribute any MPFR/GMP source code or binaries — they are loaded via `dlopen` only if the user has independently installed them. All other Decimo types work without any external dependencies. See the [NOTICE](./NOTICE) file for details.
 
 [^fixed]: The `Decimal128` type can represent values with up to 29 significant digits and a maximum of 28 digits after the decimal point. When a value exceeds the maximum representable value (`2^96 - 1`), Decimo either raises an error or rounds the value to fit within these constraints. For example, the significant digits of `8.8888888888888888888888888888` (29 eights total with 28 after the decimal point) exceeds the maximum representable value (`2^96 - 1`) and is automatically rounded to `8.888888888888888888888888889` (28 eights total with 27 after the decimal point). Decimo's `Decimal128` type is similar to `System.Decimal` (C#/.NET), `rust_decimal` in Rust, `DECIMAL/NUMERIC` in SQL Server, etc.
 [^bigint]: The `BigInt` implementation uses a base-2^32 representation with a little-endian format, where the least significant word is stored at index 0. Each word is a `UInt32`, allowing for efficient storage and arithmetic operations on large integers. This design choice optimizes performance for binary computations while still supporting arbitrary precision.
