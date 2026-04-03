@@ -28,6 +28,9 @@ kgen.trace.json*
 local
 # CLI binary
 /decimo
+# Compiled GMP/MPFR wrapper (built from source)
+*.dylib
+*.so
 # Python build artifacts
 *.so
 __pycache__/
