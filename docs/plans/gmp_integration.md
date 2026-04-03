@@ -12,7 +12,7 @@
 
 ### Verdict: FEASIBLE ✓
 
-GMP integration into Decimo is technically feasible and has been proven through a working prototype. A C wrapper approach (`gmp_wrapper.c`) successfully bridges Mojo's FFI layer to GMP, with all core arithmetic operations verified.
+GMP integration into Decimo is technically feasible — I've proven it with a working prototype. A C wrapper (`gmp_wrapper.c`) bridges Mojo's FFI layer to GMP, and all core arithmetic operations pass.
 
 ### Key Findings
 
@@ -29,24 +29,31 @@ GMP integration into Decimo is technically feasible and has been proven through 
 
 ### Recommendation
 
-Integrate GMP as an **optional backend for BigInt** (base-2^32) first, where data conversion
-is cheap and measured speedups are 7–18× across operations. BigDecimal integration should
-follow only for operations where GMP's speed advantage (15–353× in benchmarks) outweighs
-the base-10⁹ ↔ binary conversion cost — primarily large multiplications, sqrt, and GCD at
-1,000+ digits.
+Two-type architecture:
 
----
+1. **BigFloat** — a new first-class MPFR-backed binary float type (like mpmath's `mpf`
+   but faster). Requires MPFR. Every operation is a single MPFR call. This is the fast
+   path for scientific computing at high precision.
+2. **BigDecimal** — keeps its native base-10⁹ implementation. Gains an optional
+   `gmp=True` parameter for one-off acceleration of expensive operations (sqrt, exp, ln,
+   etc.) without changing types. No MPFR dependency.
+3. **BigInt** — GMP backend deferred to Phase 3. Cheap O(n) word conversion, 7–18×
+   speedup measured.
+
+BigFloat and BigDecimal coexist because they solve different problems: BigFloat is fast
+binary arithmetic (like mpmath); BigDecimal is exact decimal arithmetic (like Python
+`decimal`). Both in one library, user picks the right tool.
 
 ## 2. Technical Feasibility Assessment
 
 ### 2.1 What Was Tested
 
-A complete prototype was built in `temp/gmp/` consisting of:
+A complete prototype was built in `temp/gmp/`:
 
 1. **C wrapper** (`gmp_wrapper.c`): Handle-based API wrapping GMP's `mpz_t` operations
-2. **Shared library** (`libgmp_wrapper.dylib`): Compiled C wrapper linked against GMP
+2. **Shared library** (`libgmp_wrapper.dylib`): Compiled, linked against GMP
 3. **Mojo FFI test** (`test_gmp_ffi.mojo`): 18 tests covering all operation categories
-4. **Mojo benchmark** (`bench_gmp_vs_decimo.mojo`): Performance characterization across digit sizes
+4. **Mojo benchmark** (`bench_gmp_vs_decimo.mojo`): Performance comparison across digit sizes
 
 ### 2.2 Prototype Results
 
@@ -70,16 +77,15 @@ A complete prototype was built in `temp/gmp/` consisting of:
 
 ### 2.3 Why C Wrapper Is Required
 
-Direct FFI to GMP is impractical in Mojo 0.26.2 because:
+Direct FFI to GMP doesn't work in Mojo 0.26.2 because:
 
 1. **No `DLHandle`**: Mojo 0.26.2 does not expose `DLHandle` for runtime dynamic library loading. Only `external_call` (compile-time/link-time binding) is available.
 2. **`mpz_t` is a struct**: GMP's `mpz_t` is `__mpz_struct[1]` (a 1-element array used as a pass-by-reference trick). Mojo cannot directly represent or pass this.
 3. **Pointer origin tracking**: `UnsafePointer` in Mojo 0.26.2 has strict origin tracking that prevents constructing pointers from raw integer addresses in non-`fn` contexts.
 4. **GMP macros**: Many GMP operations (e.g., `mpz_init`, `mpz_clear`) are preprocessor macros, not true function symbols.
 
-The C wrapper solves all these issues by exposing a flat, handle-based C API where Mojo passes and receives only primitive types (`Int32`, `Int`).
-
----
+The C wrapper solves all of this by exposing a flat, handle-based C API where Mojo
+passes and receives only primitive types (`Int32`, `Int`).
 
 ## 3. Mojo FFI Capabilities and Constraints
 
@@ -115,8 +121,6 @@ var result = external_call["gmpw_add", NoneType, Int32, Int32, Int32](a, b, c)
 - **Global variables**: Would allow module-level GMP backend state
 - **Conditional compilation (`@static_if`)**: Would enable clean feature toggling
 
----
-
 ## 4. Architecture Analysis
 
 ### 4.1 Current Decimo Architecture
@@ -142,30 +146,29 @@ mpf_t                →      Binary floating-point with configurable precision
 
 ### 4.3 Type Mapping
 
-| Decimo Type    | GMP Equivalent                      | Conversion Cost                                       | Integration Priority |
-| -------------- | ----------------------------------- | ----------------------------------------------------- | -------------------- |
-| **BigInt**     | `mpz_t`                             | **Low** — same binary base (2^32 → 2^64 word packing) | **Phase 1** (HIGH)   |
-| **BigUInt**    | `mpz_t` (unsigned subset)           | **High** — base-10^9 → binary conversion              | Phase 3 (LOW)        |
-| **BigDecimal** | `mpf_t` or `mpz_t` + manual scaling | **High** — base conversion + scale management         | Phase 2 (MEDIUM)     |
-| **Dec128**     | Not applicable                      | N/A — fixed precision, already fast                   | Skip                 |
+| Decimo Type          | GMP Equivalent                  | Conversion Cost                                       | Integration Priority |
+| -------------------- | ------------------------------- | ----------------------------------------------------- | -------------------- |
+| **BigFloat** *(new)* | `mpfr_t`                        | **None** — direct MPFR handle                         | **Phase 1** (HIGH)   |
+| **BigInt**           | `mpz_t`                         | **Low** — same binary base (2^32 → 2^64 word packing) | **Phase 3** (MEDIUM) |
+| **BigUInt**          | `mpz_t` (unsigned subset)       | **High** — base-10^9 → binary conversion              | Skip                 |
+| **BigDecimal**       | via BigFloat (`gmp=True` sugar) | **High** — string conversion, but single round-trip   | **Phase 2** (HIGH)   |
+| **Dec128**           | Not applicable                  | N/A — fixed precision, already fast                   | Skip                 |
 
-### 4.4 Where GMP Adds Value
+### 4.4 Where GMP Helps
 
-GMP's advantages over Decimo's native implementation:
+GMP's advantages over my native implementation:
 
 1. **Highly optimized assembly**: GMP includes hand-tuned ARM64 assembly for core operations
 2. **Mature algorithm suite**: Decades of optimization (Schönhage-Strassen for huge multiplications, sub-quadratic GCD, etc.)
 3. **Large-number regime**: GMP's algorithmic cutoffs are well-tuned for every platform
 4. **Additional algorithms**: FFT-based multiplication, extended GCD, primality testing, etc.
 
-Where GMP does **not** add value:
+Where GMP does **not** help:
 
 1. **Small numbers** (<50 digits): FFI overhead dominates
 2. **Dec128**: Fixed 128-bit operations are already optimal with native code
 3. **Base-10 operations**: GMP works in binary; base-10 output requires conversion
 4. **Decimal arithmetic**: GMP has no native decimal type; scale management would remain in Mojo
-
----
 
 ## 5. Performance Comparison: GMP vs Decimo
 
@@ -249,7 +252,7 @@ Decimo currently uses the Euclidean algorithm. This is the smallest gap of all o
 
 ### 5.2 BigDecimal (base-10⁹) vs GMP Integer Equivalents
 
-GMP has no native decimal type. To compare fairly, we benchmark GMP performing the
+GMP has no native decimal type. To compare fairly, I benchmark GMP performing the
 **equivalent integer computation** that a GMP-backed BigDecimal would perform:
 
 - **Multiply**: GMP integer multiply on same-digit-count coefficients
@@ -257,7 +260,7 @@ GMP has no native decimal type. To compare fairly, we benchmark GMP performing t
 - **Division (1/3) at precision P**: GMP `(1 × 10^P) / 3` vs Decimo `BigDecimal.true_divide(…, precision=P)`
 
 These ratios represent the **best-case speedup** from a GMP backend, before
-accounting for base-10⁹ ↔ binary conversion overhead.
+accounting for the base-10⁹ ↔ binary conversion overhead.
 
 #### BigDecimal Multiplication (n sig-digits × n sig-digits)
 
@@ -325,7 +328,7 @@ The C wrapper call path has fixed overhead:
 2. Handle array lookup: ~1–2 ns
 3. Total fixed overhead: **~3–5 ns per call**
 
-This means:
+In practice:
 
 - At **10 digits**: overhead is 30–100% of operation time → **GMP not beneficial**
 - At **100 digits**: overhead is 5–10% → **GMP moderately beneficial**
@@ -334,20 +337,18 @@ This means:
 **Recommended crossover threshold**: Use GMP backend for numbers with **≥64 words** (~600
 digits for BigInt). Below this, Decimo's native implementation avoids FFI overhead.
 
-### 5.5 Technical Note: Mojo String FFI Safety
+### 5.5 Mojo String FFI Safety Issue
 
-During benchmarking, we discovered a Mojo compiler issue where the optimizer may drop a
+During benchmarking, I hit a Mojo compiler issue where the optimizer may drop a
 `String` parameter's backing buffer before the `external_call` using its `unsafe_ptr()`
 completes. Under heavy allocation pressure, the freed buffer gets reused immediately,
 causing GMP's `mpz_set_str` to read corrupted data.
 
-**Workaround**: A length-aware C function `gmpw_set_str_n(handle, ptr, len)` was added that
+**Workaround**: I added a length-aware C function `gmpw_set_str_n(handle, ptr, len)` that
 copies exactly `len` bytes into a null-terminated buffer before calling GMP, making the
 FFI call safe regardless of the caller's buffer lifetime. Any production integration must
 use the length-based variant (`gmpw_set_str_n`) or ensure String buffers remain live
 through explicit variable binding.
-
----
 
 ## 6. Operation Coverage Mapping
 
@@ -406,13 +407,11 @@ These must remain native Mojo:
 - CLI calculator evaluation
 - Dec128 operations (fixed-precision)
 
----
-
 ## 7. Data Conversion Between Decimo and GMP
 
 ### 7.1 BigInt ↔ GMP (Efficient)
 
-BigInt uses base-2^32 `List[UInt32]` in little-endian order — essentially the same representation as GMP's `mpz_t` but with 32-bit limbs instead of 64-bit.
+BigInt uses base-2^32 `List[UInt32]` in little-endian order — basically the same thing as GMP's `mpz_t` but with 32-bit limbs instead of 64-bit.
 
 **Conversion approach**:
 
@@ -453,7 +452,7 @@ int  gmpw_export_u32_le(int handle, uint32_t* out_buf, int max_count);
 
 ### 7.2 BigUInt ↔ GMP (Expensive)
 
-BigUInt uses base-10^9 — a fundamentally different number base than GMP's binary format.
+BigUInt uses base-10^9 — a completely different number base from GMP's binary format.
 
 **Conversion options**:
 
@@ -468,7 +467,7 @@ BigUInt uses base-10^9 — a fundamentally different number base than GMP's bina
 - For <1000 words: Horner's method (simpler, O(n²) acceptable)
 - For ≥1000 words: Divide-and-conquer using GMP's own multiply for combining
 
-**Break-even analysis**: If we assume base conversion costs ~O(n²) for n words:
+**Break-even analysis**: Assuming base conversion costs ~O(n²) for n words:
 
 - At 100 words (~900 digits): conversion ~10 µs, GMP multiply saves ~4 µs → **NOT worth it**
 - At 1000 words (~9000 digits): conversion ~1 ms, GMP multiply saves ~150 µs → **NOT worth it for single operation**
@@ -495,13 +494,11 @@ BigUInt uses base-10^9 — a fundamentally different number base than GMP's bina
                     └──────────────────────────────────────┘
 ```
 
----
-
 ## 8. GMP Detection and Fallback Strategy
 
 ### 8.1 Detection Approaches
 
-Since Mojo 0.26.2 lacks `DLHandle` for runtime library probing, detection must be **build-time** or **semi-static**:
+Since Mojo 0.26.2 doesn't have `DLHandle` for runtime library probing, detection has to be **build-time** or **semi-static**:
 
 #### Option A: Compile-Time Feature Flag (Recommended for Now)
 
@@ -578,229 +575,274 @@ User calls BigInt.multiply(a, b):
      → Use native Mojo implementation (current code)
 ```
 
----
+## 9. Type Design: BigFloat and BigDecimal
 
-## 9. API Design: `gmp: Bool = False` Parameter
+Decimo gets two arbitrary-precision types with different backends and semantics.
 
-### 9.1 Design Rationale
+### 9.1 Two Types, Two Number Systems
 
-Since Mojo lacks global variables, a module-level context or engine setting is not
-possible. Instead, we add a **`gmp: Bool = False`** keyword parameter to compute-heavy
-BigDecimal functions. This is:
+|                    | **BigDecimal**                   | **BigFloat**                                       |
+| ------------------ | -------------------------------- | -------------------------------------------------- |
+| Internal base      | 10⁹ (decimal)                    | binary (MPFR `mpfr_t`)                             |
+| Python analogue    | `decimal.Decimal`                | `mpmath.mpf`                                       |
+| `sqrt(0.01)`       | `0.1` (exact)                    | `0.1000...0` (padded)                              |
+| Dependency         | None                             | MPFR required                                      |
+| Speed at high prec | Native Mojo                      | 10–400× faster (MPFR)                              |
+| Precision unit     | Decimal digits                   | Bits (user specifies digits, converted internally) |
+| Rounding           | Decimal-exact where possible     | Correctly rounded per IEEE binary semantics        |
+| Primary use case   | Finance, human-friendly decimals | Scientific computing, transcendentals              |
 
-- **Explicit** — users opt in per-call; no hidden magic
-- **Backward-compatible** — defaults to `False`, existing code unchanged
-- **Composable** — users pass `gmp=True` down through complex expressions like π calculation
-- **Simple** — a Bool is clearer than an engine enum for two choices
+They coexist in the same library. User picks the right tool for the job.
 
-### 9.2 Which Functions Get the `gmp` Parameter
+### 9.2 Why Two Types Instead of a Backend Swap
 
-Only **iterative compute-heavy** operations — not add/sub/multiply (which are building blocks
-called internally and whose overhead is handled by the GMPDecimal struct).
+`mpmath` pulls off a transparent backend swap (`MPZ = gmpy.mpz or int`) because:
 
-| Function                                   | Gets `gmp`? | Reason                                         |
-| ------------------------------------------ | ----------- | ---------------------------------------------- |
-| `true_divide(x, y, precision, gmp)`        | ✓ Yes       | Long division at high precision benefits       |
-| `sqrt(x, precision, gmp)`                  | ✓ Yes       | Newton iteration: 86–353× gap                  |
-| `root(x, n, precision, gmp)`               | ✓ Yes       | Newton iteration like sqrt                     |
-| `exp(x, precision, gmp)`                   | ✓ Yes       | Taylor series with many multiplications        |
-| `ln(x, precision, gmp)`                    | ✓ Yes       | Atanh-based approach with iterative multiplies |
-| `sin(x, precision, gmp)`                   | ✓ Yes       | Taylor series                                  |
-| `cos(x, precision, gmp)`                   | ✓ Yes       | Taylor series                                  |
-| `tan(x, precision, gmp)`                   | ✓ Yes       | Uses sin/cos                                   |
-| `pi(precision, gmp)`                       | ✓ Yes       | Chudnovsky binary splitting: many large muls   |
-| `BigDecimal.__add__`, `__sub__`, `__mul__` | ✗ No        | Handled internally by GMPDecimal               |
-| `BigDecimal.__floordiv__`, `round`         | ✗ No        | Digit manipulation, no heavy arithmetic        |
+- Python is dynamically typed — the swap is invisible at runtime
+- `mpmath` already uses binary representation internally — swapping `int` for `mpz_t`
+  doesn't change semantics
 
-### 9.3 Proposed Signatures
+I can't do this in Decimo because:
+
+1. **Mojo is statically typed** — users must choose their type at compile time.
+2. **BigDecimal uses base-10⁹** — swapping BigUInt for `mpz_t` would change decimal
+   semantics (e.g., `sqrt(0.01)` behavior).
+3. **They solve different problems** — BigDecimal is for exact decimal arithmetic;
+   BigFloat is for fast scientific computation.
+
+Python itself acknowledges this split: `decimal.Decimal` and `mpmath.mpf` are separate
+packages. I'm combining both under one import.
+
+### 9.3 BigFloat: MPFR-Backed Binary Float
 
 ```mojo
-# Free functions (primary API)
-def true_divide(x: BigDecimal, y: BigDecimal, precision: Int, gmp: Bool = False) raises -> BigDecimal:
-def sqrt(x: BigDecimal, precision: Int, gmp: Bool = False) raises -> BigDecimal:
-def root(x: BigDecimal, n: BigDecimal, precision: Int, gmp: Bool = False) raises -> BigDecimal:
-def exp(x: BigDecimal, precision: Int, gmp: Bool = False) raises -> BigDecimal:
-def ln(x: BigDecimal, precision: Int, gmp: Bool = False) raises -> BigDecimal:
-def sin(x: BigDecimal, precision: Int, gmp: Bool = False) raises -> BigDecimal:
-def cos(x: BigDecimal, precision: Int, gmp: Bool = False) raises -> BigDecimal:
-def tan(x: BigDecimal, precision: Int, gmp: Bool = False) raises -> BigDecimal:
-def pi(precision: Int, gmp: Bool = False) raises -> BigDecimal:
+struct BigFloat:
+    """Arbitrary-precision binary floating-point, backed by MPFR.
 
-# Instance methods (delegate to free functions)
-def sqrt(self, precision: Int = PRECISION, gmp: Bool = False) raises -> Self:
-    return exponential.sqrt(self, precision, gmp)
+    Like mpmath's mpf but faster — every operation is a single MPFR call.
+    Requires MPFR to be installed. If MPFR is unavailable, construction raises.
+    """
+    var handle: Int32  # MPFR handle (via C wrapper handle pool)
 ```
+
+**BigFloat requires MPFR. No fallback.**
+
+I considered a pure-Mojo BigInt-based fallback (like mpmath's pure-Python mode), but:
+
+- mpmath's fallback arithmetic is ~30K lines of Python for the math functions alone
+  (Taylor series, argument reduction, binary splitting, etc.)
+- Reimplementing all that in Mojo defeats the purpose — BigFloat's value proposition
+  IS speed via MPFR
+- If MPFR isn't installed, users have BigDecimal — it already does sqrt, exp, ln, sin,
+  cos, tan, pi, all in pure Mojo. Just slower at high precision.
+- A half-working BigFloat (add/sub/mul work but sqrt/exp/ln don't) would be confusing
+
+So: BigFloat without MPFR is like numpy without its C core. Users without MPFR use
+BigDecimal. This is an honest, clean boundary.
 
 ### 9.4 Why MPFR, Not `mpz_t` with Manual Scale
 
-GMP provides three numeric types:
+GMP has three numeric types:
 
-| Type     | What it stores                                      | Mojo analogue | Use for BigDecimal?                                             |
-| -------- | --------------------------------------------------- | ------------- | --------------------------------------------------------------- |
-| `mpz_t`  | Arbitrary-precision **integer**                     | BigInt        | ✗ Poor — must manually track scale, sign, scale-up for division |
-| `mpf_t`  | Arbitrary-precision **binary float**                | (none)        | △ Works but legacy, no correct rounding                         |
-| `mpfr_t` | Arbitrary-precision **binary float** (MPFR library) | BigDecimal    | **✓ Best** — correctly rounded, built-in exp/ln/sin/cos/π       |
+| Type     | What it stores                                      | Mojo analogue | Use for BigFloat?                                                  |
+| -------- | --------------------------------------------------- | ------------- | ------------------------------------------------------------------ |
+| `mpz_t`  | Arbitrary-precision **integer**                     | BigInt        | ✗ Poor — must manually track scale, sign, implement all algorithms |
+| `mpf_t`  | Arbitrary-precision **binary float** (GMP built-in) | —             | △ Works but legacy, no correct rounding                            |
+| `mpfr_t` | Arbitrary-precision **binary float** (MPFR library) | **BigFloat**  | **✓ Best** — correctly rounded, built-in exp/ln/sin/cos/π          |
 
-If we used `mpz_t` (integer only), we'd need to:
+With `mpz_t`, I'd have to:
 
-- Track `scale` and `sign` separately in GMPDecimal (3 fields)
-- Manually scale up the numerator by 10^N before integer division
-- Implement Newton iterations for sqrt, Taylor series for exp/ln/trig — **ourselves**
+- Store `(sign, mantissa: mpz_t, exponent: Int)` and manage scale manually
+- Scale up numerators by 10^N before integer division
+- Implement Newton iterations for sqrt, Taylor series for exp/ln/trig — **myself**
 - Handle scale alignment for addition/subtraction
+- That's basically reimplementing mpmath in Mojo (~30K lines)
 
-With **MPFR** (`mpfr_t`), all of this is handled internally:
+With **MPFR**, all of this is handled internally:
 
 - Division: `mpfr_div(r, a, b, MPFR_RNDN)` — one call
 - Sqrt: `mpfr_sqrt(r, a, MPFR_RNDN)` — one call
-- Exp: `mpfr_exp(r, a, MPFR_RNDN)` — one call, correctly rounded
-- Ln: `mpfr_log(r, a, MPFR_RNDN)` — one call
+- Exp/Ln: `mpfr_exp`, `mpfr_log` — one call each, correctly rounded
 - Sin/Cos/Tan: `mpfr_sin`, `mpfr_cos`, `mpfr_tan` — one call each
 - π: `mpfr_const_pi(r, MPFR_RNDN)` — one call, arbitrary precision
 
-**MPFR** is a separate library built on top of GMP. It is the standard for
-arbitrary-precision floating-point and is what Python's `mpmath` (via `gmpy2`)
-uses under the hood. It is widely available: `brew install mpfr` (macOS),
-`apt install libmpfr-dev` (Linux).
+MPFR sits on top of GMP and is the industry standard for arbitrary-precision
+floating-point. Easy to get: `brew install mpfr` (macOS), `apt install libmpfr-dev`
+(Linux).
 
-### 9.5 The GMPDecimal Intermediate Struct (MPFR-Based)
-
-Because MPFR natively handles sign, scale, and precision, the struct simplifies
-to **a single field** — the MPFR handle:
+### 9.5 BigFloat API
 
 ```mojo
-struct GMPDecimal:
-    """A decimal value held in MPFR floating-point representation.
-    
-    Wraps a single mpfr_t handle. All arithmetic, sqrt, exp, ln, trig
-    are single MPFR calls. Convert to/from BigDecimal only at entry/exit.
-    """
-    var handle: Int32      # MPFR handle (via C wrapper)
+# Construction
+var x = BigFloat("3.14159", precision=1000)   # from string
+var y = BigFloat(bd, precision=1000)           # from BigDecimal
+var z = BigFloat.pi(precision=5000)            # constant
 
-    def __init__(out self, bd: BigDecimal, precision: Int):
-        """Convert BigDecimal → GMPDecimal.
-        
-        precision: decimal digits wanted → converted to bits internally.
-        """
-        # 1 decimal digit ≈ 3.322 bits; add guard bits
-        var bits = precision * 4 + 64
-        self.handle = mpfrw_init(bits)
-        # Pass full decimal string (e.g. "-3.14159") directly
-        mpfrw_set_str(self.handle, str(bd))
+# Arithmetic (returns BigFloat)
+var r = x + y
+var r = x * y
+var r = x / y
 
-    def to_bigdecimal(self, precision: Int) -> BigDecimal:
-        """Convert GMPDecimal → BigDecimal.
-        
-        Exports MPFR value as decimal string, truncated to `precision` digits.
-        """
-        var s = mpfrw_get_str(self.handle, precision)
-        return BigDecimal(s)
+# Transcendentals (single MPFR call each)
+var r = x.sqrt()
+var r = x.exp()
+var r = x.ln()
+var r = x.sin()
+var r = x.cos()
+var r = x.tan()
+var r = x.root(n)
+var r = x.power(y)
 
-    # Arithmetic: each is a single MPFR call
-    def multiply(self, other: GMPDecimal) -> GMPDecimal: ...
-    def add(self, other: GMPDecimal) -> GMPDecimal: ...
-    def divide(self, other: GMPDecimal) -> GMPDecimal: ...
-    def sqrt(self) -> GMPDecimal: ...
-    def exp(self) -> GMPDecimal: ...
-    def ln(self) -> GMPDecimal: ...
-    def sin(self) -> GMPDecimal: ...
-    def cos(self) -> GMPDecimal: ...
-    def pi(precision: Int) -> GMPDecimal: ...  # static
+# Conversion back to BigDecimal
+var bd = r.to_bigdecimal(precision=1000)
 
-    def __del__(owned self):
-        """RAII: free MPFR handle on destruction."""
-        mpfrw_clear(self.handle)
+# Chained computation (stays in MPFR the whole time)
+var result = (
+    BigFloat("23", P).sqrt()
+    .multiply(BigFloat("2.1", P).exp())
+    .divide(BigFloat.pi(P))
+    .to_bigdecimal(P)
+)
+# Cost: 2 string→MPFR conversions in, 5 MPFR calls, 1 MPFR→string out
+# No intermediate decimal conversions
 ```
 
-Compare the old vs. new struct:
+Precision is specified in decimal digits but converted to bits internally:
+`bits = ceil(digits × 3.322) + guard_bits`. Guard bits (64 extra) ensure the
+requested decimal digits are all correct after binary→decimal conversion.
 
-| Aspect          | Old (mpz_t + manual scale)                  | New (MPFR)                    |
-| --------------- | ------------------------------------------- | ----------------------------- |
-| Fields          | `handle`, `scale`, `sign` (3 fields)        | `handle` (1 field)            |
-| Division        | Scale up by 10^N, `mpz_tdiv_q`, track scale | `mpfr_div(r, a, b, RNDN)`     |
-| Sqrt            | Newton iteration in Mojo using GMPDecimal   | `mpfr_sqrt(r, a, RNDN)`       |
-| Exp             | Taylor series in Mojo using GMPDecimal      | `mpfr_exp(r, a, RNDN)`        |
-| Ln              | Atanh series in Mojo using GMPDecimal       | `mpfr_log(r, a, RNDN)`        |
-| Sin/Cos/Tan     | Taylor series in Mojo                       | `mpfr_sin` / `mpfr_cos` / ... |
-| π               | Chudnovsky in Mojo using GMPDecimal         | `mpfr_const_pi(r, RNDN)`      |
-| Sign handling   | Manual XOR                                  | Automatic                     |
-| Scale alignment | Manual multiply by 10^diff                  | Automatic                     |
-| Rounding        | Manual truncation                           | Correctly rounded (MPFR)      |
+### 9.6 BigDecimal `gmp=True` Convenience
 
-**Data flow for `gmp=True`**:
+BigDecimal keeps an optional `gmp=True` parameter for **one-off acceleration**
+without changing types. Internally it does `BigDecimal → BigFloat → compute → BigDecimal`:
 
-```txt
-sqrt(x: BigDecimal, precision=1000, gmp=True):
-  1. gx = GMPDecimal(x, precision=1010)     ← ONE conversion: string → mpfr_t
-  2. mpfr_sqrt(result, gx, MPFR_RNDN)      ← ONE GMP call (entire computation)
-  3. return result.to_bigdecimal(1000)      ← ONE conversion: mpfr_t → string
+```mojo
+# Single-call sugar (user stays in BigDecimal world)
+var r = sqrt(x, precision=5000, gmp=True)
+var r = exp(x, precision=5000, gmp=True)
+var r = pi(precision=10000, gmp=True)
+
+# Equivalent to:
+var r = BigFloat(x, 5010).sqrt().to_bigdecimal(5000)
 ```
 
-For a chained expression like `sqrt(23) * exp(2.1) / pi()`:
+Only **iterative compute-heavy** operations get the `gmp` parameter:
 
-```txt
-var a = GMPDecimal(BigDecimal("23"), prec)    ← 1 conversion
-var b = GMPDecimal(BigDecimal("2.1"), prec)   ← 1 conversion
-var sa = a.sqrt()                              ← mpfr_sqrt (one call)
-var eb = b.exp()                               ← mpfr_exp (one call)
-var p  = GMPDecimal.pi(prec)                   ← mpfr_const_pi (one call)
-var r  = sa.multiply(eb).divide(p)             ← mpfr_mul + mpfr_div
-return r.to_bigdecimal(precision)              ← 1 conversion
-```
+| Function                        | Gets `gmp`? | Reason                                  |
+| ------------------------------- | ----------- | --------------------------------------- |
+| `sqrt`, `root`                  | ✓ Yes       | Newton iteration → single MPFR call     |
+| `exp`, `ln`                     | ✓ Yes       | Taylor/atanh series → single MPFR call  |
+| `sin`, `cos`, `tan`             | ✓ Yes       | Taylor series → single MPFR call        |
+| `pi`                            | ✓ Yes       | Chudnovsky → `mpfr_const_pi`            |
+| `true_divide`                   | ✓ Yes       | Long division at high precision         |
+| `__add__`, `__sub__`, `__mul__` | ✗ No        | Too cheap — FFI overhead not worth it   |
+| `round`, `__floordiv__`         | ✗ No        | Digit manipulation, no heavy arithmetic |
 
-Total: 3 conversions (2 in + 1 out) + 5 MPFR calls. No Newton iterations,
-no Taylor series, no manual scale tracking.
+**When to use `gmp=True` vs BigFloat directly:**
 
-### 9.6 Behavioral Differences Between `gmp=False` and `gmp=True`
+- Single operation on BigDecimal inputs? → `gmp=True` (one liner, stays in BigDecimal)
+- Chain of operations? → Use BigFloat directly (avoids repeated conversion)
 
-**Important**: MPFR is a **binary** floating-point internally (mantissa stored in base-2).
-This means:
+### 9.7 Behavioral Differences: Binary vs. Decimal
 
-1. **Precision is in bits, not digits** — We convert: `bits = ceil(digits × 3.322)`. To
-   guarantee N correct decimal digits, we request ~N×4 bits (generous guard).
+MPFR is a **binary** float internally. What this means:
 
-2. **Last 1–2 decimal digits may differ** — Binary↔decimal rounding means the last few
-   digits of `gmp=True` output may not match `gmp=False` output exactly. The numerical
-   value will agree to the requested precision.
+1. **Last 1–2 decimal digits may differ** between `gmp=True` and `gmp=False`. The
+   numerical value agrees to the requested precision, but the least significant digits
+   can differ due to binary↔decimal rounding.
 
-3. **Fix: guard digits** — Compute internally with `precision + 10` extra digits, then
-   truncate the result to the requested precision. This is standard practice (Python's
-   `decimal` module does the same).
+2. **Guard digits handle this** — I compute with `precision + 10` extra digits, then
+   truncate. Standard practice (Python's `decimal` module does the same).
 
-4. **MPFR guarantees correct rounding** — Every operation is correctly rounded to the
-   working precision. This is actually *stronger* than Decimo's native implementation
+3. **MPFR guarantees correct rounding** — every operation is correctly rounded to the
+   working binary precision. Actually *stronger* than Decimo's native implementation
    which may accumulate rounding errors across Newton iterations.
 
-This is why `gmp` defaults to `False` — so existing behavior is preserved and users
-explicitly opt into the MPFR path when they want speed. In practice, the numerical
-results from MPFR are at least as accurate as the native implementation.
+4. **Semantic difference with BigFloat** — `BigFloat("0.01").sqrt()` returns
+   `0.1000000...0` (binary representation of 0.1). `BigDecimal("0.01").sqrt()` returns
+   exactly `0.1`. For scientific computing this doesn't matter. For financial/display
+   work, use BigDecimal.
 
-### 9.6 CLI Integration (Deferred)
+### 9.8 When to Use Which
 
-CLI integration is deferred to a later phase. When implemented, a `--gmp` flag on the
-command line would set `gmp=True` for all compute-heavy operations in the session.
-The evaluator would pass this flag down through the function dispatch.
+| Scenario                                 | Use                      | Why                                               |
+| ---------------------------------------- | ------------------------ | ------------------------------------------------- |
+| Financial calculations                   | BigDecimal               | Exact decimal representation, no binary surprises |
+| Display-friendly output                  | BigDecimal               | `0.1` stays `0.1`, not `0.10000...00001`          |
+| Fast transcendentals (exp, ln, sin, cos) | BigFloat                 | Single MPFR call, 10–353× faster                  |
+| Scientific computing                     | BigFloat                 | MPFR's correctly-rounded arithmetic               |
+| Chained high-precision computation       | BigFloat                 | Stays in MPFR, no intermediate conversions        |
+| One-off speedup without changing types   | `gmp=True` on BigDecimal | Drop-in acceleration, backward compatible         |
+| No MPFR installed                        | BigDecimal               | Works everywhere, pure Mojo                       |
+| Quick calculation under ~100 digits      | BigDecimal               | FFI overhead not worth it at low precision        |
 
-### 9.7 Future: Global Variable or Context
+### 9.9 Future: Lazy Evaluation for BigDecimal
 
-When Mojo adds global variables, the `gmp` parameter can be replaced or supplemented by
-a module-level default:
+The `gmp=True` per-call approach has a weakness: chained operations convert back and
+forth between BigDecimal and MPFR at every step. A future `lazy()` API fixes this:
+
+```mojo
+# Future API
+var result = (
+    BigDecimal("23").lazy()
+    .sqrt(5000)
+    .multiply(BigDecimal("2.1").lazy().exp(5000))
+    .divide(BigDecimal.pi(5000))
+    .collect()       # executes the whole chain
+)
+```
+
+How it would work:
+
+1. `.lazy()` returns a `LazyDecimal` that **records operations** instead of evaluating
+2. `.collect()` analyzes the expression tree and picks the best execution strategy
+3. If MPFR available: convert leaf inputs to MPFR **once**, execute entire DAG in MPFR,
+   convert root output back **once** — zero intermediate conversions
+4. If MPFR unavailable (or `.collect(gmp=False)`): execute natively in BigDecimal
+
+This is the same pattern as:
+
+- **Polars** — lazy DataFrames, `.collect()` triggers execution
+- **Spark** — query planning, transformations are lazy until action
+- **C++ Eigen** — expression templates, deferred evaluation until assignment
+- **TensorFlow 1.x** — computation graphs, `session.run()` triggers execution
+
+The key insight: users write BigDecimal code (familiar API), the engine figures out the
+fastest execution path. This goes beyond the roadmap below but is architecturally clean
+because BigFloat and the MPFR wrapper already provide the fast backend.
+
+### 9.10 CLI Integration
+
+With BigFloat as a first-class type, the CLI can offer:
+
+```bash
+decimo "sqrt(2)" -p 1000                     # default: BigDecimal
+decimo "sqrt(2)" -p 1000 --mode float         # use BigFloat (requires MPFR)
+decimo "sqrt(2)" -p 1000 --gmp                # BigDecimal with gmp=True
+```
+
+`--mode float` tells the evaluator to parse all literals as BigFloat and evaluate the
+entire expression in MPFR. `--gmp` keeps BigDecimal but enables `gmp=True` on each
+operation (current plan, deferred to Phase 4).
+
+### 9.11 Future: Global Variable or Context
+
+When Mojo gets global variables, a module-level default can supplement the per-call
+parameter:
 
 ```mojo
 # Future (when Mojo supports global variables)
-BigDecimal.set_default_engine("gmp")  # Sets global default
-var result = sqrt(x, 1000)            # Automatically uses GMP
+BigDecimal.set_default_engine("gmp")
+var result = sqrt(x, 1000)            # automatically uses GMP
 ```
 
-The `gmp` parameter will remain as an explicit override even after global variables
-are available, for cases where the user wants fine-grained control.
-
----
+The `gmp` parameter stays as an explicit override for fine-grained control.
 
 ## 10. Build System Integration
 
 ### 10.1 C Wrapper Compilation
 
-The C wrapper must be compiled as a shared library and distributed alongside the Mojo package.
+The C wrapper gets compiled as a shared library, shipped alongside the Mojo package.
 
 **Build script** (`build_gmp_wrapper.sh`):
 
@@ -862,13 +904,12 @@ mojo build \
 
 ### 10.4 Runtime Detection: Single Binary Without Link-Time Dependencies
 
-**Goal**: A single compiled binary works whether or not MPFR/GMP is installed on the
-target machine. If `gmp=True` is requested and MPFR is found, use it. If not found,
-raise a helpful error. Users who never call `gmp=True` pay zero cost.
+**Goal**: One compiled binary that works whether or not MPFR/GMP is on the
+machine. If `gmp=True` is requested and MPFR is found, use it. If not, raise
+a helpful error. If nobody calls `gmp=True`, zero cost.
 
 **Verified**: `dlopen` works from Mojo 0.26.2 via `external_call["dlopen", ...]`.
-Tested successfully — GMP was loaded at runtime without any `-Xlinker` flags at
-compile time.
+I tested it — GMP loaded at runtime without any `-Xlinker` flags at compile time.
 
 **Architecture**: The C wrapper does lazy loading internally using `dlopen`/`dlsym`,
 so it compiles and links **without** needing MPFR/GMP headers or libraries present:
@@ -952,9 +993,9 @@ mojo build -Xlinker -L./path/to/wrapper -Xlinker -ldecimo_gmp_wrapper \
            -o myprogram myprogram.mojo
 ```
 
-The wrapper itself is a tiny C file (~200 lines) that can be compiled on any system
-with just a C compiler — no GMP/MPFR headers needed. MPFR is only loaded at runtime
-when `gmp=True` is actually called.
+The wrapper is a tiny C file (~200 lines) that compiles on any system
+with just a C compiler — no GMP/MPFR headers needed. MPFR only gets loaded at
+runtime when `gmp=True` is actually called.
 
 **Summary of approach by timeline**:
 
@@ -962,8 +1003,6 @@ when `gmp=True` is actually called.
 | --------------------- | ---------------------------- | ------------------------------------------------ |
 | **Now** (Mojo 0.26.2) | C wrapper + `dlopen`/`dlsym` | Link wrapper only; MPFR loaded lazily at runtime |
 | **Future** (DLHandle) | Mojo-native `DLHandle`       | Pure Mojo detection, no C wrapper needed         |
-
----
 
 ## 11. Cross-Platform Considerations
 
@@ -1014,8 +1053,6 @@ pkg-config --exists gmp && pkg-config --cflags --libs gmp
 - Different shared library format (`.dll` + import lib)
 - Mojo on Windows is still early — defer this concern
 
----
-
 ## 12. Risk Analysis
 
 ### 12.1 Technical Risks
@@ -1046,102 +1083,270 @@ pkg-config --exists gmp && pkg-config --cflags --libs gmp
 | Unnecessary conversions                  | Converting back and forth repeatedly | Cache GMP handles during multi-step computations |
 | GMP slower for specific operations       | Possible edge cases                  | Benchmark-driven thresholds per operation type   |
 
----
+## 13. Lessons from Other Libraries
 
-## 13. Implementation Roadmap
+Before diving into the roadmap, I looked at how major open-source libraries integrate GMP/MPFR to see what I can learn from them.
 
-> Priority: **BigDecimal first**, using **MPFR** (not raw `mpz_t`). MPFR provides
-> built-in sqrt, exp, ln, sin, cos, tan, π with correct rounding — so most BigDecimal
-> operations are simple one-call wrappers rather than Newton/Taylor implementations.
-> BigInt integration is deferred to Phase 3.
+### 13.1 mpmath (Python) — Backend Abstraction
 
-### Phase 1: Foundation — MPFR C Wrapper & GMPDecimal Struct
+mpmath is *the* arbitrary-precision math library for Python (~1M+ monthly downloads).
 
-**Goal**: Establish the MPFR-based C wrapper with runtime detection, the `GMPDecimal`
-intermediate struct, and prove end-to-end with `sqrt`.
+**How mpmath does it**:
 
-| Step | Task                                                | Detail                                                                                                                                                                                                                                                                                                           | Effort | Deps     |
-| ---- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | -------- |
-| 1.1  | **Install MPFR**                                    | `brew install mpfr` (macOS). Verify: `/opt/homebrew/lib/libmpfr.dylib` exists, `#include <mpfr.h>` compiles. MPFR depends on GMP (already installed).                                                                                                                                                            | Tiny   | —        |
-| 1.2  | **Extend C wrapper with `mpfr_t` handle pool**      | Add to `gmp_wrapper.c`: (a) `static mpfr_t f_handles[MAX_HANDLES]` pool, (b) `mpfrw_init(prec_bits) → handle`, (c) `mpfrw_clear(h)`, (d) `mpfrw_set_str(h, str, len)` (length-safe, base-10), (e) `mpfrw_get_str(h, digits) → char*`, (f) `mpfrw_available()`. Keep existing `mpz_t` wrappers intact for BigInt. | Medium | 1.1      |
-| 1.3  | **Add MPFR arithmetic wrappers**                    | One-line C wrappers: `mpfrw_add(r,a,b)`, `mpfrw_sub(r,a,b)`, `mpfrw_mul(r,a,b)`, `mpfrw_div(r,a,b)`, `mpfrw_sqrt(r,a)`, `mpfrw_neg(r,a)`, `mpfrw_abs(r,a)`, `mpfrw_cmp(a,b)`. All use `MPFR_RNDN` (round-to-nearest). Each is 1 line: e.g. `mpfr_sqrt(f_handles[r], f_handles[a], MPFR_RNDN)`.                   | Small  | 1.2      |
-| 1.4  | **Add MPFR transcendental wrappers**                | `mpfrw_exp(r,a)`, `mpfrw_log(r,a)`, `mpfrw_sin(r,a)`, `mpfrw_cos(r,a)`, `mpfrw_tan(r,a)`, `mpfrw_const_pi(r)`, `mpfrw_pow(r,a,b)`, `mpfrw_rootn_ui(r,a,n)`. Each is 1 line.                                                                                                                                      | Small  | 1.2      |
-| 1.5  | **Implement lazy `dlopen` loading**                 | Wrap all MPFR calls behind function pointers resolved via `dlopen`/`dlsym` at first use (see Section 10.4). This makes the wrapper compilable without MPFR headers. Add `mpfrw_available() → 0/1`.                                                                                                               | Medium | 1.3, 1.4 |
-| 1.6  | **Compile wrapper, run smoke test**                 | Build `libdecimo_gmp_wrapper.dylib` linking against `-lmpfr -lgmp`. Write minimal Mojo test: `mpfrw_init(200) → set_str("3.14") → mpfrw_sqrt → get_str → print`. Verify output.                                                                                                                                  | Small  | 1.5      |
-| 1.7  | **Create `src/decimo/bigdecimal/gmp_decimal.mojo`** | Implement `GMPDecimal` struct (single `handle: Int32` field). Constructor from BigDecimal via `str(bd) → mpfrw_set_str`. `to_bigdecimal(precision) → mpfrw_get_str → BigDecimal(s)`. Destructor calls `mpfrw_clear`.                                                                                             | Medium | 1.6      |
-| 1.8  | **Wire `gmp=True` into `sqrt()`**                   | In `exponential.mojo`: add `gmp: Bool = False` parameter. If True: `GMPDecimal(x, prec+10) → mpfrw_sqrt → to_bigdecimal(prec)`. Three lines of new code.                                                                                                                                                         | Small  | 1.7      |
-| 1.9  | **Test sqrt correctness**                           | For x ∈ {2, 3, 0.5, 100, 10⁻⁸, 10¹⁰⁰⁰}, P ∈ {28, 100, 500, 1000, 5000}: verify `sqrt(x, P, gmp=True)` matches `sqrt(x, P)` to P digits.                                                                                                                                                                          | Medium | 1.8      |
-| 1.10 | **Benchmark sqrt**                                  | Measure wall time including conversion overhead. Find break-even precision where MPFR wins. Expected: above ~50–100 digits.                                                                                                                                                                                      | Small  | 1.9      |
-| 1.11 | **Update build system**                             | `pixi.toml` tasks: `build-gmp-wrapper` (compiles C wrapper + links MPFR). `build_gmp_wrapper.sh` for macOS + Linux.                                                                                                                                                                                              | Small  | 1.2      |
+- **Backend swap**: `backend.py` defines `MPZ` (integer type) and `BACKEND` (string).
+  At startup it tries `import gmpy2`, then `import gmp`, falling back to Python `int`.
+  All mantissa arithmetic goes through `MPZ` — a single point of substitution.
+- **Environment override**: `MPMATH_NOGMPY` env var disables GMP entirely,
+  useful for debugging and pure-Python deployment.
+- **gmpy acceleration hooks**: When gmpy is available, mpmath replaces its
+  `_normalize` and `from_man_exp` hot-path functions with optimized C versions
+  from gmpy (`gmpy._mpmath_normalize`, `gmpy._mpmath_create`), and also
+  `mpf_mul_int` is swapped to a gmpy-accelerated version. This gives 2–5×
+  speedup on core arithmetic with zero API change.
+- **Internal representation**: Binary floating-point tuples `(sign, man, exp, bc)`.
+  All precision is in **bits**, converted to/from decimal digits via
+  `dps_to_prec(n) = max(1, int(round((n+1)*3.3219...)))` and
+  `prec_to_dps(n) = max(1, int(round(n/3.3219...))-1)`.
+- **Guard bits**: Extra precision is added internally. Individual functions use
+  `extraprec` (add N bits) or `workprec` (set to N bits). The `autoprec` decorator
+  doubles precision until results converge — a "guess-and-verify" paradigm.
 
-**Deliverable**: `sqrt(BigDecimal("2"), precision=5000, gmp=True)` returns correct result.
-Internally: 1 string conversion in, 1 MPFR call, 1 string conversion out.
+**Takeaway**: The single-variable backend swap (`MPZ = gmpy.mpz`) is clean.
+My C wrapper approach is analogous but at a lower level. I should make sure
+that all GMP-dependent code stays isolated in a single module.
 
-### Phase 2: All BigDecimal Operations
+### 13.2 gmpy2 (Python ↔ MPFR) — Context-Based Precision
 
-**Goal**: Extend `gmp=True` to all compute-heavy operations. Because MPFR has built-in
-functions for each, every operation is just a **thin wrapper** — no Newton/Taylor needed.
+gmpy2 is the standard Python binding for GMP + MPFR + MPC.
 
-| Step | Task                                      | Detail                                                                                                                                                       | Effort | Deps    |
-| ---- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | ------- |
-| 2.1  | **Wire `true_divide(x, y, P, gmp=True)`** | `GMPDecimal(x) → GMPDecimal(y) → mpfrw_div → to_bigdecimal`.                                                                                                 | Small  | Phase 1 |
-| 2.2  | **Wire `root(x, n, P, gmp=True)`**        | `mpfrw_rootn_ui(r, x_handle, n)` — single MPFR call.                                                                                                         | Small  | Phase 1 |
-| 2.3  | **Wire `exp(x, P, gmp=True)`**            | `mpfrw_exp(r, x_handle)` — single MPFR call.                                                                                                                 | Small  | Phase 1 |
-| 2.4  | **Wire `ln(x, P, gmp=True)`**             | `mpfrw_log(r, x_handle)` — single MPFR call.                                                                                                                 | Small  | Phase 1 |
-| 2.5  | **Wire `sin(x, P, gmp)`, `cos`, `tan`**   | `mpfrw_sin`, `mpfrw_cos`, `mpfrw_tan` — each single call.                                                                                                    | Small  | Phase 1 |
-| 2.6  | **Wire `pi(P, gmp=True)`**                | `mpfrw_const_pi(r)` — single MPFR call. No Chudnovsky needed.                                                                                                | Small  | Phase 1 |
-| 2.7  | **Instance method wrappers**              | Update `self.sqrt()`, `self.exp()`, etc. to accept `gmp: Bool = False`.                                                                                      | Small  | 2.6     |
-| 2.8  | **Comprehensive test suite**              | For each function × {gmp=True, gmp=False}: verify agreement to requested precision. Edge cases: 0, negative, very large/small. Compare against WolframAlpha. | Large  | 2.7     |
-| 2.9  | **Benchmark all operations**              | Table: operation × precision (28, 100, 500, 1000, 5000) × gmp. Include conversion overhead.                                                                  | Medium | 2.8     |
+**How gmpy2 does it**:
 
-**Note**: Because each MPFR operation is a single C call, Phase 2 is significantly
-simpler than it would be with `mpz_t` (where we'd need to implement Taylor series,
-Chudnovsky, and Newton iteration ourselves in Mojo using GMPDecimal arithmetic).
+- **Context object**: `gmpy2.context()` controls precision, rounding mode, exception
+  traps, and exponent range. `get_context()` returns the active context;
+  `local_context()` provides temporary overrides (similar to Python's `decimal.localcontext()`).
+- **5 rounding modes**: RoundToNearest, RoundToZero, RoundUp, RoundDown, RoundAwayZero.
+  These map directly to MPFR's rounding modes.
+- **Thread safety**: MPFR data (flags, emin/emax, default precision) uses
+  thread-local storage when built with `--enable-thread-safe`.
+- **Exception model**: Flags for overflow, underflow, inexact, invalid, divzero,
+  erange. Each has a corresponding `trap_*` bool — if True, raises a Python
+  exception; if False, sets the flag silently and returns a special value (NaN, ±Inf).
+- **Precision tracking**: Each `mpfr` value carries its own precision. When combining
+  values of different precisions, the context precision governs the result.
+- **Implicit conversion**: `mpz → mpfr` is automatic. `float → mpfr` preserves
+  all 53 bits. `str → mpfr` uses full specified precision.
 
-**Deliverable**: All iterative BigDecimal functions support `gmp=True`.
+**Takeaway**: My `gmp: Bool = False` parameter approach is simpler but
+sufficient. If I later want a richer API, a context object could control precision,
+rounding mode, and GMP-enable globally. For now, per-call `gmp=True` is fine.
+
+### 13.3 Arb/FLINT — Ball Arithmetic & Guard Bits
+
+Arb (now merged into FLINT) implements rigorous arbitrary-precision ball arithmetic.
+
+**How Arb works**:
+
+- **Ball semantics**: Each number is `[midpoint ± radius]`. Operations propagate
+  error bounds automatically. The user doesn't manually track rounding errors.
+- **Binary ↔ decimal conversion**: Arb explicitly warns that this conversion is
+  lossy. `arb_set_str("2.3", prec)` correctly creates a ball containing 23/10,
+  unlike a naive `double` assignment. `arb_printn()` only prints digits that are
+  guaranteed correct.
+- **Guess-and-verify paradigm**: Start with modest precision, check if the result
+  is accurate enough, double precision and retry if not. This is the recommended
+  approach for complex computations.
+- **Guard bits heuristic**: For accuracy of p bits, use working precision O(1)+p.
+  The O(1) term depends on the expression. "Adding a few guard bits" (10–20 for
+  basic operations) is usually enough.
+- **Polynomial time guarantee**: Arb caps internal work parameters by polynomial
+  functions of `prec` to prevent runaway computation. E.g., `arb_sin(huge_x)` returns
+  `[±1]` instead of attempting expensive argument reduction.
+- **Handle lifecycle**: GMP-style `arb_init(x)` / `arb_clear(x)`. Output parameters
+  come first, then inputs, then precision.
+
+**Takeaway**: The guard bits pattern confirms my approach of using
+`prec + 10` in MPFR calls. I should also add a precision cap for safety.
+The polynomial time guarantee is worth stealing for my iterative operations.
+
+### 13.4 python-flint — Direct FLINT/Arb Bindings
+
+python-flint wraps FLINT (which includes Arb) for Python.
+
+**How python-flint works**:
+
+- **Type hierarchy**: Separate types for each number ring: `fmpz` (integers),
+  `fmpq` (rationals), `arb` (real balls), `acb` (complex balls), plus polynomial
+  and matrix variants.
+- **Global context**: Precision is set globally (`ctx.prec = 333` for ~100 decimal
+  digits). All operations use the current context precision.
+
+### 13.5 Consistency Check: My Plan vs. Best Practices
+
+| Best Practice (from survey)                | Status in My Plan   | Notes                                                             |
+| ------------------------------------------ | ------------------- | ----------------------------------------------------------------- |
+| Graceful fallback (GMP optional)           | ✓ Designed          | BigDecimal works without MPFR; BigFloat requires it               |
+| First-class user-facing type               | ✓ BigFloat          | Like mpmath's `mpf` — user constructs and chains operations       |
+| Convenience sugar on existing type         | ✓ `gmp=True`        | BigDecimal ops accept `gmp=True` for one-off acceleration         |
+| Isolated backend module                    | ✓ `bigfloat.mojo`   | All MPFR calls in one file                                        |
+| Guard bits in MPFR calls                   | ✓ `prec + 10`       | Confirmed adequate by Arb docs                                    |
+| Decimal ↔ binary via string (not raw bits) | ✓ Planned           | `mpfr_set_str` / `mpfr_get_str`, base 10                          |
+| Environment variable to disable GMP        | ✗ **Not yet**       | **TODO**: `DECIMO_NOGMP` env check (like mpmath `MPMATH_NOGMPY`)  |
+| Handle pool with lifecycle management      | ✓ Planned           | C wrapper handle pool                                             |
+| Rounding mode control                      | △ Partial           | RNDN only. Consider exposing rounding mode later                  |
+| Precision cap for safety                   | ✗ **Not yet**       | **TODO**: Cap internal MPFR precision to prevent OOM              |
+| Conversion overhead awareness              | ✓ Documented        | String round-trip mitigated by BigFloat chaining + lazy future    |
+| Thread safety considerations               | ✗ **Not yet**       | **TODO**: MPFR handle pool is not thread-safe; document this      |
+| Benchmark-driven thresholds                | ✓ Planned (Phase 1) | Find break-even precision for each operation                      |
+| Lazy evaluation for chained ops            | △ Future            | `BigDecimal.lazy()...collect()` — deferred, architecturally clean |
+
+**Gaps I found** (incorporated into the roadmap below):
+
+1. **`DECIMO_NOGMP` environment variable** (Phase 1) — lets users disable GMP at
+   runtime, like mpmath's `MPMATH_NOGMPY`.
+2. **Precision cap** (Phase 1) — prevent MPFR from allocating unbounded memory
+   for extreme precision values.
+3. **Thread safety docs** (Phase 4) — the C handle pool is not thread-safe;
+   need to document this.
+
+## 14. Implementation Roadmap
+
+> BigFloat first (Phase 1), then BigDecimal `gmp=True` sugar (Phase 2), then BigInt
+> backend (Phase 3). MPFR has built-in sqrt, exp, ln, sin, cos, tan, π with correct
+> rounding — so BigFloat operations are single MPFR calls, and BigDecimal sugar is
+> just BigFloat under the hood.
+
+### Phase 1: Foundation — MPFR C Wrapper & BigFloat
+
+**Goal**: Get the MPFR-based C wrapper working, build the `BigFloat` struct as a
+first-class user-facing type, and prove the pipeline with `sqrt`.
+
+- [ ] **1.1 Install MPFR** (Tiny, no deps)
+  `brew install mpfr` (macOS). Verify: `/opt/homebrew/lib/libmpfr.dylib` exists,
+  `#include <mpfr.h>` compiles. MPFR depends on GMP (already installed).
+- [ ] **1.2 Extend C wrapper with `mpfr_t` handle pool** (Medium, deps: 1.1)
+  Add to `gmp_wrapper.c`:
+  (a) `static mpfr_t f_handles[MAX_HANDLES]` pool,
+  (b) `mpfrw_init(prec_bits) → handle`,
+  (c) `mpfrw_clear(h)`,
+  (d) `mpfrw_set_str(h, str, len)` (length-safe, base-10),
+  (e) `mpfrw_get_str(h, digits) → char*`,
+  (f) `mpfrw_available()`.
+  Keep existing `mpz_t` wrappers intact for BigInt.
+  **Add precision cap**: reject `prec_bits > MAX_PREC` (e.g. 1M bits ≈ 300K digits)
+  to prevent OOM, inspired by Arb's polynomial time guarantee.
+- [ ] **1.3 Add MPFR arithmetic wrappers** (Small, deps: 1.2)
+  One-line C wrappers: `mpfrw_add(r,a,b)`, `mpfrw_sub(r,a,b)`, `mpfrw_mul(r,a,b)`,
+  `mpfrw_div(r,a,b)`, `mpfrw_sqrt(r,a)`, `mpfrw_neg(r,a)`, `mpfrw_abs(r,a)`,
+  `mpfrw_cmp(a,b)`. All use `MPFR_RNDN` (round-to-nearest). Each is 1 line.
+- [ ] **1.4 Add MPFR transcendental wrappers** (Small, deps: 1.2)
+  `mpfrw_exp(r,a)`, `mpfrw_log(r,a)`, `mpfrw_sin(r,a)`, `mpfrw_cos(r,a)`,
+  `mpfrw_tan(r,a)`, `mpfrw_const_pi(r)`, `mpfrw_pow(r,a,b)`, `mpfrw_rootn_ui(r,a,n)`.
+  Each is 1 line.
+- [ ] **1.5 Implement lazy `dlopen` loading** (Medium, deps: 1.3, 1.4)
+  Wrap all MPFR calls behind function pointers resolved via `dlopen`/`dlsym` at
+  first use (see Section 10.4). This makes the wrapper compilable without MPFR
+  headers. Add `mpfrw_available() → 0/1`.
+  **Add `DECIMO_NOGMP` check**: if set, `mpfrw_available()` returns 0 without
+  attempting `dlopen` (inspired by mpmath's `MPMATH_NOGMPY`).
+- [ ] **1.6 Compile wrapper, run smoke test** (Small, deps: 1.5)
+  Build `libdecimo_gmp_wrapper.dylib` linking against `-lmpfr -lgmp`. Write minimal
+  Mojo test: `mpfrw_init(200) → set_str("3.14") → mpfrw_sqrt → get_str → print`.
+  Verify output.
+- [ ] **1.7 Create `src/decimo/bigfloat/bigfloat.mojo`** (Medium, deps: 1.6)
+  Implement `BigFloat` struct (single `handle: Int32` field). Constructor from
+  string via `mpfrw_set_str`. Constructor from BigDecimal via `str(bd) → mpfrw_set_str`.
+  `to_bigdecimal(precision) → mpfrw_get_str → BigDecimal(s)`. Destructor calls
+  `mpfrw_clear`. Use guard bits: init MPFR with `dps_to_prec(precision) + 20` bits.
+- [ ] **1.8 BigFloat arithmetic and transcendentals** (Medium, deps: 1.7)
+  Wire all MPFR wrappers into BigFloat methods: `sqrt()`, `exp()`, `ln()`, `sin()`,
+  `cos()`, `tan()`, `root(n)`, `power(y)`, `+`, `-`, `*`, `/`, `pi()`.
+  Each is a thin wrapper around the corresponding `mpfrw_*` call.
+- [ ] **1.9 BigFloat ↔ BigDecimal conversion** (Small, deps: 1.7)
+  `BigFloat(bd: BigDecimal, precision)` and `bf.to_bigdecimal(precision)`.
+  Both go through string representation (`mpfr_set_str` / `mpfr_get_str`).
+- [ ] **1.10 Test BigFloat correctness** (Medium, deps: 1.8)
+  For each operation × x ∈ {2, 3, 0.5, 100, 10⁻⁸, 10¹⁰⁰⁰} × P ∈ {28, 100, 500,
+  1000, 5000}: verify BigFloat results match BigDecimal results to P digits.
+  Edge cases: 0, negative, very large/small.
+- [ ] **1.11 Benchmark BigFloat** (Small, deps: 1.10)
+  Measure wall time for BigFloat vs BigDecimal across operations and precisions.
+  Find break-even precision where BigFloat wins. Expected: above ~50–100 digits.
+- [ ] **1.12 Update build system** (Small, deps: 1.2)
+  `pixi.toml` tasks: `build-gmp-wrapper` (compiles C wrapper + links MPFR).
+  `build_gmp_wrapper.sh` for macOS + Linux.
+
+**Deliverable**: `BigFloat("2", 5000).sqrt()` works. Users can construct BigFloat,
+chain operations, and convert back to BigDecimal.
+
+### Phase 2: BigDecimal `gmp=True` Convenience Sugar
+
+**Goal**: Wire `gmp=True` into BigDecimal compute-heavy operations. Internally each
+uses BigFloat (Phase 1), so this is just plumbing.
+
+- [ ] **2.1 Wire `sqrt(x, P, gmp=True)`** (Small, deps: Phase 1)
+  If `gmp=True`: `BigFloat(x, P+10).sqrt().to_bigdecimal(P)`. Three lines.
+- [ ] **2.2 Wire `true_divide(x, y, P, gmp=True)`** (Small, deps: Phase 1)
+  `BigFloat(x, P+10) / BigFloat(y, P+10) → to_bigdecimal(P)`.
+- [ ] **2.3 Wire `root`, `exp`, `ln`, `sin`, `cos`, `tan`** (Small, deps: Phase 1)
+  Each is a one-liner delegating to BigFloat. Single MPFR call per operation.
+- [ ] **2.4 Wire `pi(P, gmp=True)`** (Small, deps: Phase 1)
+  `BigFloat.pi(P+10).to_bigdecimal(P)`. No Chudnovsky needed.
+- [ ] **2.5 Instance method wrappers** (Small, deps: 2.4)
+  Update `self.sqrt()`, `self.exp()`, etc. to accept `gmp: Bool = False`.
+- [ ] **2.6 Comprehensive test suite** (Large, deps: 2.5)
+  For each function × {gmp=True, gmp=False}: verify agreement to requested
+  precision. Edge cases: 0, negative, very large/small.
+- [ ] **2.7 Benchmark gmp=True vs gmp=False** (Medium, deps: 2.6)
+  Table: operation × precision (28, 100, 500, 1000, 5000) × gmp. Include
+  conversion overhead.
+
+**Deliverable**: All iterative BigDecimal functions support `gmp=True`. Existing
+BigDecimal API unchanged for `gmp=False`.
 
 **Checkpoint test**: `pi(precision=10000, gmp=True)` matches known π digits and runs
 significantly faster than `pi(precision=10000)`.
 
 ### Phase 3: BigInt GMP Backend (Deferred)
 
-**Goal**: GMP backend for BigInt (base-2³²) using `mpz_t`. Deferred because integer
-operations are less user-facing.
+**Goal**: GMP backend for BigInt (base-2³²) using `mpz_t`. Deferred — integer
+ops are less user-facing.
 
-| Step | Task                                            | Detail                                                                 | Effort | Deps    |
-| ---- | ----------------------------------------------- | ---------------------------------------------------------------------- | ------ | ------- |
-| 3.1  | **Word import/export in C wrapper**             | Complete `gmpw_import_u32_le` / `gmpw_export_u32_le`. Test round-trip. | Small  | Phase 1 |
-| 3.2  | **Create `src/decimo/bigint/gmp_backend.mojo`** | GMPBigInt struct. Convert BigInt ↔ GMP via O(n) word import/export.    | Medium | 3.1     |
-| 3.3  | **Add `gmp: Bool = False` to BigInt ops**       | On `multiply`, `floor_divide`, `sqrt`, `gcd`, `power` free functions.  | Medium | 3.2     |
-| 3.4  | **Tests and benchmarks**                        | Verify correctness. Confirm 7–18× speedup.                             | Medium | 3.3     |
+- [ ] **3.1 Word import/export in C wrapper** (Small, deps: Phase 1)
+  Complete `gmpw_import_u32_le` / `gmpw_export_u32_le`. Test round-trip.
+- [ ] **3.2 Create `src/decimo/bigint/gmp_backend.mojo`** (Medium, deps: 3.1)
+  GMPBigInt struct. Convert BigInt ↔ GMP via O(n) word import/export.
+- [ ] **3.3 Add `gmp: Bool = False` to BigInt ops** (Medium, deps: 3.2)
+  On `multiply`, `floor_divide`, `sqrt`, `gcd`, `power` free functions.
+- [ ] **3.4 Tests and benchmarks** (Medium, deps: 3.3)
+  Verify correctness. Confirm 7–18× speedup.
 
 ### Phase 4: Polish, Distribution & Future
 
-| Step | Task                                                                     | Effort | Deps             |
-| ---- | ------------------------------------------------------------------------ | ------ | ---------------- |
-| 4.1  | **Cross-platform wrapper compilation (Linux)**                           | Small  | Phase 1          |
-| 4.2  | **Pre-built wrapper binaries (macOS ARM64, Linux x86)**                  | Medium | 4.1              |
-| 4.3  | **CLI `--gmp` flag**                                                     | Medium | Phase 2          |
-| 4.4  | **GMPDecimal expression chaining** (user-facing)                         | Medium | Phase 2          |
-|      | ↳ `gx = GMPDecimal(x); r = gx.sqrt().multiply(gx.exp()).to_bigdecimal()` |        |                  |
-| 4.5  | **Documentation: user guide for GMP/MPFR integration**                   | Small  | Phase 2          |
-| 4.6  | **Pure-Mojo runtime detection (when DLHandle available)**                | Medium | Mojo improvement |
-| 4.7  | **GMP rational numbers (`mpq_t`) for exact division**                    | Medium | Future           |
+- [ ] **4.1 Cross-platform wrapper compilation (Linux)** (Small, deps: Phase 1)
+- [ ] **4.2 Pre-built wrapper binaries (macOS ARM64, Linux x86)** (Medium, deps: 4.1)
+- [ ] **4.3 CLI `--mode float` and `--gmp` flags** (Medium, deps: Phase 2)
+  `--mode float` evaluates in BigFloat; `--gmp` enables `gmp=True` on BigDecimal ops.
+- [ ] **4.4 Documentation: user guide for BigFloat and GMP integration** (Small, deps: Phase 2)
+- [ ] **4.5 Pure-Mojo runtime detection (when DLHandle available)** (Medium, deps: Mojo improvement)
+- [ ] **4.6 GMP rational numbers (`mpq_t`) for exact division** (Medium, future)
+- [ ] **4.7 Document thread safety** (Small, deps: Phase 1)
+  The C handle pool is not thread-safe; MPFR requires `--enable-thread-safe` for
+  concurrent use. Document this limitation.
+- [ ] **4.8 Lazy evaluation: `BigDecimal.lazy()...collect()`** (Large, future)
+  Record a DAG of operations, execute entire chain in MPFR with zero intermediate
+  conversions. See Section 9.9 for design. Architecturally clean because BigFloat
+  and the MPFR wrapper (Phase 1) already provide the backend.
 
 ### Estimated Effort Summary
 
-| Phase                       | Scope                                          | Steps | Complexity                                    | Priority |
-| --------------------------- | ---------------------------------------------- | ----- | --------------------------------------------- | -------- |
-| Phase 1: Foundation + sqrt  | MPFR wrapper, GMPDecimal, runtime detect, sqrt | 11    | Medium — most work is C wrapper + plumbing    | **HIGH** |
-| Phase 2: All BigDecimal ops | divide, exp, ln, trig, pi, root                | 9     | **Low** — each op is a thin wrapper over MPFR | **HIGH** |
-| Phase 3: BigInt backend     | Word import/export, mpz_t dispatch             | 4     | Medium                                        | Deferred |
-| Phase 4: Polish             | CLI, cross-platform, docs, chaining            | 7     | Varies                                        | Low      |
+- **Phase 1: MPFR wrapper + BigFloat** — 12 steps, Medium complexity (most work is C wrapper + BigFloat struct). **HIGH** priority.
+- **Phase 2: BigDecimal gmp=True sugar** — 7 steps, **Low** complexity (each op delegates to BigFloat). **HIGH** priority.
+- **Phase 3: BigInt backend** — 4 steps, Medium complexity. Deferred.
+- **Phase 4: Polish + lazy eval** — 8 steps, varies. Low priority.
 
----
+## 15. Appendix: Prototype Results
 
-## 14. Appendix: Prototype Results
-
-### 14.1 Files Created
+### 15.1 Files Created
 
 | File                                | Purpose                   | Status                                 |
 | ----------------------------------- | ------------------------- | -------------------------------------- |
@@ -1151,7 +1356,7 @@ operations are less user-facing.
 | `temp/gmp/bench_gmp_vs_decimo.mojo` | GMP benchmark suite       | ✓ Complete                             |
 | `temp/gmp/build_and_test.sh`        | Build and test automation | ✓ Complete                             |
 
-### 14.2 C Wrapper API Summary
+### 15.2 C Wrapper API Summary
 
 ```c
 // Lifecycle
@@ -1198,12 +1403,12 @@ int         gmpw_available(void);
 const char* gmpw_version(void);
 ```
 
-### 14.3 Sample Mojo FFI Calls
+### 15.3 Sample Mojo FFI Calls
 
 ```mojo
 from sys.ffi import external_call, c_int
 
-# ⚠️ SAFE pattern: pass length explicitly to avoid use-after-free (see Section 15.1)
+# ⚠️ SAFE pattern: pass length explicitly to avoid use-after-free (see Section 16.1)
 def gmp_set_str(h: c_int, s: String):
     var slen = c_int(len(s))
     var ptr = Int(s.unsafe_ptr())
@@ -1223,7 +1428,7 @@ def gmp_add(r: c_int, a: c_int, b: c_int):
     external_call["gmpw_add", NoneType, c_int, c_int, c_int](r, a, b)
 ```
 
-### 14.4 Benchmark Data Table
+### 15.4 Benchmark Data Table
 
 **GMP absolute timings** (per operation, macOS ARM64, Apple M-series):
 
@@ -1235,18 +1440,15 @@ def gmp_add(r: c_int, a: c_int, b: c_int):
 | 10,000  | 50 µs    | 226 ns | 30 µs  | 21 µs  | 2 µs   |
 | 100,000 | 939 µs   | 2 µs   | 740 µs | 642 µs | 324 µs |
 
----
+## 16. Lessons Learned from Prototype Development
 
-## 15. Lessons Learned from Prototype Development
+This section documents gotchas from the GMP prototype build-test cycle
+and how I fixed them. **Read this before starting implementation** — every item
+cost me real debugging time and will bite again if not handled.
 
-This section documents issues encountered during the GMP prototype build-test cycle
-and their fixes. **Read this before starting implementation** — every item below
-cost significant debugging time and will recur if not handled.
+### 16.1 CRITICAL: Mojo String Use-After-Free in FFI
 
-### 15.1 CRITICAL: Mojo String Use-After-Free in FFI Calls
-
-**Symptom**: GMP's `mpz_set_str()` silently fails (returns -1), leaving the mpz value
-as 0. Subsequent operations on zero values trigger `__gmp_overflow_in_mpz` in division
+**Symptom**: GMP's `mpz_set_str()` silently fails (returns -1), leaving the mpz as 0. Subsequent operations on zero values trigger `__gmp_overflow_in_mpz` in division
 or crash with corrupt data.
 
 **Root cause**: When you write:
@@ -1256,15 +1458,15 @@ def gmp_set_str(h: c_int, s: String):
     _ = external_call["gmpw_set_str", c_int, c_int, Int](h, Int(s.unsafe_ptr()))
 ```
 
-Mojo's optimizer may drop the `String` parameter `s` (freeing its backing buffer) before
-`external_call` actually reads the pointer. Under heavy allocation pressure (millions of
-BigInt/BigDecimal operations), the freed buffer is immediately reused by the allocator,
-overrwriting the null terminator. GMP then reads past the intended string into adjacent
-memory, encounters non-digit bytes, and returns error code -1.
+Mojo's optimizer may drop the `String` parameter `s` (freeing its buffer) before
+`external_call` reads the pointer. Under heavy allocation pressure (millions of
+BigInt/BigDecimal ops), the freed buffer gets reused immediately,
+overwriting the null terminator. GMP reads past the string into adjacent
+memory, hits non-digit bytes, returns -1.
 
-**How we found it**: The crash only appeared in the full benchmark binary after
-millions of prior allocations, never in small test files. Adding `fprintf(stderr)`
-logging to the C wrapper revealed that:
+**How I found it**: The crash only showed up in the full benchmark binary after
+millions of prior allocations — never in small test files. Adding `fprintf(stderr)`
+logging to the C wrapper revealed:
 
 - `strlen()` on the pointer showed 109 instead of expected 100
 - `mpz_set_str` returned -1 (failure), not 0 (success)
@@ -1292,17 +1494,17 @@ def gmp_set_str(h: c_int, s: String):
     _ = external_call["gmpw_set_str_n", c_int, c_int, Int, c_int](h, ptr, slen)
 ```
 
-**Rule**: **ALWAYS use `gmpw_set_str_n` with explicit length for any String → C FFI
-call.** Never rely on null-termination of Mojo `String.unsafe_ptr()` in `external_call`.
+**Rule**: **Always use `gmpw_set_str_n` with explicit length for any String → C FFI
+call.** Don't rely on null-termination of Mojo `String.unsafe_ptr()` in `external_call`.
 
-**Broader implication**: This affects ALL FFI calls that pass Mojo `String` pointers.
-Every such call in the codebase must either:
+**Broader implication**: This affects ALL FFI calls passing Mojo `String` pointers.
+Every such call must either:
 
 1. Use the length-aware C variant (recommended), or
 2. Store the String in a local variable AND ensure no other allocation occurs between
    `unsafe_ptr()` extraction and the `external_call` (fragile, not recommended)
 
-### 15.2 `mojo run` Does Not Support `-Xlinker` Flags
+### 16.2 `mojo run` Does Not Support `-Xlinker` Flags
 
 **Symptom**: `mojo run file.mojo -Xlinker -lgmp_wrapper` ignores the linker flags,
 causing "undefined symbol" errors at runtime.
@@ -1322,7 +1524,7 @@ pixi run mojo build -Xlinker -L... -Xlinker -lgmp_wrapper -o program program.moj
 pixi run mojo run -Xlinker -L... program.mojo
 ```
 
-### 15.3 Mojo 0.26.2 Syntax Differences
+### 16.3 Mojo 0.26.2 Syntax Differences
 
 Several Mojo syntax changes from earlier versions caused compile errors:
 
@@ -1333,29 +1535,28 @@ Several Mojo syntax changes from earlier versions caused compile errors:
 | UInt → Float64     | `Float64(some_uint)`               | `Float64(Int(some_uint))`                      |
 | UnsafePointer      | `UnsafePointer[Byte](address=ptr)` | `UnsafePointer[Byte](unsafe_from_address=ptr)` |
 
-### 15.4 GMP `__gmp_overflow_in_mpz` Means Bad Input, Not Overflow
+### 16.4 GMP `__gmp_overflow_in_mpz` Means Bad Input, Not Overflow
 
-Despite the name, `__gmp_overflow_in_mpz` typically means the `mpz_t` struct has
-corrupted metadata (alloc=0, size=0, or invalid limb pointer), NOT that a computation
-result was too large. If you see this error:
+Despite the name, `__gmp_overflow_in_mpz` usually means the `mpz_t` struct has
+corrupted metadata (alloc=0, size=0, or bad limb pointer), NOT that a result was too large. If you see this:
 
 1. **First check**: Did `mpz_set_str` fail? (Return value -1 means the string was invalid.)
 2. **Second check**: Was the handle cleared and reused?
 3. **Third check**: Was the handle ever initialized?
 
-In our case it was always (1) — the string pointer was dangling.
+In my case it was always (1) — the string pointer was dangling.
 
-### 15.5 Handle Pool Sizing
+### 16.5 Handle Pool Sizing
 
-The C wrapper uses a static array of `MAX_HANDLES = 4096` handles. For Phase 1 (sqrt),
+The C wrapper uses a static array of `MAX_HANDLES = 4096`. For Phase 1 (sqrt),
 each Newton iteration typically uses 3–5 temporary handles, so 4096 is plenty. But for
 Phase 2 (complex expression trees), monitor handle usage. Consider:
 
 - Adding `gmpw_handles_in_use()` diagnostic function
 - Expanding to dynamic allocation if 4096 is insufficient
-- Ensuring every code path calls `gmpw_clear()` (RAII via `GMPDecimal.__del__`)
+- Ensuring every code path calls `gmpw_clear()` (RAII via `BigFloat.__del__`)
 
-### 15.6 Build Command Template
+### 16.6 Build Command Template
 
 The full build command for any GMP-linked Mojo file on macOS:
 
@@ -1377,7 +1578,7 @@ Key points:
 - The binary must be run from the directory containing `libgmp_wrapper.dylib`
   (or use absolute rpath)
 
-### 15.7 Debugging Tip: Add `fprintf(stderr)` to C Wrapper
+### 16.7 Debugging Tip: Add `fprintf(stderr)` to C Wrapper
 
 When debugging FFI issues, temporarily add `fprintf(stderr)` logging to the C wrapper
 functions. This is invaluable because Mojo's error reporting for FFI issues is limited.
@@ -1386,26 +1587,24 @@ The C wrapper can inspect raw pointer values, string contents, and GMP internal 
 
 Always remove debug logging before benchmarking — `fprintf` has measurable overhead.
 
----
-
 ## Summary
 
-GMP/MPFR integration is **technically proven and recommended** for Decimo, with BigDecimal
-as the priority target using **MPFR** (not raw `mpz_t`):
+GMP/MPFR integration is **proven and worth doing** for Decimo. Two-type architecture:
 
-1. **MPFR for BigDecimal** — Uses `mpfr_t` (arbitrary-precision binary float) instead of
-   `mpz_t` + manual scale tracking. Every operation (sqrt, exp, ln, sin, cos, tan, π,
-   divide) is a **single MPFR call**. No Newton iteration or Taylor series implementation
-   needed from the Mojo side. The `GMPDecimal` struct has just one field (`handle`).
-2. **`gmp: Bool = False`** — Simple opt-in parameter on compute-heavy functions. Defaults
-   to native Decimo for backward compatibility. Guard digits handle binary↔decimal rounding.
-3. **Single binary, runtime detection** — The C wrapper uses `dlopen`/`dlsym` to load
-   MPFR lazily at runtime (verified working in Mojo 0.26.2). Users who never call
-   `gmp=True` pay zero cost. If MPFR isn't installed, a clear error message is raised.
-4. **BigInt deferred** to Phase 3 (uses `mpz_t` with word import/export).
-5. **CLI `--gmp` deferred** to Phase 4.
-6. **Phase 2 is trivial** — Because MPFR has built-in functions, wiring each BigDecimal
-   operation is a thin wrapper (~5 lines each), not a reimplementation of algorithms.
-
-The prototype in `temp/gmp/` and the lessons in Section 15 provide a foundation for
-implementation. Start with Phase 1, Step 1.1 (`brew install mpfr`).
+1. **BigFloat** — new first-class MPFR-backed binary float type. Like mpmath's `mpf`
+   but faster. Every operation (sqrt, exp, ln, sin, cos, tan, π, divide) is a **single
+   MPFR call**. Struct is one field (`handle: Int32`). Requires MPFR — no fallback,
+   no apologies. Users without MPFR use BigDecimal.
+2. **BigDecimal `gmp=True`** — convenience sugar for one-off acceleration. Internally
+   delegates to BigFloat. Backward-compatible: defaults to `gmp=False`, existing code
+   unchanged. Guard digits handle binary↔decimal rounding.
+3. **Two types, two use cases** — BigFloat for fast scientific computing (binary
+   semantics). BigDecimal for exact decimal arithmetic (finance, human-friendly output).
+   Both in one library.
+4. **Single binary, runtime detection** — C wrapper uses `dlopen`/`dlsym` to load
+   MPFR lazily (verified on Mojo 0.26.2). If MPFR isn't installed, BigDecimal works
+   fine without it; BigFloat raises a clear error.
+5. **BigInt** deferred to Phase 3 (`mpz_t` with word import/export, ~10× speedup).
+6. **Future: lazy evaluation** — `BigDecimal.lazy()...collect()` records an operation
+   DAG and executes the whole chain in MPFR with zero intermediate conversions.
+   Deferred to Phase 4, but architecturally clean because BigFloat provides the backend.
