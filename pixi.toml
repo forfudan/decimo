@@ -54,6 +54,10 @@ ttoml = "clear && pixi run testtoml"
 # bench
 bench = "pixi run package && bash benches/run_bench.sh"
 
+# gmp/mpfr wrapper (compile C wrapper — no MPFR needed at build time)
+bgmp = "clear && pixi run buildgmp"
+buildgmp = "bash src/decimo/gmp/build_gmp_wrapper.sh"
+
 # bench with debug assertions enabled
 bdec_debug = """clear && pixi run package && cd benches/bigdecimal \
 && pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \

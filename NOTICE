@@ -1,0 +1,26 @@
+Decimo
+Copyright 2025 Yuhao Zhu
+
+Licensed under the Apache License, Version 2.0.
+
+
+Third-Party Dependencies
+========================
+
+Decimo optionally uses the following libraries at runtime, if installed by
+the user. Decimo does not include, copy, or distribute any source code or
+binaries from these projects.
+
+GNU MPFR Library (https://www.mpfr.org/)
+  Copyright (C) Free Software Foundation, Inc.
+  Licensed under the GNU Lesser General Public License v3.0 or later (LGPLv3+).
+
+GNU Multiple Precision Arithmetic Library (GMP) (https://gmplib.org/)
+  Copyright (C) Free Software Foundation, Inc.
+  Licensed under the GNU Lesser General Public License v3.0 or later (LGPLv3+),
+  or the GNU General Public License v2.0 or later (GPLv2+).
+
+MPFR and GMP are loaded at runtime via dlopen/dlsym when the user has
+independently installed them (e.g. `brew install mpfr` on macOS or
+`apt install libmpfr-dev` on Linux). The BigFloat type requires MPFR;
+all other Decimo types work without any external dependencies.

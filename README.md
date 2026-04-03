@@ -40,11 +40,9 @@ The core types are[^auxiliary]:
 | `Decimal` | `BDec`, `BigDecimal` | Equivalent to Python's `decimal.Decimal` | Base-10^9               |
 | `Dec128`  | `Decimal128`         | 128-bit fixed-precision decimal type     | Triple 32-bit words     |
 
----
-
 **Decimo** combines "**Deci**mal" and "**Mo**jo" - reflecting its purpose and implementation language. "Decimo" is also a Latin word meaning "tenth" and is the root of the word "decimal".
 
----
+A CLI calculator tool, built on top of the Decimo library and powered by [ArgMojo](https://github.com/forfudan/argmojo) (a command-line argument parser library), is also available in this repository. It provides a convenient way to perform high-precision calculations directly from the command line.
 
 This repository includes a built-in [TOML parser](./docs/readme_toml.md) (`decimo.toml`), a lightweight pure-Mojo implementation supporting TOML v1.0. It parses configuration files and test data, supporting basic types, arrays, and nested tables. While created for Decimo's testing framework, it offers general-purpose structured data parsing with a clean, simple API.
 
