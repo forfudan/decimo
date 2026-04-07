@@ -27,17 +27,17 @@ format = """pixi run mojo format ./src \
 &&pixi run ruff format ./python"""
 
 # doc
-doc = "pixi run mojo doc --diagnose-missing-doc-strings src/decimo"
+doc = "pixi run mojo doc --diagnose-missing-doc-strings src/decimo > /dev/null"
 
 # compile the package
 p = "clear && pixi run package"
 package = """pixi run format \
-&& pixi run doc \
-&& pixi run package_decimo"""
+&&pixi run doc \
+&&pixi run package_decimo"""
 package_decimo = """pixi run mojo package src/decimo \
-&& cp decimo.mojopkg tests/ \
-&& cp decimo.mojopkg benches/ \
-&& rm decimo.mojopkg"""
+&&cp decimo.mojopkg tests/ \
+&&cp decimo.mojopkg benches/ \
+&&rm decimo.mojopkg"""
 
 # clean the package files in tests folder
 c = "clear && pixi run clean"
@@ -65,17 +65,17 @@ bench = "pixi run package && bash benches/run_bench.sh"
 
 # bench with debug assertions enabled
 bdec_debug = """clear && pixi run package && cd benches/bigdecimal \
-&& pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \
-&& pixi run clean"""
+&&pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \
+&&pixi run clean"""
 bint_debug = """clear && pixi run package && cd benches/bigint \
-&& pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \
-&& pixi run clean"""
+&&pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \
+&&pixi run clean"""
 buint_debug = """clear && pixi run package && cd benches/biguint \
-&& pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \
-&& pixi run clean"""
+&&pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \
+&&pixi run clean"""
 dec_debug = """clear && pixi run package && cd benches/decimal128 \
-&& pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \
-&& pixi run clean"""
+&&pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \
+&&pixi run clean"""
 
 # Fetch argmojo source code for CLI calculator
 # Only do this when necessary
@@ -85,7 +85,7 @@ dec_debug = """clear && pixi run package && cd benches/decimal128 \
 
 # cli calculator
 bcli = "clear && pixi run buildcli"
-# Uncomment the following lines if we build the CLI pacakge with
+# Uncomment the following lines if we build the CLI package with
 # local clone of argmojo
 # buildcli = """pixi run mojo package temp/argmojo/src/argmojo -o temp/argmojo.mojopkg \
 # && pixi run mojo build -I src -I src/cli -I temp -o decimo src/cli/main.mojo"""
