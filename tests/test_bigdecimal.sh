@@ -2,5 +2,5 @@
 set -e
 
 for f in tests/bigdecimal/*.mojo; do
-    pixi run mojo run -I src -D ASSERT=all "$f"
+    pixi run mojo run -I src -D ASSERT=all -debug-level=line-tables "$f"
 done

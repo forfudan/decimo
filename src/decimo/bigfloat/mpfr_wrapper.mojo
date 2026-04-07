@@ -236,7 +236,7 @@ fn mpfrw_cmp(a: Int32, b: Int32) -> Int32:
         b: Right operand handle.
 
     Returns:
-        Negative if a < b, 0 if equal, positive if a > b. -2 on invalid handle.
+        -1 if a < b, 0 if equal, 1 if a > b. -2 on invalid handle.
     """
     return external_call["mpfrw_cmp", Int32](a, b)
 

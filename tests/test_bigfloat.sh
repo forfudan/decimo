@@ -31,10 +31,13 @@ if [ ! -f "$WRAPPER_LIB" ]; then
 fi
 
 # Compile and run each test file
+cleanup() { rm -f "$TMPBIN"; }
+trap cleanup EXIT
+
 for f in tests/bigfloat/*.mojo; do
     echo "=== $f ==="
-    TMPBIN="/tmp/decimo_test_bigfloat_$$"
-    pixi run mojo build -I src \
+    TMPBIN=$(mktemp /tmp/decimo_test_bigfloat_XXXXXX)
+    pixi run mojo build -I src -debug-level=line-tables \
         -Xlinker -L./"$WRAPPER_DIR" -Xlinker -ldecimo_gmp_wrapper \
         -o "$TMPBIN" "$f"
     DYLD_LIBRARY_PATH="./$WRAPPER_DIR" LD_LIBRARY_PATH="./$WRAPPER_DIR" "$TMPBIN"

@@ -56,8 +56,7 @@ def test_sqrt() raises:
     var result = s.to_string(50)
     # sqrt(2) ≈ 1.4142135623730950488...
     if not result.startswith("1.4142"):
-        print("FAIL  got:", result)
-        return
+        raise Error("FAIL test_sqrt got: " + result)
     print("OK  sqrt(2) =", result)
 
 
@@ -71,8 +70,7 @@ def test_exp() raises:
     var result = e.to_string(50)
     # exp(1) ≈ 2.71828182845904523536...
     if not result.startswith("2.7182"):
-        print("FAIL  got:", result)
-        return
+        raise Error("FAIL test_exp got: " + result)
     print("OK  exp(1) =", result)
 
 
@@ -86,8 +84,7 @@ def test_ln() raises:
     var s = result.to_string(15)
     # ln(2) ≈ 0.693147180559945...
     if not s.startswith("0.69314"):
-        print("FAIL  got:", s)
-        return
+        raise Error("FAIL test_ln got: " + s)
     print("OK  ln(2) =", s)
 
 
@@ -143,7 +140,7 @@ def test_comparison() raises:
     if ok:
         print("OK")
     else:
-        print("FAIL")
+        raise Error("FAIL test_comparison")
 
 
 def test_pi() raises:
@@ -155,8 +152,7 @@ def test_pi() raises:
     var s = pi.to_string(50)
     # π ≈ 3.14159265358979323846...
     if not s.startswith("3.14159265358979"):
-        print("FAIL  got:", s)
-        return
+        raise Error("FAIL test_pi got: " + s)
     print("OK  π =", s)
 
 
@@ -171,8 +167,7 @@ def test_to_bigdecimal() raises:
     var bd_s = String(bd)
     # Should start with 1.4142...
     if not bd_s.startswith("1.4142"):
-        print("FAIL  got:", bd_s)
-        return
+        raise Error("FAIL test_to_bigdecimal got: " + bd_s)
     print("OK  BigDecimal(sqrt(2)) =", bd_s)
 
 
@@ -211,8 +206,7 @@ def test_high_precision_sqrt() raises:
     if not result.startswith(
         "1.41421356237309504880168872420969807856967187537694"
     ):
-        print("FAIL  got:", result)
-        return
+        raise Error("FAIL test_high_precision_sqrt got: " + result)
     print("OK  sqrt(2) to 100 digits verified")
 
 

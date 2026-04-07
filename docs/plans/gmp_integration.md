@@ -349,22 +349,30 @@ Mojo                           C wrapper                        MPFR
 
 #### 4.5.4 BigFloat ↔ BigDecimal Conversion
 
-Both directions go through a decimal string — no raw bit manipulation:
+The two directions use different strategies:
+
+**BigFloat → BigDecimal** (`to_bigdecimal`): Uses `mpfr_get_str` to export raw
+decimal digits and a base-10 exponent directly, then constructs the BigDecimal
+via a single `memcpy` — no intermediate `String` or full `parse_numeric_string`.
+
+**BigDecimal → BigFloat**: Uses `BigDecimal.to_string()` → `mpfr_set_str` (the
+standard string round-trip, since BigDecimal already stores base-10 digits).
 
 ```txt
-┌─────────────┐     to_string()     ┌──────────────┐    BigDecimal()     ┌──────────────┐
-│  BigFloat   │ ──────────────────→ │ "1.41421..." │ ──────────────────→ │ BigDecimal   │
-│  (MPFR      │     mpfr_snprintf   │ (String)     │    parse_numeric    │ (coefficient │
-│   binary)   │                     │              │    _string          │  + scale     │
-│             │ ←────────────────── │              │ ←────────────────── │  + sign)     │
-│             │     mpfr_set_str    │              │    .to_string()     │              │
-└─────────────┘                     └──────────────┘                     └──────────────┘
-
-Why string? MPFR stores numbers in binary (base-2 limbs). BigDecimal stores
-in base-10^9 chunks. There is no O(1) bit-level cast between them. The string
-round-trip is the standard, safe conversion path used by mpmath, Python decimal,
-and all major arbitrary-precision libraries.
+┌─────────────┐  mpfr_get_str (raw digits + exp)   ┌──────────────┐
+│  BigFloat   │ ─────────────────────────────────→ │ BigDecimal   │
+│  (MPFR      │  direct construction (memcpy)      │ (coefficient │
+│   binary)   │                                    │  + scale     │
+│             │ ←───────────────────────────────── │  + sign)     │
+│             │  .to_string() → mpfr_set_str       │              │
+└─────────────┘                                    └──────────────┘
 ```
+
+Why asymmetric? The `to_bigdecimal` path avoids the overhead of formatting a
+full decimal string and then re-parsing it. `mpfr_get_str` returns exactly the
+significant digits needed, and the exponent is a separate integer, so BigDecimal
+can be assembled directly. The reverse direction still goes through a string
+because `mpfr_set_str` handles all the base-2 conversion internally.
 
 #### 4.5.5 Library Loading: dlopen Chain
 

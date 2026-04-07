@@ -156,7 +156,7 @@ struct BigFloat(Comparable, Movable, Writable):
         var result_code = mpfrw_set_str(
             self.handle,
             s_bytes.unsafe_ptr().bitcast[c_char](),
-            Int32(len(value)),
+            Int32(len(s_bytes)),
         )
         if result_code != 0:
             mpfrw_clear(self.handle)

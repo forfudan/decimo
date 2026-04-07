@@ -349,7 +349,11 @@ void mpfrw_abs(int r, int a) {
 int mpfrw_cmp(int a, int b) {
     if (a < 0 || a >= MAX_HANDLES || !handle_in_use[a]) return -2;  /* error sentinel */
     if (b < 0 || b >= MAX_HANDLES || !handle_in_use[b]) return -2;  /* error sentinel */
-    return p_cmp(&handle_pool[a], &handle_pool[b]);
+    int result = p_cmp(&handle_pool[a], &handle_pool[b]);
+    /* Normalize to -1/0/1 so that -2 stays reserved as error sentinel. */
+    if (result < 0) return -1;
+    if (result > 0) return  1;
+    return 0;
 }
 
 /* ===----------------------------------------------------------------------=== *
