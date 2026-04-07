@@ -28,3 +28,5 @@ Modules:
 - bigfloat: Core BigFloat struct with constructors, arithmetic, transcendentals
 - mpfr_wrapper: Low-level FFI bindings to the MPFR C wrapper
 """
+
+from .bigfloat import BigFloat, BFlt, Float, PRECISION as BIGFLOAT_PRECISION

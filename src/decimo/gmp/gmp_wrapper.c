@@ -274,6 +274,37 @@ void mpfrw_free_str(char *s) {
 }
 
 /* ===----------------------------------------------------------------------=== *
+ * Raw digit export via mpfr_get_str (for fast BigFloat → BigDecimal)
+ *
+ * p_get_str is mpfr_get_str resolved at runtime via dlsym.  It returns a
+ * pure digit string plus a separate base-10 exponent:
+ *
+ *   raw = "31415...", exp = 1  →  value = 0.31415... × 10^1 = 3.1415...
+ *
+ * No dot, no 'e' notation.  Negative values have a '-' prefix.
+ * The exponent is written to the caller through the out_exp pointer —
+ * no mutable global state, no two-call pattern.
+ *
+ * The returned string is allocated by MPFR and must be freed with
+ * mpfrw_free_raw_str().
+ * ===----------------------------------------------------------------------=== */
+
+char* mpfrw_get_raw_digits(int handle, int digits, long *out_exp) {
+    if (handle < 0 || handle >= MAX_HANDLES || !handle_in_use[handle]) return NULL;
+    if (!p_get_str) return NULL;
+    if (digits < 1) digits = 1;
+    long exp = 0;
+    char *raw = p_get_str(NULL, &exp, 10, (size_t)digits,
+                          &handle_pool[handle], MPFR_RNDN);
+    if (out_exp) *out_exp = exp;
+    return raw;  /* Caller frees with mpfrw_free_raw_str */
+}
+
+void mpfrw_free_raw_str(char *s) {
+    if (s && p_free_str) p_free_str(s);
+}
+
+/* ===----------------------------------------------------------------------=== *
  * Arithmetic operations
  * ===----------------------------------------------------------------------=== */
 
@@ -318,7 +349,11 @@ void mpfrw_abs(int r, int a) {
 int mpfrw_cmp(int a, int b) {
     if (a < 0 || a >= MAX_HANDLES || !handle_in_use[a]) return -2;  /* error sentinel */
     if (b < 0 || b >= MAX_HANDLES || !handle_in_use[b]) return -2;  /* error sentinel */
-    return p_cmp(&handle_pool[a], &handle_pool[b]);
+    int result = p_cmp(&handle_pool[a], &handle_pool[b]);
+    /* Normalize to -1/0/1 so that -2 stays reserved as error sentinel. */
+    if (result < 0) return -1;
+    if (result > 0) return  1;
+    return 0;
 }
 
 /* ===----------------------------------------------------------------------=== *

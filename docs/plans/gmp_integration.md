@@ -170,6 +170,262 @@ Where GMP does **not** help:
 3. **Base-10 operations**: GMP works in binary; base-10 output requires conversion
 4. **Decimal arithmetic**: GMP has no native decimal type; scale management would remain in Mojo
 
+### 4.5 MPFR Memory Layout & Data Flow
+
+How data flows from Mojo `BigFloat` → C wrapper → MPFR library.
+
+#### 4.5.1 MPFR's `mpfr_t` Internal Structure (32 bytes on ARM64/x86_64)
+
+```txt
+mpfr_t (typedef: __mpfr_struct[1])
+┌─────────────────────────────────────────────────────────────────┐
+│ offset  field        type           meaning                     │
+├─────────────────────────────────────────────────────────────────┤
+│  0      _mpfr_prec   mpfr_prec_t    precision in bits (≥2)      │
+│         (8 bytes)     (long)                                    │
+├─────────────────────────────────────────────────────────────────┤
+│  8      _mpfr_sign   mpfr_sign_t    +1 or −1                    │
+│         (4 bytes)     (int)                                     │
+├─────────────────────────────────────────────────────────────────┤
+│ 12      (padding)    4 bytes        align _mpfr_exp to 8-byte   │
+│                                     boundary (long requires it) │
+├─────────────────────────────────────────────────────────────────┤
+│ 16      _mpfr_exp    mpfr_exp_t     binary exponent             │
+│         (8 bytes)     (long)         (value = man × 2^exp)      │
+├─────────────────────────────────────────────────────────────────┤
+│ 24      _mpfr_d      mp_limb_t*     → heap-allocated limb array │
+│         (8 bytes)     (uint64_t*)    (mantissa bits, MSB first) │
+└─────────────────────────────────────────────────────────────────┘
+         Total: 32 bytes (struct) + heap limbs
+```
+
+**Limb Array Detail**
+
+The `_mpfr_d` pointer points to a heap-allocated array of 64-bit "limbs":
+
+```txt
+_mpfr_d ────────┐
+                ▼
+               ┌────────────┬────────────┬────────┬────────────┐
+               │  limb[0]   │  limb[1]   │  ...   │  limb[n-1] │
+               │ (64 bits)  │ (64 bits)  │        │ (64 bits)  │
+               └────────────┴────────────┴────────┴────────────┘
+                MSB of mantissa ───────────────────────► LSB
+                n = ceil(precision / 64)
+                e.g. 200-bit precision → 4 limbs → 32 bytes of mantissa
+```
+
+**Value Representation**
+
+```txt
+value = sign × mantissa × 2^(exponent − precision)
+
+Example: π at 200-bit precision
+  sign  = +1
+  prec  = 200
+  exp   = 2           (so π ≈ mantissa × 2^(2−200))
+  limbs = [0xC90FDAA2..., 0x2168C234..., 0xC4C6628B..., 0x80DC1CD1...]
+```
+
+#### 4.5.2 C Wrapper Handle Pool (`gmp_wrapper.c`)
+
+The C wrapper pre-allocates a flat array of 4096 "slots", each 64 bytes
+(over-allocated from MPFR's 32-byte struct for ABI safety).
+
+```txt
+handle_pool[4096][64]                        handle_in_use[4096]
+┌──────────────────────────────────────────┐ ┌───────────────────┐
+│ slot[0]  (64 bytes, 16-byte aligned)     │ │ [0] = 1 (in use)  │
+│ ┌──────┬──────┬──────┬──────┬──────────┐ │ │                   │
+│ │ prec │ sign │ exp  │ *d ──┼──→ heap  │ │ │                   │
+│ │  8B  │  4B  │  8B  │  8B  │ (unused) │ │ │                   │
+│ └──────┴──────┴──────┴──────┴──────────┘ │ │                   │
+├──────────────────────────────────────────┤ ├───────────────────┤
+│ slot[1]  (64 bytes)                      │ │ [1] = 1 (in use)  │
+│ ┌──────┬──────┬──────┬──────┬──────────┐ │ │                   │
+│ │ prec │ sign │ exp  │ *d ──┼──→ heap  │ │ │                   │
+│ └──────┴──────┴──────┴──────┴──────────┘ │ │                   │
+├──────────────────────────────────────────┤ ├───────────────────┤
+│ slot[2]  (64 bytes)                      │ │ [2] = 0 (free)    │
+│ ┌──────────────────────────────────────┐ │ │                   │
+│ │ (uninitialized / cleared)            │ │ │                   │
+│ └──────────────────────────────────────┘ │ │                   │
+├──────────────────────────────────────────┤ ├───────────────────┤
+│                   ...                    │ │       ...         │
+├──────────────────────────────────────────┤ ├───────────────────┤
+│ slot[4095]                               │ │ [4095] = 0 (free) │
+└──────────────────────────────────────────┘ └───────────────────┘
+
+Memory:          _Alignas(16) char[4096][64]      int[4096]
+                 = 256 KB (static, pre-allocated)
+```
+
+#### 4.5.3 End-to-End Data Flows
+
+**Construction: `BigFloat("3.14", precision=100)`**
+
+```txt
+Mojo (bigfloat.mojo)          C wrapper (gmp_wrapper.c)         MPFR library
+─────────────────────          ─────────────────────────         ────────────
+
+① _dps_to_bits(100)
+   = 100 × 4 + 64
+   = 464 bits
+
+② mpfrw_init(464) ─────────→  ③ Find free slot (say i=0)
+   via external_call              handle_in_use[0] = 1
+                                  p_init2(&slot[0], 464)  ──→ ④ mpfr_init2:
+                                                                 slot[0].prec = 464
+                                                                 slot[0].sign = +1
+                                                                 slot[0].exp  = 0
+                                                                 slot[0].*d   = malloc(8 limbs)
+                               ← return handle = 0
+
+⑤ mpfrw_set_str(0,            ⑥ Copy "3.14" to buf\0
+   "3.14", 4) ─────────────→     p_set_str(&slot[0],     ──→ ⑦ mpfr_set_str:
+   via external_call              buf, 10, RNDN)                 parse "3.14"
+                                                                 set mantissa limbs
+                                                                 set exponent = 2
+                               ← return 0 (success)
+
+self.handle = 0
+self.precision = 100
+```
+
+**Arithmetic: `a + b`  (both are BigFloat)**
+
+```txt
+Mojo                           C wrapper                        MPFR
+────                           ─────────                        ────
+
+① mpfrw_init(464) ──────────→ alloc slot[2]
+   result handle = 2           handle_in_use[2] = 1           → mpfr_init2
+
+② mpfrw_add(2, 0, 1) ──────→ ③ CHECK_HANDLES_3(2, 0, 1)
+   via external_call              p_add(&slot[2],             → ④ mpfr_add:
+                                        &slot[0],                r.limbs = a.limbs + b.limbs
+                                        &slot[1],                r.exp adjusted
+                                        RNDN)                    rounding applied
+                               ← (void)
+
+⑤ return BigFloat(
+     _handle=2,
+     _precision=max(a,b))
+```
+
+**String Export: `bf.to_string(30)`**
+
+```txt
+Mojo                           C wrapper                         MPFR
+────                           ─────────                         ────
+
+① mpfrw_get_str(0, 30) ────→  ② buf = malloc(94)
+   returns Int (raw address)      p_snprintf(buf, 94,        → ③ mpfr_snprintf:
+                                    "%.*Rg", 30,                   format mantissa limbs
+                                    &slot[0])                      as decimal string
+                                                                   "3.14..."
+                               ← return buf (raw address)
+
+④ _read_c_string(addr)
+   strlen(addr) → length
+   memcpy into List[Byte]
+   → String
+
+⑤ mpfrw_free_str(addr) ────→  ⑥ free(buf)
+```
+
+**Destruction: `__del__`**
+
+```txt
+Mojo                           C wrapper                        MPFR
+────                           ─────────                        ────
+
+① mpfrw_clear(0) ──────────→  ② p_clear(&slot[0])          → ③ mpfr_clear:
+   via external_call              handle_in_use[0] = 0            free(slot[0].*d)
+                                                                  (limb array freed)
+                               slot[0] bytes now stale
+                               but slot is reusable
+```
+
+#### 4.5.4 BigFloat ↔ BigDecimal Conversion
+
+The two directions use different strategies:
+
+**BigFloat → BigDecimal** (`to_bigdecimal`): Uses `mpfr_get_str` to export raw
+decimal digits and a base-10 exponent directly, then constructs the BigDecimal
+via a single `memcpy` — no intermediate `String` or full `parse_numeric_string`.
+
+**BigDecimal → BigFloat**: Uses `BigDecimal.to_string()` → `mpfr_set_str` (the
+standard string round-trip, since BigDecimal already stores base-10 digits).
+
+```txt
+┌─────────────┐  mpfr_get_str (raw digits + exp)   ┌──────────────┐
+│  BigFloat   │ ─────────────────────────────────→ │ BigDecimal   │
+│  (MPFR      │  direct construction (memcpy)      │ (coefficient │
+│   binary)   │                                    │  + scale     │
+│             │ ←───────────────────────────────── │  + sign)     │
+│             │  .to_string() → mpfr_set_str       │              │
+└─────────────┘                                    └──────────────┘
+```
+
+Why asymmetric? The `to_bigdecimal` path avoids the overhead of formatting a
+full decimal string and then re-parsing it. `mpfr_get_str` returns exactly the
+significant digits needed, and the exponent is a separate integer, so BigDecimal
+can be assembled directly. The reverse direction still goes through a string
+because `mpfr_set_str` handles all the base-2 conversion internally.
+
+#### 4.5.5 Library Loading: dlopen Chain
+
+```txt
+                      mpfrw_available()
+                            │
+                            ▼
+               ┌─── mpfrw_load() ────┐
+               │ mpfr_load_attempted │
+               │     == 0 ?          │
+               └────────┬────────────┘
+                        │ yes
+                        ▼
+              ┌── check DECIMO_NOGMP ──┐
+              │ env var set?           │
+              └────────┬───────────────┘
+                       │ no
+                       ▼
+           ┌── dlopen("libmpfr.dylib") ───────────────────────┐
+           │   try paths in order:                            │
+           │   1. libmpfr.dylib (rpath)                       │
+           │   2. /opt/homebrew/lib/libmpfr.dylib (macOS ARM) │
+           │   3. /usr/local/lib/libmpfr.dylib (macOS x86)    │
+           │   4. libmpfr.so (Linux rpath)                    │
+           │   5. /usr/lib/.../libmpfr.so (Debian)            │
+           └────────────────┬─────────────────────────────────┘
+                            │ success
+                            ▼
+           ┌── dlsym for each function pointer ──┐
+           │ p_init2    = dlsym("mpfr_init2")    │
+           │ p_clear    = dlsym("mpfr_clear")    │
+           │ p_set_str  = dlsym("mpfr_set_str")  │
+           │ p_add      = dlsym("mpfr_add")      │
+           │ p_sqrt     = dlsym("mpfr_sqrt")     │
+           │ p_snprintf = dlsym("mpfr_snprintf") │
+           │ ... (21 function pointers total)    │
+           └─────────────────────────────────────┘
+                            │
+                            ▼
+           ┌── verify critical pointers ──┐
+           │ if any of init2, clear,      │
+           │ set_str, get_str, add, sub,  │
+           │ mul, div, neg, abs, cmp      │
+           │ is NULL → fail, dlclose      │
+           └──────────────┬───────────────┘
+                          │ all OK
+                          ▼
+                   return 1 (available)
+```
+
+The result is cached: `mpfr_load_attempted = 1`. Subsequent calls skip all
+of the above and return immediately.
+
 ## 5. Performance Comparison: GMP vs Decimo
 
 All benchmarks run side-by-side in a single binary (`bench_gmp_vs_decimo.mojo`), compiled
@@ -938,11 +1194,11 @@ int mpfrw_load(void) {
 
     // Try common library paths
     const char *paths[] = {
-        "libmpfr.dylib",                          // macOS rpath
+        "libmpfr.dylib",                           // macOS rpath
         "/opt/homebrew/lib/libmpfr.dylib",         // macOS ARM64
         "/usr/local/lib/libmpfr.dylib",            // macOS x86_64
         "libmpfr.so",                              // Linux rpath
-        "/usr/lib/x86_64-linux-gnu/libmpfr.so",   // Debian/Ubuntu
+        "/usr/lib/x86_64-linux-gnu/libmpfr.so",    // Debian/Ubuntu
         "/usr/lib/libmpfr.so",                     // Generic Linux
         NULL
     };
@@ -1003,6 +1259,85 @@ runtime when `gmp=True` is actually called.
 | --------------------- | ---------------------------- | ------------------------------------------------ |
 | **Now** (Mojo 0.26.2) | C wrapper + `dlopen`/`dlsym` | Link wrapper only; MPFR loaded lazily at runtime |
 | **Future** (DLHandle) | Mojo-native `DLHandle`       | Pure Mojo detection, no C wrapper needed         |
+
+### 10.5 End-User Build & Run Guide (BigFloat)
+
+BigFloat requires linking the C wrapper at build time and having MPFR available at
+runtime. The steps differ from pure-Mojo types (BigDecimal, BigInt, etc.) which work
+with a bare `mojo run`.
+
+#### Prerequisites
+
+```bash
+# macOS
+brew install mpfr
+
+# Linux (Debian/Ubuntu)
+sudo apt install libmpfr-dev
+```
+
+#### Step 1: Build the C wrapper
+
+```bash
+# From the decimo source directory
+bash src/decimo/gmp/build_gmp_wrapper.sh
+# Produces: src/decimo/gmp/libdecimo_gmp_wrapper.dylib  (macOS)
+#       or: src/decimo/gmp/libdecimo_gmp_wrapper.so      (Linux)
+```
+
+The wrapper compiles with any C compiler — no MPFR headers needed at compile time
+(it uses `dlopen`/`dlsym` internally).
+
+#### Step 2: Build your Mojo binary
+
+`mojo run` cannot link external libraries (`-Xlinker` flags are silently ignored in
+JIT mode). You must use `mojo build`:
+
+```bash
+# macOS
+mojo build -I src \
+    -Xlinker -L./src/decimo/gmp -Xlinker -ldecimo_gmp_wrapper \
+    -o myprogram myprogram.mojo
+
+# Linux (same command)
+mojo build -I src \
+    -Xlinker -L./src/decimo/gmp -Xlinker -ldecimo_gmp_wrapper \
+    -o myprogram myprogram.mojo
+```
+
+#### Step 3: Run with library path
+
+The OS needs to find the `.dylib`/`.so` at runtime:
+
+```bash
+# macOS
+DYLD_LIBRARY_PATH=./src/decimo/gmp ./myprogram
+
+# Linux
+LD_LIBRARY_PATH=./src/decimo/gmp ./myprogram
+```
+
+#### All-in-one example
+
+```bash
+bash src/decimo/gmp/build_gmp_wrapper.sh \
+&& mojo build -I src \
+    -Xlinker -L./src/decimo/gmp -Xlinker -ldecimo_gmp_wrapper \
+    -o /tmp/myprogram myprogram.mojo \
+&& DYLD_LIBRARY_PATH=./src/decimo/gmp /tmp/myprogram
+```
+
+#### Comparison with pure-Mojo types
+
+| Type         | Build command                                   | Extra dependencies | Library path needed? |
+| ------------ | ----------------------------------------------- | ------------------ | -------------------- |
+| BigDecimal   | `mojo run -I src myprogram.mojo`                | None               | No                   |
+| BigInt       | `mojo run -I src myprogram.mojo`                | None               | No                   |
+| Dec128       | `mojo run -I src myprogram.mojo`                | None               | No                   |
+| **BigFloat** | `mojo build -I src -Xlinker ... myprogram.mojo` | MPFR + C wrapper   | **Yes**              |
+
+When Mojo gains native `DLHandle` support, the C wrapper can be eliminated and BigFloat
+will work with `mojo run` like the other types.
 
 ## 11. Cross-Platform Considerations
 
@@ -1215,15 +1550,18 @@ python-flint wraps FLINT (which includes Arb) for Python.
 > rounding — so BigFloat operations are single MPFR calls, and BigDecimal sugar is
 > just BigFloat under the hood.
 
+### Phase 0: Prerequisites
+
+- [x] **0.1 Install MPFR**
+  `brew install mpfr` (macOS). Verify: `/opt/homebrew/lib/libmpfr.dylib` exists,
+  `#include <mpfr.h>` compiles. MPFR depends on GMP (already installed).
+
 ### Phase 1: Foundation — MPFR C Wrapper & BigFloat
 
 **Goal**: Get the MPFR-based C wrapper working, build the `BigFloat` struct as a
 first-class user-facing type, and prove the pipeline with `sqrt`.
 
-- [ ] **1.1 Install MPFR** (Tiny, no deps)
-  `brew install mpfr` (macOS). Verify: `/opt/homebrew/lib/libmpfr.dylib` exists,
-  `#include <mpfr.h>` compiles. MPFR depends on GMP (already installed).
-- [ ] **1.2 Extend C wrapper with `mpfr_t` handle pool** (Medium, deps: 1.1)
+- [x] **1.1 Extend C wrapper with `mpfr_t` handle pool**
   Add to `gmp_wrapper.c`:
   (a) `static mpfr_t f_handles[MAX_HANDLES]` pool,
   (b) `mpfrw_init(prec_bits) → handle`,
@@ -1234,46 +1572,52 @@ first-class user-facing type, and prove the pipeline with `sqrt`.
   Keep existing `mpz_t` wrappers intact for BigInt.
   **Add precision cap**: reject `prec_bits > MAX_PREC` (e.g. 1M bits ≈ 300K digits)
   to prevent OOM, inspired by Arb's polynomial time guarantee.
-- [ ] **1.3 Add MPFR arithmetic wrappers** (Small, deps: 1.2)
+  *Done: MAX_HANDLES=4096, MAX_PREC_BITS=1048576.*
+- [x] **1.2 Add MPFR arithmetic wrappers** (Small, deps: 1.1)
   One-line C wrappers: `mpfrw_add(r,a,b)`, `mpfrw_sub(r,a,b)`, `mpfrw_mul(r,a,b)`,
   `mpfrw_div(r,a,b)`, `mpfrw_sqrt(r,a)`, `mpfrw_neg(r,a)`, `mpfrw_abs(r,a)`,
   `mpfrw_cmp(a,b)`. All use `MPFR_RNDN` (round-to-nearest). Each is 1 line.
-- [ ] **1.4 Add MPFR transcendental wrappers** (Small, deps: 1.2)
+- [x] **1.3 Add MPFR transcendental wrappers** (Small, deps: 1.1)
   `mpfrw_exp(r,a)`, `mpfrw_log(r,a)`, `mpfrw_sin(r,a)`, `mpfrw_cos(r,a)`,
   `mpfrw_tan(r,a)`, `mpfrw_const_pi(r)`, `mpfrw_pow(r,a,b)`, `mpfrw_rootn_ui(r,a,n)`.
   Each is 1 line.
-- [ ] **1.5 Implement lazy `dlopen` loading** (Medium, deps: 1.3, 1.4)
+- [x] **1.4 Implement lazy `dlopen` loading** (Medium, deps: 1.2, 1.3)
   Wrap all MPFR calls behind function pointers resolved via `dlopen`/`dlsym` at
   first use (see Section 10.4). This makes the wrapper compilable without MPFR
   headers. Add `mpfrw_available() → 0/1`.
   **Add `DECIMO_NOGMP` check**: if set, `mpfrw_available()` returns 0 without
   attempting `dlopen` (inspired by mpmath's `MPMATH_NOGMPY`).
-- [ ] **1.6 Compile wrapper, run smoke test** (Small, deps: 1.5)
+  *Done: 8 library search paths (macOS + Linux), DECIMO_NOGMP implemented.*
+- [x] **1.5 Compile wrapper, run smoke test** (Small, deps: 1.4)
   Build `libdecimo_gmp_wrapper.dylib` linking against `-lmpfr -lgmp`. Write minimal
   Mojo test: `mpfrw_init(200) → set_str("3.14") → mpfrw_sqrt → get_str → print`.
   Verify output.
-- [ ] **1.7 Create `src/decimo/bigfloat/bigfloat.mojo`** (Medium, deps: 1.6)
+  *Done: wrapper compiles without -lmpfr (dlopen). 14 smoke tests pass.*
+- [x] **1.6 Create `src/decimo/bigfloat/bigfloat.mojo`** (Medium, deps: 1.5)
   Implement `BigFloat` struct (single `handle: Int32` field). Constructor from
   string via `mpfrw_set_str`. Constructor from BigDecimal via `str(bd) → mpfrw_set_str`.
   `to_bigdecimal(precision) → mpfrw_get_str → BigDecimal(s)`. Destructor calls
   `mpfrw_clear`. Use guard bits: init MPFR with `dps_to_prec(precision) + 20` bits.
-- [ ] **1.8 BigFloat arithmetic and transcendentals** (Medium, deps: 1.7)
+  *Done: ~320 lines. Also constructors from Int. Aliases: BFlt, Float.*
+- [x] **1.7 BigFloat arithmetic and transcendentals** (Medium, deps: 1.6)
   Wire all MPFR wrappers into BigFloat methods: `sqrt()`, `exp()`, `ln()`, `sin()`,
   `cos()`, `tan()`, `root(n)`, `power(y)`, `+`, `-`, `*`, `/`, `pi()`.
   Each is a thin wrapper around the corresponding `mpfrw_*` call.
-- [ ] **1.9 BigFloat ↔ BigDecimal conversion** (Small, deps: 1.7)
+  *Done: all listed + `__neg__`, `__abs__`, comparisons (`__eq__`, `__ne__`, `__lt__`, `__le__`, `__gt__`, `__ge__`).*
+- [x] **1.8 BigFloat ↔ BigDecimal conversion** (Small, deps: 1.6)
   `BigFloat(bd: BigDecimal, precision)` and `bf.to_bigdecimal(precision)`.
   Both go through string representation (`mpfr_set_str` / `mpfr_get_str`).
-- [ ] **1.10 Test BigFloat correctness** (Medium, deps: 1.8)
+- [ ] **1.9 Test BigFloat correctness** (Medium, deps: 1.7)
   For each operation × x ∈ {2, 3, 0.5, 100, 10⁻⁸, 10¹⁰⁰⁰} × P ∈ {28, 100, 500,
   1000, 5000}: verify BigFloat results match BigDecimal results to P digits.
   Edge cases: 0, negative, very large/small.
-- [ ] **1.11 Benchmark BigFloat** (Small, deps: 1.10)
+- [ ] **1.10 Benchmark BigFloat** (Small, deps: 1.9)
   Measure wall time for BigFloat vs BigDecimal across operations and precisions.
   Find break-even precision where BigFloat wins. Expected: above ~50–100 digits.
-- [ ] **1.12 Update build system** (Small, deps: 1.2)
+- [x] **1.11 Update build system** (Small, deps: 1.1)
   `pixi.toml` tasks: `build-gmp-wrapper` (compiles C wrapper + links MPFR).
   `build_gmp_wrapper.sh` for macOS + Linux.
+  *Done: pixi tasks (buildgmp, testfloat, tf), test_bigfloat.sh, CI job in run_tests.yaml.*
 
 **Deliverable**: `BigFloat("2", 5000).sqrt()` works. Users can construct BigFloat,
 chain operations, and convert back to BigDecimal.
@@ -1322,7 +1666,8 @@ ops are less user-facing.
 
 ### Phase 4: Polish, Distribution & Future
 
-- [ ] **4.1 Cross-platform wrapper compilation (Linux)** (Small, deps: Phase 1)
+- [x] **4.1 Cross-platform wrapper compilation (Linux)** (Small, deps: Phase 1)
+  *Done: build_gmp_wrapper.sh handles Linux (.so, -fPIC, -ldl). CI verified on ubuntu-22.04.*
 - [ ] **4.2 Pre-built wrapper binaries (macOS ARM64, Linux x86)** (Medium, deps: 4.1)
 - [ ] **4.3 CLI `--mode float` and `--gmp` flags** (Medium, deps: Phase 2)
   `--mode float` evaluates in BigFloat; `--gmp` enables `gmp=True` on BigDecimal ops.
@@ -1339,10 +1684,10 @@ ops are less user-facing.
 
 ### Estimated Effort Summary
 
-- **Phase 1: MPFR wrapper + BigFloat** — 12 steps, Medium complexity (most work is C wrapper + BigFloat struct). **HIGH** priority.
+- **Phase 1: MPFR wrapper + BigFloat** — 11 steps, Medium complexity (most work is C wrapper + BigFloat struct). **HIGH** priority.
 - **Phase 2: BigDecimal gmp=True sugar** — 7 steps, **Low** complexity (each op delegates to BigFloat). **HIGH** priority.
 - **Phase 3: BigInt backend** — 4 steps, Medium complexity. Deferred.
-- **Phase 4: Polish + lazy eval** — 8 steps, varies. Low priority.
+- **Phase 4: Polish + lazy eval** — 8 steps, **1/8 done** (4.1 Linux build). Low priority.
 
 ## 15. Appendix: Prototype Results
 
