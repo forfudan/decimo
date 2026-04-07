@@ -121,6 +121,45 @@ fn mpfrw_free_str(addr: Int):
 
 
 # ===----------------------------------------------------------------------=== #
+# Raw digit export (fast BigFloat → BigDecimal)
+# ===----------------------------------------------------------------------=== #
+
+
+fn mpfrw_get_raw_digits(
+    handle: Int32, digits: Int32, out_exp: UnsafePointer[Int, _]
+) -> Int:
+    """Exports MPFR value as raw digit string via mpfr_get_str.
+
+    Returns a pointer to a null-terminated pure digit string (no dot, no
+    exponent notation). Negative values have a ``-`` prefix. The decimal
+    exponent is written to ``out_exp``.
+
+    Meaning: raw = ``"31415..."`` with exp = 1 → value = 0.31415… × 10^1.
+
+    The digit string is allocated by MPFR and must be freed with
+    ``mpfrw_free_raw_str``.
+
+    Args:
+        handle: MPFR handle index.
+        digits: Number of significant decimal digits to export.
+        out_exp: Pointer to an Int; receives the decimal exponent.
+
+    Returns:
+        Raw address of the digit string, or 0 on failure.
+    """
+    return external_call["mpfrw_get_raw_digits", Int](handle, digits, out_exp)
+
+
+fn mpfrw_free_raw_str(addr: Int):
+    """Frees a digit string returned by ``mpfrw_get_raw_digits``.
+
+    Args:
+        addr: Raw address returned by ``mpfrw_get_raw_digits``.
+    """
+    external_call["mpfrw_free_raw_str", NoneType](addr)
+
+
+# ===----------------------------------------------------------------------=== #
 # Arithmetic operations
 # ===----------------------------------------------------------------------=== #
 

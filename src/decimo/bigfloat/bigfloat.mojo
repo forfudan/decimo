@@ -34,8 +34,10 @@ Design:
 """
 
 from std.ffi import external_call, c_char
+from std.memory import UnsafePointer
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
+from decimo.biguint.biguint import BigUInt
 from decimo.bigfloat.mpfr_wrapper import (
     mpfrw_available,
     mpfrw_init,
@@ -43,6 +45,8 @@ from decimo.bigfloat.mpfr_wrapper import (
     mpfrw_set_str,
     mpfrw_get_str,
     mpfrw_free_str,
+    mpfrw_get_raw_digits,
+    mpfrw_free_raw_str,
     mpfrw_add,
     mpfrw_sub,
     mpfrw_mul,
@@ -162,9 +166,11 @@ struct BigFloat(Comparable, Movable, Writable):
         """Creates a BigFloat from an integer."""
         self = Self(String(value), precision)
 
-    def __init__(out self, bd: BigDecimal, precision: Int = PRECISION) raises:
+    def __init__(
+        out self, decimal: BigDecimal, precision: Int = PRECISION
+    ) raises:
         """Creates a BigFloat from a BigDecimal."""
-        self = Self(bd.to_string(), precision)
+        self = Self(decimal.to_string(), precision)
 
     def __init__(out self, *, _handle: Int32, _precision: Int):
         """Internal: wraps an existing MPFR handle. Caller transfers ownership.
@@ -241,6 +247,14 @@ struct BigFloat(Comparable, Movable, Writable):
     def to_bigdecimal(self, precision: Int = -1) raises -> BigDecimal:
         """Converts this BigFloat to a BigDecimal.
 
+        Uses MPFR's raw digit export to build a BigDecimal directly,
+        bypassing full string parsing for efficiency.
+
+        Data flow (1 memcpy, 0 intermediate lists):
+          C: mpfr_get_str → MPFR-allocated digit buffer + exponent
+          memcpy → Mojo-owned byte buffer  (single copy)
+          byte buffer → pack into base-10⁹ UInt32 words  (in-place read)
+
         Args:
             precision: Number of significant decimal digits for the conversion.
                 Defaults to the BigFloat's own precision.
@@ -249,7 +263,65 @@ struct BigFloat(Comparable, Movable, Writable):
             A BigDecimal with the requested number of significant digits.
         """
         var d = precision if precision > 0 else self.precision
-        return BigDecimal(self.to_string(d))
+
+        # 1. Get raw digits + exponent in one call
+        # mpfrw_get_raw_digits calls mpfr_get_str (resolved as p_get_str
+        # via dlsym).  It returns a pure ASCII digit string like
+        # "31415926535897932385" (possibly "-" prefixed for negatives) and
+        # writes the base-10 exponent to out_exp.
+        # Meaning: value = 0.<digits> × 10^exp.
+        var exp = Int(0)
+        var address = mpfrw_get_raw_digits(
+            self.handle, Int32(d), UnsafePointer(to=exp)
+        )
+        if address == 0:
+            raise Error("BigFloat.to_bigdecimal: mpfr_get_str failed")
+
+        # 2. Single memcpy into a Mojo-owned buffer
+        comptime ASCII_MINUS: UInt8 = 45  # ord("-")
+        comptime ASCII_ZERO: UInt8 = 48  # ord("0")
+        var n = external_call["strlen", Int](address)
+        var buf = List[UInt8](unsafe_uninit_length=n)
+        external_call["memcpy", NoneType](buf.unsafe_ptr(), address, n)
+        mpfrw_free_raw_str(address)  # Free MPFR allocation immediately.
+
+        # 3. Read bytes from the Mojo buffer (no further copies)
+        var ptr = buf.unsafe_ptr()
+
+        # Detect sign (negative values have '-' prefix from MPFR).
+        var sign = False
+        var digit_start = 0
+        if n > 0 and ptr[0] == ASCII_MINUS:
+            sign = True
+            digit_start = 1
+
+        var num_digits = n - digit_start
+
+        # scale = number_of_significant_digits - exponent
+        # e.g. digits "31415" with exp=1 → 3.1415 → scale = 5 - 1 = 4
+        var scale = num_digits - exp
+
+        # 4. Pack ASCII bytes directly into base-10⁹ words
+        var number_of_words = num_digits // 9
+        if num_digits % 9 != 0:
+            number_of_words += 1
+        var words = List[UInt32](capacity=number_of_words)
+        var end = num_digits
+        while end >= 9:
+            var start = end - 9
+            var word: UInt32 = 0
+            for j in range(start, end):
+                word = word * 10 + UInt32(ptr[digit_start + j] - ASCII_ZERO)
+            words.append(word)
+            end = start
+        if end > 0:
+            var word: UInt32 = 0
+            for j in range(0, end):
+                word = word * 10 + UInt32(ptr[digit_start + j] - ASCII_ZERO)
+            words.append(word)
+
+        var coefficient = BigUInt(raw_words=words^)
+        return BigDecimal(coefficient=coefficient^, scale=scale, sign=sign)
 
     # ===------------------------------------------------------------------=== #
     # Comparison
