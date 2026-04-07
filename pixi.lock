@@ -12,6 +12,7 @@ environments:
       linux-64:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_2.conda
+      - conda: https://repo.prefix.dev/modular-community/linux-64/argmojo-0.5.0-hb0f4dca_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/backports-1.0-pyhd8ed1ab_5.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/backports.tarfile-1.2.0-pyhcf101f3_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/backports.zstd-1.3.0-py313h18e8e13_0.conda
@@ -107,6 +108,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstd-1.5.7-hb78ec9c_6.conda
       osx-arm64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_2.conda
+      - conda: https://repo.prefix.dev/modular-community/osx-arm64/argmojo-0.5.0-h60d57d3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/backports-1.0-pyhd8ed1ab_5.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/backports.tarfile-1.2.0-pyhcf101f3_2.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/backports.zstd-1.3.0-py313h48bb75e_0.conda
@@ -212,6 +214,22 @@ packages:
   license_family: MIT
   size: 8191
   timestamp: 1744137672556
+- conda: https://repo.prefix.dev/modular-community/linux-64/argmojo-0.5.0-hb0f4dca_0.conda
+  sha256: c1342a434a1150358ffbf150cb05eee5600f4df1755d81a7386b3c891229d7a8
+  md5: bbeb104e87b1eeec44a39eda4d1f22ef
+  depends:
+  - mojo-compiler 0.26.2.*
+  license: Apache-2.0
+  size: 2163429
+  timestamp: 1775323629145
+- conda: https://repo.prefix.dev/modular-community/osx-arm64/argmojo-0.5.0-h60d57d3_0.conda
+  sha256: 8a6f43cc045c97ef335dca504cffe0b4b91d199d41f8f8e4deae79a801b4b53d
+  md5: f0a0c5c25cc6bb8b692176544b9b4000
+  depends:
+  - mojo-compiler 0.26.2.*
+  license: Apache-2.0
+  size: 2161961
+  timestamp: 1775323591456
 - conda: https://conda.anaconda.org/conda-forge/noarch/backports-1.0-pyhd8ed1ab_5.conda
   sha256: e1c3dc8b5aa6e12145423fed262b4754d70fec601339896b9ccf483178f690a6
   md5: 767d508c1a67e02ae8f50e44cacfadb2
