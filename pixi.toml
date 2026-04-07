@@ -10,6 +10,7 @@ version = "0.9.0"
 
 [dependencies]
 # argmojo = ">=0.4.0" # CLI argument parsing for the Decimo calculator (TODO: waiting for argmojo 0.4.0 compatible with mojo 0.26.2)
+argmojo = ">=0.5.0,<0.6.0" # CLI argument parsing for the Decimo calculator
 mojo = ">=0.26.2.0,<0.26.3" # Mojo language compiler and runtime
 python = ">=3.13" # For Python bindings and tests
 python-build = ">=0.2.0" # Build PyPI wheel (`pixi run wheel`)
@@ -26,17 +27,17 @@ format = """pixi run mojo format ./src \
 &&pixi run ruff format ./python"""
 
 # doc
-doc = "pixi run mojo doc --diagnose-missing-doc-strings src/decimo"
+doc = "pixi run mojo doc --diagnose-missing-doc-strings src/decimo > /dev/null"
 
 # compile the package
 p = "clear && pixi run package"
 package = """pixi run format \
-&& pixi run doc \
-&& pixi run package_decimo"""
+&&pixi run doc \
+&&pixi run package_decimo"""
 package_decimo = """pixi run mojo package src/decimo \
-&& cp decimo.mojopkg tests/ \
-&& cp decimo.mojopkg benches/ \
-&& rm decimo.mojopkg"""
+&&cp decimo.mojopkg tests/ \
+&&cp decimo.mojopkg benches/ \
+&&rm decimo.mojopkg"""
 
 # clean the package files in tests folder
 c = "clear && pixi run clean"
@@ -64,26 +65,31 @@ bench = "pixi run package && bash benches/run_bench.sh"
 
 # bench with debug assertions enabled
 bdec_debug = """clear && pixi run package && cd benches/bigdecimal \
-&& pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \
-&& pixi run clean"""
+&&pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \
+&&pixi run clean"""
 bint_debug = """clear && pixi run package && cd benches/bigint \
-&& pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \
-&& pixi run clean"""
+&&pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \
+&&pixi run clean"""
 buint_debug = """clear && pixi run package && cd benches/biguint \
-&& pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \
-&& pixi run clean"""
+&&pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \
+&&pixi run clean"""
 dec_debug = """clear && pixi run package && cd benches/decimal128 \
-&& pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \
-&& pixi run clean"""
+&&pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \
+&&pixi run clean"""
 
 # Fetch argmojo source code for CLI calculator
-fetch = """git clone https://github.com/forfudan/argmojo.git temp/argmojo 2>/dev/null || true \
-&& cd temp/argmojo && git checkout 24ca712fa291ec6a82dc9317f6ba5d0484d1fb47 2>/dev/null"""
+# Only do this when necessary
+# (argmojo is not compatible with the latest mojo version)
+# fetch = """git clone https://github.com/forfudan/argmojo.git temp/argmojo 2>/dev/null || true \
+# && cd temp/argmojo && git checkout 29b6f54545f850e19d9a9ccfd1185d87f54e92b2 2>/dev/null"""
 
 # cli calculator
 bcli = "clear && pixi run buildcli"
-buildcli = """pixi run mojo package temp/argmojo/src/argmojo -o temp/argmojo.mojopkg \
-&& pixi run mojo build -I src -I src/cli -I temp -o decimo src/cli/main.mojo"""
+# Uncomment the following lines if we build the CLI package with
+# local clone of argmojo
+# buildcli = """pixi run mojo package temp/argmojo/src/argmojo -o temp/argmojo.mojopkg \
+# && pixi run mojo build -I src -I src/cli -I temp -o decimo src/cli/main.mojo"""
+buildcli = """pixi run mojo build -I src -I src/cli -o decimo src/cli/main.mojo"""
 tcli = "clear && pixi run testcli"
 testcli = "bash tests/test_cli.sh"
 
@@ -101,7 +107,6 @@ all = """pixi run format \
 &&pixi run package \
 &&pixi run doc \
 &&pixi run test \
-&&pixi run fetch \
 &&pixi run buildcli \
 &&pixi run testcli \
 &&pixi run buildpy \

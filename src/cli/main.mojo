@@ -11,12 +11,69 @@
 
 from std.sys import exit
 
-from argmojo import Arg, Command
+from argmojo import Parsable, Option, Flag, Positional, Command
 from decimo.rounding_mode import RoundingMode
 from calculator.tokenizer import tokenize
 from calculator.parser import parse_to_rpn
 from calculator.evaluator import evaluate_rpn, final_round
 from calculator.display import print_error
+
+
+struct DecimoArgs(Parsable):
+    var expr: Positional[
+        String,
+        help="Math expression to evaluate (e.g. 'sqrt(abs(1.1*-12-23/17))')",
+        required=True,
+    ]
+    var precision: Option[
+        Int,
+        long="precision",
+        short="p",
+        help="Number of significant digits",
+        default="50",
+    ]
+    var scientific: Flag[
+        long="scientific",
+        short="s",
+        help="Output in scientific notation (e.g. 1.23E+10)",
+    ]
+    var engineering: Flag[
+        long="engineering",
+        short="e",
+        help="Output in engineering notation (exponent multiple of 3)",
+    ]
+    var pad: Flag[
+        long="pad",
+        short="P",
+        help="Pad trailing zeros to the specified precision",
+    ]
+    var delimiter: Option[
+        String,
+        long="delimiter",
+        short="d",
+        help="Digit-group separator inserted every 3 digits (e.g. '_' gives 1_234.567_89)",
+        default="",
+    ]
+    var rounding_mode: Option[
+        String,
+        long="rounding-mode",
+        short="r",
+        help="Rounding mode for the final result",
+        default="half-even",
+        choices="half-even,half-up,half-down,up,down,ceiling,floor",
+    ]
+
+    @staticmethod
+    def description() -> String:
+        return "Arbitrary-precision CLI calculator powered by Decimo."
+
+    @staticmethod
+    def version() -> String:
+        return "0.1.0"
+
+    @staticmethod
+    def name() -> String:
+        return "decimo"
 
 
 def main():
@@ -31,106 +88,21 @@ def main():
 
 
 def _run() raises:
-    var cmd = Command(
-        "decimo",
-        (
-            "Arbitrary-precision CLI calculator powered by Decimo.\n"
-            "\n"
-            "Note: if your expression contains *, ( or ), your shell may\n"
-            "intercept them before decimo runs. Use quotes or noglob:\n"
-            '  decimo "2 * (3 + 4)"         # with quotes\n'
-            "  noglob decimo 2*(3+4)        # with noglob\n"
-            "  alias decimo='noglob decimo' # add to ~/.zshrc"
-        ),
-        version="0.1.0",
-    )
-
-    # Positional: the math expression
-    cmd.add_argument(
-        Arg(
-            "expr",
-            help=(
-                "Math expression to evaluate (e.g. 'sqrt(abs(1.1*-12-23/17))')"
-            ),
-        )
-        .positional()
-        .required()
-    )
-
-    # Named option: number of significant digits
-    cmd.add_argument(
-        Arg("precision", help="Number of significant digits (default: 50)")
-        .long["precision"]()
-        .short["p"]()
-        .default["50"]()
-    )
-
-    # Output formatting flags
-    # Mutually exclusive: scientific, engineering
-    cmd.add_argument(
-        Arg("scientific", help="Output in scientific notation (e.g. 1.23E+10)")
-        .long["scientific"]()
-        .short["s"]()
-        .flag()
-    )
-    cmd.add_argument(
-        Arg(
-            "engineering",
-            help="Output in engineering notation (exponent multiple of 3)",
-        )
-        .long["engineering"]()
-        .short["e"]()
-        .flag()
-    )
+    var cmd = DecimoArgs.to_command()
     cmd.mutually_exclusive(["scientific", "engineering"])
-    cmd.add_argument(
-        Arg(
-            "pad",
-            help="Pad trailing zeros to the specified precision",
-        )
-        .long["pad"]()
-        .short["P"]()
-        .flag()
+    cmd.add_tip(
+        'If your expression contains *, ( or ), quote it: decimo "2 * (3 + 4)"'
     )
-    cmd.add_argument(
-        Arg(
-            "delimiter",
-            help=(
-                "Digit-group separator inserted every 3 digits"
-                " (e.g. '_' gives 1_234.567_89)"
-            ),
-        )
-        .long["delimiter"]()
-        .short["d"]()
-        .default[""]()
-    )
+    cmd.add_tip("Or use noglob: alias decimo='noglob decimo' (add to ~/.zshrc)")
+    var args = DecimoArgs.parse_from_command(cmd^)
 
-    # Rounding mode for the final result
-    cmd.add_argument(
-        Arg(
-            "rounding-mode",
-            help="Rounding mode for the final result (default: half-even)",
-        )
-        .long["rounding-mode"]()
-        .short["r"]()
-        .choice["half-even"]()
-        .choice["half-up"]()
-        .choice["half-down"]()
-        .choice["up"]()
-        .choice["down"]()
-        .choice["ceiling"]()
-        .choice["floor"]()
-        .default["half-even"]()
-    )
-
-    var result = cmd.parse()
-    var expr = result.get_string("expr")
-    var precision = result.get_int("precision")
-    var scientific = result.get_flag("scientific")
-    var engineering = result.get_flag("engineering")
-    var pad = result.get_flag("pad")
-    var delimiter = result.get_string("delimiter")
-    var rounding_mode = _parse_rounding_mode(result.get_string("rounding-mode"))
+    var expr = args.expr.value
+    var precision = args.precision.value
+    var scientific = args.scientific.value
+    var engineering = args.engineering.value
+    var pad = args.pad.value
+    var delimiter = args.delimiter.value
+    var rounding_mode = _parse_rounding_mode(args.rounding_mode.value)
 
     # ── Phase 1: Tokenize & parse ──────────────────────────────────────────
     try:
