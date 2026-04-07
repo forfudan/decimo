@@ -1,5 +1,7 @@
 name: CI
 on:
+  push:
+    branches: [main, dev]
   pull_request:
   workflow_dispatch:
 
@@ -195,8 +197,6 @@ jobs:
           echo "$HOME/.pixi/bin" >> $GITHUB_PATH
       - name: pixi install
         run: pixi install
-      - name: Fetch argmojo
-        run: pixi run fetch
       - name: Build CLI binary
         run: pixi run buildcli
       - name: Run tests
