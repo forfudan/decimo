@@ -108,19 +108,31 @@ struct BigInt(
     @always_inline
     @staticmethod
     def zero() -> Self:
-        """Returns a BigInt with value 0."""
+        """Returns a BigInt with value 0.
+
+        Returns:
+            A `BigInt` with value 0.
+        """
         return Self()
 
     @always_inline
     @staticmethod
     def one() -> Self:
-        """Returns a BigInt with value 1."""
+        """Returns a BigInt with value 1.
+
+        Returns:
+            A `BigInt` with value 1.
+        """
         return Self(raw_words=[UInt32(1)], sign=False)
 
     @always_inline
     @staticmethod
     def negative_one() -> Self:
-        """Returns a BigInt with value -1."""
+        """Returns a BigInt with value -1.
+
+        Returns:
+            A `BigInt` with value -1.
+        """
         return Self(raw_words=[UInt32(1)], sign=True)
 
     # ===------------------------------------------------------------------=== #
@@ -186,6 +198,9 @@ struct BigInt(
 
         Constraints:
             The dtype of the scalar must be integral.
+
+        Args:
+            value: The integral scalar value to convert.
         """
         self = Self.from_integral_scalar(value)
 
@@ -248,6 +263,9 @@ struct BigInt(
 
         Returns:
             The BigInt representation of the Scalar value.
+
+        Parameters:
+            dtype: The data type of the scalar value.
         """
 
         if value == 0:
@@ -554,6 +572,9 @@ struct BigInt(
     def __int__(self) raises -> Int:
         """Returns the number as Int.
         See `to_int()` for more information.
+
+        Returns:
+            The `Int` representation.
         """
         return self.to_int()
 
@@ -570,11 +591,25 @@ struct BigInt(
         return Float64(self.to_string())
 
     def write_repr_to[W: Writer](self, mut writer: W):
-        """Writes the debug representation to a writer."""
+        """Writes the debug representation to a writer.
+
+        Parameters:
+            W: A type conforming to the `Writer` interface.
+
+        Args:
+            writer: The writer instance.
+        """
         writer.write('BigInt("', self.to_string(), '")')
 
     def write_to[W: Writer](self, mut writer: W):
-        """Writes the decimal string representation to a writer."""
+        """Writes the decimal string representation to a writer.
+
+        Parameters:
+            W: A type conforming to the `Writer` interface.
+
+        Args:
+            writer: The writer instance.
+        """
         writer.write(self.to_string())
 
     # ===------------------------------------------------------------------=== #
@@ -701,6 +736,12 @@ struct BigInt(
         """Returns the decimal string representation of the BigInt.
 
         Deprecated: Use ``to_string(line_width=...)`` instead.
+
+        Args:
+            line_width: The maximum line width for the output.
+
+        Returns:
+            The decimal string representation.
         """
         return self.to_string(line_width=line_width)
 
@@ -804,13 +845,21 @@ struct BigInt(
     # ===------------------------------------------------------------------=== #
 
     def __neg__(self) -> Self:
-        """Returns the negation of the BigInt."""
+        """Returns the negation of the BigInt.
+
+        Returns:
+            The negated value.
+        """
         if self.is_zero():
             return Self()
         return Self(raw_words=self.words.copy(), sign=not self.sign)
 
     def __abs__(self) -> Self:
-        """Returns the absolute value of the BigInt."""
+        """Returns the absolute value of the BigInt.
+
+        Returns:
+            The absolute value.
+        """
         return Self(raw_words=self.words.copy(), sign=False)
 
     @always_inline
@@ -818,6 +867,9 @@ struct BigInt(
         """Returns True if the number is nonzero.
 
         This enables `if n:` syntax, consistent with Python's `int`.
+
+        Returns:
+            `True` if non-zero, `False` otherwise.
         """
         return not self.is_zero()
 
@@ -826,6 +878,9 @@ struct BigInt(
         """Returns the number unchanged (unary plus).
 
         This enables `+n` syntax, consistent with Python's `int`.
+
+        Returns:
+            A copy of this value.
         """
         return Self(raw_words=self.words.copy(), sign=self.sign)
 
@@ -834,6 +889,9 @@ struct BigInt(
         """Returns self unchanged. Integers are already integers.
 
         This enables `math.ceil()` compatibility with Python's `int`.
+
+        Returns:
+            A copy of this value.
         """
         return Self(raw_words=self.words.copy(), sign=self.sign)
 
@@ -842,6 +900,9 @@ struct BigInt(
         """Returns self unchanged. Integers are already integers.
 
         This enables `math.floor()` compatibility with Python's `int`.
+
+        Returns:
+            A copy of this value.
         """
         return Self(raw_words=self.words.copy(), sign=self.sign)
 
@@ -850,6 +911,9 @@ struct BigInt(
         """Returns self unchanged. Integers are already integers.
 
         This enables `math.trunc()` compatibility with Python's `int`.
+
+        Returns:
+            A copy of this value.
         """
         return Self(raw_words=self.words.copy(), sign=self.sign)
 
@@ -861,18 +925,50 @@ struct BigInt(
 
     @always_inline
     def __add__(self, other: Self) -> Self:
+        """Adds two values.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The sum of the two values.
+        """
         return decimo.bigint.arithmetics.add(self, other)
 
     @always_inline
     def __sub__(self, other: Self) -> Self:
+        """Subtracts two values.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The difference of the two values.
+        """
         return decimo.bigint.arithmetics.subtract(self, other)
 
     @always_inline
     def __mul__(self, other: Self) -> Self:
+        """Multiplies two values.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The product of the two values.
+        """
         return decimo.bigint.arithmetics.multiply(self, other)
 
     @always_inline
     def __floordiv__(self, other: Self) raises -> Self:
+        """Divides two values using floor division.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The quotient, rounded toward negative infinity.
+        """
         try:
             return decimo.bigint.arithmetics.floor_divide(self, other)
         except e:
@@ -887,6 +983,14 @@ struct BigInt(
 
     @always_inline
     def __mod__(self, other: Self) raises -> Self:
+        """Returns the remainder of division.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The floor remainder with the same sign as the divisor.
+        """
         try:
             return decimo.bigint.arithmetics.floor_modulo(self, other)
         except e:
@@ -901,6 +1005,14 @@ struct BigInt(
 
     @always_inline
     def __divmod__(self, other: Self) raises -> Tuple[Self, Self]:
+        """Returns the quotient and remainder of division.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            A tuple of (quotient, remainder) using floor division.
+        """
         try:
             return decimo.bigint.arithmetics.floor_divmod(self, other)
         except e:
@@ -915,20 +1027,50 @@ struct BigInt(
 
     @always_inline
     def __pow__(self, exponent: Self) raises -> Self:
+        """Raises to a power.
+
+        Args:
+            exponent: The exponent.
+
+        Returns:
+            The result of raising to the given power.
+        """
         return self.power(exponent)
 
     @always_inline
     def __pow__(self, exponent: Int) raises -> Self:
+        """Raises to a power.
+
+        Args:
+            exponent: The exponent.
+
+        Returns:
+            The result of raising to the given power.
+        """
         return self.power(exponent)
 
     @always_inline
     def __lshift__(self, shift: Int) -> Self:
-        """Returns self << shift (multiply by 2^shift)."""
+        """Returns self << shift (multiply by 2^shift).
+
+        Args:
+            shift: The number of bits to shift left.
+
+        Returns:
+            The left-shifted value.
+        """
         return decimo.bigint.arithmetics.left_shift(self, shift)
 
     @always_inline
     def __rshift__(self, shift: Int) -> Self:
-        """Returns self >> shift (floor divide by 2^shift)."""
+        """Returns self >> shift (floor divide by 2^shift).
+
+        Args:
+            shift: The number of bits to shift right.
+
+        Returns:
+            The right-shifted value.
+        """
         return decimo.bigint.arithmetics.right_shift(self, shift)
 
     # ===------------------------------------------------------------------=== #
@@ -937,30 +1079,86 @@ struct BigInt(
 
     @always_inline
     def __radd__(self, other: Self) -> Self:
+        """Adds two values (reflected).
+
+        Args:
+            other: The left-hand side operand.
+
+        Returns:
+            The sum of the two values.
+        """
         return decimo.bigint.arithmetics.add(self, other)
 
     @always_inline
     def __rsub__(self, other: Self) -> Self:
+        """Subtracts two values (reflected).
+
+        Args:
+            other: The left-hand side operand.
+
+        Returns:
+            The difference of the two values.
+        """
         return decimo.bigint.arithmetics.subtract(other, self)
 
     @always_inline
     def __rmul__(self, other: Self) -> Self:
+        """Multiplies two values (reflected).
+
+        Args:
+            other: The left-hand side operand.
+
+        Returns:
+            The product of the two values.
+        """
         return decimo.bigint.arithmetics.multiply(self, other)
 
     @always_inline
     def __rfloordiv__(self, other: Self) raises -> Self:
+        """Divides two values using floor division (reflected).
+
+        Args:
+            other: The left-hand side operand.
+
+        Returns:
+            The quotient, rounded toward negative infinity.
+        """
         return decimo.bigint.arithmetics.floor_divide(other, self)
 
     @always_inline
     def __rmod__(self, other: Self) raises -> Self:
+        """Returns the remainder of division (reflected).
+
+        Args:
+            other: The left-hand side operand.
+
+        Returns:
+            The floor remainder with the same sign as the divisor.
+        """
         return decimo.bigint.arithmetics.floor_modulo(other, self)
 
     @always_inline
     def __rdivmod__(self, other: Self) raises -> Tuple[Self, Self]:
+        """Returns the quotient and remainder of division (reflected).
+
+        Args:
+            other: The left-hand side operand.
+
+        Returns:
+            A tuple of (quotient, remainder) using floor division.
+        """
         return decimo.bigint.arithmetics.floor_divmod(other, self)
 
     @always_inline
     def __rpow__(self, base: Self) raises -> Self:
+        """Raises to a power (reflected).
+
+        Args:
+            base: The base to raise to this power.
+
+        Returns:
+            The result of raising the base to this power.
+        """
         return base.power(self)
 
     # ===------------------------------------------------------------------=== #
@@ -970,42 +1168,74 @@ struct BigInt(
 
     @always_inline
     def __iadd__(mut self, other: Self):
-        """True in-place addition: mutates self.words directly."""
+        """True in-place addition: mutates self.words directly.
+
+        Args:
+            other: The right-hand side operand.
+        """
         decimo.bigint.arithmetics.add_inplace(self, other)
 
     @always_inline
     def __iadd__(mut self, other: Int):
-        """True in-place addition with Int: mutates self.words directly."""
+        """True in-place addition with Int: mutates self.words directly.
+
+        Args:
+            other: The right-hand side operand.
+        """
         decimo.bigint.arithmetics.add_inplace_int(self, other)
 
     @always_inline
     def __isub__(mut self, other: Self):
-        """True in-place subtraction: mutates self.words directly."""
+        """True in-place subtraction: mutates self.words directly.
+
+        Args:
+            other: The right-hand side operand.
+        """
         decimo.bigint.arithmetics.subtract_inplace(self, other)
 
     @always_inline
     def __imul__(mut self, other: Self):
-        """True in-place multiplication: computes product into self.words."""
+        """True in-place multiplication: computes product into self.words.
+
+        Args:
+            other: The right-hand side operand.
+        """
         decimo.bigint.arithmetics.multiply_inplace(self, other)
 
     @always_inline
     def __ifloordiv__(mut self, other: Self) raises:
-        """True in-place floor division: moves quotient into self.words."""
+        """True in-place floor division: moves quotient into self.words.
+
+        Args:
+            other: The right-hand side operand.
+        """
         decimo.bigint.arithmetics.floor_divide_inplace(self, other)
 
     @always_inline
     def __imod__(mut self, other: Self) raises:
-        """True in-place modulo: moves remainder into self.words."""
+        """True in-place modulo: moves remainder into self.words.
+
+        Args:
+            other: The right-hand side operand.
+        """
         decimo.bigint.arithmetics.floor_modulo_inplace(self, other)
 
     @always_inline
     def __ilshift__(mut self, shift: Int):
-        """True in-place left shift: mutates self.words directly."""
+        """True in-place left shift: mutates self.words directly.
+
+        Args:
+            shift: The number of bits to shift left.
+        """
         decimo.bigint.arithmetics.left_shift_inplace(self, shift)
 
     @always_inline
     def __irshift__(mut self, shift: Int):
-        """True in-place right shift: mutates self.words directly."""
+        """True in-place right shift: mutates self.words directly.
+
+        Args:
+            shift: The number of bits to shift right.
+        """
         decimo.bigint.arithmetics.right_shift_inplace(self, shift)
 
     # ===------------------------------------------------------------------=== #
@@ -1015,64 +1245,148 @@ struct BigInt(
 
     @always_inline
     def __gt__(self, other: Self) -> Bool:
-        """Returns True if self > other."""
+        """Returns True if self > other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if self is greater than other, `False` otherwise.
+        """
         return decimo.bigint.comparison.greater(self, other)
 
     @always_inline
     def __gt__(self, other: Int) -> Bool:
-        """Returns True if self > other."""
+        """Returns True if self > other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if self is greater than other, `False` otherwise.
+        """
         return decimo.bigint.comparison.greater(self, Self.from_int(other))
 
     @always_inline
     def __ge__(self, other: Self) -> Bool:
-        """Returns True if self >= other."""
+        """Returns True if self >= other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if self is greater than or equal to other, `False` otherwise.
+        """
         return decimo.bigint.comparison.greater_equal(self, other)
 
     @always_inline
     def __ge__(self, other: Int) -> Bool:
-        """Returns True if self >= other."""
+        """Returns True if self >= other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if self is greater than or equal to other, `False` otherwise.
+        """
         return decimo.bigint.comparison.greater_equal(
             self, Self.from_int(other)
         )
 
     @always_inline
     def __lt__(self, other: Self) -> Bool:
-        """Returns True if self < other."""
+        """Returns True if self < other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if self is less than other, `False` otherwise.
+        """
         return decimo.bigint.comparison.less(self, other)
 
     @always_inline
     def __lt__(self, other: Int) -> Bool:
-        """Returns True if self < other."""
+        """Returns True if self < other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if self is less than other, `False` otherwise.
+        """
         return decimo.bigint.comparison.less(self, Self.from_int(other))
 
     @always_inline
     def __le__(self, other: Self) -> Bool:
-        """Returns True if self <= other."""
+        """Returns True if self <= other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if self is less than or equal to other, `False` otherwise.
+        """
         return decimo.bigint.comparison.less_equal(self, other)
 
     @always_inline
     def __le__(self, other: Int) -> Bool:
-        """Returns True if self <= other."""
+        """Returns True if self <= other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if self is less than or equal to other, `False` otherwise.
+        """
         return decimo.bigint.comparison.less_equal(self, Self.from_int(other))
 
     @always_inline
     def __eq__(self, other: Self) -> Bool:
-        """Returns True if self == other."""
+        """Returns True if self == other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if the two values are equal, `False` otherwise.
+        """
         return decimo.bigint.comparison.equal(self, other)
 
     @always_inline
     def __eq__(self, other: Int) -> Bool:
-        """Returns True if self == other."""
+        """Returns True if self == other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if the two values are equal, `False` otherwise.
+        """
         return decimo.bigint.comparison.equal(self, Self.from_int(other))
 
     @always_inline
     def __ne__(self, other: Self) -> Bool:
-        """Returns True if self != other."""
+        """Returns True if self != other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if the two values are not equal, `False` otherwise.
+        """
         return decimo.bigint.comparison.not_equal(self, other)
 
     @always_inline
     def __ne__(self, other: Int) -> Bool:
-        """Returns True if self != other."""
+        """Returns True if self != other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if the two values are not equal, `False` otherwise.
+        """
         return decimo.bigint.comparison.not_equal(self, Self.from_int(other))
 
     # ===------------------------------------------------------------------=== #
@@ -1083,6 +1397,12 @@ struct BigInt(
     def truncate_divide(self, other: Self) raises -> Self:
         """Performs a truncated division of two BigInt numbers.
         See `truncate_divide()` for more information.
+
+        Args:
+            other: The divisor.
+
+        Returns:
+            The quotient, truncated toward zero.
         """
         return decimo.bigint.arithmetics.truncate_divide(self, other)
 
@@ -1090,6 +1410,12 @@ struct BigInt(
     def floor_modulo(self, other: Self) raises -> Self:
         """Performs a floor modulo of two BigInt numbers.
         See `floor_modulo()` for more information.
+
+        Args:
+            other: The divisor.
+
+        Returns:
+            The floor remainder with the same sign as the divisor.
         """
         return decimo.bigint.arithmetics.floor_modulo(self, other)
 
@@ -1097,6 +1423,12 @@ struct BigInt(
     def truncate_modulo(self, other: Self) raises -> Self:
         """Performs a truncated modulo of two BigInt numbers.
         See `truncate_modulo()` for more information.
+
+        Args:
+            other: The divisor.
+
+        Returns:
+            The truncated remainder with the same sign as the dividend.
         """
         return decimo.bigint.arithmetics.truncate_modulo(self, other)
 
@@ -1165,6 +1497,12 @@ struct BigInt(
     def compare_magnitudes(self, other: Self) -> Int8:
         """Compares the magnitudes (absolute values) of two BigInt numbers.
         See `compare_magnitudes()` for more information.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            1 if |self| > |other|, 0 if equal, -1 if |self| < |other|.
         """
         return decimo.bigint.comparison.compare_magnitudes(self, other)
 
@@ -1172,6 +1510,12 @@ struct BigInt(
     def compare(self, other: Self) -> Int8:
         """Compares two BigInt numbers.
         See `compare()` for more information.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            1 if self > other, 0 if equal, -1 if self < other.
         """
         return decimo.bigint.comparison.compare(self, other)
 
@@ -1182,54 +1526,109 @@ struct BigInt(
     @always_inline
     def __and__(self, other: Self) -> Self:
         """Returns self & other (bitwise AND, Python two's complement semantics).
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The bitwise AND of the two values.
         """
         return decimo.bigint.bitwise.bitwise_and(self, other)
 
     @always_inline
     def __and__(self, other: Int) -> Self:
-        """Returns self & other where other is an Int."""
+        """Returns self & other where other is an Int.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The bitwise AND of the two values.
+        """
         return decimo.bigint.bitwise.bitwise_and(self, Self(other))
 
     @always_inline
     def __or__(self, other: Self) -> Self:
         """Returns self | other (bitwise OR, Python two's complement semantics).
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The bitwise OR of the two values.
         """
         return decimo.bigint.bitwise.bitwise_or(self, other)
 
     @always_inline
     def __or__(self, other: Int) -> Self:
-        """Returns self | other where other is an Int."""
+        """Returns self | other where other is an Int.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The bitwise OR of the two values.
+        """
         return decimo.bigint.bitwise.bitwise_or(self, Self(other))
 
     @always_inline
     def __xor__(self, other: Self) -> Self:
         """Returns self ^ other (bitwise XOR, Python two's complement semantics).
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The bitwise XOR of the two values.
         """
         return decimo.bigint.bitwise.bitwise_xor(self, other)
 
     @always_inline
     def __xor__(self, other: Int) -> Self:
-        """Returns self ^ other where other is an Int."""
+        """Returns self ^ other where other is an Int.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The bitwise XOR of the two values.
+        """
         return decimo.bigint.bitwise.bitwise_xor(self, Self(other))
 
     @always_inline
     def __invert__(self) -> Self:
-        """Returns ~self (bitwise NOT, Python two's complement semantics)."""
+        """Returns ~self (bitwise NOT, Python two's complement semantics).
+
+        Returns:
+            The bitwise complement, equal to -(self + 1).
+        """
         return decimo.bigint.bitwise.bitwise_not(self)
 
     @always_inline
     def __iand__(mut self, other: Self):
-        """True in-place bitwise AND: mutates self.words directly."""
+        """True in-place bitwise AND: mutates self.words directly.
+
+        Args:
+            other: The right-hand side operand.
+        """
         decimo.bigint.bitwise.bitwise_and_inplace(self, other)
 
     @always_inline
     def __ior__(mut self, other: Self):
-        """True in-place bitwise OR: mutates self.words directly."""
+        """True in-place bitwise OR: mutates self.words directly.
+
+        Args:
+            other: The right-hand side operand.
+        """
         decimo.bigint.bitwise.bitwise_or_inplace(self, other)
 
     @always_inline
     def __ixor__(mut self, other: Self):
-        """True in-place bitwise XOR: mutates self.words directly."""
+        """True in-place bitwise XOR: mutates self.words directly.
+
+        Args:
+            other: The right-hand side operand.
+        """
         decimo.bigint.bitwise.bitwise_xor_inplace(self, other)
 
     # ===------------------------------------------------------------------=== #
@@ -1238,7 +1637,14 @@ struct BigInt(
 
     @always_inline
     def gcd(self, other: Self) -> Self:
-        """Returns the greatest common divisor of self and other."""
+        """Returns the greatest common divisor of self and other.
+
+        Args:
+            other: The second value for the GCD computation.
+
+        Returns:
+            The greatest common divisor of the two values.
+        """
         return decimo.bigint.number_theory.gcd(self, other)
 
     @always_inline
@@ -1252,18 +1658,35 @@ struct BigInt(
         Returns:
             A tuple (g, x, y) where g is the gcd of self and other, and
             x and y are the coefficients satisfying the equation.
+
+        Args:
+            other: The second value for the extended GCD computation.
         """
         return decimo.bigint.number_theory.extended_gcd(self, other)
 
     @always_inline
     def lcm(self, other: Self) raises -> Self:
-        """Returns the least common multiple of self and other."""
+        """Returns the least common multiple of self and other.
+
+        Args:
+            other: The second value for the LCM computation.
+
+        Returns:
+            The least common multiple of the two values.
+        """
         return decimo.bigint.number_theory.lcm(self, other)
 
     @always_inline
     def mod_pow(self, exponent: Self, modulus: Self) raises -> Self:
         """Returns (self ** exponent) % modulus efficiently using modular
         exponentiation.
+
+        Args:
+            exponent: The exponent.
+            modulus: The modulus.
+
+        Returns:
+            The result of (self ** exponent) % modulus.
         """
         return decimo.bigint.number_theory.mod_pow(self, exponent, modulus)
 
@@ -1271,6 +1694,13 @@ struct BigInt(
     def mod_pow(self, exponent: Int, modulus: Self) raises -> Self:
         """Returns (self ** exponent) % modulus efficiently using modular
         exponentiation.
+
+        Args:
+            exponent: The exponent.
+            modulus: The modulus.
+
+        Returns:
+            The result of (self ** exponent) % modulus.
         """
         return decimo.bigint.number_theory.mod_pow(
             self, Self.from_int(exponent), modulus
@@ -1280,6 +1710,12 @@ struct BigInt(
     def mod_inverse(self, modulus: Self) raises -> Self:
         """Returns the modular inverse of self modulo modulus, i.e. a number x
         such that (self * x) % modulus == 1.
+
+        Args:
+            modulus: The modulus.
+
+        Returns:
+            The modular multiplicative inverse.
         """
         return decimo.bigint.number_theory.mod_inverse(self, modulus)
 
@@ -1289,7 +1725,11 @@ struct BigInt(
 
     @always_inline
     def is_zero(self) -> Bool:
-        """Returns True if the value is zero."""
+        """Returns True if the value is zero.
+
+        Returns:
+            `True` if the value is zero, `False` otherwise.
+        """
         if len(self.words) == 1 and self.words[0] == 0:
             return True
         for word in self.words:
@@ -1299,20 +1739,36 @@ struct BigInt(
 
     @always_inline
     def is_negative(self) -> Bool:
-        """Returns True if the value is strictly negative."""
+        """Returns True if the value is strictly negative.
+
+        Returns:
+            `True` if the value is negative, `False` otherwise.
+        """
         return self.sign and not self.is_zero()
 
     @always_inline
     def is_positive(self) -> Bool:
-        """Returns True if the value is strictly positive."""
+        """Returns True if the value is strictly positive.
+
+        Returns:
+            `True` if the value is positive, `False` otherwise.
+        """
         return not self.sign and not self.is_zero()
 
     def is_one(self) -> Bool:
-        """Returns True if the value is exactly 1."""
+        """Returns True if the value is exactly 1.
+
+        Returns:
+            `True` if the value is 1, `False` otherwise.
+        """
         return not self.sign and len(self.words) == 1 and self.words[0] == 1
 
     def is_one_or_minus_one(self) -> Bool:
-        """Returns True if the value is 1 or -1."""
+        """Returns True if the value is 1 or -1.
+
+        Returns:
+            `True` if the value is 1 or -1, `False` otherwise.
+        """
         return len(self.words) == 1 and self.words[0] == 1
 
     def bit_length(self) -> Int:
@@ -1364,7 +1820,11 @@ struct BigInt(
         return count
 
     def number_of_words(self) -> Int:
-        """Returns the number of words in the magnitude."""
+        """Returns the number of words in the magnitude.
+
+        Returns:
+            The number of `UInt32` words used to represent the magnitude.
+        """
         return len(self.words)
 
     def number_of_digits(self) -> Int:
@@ -1372,6 +1832,9 @@ struct BigInt(
 
         Notes:
             Zero has 1 digit.
+
+        Returns:
+            The number of decimal digits.
         """
         if self.is_zero():
             return 1
@@ -1384,7 +1847,11 @@ struct BigInt(
     # ===------------------------------------------------------------------=== #
 
     def copy(self) -> Self:
-        """Returns a deep copy of this BigInt."""
+        """Returns a deep copy of this BigInt.
+
+        Returns:
+            A new `BigInt` with the same value.
+        """
         var new_words = List[UInt32](capacity=len(self.words))
         for word in self.words:
             new_words.append(word)
@@ -1400,7 +1867,11 @@ struct BigInt(
             self.sign = False
 
     def internal_representation(self) -> String:
-        """Returns the internal representation details as a String."""
+        """Returns the internal representation details as a String.
+
+        Returns:
+            A string showing the sign and word-level magnitude representation.
+        """
         # Collect all labels to find max width
         var fixed_labels = List[String]()
         fixed_labels.append("number:")

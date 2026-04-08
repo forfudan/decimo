@@ -54,12 +54,19 @@ struct RoundingMode(Copyable, ImplicitlyCopyable, Movable, Writable):
 
     # alias
     comptime ROUND_DOWN = Self.down()
+    """Truncate (toward zero)."""
     comptime ROUND_HALF_UP = Self.half_up()
+    """Round away from zero if >= 0.5."""
     comptime ROUND_HALF_DOWN = Self.half_down()
+    """Round toward zero if <= 0.5."""
     comptime ROUND_HALF_EVEN = Self.half_even()
+    """Round to nearest even digit if equidistant (banker's rounding)."""
     comptime ROUND_UP = Self.up()
+    """Round away from zero."""
     comptime ROUND_CEILING = Self.ceiling()
+    """Round toward positive infinity."""
     comptime ROUND_FLOOR = Self.floor()
+    """Round toward negative infinity."""
 
     # Internal value
     var value: Int
@@ -68,49 +75,106 @@ struct RoundingMode(Copyable, ImplicitlyCopyable, Movable, Writable):
     # Static constants for each rounding mode
     @staticmethod
     def down() -> Self:
-        """Truncate (toward zero)."""
+        """Creates a `RoundingMode` that truncates toward zero.
+
+        Returns:
+            A `RoundingMode` representing truncation toward zero.
+        """
         return Self(0)
 
     @staticmethod
     def half_up() -> Self:
-        """Round away from zero if >= 0.5."""
+        """Creates a `RoundingMode` that rounds away from zero if >= 0.5.
+
+        Returns:
+            A `RoundingMode` representing half-up rounding.
+        """
         return Self(1)
 
     @staticmethod
     def half_down() -> Self:
-        """Round toward zero if <= 0.5."""
+        """Creates a `RoundingMode` that rounds toward zero if <= 0.5.
+
+        Returns:
+            A `RoundingMode` representing half-down rounding.
+        """
         return Self(6)
 
     @staticmethod
     def half_even() -> Self:
-        """Round to nearest even digit if equidistant (banker's rounding)."""
+        """Creates a `RoundingMode` that rounds to nearest even digit if equidistant.
+
+        Returns:
+            A `RoundingMode` representing banker's rounding.
+        """
         return Self(2)
 
     @staticmethod
     def up() -> Self:
-        """Round away from zero."""
+        """Creates a `RoundingMode` that rounds away from zero.
+
+        Returns:
+            A `RoundingMode` representing round-up.
+        """
         return Self(3)
 
     @staticmethod
     def ceiling() -> Self:
-        """Round toward positive infinity."""
+        """Creates a `RoundingMode` that rounds toward positive infinity.
+
+        Returns:
+            A `RoundingMode` representing ceiling rounding.
+        """
         return Self(4)
 
     @staticmethod
     def floor() -> Self:
-        """Round toward negative infinity."""
+        """Creates a `RoundingMode` that rounds toward negative infinity.
+
+        Returns:
+            A `RoundingMode` representing floor rounding.
+        """
         return Self(5)
 
     def __init__(out self, value: Int):
+        """Creates a `RoundingMode` from its internal integer representation.
+
+        Args:
+            value: The integer code identifying the rounding mode.
+        """
         self.value = value
 
     def __eq__(self, other: Self) -> Bool:
+        """Checks whether two `RoundingMode` values are equal.
+
+        Args:
+            other: The `RoundingMode` to compare against.
+
+        Returns:
+            `True` if both rounding modes have the same internal value.
+        """
         return self.value == other.value
 
     def __eq__(self, other: String) -> Bool:
+        """Checks whether this rounding mode matches a string name.
+
+        Args:
+            other: The rounding mode name to compare against (e.g. "ROUND_DOWN").
+
+        Returns:
+            `True` if the string representation of this mode equals `other`.
+        """
         return String(self) == other
 
     def write_to[W: Writer](self, mut writer: W):
+        """Writes the rounding mode name to a writer.
+
+        Parameters:
+            W: A type conforming to the `Writer` interface.
+
+        Args:
+            writer: The writer instance.
+        """
         if self == Self.down():
             writer.write("ROUND_DOWN")
         elif self == Self.half_up():

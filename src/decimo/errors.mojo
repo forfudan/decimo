@@ -90,11 +90,6 @@ message: An optional message describing the error.\\
 previous_error: An optional previous error that caused this error.
 """
 
-comptime HEADER_OF_ERROR_MESSAGE = """
----------------------------------------------------------------------------
-DecimoError                             Traceback (most recent call last)
-"""
-
 
 struct DecimoError[error_type: String = "DecimoError"](Writable):
     """Base type for all Decimo errors.
@@ -111,9 +106,13 @@ struct DecimoError[error_type: String = "DecimoError"](Writable):
     """
 
     var file: String
+    """The source file where the error occurred."""
     var function: String
+    """The function name where the error occurred."""
     var message: Optional[String]
+    """An optional message describing the error."""
     var previous_error: Optional[String]
+    """An optional formatted string of a previous error that caused this one."""
 
     def __init__(
         out self,
@@ -122,6 +121,14 @@ struct DecimoError[error_type: String = "DecimoError"](Writable):
         message: Optional[String],
         previous_error: Optional[Error],
     ):
+        """Creates a new `DecimoError` with the given context.
+
+        Args:
+            file: The source file where the error occurred.
+            function: The function name where the error occurred.
+            message: An optional message describing the error.
+            previous_error: An optional previous error that caused this one.
+        """
         self.file = file
         self.function = function
         self.message = message
@@ -133,6 +140,14 @@ struct DecimoError[error_type: String = "DecimoError"](Writable):
             )
 
     def write_to[W: Writer](self, mut writer: W):
+        """Writes a formatted error traceback to a writer.
+
+        Parameters:
+            W: A type conforming to the `Writer` interface.
+
+        Args:
+            writer: The writer instance.
+        """
         writer.write("\n")
         writer.write(("-" * 80))
         writer.write("\n")

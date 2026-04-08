@@ -107,26 +107,44 @@ struct BigDecimal(
 
     @implicit
     def __init__(out self, coefficient: BigUInt):
-        """Constructs a BigDecimal from a BigUInt object."""
+        """Constructs a BigDecimal from a BigUInt object.
+
+        Args:
+            coefficient: The unsigned integer coefficient.
+        """
         self.coefficient = coefficient.copy()
         self.scale = 0
         self.sign = False
 
     def __init__(out self, coefficient: BigUInt, scale: Int, sign: Bool):
-        """Constructs a BigDecimal from its components."""
+        """Constructs a BigDecimal from its components.
+
+        Args:
+            coefficient: The unsigned integer coefficient.
+            scale: The number of decimal places (power of 10 divisor).
+            sign: Whether the value is negative.
+        """
         self.coefficient = coefficient.copy()
         self.scale = scale
         self.sign = sign
 
     @implicit
     def __init__(out self, value: BigInt10):
-        """Constructs a BigDecimal from a big integer."""
+        """Constructs a BigDecimal from a big integer.
+
+        Args:
+            value: The `BigInt10` to convert.
+        """
         self.coefficient = value.magnitude.copy()
         self.scale = 0
         self.sign = value.sign
 
     def __init__(out self, value: String) raises:
-        """Constructs a BigDecimal from a string representation."""
+        """Constructs a BigDecimal from a string representation.
+
+        Args:
+            value: The string to parse (e.g. "123.456" or "1.23E+5").
+        """
         # The string is normalized with `deciomojo.str.parse_numeric_string()`.
         self = Self.from_string(value)
 
@@ -134,6 +152,9 @@ struct BigDecimal(
     def __init__(out self, value: Int):
         """Constructs a BigDecimal from an `Int` object.
         See `from_int()` for more information.
+
+        Args:
+            value: The integer to convert.
         """
         self = Self.from_int(value)
 
@@ -141,6 +162,9 @@ struct BigDecimal(
     def __init__(out self, value: UInt):
         """Constructs a BigDecimal from an `UInt` object.
         See `from_uint()` for more information.
+
+        Args:
+            value: The unsigned integer to convert.
         """
         self = Self.from_uint(value)
 
@@ -151,6 +175,12 @@ struct BigDecimal(
 
         Constraints:
             The dtype of the scalar must be integral.
+
+        Parameters:
+            dtype: The data type of the scalar.
+
+        Args:
+            value: The integral scalar to convert.
         """
         comptime assert dtype.is_integral(), (
             "\n***********************************************************\n"
@@ -166,7 +196,11 @@ struct BigDecimal(
         self = Self.from_integral_scalar(value)
 
     def __init__(out self, *, py: PythonObject) raises:
-        """Constructs a BigDecimal from a Python Decimal object."""
+        """Constructs a BigDecimal from a Python Decimal object.
+
+        Args:
+            py: A Python `decimal.Decimal` object.
+        """
         self = Self.from_python_decimal(py)
 
     # ===------------------------------------------------------------------=== #
@@ -206,12 +240,27 @@ struct BigDecimal(
     ) -> Self:
         """**UNSAFE** Creates a BigDecimal from its raw components.
         The raw components are a single word, scale, and sign.
+
+        Args:
+            word: The single raw UInt32 word for the coefficient.
+            scale: The number of decimal places.
+            sign: Whether the value is negative.
+
+        Returns:
+            A `BigDecimal` constructed from the raw components.
         """
         return Self(BigUInt(raw_words=[word]), scale, sign)
 
     @staticmethod
     def from_int(value: Int) -> Self:
-        """Creates a BigDecimal from an integer."""
+        """Creates a BigDecimal from an integer.
+
+        Args:
+            value: The integer to convert.
+
+        Returns:
+            A `BigDecimal` representing the given integer.
+        """
         if value == 0:
             return Self(coefficient=BigUInt.zero(), scale=0, sign=False)
 
@@ -246,7 +295,14 @@ struct BigDecimal(
     # TODO: This method is no longer needed as UInt is now an alias for SIMD.
     @staticmethod
     def from_uint(value: UInt) -> Self:
-        """Creates a BigDecimal from an unsigned integer."""
+        """Creates a BigDecimal from an unsigned integer.
+
+        Args:
+            value: The unsigned integer to convert.
+
+        Returns:
+            A `BigDecimal` representing the given unsigned integer.
+        """
         return Self(
             coefficient=BigUInt.from_unsigned_integral_scalar(value),
             scale=0,
@@ -263,6 +319,9 @@ struct BigDecimal(
 
         Returns:
             The BigDecimal representation of the Scalar value.
+
+        Parameters:
+            dtype: The data type of the scalar.
         """
 
         comptime assert dtype.is_integral(), "dtype must be integral."
@@ -290,6 +349,9 @@ struct BigDecimal(
 
         If the value is a floating-point number, it is converted to a string
         with full precision before converting to BigDecimal.
+
+        Parameters:
+            dtype: The data type of the scalar.
         """
 
         comptime assert (
@@ -491,11 +553,19 @@ struct BigDecimal(
     # ===------------------------------------------------------------------=== #
 
     def __int__(self) raises -> Int:
-        """Converts the BigDecimal to an integer."""
+        """Converts the BigDecimal to an integer.
+
+        Returns:
+            The integer representation, truncating any fractional part.
+        """
         return Int(self.to_string())
 
     def __float__(self) raises -> Float64:
-        """Converts the BigDecimal to a floating-point number."""
+        """Converts the BigDecimal to a floating-point number.
+
+        Returns:
+            The `Float64` representation of this value.
+        """
         return Float64(self.to_string())
 
     # ===------------------------------------------------------------------=== #
@@ -700,11 +770,24 @@ struct BigDecimal(
     def write_to[W: Writer](self, mut writer: W):
         """Writes the BigDecimal to a writer.
         This implement the `write` method of the `Writer` trait.
+
+        Parameters:
+            W: A type conforming to the `Writer` interface.
+
+        Args:
+            writer:: The writer instance.
         """
         writer.write(self.to_string())
 
     def write_repr_to[W: Writer](self, mut writer: W):
-        """Writes the debug representation to a writer."""
+        """Writes the debug representation to a writer.
+
+        Parameters:
+            W: A type conforming to the `Writer` interface.
+
+        Args:
+            writer:: The writer instance.
+        """
         writer.write('BigDecimal("', self.to_string(), '")')
 
     def to_scientific_string(self) -> String:
@@ -718,6 +801,9 @@ struct BigDecimal(
         BigDecimal("123456.789").to_scientific_string()  # "1.23456789E+5"
         BigDecimal("0.00123").to_scientific_string()     # "1.23E-3"
         ```
+
+        Returns:
+            The number formatted in scientific notation.
         """
         return self.to_string(scientific=True)
 
@@ -733,6 +819,9 @@ struct BigDecimal(
         BigDecimal("123456.789").to_eng_string()  # "123.456789E+3"
         BigDecimal("0.00123").to_eng_string()     # "1.23E-3"
         ```
+
+        Returns:
+            The number formatted in engineering notation.
         """
         return self.to_string(engineering=True)
 
@@ -753,6 +842,9 @@ struct BigDecimal(
         BigDecimal("-9876543210.123456").to_string_with_separators()
         # "-9_876_543_210.123_456"
         ```
+
+        Returns:
+            The number formatted with digit-group separators.
         """
         return self.to_string(delimiter=separator)
 
@@ -765,6 +857,9 @@ struct BigDecimal(
     def __abs__(self) -> Self:
         """Returns the absolute value of this number.
         See `absolute()` for more information.
+
+        Returns:
+            The absolute value.
         """
         return Self(
             coefficient=self.coefficient,
@@ -776,6 +871,9 @@ struct BigDecimal(
     def __neg__(self) -> Self:
         """Returns the negation of this number.
         See `negative()` for more information.
+
+        Returns:
+            The negated value.
         """
         return Self(
             coefficient=self.coefficient,
@@ -788,6 +886,9 @@ struct BigDecimal(
         """Returns True if the number is nonzero.
 
         This enables `if x:` syntax, consistent with Python's `decimal.Decimal`.
+
+        Returns:
+            True if the number is nonzero, False otherwise.
         """
         return not self.coefficient.is_zero()
 
@@ -797,6 +898,9 @@ struct BigDecimal(
 
         This enables `+x` syntax, consistent with Python's `decimal.Decimal`.
         In Python, unary plus applies context rounding. Here it returns a copy.
+
+        Returns:
+            A copy of this number.
         """
         return self.copy()
 
@@ -808,18 +912,50 @@ struct BigDecimal(
 
     @always_inline
     def __add__(self, other: Self) raises -> Self:
+        """Adds two values.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The sum of the two values.
+        """
         return decimo.bigdecimal.arithmetics.add(self, other)
 
     @always_inline
     def __sub__(self, other: Self) raises -> Self:
+        """Subtracts two values.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The difference of the two values.
+        """
         return decimo.bigdecimal.arithmetics.subtract(self, other)
 
     @always_inline
     def __mul__(self, other: Self) -> Self:
+        """Multiplies two values.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The product of the two values.
+        """
         return decimo.bigdecimal.arithmetics.multiply(self, other)
 
     @always_inline
     def __truediv__(self, other: Self) raises -> Self:
+        """Divides two values using true division.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The quotient of the two values.
+        """
         return decimo.bigdecimal.arithmetics.true_divide(
             self, other, precision=PRECISION
         )
@@ -828,6 +964,12 @@ struct BigDecimal(
     def __floordiv__(self, other: Self) raises -> Self:
         """Returns the result of floor division.
         See `arithmetics.truncate_divide()` for more information.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The integer quotient, truncated toward zero.
         """
         return decimo.bigdecimal.arithmetics.truncate_divide(self, other)
 
@@ -835,6 +977,12 @@ struct BigDecimal(
     def __mod__(self, other: Self) raises -> Self:
         """Returns the result of modulo operation.
         See `arithmetics.truncate_modulo()` for more information.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The remainder after truncated division.
         """
         return decimo.bigdecimal.arithmetics.truncate_modulo(
             self, other, precision=PRECISION
@@ -842,7 +990,14 @@ struct BigDecimal(
 
     @always_inline
     def __pow__(self, exponent: Self) raises -> Self:
-        """Returns the result of exponentiation."""
+        """Returns the result of exponentiation.
+
+        Args:
+            exponent: The power to raise this value to.
+
+        Returns:
+            This value raised to the given exponent.
+        """
         return decimo.bigdecimal.exponential.power(
             self, exponent, precision=PRECISION
         )
@@ -857,6 +1012,12 @@ struct BigDecimal(
 
         Uses truncated division (toward zero), matching Python's
         `decimal.Decimal.__divmod__()` behavior.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            A tuple of `(quotient, remainder)` from truncated division.
         """
         var quotient = decimo.bigdecimal.arithmetics.truncate_divide(
             self, other
@@ -868,7 +1029,14 @@ struct BigDecimal(
         return (quotient^, remainder^)
 
     def __rdivmod__(self, other: Self) raises -> Tuple[Self, Self]:
-        """Returns `divmod(other, self)` for right-side divmod."""
+        """Returns `divmod(other, self)` for right-side divmod.
+
+        Args:
+            other: The left-hand side operand.
+
+        Returns:
+            A tuple of `(quotient, remainder)` from truncated division.
+        """
         var quotient = decimo.bigdecimal.arithmetics.truncate_divide(
             other, self
         )
@@ -886,34 +1054,90 @@ struct BigDecimal(
 
     @always_inline
     def __radd__(self, other: Self) raises -> Self:
+        """Adds two values (reflected).
+
+        Args:
+            other: The left-hand side operand.
+
+        Returns:
+            The sum of the two values.
+        """
         return decimo.bigdecimal.arithmetics.add(self, other)
 
     @always_inline
     def __rsub__(self, other: Self) raises -> Self:
+        """Subtracts two values (reflected).
+
+        Args:
+            other: The left-hand side operand.
+
+        Returns:
+            The difference `other - self`.
+        """
         return decimo.bigdecimal.arithmetics.subtract(other, self)
 
     @always_inline
     def __rmul__(self, other: Self) raises -> Self:
+        """Multiplies two values (reflected).
+
+        Args:
+            other: The left-hand side operand.
+
+        Returns:
+            The product of the two values.
+        """
         return decimo.bigdecimal.arithmetics.multiply(self, other)
 
     @always_inline
     def __rfloordiv__(self, other: Self) raises -> Self:
+        """Divides two values using floor division (reflected).
+
+        Args:
+            other: The left-hand side operand.
+
+        Returns:
+            The integer quotient `other // self`, truncated toward zero.
+        """
         return decimo.bigdecimal.arithmetics.truncate_divide(other, self)
 
     @always_inline
     def __rmod__(self, other: Self) raises -> Self:
+        """Returns the remainder of division (reflected).
+
+        Args:
+            other: The left-hand side operand.
+
+        Returns:
+            The remainder `other % self`.
+        """
         return decimo.bigdecimal.arithmetics.truncate_modulo(
             other, self, precision=PRECISION
         )
 
     @always_inline
     def __rpow__(self, base: Self) raises -> Self:
+        """Raises to a power (reflected).
+
+        Args:
+            base: The base to raise to the power of self.
+
+        Returns:
+            The base raised to the power of self.
+        """
         return decimo.bigdecimal.exponential.power(
             base, self, precision=PRECISION
         )
 
     @always_inline
     def __rtruediv__(self, other: Self) raises -> Self:
+        """Divides two values using true division (reflected).
+
+        Args:
+            other: The left-hand side operand.
+
+        Returns:
+            The quotient `other / self`.
+        """
         return decimo.bigdecimal.arithmetics.true_divide(
             other, self, precision=PRECISION
         )
@@ -927,28 +1151,58 @@ struct BigDecimal(
 
     @always_inline
     def __iadd__(mut self, other: Self) raises:
+        """Adds in place.
+
+        Args:
+            other: The right-hand side operand.
+        """
         decimo.bigdecimal.arithmetics.add_inplace(self, other)
 
     @always_inline
     def __isub__(mut self, other: Self) raises:
+        """Subtracts in place.
+
+        Args:
+            other: The right-hand side operand.
+        """
         decimo.bigdecimal.arithmetics.subtract_inplace(self, other)
 
     @always_inline
     def __imul__(mut self, other: Self) raises:
+        """Multiplies in place.
+
+        Args:
+            other: The right-hand side operand.
+        """
         decimo.bigdecimal.arithmetics.multiply_inplace(self, other)
 
     @always_inline
     def __itruediv__(mut self, other: Self) raises:
+        """Divides in place using true division.
+
+        Args:
+            other: The right-hand side operand.
+        """
         self = decimo.bigdecimal.arithmetics.true_divide(
             self, other, precision=PRECISION
         )
 
     @always_inline
     def __ifloordiv__(mut self, other: Self) raises:
+        """Divides in place using floor division.
+
+        Args:
+            other: The right-hand side operand.
+        """
         self = decimo.bigdecimal.arithmetics.truncate_divide(self, other)
 
     @always_inline
     def __imod__(mut self, other: Self) raises:
+        """Computes the remainder in place.
+
+        Args:
+            other: The right-hand side operand.
+        """
         self = decimo.bigdecimal.arithmetics.truncate_modulo(
             self, other, precision=PRECISION
         )
@@ -960,32 +1214,74 @@ struct BigDecimal(
 
     @always_inline
     def __gt__(self, other: Self) -> Bool:
-        """Returns whether self is greater than other."""
+        """Returns whether self is greater than other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            True if self is greater than other, False otherwise.
+        """
         return decimo.bigdecimal.comparison.compare(self, other) > 0
 
     @always_inline
     def __ge__(self, other: Self) -> Bool:
-        """Returns whether self is greater than or equal to other."""
+        """Returns whether self is greater than or equal to other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            True if self is greater than or equal to other, False otherwise.
+        """
         return decimo.bigdecimal.comparison.compare(self, other) >= 0
 
     @always_inline
     def __lt__(self, other: Self) -> Bool:
-        """Returns whether self is less than other."""
+        """Returns whether self is less than other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            True if self is less than other, False otherwise.
+        """
         return decimo.bigdecimal.comparison.compare(self, other) < 0
 
     @always_inline
     def __le__(self, other: Self) -> Bool:
-        """Returns whether self is less than or equal to other."""
+        """Returns whether self is less than or equal to other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            True if self is less than or equal to other, False otherwise.
+        """
         return decimo.bigdecimal.comparison.compare(self, other) <= 0
 
     @always_inline
     def __eq__(self, other: Self) -> Bool:
-        """Returns whether self equals other."""
+        """Returns whether self equals other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            True if the two values are equal, False otherwise.
+        """
         return decimo.bigdecimal.comparison.compare(self, other) == 0
 
     @always_inline
     def __ne__(self, other: Self) -> Bool:
-        """Returns whether self does not equal other."""
+        """Returns whether self does not equal other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            True if the two values are not equal, False otherwise.
+        """
         return decimo.bigdecimal.comparison.compare(self, other) != 0
 
     # ===------------------------------------------------------------------=== #
@@ -997,6 +1293,12 @@ struct BigDecimal(
         """Rounds the number to the specified number of decimal places.
         If `ndigits` is not given, rounds to 0 decimal places.
         If rounding causes errors, returns the value itself.
+
+        Args:
+            ndigits: The number of decimal places to round to.
+
+        Returns:
+            A new `BigDecimal` rounded to the specified decimal places.
         """
         try:
             return decimo.bigdecimal.rounding.round(
@@ -1011,6 +1313,9 @@ struct BigDecimal(
         """Rounds the number to the specified number of decimal places.
         If `ndigits` is not given, rounds to 0 decimal places.
         If rounding causes errors, returns the value itself.
+
+        Returns:
+            A new `BigDecimal` rounded to 0 decimal places.
         """
         try:
             return decimo.bigdecimal.rounding.round(
@@ -1028,6 +1333,9 @@ struct BigDecimal(
 
         Equivalent to `math.ceil()` in Python. Returns a BigDecimal with
         scale 0.
+
+        Returns:
+            The ceiling of this value.
         """
         if self.scale <= 0:
             return self.copy()
@@ -1045,6 +1353,9 @@ struct BigDecimal(
 
         Equivalent to `math.floor()` in Python. Returns a BigDecimal with
         scale 0.
+
+        Returns:
+            The floor of this value.
         """
         if self.scale <= 0:
             return self.copy()
@@ -1062,6 +1373,9 @@ struct BigDecimal(
 
         Equivalent to `math.trunc()` in Python. Returns a BigDecimal
         with scale 0.
+
+        Returns:
+            The truncated integer part of this value.
         """
         if self.scale <= 0:
             return self.copy()
@@ -1079,6 +1393,12 @@ struct BigDecimal(
     def compare(self, other: Self) raises -> Int8:
         """Compares two BigDecimal numbers.
         See `comparison.compare()` for more information.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            1 if self > other, 0 if equal, -1 if self < other.
         """
         return decimo.bigdecimal.comparison.compare(self, other)
 
@@ -1086,6 +1406,12 @@ struct BigDecimal(
     def compare_absolute(self, other: Self) raises -> Int8:
         """Compares two BigDecimal numbers by absolute value.
         See `comparison.compare_absolute()` for more information.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            1 if |self| > |other|, 0 if equal, -1 if |self| < |other|.
         """
         return decimo.bigdecimal.comparison.compare_absolute(self, other)
 
@@ -1093,12 +1419,26 @@ struct BigDecimal(
 
     @always_inline
     def max(self, other: Self) raises -> Self:
-        """Returns the maximum of two BigDecimal numbers."""
+        """Returns the maximum of two BigDecimal numbers.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            The larger of the two values.
+        """
         return decimo.bigdecimal.comparison.max(self, other)
 
     @always_inline
     def min(self, other: Self) raises -> Self:
-        """Returns the minimum of two BigDecimal numbers."""
+        """Returns the minimum of two BigDecimal numbers.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            The smaller of the two values.
+        """
         return decimo.bigdecimal.comparison.min(self, other)
 
     # === Constants === #
@@ -1106,13 +1446,27 @@ struct BigDecimal(
     @always_inline
     @staticmethod
     def pi(precision: Int) raises -> Self:
-        """Returns the mathematical constant pi to the specified precision."""
+        """Returns the mathematical constant pi to the specified precision.
+
+        Args:
+            precision: The number of significant digits to compute.
+
+        Returns:
+            The value of π to the specified precision.
+        """
         return decimo.bigdecimal.constants.pi(precision=precision)
 
     @always_inline
     @staticmethod
     def e(precision: Int) raises -> Self:
-        """Returns the mathematical constant e to the specified precision."""
+        """Returns the mathematical constant e to the specified precision.
+
+        Args:
+            precision: The number of significant digits to compute.
+
+        Returns:
+            The value of e to the specified precision.
+        """
         return decimo.bigdecimal.exponential.exp(
             x=Self(BigUInt.one()), precision=precision
         )
@@ -1121,12 +1475,26 @@ struct BigDecimal(
 
     @always_inline
     def exp(self, precision: Int = PRECISION) raises -> Self:
-        """Returns the exponential of the BigDecimal number."""
+        """Returns the exponential of the BigDecimal number.
+
+        Args:
+            precision: The number of significant digits for the result.
+
+        Returns:
+            The value of e raised to the power of self.
+        """
         return decimo.bigdecimal.exponential.exp(self, precision)
 
     @always_inline
     def ln(self, precision: Int = PRECISION) raises -> Self:
-        """Returns the natural logarithm of the BigDecimal number."""
+        """Returns the natural logarithm of the BigDecimal number.
+
+        Args:
+            precision: The number of significant digits for the result.
+
+        Returns:
+            The natural logarithm (base e) of this value.
+        """
         return decimo.bigdecimal.exponential.ln(self, precision)
 
     @always_inline
@@ -1135,76 +1503,176 @@ struct BigDecimal(
         precision: Int,
         mut cache: decimo.bigdecimal.exponential.MathCache,
     ) raises -> Self:
-        """Returns the natural logarithm using a cache for ln(2)/ln(1.25)."""
+        """Returns the natural logarithm using a cache for ln(2)/ln(1.25).
+
+        Args:
+            precision: The number of significant digits for the result.
+            cache:: The shared math constant cache for ln(2) and ln(1.25).
+
+        Returns:
+            The natural logarithm (base e) of this value.
+        """
         return decimo.bigdecimal.exponential.ln(self, precision, cache)
 
     @always_inline
     def log(self, base: Self, precision: Int = PRECISION) raises -> Self:
         """Returns the logarithm of the BigDecimal number with the given base.
+
+        Args:
+            base: The logarithmic base.
+            precision: The number of significant digits for the result.
+
+        Returns:
+            The logarithm of this value in the given base.
         """
         return decimo.bigdecimal.exponential.log(self, base, precision)
 
     @always_inline
     def log10(self, precision: Int = PRECISION) raises -> Self:
-        """Returns the base-10 logarithm of the BigDecimal number."""
+        """Returns the base-10 logarithm of the BigDecimal number.
+
+        Args:
+            precision: The number of significant digits for the result.
+
+        Returns:
+            The base-10 logarithm of this value.
+        """
         return decimo.bigdecimal.exponential.log10(self, precision)
 
     @always_inline
     def root(self, root: Self, precision: Int = PRECISION) raises -> Self:
-        """Returns the root of the BigDecimal number."""
+        """Returns the root of the BigDecimal number.
+
+        Args:
+            root: The degree of the root (e.g. 2 for square root, 3 for cube root).
+            precision: The number of significant digits for the result.
+
+        Returns:
+            The nth root of this value.
+        """
         return decimo.bigdecimal.exponential.root(self, root, precision)
 
     @always_inline
     def sqrt(self, precision: Int = PRECISION) raises -> Self:
-        """Returns the square root of the BigDecimal number."""
+        """Returns the square root of the BigDecimal number.
+
+        Args:
+            precision: The number of significant digits for the result.
+
+        Returns:
+            The square root of this value.
+        """
         return decimo.bigdecimal.exponential.sqrt(self, precision)
 
     @always_inline
     def cbrt(self, precision: Int = PRECISION) raises -> Self:
-        """Returns the cube root of the BigDecimal number."""
+        """Returns the cube root of the BigDecimal number.
+
+        Args:
+            precision: The number of significant digits for the result.
+
+        Returns:
+            The cube root of this value.
+        """
         return decimo.bigdecimal.exponential.cbrt(self, precision)
 
     @always_inline
     def power(self, exponent: Self, precision: Int = PRECISION) raises -> Self:
         """Returns the result of exponentiation with the given precision.
         See `exponential.power()` for more information.
+
+        Args:
+            exponent: The power to raise this value to.
+            precision: The number of significant digits for the result.
+
+        Returns:
+            This value raised to the given exponent.
         """
         return decimo.bigdecimal.exponential.power(self, exponent, precision)
 
     # === Trigonometric operations === #
     @always_inline
     def sin(self, precision: Int = PRECISION) raises -> Self:
-        """Returns the sine of the BigDecimal number."""
+        """Returns the sine of the BigDecimal number.
+
+        Args:
+            precision: The number of significant digits for the result.
+
+        Returns:
+            The sine of this value.
+        """
         return decimo.bigdecimal.trigonometric.sin(self, precision)
 
     @always_inline
     def cos(self, precision: Int = PRECISION) raises -> Self:
-        """Returns the cosine of the BigDecimal number."""
+        """Returns the cosine of the BigDecimal number.
+
+        Args:
+            precision: The number of significant digits for the result.
+
+        Returns:
+            The cosine of this value.
+        """
         return decimo.bigdecimal.trigonometric.cos(self, precision)
 
     @always_inline
     def tan(self, precision: Int = PRECISION) raises -> Self:
-        """Returns the tangent of the BigDecimal number."""
+        """Returns the tangent of the BigDecimal number.
+
+        Args:
+            precision: The number of significant digits for the result.
+
+        Returns:
+            The tangent of this value.
+        """
         return decimo.bigdecimal.trigonometric.tan(self, precision)
 
     @always_inline
     def cot(self, precision: Int = PRECISION) raises -> Self:
-        """Returns the cotangent of the BigDecimal number."""
+        """Returns the cotangent of the BigDecimal number.
+
+        Args:
+            precision: The number of significant digits for the result.
+
+        Returns:
+            The cotangent of this value.
+        """
         return decimo.bigdecimal.trigonometric.cot(self, precision)
 
     @always_inline
     def csc(self, precision: Int = PRECISION) raises -> Self:
-        """Returns the cosecant of the BigDecimal number."""
+        """Returns the cosecant of the BigDecimal number.
+
+        Args:
+            precision: The number of significant digits for the result.
+
+        Returns:
+            The cosecant of this value.
+        """
         return decimo.bigdecimal.trigonometric.csc(self, precision)
 
     @always_inline
     def sec(self, precision: Int = PRECISION) raises -> Self:
-        """Returns the secant of the BigDecimal number."""
+        """Returns the secant of the BigDecimal number.
+
+        Args:
+            precision: The number of significant digits for the result.
+
+        Returns:
+            The secant of this value.
+        """
         return decimo.bigdecimal.trigonometric.sec(self, precision)
 
     @always_inline
     def arctan(self, precision: Int = PRECISION) raises -> Self:
-        """Returns the arctangent of the BigDecimal number."""
+        """Returns the arctangent of the BigDecimal number.
+
+        Args:
+            precision: The number of significant digits for the result.
+
+        Returns:
+            The arctangent of this value in radians.
+        """
         return decimo.bigdecimal.trigonometric.arctan(self, precision)
 
     # === Arithmetic operations === #
@@ -1215,6 +1683,13 @@ struct BigDecimal(
     ) raises -> Self:
         """Returns the result of true division of two BigDecimal numbers.
         See `arithmetics.true_divide()` for more information.
+
+        Args:
+            other: The divisor.
+            precision: The number of significant digits for the result.
+
+        Returns:
+            The quotient of the division.
         """
         return decimo.bigdecimal.arithmetics.true_divide(self, other, precision)
 
@@ -1224,6 +1699,13 @@ struct BigDecimal(
     ) raises -> Self:
         """Returns the result of true division with inexact precision.
         See `arithmetics.true_divide_inexact()` for more information.
+
+        Args:
+            other: The divisor.
+            number_of_significant_digits: The number of significant digits for the result.
+
+        Returns:
+            The quotient of the division with the specified significant digits.
         """
         return decimo.bigdecimal.arithmetics.true_divide_inexact(
             self, other, number_of_significant_digits
@@ -1235,6 +1717,13 @@ struct BigDecimal(
     ) raises -> Self:
         """Returns the result of division by a small UInt32 integer.
         See `arithmetics.true_divide_inexact_by_uint32()` for more information.
+
+        Args:
+            y: The small unsigned integer divisor.
+            number_of_significant_digits: The number of significant digits for the result.
+
+        Returns:
+            The quotient of dividing this value by the given `UInt32`.
         """
         return decimo.bigdecimal.arithmetics.true_divide_inexact_by_uint32(
             self, y, number_of_significant_digits
@@ -1244,6 +1733,12 @@ struct BigDecimal(
     def truncate_divide(self, other: Self) raises -> Self:
         """Returns the result of truncating division of two BigDecimal numbers.
         See `arithmetics.truncate_divide()` for more information.
+
+        Args:
+            other: The divisor.
+
+        Returns:
+            The integer quotient, truncated toward zero.
         """
         return decimo.bigdecimal.arithmetics.truncate_divide(self, other)
 
@@ -1274,6 +1769,9 @@ struct BigDecimal(
                 round(123.456, -2) -> 1E+2
                 round(123.456, -3) -> 0E+3
                 round(678.890, -3) -> 1E+3
+
+        Returns:
+            A new `BigDecimal` rounded to the specified decimal places.
         """
         return decimo.bigdecimal.rounding.round(self, ndigits, rounding_mode)
 
@@ -1294,6 +1792,12 @@ struct BigDecimal(
         specific number of decimal places, use `round()` instead.
 
         See `rounding.round_to_precision()` for more information.
+
+        Args:
+            precision: The number of significant digits to round to.
+            rounding_mode: The rounding strategy to use.
+            remove_extra_digit_due_to_rounding: Whether to remove an extra leading digit caused by rounding up.
+            fill_zeros_to_precision: Whether to pad with trailing zeros to reach the target precision.
         """
         decimo.bigdecimal.rounding.round_to_precision(
             self,
@@ -1405,6 +1909,9 @@ struct BigDecimal(
         BigDecimal("1").adjusted()        # 0   (1E0)
         BigDecimal("0.00").adjusted()     # 0   (zero has no order of magnitude)
         ```
+
+        Returns:
+            The adjusted exponent of this number.
         """
         if self.coefficient.is_zero():
             return 0
@@ -1463,6 +1970,9 @@ struct BigDecimal(
 
         Equivalent to `abs(self)`. Matches Python's
         `decimal.Decimal.copy_abs()`.
+
+        Returns:
+            A copy of this number with positive sign.
         """
         return self.__abs__()
 
@@ -1472,6 +1982,9 @@ struct BigDecimal(
 
         Equivalent to `-self`. Matches Python's
         `decimal.Decimal.copy_negate()`.
+
+        Returns:
+            A copy of this number with the opposite sign.
         """
         return self.__neg__()
 
@@ -1483,6 +1996,9 @@ struct BigDecimal(
 
         Args:
             other: The BigDecimal whose sign to copy.
+
+        Returns:
+            A copy of this number with the sign taken from `other`.
         """
         return Self(
             coefficient=self.coefficient,
@@ -1508,6 +2024,9 @@ struct BigDecimal(
         BigDecimal("1.2").same_quantum(BigDecimal("4.56"))    # False (scale 1 vs 2)
         BigDecimal("100").same_quantum(BigDecimal("1"))       # True  (both scale=0)
         ```
+
+        Returns:
+            True if both values have the same scale, False otherwise.
         """
         return self.scale == other.scale
 
@@ -1622,7 +2141,11 @@ struct BigDecimal(
         self.scale += precision_diff
 
     def internal_representation(self) -> String:
-        """Returns the internal representation of the BigDecimal as a String."""
+        """Returns the internal representation of the BigDecimal as a String.
+
+        Returns:
+            A formatted string showing the coefficient, scale, sign, and words.
+        """
         # Collect all labels to find max width
         var fixed_labels = List[String]()
         fixed_labels.append("number:")
@@ -1717,7 +2240,11 @@ struct BigDecimal(
         )
 
     def is_integer(self) -> Bool:
-        """Returns True if this number represents an integer value."""
+        """Returns True if this number represents an integer value.
+
+        Returns:
+            True if there is no fractional part, False otherwise.
+        """
         var number_of_trailing_zeros = self.number_of_trailing_zeros()
         if number_of_trailing_zeros >= self.scale:
             return True
@@ -1726,16 +2253,28 @@ struct BigDecimal(
 
     @always_inline
     def is_negative(self) -> Bool:
-        """Returns True if this number represents a negative value."""
+        """Returns True if this number represents a negative value.
+
+        Returns:
+            True if negative, False otherwise.
+        """
         return self.sign
 
     @always_inline
     def is_positive(self) -> Bool:
-        """Returns True if this number represents a strictly positive value."""
+        """Returns True if this number represents a strictly positive value.
+
+        Returns:
+            True if strictly positive, False otherwise.
+        """
         return not self.sign and not self.coefficient.is_zero()
 
     def is_odd(self) raises -> Bool:
-        """Returns True if this number represents an odd value."""
+        """Returns True if this number represents an odd value.
+
+        Returns:
+            True if the integer part is odd, False otherwise.
+        """
         if self.scale < 0:
             return False
 
@@ -1746,7 +2285,11 @@ struct BigDecimal(
             return True
 
     def is_one(self) raises -> Bool:
-        """Returns True if this number represents one."""
+        """Returns True if this number represents one.
+
+        Returns:
+            True if the value equals 1, False otherwise.
+        """
         if self.sign:
             return False
         if self.scale < 0:
@@ -1762,7 +2305,11 @@ struct BigDecimal(
 
     @always_inline
     def is_zero(self) -> Bool:
-        """Returns True if this number represents zero."""
+        """Returns True if this number represents zero.
+
+        Returns:
+            True if the value equals 0, False otherwise.
+        """
         return self.coefficient.is_zero()
 
     def normalize(self) raises -> Self:
@@ -1778,6 +2325,9 @@ struct BigDecimal(
         The information conveyed by trailing zeros in the coefficient may be
         useful for some applications, as it indicates the precision of the
         number. Normalization may cause loss of this information.
+
+        Returns:
+            A new `BigDecimal` with trailing zeros removed.
         """
         if self.coefficient.is_zero():
             return Self(BigUInt(raw_words=[0]), 0, False)
@@ -1820,7 +2370,11 @@ struct BigDecimal(
         )
 
     def number_of_trailing_zeros(self) -> Int:
-        """Returns the number of trailing zeros in the coefficient."""
+        """Returns the number of trailing zeros in the coefficient.
+
+        Returns:
+            The count of trailing zero digits.
+        """
         if self.coefficient.is_zero():
             return 0
 
@@ -1853,6 +2407,9 @@ struct BigDecimal(
         BigDecimal("100.00").number_of_digits()    # 5  (trailing zeros in fractional part)
         BigDecimal("100").number_of_digits()       # 3
         ```
+
+        Returns:
+            The total count of decimal digits in the coefficient.
         """
         return self.coefficient.number_of_digits()
 

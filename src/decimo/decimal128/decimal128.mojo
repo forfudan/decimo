@@ -102,10 +102,15 @@ struct Decimal128(
 
     # Constants
     comptime MAX_SCALE: Int = 28
+    """The maximum scale (exponent) value for `Decimal128` (28)."""
     comptime MAX_AS_UINT128 = UInt128(79228162514264337593543950335)
+    """The maximum coefficient value as `UInt128`."""
     comptime MAX_AS_INT128 = Int128(79228162514264337593543950335)
+    """The maximum coefficient value as `Int128`."""
     comptime MAX_AS_UINT256 = UInt256(79228162514264337593543950335)
+    """The maximum coefficient value as `UInt256`."""
     comptime MAX_AS_INT256 = Int256(79228162514264337593543950335)
+    """The maximum coefficient value as `Int256`."""
     comptime MAX_AS_STRING = String("79228162514264337593543950335")
     """Maximum value as a string."""
     comptime MAX_NUM_DIGITS = 29
@@ -132,6 +137,9 @@ struct Decimal128(
     def INFINITY() -> Self:
         """Returns a Decimal representing positive infinity.
         Internal representation: `0b0000_0000_0000_0000_0000_0000_0001`.
+
+        Returns:
+            A `Decimal128` representing positive infinity.
         """
         return Self(0, 0, 0, 0x00000001)
 
@@ -140,6 +148,9 @@ struct Decimal128(
     def NEGATIVE_INFINITY() -> Self:
         """Returns a Decimal128 representing negative infinity.
         Internal representation: `0b1000_0000_0000_0000_0000_0000_0001`.
+
+        Returns:
+            A `Decimal128` representing negative infinity.
         """
         return Self(0, 0, 0, 0x80000001)
 
@@ -148,6 +159,9 @@ struct Decimal128(
     def NAN() -> Self:
         """Returns a Decimal128 representing Not a Number (NaN).
         Internal representation: `0b0000_0000_0000_0000_0000_0000_0010`.
+
+        Returns:
+            A `Decimal128` representing NaN.
         """
         return Self(0, 0, 0, 0x00000010)
 
@@ -156,19 +170,30 @@ struct Decimal128(
     def NEGATIVE_NAN() -> Self:
         """Returns a Decimal128 representing negative Not a Number.
         Internal representation: `0b1000_0000_0000_0000_0000_0000_0010`.
+
+        Returns:
+            A `Decimal128` representing negative NaN.
         """
         return Self(0, 0, 0, 0x80000010)
 
     @always_inline
     @staticmethod
     def ZERO() -> Decimal128:
-        """Returns a Decimal128 representing 0."""
+        """Returns a Decimal128 representing 0.
+
+        Returns:
+            A `Decimal128` representing zero.
+        """
         return Self(0, 0, 0, 0)
 
     @always_inline
     @staticmethod
     def ONE() -> Decimal128:
-        """Returns a Decimal128 representing 1."""
+        """Returns a Decimal128 representing 1.
+
+        Returns:
+            A `Decimal128` representing one.
+        """
         return Self(1, 0, 0, 0)
 
     @always_inline
@@ -177,6 +202,9 @@ struct Decimal128(
         """
         Returns the maximum possible Decimal128 value.
         This is equivalent to 79228162514264337593543950335.
+
+        Returns:
+            The maximum `Decimal128` value.
         """
         return Self(0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0)
 
@@ -185,19 +213,30 @@ struct Decimal128(
     def MIN() -> Decimal128:
         """Returns the minimum possible Decimal128 value (negative of MAX).
         This is equivalent to -79228162514264337593543950335.
+
+        Returns:
+            The minimum `Decimal128` value.
         """
         return Self(0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, Decimal128.SIGN_MASK)
 
     @always_inline
     @staticmethod
     def PI() -> Decimal128:
-        """Returns the value of pi (π) as a Decimal128."""
+        """Returns the value of pi (π) as a Decimal128.
+
+        Returns:
+            The value of pi (π).
+        """
         return decimo.decimal128.constants.PI()
 
     @always_inline
     @staticmethod
     def E() -> Decimal128:
-        """Returns the value of Euler's number (e) as a Decimal128."""
+        """Returns the value of Euler's number (e) as a Decimal128.
+
+        Returns:
+            The value of Euler's number (e).
+        """
         return decimo.decimal128.constants.E()
 
     # ===------------------------------------------------------------------=== #
@@ -217,6 +256,12 @@ struct Decimal128(
         """Initializes a Decimal128 with four raw words of internal representation.
         ***WARNING***: This method does not check the flags.
         If you are not sure about the flags, use `Decimal128.from_words()` instead.
+
+        Args:
+            low: The least significant 32 bits of the coefficient.
+            mid: The middle 32 bits of the coefficient.
+            high: The most significant 32 bits of the coefficient.
+            flags: The raw flags word containing scale and sign.
         """
 
         self.low = low
@@ -234,6 +279,13 @@ struct Decimal128(
     ) raises:
         """Initializes a Decimal128 with five components.
         See `Decimal128.from_components()` for more information.
+
+        Args:
+            low: The least significant 32 bits of the coefficient.
+            mid: The middle 32 bits of the coefficient.
+            high: The most significant 32 bits of the coefficient.
+            scale: The number of decimal places (0-28).
+            sign: `True` if the number is negative, `False` otherwise.
         """
 
         try:
@@ -246,12 +298,19 @@ struct Decimal128(
     def __init__(out self, value: Int):
         """Initializes a Decimal128 from an integer.
         See `from_int()` for more information.
+
+        Args:
+            value: The integer value to convert.
         """
         self = Decimal128.from_int(value)
 
     def __init__(out self, value: Int, scale: UInt32) raises:
         """Initializes a Decimal128 from an integer.
         See `from_int()` for more information.
+
+        Args:
+            value: The integer value to convert.
+            scale: The number of decimal places (0-28).
         """
         try:
             self = Decimal128.from_int(value, scale)
@@ -261,6 +320,9 @@ struct Decimal128(
     def __init__(out self, value: String) raises:
         """Initializes a Decimal128 from a string representation.
         See `from_string()` for more information.
+
+        Args:
+            value: The string representation of the decimal number.
         """
         try:
             self = Decimal128.from_string(value)
@@ -270,6 +332,9 @@ struct Decimal128(
     def __init__(out self, value: Float64) raises:
         """Initializes a Decimal128 from a floating-point value.
         See `from_float` for more information.
+
+        Args:
+            value: The floating-point value to convert.
         """
 
         try:
@@ -883,12 +948,20 @@ struct Decimal128(
 
     @always_inline
     def copy(self) -> Self:
-        """Returns a copy of the Decimal128."""
+        """Returns a copy of the Decimal128.
+
+        Returns:
+            A copy of this `Decimal128`.
+        """
         return Self(self.low, self.mid, self.high, self.flags)
 
     @always_inline
     def clone(self) -> Self:
-        """Returns a copy of the Decimal128."""
+        """Returns a copy of the Decimal128.
+
+        Returns:
+            A copy of this `Decimal128`.
+        """
         return Self(self.low, self.mid, self.high, self.flags)
 
     # ===------------------------------------------------------------------=== #
@@ -911,11 +984,21 @@ struct Decimal128(
     def __int__(self) raises -> Int:
         """Returns the integral part of the Decimal128 as Int.
         See `to_int()` for more information.
+
+        Returns:
+            The `Int` representation.
         """
         return self.to_int()
 
     def write_repr_to[W: Writer](self, mut writer: W):
-        """Writes the debug representation to a writer."""
+        """Writes the debug representation to a writer.
+
+        Parameters:
+            W: A type conforming to the `Writer` interface.
+
+        Args:
+            writer: The writer instance.
+        """
         writer.write('Decimal128("', self.to_str(), '")')
 
     # ===------------------------------------------------------------------=== #
@@ -925,12 +1008,21 @@ struct Decimal128(
     def write_to[W: Writer](self, mut writer: W):
         """Writes the Decimal128 to a writer.
         This implement the `write` method of the `Writer` trait.
+
+        Parameters:
+            W: A type conforming to the `Writer` interface.
+
+        Args:
+            writer: The writer instance.
         """
         writer.write(self.to_str())
 
     def repr_words(self) -> String:
         """Returns a string representation of the Decimal128's internal words.
         `Decimal128.from_words(low, mid, high, flags)`.
+
+        Returns:
+            A string in the format `Decimal128(low, mid, high, flags)`.
         """
         return (
             "Decimal128("
@@ -947,6 +1039,9 @@ struct Decimal128(
     def repr_components(self) -> String:
         """Returns a string representation of the Decimal128's five components.
         `Decimal128.from_components(low, mid, high, scale, sign)`.
+
+        Returns:
+            A string in the format `Decimal128(low=, mid=, high=, scale=, sign=)`.
         """
         var scale = UInt8((self.flags & Self.SCALE_MASK) >> Self.SCALE_SHIFT)
         var sign = Bool((self.flags & Self.SIGN_MASK) == Self.SIGN_MASK)
@@ -1000,14 +1095,22 @@ struct Decimal128(
         return Int64(result & 0xFFFF_FFFF_FFFF_FFFF)
 
     def to_int128(self) -> Int128:
-        """Returns the signed integral part of the Decimal128."""
+        """Returns the signed integral part of the Decimal128.
+
+        Returns:
+            The signed integral part as `Int128`.
+        """
 
         var res = Int128(self.to_uint128())
 
         return -res if self.is_negative() else res
 
     def to_uint128(self) -> UInt128:
-        """Returns the absolute integral part of the Decimal128 as UInt128."""
+        """Returns the absolute integral part of the Decimal128 as UInt128.
+
+        Returns:
+            The absolute integral part as `UInt128`.
+        """
         var res: UInt128
 
         if self.is_zero():
@@ -1031,6 +1134,9 @@ struct Decimal128(
     def to_str(self) -> String:
         """Returns string representation of the Decimal128.
         Preserves trailing zeros after decimal128 point to match the scale.
+
+        Returns:
+            The string representation of this `Decimal128`.
         """
         # Get the coefficient as a string (absolute value)
         var coef = String(self.coefficient())
@@ -1144,6 +1250,9 @@ struct Decimal128(
     def __abs__(self) -> Self:
         """Returns the absolute value of this Decimal128.
         See `absolute()` for more information.
+
+        Returns:
+            The absolute value.
         """
         return decimo.decimal128.arithmetics.absolute(self)
 
@@ -1151,6 +1260,9 @@ struct Decimal128(
     def __neg__(self) -> Self:
         """Returns the negation of this Decimal128.
         See `negative()` for more information.
+
+        Returns:
+            The negated value.
         """
         return decimo.decimal128.arithmetics.negative(self)
 
@@ -1162,62 +1274,170 @@ struct Decimal128(
 
     @always_inline
     def __add__(self, other: Self) raises -> Self:
+        """Adds two values.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The sum.
+        """
         return decimo.decimal128.arithmetics.add(self, other)
 
     @always_inline
     def __add__(self, other: Int) raises -> Self:
+        """Adds two values.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The sum.
+        """
         return decimo.decimal128.arithmetics.add(self, Self(other))
 
     @always_inline
     def __sub__(self, other: Self) raises -> Self:
+        """Subtracts two values.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The difference.
+        """
         return decimo.decimal128.arithmetics.subtract(self, other)
 
     @always_inline
     def __sub__(self, other: Int) raises -> Self:
+        """Subtracts two values.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The difference.
+        """
         return decimo.decimal128.arithmetics.subtract(self, Self(other))
 
     @always_inline
     def __mul__(self, other: Self) raises -> Self:
+        """Multiplies two values.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The product.
+        """
         return decimo.decimal128.arithmetics.multiply(self, other)
 
     @always_inline
     def __mul__(self, other: Int) raises -> Self:
+        """Multiplies two values.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The product.
+        """
         return decimo.decimal128.arithmetics.multiply(self, Self(other))
 
     @always_inline
     def __truediv__(self, other: Self) raises -> Self:
+        """Divides two values using true division.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The quotient.
+        """
         return decimo.decimal128.arithmetics.divide(self, other)
 
     @always_inline
     def __truediv__(self, other: Int) raises -> Self:
+        """Divides two values using true division.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The quotient.
+        """
         return decimo.decimal128.arithmetics.divide(self, Self(other))
 
     @always_inline
     def __floordiv__(self, other: Self) raises -> Self:
-        """Performs truncate division with // operator."""
+        """Performs truncate division with // operator.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The truncated quotient.
+        """
         return decimo.decimal128.arithmetics.truncate_divide(self, other)
 
     @always_inline
     def __floordiv__(self, other: Int) raises -> Self:
-        """Performs truncate division with // operator."""
+        """Performs truncate division with // operator.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The truncated quotient.
+        """
         return decimo.decimal128.arithmetics.truncate_divide(self, Self(other))
 
     @always_inline
     def __mod__(self, other: Self) raises -> Self:
-        """Performs truncate modulo."""
+        """Performs truncate modulo.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The remainder.
+        """
         return decimo.decimal128.arithmetics.modulo(self, other)
 
     @always_inline
     def __mod__(self, other: Int) raises -> Self:
-        """Performs truncate modulo."""
+        """Performs truncate modulo.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The remainder.
+        """
         return decimo.decimal128.arithmetics.modulo(self, Self(other))
 
     @always_inline
     def __pow__(self, exponent: Self) raises -> Self:
+        """Raises to a power.
+
+        Args:
+            exponent: The exponent to raise to.
+
+        Returns:
+            The value raised to the given power.
+        """
         return decimo.decimal128.exponential.power(self, exponent)
 
     @always_inline
     def __pow__(self, exponent: Int) raises -> Self:
+        """Raises to a power.
+
+        Args:
+            exponent: The exponent to raise to.
+
+        Returns:
+            The value raised to the given power.
+        """
         return decimo.decimal128.exponential.power(self, exponent)
 
     # ===------------------------------------------------------------------=== #
@@ -1229,28 +1449,74 @@ struct Decimal128(
 
     @always_inline
     def __radd__(self, other: Int) raises -> Self:
+        """Adds two values (reflected).
+
+        Args:
+            other: The left-hand side operand.
+
+        Returns:
+            The sum.
+        """
         return decimo.decimal128.arithmetics.add(Self(other), self)
 
     @always_inline
     def __rsub__(self, other: Int) raises -> Self:
+        """Subtracts two values (reflected).
+
+        Args:
+            other: The left-hand side operand.
+
+        Returns:
+            The difference.
+        """
         return decimo.decimal128.arithmetics.subtract(Self(other), self)
 
     @always_inline
     def __rmul__(self, other: Int) raises -> Self:
+        """Multiplies two values (reflected).
+
+        Args:
+            other: The left-hand side operand.
+
+        Returns:
+            The product.
+        """
         return decimo.decimal128.arithmetics.multiply(Self(other), self)
 
     @always_inline
     def __rtruediv__(self, other: Int) raises -> Self:
+        """Divides two values using true division (reflected).
+
+        Args:
+            other: The left-hand side operand.
+
+        Returns:
+            The quotient.
+        """
         return decimo.decimal128.arithmetics.divide(Self(other), self)
 
     @always_inline
     def __rfloordiv__(self, other: Int) raises -> Self:
-        """Performs truncate division with // operator."""
+        """Performs truncate division with // operator (reflected).
+
+        Args:
+            other: The left-hand side operand.
+
+        Returns:
+            The truncated quotient.
+        """
         return decimo.decimal128.arithmetics.truncate_divide(Self(other), self)
 
     @always_inline
     def __rmod__(self, other: Int) raises -> Self:
-        """Performs truncate modulo."""
+        """Performs truncate modulo (reflected).
+
+        Args:
+            other: The left-hand side operand.
+
+        Returns:
+            The remainder.
+        """
         return decimo.decimal128.arithmetics.modulo(Self(other), self)
 
     # ===------------------------------------------------------------------=== #
@@ -1262,49 +1528,101 @@ struct Decimal128(
 
     @always_inline
     def __iadd__(mut self, other: Self) raises:
+        """Adds in place.
+
+        Args:
+            other: The right-hand side operand.
+        """
         self = decimo.decimal128.arithmetics.add(self, other)
 
     @always_inline
     def __iadd__(mut self, other: Int) raises:
+        """Adds in place.
+
+        Args:
+            other: The right-hand side operand.
+        """
         self = decimo.decimal128.arithmetics.add(self, Self(other))
 
     @always_inline
     def __isub__(mut self, other: Self) raises:
+        """Subtracts in place.
+
+        Args:
+            other: The right-hand side operand.
+        """
         self = decimo.decimal128.arithmetics.subtract(self, other)
 
     @always_inline
     def __isub__(mut self, other: Int) raises:
+        """Subtracts in place.
+
+        Args:
+            other: The right-hand side operand.
+        """
         self = decimo.decimal128.arithmetics.subtract(self, Self(other))
 
     @always_inline
     def __imul__(mut self, other: Self) raises:
+        """Multiplies in place.
+
+        Args:
+            other: The right-hand side operand.
+        """
         self = decimo.decimal128.arithmetics.multiply(self, other)
 
     @always_inline
     def __imul__(mut self, other: Int) raises:
+        """Multiplies in place.
+
+        Args:
+            other: The right-hand side operand.
+        """
         self = decimo.decimal128.arithmetics.multiply(self, Self(other))
 
     @always_inline
     def __itruediv__(mut self, other: Self) raises:
+        """Divides in place using true division.
+
+        Args:
+            other: The right-hand side operand.
+        """
         self = decimo.decimal128.arithmetics.divide(self, other)
 
     @always_inline
     def __itruediv__(mut self, other: Int) raises:
+        """Divides in place using true division.
+
+        Args:
+            other: The right-hand side operand.
+        """
         self = decimo.decimal128.arithmetics.divide(self, Self(other))
 
     @always_inline
     def __ifloordiv__(mut self, other: Self) raises:
-        """Performs truncate division with // operator."""
+        """Performs truncate division with // operator.
+
+        Args:
+            other: The right-hand side operand.
+        """
         self = decimo.decimal128.arithmetics.truncate_divide(self, other)
 
     @always_inline
     def __ifloordiv__(mut self, other: Int) raises:
-        """Performs truncate division with // operator."""
+        """Performs truncate division with // operator.
+
+        Args:
+            other: The right-hand side operand.
+        """
         self = decimo.decimal128.arithmetics.truncate_divide(self, Self(other))
 
     @always_inline
     def __imod__(mut self, other: Self) raises:
-        """Performs truncate modulo."""
+        """Performs truncate modulo.
+
+        Args:
+            other: The right-hand side operand.
+        """
         self = decimo.decimal128.arithmetics.modulo(self, other)
 
     # ===------------------------------------------------------------------=== #
@@ -1316,6 +1634,12 @@ struct Decimal128(
     def __gt__(self, other: Decimal128) -> Bool:
         """Greater than comparison operator.
         See `greater()` for more information.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if this value is greater than `other`, `False` otherwise.
         """
         return decimo.decimal128.comparison.greater(self, other)
 
@@ -1323,6 +1647,12 @@ struct Decimal128(
     def __lt__(self, other: Decimal128) -> Bool:
         """Less than comparison operator.
         See `less()` for more information.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if this value is less than `other`, `False` otherwise.
         """
         return decimo.decimal128.comparison.less(self, other)
 
@@ -1330,6 +1660,12 @@ struct Decimal128(
     def __ge__(self, other: Decimal128) -> Bool:
         """Greater than or equal comparison operator.
         See `greater_equal()` for more information.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if this value is greater than or equal to `other`, `False` otherwise.
         """
         return decimo.decimal128.comparison.greater_equal(self, other)
 
@@ -1337,6 +1673,12 @@ struct Decimal128(
     def __le__(self, other: Decimal128) -> Bool:
         """Less than or equal comparison operator.
         See `less_equal()` for more information.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if this value is less than or equal to `other`, `False` otherwise.
         """
         return decimo.decimal128.comparison.less_equal(self, other)
 
@@ -1344,6 +1686,12 @@ struct Decimal128(
     def __eq__(self, other: Decimal128) -> Bool:
         """Equality comparison operator.
         See `equal()` for more information.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if the values are equal, `False` otherwise.
         """
         return decimo.decimal128.comparison.equal(self, other)
 
@@ -1351,6 +1699,12 @@ struct Decimal128(
     def __ne__(self, other: Decimal128) -> Bool:
         """Inequality comparison operator.
         See `not_equal()` for more information.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if the values are not equal, `False` otherwise.
         """
         return decimo.decimal128.comparison.not_equal(self, other)
 
@@ -1367,6 +1721,12 @@ struct Decimal128(
 
         raises:
             Error: Calling `round()` failed.
+
+        Args:
+            ndigits: The number of decimal places to round to.
+
+        Returns:
+            The rounded `Decimal128` value.
         """
         try:
             return decimo.decimal128.rounding.round(
@@ -1379,7 +1739,11 @@ struct Decimal128(
 
     @always_inline
     def __round__(self) -> Self:
-        """**OVERLOAD**."""
+        """**OVERLOAD**.
+
+        Returns:
+            The `Decimal128` rounded to 0 decimal places.
+        """
         try:
             return decimo.decimal128.rounding.round(
                 self, ndigits=0, rounding_mode=RoundingMode.half_even()
@@ -1403,6 +1767,13 @@ struct Decimal128(
         (1) Allows specifying the rounding mode.
         (2) Raises an error if the operation would result in overflow.
         See `round()` for more information.
+
+        Args:
+            ndigits: The number of decimal places to round to.
+            rounding_mode: The rounding mode to apply.
+
+        Returns:
+            The rounded `Decimal128` value.
         """
         return decimo.decimal128.rounding.round(
             self, ndigits=ndigits, rounding_mode=rounding_mode
@@ -1416,6 +1787,13 @@ struct Decimal128(
     ) raises -> Self:
         """Quantizes this Decimal128 to the specified exponent.
         See `quantize()` for more information.
+
+        Args:
+            exp: A `Decimal128` whose scale determines the target precision.
+            rounding_mode: The rounding mode to apply.
+
+        Returns:
+            The quantized `Decimal128` value.
         """
         return decimo.decimal128.rounding.quantize(self, exp, rounding_mode)
 
@@ -1423,6 +1801,9 @@ struct Decimal128(
     def exp(self) raises -> Self:
         """Calculates the exponential of this Decimal128.
         See `exp()` for more information.
+
+        Returns:
+            The value of e raised to this power.
         """
         return decimo.decimal128.exponential.exp(self)
 
@@ -1430,33 +1811,67 @@ struct Decimal128(
     def ln(self) raises -> Self:
         """Calculates the natural logarithm of this Decimal128.
         See `ln()` for more information.
+
+        Returns:
+            The natural logarithm of this value.
         """
         return decimo.decimal128.exponential.ln(self)
 
     @always_inline
     def log10(self) raises -> Decimal128:
-        """Computes the base-10 logarithm of this Decimal128."""
+        """Computes the base-10 logarithm of this Decimal128.
+
+        Returns:
+            The base-10 logarithm of this value.
+        """
         return decimo.decimal128.exponential.log10(self)
 
     @always_inline
     def log(self, base: Decimal128) raises -> Decimal128:
-        """Computes the logarithm of this Decimal128 with an arbitrary base."""
+        """Computes the logarithm of this Decimal128 with an arbitrary base.
+
+        Args:
+            base: The logarithm base.
+
+        Returns:
+            The logarithm of this value in the given base.
+        """
         return decimo.decimal128.exponential.log(self, base)
 
     @always_inline
     def power(self, exponent: Int) raises -> Decimal128:
-        """Raises this Decimal128 to the power of an integer."""
+        """Raises this Decimal128 to the power of an integer.
+
+        Args:
+            exponent: The integer exponent to raise to.
+
+        Returns:
+            The value raised to the given power.
+        """
         return decimo.decimal128.exponential.power(self, Self(exponent))
 
     @always_inline
     def power(self, exponent: Decimal128) raises -> Decimal128:
-        """Raises this Decimal128 to the power of another Decimal128."""
+        """Raises this Decimal128 to the power of another Decimal128.
+
+        Args:
+            exponent: The `Decimal128` exponent to raise to.
+
+        Returns:
+            The value raised to the given power.
+        """
         return decimo.decimal128.exponential.power(self, exponent)
 
     @always_inline
     def root(self, n: Int) raises -> Self:
         """Calculates the n-th root of this Decimal128.
         See `root()` for more information.
+
+        Args:
+            n: The degree of the root to compute.
+
+        Returns:
+            The n-th root of this value.
         """
         return decimo.decimal128.exponential.root(self, n)
 
@@ -1464,6 +1879,9 @@ struct Decimal128(
     def sqrt(self) raises -> Self:
         """Calculates the square root of this Decimal128.
         See `sqrt()` for more information.
+
+        Returns:
+            The square root of this value.
         """
         return decimo.decimal128.exponential.sqrt(self)
 
@@ -1577,7 +1995,11 @@ struct Decimal128(
         return result
 
     def internal_representation(self) -> String:
-        """Returns the internal representation details as a String."""
+        """Returns the internal representation details as a String.
+
+        Returns:
+            A formatted string showing all internal fields.
+        """
         # All labels
         var labels = List[String]()
         labels.append("Decimal128:")
@@ -1656,7 +2078,11 @@ struct Decimal128(
 
     @always_inline
     def is_negative(self) -> Bool:
-        """Returns True if this Decimal128 is negative."""
+        """Returns True if this Decimal128 is negative.
+
+        Returns:
+            `True` if negative, `False` otherwise.
+        """
         return (self.flags & Self.SIGN_MASK) != 0
 
     @always_inline
@@ -1664,6 +2090,9 @@ struct Decimal128(
         """Returns True if this Decimal128 represents the value 1.
         If 10^scale == coefficient, then it's one.
         `1` and `1.00` are considered ones.
+
+        Returns:
+            `True` if this value equals 1, `False` otherwise.
         """
         if self.is_negative():
             return False
@@ -1684,22 +2113,36 @@ struct Decimal128(
         """Returns True if this Decimal128 represents zero.
         A decimal128 is zero when all coefficient parts (low, mid, high) are zero,
         regardless of its sign or scale.
+
+        Returns:
+            `True` if this value is zero, `False` otherwise.
         """
         return self.low == 0 and self.mid == 0 and self.high == 0
 
     @always_inline
     def is_infinity(self) -> Bool:
-        """Returns True if this Decimal128 is positive or negative infinity."""
+        """Returns True if this Decimal128 is positive or negative infinity.
+
+        Returns:
+            `True` if infinity, `False` otherwise.
+        """
         return (self.flags & Self.INFINITY_MASK) != 0
 
     @always_inline
     def is_nan(self) -> Bool:
-        """Returns True if this Decimal128 is NaN (Not a Number)."""
+        """Returns True if this Decimal128 is NaN (Not a Number).
+
+        Returns:
+            `True` if NaN, `False` otherwise.
+        """
         return (self.flags & Self.NAN_MASK) != 0
 
     @always_inline
     def scale(self) -> Int:
         """Returns the scale (number of decimal128 places) of this Decimal128.
+
+        Returns:
+            The scale as an `Int`.
         """
         return Int((self.flags & Self.SCALE_MASK) >> Self.SCALE_SHIFT)
 
