@@ -21,6 +21,34 @@ Implements error handling for Decimo.
 from std.pathlib.path import cwd
 import decimo.str
 
+
+# ===--- ANSI Color Codes ---=== #
+# Mimics Python/Rich traceback coloring style.
+
+comptime _RESET = "\033[0m"
+comptime _BOLD = "\033[1m"
+comptime _DIM = "\033[2m"
+comptime _UNDERLINE = "\033[4m"
+
+comptime _RED = "\033[31m"
+comptime _GREEN = "\033[32m"
+comptime _YELLOW = "\033[33m"
+comptime _BLUE = "\033[34m"
+comptime _MAGENTA = "\033[35m"
+comptime _CYAN = "\033[36m"
+comptime _WHITE = "\033[37m"
+
+# Semantic aliases for error formatting.
+comptime _ERROR_TYPE = _BOLD + _RED  # Error type name (e.g., ValueError)
+comptime _TRACEBACK = _DIM  # "Traceback (most recent call last)"
+comptime _FILE_KEYWORD = _DIM  # "File" keyword
+comptime _FILE_PATH = _CYAN  # File path
+comptime _LINE_NUMBER = _GREEN  # Line numbers
+comptime _FUNC_ARROW = _BOLD + _RED  # "---->" prefix
+comptime _FUNC_NAME = _BOLD + _YELLOW  # Function name
+comptime _MSG_TEXT = _WHITE  # Error message text
+comptime _SEPARATOR = _DIM  # Separator line
+
 comptime OverflowError = DecimoError[error_type="OverflowError"]
 """Type for overflow errors in Decimo.
 
@@ -148,12 +176,28 @@ struct DecimoError[error_type: String = "DecimoError"](Writable):
         Args:
             writer: The writer instance.
         """
+        # Separator line
         writer.write("\n")
+        writer.write(_SEPARATOR)
         writer.write(("-" * 80))
+        writer.write(_RESET)
         writer.write("\n")
+
+        # Error type (bold red) + Traceback header (dim)
+        writer.write(_ERROR_TYPE)
         writer.write(decimo.str.ljust(String(Self.error_type), 47, " "))
-        writer.write("Traceback (most recent call last)\n")
-        writer.write('File "')
+        writer.write(_RESET)
+        writer.write(_TRACEBACK)
+        writer.write("Traceback (most recent call last)")
+        writer.write(_RESET)
+        writer.write("\n")
+
+        # File path (cyan)
+        writer.write(_FILE_KEYWORD)
+        writer.write("File ")
+        writer.write(_RESET)
+        writer.write('"')
+        writer.write(_FILE_PATH)
         try:
             writer.write(String(cwd()))
         except e:
@@ -161,17 +205,33 @@ struct DecimoError[error_type: String = "DecimoError"](Writable):
         finally:
             writer.write("/")
         writer.write(self.file)
-        writer.write('"\n')
+        writer.write(_RESET)
+        writer.write('"')
+        writer.write("\n")
+
+        # Function name (bold yellow with red arrow)
+        writer.write(_FUNC_ARROW)
         writer.write("----> ")
+        writer.write(_RESET)
+        writer.write(_FUNC_NAME)
         writer.write(self.function)
+        writer.write(_RESET)
+
+        # Error message
         if self.message is None:
             writer.write("\n")
         else:
             writer.write("\n\n")
+            writer.write(_ERROR_TYPE)
             writer.write(Self.error_type)
+            writer.write(_RESET)
             writer.write(": ")
+            writer.write(_MSG_TEXT)
             writer.write(self.message.value())
+            writer.write(_RESET)
             writer.write("\n")
+
+        # Chained previous error
         if self.previous_error is not None:
             writer.write("\n")
             writer.write(self.previous_error.value())
