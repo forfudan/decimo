@@ -15,16 +15,16 @@ Scope: only 128-bit (or near-128-bit) fixed-precision, non-floating-point decima
 
 ### 1.1 Storage & Layout
 
-| Feature                | Decimo Decimal128    | C# System.Decimal    | Rust rust_decimal    | Arrow Decimal128           | Go govalues/decimal |
-| ---------------------- | -------------------- | -------------------- | -------------------- | -------------------------- | ------------------- |
-| Total bits             | 128                  | 128                  | 128                  | 128                        | 128 (bool+u64+int)  |
-| Coefficient storage    | 96-bit (3×UInt32 LE) | 96-bit (3×UInt32 LE) | 96-bit (3×UInt32 LE) | 128-bit signed two's compl | 64-bit unsigned     |
-| Max coefficient        | 2^96 − 1             | 2^96 − 1             | 2^96 − 1             | 10^38 − 1                  | 10^19 − 1           |
-| Bound type             | Binary               | Binary               | Binary               | Decimal                    | Decimal             |
-| Max significant digits | 29*                  | 29*                  | 29*                  | 38                         | 19                  |
-| Scale range            | 0–28                 | 0–28                 | 0–28                 | User-defined               | 0–19                |
-| Sign storage           | Bit 31 of flags      | Bit 31 of flags      | Bit 31 of flags      | Two's complement           | Bool field          |
-| Endianness             | Little-endian        | Little-endian        | Little-endian        | Platform-native            | N/A                 |
+| Feature                | Decimo Decimal128    | C# System.Decimal    | Rust rust_decimal    | Arrow Decimal128           | Go govalues/decimal             |
+| ---------------------- | -------------------- | -------------------- | -------------------- | -------------------------- | ------------------------------- |
+| Total bits             | 128                  | 128                  | 128                  | 128                        | ~128 (bool+uint64+int, may pad) |
+| Coefficient storage    | 96-bit (3×UInt32 LE) | 96-bit (3×UInt32 LE) | 96-bit (3×UInt32 LE) | 128-bit signed two's compl | 64-bit unsigned                 |
+| Max coefficient        | 2^96 − 1             | 2^96 − 1             | 2^96 − 1             | 10^38 − 1                  | 10^19 − 1                       |
+| Bound type             | Binary               | Binary               | Binary               | Decimal                    | Decimal                         |
+| Max significant digits | 29*                  | 29*                  | 29*                  | 38                         | 19                              |
+| Scale range            | 0–28                 | 0–28                 | 0–28                 | User-defined               | 0–19                            |
+| Sign storage           | Bit 31 of flags      | Bit 31 of flags      | Bit 31 of flags      | Two's complement           | Bool field                      |
+| Endianness             | Little-endian        | Little-endian        | Little-endian        | Platform-native            | N/A                             |
 
 \* 29 digits, but the leading digit can only be 0–7 (since 10^29 − 1 > 2^96 − 1). This is pretty dirty and difficult to handle. I think the current implmention is not the most optimized. Need to check and refine.
 
@@ -190,7 +190,7 @@ So `Decimal128.NAN().is_nan()` returns False.
 
 Bug B — `is_zero()` returns True for NaN and Infinity:
 
-```python
+```mojo
 fn is_zero(self) -> Bool:
     return self.low == 0 and self.mid == 0 and self.high == 0
 ```
@@ -209,7 +209,7 @@ Since no comparable 128-bit fixed-precision library supports NaN or Infinity (se
 
 File: `decimal128.mojo`, lines ~344, 351
 
-```python
+```mojo
 from testing import assert_true
 assert_true(scale <= Self.MAX_SCALE, ...)
 assert_true(coefficient <= Self.MAX_AS_UINT128, ...)
@@ -219,7 +219,7 @@ This imports the test framework into production code. `assert_true` panics with 
 
 Fix:
 
-```python
+```mojo
 if scale > Self.MAX_SCALE:
     raise Error("Error in Decimal128.from_words(): Scale must be <= 28, got " + str(scale))
 if coefficient > Self.MAX_AS_UINT128:
@@ -242,7 +242,7 @@ File: `comparison.mojo`
 
 When comparing fractional parts, the code computes:
 
-```python
+```mojo
 fractional_1 = UInt128(x1_frac_part) * UInt128(10) ** scale_diff
 ```
 
@@ -262,7 +262,7 @@ I should verify `is_one()` handles all representations of 1: `1` (coef=1, scale=
 
 File: `utility.mojo`
 
-```python
+```mojo
 fn number_of_bits(n: UInt128) -> Int:
     var count = 0
     var x = n
@@ -304,7 +304,7 @@ File: `exponential.mojo`
 
 The `ln()` function reduces input to [0.5, 2.0) by repeatedly dividing by 10, then by 2:
 
-```python
+```mojo
 while x_reduced > Decimal128(2, 0, 0, 0):
     x_reduced = decimo.decimal128.arithmetics.divide(x_reduced, Decimal128(2, 0, 0, 0))
     halving_count += 1
@@ -318,7 +318,7 @@ Fix: use the identity `ln(a × 10^n) = ln(a) + n × ln(10)` to strip the scale i
 
 File: `arithmetics.mojo`
 
-```python
+```mojo
 def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     return add(x1, negative(x2))
 ```
@@ -337,7 +337,7 @@ Fix: break early if the term is smaller than 10^(−29) — it cannot change the
 
 File: `decimal128.mojo`
 
-```python
+```mojo
 coef = coef * 10 + digit
 ```
 
@@ -349,7 +349,7 @@ Fix: batch up to 9 digits into a UInt64, then multiply `coef` by the appropriate
 
 File: `arithmetics.mojo`
 
-```python
+```mojo
 digit = rem // x2_coef
 rem = rem % x2_coef
 ```
