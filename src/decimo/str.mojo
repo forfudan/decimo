@@ -18,6 +18,8 @@
 
 from std.algorithm import vectorize
 
+from decimo.errors import ValueError
+
 
 def rjust(s: String, width: Int, fillchar: String = " ") -> String:
     """Right-justifies a string by padding with a fill character on the left.
@@ -124,7 +126,12 @@ def parse_numeric_string(
     var n = len(value_bytes)
 
     if n == 0:
-        raise Error("Error in `parse_numeric_string`: Empty string.")
+        raise Error(
+            ValueError(
+                message="Empty string.",
+                function="parse_numeric_string()",
+            )
+        )
 
     var ptr = value_bytes.unsafe_ptr()
 
@@ -188,9 +195,19 @@ def parse_numeric_string(
         elif c == 46:
             last_was_separator = False
             if in_exponent:
-                raise Error("Decimal point cannot appear in the exponent part.")
+                raise Error(
+                    ValueError(
+                        message=(
+                            "Decimal point cannot appear in the exponent part."
+                        ),
+                    )
+                )
             if decimal_point_pos != -1:
-                raise Error("Decimal point can only appear once.")
+                raise Error(
+                    ValueError(
+                        message="Decimal point can only appear once.",
+                    )
+                )
             decimal_point_pos = i
             sign_read = True
 
@@ -198,9 +215,17 @@ def parse_numeric_string(
         elif c == 101 or c == 69:
             last_was_separator = True
             if in_exponent:
-                raise Error("Exponential notation can only appear once.")
+                raise Error(
+                    ValueError(
+                        message="Exponential notation can only appear once.",
+                    )
+                )
             if total_mantissa_digits == 0:
-                raise Error("Exponential notation must follow a number.")
+                raise Error(
+                    ValueError(
+                        message="Exponential notation must follow a number.",
+                    )
+                )
             exponent_pos = i
             in_exponent = True
 
@@ -210,14 +235,23 @@ def parse_numeric_string(
             if in_exponent:
                 if exponent_sign_read:
                     raise Error(
-                        "Exponent sign can only appear once,"
-                        " before exponent digits."
+                        ValueError(
+                            message=(
+                                "Exponent sign can only appear once,"
+                                " before exponent digits."
+                            ),
+                        )
                     )
                 exponent_sign_read = True
             else:
                 if sign_read:
                     raise Error(
-                        "Minus sign can only appear once at the beginning."
+                        ValueError(
+                            message=(
+                                "Minus sign can only appear once at the"
+                                " beginning."
+                            ),
+                        )
                     )
                 sign = True
                 sign_read = True
@@ -228,29 +262,48 @@ def parse_numeric_string(
             if in_exponent:
                 if exponent_sign_read:
                     raise Error(
-                        "Exponent sign can only appear once,"
-                        " before exponent digits."
+                        ValueError(
+                            message=(
+                                "Exponent sign can only appear once,"
+                                " before exponent digits."
+                            ),
+                        )
                     )
                 exponent_sign_read = True
             else:
                 if sign_read:
                     raise Error(
-                        "Plus sign can only appear once at the beginning."
+                        ValueError(
+                            message=(
+                                "Plus sign can only appear once at the"
+                                " beginning."
+                            ),
+                        )
                     )
                 sign_read = True
 
         else:
             raise Error(
-                String(
-                    "Invalid character in the string of the number: {}"
-                ).format(chr(Int(c)))
+                ValueError(
+                    message=String(
+                        "Invalid character in the string of the number: {}"
+                    ).format(chr(Int(c))),
+                )
             )
 
     if last_was_separator:
-        raise Error("Unexpected end character in the string of the number.")
+        raise Error(
+            ValueError(
+                message="Unexpected end character in the string of the number.",
+            )
+        )
 
     if total_mantissa_digits == 0:
-        raise Error("No digits found in the string of the number.")
+        raise Error(
+            ValueError(
+                message="No digits found in the string of the number.",
+            )
+        )
 
     # ==================================================================
     # Parse exponent value (separate from pass 1 to keep the main loop

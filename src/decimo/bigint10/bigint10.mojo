@@ -30,7 +30,12 @@ import decimo.bigint10.arithmetics
 import decimo.bigint10.comparison
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.biguint.biguint import BigUInt
-from decimo.errors import DecimoError
+from decimo.errors import (
+    DecimoError,
+    ValueError,
+    OverflowError,
+    ConversionError,
+)
 import decimo.str
 
 
@@ -114,11 +119,9 @@ struct BigInt10(
         except e:
             raise Error(
                 DecimoError(
-                    file="src/decimo/bigint10/bigint10.mojo",
                     function=(
                         "BigInt10.__init__(var words: List[UInt32], sign: Bool)"
                     ),
-                    message=None,
                     previous_error=e^,
                 )
             )
@@ -155,7 +158,13 @@ struct BigInt10(
         try:
             self = Self.from_string(value)
         except e:
-            raise Error("Error in `BigInt10.__init__()` with String: ", e)
+            raise Error(
+                ConversionError(
+                    message="Cannot initialize BigInt10 from String.",
+                    function="BigInt10.__init__()",
+                    previous_error=e^,
+                )
+            )
 
     # TODO: If Mojo makes Int type an alias of SIMD[DType.index, 1],
     # we can remove this method.
@@ -222,12 +231,10 @@ struct BigInt10(
         except e:
             raise Error(
                 DecimoError(
-                    file="src/decimo/bigint10/bigint10.mojo",
                     function=(
                         "BigInt10.from_list(var words: List[UInt32], sign:"
                         " Bool)"
                     ),
-                    message=None,
                     previous_error=e^,
                 )
             )
@@ -256,8 +263,12 @@ struct BigInt10(
         for word in words:
             if word > UInt32(999_999_999):
                 raise Error(
-                    "Error in `BigInt10.__init__()`: Word value exceeds maximum"
-                    " value of 999_999_999"
+                    ValueError(
+                        message=(
+                            "Word value exceeds maximum value of 999_999_999"
+                        ),
+                        function="BigInt10.__init__()",
+                    )
                 )
             else:
                 list_of_words.append(word)
@@ -396,10 +407,9 @@ struct BigInt10(
             return Self.from_string(py_str)
         except e:
             raise Error(
-                DecimoError(
-                    file="src/decimo/bigint10/bigint10.mojo",
-                    function="BigInt10.from_python_int(value: PythonObject)",
+                ConversionError(
                     message="Failed to convert Python int to BigInt10.",
+                    function="BigInt10.from_python_int()",
                     previous_error=e^,
                 )
             )
@@ -459,8 +469,10 @@ struct BigInt10(
 
         if len(self.magnitude.words) > 3:
             raise Error(
-                "Error in `BigInt10.to_int()`: The number exceeds the size"
-                " of Int"
+                OverflowError(
+                    message="The number exceeds the size of Int.",
+                    function="BigInt10.to_int()",
+                )
             )
 
         var value: Int128 = 0
@@ -478,8 +490,10 @@ struct BigInt10(
         var int_max = Int.MAX
         if value < Int128(int_min) or value > Int128(int_max):
             raise Error(
-                "Error in `BigInt10.to_int()`: The number exceeds the size"
-                " of Int"
+                OverflowError(
+                    message="The number exceeds the size of Int.",
+                    function="BigInt10.to_int()",
+                )
             )
         return Int(value)
 
@@ -622,9 +636,7 @@ struct BigInt10(
         except e:
             raise Error(
                 DecimoError(
-                    message=None,
                     function="BigInt10.__floordiv__()",
-                    file="src/decimo/bigint10/bigint10.mojo",
                     previous_error=e^,
                 )
             )
@@ -644,9 +656,7 @@ struct BigInt10(
         except e:
             raise Error(
                 DecimoError(
-                    message=None,
                     function="BigInt10.__mod__()",
-                    file="src/decimo/bigint10/bigint10.mojo",
                     previous_error=e^,
                 )
             )
@@ -1057,7 +1067,12 @@ struct BigInt10(
             The result of raising to the given power.
         """
         if exponent > Self(BigUInt(raw_words=[0, 1]), sign=False):
-            raise Error("Error in `BigUInt.power()`: The exponent is too large")
+            raise Error(
+                OverflowError(
+                    message="The exponent is too large.",
+                    function="BigInt10.power()",
+                )
+            )
         var exponent_as_int = exponent.to_int()
         return self.power(exponent_as_int)
 

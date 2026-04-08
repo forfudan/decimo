@@ -205,9 +205,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.__init__(var words: List[UInt32])",
-                    message=None,
                     previous_error=e^,
                 )
             )
@@ -252,9 +250,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.__init__(value: Int)",
-                    message=None,
                     previous_error=e^,
                 )
             )
@@ -289,9 +285,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.__init__(value: String)",
-                    message=None,
                     previous_error=e^,
                 )
             )
@@ -339,8 +333,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
                             + " exceeds maximum value of 999_999_999"
                         ),
                         function="BigUInt.from_list()",
-                        file="src/decimo/biguint/biguint.mojo",
-                        previous_error=None,
                     )
                 )
 
@@ -407,8 +399,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
                             + " exceeds maximum value of 999_999_999"
                         ),
                         function="BigUInt.from_words()",
-                        file="src/decimo/biguint/biguint.mojo",
-                        previous_error=None,
                     )
                 )
             else:
@@ -477,14 +467,12 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         if value < 0:
             raise Error(
                 OverflowError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.from_int(value: Int)",
                     message=(
                         "The input value "
                         + String(value)
                         + " is negative and is not compatible with BigUInt."
                     ),
-                    previous_error=None,
                 )
             )
 
@@ -679,7 +667,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         if (not ignore_sign) and sign:
             raise Error(
                 OverflowError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.from_string(value: String)",
                     message=(
                         'The input value "'
@@ -688,7 +675,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
                         + "Consider using `ignore_sign=True` to ignore the"
                         " sign."
                     ),
-                    previous_error=None,
                 )
             )
 
@@ -703,7 +689,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             if scale >= len(coef):
                 raise Error(
                     ConversionError(
-                        file="src/decimo/biguint/biguint.mojo",
                         function="BigUInt.from_string(value: String)",
                         message=(
                             'The input value "'
@@ -711,14 +696,12 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
                             + '" is not an integer.\n'
                             + "The scale is larger than the number of digits."
                         ),
-                        previous_error=None,
                     )
                 )
             for i in range(1, scale + 1):
                 if coef[-i] != 0:
                     raise Error(
                         ConversionError(
-                            file="src/decimo/biguint/biguint.mojo",
                             function="BigUInt.from_string(value: String)",
                             message=(
                                 'The input value "'
@@ -726,7 +709,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
                                 + '" is not an integer.\n'
                                 + "The fractional part is not zero."
                             ),
-                            previous_error=None,
                         )
                     )
             coef.resize(len(coef) - scale, UInt8(0))
@@ -806,9 +788,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.__int__()",
-                    message=None,
                     previous_error=e^,
                 )
             )
@@ -855,12 +835,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         var overflow_error: Error = Error(
             OverflowError(
-                file="src/decimo/biguint/biguint.mojo",
                 function="BigUInt.to_int()",
                 message="The number exceeds the size of Int ("
                 + String(Int.MAX)
                 + ")",
-                previous_error=None,
             )
         )
         if len(self.words) > 3:
@@ -887,14 +865,12 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         if self.is_uint64_overflow():
             raise Error(
                 OverflowError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.to_uint64()",
                     message=(
                         "The number exceeds the size of UInt64 ("
                         + String(UInt64.MAX)
                         + ")"
                     ),
-                    previous_error=None,
                 )
             )
 
@@ -1174,9 +1150,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.__sub__(other: Self)",
-                    message=None,
                     previous_error=e^,
                 )
             )
@@ -1208,9 +1182,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.__floordiv__(other: Self)",
-                    message=None,
                     previous_error=e^,
                 )
             )
@@ -1230,9 +1202,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.__ceildiv__(other: Self)",
-                    message=None,
                     previous_error=e^,
                 )
             )
@@ -1252,9 +1222,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.__mod__(other: Self)",
-                    message=None,
                     previous_error=e^,
                 )
             )
@@ -1274,9 +1242,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.__divmod__(other: Self)",
-                    message=None,
                     previous_error=e^,
                 )
             )
@@ -1296,9 +1262,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.__pow__(exponent: Self)",
-                    message=None,
                     previous_error=e^,
                 )
             )
@@ -1318,9 +1282,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.__pow__(exponent: Int)",
-                    message=None,
                     previous_error=e^,
                 )
             )
@@ -1750,7 +1712,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         if exponent < 0:
             raise Error(
                 ValueError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.power(exponent: Int)",
                     message=(
                         "The exponent "
@@ -1758,7 +1719,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
                         + " is negative.\n"
                         + "Consider using a non-negative exponent."
                     ),
-                    previous_error=None,
                 )
             )
 
@@ -1768,7 +1728,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         if exponent >= 1_000_000_000:
             raise Error(
                 ValueError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.power(exponent: Int)",
                     message=(
                         "The exponent "
@@ -1776,7 +1735,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
                         + " is too large.\n"
                         + "Consider using an exponent below 1_000_000_000."
                     ),
-                    previous_error=None,
                 )
             )
 
@@ -1806,7 +1764,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         if len(exponent.words) > 1:
             raise Error(
                 ValueError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.power(exponent: BigUInt)",
                     message=(
                         "The exponent "
@@ -1814,7 +1771,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
                         + " is too large.\n"
                         + "Consider using an exponent below 1_000_000_000."
                     ),
-                    previous_error=None,
                 )
             )
         var exponent_as_int = exponent.to_int()
@@ -2097,7 +2053,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         if i < 0:
             raise Error(
                 IndexError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.ith_digit(i: Int)",
                     message=(
                         "The index "
@@ -2105,7 +2060,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
                         + " is negative.\n"
                         + "Consider using a non-negative index."
                     ),
-                    previous_error=None,
                 )
             )
         if i >= len(self.words) * 9:
@@ -2239,13 +2193,11 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         if ndigits < 0:
             raise Error(
                 ValueError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.remove_trailing_digits_with_rounding()",
                     message=(
                         "The number of digits to remove is negative: "
                         + String(ndigits)
                     ),
-                    previous_error=None,
                 )
             )
         if ndigits == 0:
@@ -2253,7 +2205,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         if ndigits > self.number_of_digits():
             raise Error(
                 ValueError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.remove_trailing_digits_with_rounding()",
                     message=(
                         "The number of digits to remove is larger than the "
@@ -2262,7 +2213,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
                         + " > "
                         + String(self.number_of_digits())
                     ),
-                    previous_error=None,
                 )
             )
 
@@ -2317,10 +2267,8 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         else:
             raise Error(
                 ValueError(
-                    file="src/decimo/biguint/biguint.mojo",
                     function="BigUInt.remove_trailing_digits_with_rounding()",
                     message=("Unknown rounding mode: " + String(rounding_mode)),
-                    previous_error=None,
                 )
             )
 

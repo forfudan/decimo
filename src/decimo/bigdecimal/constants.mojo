@@ -18,6 +18,7 @@
 """
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
+from decimo.errors import ValueError
 from decimo.bigint10.bigint10 import BigInt10
 from decimo.rounding_mode import RoundingMode
 
@@ -164,7 +165,11 @@ def pi(precision: Int) raises -> BigDecimal:
     """
 
     if precision < 0:
-        raise Error("Precision must be non-negative")
+        raise Error(
+            ValueError(
+                message="Precision must be non-negative", function="pi()"
+            )
+        )
 
     # TODO: When global variables are supported,
     # we can check if we have a cached value for the requested precision.

@@ -24,7 +24,12 @@ from std.memory import memcpy, memset_zero
 
 from decimo.biguint.biguint import BigUInt
 import decimo.biguint.comparison
-from decimo.errors import DecimoError, OverflowError, ZeroDivisionError
+from decimo.errors import (
+    DecimoError,
+    OverflowError,
+    ValueError,
+    ZeroDivisionError,
+)
 from decimo.rounding_mode import RoundingMode
 
 comptime CUTOFF_KARATSUBA = 64
@@ -105,10 +110,8 @@ def negative(x: BigUInt) raises -> BigUInt:
         )
         raise Error(
             OverflowError(
-                file="src/decimo/biguint/arithmetics.mojo",
                 function="negative()",
                 message="Negative of non-zero unsigned integer is undefined",
-                previous_error=None,
             )
         )
     return BigUInt.zero()  # Return zero
@@ -537,13 +540,11 @@ def subtract_school(x: BigUInt, y: BigUInt) raises -> BigUInt:
     if comparison_result < 0:
         raise Error(
             OverflowError(
-                file="src/decimo/biguint/arithmetics.mojo",
                 function="subtract_school()",
                 message=(
                     "biguint.arithmetics.subtract(): Result is negative due to"
                     " x < y"
                 ),
-                previous_error=None,
             )
         )
 
@@ -633,13 +634,11 @@ def subtract_simd(x: BigUInt, y: BigUInt) raises -> BigUInt:
     if comparison_result < 0:
         raise Error(
             OverflowError(
-                file="src/decimo/biguint/arithmetics.mojo",
                 function="subtract()",
                 message=(
                     "biguint.arithmetics.subtract(): Result is negative due to"
                     " x < y"
                 ),
-                previous_error=None,
             )
         )
 
@@ -706,13 +705,11 @@ def subtract_inplace(mut x: BigUInt, y: BigUInt) raises -> None:
     elif comparison_result < 0:
         raise Error(
             OverflowError(
-                file="src/decimo/biguint/arithmetics.mojo",
                 function="subtract_inplace()",
                 message=(
                     "biguint.arithmetics.subtract(): Result is negative due to"
                     " x < y"
                 ),
-                previous_error=None,
             )
         )
 
@@ -1982,10 +1979,8 @@ def floor_divide(x: BigUInt, y: BigUInt) raises -> BigUInt:
     if y.is_zero():
         raise Error(
             ZeroDivisionError(
-                file="src/decimo/biguint/arithmetics.mojo",
                 function="floor_divide()",
                 message="Division by zero",
-                previous_error=None,
             )
         )
 
@@ -2083,7 +2078,11 @@ def floor_divide_school(x: BigUInt, y: BigUInt) raises -> BigUInt:
     # handled properly to improve performance.
     # CASE: y is zero
     if y.is_zero():
-        raise Error("biguint.arithmetics.floor_divide(): Division by zero")
+        raise Error(
+            ZeroDivisionError(
+                message="Division by zero", function="floor_divide()"
+            )
+        )
 
     # CASE: Dividend is zero
     if x.is_zero():
@@ -3143,7 +3142,12 @@ def floor_divide_three_by_two_uint32(
     b = b1 * BASE + b0.
     """
     if b1 < 500_000_000:
-        raise Error("b1 must be at least 500_000_000")
+        raise Error(
+            ValueError(
+                message="b1 must be at least 500_000_000",
+                function="floor_divide_three_by_two_uint32()",
+            )
+        )
 
     var a2a1 = UInt64(a2) * 1_000_000_000 + UInt64(a1)
 
@@ -3194,18 +3198,43 @@ def floor_divide_four_by_two_uint32(
     """
 
     if b1 < 500_000_000:
-        raise Error("b1 must be at least 500_000_000")
+        raise Error(
+            ValueError(
+                message="b1 must be at least 500_000_000",
+                function="floor_divide_four_by_two_uint32()",
+            )
+        )
     if a3 > b1:
-        raise Error("a must be less than b * 10^18")
+        raise Error(
+            ValueError(
+                message="a must be less than b * 10^18",
+                function="floor_divide_four_by_two_uint32()",
+            )
+        )
     elif a3 == b1:
         if a2 > b0:
-            raise Error("a must be less than b * 10^18")
+            raise Error(
+                ValueError(
+                    message="a must be less than b * 10^18",
+                    function="floor_divide_four_by_two_uint32()",
+                )
+            )
         elif a2 == b0:
             if a1 > 0:
-                raise Error("a must be less than b * 10^18")
+                raise Error(
+                    ValueError(
+                        message="a must be less than b * 10^18",
+                        function="floor_divide_four_by_two_uint32()",
+                    )
+                )
             elif a1 == 0:
                 if a0 >= 0:
-                    raise Error("a must be less than b * 10^18")
+                    raise Error(
+                        ValueError(
+                            message="a must be less than b * 10^18",
+                            function="floor_divide_four_by_two_uint32()",
+                        )
+                    )
 
     var q1, r1, r0 = floor_divide_three_by_two_uint32(a3, a2, a1, b1, b0)
     var q0, s1, s0 = floor_divide_three_by_two_uint32(r1, r0, a0, b1, b0)
@@ -3248,7 +3277,11 @@ def ceil_divide(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
             len(x2.words) == 1,
             "ceil_divide(): leading zero words",
         )
-        raise Error("biguint.arithmetics.ceil_divide(): Division by zero")
+        raise Error(
+            ZeroDivisionError(
+                message="Division by zero", function="ceil_divide()"
+            )
+        )
 
     # Apply floor division and check if there is a remainder
     var quotient = floor_divide(x1, x2)
@@ -3285,10 +3318,8 @@ def floor_modulo(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
         )
         raise Error(
             ZeroDivisionError(
-                file="src/decimo/biguint/arithmetics.py",
                 function="floor_modulo()",
                 message="Division by zero",
-                previous_error=None,
             )
         )
 
@@ -3314,9 +3345,7 @@ def floor_modulo(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
     except e:
         raise Error(
             DecimoError(
-                file="src/decimo/biguint/arithmetics.py",
                 function="floor_modulo()",
-                message=None,
                 previous_error=e^,
             )
         )
@@ -3328,9 +3357,7 @@ def floor_modulo(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
     except e:
         raise Error(
             DecimoError(
-                file="src/decimo/biguint/arithmetics.py",
                 function="floor_modulo()",
-                message=None,
                 previous_error=e^,
             )
         )
@@ -3359,9 +3386,7 @@ def truncate_modulo(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
     except e:
         raise Error(
             DecimoError(
-                file="src/decimo/biguint/arithmetics.py",
                 function="truncate_modulo()",
-                message=None,
                 previous_error=e^,
             )
         )
@@ -3387,7 +3412,11 @@ def ceil_modulo(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
         debug_assert[assert_mode="none"](
             len(x2.words) == 1, "ceil_modulo(): leading zero words"
         )
-        raise Error("Error in `ceil_modulo`: Division by zero")
+        raise Error(
+            ZeroDivisionError(
+                message="Division by zero", function="ceil_modulo()"
+            )
+        )
 
     # CASE: Dividend is zero
     if x1.is_zero():
@@ -3445,9 +3474,7 @@ def floor_divide_modulo(
     except e:
         raise Error(
             DecimoError(
-                file="src/decimo/biguint/arithmetics.py",
                 function="floor_divide_modulo()",
-                message=None,
                 previous_error=e^,
             )
         )
@@ -3632,10 +3659,8 @@ def power_of_10(n: Int) raises -> BigUInt:
     if n < 0:
         raise Error(
             DecimoError(
-                file="src/decimo/biguint/arithmetics.py",
                 function="power_of_10()",
                 message="Negative exponent not supported",
-                previous_error=None,
             )
         )
 
