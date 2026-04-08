@@ -1,23 +1,15 @@
 # Decimal128 Enhancement Plan
 
-> **Date**: 2026-04-08  
-> **Target**: decimo >=0.9.0  
-> **Mojo Version**: >=0.26.2  
+> **Date**: 2026-04-08
+> **Target**: decimo >=0.9.0
+> **Mojo Version**: >=0.26.2
 >
-> 子曰工欲善其事必先利其器  
+> 子曰工欲善其事必先利其器
 > The mechanic, who wishes to do his work well, must first sharpen his tools -- Confucius
 
-This document is a thorough audit of the `src/decimo/decimal128/` module. I compared our
-implementation against other 128-bit fixed-precision decimal libraries — C# `System.Decimal`,
-Rust `rust_decimal`, Apache Arrow `Decimal128`, and Go `govalues/decimal` — and recorded
-everything I found: correctness bugs, performance bottlenecks, and improvement opportunities.
+I did a thorough audit of `src/decimo/decimal128/` and compared it against other 128-bit fixed-precision decimal libraries — C# [`System.Decimal`](https://github.com/dotnet/runtime/blob/main/src/libraries/System.Private.CoreLib/src/System/Decimal.DecCalc.cs), Rust [`rust_decimal`](https://github.com/paupino/rust-decimal), Apache Arrow [`Decimal128`](https://github.com/apache/arrow/blob/main/cpp/src/arrow/util/basic_decimal.h), and Go [`govalues/decimal`](https://github.com/govalues/decimal). This document records everything I found: correctness bugs, performance bottlenecks, and improvement opportunities.
 
-**Scope:** Only 128-bit (or near-128-bit) fixed-precision, non-floating-point decimal types.
-Arbitrary-precision decimals (Python `decimal.Decimal`, Java `BigDecimal`) are out of scope here —
-they are covered by `BigDecimal`. IEEE 754 decimal128 is also out of scope — it is a floating-point
-format with discontinuous representation, not comparable to our fixed-point design.
-
----
+Scope: only 128-bit (or near-128-bit) fixed-precision, non-floating-point decimal types. Arbitrary-precision decimals (Python `decimal.Decimal`, Java `BigDecimal`) are out of scope — they are covered by `BigDecimal`. IEEE 754 decimal128 is also out of scope — it is a floating-point format with discontinuous representation, not comparable to our fixed-point design.
 
 ## 1. Cross-Language Comparison
 
@@ -34,29 +26,21 @@ format with discontinuous representation, not comparable to our fixed-point desi
 | Sign storage           | Bit 31 of flags      | Bit 31 of flags      | Bit 31 of flags      | Two's complement           | Bool field          |
 | Endianness             | Little-endian        | Little-endian        | Little-endian        | Platform-native            | N/A                 |
 
-\* 29 digits, but the leading digit can only be 0–7 (since 10^29 − 1 > 2^96 − 1). See §2 for why
-this matters.
+\* 29 digits, but the leading digit can only be 0–7 (since 10^29 − 1 > 2^96 − 1). This is pretty dirty and difficult to handle. I think the current implmention is not the most optimized. Need to check and refine.
 
-**Observation:** Decimo, C#, and Rust share the same layout — a proven design. Arrow and govalues
-use a fundamentally different approach with decimal-bounded coefficients (10^p − 1 instead of
-2^N − 1), which gives them cleaner digit semantics at the cost of unused bit range.
+Decimo, C#, and Rust share the same layout — a proven design. Arrow and govalues use a fundamentally different approach with decimal-bounded coefficients (10^p − 1 instead of 2^N − 1), which gives them cleaner digit semantics at the cost of unused bit range.
 
 ### 1.2 Special Values
 
-| Feature       | Decimo                | C#         | Rust rust_decimal | Arrow Decimal128 | Go govalues/decimal |
-| ------------- | --------------------- | ---------- | ----------------- | ---------------- | ------------------- |
-| +Infinity     | ✓ (broken — see §3.1) | ✗ (throws) | ✗                 | ✗                | ✗                   |
-| −Infinity     | ✓ (broken)            | ✗          | ✗                 | ✗                | ✗                   |
-| NaN           | ✓ (broken — see §3.1) | ✗          | ✗                 | ✗                | ✗                   |
-| Negative zero | ✗                     | ✗          | ✗                 | ✗                | ✗                   |
-| Subnormals    | ✗                     | ✗          | ✗                 | ✗                | ✗                   |
+| Feature       | Decimo                | C#         | Rust | Arrow | Go govalues |
+| ------------- | --------------------- | ---------- | ---- | ----- | ----------- |
+| +Infinity     | ✓ (broken — see §3.1) | ✗ (throws) | ✗    | ✗     | ✗           |
+| −Infinity     | ✓ (broken)            | ✗          | ✗    | ✗     | ✗           |
+| NaN           | ✓ (broken — see §3.1) | ✗          | ✗    | ✗     | ✗           |
+| Negative zero | ✗                     | ✗          | ✗    | ✗     | ✗           |
+| Subnormals    | ✗                     | ✗          | ✗    | ✗     | ✗           |
 
-**Observation:** None of the comparable 128-bit fixed-precision libraries support NaN or Infinity.
-We are the only one, and our implementation is broken (§3.1). I think we should seriously consider
-removing NaN/Infinity support to match the established paradigm — all four comparable libraries
-simply throw or return an error for undefined operations. If we keep them, the bugs must be fixed
-and full arithmetic propagation must be added, which is a significant effort for a feature no peer
-library provides.
+None of the comparable 128-bit fixed-precision libraries support NaN or Infinity. We are the only one, and our implementation is broken (§3.1). Maybe consider removing NaN/Infinity support to match the established paradigm — all four comparable libraries simply throw or return an error for undefined operations. If we keep them, the bugs must be fixed and full arithmetic propagation must be added, which is a lot of effort for a feature no peer library provides.
 
 ### 1.3 Rounding Modes
 
@@ -70,154 +54,126 @@ library provides.
 | CEILING              | ✓      | ✓ (`ToPositiveInfinity`) | ✓           | ✓ (`CEILING`)   | ✓ (`Ceiling`)  |
 | FLOOR                | ✓      | ✓ (`ToNegativeInfinity`) | ✓           | ✓ (`FLOOR`)     | ✓ (`Floor`)    |
 
-**Observation:** All five libraries (including us) support these 7 rounding modes. We are on par.
+All five libraries (including us) support these 7 rounding modes. We are on par.
 
 ### 1.4 Arithmetic Coverage
 
-| Operation            | Decimo          | C#               | Rust rust_decimal | Arrow Decimal128 | Go govalues  |
-| -------------------- | --------------- | ---------------- | ----------------- | ---------------- | ------------ |
-| add                  | ✓               | ✓                | ✓                 | ✓                | ✓            |
-| subtract             | ✓ (via add)     | ✓                | ✓                 | ✓                | ✓            |
-| multiply             | ✓               | ✓                | ✓                 | ✓                | ✓            |
-| divide               | ✓               | ✓                | ✓                 | ✓                | ✓ (`Quo`)    |
-| truncate_divide      | ✓               | ✓ (`Truncate`)   | ✓                 | ✗                | ✓ (`QuoRem`) |
-| modulo               | ✓               | ✓ (`%`)          | ✓                 | ✗                | ✓ (`Rem`)    |
-| power (int exponent) | ✓               | ✗ (use Math.Pow) | ✓ (`powi`)        | ✗                | ✓ (`PowInt`) |
-| sqrt                 | ✓               | ✗                | ✓                 | ✗                | ✓            |
-| root (nth)           | ✓               | ✗                | ✗                 | ✗                | ✗            |
-| exp                  | ✓               | ✗                | ✓                 | ✗                | ✗            |
-| ln                   | ✓               | ✗                | ✓                 | ✗                | ✗            |
-| log10                | ✓               | ✗                | ✗                 | ✗                | ✗            |
-| log (arbitrary base) | ✓               | ✗                | ✗                 | ✗                | ✗            |
-| abs                  | ✓               | ✓                | ✓                 | ✓                | ✓            |
-| negate               | ✓               | ✓                | ✓                 | ✓                | ✓            |
-| round                | ✓               | ✓                | ✓                 | ✓                | ✓            |
-| quantize             | ✓               | ✗                | ✗                 | via round        | ✗            |
-| factorial            | ✓ (0–27 lookup) | ✗                | ✗                 | ✗                | ✗            |
-| min / max            | ✗               | ✓                | ✓                 | ✓                | ✓            |
-| normalize            | ✗               | ✗                | ✓                 | ✗                | ✗            |
+| Operation            | Decimo          | C#               | Rust       | Arrow     | Go govalues  |
+| -------------------- | --------------- | ---------------- | ---------- | --------- | ------------ |
+| add                  | ✓               | ✓                | ✓          | ✓         | ✓            |
+| subtract             | ✓ (via add)     | ✓                | ✓          | ✓         | ✓            |
+| multiply             | ✓               | ✓                | ✓          | ✓         | ✓            |
+| divide               | ✓               | ✓                | ✓          | ✓         | ✓ (`Quo`)    |
+| truncate_divide      | ✓               | ✓ (`Truncate`)   | ✓          | ✗         | ✓ (`QuoRem`) |
+| modulo               | ✓               | ✓ (`%`)          | ✓          | ✗         | ✓ (`Rem`)    |
+| power (int exponent) | ✓               | ✗ (use Math.Pow) | ✓ (`powi`) | ✗         | ✓ (`PowInt`) |
+| sqrt                 | ✓               | ✗                | ✓          | ✗         | ✓            |
+| root (nth)           | ✓               | ✗                | ✗          | ✗         | ✗            |
+| exp                  | ✓               | ✗                | ✓          | ✗         | ✗            |
+| ln                   | ✓               | ✗                | ✓          | ✗         | ✗            |
+| log10                | ✓               | ✗                | ✗          | ✗         | ✗            |
+| log (arbitrary base) | ✓               | ✗                | ✗          | ✗         | ✗            |
+| abs                  | ✓               | ✓                | ✓          | ✓         | ✓            |
+| negate               | ✓               | ✓                | ✓          | ✓         | ✓            |
+| round                | ✓               | ✓                | ✓          | ✓         | ✓            |
+| quantize             | ✓               | ✗                | ✗          | via round | ✗            |
+| factorial            | ✓ (0–27 lookup) | ✗                | ✗          | ✗         | ✗            |
+| min / max            | ✗               | ✓                | ✓          | ✓         | ✓            |
+| normalize            | ✗               | ✗                | ✓          | ✗         | ✗            |
 
-**Observation:** Our arithmetic coverage is the most complete among all five libraries — we are the
-only one with `root`, `log10`, `log`, and `factorial`. Matching Rust on `exp` and `ln`. The gap is
-`min`/`max` which every other library provides and we do not.
-
----
+Our arithmetic coverage is the most complete among all five libraries — we are the only one with `root`, `log10`, `log`, and `factorial`. Matching Rust on `exp` and `ln`. The gap is `min`/`max` which every other library provides and we do not.
 
 ## 2. The Coefficient Bound Problem
 
-This is probably the biggest architectural concern I found. It affects performance, code complexity,
-and user-facing semantics.
+This is probably the biggest architectural concern I found. It affects performance, code complexity, and user-facing semantics.
 
 ### 2.1 The Problem
 
-Our max coefficient is 2^96 − 1 = 79,228,162,514,264,337,593,543,950,335. This is a 29-digit
-number, but the leading digit can only be 0–7. The number 80,000,000,000,000,000,000,000,000,000
-(which has only 2 significant digits) is out of range. Meanwhile, all 28-digit numbers fit.
+Our max coefficient is 2^96 − 1 = 79,228,162,514,264,337,593,543,950,335. This is a 29-digit number, but the leading digit can only be 0–7. The number 80,000,000,000,000,000,000,000,000,000 (which has only 2 significant digits) is out of range. Meanwhile, all 28-digit numbers fit.
 
-This creates a messy boundary: after every arithmetic operation that might produce a wide result
-(multiplication, addition with carry, etc.), I need to check whether the coefficient exceeds
-2^96 − 1 and, if so, round it down. The rounding itself is non-trivial because the boundary is not
-at a clean decimal digit — I cannot just drop the last digit. The `truncate_to_max` function in
-`utility.mojo` handles this, and it is one of the most complex functions in the codebase.
+This creates a messy boundary: after every arithmetic operation that might produce a wide result (multiplication, addition with carry, etc.), I need to check whether the coefficient exceeds 2^96 − 1 and, if so, round it down. The rounding itself is non-trivial because the boundary is not at a clean decimal digit — I cannot just drop the last digit. The `truncate_to_max` function in `utility.mojo` handles this, and it is one of the most complex functions in the codebase.
 
 ### 2.2 How Other Libraries Handle This
 
-#### C# System.Decimal — `ScaleResult()` (binary bound, same as us)
+#### C# System.Decimal — [`ScaleResult()`](https://github.com/dotnet/runtime/blob/main/src/libraries/System.Private.CoreLib/src/System/Decimal.DecCalc.cs) (binary bound, same as us)
 
 .NET's approach is heavily optimized. The core function `ScaleResult()` in `Decimal.DecCalc.cs`:
 
-1. Estimates how many decimal digits to remove using `LeadingZeroCount` and the constant
-   `log10(2) ≈ 77/256`.
-2. Divides the wide result (stored in a `Buf24`, up to 192 bits) by powers of 10, using
-   `DivByConst()` specialized per constant (10^1 through 10^9) for maximum speed — on 64-bit
-   targets, these use compiler-generated multiply-by-reciprocal.
+1. Estimates how many decimal digits to remove using `LeadingZeroCount` and the constant `log10(2) ≈ 77/256`.
+2. Divides the wide result (stored in a `Buf24`, up to 192 bits) by powers of 10, using `DivByConst()` specialized per constant (10^1 through 10^9) for maximum speed — on 64-bit targets, these use compiler-generated multiply-by-reciprocal.
 3. Applies banker's rounding with a sticky bit for lost precision.
 4. If rounding causes a carry that pushes above 96 bits again, scales down by 10 one more time.
 
 Additional C# tricks:
 
-- `SearchScale()` — binary search using precomputed `OVFL_MAX_N_HI` constants to find the largest
-  safe scale-up factor.
-- `PowerOvflValues[]` — table of largest 96-bit values that won't overflow when multiplied by
-  10^1 through 10^8.
-- `Unscale()` — efficiently removes trailing zeros using binary search: try 10^8, 10^4, 10^2, 10^1,
-  with quick-reject bit checks (e.g., `(low & 0xF) == 0` before trying 10^4).
-- `OverflowUnscale()` — when quotient overflows by exactly 1 bit, feeds the carry back in and
-  divides by 10, avoiding a full rescale.
+- `SearchScale()` — binary search using precomputed `OVFL_MAX_N_HI` constants to find the largest safe scale-up factor.
+- `PowerOvflValues[]` — table of largest 96-bit values that won't overflow when multiplied by 10^1 through 10^8.
+- `Unscale()` — efficiently removes trailing zeros using binary search: try 10^8, 10^4, 10^2, 10^1, with quick-reject bit checks (e.g., `(low & 0xF) == 0` before trying 10^4).
+- `OverflowUnscale()` — when quotient overflows by exactly 1 bit, feeds the carry back in and divides by 10, avoiding a full rescale.
 
-The bottom line: .NET has hundreds of lines of intricate, heavily-optimized code just for this
-boundary handling. Every multiply that exceeds 96 bits pays for multi-word division.
+The bottom line: .NET has hundreds of lines of intricate, heavily-optimized code just for this boundary handling. Every multiply that exceeds 96 bits pays for multi-word division.
 
-#### Rust rust_decimal — Port of .NET (binary bound, same as us)
+#### Rust rust_decimal — [Port of .NET](https://github.com/paupino/rust-decimal/blob/master/src/ops/common.rs) (binary bound, same as us)
 
-`rust_decimal` is essentially a Rust port of .NET's `DecCalc`. The `Buf24::rescale()` in
-`ops/common.rs` is the equivalent of `ScaleResult()`. Same `log10(2) × 256 = 77` trick, same
-`OVERFLOW_MAX_N_HI` constants, same `POWER_OVERFLOW_VALUES` table.
+`rust_decimal` is essentially a Rust port of .NET's `DecCalc`. The `Buf24::rescale()` in `ops/common.rs` is the equivalent of `ScaleResult()`. Same `log10(2) × 256 = 77` trick, same `OVERFLOW_MAX_N_HI` constants, same `POWER_OVERFLOW_VALUES` table.
 
-One difference: `rust_decimal` returns `CalculationResult::Overflow` instead of throwing, letting
-the caller handle it.
+One difference: `rust_decimal` returns `CalculationResult::Overflow` instead of throwing, letting the caller handle it.
 
-#### Apache Arrow Decimal128 — 256-bit promotion (decimal bound)
+#### Apache Arrow Decimal128 — [256-bit promotion](https://github.com/apache/arrow/blob/main/cpp/src/gandiva/precompiled/decimal_ops.cc) (decimal bound)
 
-Arrow sidesteps the problem entirely by capping at 10^38 − 1 instead of 2^128 − 1. The overflow
-check is just `abs(value) < 10^precision` — a single comparison against a precomputed constant.
+Arrow sidesteps the problem entirely by capping at 10^38 − 1 instead of 2^128 − 1. The overflow check is just `abs(value) < 10^precision` — a single comparison against a precomputed constant.
 
-For multiplication that might overflow 128 bits, Arrow promotes to `int256_t` (Boost or compiler
-`__int128`-based), multiplies, scales down by `10^delta_scale` in one clean division, then converts
-back. This replaces .NET's iterative divide-and-round loop with a single wide multiplication +
-one division.
+For multiplication that might overflow 128 bits, Arrow promotes to `int256_t` (Boost or compiler `__int128`-based), multiplies, scales down by `10^delta_scale` in one clean division, then converts back. This replaces .NET's iterative divide-and-round loop with a single wide multiplication + one division.
 
-The `FitsInPrecision(precision)` check is trivially a comparison against a table entry. No
-multi-step rescaling needed for the check itself.
+The `FitsInPrecision(precision)` check is trivially a comparison against a table entry. No multi-step rescaling needed for the check itself.
 
-#### Go govalues/decimal — Two-tier fast path (decimal bound)
+#### Go govalues/decimal — [Two-tier fast path](https://github.com/govalues/decimal/blob/main/decimal.go) (decimal bound)
 
 `govalues/decimal` uses the most elegant approach. Max coefficient = 10^19 − 1 (fits in `uint64`).
 
-1. **Fast path:** Try the operation using native 64-bit arithmetic. If overflow detected (e.g.,
-   `z/y != x || z > maxFint`), fall through.
-2. **Slow path:** Redo with `big.Int` (arbitrary precision), compute exact result, then round to
-   19 digits using `rshHalfEven` (right-shift in decimal = divide by 10^N, round half-to-even).
+1. Fast path: try the operation using native 64-bit arithmetic. If overflow detected (e.g., `z/y != x || z > maxFint`), fall through.
+2. Slow path: redo with `big.Int` (arbitrary precision), compute exact result, then round to 19 digits using `rshHalfEven` (right-shift in decimal = divide by 10^N, round half-to-even).
 
-Since the bound IS a power of 10, the rounding is clean: just count digits, divide by 10^excess,
-round. No awkward non-decimal boundary to deal with.
+Since the bound IS a power of 10, the rounding is clean: just count digits, divide by 10^excess, round. No awkward non-decimal boundary to deal with.
 
 ### 2.3 Comparison
 
-| Strategy            | Used by              | Bound check cost      | Overflow rounding cost                      | Code complexity |
-| ------------------- | -------------------- | --------------------- | ------------------------------------------- | --------------- |
-| Binary (2^96 − 1)   | C#, Rust, **Decimo** | Cheap (bit compare)   | **Expensive** (multi-word ÷10^N, iterative) | **High**        |
-| Decimal (10^38 − 1) | Arrow, SQL Server    | Cheap (one compare)   | Cheap (one wide ÷10^N)                      | Low             |
-| Decimal (10^19 − 1) | govalues/decimal     | Trivial (one compare) | Trivial (big.Int fallback + round)          | Very low        |
+| Strategy            | Used by           | Bound check cost      | Overflow rounding cost                  | Code complexity |
+| ------------------- | ----------------- | --------------------- | --------------------------------------- | --------------- |
+| Binary (2^96 − 1)   | C#, Rust, Decimo  | Cheap (bit compare)   | Expensive (multi-word ÷10^N, iterative) | High            |
+| Decimal (10^38 − 1) | Arrow, SQL Server | Cheap (one compare)   | Cheap (one wide ÷10^N)                  | Low             |
+| Decimal (10^19 − 1) | govalues/decimal  | Trivial (one compare) | Trivial (big.Int fallback + round)      | Very low        |
 
 ### 2.4 Implications for Decimo
 
-Since we follow the C#/Rust paradigm (binary bound, 2^96 − 1), the `truncate_to_max` complexity
-is inherent. There are a few things I can do:
+Since we follow the C#/Rust paradigm (binary bound, 2^96 − 1), the `truncate_to_max` complexity is inherent. There are a few things I can do:
 
-1. **Adopt .NET's optimization tricks.** Specifically: the `log10(2) ≈ 77/256` estimation for
-   scale-down amount, precomputed `POWER_OVERFLOW_VALUES` table for safe scale-up, and the
-   `Unscale()` trailing-zero removal with quick-reject bit checks. These would make our existing
-   `truncate_to_max` and `round_to_keep_first_n_digits` much faster.
+1. Adopt .NET's optimization tricks. Specifically: the `log10(2) ≈ 77/256` estimation for scale-down amount, precomputed `POWER_OVERFLOW_VALUES` table for safe scale-up, and the `Unscale()` trailing-zero removal with quick-reject bit checks. These would make our existing `truncate_to_max` and `round_to_keep_first_n_digits` much faster.
 
-2. **Consider decimal bound for a future Decimal256.** If I ever widen to full 128-bit coefficient,
-   using 10^38 − 1 as the max (matching Arrow and SQL Server) would eliminate this problem entirely
-   and give us interoperability with Arrow wire format and SQL `decimal(38)`.
+2. Consider decimal bound for a future Decimal256. If I ever widen to full 128-bit coefficient, using 10^38 − 1 as the max (matching Arrow and SQL Server) would eliminate this problem entirely and give us interoperability with Arrow wire format and SQL `decimal(38)`.
 
-3. **Document the "29 digits but not 29 nines" behavior clearly.** Users should know that
-   "29 digits of precision" really means "28 full digits plus a leading digit 0–7".
+3. Document the "29 digits but not 29 nines" behavior clearly. Users should know that "29 digits of precision" really means "28 full digits plus a leading digit 0–7".
 
----
+### 2.5 Using UInt128/UInt256 as Acceleration Bridge
+
+Mojo now has native `UInt128` and `UInt256` types (via `Scalar[DType.uint128]` and `Scalar[DType.uint256]`). The codebase already uses them — `coefficient()` bitcasts the three UInt32 words to UInt128, and `multiply()` uses UInt256 for intermediate products. But there are more opportunities:
+
+- In `truncate_to_max` and `round_to_keep_first_n_digits`, the divmod operations on UInt128/UInt256 could exploit the fact that Mojo compiles to LLVM IR, where UInt128 division on 64-bit targets translates to two hardware `div` instructions (high and low halves). This is much faster than manually managing three 32-bit limbs. We are already partially doing this, but some code paths still work with individual UInt32 words when they could just operate on the UInt128 directly.
+- The `number_of_bits` loop (§4.1) could be replaced by casting UInt128 to two UInt64s and using `count_leading_zeros` on the high word — this gives O(1) bit width instead of a 96-iteration loop.
+- Arrow's approach of promoting to 256-bit for multiply is directly applicable since we already have UInt256. Instead of the current 3×UInt32 partial-product approach in some code paths, we could do: `UInt256(x_coef) * UInt256(y_coef)`, then scale/truncate the result. This is simpler and likely just as fast since LLVM will optimize the wide multiply.
+- For the `compare_absolute` overflow bug (§3.4), using UInt256 instead of UInt128 for the fractional scaling is a one-line fix thanks to the type already being available.
+
+In short: we already depend on UInt128/UInt256 for the core paths. The opportunity is to use them more consistently and eliminate the remaining manual multi-word arithmetic.
 
 ## 3. Correctness Bugs
 
-### 3.1 CRITICAL: NaN/Infinity Implementation Is Broken
+### 3.1 NaN/Infinity Implementation Is Broken
 
-**File:** `decimal128.mojo`
+File: `decimal128.mojo`
 
 There are multiple compounding bugs in the NaN/Infinity support:
 
-**Bug A — NaN mask mismatch:**
+Bug A — NaN mask mismatch:
 
 ```txt
 NAN_MASK = UInt32(0x00000002)    # bit 1
@@ -230,33 +186,28 @@ NAN()          → Self(0, 0, 0, 0x00000010)  # bit 4
 NEGATIVE_NAN() → Self(0, 0, 0, 0x80000010)  # bit 4
 ```
 
-So `Decimal128.NAN().is_nan()` returns **False**.
+So `Decimal128.NAN().is_nan()` returns False.
 
-**Bug B — `is_zero()` returns True for NaN and Infinity:**
+Bug B — `is_zero()` returns True for NaN and Infinity:
 
 ```python
 fn is_zero(self) -> Bool:
     return self.low == 0 and self.mid == 0 and self.high == 0
 ```
 
-NaN and Infinity have zero coefficients, so `INFINITY().is_zero()` → **True**.
+NaN and Infinity have zero coefficients, so `INFINITY().is_zero()` → True.
 
-**Bug C — No arithmetic propagation:** None of the arithmetic operations check for NaN or Infinity
-inputs. Passing them into `add()`, `multiply()`, etc., produces garbage silently.
+Bug C — No arithmetic propagation: none of the arithmetic operations check for NaN or Infinity inputs. Passing them into `add()`, `multiply()`, etc., produces garbage silently.
 
-**Recommendation:** Since no comparable 128-bit fixed-precision library supports NaN or Infinity
-(see §1.2), I think the cleanest fix is to **remove NaN/Infinity support entirely** and raise
-errors for undefined operations (matching C#, Rust, Arrow, and govalues). If we decide to keep
-them, all three bugs must be fixed:
+Since no comparable 128-bit fixed-precision library supports NaN or Infinity (see §1.2), maybe the cleanest fix is to just remove NaN/Infinity support entirely and raise errors for undefined operations (matching C#, Rust, Arrow, and govalues). If I decide to keep them, all three bugs must be fixed:
 
-- Fix A: Change `NAN()` → `Self(0, 0, 0, 0x00000002)` and `NEGATIVE_NAN()` →
-  `Self(0, 0, 0, 0x80000002)` to match the mask.
+- Fix A: Change `NAN()` → `Self(0, 0, 0, 0x00000002)` and `NEGATIVE_NAN()` → `Self(0, 0, 0, 0x80000002)` to match the mask.
 - Fix B: Guard `is_zero()` with `if self.is_nan() or self.is_infinity(): return False`.
 - Fix C: Add early-return NaN/Inf checks to every arithmetic function (significant effort).
 
-### 3.2 MEDIUM: `from_words` Uses `testing.assert_true` in Production Code
+### 3.2 `from_words` Uses `testing.assert_true` in Production Code
 
-**File:** `decimal128.mojo`, lines ~344, 351
+File: `decimal128.mojo`, lines ~344, 351
 
 ```python
 from testing import assert_true
@@ -264,10 +215,9 @@ assert_true(scale <= Self.MAX_SCALE, ...)
 assert_true(coefficient <= Self.MAX_AS_UINT128, ...)
 ```
 
-This imports the test framework into production code. `assert_true` panics with a test failure
-message rather than raising a recoverable error. Users expect `raise Error(...)`.
+This imports the test framework into production code. `assert_true` panics with a test failure message rather than raising a recoverable error. Users expect `raise Error(...)`.
 
-**Fix:**
+Fix:
 
 ```python
 if scale > Self.MAX_SCALE:
@@ -276,23 +226,19 @@ if coefficient > Self.MAX_AS_UINT128:
     raise Error("Error in Decimal128.from_words(): Coefficient exceeds 96-bit max")
 ```
 
-### 3.3 MEDIUM: Division Hardcodes Rounding Behavior
+### 3.3 Division Hardcodes Rounding Behavior
 
-**File:** `arithmetics.mojo`, inside `divide()`
+File: `arithmetics.mojo`, inside `divide()`
 
-The long division loop always uses banker's rounding (HALF_EVEN). The function does not accept a
-rounding mode parameter.
+The long division loop always uses banker's rounding (HALF_EVEN). The function does not accept a rounding mode parameter.
 
-This matches C# and Rust behavior — both hardcode banker's rounding for the `/` operator. Arrow
-and govalues also default to HALF_EVEN for division. So this is consistent with all comparable
-libraries and not really a bug.
+This matches C# and Rust behavior — both hardcode banker's rounding for the `/` operator. Arrow and govalues also default to HALF_EVEN for division. So this is consistent with all comparable libraries and not really a bug.
 
-If we ever want configurable rounding in division, we would add a
-`divide(x, y, rounding_mode)` overload. Low priority.
+If I ever want configurable rounding in division, I would add a `divide(x, y, rounding_mode)` overload. Low priority.
 
-### 3.4 LOW: `compare_absolute` Potential Overflow
+### 3.4 `compare_absolute` Potential Overflow
 
-**File:** `comparison.mojo`
+File: `comparison.mojo`
 
 When comparing fractional parts, the code computes:
 
@@ -300,27 +246,21 @@ When comparing fractional parts, the code computes:
 fractional_1 = UInt128(x1_frac_part) * UInt128(10) ** scale_diff
 ```
 
-Since `scale_diff` can be up to 28 and `x1_frac_part` can be up to 2^96 − 1, the product can be
-as large as (2^96 − 1) × 10^28 ≈ 7.9 × 10^57. UInt128 max is ~3.4 × 10^38. This overflows.
+Since `scale_diff` can be up to 28 and `x1_frac_part` can be up to 2^96 − 1, the product can be as large as (2^96 − 1) × 10^28 ≈ 7.9 × 10^57. UInt128 max is ~3.4 × 10^38. This overflows.
 
-**Fix:** Use UInt256 for this computation, or normalize both values to the same scale before
-extracting integer and fractional parts.
+Fix: use UInt256 for this computation (see §2.5), or normalize both values to the same scale before extracting integer and fractional parts.
 
-### 3.5 LOW: `is_one()` Might Be Incomplete
+### 3.5 `is_one()` Might Be Incomplete
 
-**File:** Used in `exponential.mojo` (e.g., `log()` calls `x.is_one()`)
+File: used in `exponential.mojo` (e.g., `log()` calls `x.is_one()`)
 
-I should verify `is_one()` handles all representations of 1: `1` (coef=1, scale=0), `1.0`
-(coef=10, scale=1), `1.00` (coef=100, scale=2), etc. If it only checks
-`coefficient == 1 and scale == 0`, it misses the other forms.
-
----
+I should verify `is_one()` handles all representations of 1: `1` (coef=1, scale=0), `1.0` (coef=10, scale=1), `1.00` (coef=100, scale=2), etc. If it only checks `coefficient == 1 and scale == 0`, it misses the other forms.
 
 ## 4. Performance Bottlenecks
 
 ### 4.1 `number_of_bits()` Uses a Loop
 
-**File:** `utility.mojo`
+File: `utility.mojo`
 
 ```python
 fn number_of_bits(n: UInt128) -> Int:
@@ -332,33 +272,25 @@ fn number_of_bits(n: UInt128) -> Int:
     return count
 ```
 
-O(n) in bit count — up to 96 iterations. C#'s `ScaleResult` uses `LeadingZeroCount` which is
-a single instruction on modern CPUs.
+O(n) in bit count — up to 96 iterations. C#'s [`ScaleResult`](https://github.com/dotnet/runtime/blob/main/src/libraries/System.Private.CoreLib/src/System/Decimal.DecCalc.cs) uses `LeadingZeroCount` which is a single instruction on modern CPUs.
 
-**Fix:** Use `count_leading_zeros()` or `bit_width()` if available in Mojo. If not available for
-UInt128, split into two UInt64s and use CLZ on the high word.
+Fix: split UInt128 into two UInt64s and use `count_leading_zeros` on the high word. If the high word is zero, use CLZ on the low word. This gives O(1) bit width. See §2.5 for more on using UInt128/UInt256 as acceleration.
 
 ### 4.2 `power_of_10` Is Not Using Precomputed Constants Efficiently
 
-**File:** `utility.mojo`
+File: `utility.mojo`
 
-The function already has hardcoded return values for n=0 through n=32, but for n=33 through n=56+
-it falls back to `ValueType(10) ** n` which computes via loop.
+The function already has hardcoded return values for n=0 through n=32, but for n=33 through n=56+ it falls back to `ValueType(10) ** n` which computes via loop.
 
-Since `power_of_10` is called in nearly every arithmetic operation (scale adjustment,
-`number_of_digits`, comparison, division), the fallback path matters.
+Since `power_of_10` is called in nearly every arithmetic operation (scale adjustment, `number_of_digits`, comparison, division), the fallback path matters.
 
-**Fix:** Extend the hardcoded constants up to n=58 (the maximum needed for UInt256 products of
-two 29-digit numbers). The pattern is already there for n≤32 — just continue it. For UInt256
-values too large for integer literals, use the `@always_inline` constant function pattern from
-`constants.mojo`.
+Fix: extend the hardcoded constants up to n=58 (the maximum needed for UInt256 products of two 29-digit numbers). The pattern is already there for n ≤ 32 — just continue it. For UInt256 values too large for integer literals, use the `@always_inline` constant function pattern from `constants.mojo`.
 
 ### 4.3 `truncate_to_max` Could Use .NET Tricks
 
-**File:** `utility.mojo`
+File: `utility.mojo`
 
-Our `truncate_to_max` computes `number_of_digits`, then divides by `power_of_10`, then rounds.
-.NET's `ScaleResult` uses:
+Our `truncate_to_max` computes `number_of_digits`, then divides by `power_of_10`, then rounds. .NET's [`ScaleResult`](https://github.com/dotnet/runtime/blob/main/src/libraries/System.Private.CoreLib/src/System/Decimal.DecCalc.cs) uses:
 
 - `LeadingZeroCount` × `77/256` to estimate digit count without a full `number_of_digits` call
 - Division by compile-time constants (10^1 through 10^9) using multiply-by-reciprocal
@@ -368,7 +300,7 @@ These tricks could significantly speed up our overflow handling.
 
 ### 4.4 `ln()` Range Reduction Uses Loops
 
-**File:** `exponential.mojo`
+File: `exponential.mojo`
 
 The `ln()` function reduces input to [0.5, 2.0) by repeatedly dividing by 10, then by 2:
 
@@ -378,41 +310,32 @@ while x_reduced > Decimal128(2, 0, 0, 0):
     halving_count += 1
 ```
 
-For `ln(1e28)`, this loop runs ~93 times (since 10^28 ≈ 2^93), each doing a full Decimal128
-division.
+For `ln(1e28)`, this loop runs ~93 times (since 10^28 ≈ 2^93), each doing a full Decimal128 division.
 
-**Fix:** Use the identity `ln(a × 10^n) = ln(a) + n × ln(10)` to strip the scale in one step.
-Then only the coefficient (which is in [1, 2^96)) needs halving, which is at most ~96 iterations
-but could also be reduced by computing the bit width and dividing by the appropriate power of 2
-in one shot.
+Fix: use the identity `ln(a × 10^n) = ln(a) + n × ln(10)` to strip the scale in one step. Then only the coefficient (which is in [1, 2^96)) needs halving, which could be reduced by computing the bit width and dividing by the appropriate power of 2 in one shot.
 
 ### 4.5 `subtract()` Creates a Temporary
 
-**File:** `arithmetics.mojo`
+File: `arithmetics.mojo`
 
 ```python
 def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     return add(x1, negative(x2))
 ```
 
-Creates a temporary just to flip the sign bit. Probably minor — Decimal128 is 16 bytes and should
-be in registers. Low priority unless profiling shows otherwise.
+Creates a temporary just to flip the sign bit. Probably minor — Decimal128 is 16 bytes and should be in registers. Low priority unless profiling shows otherwise.
 
 ### 4.6 Series Computations Cap at 500 Iterations
 
-**File:** `exponential.mojo`
+File: `exponential.mojo`
 
-Both `exp_series` and `ln_series` loop up to 500 with convergence check `term.is_zero()`. In
-practice they converge in 30-60 iterations. The issue: `is_zero()` triggers only when the term
-underflows to exactly zero, which may require a few extra iterations beyond when the term is already
-too small to affect the result.
+Both `exp_series` and `ln_series` loop up to 500 with convergence check `term.is_zero()`. In practice they converge in 30–60 iterations. The issue: `is_zero()` triggers only when the term underflows to exactly zero, which may require a few extra iterations beyond when the term is already too small to affect the result.
 
-**Fix:** Break early if the term is smaller than 10^(−29) — it cannot change the result at our
-precision.
+Fix: break early if the term is smaller than 10^(−29) — it cannot change the result at our precision.
 
 ### 4.7 `from_string` Processes Digits One at a Time
 
-**File:** `decimal128.mojo`
+File: `decimal128.mojo`
 
 ```python
 coef = coef * 10 + digit
@@ -420,33 +343,28 @@ coef = coef * 10 + digit
 
 Each iteration does a UInt128 multiply-by-10 and add.
 
-**Fix:** Batch up to 9 digits into a UInt64, then multiply `coef` by the appropriate power of 10
-and add the batch. Reduces 128-bit multiplications from ~29 to ~4 for a max-length number.
+Fix: batch up to 9 digits into a UInt64, then multiply `coef` by the appropriate power of 10 and add the batch. Reduces 128-bit multiplications from ~29 to ~4 for a max-length number.
 
 ### 4.8 Division Loop: Separate `//` and `%` Operations
 
-**File:** `arithmetics.mojo`
+File: `arithmetics.mojo`
 
 ```python
 digit = rem // x2_coef
 rem = rem % x2_coef
 ```
 
-Two separate 128-bit divisions on the same operands. Most hardware produces both quotient and
-remainder in a single `div` instruction.
+Two separate 128-bit divisions on the same operands. Most hardware produces both quotient and remainder in a single `div` instruction.
 
-**Fix:** Use `divmod()` if available in Mojo.
-
----
+Fix: use `divmod()` if available in Mojo.
 
 ## 5. Improvement Opportunities
 
 ### 5.1 Add `__hash__` Support
 
-C# and Rust both support hashing their decimal types. We should implement `__hash__` so Decimal128
-can be used as a dictionary key or in sets.
+C# and Rust both support hashing their decimal types. I should implement `__hash__` so Decimal128 can be used as a dictionary key or in sets.
 
-**Approach:** Hash the normalized form (strip trailing zeros, then hash coefficient + scale + sign).
+Approach: hash the normalized form (strip trailing zeros, then hash coefficient + scale + sign).
 
 ### 5.2 Add `Stringable` / `Representable` Protocol Conformance
 
@@ -454,24 +372,21 @@ Check that we conform to Mojo's `Stringable` and `Representable` traits for `str
 
 ### 5.3 Better `from_float` Accuracy
 
-The current `from_float` (Float64) path likely goes through string conversion. Consider exact float
-decomposition (extracting mantissa and exponent from IEEE 754 double bits).
+The current `from_float` (Float64) path likely goes through string conversion. Maybe consider exact float decomposition (extracting mantissa and exponent from IEEE 754 double bits).
 
-**Comparison:** Rust `rust_decimal` uses exact mantissa/exponent extraction from f64 bits.
+For reference: Rust [`rust_decimal`](https://github.com/paupino/rust-decimal) uses exact mantissa/exponent extraction from f64 bits.
 
 ### 5.4 `min()` / `max()` / `clamp()`
 
-All four comparable libraries provide `min`/`max`. We should too. Easy to implement.
+All four comparable libraries provide `min`/`max`. Easy to implement.
 
 ### 5.5 Canonicalization / `normalize()`
 
-Strip trailing zeros: `1.200` (coef=1200, scale=3) → `1.2` (coef=12, scale=1). Useful for
-hashing (§5.1) and reducing coefficient size for faster subsequent arithmetic. Rust `rust_decimal`
-has `normalize()`.
+Strip trailing zeros: `1.200` (coef=1200, scale=3) → `1.2` (coef=12, scale=1). Useful for hashing (§5.1) and reducing coefficient size for faster subsequent arithmetic. Rust [`rust_decimal`](https://docs.rs/rust_decimal/latest/rust_decimal/struct.Decimal.html#method.normalize) has `normalize()`.
 
 ### 5.6 Wider Testing for Edge Cases
 
-I recommend adding test cases for:
+Some test cases worth adding:
 
 | Test Case                                    | Expected Behavior            |
 | -------------------------------------------- | ---------------------------- |
@@ -482,65 +397,56 @@ I recommend adding test cases for:
 | Max coefficient after multiply               | Correct rounding             |
 | 29-digit numbers near 2^96 − 1 boundary      | Correct truncate/round       |
 
----
-
 ## 6. Priority Summary
 
 | #   | Issue                                   | Severity    | Effort                        | Priority |
 | --- | --------------------------------------- | ----------- | ----------------------------- | -------- |
-| 3.1 | NaN/Inf broken (fix or remove)          | Critical    | Small (remove) / Medium (fix) | **P0**   |
-| 3.2 | `from_words` uses `testing.assert_true` | Medium      | Small                         | **P1**   |
-| 4.2 | `power_of_10` not fully precomputed     | High        | Small                         | **P1**   |
-| 4.3 | `truncate_to_max` lacks .NET tricks     | High        | Medium                        | **P1**   |
-| 3.4 | `compare_absolute` overflow             | Medium      | Small                         | **P2**   |
-| 4.1 | `number_of_bits` loop                   | Medium      | Small                         | **P2**   |
-| 4.8 | Separate `//` and `%` in division       | Medium      | Small                         | **P2**   |
-| 4.7 | `from_string` digit-by-digit            | Medium      | Medium                        | **P2**   |
-| 4.4 | `ln()` range reduction loops            | Medium      | Medium                        | **P2**   |
-| 5.4 | `min/max/clamp`                         | Enhancement | Trivial                       | **P3**   |
-| 5.5 | `normalize()`                           | Enhancement | Small                         | **P3**   |
-| 5.1 | `__hash__`                              | Enhancement | Small                         | **P3**   |
-| 5.6 | Edge case tests                         | Enhancement | Medium                        | **P3**   |
-| 4.5 | `subtract` temporary                    | Low         | Trivial                       | **P4**   |
-| 4.6 | Series convergence tolerance            | Low         | Small                         | **P4**   |
-| 3.3 | Division rounding mode (configurable)   | Low         | Medium                        | **P4**   |
-| 5.3 | Better `from_float`                     | Enhancement | Medium                        | **P4**   |
-| 5.2 | `Stringable` conformance                | Enhancement | Trivial                       | **P4**   |
-
----
+| 3.1 | NaN/Inf broken (fix or remove)          | Critical    | Small (remove) / Medium (fix) | P0       |
+| 3.2 | `from_words` uses `testing.assert_true` | Medium      | Small                         | P1       |
+| 4.2 | `power_of_10` not fully precomputed     | High        | Small                         | P1       |
+| 4.3 | `truncate_to_max` lacks .NET tricks     | High        | Medium                        | P1       |
+| 3.4 | `compare_absolute` overflow             | Medium      | Small                         | P2       |
+| 4.1 | `number_of_bits` loop                   | Medium      | Small                         | P2       |
+| 4.8 | Separate `//` and `%` in division       | Medium      | Small                         | P2       |
+| 4.7 | `from_string` digit-by-digit            | Medium      | Medium                        | P2       |
+| 4.4 | `ln()` range reduction loops            | Medium      | Medium                        | P2       |
+| 5.4 | `min/max/clamp`                         | Enhancement | Trivial                       | P3       |
+| 5.5 | `normalize()`                           | Enhancement | Small                         | P3       |
+| 5.1 | `__hash__`                              | Enhancement | Small                         | P3       |
+| 5.6 | Edge case tests                         | Enhancement | Medium                        | P3       |
+| 4.5 | `subtract` temporary                    | Low         | Trivial                       | P4       |
+| 4.6 | Series convergence tolerance            | Low         | Small                         | P4       |
+| 3.3 | Division rounding mode (configurable)   | Low         | Medium                        | P4       |
+| 5.3 | Better `from_float`                     | Enhancement | Medium                        | P4       |
+| 5.2 | `Stringable` conformance                | Enhancement | Trivial                       | P4       |
 
 ## 7. Execution Order
 
-**Phase 1 — Critical correctness:**
+Phase 1 — correctness:
 
-1. Decide: remove NaN/Infinity or fix them (§3.1). If removing, delete `NAN()`, `NEGATIVE_NAN()`,
-   `INFINITY()`, `NEGATIVE_INFINITY()`, `NAN_MASK`, `INFINITY_MASK`, `is_nan()`, `is_infinity()`
-   and change callers to raise errors. If fixing, apply fixes A/B/C from §3.1.
+1. Decide: remove NaN/Infinity or fix them (§3.1). If removing, delete `NAN()`, `NEGATIVE_NAN()`, `INFINITY()`, `NEGATIVE_INFINITY()`, `NAN_MASK`, `INFINITY_MASK`, `is_nan()`, `is_infinity()` and change callers to raise errors. If fixing, apply fixes A/B/C from §3.1.
 2. Fix `from_words` to use `raise Error` instead of `testing.assert_true` (§3.2).
 3. Add edge case tests (§5.6).
 
-**Phase 2 — Performance (coefficient bound):**
+Phase 2 — performance (coefficient bound):
 
 1. Extend `power_of_10` hardcoded constants up to n=58 (§4.2).
-2. Add .NET-style tricks to `truncate_to_max`: CLZ-based digit estimation, divide-by-constant
-   optimization, trailing-zero quick-reject (§4.3).
-3. Replace `number_of_bits` with hardware CLZ (§4.1).
+2. Add .NET-style tricks to `truncate_to_max`: CLZ-based digit estimation, divide-by-constant optimization, trailing-zero quick-reject (§4.3).
+3. Replace `number_of_bits` with hardware CLZ via UInt64 split (§4.1).
 4. Fix `compare_absolute` overflow with UInt256 (§3.4).
 
-**Phase 3 — Performance (general):**
+Phase 3 — performance (general):
 
 1. Optimize `from_string` digit batching (§4.7).
 2. Use single divmod in division loop (§4.8).
 3. Improve `ln()` range reduction (§4.4).
 
-**Phase 4 — Enhancements:**
+Phase 4 — enhancements:
 
 1. Add `min/max/clamp` (§5.4).
 2. Add `normalize()` (§5.5).
 3. Add `__hash__` (§5.1).
 4. Better `from_float` (§5.3).
-
----
 
 ## Appendix A. Survey of 128-Bit Fixed-Precision Decimal Types
 
