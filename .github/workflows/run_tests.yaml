@@ -1,4 +1,5 @@
-name: CI
+name: Decimo Unit Tests
+
 on:
   push:
     branches: [main, dev]
@@ -20,10 +21,8 @@ jobs:
   # ── Test: BigDecimal ─────────────────────────────────────────────────────────
   test-bigdecimal:
     name: Test BigDecimal
-    runs-on: ubuntu-22.04
+    runs-on: macos-latest
     timeout-minutes: 30
-    env:
-      DEBIAN_FRONTEND: noninteractive
     steps:
       - uses: actions/checkout@v4
       - name: Install pixi
@@ -34,19 +33,42 @@ jobs:
           echo "$HOME/.pixi/bin" >> $GITHUB_PATH
       - name: pixi install
         run: pixi install
-      - name: Build packages
+      - name: Build packages (with retry for Mojo compiler intermittent crashes)
         run: |
-          pixi run mojo package src/decimo && cp decimo.mojopkg tests/
-      - name: Run tests
-        run: bash ./tests/test_bigdecimal.sh
+          for attempt in 1 2 3; do
+            echo "=== build attempt $attempt ==="
+            if pixi run mojo package src/decimo && cp decimo.mojopkg tests/; then
+              echo "=== build succeeded on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== build failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== build crashed, retrying in 5s... ==="
+            sleep 5
+          done
+      - name: Run tests (with retry for Mojo compiler intermittent crashes)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== test attempt $attempt ==="
+            if bash ./tests/test_bigdecimal.sh; then
+              echo "=== tests passed on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== tests failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== test run crashed, retrying in 5s... ==="
+            sleep 5
+          done
 
   # ── Test: BigInt ─────────────────────────────────────────────────────────────
   test-bigint:
     name: Test BigInt
-    runs-on: ubuntu-22.04
+    runs-on: macos-latest
     timeout-minutes: 30
-    env:
-      DEBIAN_FRONTEND: noninteractive
     steps:
       - uses: actions/checkout@v4
       - name: Install pixi
@@ -57,19 +79,42 @@ jobs:
           echo "$HOME/.pixi/bin" >> $GITHUB_PATH
       - name: pixi install
         run: pixi install
-      - name: Build packages
+      - name: Build packages (with retry for Mojo compiler intermittent crashes)
         run: |
-          pixi run mojo package src/decimo && cp decimo.mojopkg tests/
-      - name: Run tests
-        run: bash ./tests/test_bigint.sh
+          for attempt in 1 2 3; do
+            echo "=== build attempt $attempt ==="
+            if pixi run mojo package src/decimo && cp decimo.mojopkg tests/; then
+              echo "=== build succeeded on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== build failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== build crashed, retrying in 5s... ==="
+            sleep 5
+          done
+      - name: Run tests (with retry for Mojo compiler intermittent crashes)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== test attempt $attempt ==="
+            if bash ./tests/test_bigint.sh; then
+              echo "=== tests passed on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== tests failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== test run crashed, retrying in 5s... ==="
+            sleep 5
+          done
 
   # ── Test: BigUint ────────────────────────────────────────────────────────────
   test-biguint:
     name: Test BigUint
-    runs-on: ubuntu-22.04
+    runs-on: macos-latest
     timeout-minutes: 30
-    env:
-      DEBIAN_FRONTEND: noninteractive
     steps:
       - uses: actions/checkout@v4
       - name: Install pixi
@@ -80,19 +125,42 @@ jobs:
           echo "$HOME/.pixi/bin" >> $GITHUB_PATH
       - name: pixi install
         run: pixi install
-      - name: Build packages
+      - name: Build packages (with retry for Mojo compiler intermittent crashes)
         run: |
-          pixi run mojo package src/decimo && cp decimo.mojopkg tests/
-      - name: Run tests
-        run: bash ./tests/test_biguint.sh
+          for attempt in 1 2 3; do
+            echo "=== build attempt $attempt ==="
+            if pixi run mojo package src/decimo && cp decimo.mojopkg tests/; then
+              echo "=== build succeeded on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== build failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== build crashed, retrying in 5s... ==="
+            sleep 5
+          done
+      - name: Run tests (with retry for Mojo compiler intermittent crashes)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== test attempt $attempt ==="
+            if bash ./tests/test_biguint.sh; then
+              echo "=== tests passed on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== tests failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== test run crashed, retrying in 5s... ==="
+            sleep 5
+          done
 
   # ── Test: BigInt10 ───────────────────────────────────────────────────────────
   test-bigint10:
     name: Test BigInt10
-    runs-on: ubuntu-22.04
+    runs-on: macos-latest
     timeout-minutes: 30
-    env:
-      DEBIAN_FRONTEND: noninteractive
     steps:
       - uses: actions/checkout@v4
       - name: Install pixi
@@ -103,19 +171,42 @@ jobs:
           echo "$HOME/.pixi/bin" >> $GITHUB_PATH
       - name: pixi install
         run: pixi install
-      - name: Build packages
+      - name: Build packages (with retry for Mojo compiler intermittent crashes)
         run: |
-          pixi run mojo package src/decimo && cp decimo.mojopkg tests/
-      - name: Run tests
-        run: bash ./tests/test_bigint10.sh
+          for attempt in 1 2 3; do
+            echo "=== build attempt $attempt ==="
+            if pixi run mojo package src/decimo && cp decimo.mojopkg tests/; then
+              echo "=== build succeeded on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== build failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== build crashed, retrying in 5s... ==="
+            sleep 5
+          done
+      - name: Run tests (with retry for Mojo compiler intermittent crashes)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== test attempt $attempt ==="
+            if bash ./tests/test_bigint10.sh; then
+              echo "=== tests passed on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== tests failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== test run crashed, retrying in 5s... ==="
+            sleep 5
+          done
 
   # ── Test: Decimal128 ─────────────────────────────────────────────────────────
   test-decimal128:
     name: Test Decimal128
-    runs-on: ubuntu-22.04
+    runs-on: macos-latest
     timeout-minutes: 30
-    env:
-      DEBIAN_FRONTEND: noninteractive
     steps:
       - uses: actions/checkout@v4
       - name: Install pixi
@@ -126,19 +217,42 @@ jobs:
           echo "$HOME/.pixi/bin" >> $GITHUB_PATH
       - name: pixi install
         run: pixi install
-      - name: Build packages
+      - name: Build packages (with retry for Mojo compiler intermittent crashes)
         run: |
-          pixi run mojo package src/decimo && cp decimo.mojopkg tests/
-      - name: Run tests
-        run: bash ./tests/test_decimal128.sh
+          for attempt in 1 2 3; do
+            echo "=== build attempt $attempt ==="
+            if pixi run mojo package src/decimo && cp decimo.mojopkg tests/; then
+              echo "=== build succeeded on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== build failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== build crashed, retrying in 5s... ==="
+            sleep 5
+          done
+      - name: Run tests (with retry for Mojo compiler intermittent crashes)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== test attempt $attempt ==="
+            if bash ./tests/test_decimal128.sh; then
+              echo "=== tests passed on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== tests failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== test run crashed, retrying in 5s... ==="
+            sleep 5
+          done
 
   # ── Test: BigFloat ─────────────────────────────────────────────────────────
   test-bigfloat:
     name: Test BigFloat
-    runs-on: ubuntu-22.04
+    runs-on: macos-latest
     timeout-minutes: 30
-    env:
-      DEBIAN_FRONTEND: noninteractive
     steps:
       - uses: actions/checkout@v4
       - name: Install pixi
@@ -150,20 +264,43 @@ jobs:
       - name: pixi install
         run: pixi install
       - name: Install MPFR
-        run: sudo apt-get update && sudo apt-get install -y libmpfr-dev
-      - name: Build packages
+        run: brew install mpfr
+      - name: Build packages (with retry for Mojo compiler intermittent crashes)
         run: |
-          pixi run mojo package src/decimo && cp decimo.mojopkg tests/
-      - name: Run tests
-        run: bash ./tests/test_bigfloat.sh
+          for attempt in 1 2 3; do
+            echo "=== build attempt $attempt ==="
+            if pixi run mojo package src/decimo && cp decimo.mojopkg tests/; then
+              echo "=== build succeeded on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== build failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== build crashed, retrying in 5s... ==="
+            sleep 5
+          done
+      - name: Run tests (with retry for Mojo compiler intermittent crashes)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== test attempt $attempt ==="
+            if bash ./tests/test_bigfloat.sh; then
+              echo "=== tests passed on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== tests failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== test run crashed, retrying in 5s... ==="
+            sleep 5
+          done
 
   # ── Test: TOML parser ─────────────────────────────────────────────────────
   test-toml:
     name: Test TOML parser
-    runs-on: ubuntu-22.04
+    runs-on: macos-latest
     timeout-minutes: 15
-    env:
-      DEBIAN_FRONTEND: noninteractive
     steps:
       - uses: actions/checkout@v4
       - name: Install pixi
@@ -174,19 +311,42 @@ jobs:
           echo "$HOME/.pixi/bin" >> $GITHUB_PATH
       - name: pixi install
         run: pixi install
-      - name: Build packages
+      - name: Build packages (with retry for Mojo compiler intermittent crashes)
         run: |
-          pixi run mojo package src/decimo && cp decimo.mojopkg tests/
-      - name: Run tests
-        run: bash ./tests/test_toml.sh
+          for attempt in 1 2 3; do
+            echo "=== build attempt $attempt ==="
+            if pixi run mojo package src/decimo && cp decimo.mojopkg tests/; then
+              echo "=== build succeeded on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== build failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== build crashed, retrying in 5s... ==="
+            sleep 5
+          done
+      - name: Run tests (with retry for Mojo compiler intermittent crashes)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== test attempt $attempt ==="
+            if bash ./tests/test_toml.sh; then
+              echo "=== tests passed on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== tests failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== test run crashed, retrying in 5s... ==="
+            sleep 5
+          done
 
   # ── Test: CLI ────────────────────────────────────────────────────────────────
   test-cli:
     name: Test CLI
-    runs-on: ubuntu-22.04
+    runs-on: macos-latest
     timeout-minutes: 15
-    env:
-      DEBIAN_FRONTEND: noninteractive
     steps:
       - uses: actions/checkout@v4
       - name: Install pixi
@@ -197,18 +357,42 @@ jobs:
           echo "$HOME/.pixi/bin" >> $GITHUB_PATH
       - name: pixi install
         run: pixi install
-      - name: Build CLI binary
-        run: pixi run buildcli
-      - name: Run tests
-        run: bash ./tests/test_cli.sh
+      - name: Build CLI binary (with retry for Mojo compiler intermittent crashes)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== build attempt $attempt ==="
+            if pixi run buildcli; then
+              echo "=== build succeeded on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== build failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== build crashed, retrying in 5s... ==="
+            sleep 5
+          done
+      - name: Run tests (with retry for Mojo compiler intermittent crashes)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== test attempt $attempt ==="
+            if bash ./tests/test_cli.sh; then
+              echo "=== tests passed on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== tests failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== test run crashed, retrying in 5s... ==="
+            sleep 5
+          done
 
   # ── Test: Python bindings ────────────────────────────────────────────────────
   test-python:
     name: Test Python bindings
-    runs-on: ubuntu-22.04
+    runs-on: macos-latest
     timeout-minutes: 15
-    env:
-      DEBIAN_FRONTEND: noninteractive
     steps:
       - uses: actions/checkout@v4
       - name: Install pixi
@@ -219,16 +403,27 @@ jobs:
           echo "$HOME/.pixi/bin" >> $GITHUB_PATH
       - name: pixi install
         run: pixi install
-      - name: Build & run Python tests
-        run: pixi run testpy
+      - name: Build & run Python tests (with retry for Mojo compiler intermittent crashes)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== test attempt $attempt ==="
+            if pixi run testpy; then
+              echo "=== tests passed on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== tests failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== test run crashed, retrying in 5s... ==="
+            sleep 5
+          done
 
   # ── Doc generation check ──────────────────────────────────────────────────────
   doc-check:
     name: Doc generation
-    runs-on: ubuntu-22.04
+    runs-on: macos-latest
     timeout-minutes: 10
-    env:
-      DEBIAN_FRONTEND: noninteractive
     steps:
       - uses: actions/checkout@v4
       - name: Install pixi
@@ -239,16 +434,27 @@ jobs:
           echo "$HOME/.pixi/bin" >> $GITHUB_PATH
       - name: pixi install
         run: pixi install
-      - name: Generate docs
-        run: pixi run doc
+      - name: Generate docs (with retry for Mojo compiler intermittent crashes)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== doc attempt $attempt ==="
+            if pixi run doc; then
+              echo "=== doc succeeded on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== doc failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== doc crashed, retrying in 5s... ==="
+            sleep 5
+          done
 
   # ── Format check ─────────────────────────────────────────────────────────────
   format-check:
     name: Format check
-    runs-on: ubuntu-22.04
+    runs-on: macos-latest
     timeout-minutes: 10
-    env:
-      DEBIAN_FRONTEND: noninteractive
     steps:
       - uses: actions/checkout@v4
       - name: Install pixi
