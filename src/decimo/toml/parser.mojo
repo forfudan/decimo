@@ -37,12 +37,19 @@ struct TOMLValue(Copyable, ImplicitlyCopyable, Movable):
     """Represents a value in the TOML document."""
 
     var type: TOMLValueType
+    """The value's TOML type."""
     var string_value: String
+    """The string content when type is `STRING`."""
     var int_value: Int
+    """The integer content when type is `INTEGER`."""
     var float_value: Float64
+    """The float content when type is `FLOAT`."""
     var bool_value: Bool
+    """The boolean content when type is `BOOLEAN`."""
     var array_values: List[TOMLValue]
+    """The array elements when type is `ARRAY`."""
     var table_values: Dict[String, TOMLValue]
+    """The key-value pairs when type is `TABLE`."""
 
     def __init__(out self):
         """Initialize an empty TOML value."""
@@ -55,7 +62,11 @@ struct TOMLValue(Copyable, ImplicitlyCopyable, Movable):
         self.table_values = Dict[String, TOMLValue]()
 
     def __init__(out self, string_value: String):
-        """Initialize a string TOML value."""
+        """Initialize a string TOML value.
+
+        Args:
+            string_value: The string content.
+        """
         self.type = TOMLValueType.STRING
         self.string_value = string_value
         self.int_value = 0
@@ -65,7 +76,11 @@ struct TOMLValue(Copyable, ImplicitlyCopyable, Movable):
         self.table_values = Dict[String, TOMLValue]()
 
     def __init__(out self, int_value: Int):
-        """Initialize an integer TOML value."""
+        """Initialize an integer TOML value.
+
+        Args:
+            int_value: The integer content.
+        """
         self.type = TOMLValueType.INTEGER
         self.string_value = ""
         self.int_value = int_value
@@ -75,7 +90,11 @@ struct TOMLValue(Copyable, ImplicitlyCopyable, Movable):
         self.table_values = Dict[String, TOMLValue]()
 
     def __init__(out self, float_value: Float64):
-        """Initialize a float TOML value."""
+        """Initialize a float TOML value.
+
+        Args:
+            float_value: The float content.
+        """
         self.type = TOMLValueType.FLOAT
         self.string_value = ""
         self.int_value = 0
@@ -85,7 +104,11 @@ struct TOMLValue(Copyable, ImplicitlyCopyable, Movable):
         self.table_values = Dict[String, TOMLValue]()
 
     def __init__(out self, bool_value: Bool):
-        """Initialize a boolean TOML value."""
+        """Initialize a boolean TOML value.
+
+        Args:
+            bool_value: The boolean content.
+        """
         self.type = TOMLValueType.BOOLEAN
         self.string_value = ""
         self.int_value = 0
@@ -95,6 +118,11 @@ struct TOMLValue(Copyable, ImplicitlyCopyable, Movable):
         self.table_values = Dict[String, TOMLValue]()
 
     def __init__(out self, *, copy: Self):
+        """Creates a copy of an existing `TOMLValue`.
+
+        Args:
+            copy: The instance to copy from.
+        """
         self.type = copy.type
         self.string_value = copy.string_value
         self.int_value = copy.int_value
@@ -104,15 +132,27 @@ struct TOMLValue(Copyable, ImplicitlyCopyable, Movable):
         self.table_values = copy.table_values.copy()
 
     def is_table(self) -> Bool:
-        """Check if this value is a table."""
+        """Checks if this value is a table.
+
+        Returns:
+            `True` if this value is a table, `False` otherwise.
+        """
         return self.type == TOMLValueType.TABLE
 
     def is_array(self) -> Bool:
-        """Check if this value is an array."""
+        """Checks if this value is an array.
+
+        Returns:
+            `True` if this value is an array, `False` otherwise.
+        """
         return self.type == TOMLValueType.ARRAY
 
     def as_string(self) -> String:
-        """Get the value as a string."""
+        """Converts the value to a string representation.
+
+        Returns:
+            The value as a string, or an empty string for unsupported types.
+        """
         if self.type == TOMLValueType.STRING:
             return self.string_value
         elif self.type == TOMLValueType.INTEGER:
@@ -125,14 +165,22 @@ struct TOMLValue(Copyable, ImplicitlyCopyable, Movable):
             return ""
 
     def as_int(self) -> Int:
-        """Get the value as an integer."""
+        """Returns the value as an integer.
+
+        Returns:
+            The integer value, or `0` if the type is not `INTEGER`.
+        """
         if self.type == TOMLValueType.INTEGER:
             return self.int_value
         else:
             return 0
 
     def as_float(self) -> Float64:
-        """Get the value as a float."""
+        """Returns the value as a float.
+
+        Returns:
+            The float value, or `0.0` if the type is not numeric.
+        """
         if self.type == TOMLValueType.FLOAT:
             return self.float_value
         elif self.type == TOMLValueType.INTEGER:
@@ -141,20 +189,32 @@ struct TOMLValue(Copyable, ImplicitlyCopyable, Movable):
             return 0.0
 
     def as_bool(self) -> Bool:
-        """Get the value as a boolean."""
+        """Returns the value as a boolean.
+
+        Returns:
+            The boolean value, or `False` if the type is not `BOOLEAN`.
+        """
         if self.type == TOMLValueType.BOOLEAN:
             return self.bool_value
         else:
             return False
 
     def as_table(self) -> Dict[String, TOMLValue]:
-        """Get the value as a table dictionary."""
+        """Returns the value as a table dictionary.
+
+        Returns:
+            A copy of the table's key-value pairs, or an empty dictionary.
+        """
         if self.type == TOMLValueType.TABLE:
             return self.table_values.copy()
         return Dict[String, TOMLValue]()
 
     def as_array(self) -> List[TOMLValue]:
-        """Get the value as an array."""
+        """Returns the value as an array.
+
+        Returns:
+            A copy of the array elements, or an empty list.
+        """
         if self.type == TOMLValueType.ARRAY:
             return self.array_values.copy()
         return List[TOMLValue]()
@@ -164,53 +224,122 @@ struct TOMLValueType(Copyable, ImplicitlyCopyable, Movable):
     """Types of values in TOML."""
 
     comptime NULL = TOMLValueType.null()
+    """Value type for uninitialized or empty values."""
     comptime STRING = TOMLValueType.string()
+    """Value type for string values."""
     comptime INTEGER = TOMLValueType.integer()
+    """Value type for integer values."""
     comptime FLOAT = TOMLValueType.float()
+    """Value type for floating-point values."""
     comptime BOOLEAN = TOMLValueType.boolean()
+    """Value type for boolean values."""
     comptime ARRAY = TOMLValueType.array()
+    """Value type for array values."""
     comptime TABLE = TOMLValueType.table()
+    """Value type for table values."""
 
     var value: Int
+    """The underlying integer identifier."""
 
     @staticmethod
     def null() -> TOMLValueType:
+        """Creates a `TOMLValueType` representing null.
+
+        Returns:
+            A `TOMLValueType` for null values.
+        """
         return TOMLValueType(0)
 
     @staticmethod
     def string() -> TOMLValueType:
+        """Creates a `TOMLValueType` representing a string.
+
+        Returns:
+            A `TOMLValueType` for string values.
+        """
         return TOMLValueType(1)
 
     @staticmethod
     def integer() -> TOMLValueType:
+        """Creates a `TOMLValueType` representing an integer.
+
+        Returns:
+            A `TOMLValueType` for integer values.
+        """
         return TOMLValueType(2)
 
     @staticmethod
     def float() -> TOMLValueType:
+        """Creates a `TOMLValueType` representing a float.
+
+        Returns:
+            A `TOMLValueType` for floating-point values.
+        """
         return TOMLValueType(3)
 
     @staticmethod
     def boolean() -> TOMLValueType:
+        """Creates a `TOMLValueType` representing a boolean.
+
+        Returns:
+            A `TOMLValueType` for boolean values.
+        """
         return TOMLValueType(4)
 
     @staticmethod
     def array() -> TOMLValueType:
+        """Creates a `TOMLValueType` representing an array.
+
+        Returns:
+            A `TOMLValueType` for array values.
+        """
         return TOMLValueType(5)
 
     @staticmethod
     def table() -> TOMLValueType:
+        """Creates a `TOMLValueType` representing a table.
+
+        Returns:
+            A `TOMLValueType` for table values.
+        """
         return TOMLValueType(6)
 
     def __init__(out self, value: Int):
+        """Creates a new `TOMLValueType` from an integer identifier.
+
+        Args:
+            value: The integer identifier for this value type.
+        """
         self.value = value
 
     def __eq__(self, other: TOMLValueType) -> Bool:
+        """Checks equality between two value types.
+
+        Args:
+            other: The value type to compare against.
+
+        Returns:
+            `True` if the value types are equal, `False` otherwise.
+        """
         return self.value == other.value
 
     def __ne__(self, other: TOMLValueType) -> Bool:
+        """Checks inequality between two value types.
+
+        Args:
+            other: The value type to compare against.
+
+        Returns:
+            `True` if the value types differ, `False` otherwise.
+        """
         return self.value != other.value
 
     def to_string(self) -> String:
+        """Returns the human-readable name of this value type.
+
+        Returns:
+            A string such as `"STRING"`, `"INTEGER"`, or `"UNKNOWN"`.
+        """
         if self == Self.NULL:
             return "NULL"
         elif self == Self.STRING:
@@ -233,18 +362,34 @@ struct TOMLDocument(Copyable, Movable):
     """Represents a parsed TOML document."""
 
     var root: Dict[String, TOMLValue]
+    """The top-level key-value pairs."""
 
     def __init__(out self):
+        """Initializes the instance."""
         self.root = Dict[String, TOMLValue]()
 
     def get(self, key: String) raises -> TOMLValue:
-        """Get a value from the document."""
+        """Retrieves a value from the document by key.
+
+        Args:
+            key: The key to look up.
+
+        Returns:
+            The value for `key`, or an empty `TOMLValue` if not found.
+        """
         if key in self.root:
             return self.root[key]
         return TOMLValue()
 
     def get_table(self, table_name: String) raises -> Dict[String, TOMLValue]:
-        """Get a table from the document."""
+        """Retrieves a table from the document by name.
+
+        Args:
+            table_name: The name of the table to retrieve.
+
+        Returns:
+            A copy of the table's key-value pairs, or an empty dictionary.
+        """
         if (
             table_name in self.root
             and self.root[table_name].type == TOMLValueType.TABLE
@@ -253,7 +398,14 @@ struct TOMLDocument(Copyable, Movable):
         return Dict[String, TOMLValue]()
 
     def get_array(self, key: String) raises -> List[TOMLValue]:
-        """Get an array from the document."""
+        """Retrieves an array from the document by key.
+
+        Args:
+            key: The key of the array to retrieve.
+
+        Returns:
+            A copy of the array elements, or an empty list.
+        """
         if key in self.root and self.root[key].type == TOMLValueType.ARRAY:
             return self.root[key].array_values.copy()
         return List[TOMLValue]()
@@ -261,7 +413,14 @@ struct TOMLDocument(Copyable, Movable):
     def get_array_of_tables(
         self, key: String
     ) raises -> List[Dict[String, TOMLValue]]:
-        """Get an array of tables from the document."""
+        """Retrieves an array of tables from the document by key.
+
+        Args:
+            key: The key of the array of tables to retrieve.
+
+        Returns:
+            A list of table dictionaries, or an empty list.
+        """
         var result = List[Dict[String, TOMLValue]]()
 
         if key in self.root:
@@ -444,14 +603,26 @@ struct TOMLParser:
     """Parses TOML source text into a TOMLDocument."""
 
     var tokens: List[Token]
+    """The list of tokens to parse."""
     var pos: Int
+    """The current position in the token list."""
 
     def __init__(out self, source: String):
+        """Creates a new `TOMLParser` from a TOML source string.
+
+        Args:
+            source: The TOML source string to parse.
+        """
         var tokenizer = Tokenizer(source)
         self.tokens = tokenizer.tokenize()
         self.pos = 0
 
     def __init__(out self, tokens: List[Token]):
+        """Creates a new `TOMLParser` from a pre-tokenized token list.
+
+        Args:
+            tokens: The pre-tokenized token list.
+        """
         self.tokens = tokens.copy()
         self.pos = 0
 
@@ -710,7 +881,11 @@ struct TOMLParser:
     # ---- main parse loop -------------------------------------------------
 
     def parse(mut self) raises -> TOMLDocument:
-        """Parse the tokens into a TOMLDocument."""
+        """Parses the tokens into a `TOMLDocument`.
+
+        Returns:
+            The parsed `TOMLDocument`.
+        """
         var document = TOMLDocument()
         var current_path = List[String]()
         var is_array_of_tables = False
@@ -777,13 +952,27 @@ struct TOMLParser:
 
 
 def parse_string(input: String) raises -> TOMLDocument:
-    """Parse a TOML string into a document."""
+    """Parses a TOML string into a document.
+
+    Args:
+        input: The TOML-formatted string to parse.
+
+    Returns:
+        The parsed `TOMLDocument`.
+    """
     var parser = TOMLParser(input)
     return parser.parse()
 
 
 def parse_file(file_path: String) raises -> TOMLDocument:
-    """Parse a TOML file into a document."""
+    """Parses a TOML file into a document.
+
+    Args:
+        file_path: The path to the TOML file.
+
+    Returns:
+        The parsed `TOMLDocument`.
+    """
 
     with open(file_path, "r") as file:
         content = file.read()

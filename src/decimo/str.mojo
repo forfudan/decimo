@@ -20,7 +20,16 @@ from std.algorithm import vectorize
 
 
 def rjust(s: String, width: Int, fillchar: String = " ") -> String:
-    """Right-justifies a string by padding with fillchar on the left."""
+    """Right-justifies a string by padding with a fill character on the left.
+
+    Args:
+        s: The string to right-justify.
+        width: The minimum total width of the resulting string.
+        fillchar: The character used for padding (defaults to space).
+
+    Returns:
+        The right-justified string, or the original string if it is already at least `width` characters.
+    """
     var n = len(s)
     if n >= width:
         return s
@@ -28,7 +37,16 @@ def rjust(s: String, width: Int, fillchar: String = " ") -> String:
 
 
 def ljust(s: String, width: Int, fillchar: String = " ") -> String:
-    """Left-justifies a string by padding with fillchar on the right."""
+    """Left-justifies a string by padding with a fill character on the right.
+
+    Args:
+        s: The string to left-justify.
+        width: The minimum total width of the resulting string.
+        fillchar: The character used for padding (defaults to space).
+
+    Returns:
+        The left-justified string, or the original string if it is already at least `width` characters.
+    """
     var n = len(s)
     if n >= width:
         return s

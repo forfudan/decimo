@@ -54,6 +54,9 @@ def round(
             round(123.456, -2) -> 1E+2
             round(123.456, -3) -> 0E+3
             round(678.890, -3) -> 1E+3
+
+    Returns:
+        A new `BigDecimal` rounded to the specified number of decimal places.
     """
 
     var ndigits_to_remove = number.scale - ndigits

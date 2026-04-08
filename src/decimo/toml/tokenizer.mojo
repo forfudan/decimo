@@ -19,22 +19,38 @@ A TOML tokenizer for Mojo, implementing the core TOML v1.0 specification.
 """
 
 comptime WHITESPACE = " \t"
+"""Characters treated as whitespace between tokens."""
 comptime COMMENT_START = "#"
+"""Character that begins a TOML comment."""
 comptime QUOTE = '"'
+"""Character for basic (double-quoted) strings."""
 comptime LITERAL_QUOTE = "'"
+"""Character for literal (single-quoted) strings."""
 
 
 struct Token(Copyable, Movable):
     """Represents a token in the TOML document."""
 
     var type: TokenType
+    """The token's category."""
     var value: String
+    """The token's text content."""
     var line: Int
+    """The line number where this token appears (1-based)."""
     var column: Int
+    """The column number where this token starts (1-based)."""
 
     def __init__(
         out self, type: TokenType, value: String, line: Int, column: Int
     ):
+        """Creates a new `Token`.
+
+        Args:
+            type: The token's category.
+            value: The token's text content.
+            line: The line number where this token appears.
+            column: The column number where this token starts.
+        """
         self.type = type
         self.value = value
         self.line = line
@@ -45,16 +61,30 @@ struct SourcePosition:
     """Tracks position in the source text."""
 
     var line: Int
+    """The current line number (1-based)."""
     var column: Int
+    """The current column number (1-based)."""
     var index: Int
+    """The byte offset in the source string."""
 
     def __init__(out self, line: Int = 1, column: Int = 1, index: Int = 0):
+        """Creates a new `SourcePosition`.
+
+        Args:
+            line: The initial line number.
+            column: The initial column number.
+            index: The initial byte offset.
+        """
         self.line = line
         self.column = column
         self.index = index
 
     def advance(mut self, char: String):
-        """Update position after consuming a character."""
+        """Advances the position past the given character.
+
+        Args:
+            char: The character to advance past.
+        """
         if char == "\n":
             self.line += 1
             self.column = 1
@@ -70,114 +100,250 @@ struct TokenType(Copyable, ImplicitlyCopyable, Movable):
 
     # Aliases for TokenType static methods to mimic enum constants
     comptime KEY = TokenType.key()
+    """Token type for TOML keys."""
     comptime STRING = TokenType.string()
+    """Token type for string values."""
     comptime INTEGER = TokenType.integer()
+    """Token type for integer values."""
     comptime FLOAT = TokenType.float()
+    """Token type for floating-point values."""
     comptime BOOLEAN = TokenType.boolean()
+    """Token type for boolean values."""
     comptime DATETIME = TokenType.datetime()
+    """Token type for datetime values."""
     comptime ARRAY_START = TokenType.array_start()
+    """Token type for array opening bracket `[`."""
     comptime ARRAY_END = TokenType.array_end()
+    """Token type for array closing bracket `]`."""
     comptime TABLE_START = TokenType.table_start()
+    """Token type for table header opening bracket `[`."""
     comptime TABLE_END = TokenType.table_end()
+    """Token type for table header closing bracket `]`."""
     comptime ARRAY_OF_TABLES_START = TokenType.array_of_tables_start()
+    """Token type for array-of-tables opening `[[`."""
     comptime EQUAL = TokenType.equal()
+    """Token type for the `=` separator."""
     comptime COMMA = TokenType.comma()
+    """Token type for the `,` separator."""
     comptime NEWLINE = TokenType.newline()
+    """Token type for newline characters."""
     comptime DOT = TokenType.dot()
+    """Token type for the `.` separator in dotted keys."""
     comptime EOF = TokenType.eof()
+    """Token type for end of file."""
     comptime ERROR = TokenType.error()
+    """Token type for lexer errors."""
     comptime INLINE_TABLE_START = TokenType.inline_table_start()
+    """Token type for inline table opening brace `{`."""
     comptime INLINE_TABLE_END = TokenType.inline_table_end()
+    """Token type for inline table closing brace `}`."""
 
     # Attributes
     var value: Int
+    """The underlying integer identifier."""
 
     # Token type constants (lowercase method names)
     @staticmethod
     def key() -> TokenType:
+        """Creates a `TokenType` representing a TOML key.
+
+        Returns:
+            A `TokenType` for keys.
+        """
         return TokenType(0)
 
     @staticmethod
     def string() -> TokenType:
+        """Creates a `TokenType` representing a string value.
+
+        Returns:
+            A `TokenType` for strings.
+        """
         return TokenType(1)
 
     @staticmethod
     def integer() -> TokenType:
+        """Creates a `TokenType` representing an integer value.
+
+        Returns:
+            A `TokenType` for integers.
+        """
         return TokenType(2)
 
     @staticmethod
     def float() -> TokenType:
+        """Creates a `TokenType` representing a floating-point value.
+
+        Returns:
+            A `TokenType` for floats.
+        """
         return TokenType(3)
 
     @staticmethod
     def boolean() -> TokenType:
+        """Creates a `TokenType` representing a boolean value.
+
+        Returns:
+            A `TokenType` for booleans.
+        """
         return TokenType(4)
 
     @staticmethod
     def datetime() -> TokenType:
+        """Creates a `TokenType` representing a datetime value.
+
+        Returns:
+            A `TokenType` for datetimes.
+        """
         return TokenType(5)
 
     @staticmethod
     def array_start() -> TokenType:
+        """Creates a `TokenType` representing an array opening bracket `[`.
+
+        Returns:
+            A `TokenType` for array starts.
+        """
         return TokenType(6)
 
     @staticmethod
     def array_end() -> TokenType:
+        """Creates a `TokenType` representing an array closing bracket `]`.
+
+        Returns:
+            A `TokenType` for array ends.
+        """
         return TokenType(7)
 
     @staticmethod
     def table_start() -> TokenType:
+        """Creates a `TokenType` representing a table header opening `[`.
+
+        Returns:
+            A `TokenType` for table starts.
+        """
         return TokenType(8)
 
     @staticmethod
     def table_end() -> TokenType:
+        """Creates a `TokenType` representing a table header closing `]`.
+
+        Returns:
+            A `TokenType` for table ends.
+        """
         return TokenType(9)
 
     @staticmethod
     def array_of_tables_start() -> TokenType:
+        """Creates a `TokenType` representing an array-of-tables opening `[[`.
+
+        Returns:
+            A `TokenType` for array-of-tables starts.
+        """
         return TokenType(16)
 
     @staticmethod
     def equal() -> TokenType:
+        """Creates a `TokenType` representing the `=` separator.
+
+        Returns:
+            A `TokenType` for equals signs.
+        """
         return TokenType(10)
 
     @staticmethod
     def comma() -> TokenType:
+        """Creates a `TokenType` representing the `,` separator.
+
+        Returns:
+            A `TokenType` for commas.
+        """
         return TokenType(11)
 
     @staticmethod
     def newline() -> TokenType:
+        """Creates a `TokenType` representing a newline character.
+
+        Returns:
+            A `TokenType` for newlines.
+        """
         return TokenType(12)
 
     @staticmethod
     def dot() -> TokenType:
+        """Creates a `TokenType` representing the `.` separator in dotted keys.
+
+        Returns:
+            A `TokenType` for dots.
+        """
         return TokenType(13)
 
     @staticmethod
     def eof() -> TokenType:
+        """Creates a `TokenType` representing end of file.
+
+        Returns:
+            A `TokenType` for end of file.
+        """
         return TokenType(14)
 
     @staticmethod
     def error() -> TokenType:
+        """Creates a `TokenType` representing a lexer error.
+
+        Returns:
+            A `TokenType` for errors.
+        """
         return TokenType(15)
 
     @staticmethod
     def inline_table_start() -> TokenType:
+        """Creates a `TokenType` representing an inline table opening brace `{`.
+
+        Returns:
+            A `TokenType` for inline table starts.
+        """
         return TokenType(17)
 
     @staticmethod
     def inline_table_end() -> TokenType:
+        """Creates a `TokenType` representing an inline table closing brace `}`.
+
+        Returns:
+            A `TokenType` for inline table ends.
+        """
         return TokenType(18)
 
     # Constructor
     def __init__(out self, value: Int):
+        """Creates a new `TokenType` from an integer identifier.
+
+        Args:
+            value: The integer identifier for this token type.
+        """
         self.value = value
 
     # Comparison operators
     def __eq__(self, other: TokenType) -> Bool:
+        """Checks equality between two token types.
+
+        Args:
+            other: The token type to compare against.
+
+        Returns:
+            `True` if the token types are equal, `False` otherwise.
+        """
         return self.value == other.value
 
     def __ne__(self, other: TokenType) -> Bool:
+        """Checks inequality between two token types.
+
+        Args:
+            other: The token type to compare against.
+
+        Returns:
+            `True` if the token types differ, `False` otherwise.
+        """
         return self.value != other.value
 
 
@@ -185,10 +351,18 @@ struct Tokenizer:
     """Tokenizes TOML source text."""
 
     var source: String
+    """The TOML source string to tokenize."""
     var position: SourcePosition
+    """The current position in the source."""
     var current_char: String
+    """The character at the current position."""
 
     def __init__(out self, source: String):
+        """Creates a new `Tokenizer` for the given source.
+
+        Args:
+            source: The TOML source string to tokenize.
+        """
         self.source = source
         self.position = SourcePosition()
         if len(source) > 0:
@@ -523,7 +697,11 @@ struct Tokenizer:
         return Token(TokenType.KEY, result, start_line, start_column)
 
     def next_token(mut self) -> Token:
-        """Get the next token from the source."""
+        """Returns the next token from the source.
+
+        Returns:
+            The next `Token` from the source.
+        """
         self._skip_whitespace()
 
         if not self.current_char:
@@ -701,7 +879,11 @@ struct Tokenizer:
         return token^
 
     def tokenize(mut self) -> List[Token]:
-        """Tokenize the entire source text."""
+        """Tokenizes the entire source text.
+
+        Returns:
+            A list of all tokens from the source.
+        """
         var tokens = List[Token]()
         var token = self.next_token()
 

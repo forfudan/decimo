@@ -138,6 +138,12 @@ def sqrt_initial_guess(x: BigUInt) -> BigUInt:
     The words of the BigUInt should be more than 2.
 
     The initial guess is always smaller or equal to the actual square root.
+
+    Args:
+        x: The `BigUInt` value to estimate the square root of.
+
+    Returns:
+        An initial guess that is less than or equal to the actual square root.
     """
 
     # Yuhao ZHU:

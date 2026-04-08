@@ -73,13 +73,25 @@ struct TestCase(Copyable, Movable, Writable):
     """
 
     var a: String
+    """The first input operand as a numeric string."""
     var b: String
+    """The second input operand as a numeric string (empty for unary tests)."""
     var expected: String
+    """The expected output value as a numeric string."""
     var description: String
+    """A human-readable description of the test case."""
 
     def __init__(
         out self, a: String, b: String, expected: String, description: String
     ):
+        """Creates a `TestCase` from the given operands and expected result.
+
+        Args:
+            a: The first input operand as a numeric string.
+            b: The second input operand as a numeric string.
+            expected: The expected output value as a numeric string.
+            description: A short description of what the test case covers.
+        """
         self.a = a
         self.b = b
         self.expected = expected
@@ -88,18 +100,36 @@ struct TestCase(Copyable, Movable, Writable):
         )
 
     def __init__(out self, *, copy: Self):
+        """Creates a copy of a `TestCase`.
+
+        Args:
+            copy: The instance to copy from.
+        """
         self.a = copy.a
         self.b = copy.b
         self.expected = copy.expected
         self.description = copy.description
 
     def __init__(out self, *, deinit take: Self):
+        """Moves a `TestCase` into a new instance.
+
+        Args:
+            take: The instance to move from.
+        """
         self.a = take.a^
         self.b = take.b^
         self.expected = take.expected^
         self.description = take.description^
 
     def write_to[T: Writer](self, mut writer: T):
+        """Writes a formatted representation of the test case to a writer.
+
+        Parameters:
+            T: A type conforming to the `Writer` interface.
+
+        Args:
+            writer: The writer instance.
+        """
         writer.write("TestCase:\n")
         writer.write("  a: " + self.a + "\n")
         writer.write("  b: " + self.b + "\n")
@@ -116,25 +146,53 @@ struct BenchCase(Copyable, Movable, Writable):
     """A benchmark case with a name and one or two operands."""
 
     var name: String
+    """The display name of the benchmark case."""
     var a: String
+    """The first operand as a numeric string."""
     var b: String
+    """The second operand as a numeric string (empty for unary benchmarks)."""
 
     def __init__(out self, name: String, a: String, b: String = ""):
+        """Creates a `BenchCase` with the given name and operands.
+
+        Args:
+            name: The display name of the benchmark case.
+            a: The first operand as a numeric string.
+            b: The second operand as a numeric string (defaults to empty).
+        """
         self.name = name
         self.a = a
         self.b = b
 
     def __init__(out self, *, copy: Self):
+        """Creates a copy of a `BenchCase`.
+
+        Args:
+            copy: The instance to copy from.
+        """
         self.name = copy.name
         self.a = copy.a
         self.b = copy.b
 
     def __init__(out self, *, deinit take: Self):
+        """Moves a `BenchCase` into a new instance.
+
+        Args:
+            take: The instance to move from.
+        """
         self.name = take.name^
         self.a = take.a^
         self.b = take.b^
 
     def write_to[T: Writer](self, mut writer: T):
+        """Writes a formatted representation of the benchmark case to a writer.
+
+        Parameters:
+            T: A type conforming to the `Writer` interface.
+
+        Args:
+            writer: The writer instance.
+        """
         writer.write(
             "BenchCase(name='",
             self.name,
@@ -233,7 +291,14 @@ def expand_value(s: String) raises -> String:
 
 
 def parse_file(file_path: String) raises -> TOMLDocument:
-    """Parse a TOML file and return the TOMLDocument."""
+    """Parses a TOML file and returns the parsed document.
+
+    Args:
+        file_path: The path to the TOML file to parse.
+
+    Returns:
+        A `TOMLDocument` containing the parsed TOML data.
+    """
     try:
         return parse_toml_file(file_path)
     except e:
@@ -370,17 +435,35 @@ struct PrecisionLevel(Copyable, Movable):
     """
 
     var precision: Int
+    """The number of significant digits for this precision level."""
     var iterations: Int
+    """The number of timing iterations to run at this precision."""
 
     def __init__(out self, precision: Int, iterations: Int):
+        """Creates a `PrecisionLevel` with the given precision and iteration count.
+
+        Args:
+            precision: The number of significant digits.
+            iterations: The number of timing iterations to run.
+        """
         self.precision = precision
         self.iterations = iterations
 
     def __init__(out self, *, copy: Self):
+        """Creates a copy of a `PrecisionLevel`.
+
+        Args:
+            copy: The instance to copy from.
+        """
         self.precision = copy.precision
         self.iterations = copy.iterations
 
     def __init__(out self, *, deinit take: Self):
+        """Moves a `PrecisionLevel` into a new instance.
+
+        Args:
+            take: The instance to move from.
+        """
         self.precision = take.precision
         self.iterations = take.iterations
 

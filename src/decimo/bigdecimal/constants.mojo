@@ -154,7 +154,14 @@ comptime PI_1024 = BigDecimal(
 # we check whether the precision is higher than the current precision.
 # If yes, then we save it into the global scope as cached value.
 def pi(precision: Int) raises -> BigDecimal:
-    """Calculates π using the fastest available algorithm."""
+    """Calculates π using the fastest available algorithm.
+
+    Args:
+        precision: The number of significant digits to compute.
+
+    Returns:
+        The value of π to the specified precision.
+    """
 
     if precision < 0:
         raise Error("Precision must be non-negative")
@@ -179,9 +186,17 @@ struct Rational:
     """Represents a rational number p/q for exact arithmetic."""
 
     var p: BigInt10  # numerator
+    """The numerator of the rational number."""
     var q: BigInt10  # denominator
+    """The denominator of the rational number."""
 
     def __init__(out self, p: BigInt10, q: BigInt10):
+        """Initializes a rational number from a numerator and denominator.
+
+        Args:
+            p: The numerator.
+            q: The denominator.
+        """
         self.p = p.copy()
         self.q = q.copy()
 
@@ -197,6 +212,12 @@ def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
     (1) M(k) = (6k)! / ((3k)! * (k!)³)
     (2) L(k) = 545140134*k + 13591409
     (3) X(k) = (-262537412640768000)^k
+
+    Args:
+        precision: The number of significant digits to compute.
+
+    Returns:
+        The value of π to the specified precision.
     """
 
     var working_precision = precision + 9  # 1 words
@@ -228,7 +249,16 @@ def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
 
 
 def chudnovsky_split(a: Int, b: Int, precision: Int) raises -> Rational:
-    """Conducts binary splitting for Chudnovsky series from term a to b-1."""
+    """Conducts binary splitting for Chudnovsky series from term a to b-1.
+
+    Args:
+        a: The start index of the splitting range (inclusive).
+        b: The end index of the splitting range (exclusive).
+        precision: The working precision for intermediate calculations.
+
+    Returns:
+        A `Rational` representing the partial sum of the Chudnovsky series.
+    """
 
     var bint_1 = BigInt10(1)
     var bint_13591409 = BigInt10(13591409)
@@ -273,7 +303,14 @@ def chudnovsky_split(a: Int, b: Int, precision: Int) raises -> Rational:
 
 
 def compute_m_k_rational(k: Int) raises -> Rational:
-    """Computes M(k) = (6k)! / ((3k)! * (k!)³) as exact rational."""
+    """Computes M(k) = (6k)! / ((3k)! * (k!)³) as exact rational.
+
+    Args:
+        k: The term index in the Chudnovsky series.
+
+    Returns:
+        A `Rational` with numerator (6k)!/(3k)! and denominator (k!)³.
+    """
 
     var bint_1 = BigInt10(1)
 
@@ -296,7 +333,14 @@ def compute_m_k_rational(k: Int) raises -> Rational:
 
 
 def pi_machin(precision: Int) raises -> BigDecimal:
-    """Fallback π calculation using Machin's formula."""
+    """Fallback π calculation using Machin's formula.
+
+    Args:
+        precision: The number of significant digits to compute.
+
+    Returns:
+        The value of π to the specified precision.
+    """
 
     var working_precision = precision + 9
 

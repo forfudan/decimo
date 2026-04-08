@@ -561,6 +561,15 @@ def number_of_bits[dtype: DType, //](var value: Scalar[dtype]) -> Int:
 
     Constraints:
         `dtype` must be integral.
+
+    Parameters:
+        dtype: The scalar type of the input value.
+
+    Args:
+        value: The integer value to count bits in.
+
+    Returns:
+        The number of significant bits in the value.
     """
 
     comptime assert dtype.is_integral(), "must be intergral"

@@ -327,17 +327,41 @@ def _binary_bitwise_op_inplace[
 
 
 def bitwise_and(a: BigInt, b: BigInt) -> BigInt:
-    """Returns a & b using Python-compatible two's complement semantics."""
+    """Returns a & b using Python-compatible two's complement semantics.
+
+    Args:
+        a: The first operand.
+        b: The second operand.
+
+    Returns:
+        The bitwise AND of the two values.
+    """
     return _binary_bitwise_op["and"](a, b)
 
 
 def bitwise_or(a: BigInt, b: BigInt) -> BigInt:
-    """Returns a | b using Python-compatible two's complement semantics."""
+    """Returns a | b using Python-compatible two's complement semantics.
+
+    Args:
+        a: The first operand.
+        b: The second operand.
+
+    Returns:
+        The bitwise OR of the two values.
+    """
     return _binary_bitwise_op["or"](a, b)
 
 
 def bitwise_xor(a: BigInt, b: BigInt) -> BigInt:
-    """Returns a ^ b using Python-compatible two's complement semantics."""
+    """Returns a ^ b using Python-compatible two's complement semantics.
+
+    Args:
+        a: The first operand.
+        b: The second operand.
+
+    Returns:
+        The bitwise XOR of the two values.
+    """
     return _binary_bitwise_op["xor"](a, b)
 
 
@@ -348,6 +372,12 @@ def bitwise_not(x: BigInt) -> BigInt:
 
     For non-negative x: result is -(x+1), always negative (except ~(-1) = 0).
     For negative x (x = -|x|): result is |x| - 1, always non-negative.
+
+    Args:
+        x: The value to invert.
+
+    Returns:
+        The bitwise complement.
     """
     if not x.sign:
         # ~non_negative = -(x + 1)
@@ -384,18 +414,30 @@ def bitwise_not(x: BigInt) -> BigInt:
 
 
 def bitwise_and_inplace(mut a: BigInt, read b: BigInt):
-    """Performs a &= b in-place using Python-compatible two's complement
-    semantics."""
+    """Performs `a &= b` in-place using Python-compatible two's complement semantics.
+
+    Args:
+        a: The left-hand side operand, modified in place.
+        b: The right-hand side operand.
+    """
     _binary_bitwise_op_inplace["and"](a, b)
 
 
 def bitwise_or_inplace(mut a: BigInt, read b: BigInt):
-    """Performs a |= b in-place using Python-compatible two's complement
-    semantics."""
+    """Performs `a |= b` in-place using Python-compatible two's complement semantics.
+
+    Args:
+        a: The left-hand side operand, modified in place.
+        b: The right-hand side operand.
+    """
     _binary_bitwise_op_inplace["or"](a, b)
 
 
 def bitwise_xor_inplace(mut a: BigInt, read b: BigInt):
-    """Performs a ^= b in-place using Python-compatible two's complement
-    semantics."""
+    """Performs `a ^= b` in-place using Python-compatible two's complement semantics.
+
+    Args:
+        a: The left-hand side operand, modified in place.
+        b: The right-hand side operand.
+    """
     _binary_bitwise_op_inplace["xor"](a, b)
