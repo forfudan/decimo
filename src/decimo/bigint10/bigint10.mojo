@@ -336,7 +336,7 @@ struct BigInt10(
     @staticmethod
     def from_string(value: String) raises -> Self:
         """Initializes a BigInt10 from a string representation.
-        The string is normalized with `deciomojo.str.parse_numeric_string()`.
+        The string is normalized with `decimo.str.parse_numeric_string()`.
 
         Args:
             value: The string representation of the BigInt10.
@@ -424,7 +424,7 @@ struct BigInt10(
             W: A type conforming to the `Writer` interface.
 
         Args:
-            writer:: The writer instance.
+            writer: The writer instance.
         """
         writer.write('BigInt10("', self.to_string(), '")')
 
@@ -440,7 +440,7 @@ struct BigInt10(
             W: A type conforming to the `Writer` interface.
 
         Args:
-            writer:: The writer instance.
+            writer: The writer instance.
         """
         writer.write(self.to_string())
 

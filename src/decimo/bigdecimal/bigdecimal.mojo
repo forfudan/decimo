@@ -145,7 +145,7 @@ struct BigDecimal(
         Args:
             value: The string to parse (e.g. "123.456" or "1.23E+5").
         """
-        # The string is normalized with `deciomojo.str.parse_numeric_string()`.
+        # The string is normalized with `decimo.str.parse_numeric_string()`.
         self = Self.from_string(value)
 
     @implicit
@@ -375,7 +375,7 @@ struct BigDecimal(
     @staticmethod
     def from_string(value: String) raises -> Self:
         """Initializes a BigDecimal from a string representation.
-        The string is normalized with `deciomojo.str.parse_numeric_string()`.
+        The string is normalized with `decimo.str.parse_numeric_string()`.
 
         Args:
             value: The string representation of the BigDecimal.
@@ -775,7 +775,7 @@ struct BigDecimal(
             W: A type conforming to the `Writer` interface.
 
         Args:
-            writer:: The writer instance.
+            writer: The writer instance.
         """
         writer.write(self.to_string())
 
@@ -786,7 +786,7 @@ struct BigDecimal(
             W: A type conforming to the `Writer` interface.
 
         Args:
-            writer:: The writer instance.
+            writer: The writer instance.
         """
         writer.write('BigDecimal("', self.to_string(), '")')
 
@@ -1507,7 +1507,7 @@ struct BigDecimal(
 
         Args:
             precision: The number of significant digits for the result.
-            cache:: The shared math constant cache for ln(2) and ln(1.25).
+            cache: The shared math constant cache for ln(2) and ln(1.25).
 
         Returns:
             The natural logarithm (base e) of this value.
