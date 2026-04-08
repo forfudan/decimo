@@ -43,13 +43,16 @@ from decimo.errors import DecimoError
 # Karatsuba cutoff: operands with this many words or fewer use schoolbook.
 # Tuned for Apple Silicon arm64. Adjust if benchmarking shows a better value.
 comptime CUTOFF_KARATSUBA: Int = 48
+"""The minimum number of words above which Karatsuba multiplication is used."""
 
 # SIMD vector width: 4 x UInt32 = 128-bit, supported natively on arm64 NEON.
 comptime VECTOR_WIDTH: Int = 4
+"""The SIMD vector width used for vectorized operations."""
 
 # Burnikel-Ziegler cutoff: divisors with this many words or fewer use
 # Knuth D (schoolbook). Must be even for the recursive halving to work.
 comptime CUTOFF_BURNIKEL_ZIEGLER: Int = 64
+"""The minimum number of words above which Burnikel-Ziegler division is used."""
 
 
 # ===----------------------------------------------------------------------=== #
@@ -2327,7 +2330,7 @@ def power(base: BigInt, exponent: Int) raises -> BigInt:
     multiplications.
 
     Args:
-        base: The base value.
+        base: The `BigInt` to raise to a power.
         exponent: The non-negative exponent.
 
     Returns:

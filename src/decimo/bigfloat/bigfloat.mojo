@@ -73,17 +73,17 @@ comptime _GUARD_BITS: Int = 64
 comptime _BITS_PER_DIGIT: Int = 4
 
 # Default precision in decimal digits, same as BigDecimal.
-"""Default precision in decimal digits for BigFloat."""
 comptime PRECISION: Int = 28
+"""Default precision in decimal digits for BigFloat."""
 
 # Short alias, like BDec for BigDecimal.
-"""Alias for `BigFloat`."""
 comptime BFlt = BigFloat
+"""Alias for `BigFloat`."""
 # Short alias, like Decimal for BigDecimal.
 # Mojo's built-in floating-point types are all with number suffixes
 # (e.g., `Float32`, `Float64`), so `Float` is available for BigFloat.
-"""Alias for `BigFloat`."""
 comptime Float = BigFloat
+"""Alias for `BigFloat`."""
 
 
 fn _dps_to_bits(precision: Int) -> Int:
@@ -129,7 +129,9 @@ struct BigFloat(Comparable, Movable, Writable):
     """
 
     var handle: Int32
+    """The MPFR context handle (index into the C wrapper's handle pool)."""
     var precision: Int
+    """The number of significant decimal digits."""
 
     # ===------------------------------------------------------------------=== #
     # Constructors
@@ -163,17 +165,31 @@ struct BigFloat(Comparable, Movable, Writable):
             raise Error("BigFloat: invalid number string: " + value)
 
     def __init__(out self, value: Int, precision: Int = PRECISION) raises:
-        """Creates a BigFloat from an integer."""
+        """Creates a BigFloat from an integer.
+
+        Args:
+            value: The integer to convert.
+            precision: The number of significant decimal digits.
+        """
         self = Self(String(value), precision)
 
     def __init__(
         out self, decimal: BigDecimal, precision: Int = PRECISION
     ) raises:
-        """Creates a BigFloat from a BigDecimal."""
+        """Creates a BigFloat from a BigDecimal.
+
+        Args:
+            decimal: The `BigDecimal` to convert.
+            precision: The number of significant decimal digits.
+        """
         self = Self(decimal.to_string(), precision)
 
     def __init__(out self, *, _handle: Int32, _precision: Int):
         """Internal: wraps an existing MPFR handle. Caller transfers ownership.
+
+        Args:
+            _handle: The MPFR context handle to take ownership of.
+            _precision: The number of significant decimal digits.
         """
         self.handle = _handle
         self.precision = _precision
@@ -183,7 +199,11 @@ struct BigFloat(Comparable, Movable, Writable):
     # ===------------------------------------------------------------------=== #
 
     def __init__(out self, *, deinit take: Self):
-        """Moves a BigFloat, transferring handle ownership."""
+        """Moves a BigFloat, transferring handle ownership.
+
+        Args:
+            take: The instance to move from.
+        """
         self.handle = take.handle
         self.precision = take.precision
 
@@ -215,7 +235,14 @@ struct BigFloat(Comparable, Movable, Writable):
         return result
 
     def write_to[W: Writer](self, mut writer: W):
-        """Writes the decimal string representation to a Writer."""
+        """Writes the decimal string representation to a Writer.
+
+        Parameters:
+            W: A type conforming to the `Writer` interface.
+
+        Args:
+            writer: The writer instance.
+        """
         if self.handle < 0:
             writer.write("BigFloat(<moved>)")
             return
@@ -228,7 +255,14 @@ struct BigFloat(Comparable, Movable, Writable):
         writer.write(s)
 
     def write_repr_to[W: Writer](self, mut writer: W):
-        """Writes a repr-style string to a Writer."""
+        """Writes a repr-style string to a Writer.
+
+        Parameters:
+            W: A type conforming to the `Writer` interface.
+
+        Args:
+            writer: The writer instance.
+        """
         if self.handle < 0:
             writer.write('BigFloat("<moved>")')
             return
@@ -328,30 +362,72 @@ struct BigFloat(Comparable, Movable, Writable):
     # ===------------------------------------------------------------------=== #
 
     def __eq__(self, other: Self) -> Bool:
-        """Returns True if self == other."""
+        """Checks whether two BigFloat values are equal.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if the values are equal, `False` otherwise.
+        """
         return mpfrw_cmp(self.handle, other.handle) == 0
 
     def __ne__(self, other: Self) -> Bool:
-        """Returns True if self != other."""
+        """Checks whether two BigFloat values are not equal.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if the values are not equal, `False` otherwise.
+        """
         return mpfrw_cmp(self.handle, other.handle) != 0
 
     def __lt__(self, other: Self) -> Bool:
-        """Returns True if self < other."""
+        """Checks whether this value is strictly less than another.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if `self < other`, `False` otherwise.
+        """
         var c = mpfrw_cmp(self.handle, other.handle)
         return c != -2 and c < 0
 
     def __le__(self, other: Self) -> Bool:
-        """Returns True if self <= other."""
+        """Checks whether this value is less than or equal to another.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if `self <= other`, `False` otherwise.
+        """
         var c = mpfrw_cmp(self.handle, other.handle)
         return c != -2 and c <= 0
 
     def __gt__(self, other: Self) -> Bool:
-        """Returns True if self > other."""
+        """Checks whether this value is strictly greater than another.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if `self > other`, `False` otherwise.
+        """
         var c = mpfrw_cmp(self.handle, other.handle)
         return c != -2 and c > 0
 
     def __ge__(self, other: Self) -> Bool:
-        """Returns True if self >= other."""
+        """Checks whether this value is greater than or equal to another.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `True` if `self >= other`, `False` otherwise.
+        """
         var c = mpfrw_cmp(self.handle, other.handle)
         return c != -2 and c >= 0
 
@@ -360,7 +436,11 @@ struct BigFloat(Comparable, Movable, Writable):
     # ===------------------------------------------------------------------=== #
 
     def __neg__(self) raises -> Self:
-        """Returns -self."""
+        """Negates this value.
+
+        Returns:
+            The negated value.
+        """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
             raise Error("BigFloat: handle allocation failed")
@@ -368,7 +448,11 @@ struct BigFloat(Comparable, Movable, Writable):
         return Self(_handle=h, _precision=self.precision)
 
     def __abs__(self) raises -> Self:
-        """Returns |self|."""
+        """Computes the absolute value.
+
+        Returns:
+            The absolute value.
+        """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
             raise Error("BigFloat: handle allocation failed")
@@ -380,7 +464,14 @@ struct BigFloat(Comparable, Movable, Writable):
     # ===------------------------------------------------------------------=== #
 
     def __add__(self, other: Self) raises -> Self:
-        """Returns self + other."""
+        """Adds two BigFloat values.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The sum.
+        """
         var prec = max(self.precision, other.precision)
         var h = mpfrw_init(_dps_to_bits(prec))
         if h < 0:
@@ -389,7 +480,14 @@ struct BigFloat(Comparable, Movable, Writable):
         return Self(_handle=h, _precision=prec)
 
     def __sub__(self, other: Self) raises -> Self:
-        """Returns self - other."""
+        """Subtracts two BigFloat values.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The difference.
+        """
         var prec = max(self.precision, other.precision)
         var h = mpfrw_init(_dps_to_bits(prec))
         if h < 0:
@@ -398,7 +496,14 @@ struct BigFloat(Comparable, Movable, Writable):
         return Self(_handle=h, _precision=prec)
 
     def __mul__(self, other: Self) raises -> Self:
-        """Returns self * other."""
+        """Multiplies two BigFloat values.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The product.
+        """
         var prec = max(self.precision, other.precision)
         var h = mpfrw_init(_dps_to_bits(prec))
         if h < 0:
@@ -407,7 +512,14 @@ struct BigFloat(Comparable, Movable, Writable):
         return Self(_handle=h, _precision=prec)
 
     def __truediv__(self, other: Self) raises -> Self:
-        """Returns self / other."""
+        """Divides two BigFloat values.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The quotient.
+        """
         var prec = max(self.precision, other.precision)
         var h = mpfrw_init(_dps_to_bits(prec))
         if h < 0:
@@ -416,7 +528,14 @@ struct BigFloat(Comparable, Movable, Writable):
         return Self(_handle=h, _precision=prec)
 
     def __pow__(self, exponent: Self) raises -> Self:
-        """Returns self ** exponent."""
+        """Raises this value to the given power.
+
+        Args:
+            exponent: The exponent to raise to.
+
+        Returns:
+            The result of `self` raised to `exponent`.
+        """
         return self.power(exponent)
 
     # ===------------------------------------------------------------------=== #
@@ -424,7 +543,11 @@ struct BigFloat(Comparable, Movable, Writable):
     # ===------------------------------------------------------------------=== #
 
     def sqrt(self) raises -> Self:
-        """Computes the square root."""
+        """Computes the square root.
+
+        Returns:
+            The square root of this value.
+        """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
             raise Error("BigFloat: handle allocation failed")
@@ -432,7 +555,11 @@ struct BigFloat(Comparable, Movable, Writable):
         return Self(_handle=h, _precision=self.precision)
 
     def exp(self) raises -> Self:
-        """Computes e^self."""
+        """Computes the exponential function e^self.
+
+        Returns:
+            The exponential of this value.
+        """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
             raise Error("BigFloat: handle allocation failed")
@@ -440,7 +567,11 @@ struct BigFloat(Comparable, Movable, Writable):
         return Self(_handle=h, _precision=self.precision)
 
     def ln(self) raises -> Self:
-        """Computes the natural logarithm."""
+        """Computes the natural logarithm.
+
+        Returns:
+            The natural logarithm of this value.
+        """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
             raise Error("BigFloat: handle allocation failed")
@@ -448,7 +579,11 @@ struct BigFloat(Comparable, Movable, Writable):
         return Self(_handle=h, _precision=self.precision)
 
     def sin(self) raises -> Self:
-        """Computes the sine."""
+        """Computes the sine.
+
+        Returns:
+            The sine of this value.
+        """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
             raise Error("BigFloat: handle allocation failed")
@@ -456,7 +591,11 @@ struct BigFloat(Comparable, Movable, Writable):
         return Self(_handle=h, _precision=self.precision)
 
     def cos(self) raises -> Self:
-        """Computes the cosine."""
+        """Computes the cosine.
+
+        Returns:
+            The cosine of this value.
+        """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
             raise Error("BigFloat: handle allocation failed")
@@ -464,7 +603,11 @@ struct BigFloat(Comparable, Movable, Writable):
         return Self(_handle=h, _precision=self.precision)
 
     def tan(self) raises -> Self:
-        """Computes the tangent."""
+        """Computes the tangent.
+
+        Returns:
+            The tangent of this value.
+        """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
             raise Error("BigFloat: handle allocation failed")
@@ -472,7 +615,14 @@ struct BigFloat(Comparable, Movable, Writable):
         return Self(_handle=h, _precision=self.precision)
 
     def power(self, exponent: Self) raises -> Self:
-        """Computes self raised to the given exponent."""
+        """Computes self raised to the given exponent.
+
+        Args:
+            exponent: The exponent to raise to.
+
+        Returns:
+            The result of `self` raised to `exponent`.
+        """
         var prec = max(self.precision, exponent.precision)
         var h = mpfrw_init(_dps_to_bits(prec))
         if h < 0:
@@ -481,7 +631,14 @@ struct BigFloat(Comparable, Movable, Writable):
         return Self(_handle=h, _precision=prec)
 
     def root(self, n: UInt32) raises -> Self:
-        """Computes the n-th root."""
+        """Computes the n-th root.
+
+        Args:
+            n: The root degree (e.g. 2 for square root, 3 for cube root).
+
+        Returns:
+            The n-th root of this value.
+        """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
             raise Error("BigFloat: handle allocation failed")
@@ -490,7 +647,14 @@ struct BigFloat(Comparable, Movable, Writable):
 
     @staticmethod
     def pi(precision: Int = PRECISION) raises -> BigFloat:
-        """Returns π to the specified number of decimal digits."""
+        """Returns π to the specified number of decimal digits.
+
+        Args:
+            precision: The number of significant decimal digits.
+
+        Returns:
+            A `BigFloat` containing π at the requested precision.
+        """
         if not mpfrw_available():
             raise Error(
                 "BigFloat requires MPFR"

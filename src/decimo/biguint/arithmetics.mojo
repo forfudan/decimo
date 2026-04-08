@@ -453,7 +453,12 @@ def add_inplace_by_slice(
 
 
 def add_inplace_by_uint32(mut x: BigUInt, y: UInt32) -> None:
-    """Increments a BigUInt number by a UInt32 value."""
+    """Increments a BigUInt number by a UInt32 value.
+
+    Args:
+        x: The `BigUInt` number to increment.
+        y: The `UInt32` value to add.
+    """
     var carry: UInt32 = y
     for i in range(len(x.words)):
         x.words[i] += carry
@@ -679,7 +684,12 @@ def subtract_simd(x: BigUInt, y: BigUInt) raises -> BigUInt:
 
 
 def subtract_inplace(mut x: BigUInt, y: BigUInt) raises -> None:
-    """Subtracts y from x in place."""
+    """Subtracts y from x in place.
+
+    Args:
+        x: The `BigUInt` minuend, modified in place.
+        y: The `BigUInt` subtrahend.
+    """
 
     # If the subtrahend is zero, return the minuend
     if y.is_zero():
@@ -740,6 +750,10 @@ def subtract_inplace_no_check(mut x: BigUInt, y: BigUInt) -> None:
     This function assumes that x >= y, and it does not check for underflow.
     It is the caller's responsibility to ensure that x is greater than or
     equal to y before calling this function.
+
+    Args:
+        x: The `BigUInt` minuend, modified in place.
+        y: The `BigUInt` subtrahend.
     """
 
     # If the subtrahend is zero, return the minuend
@@ -954,6 +968,9 @@ def multiply_slices_school(
         y: The second BigUInt operand (multiplier).
         bounds_x: A tuple containing the start and end indices of the slice in x.
         bounds_y: A tuple containing the start and end indices of the slice in y.
+
+    Returns:
+        The product of the two BigUInt slices.
     """
 
     n_words_x_slice = bounds_x[1] - bounds_x[0]
@@ -1797,6 +1814,9 @@ def multiply_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
 
     In non-debug model, if n is less than or equal to 0, the function returns x
     unchanged. In debug mode, it asserts that n is non-negative.
+
+    Returns:
+        A new `BigUInt` containing the result of the multiplication.
     """
     debug_assert[assert_mode="none"](
         n >= 0,
@@ -1878,6 +1898,9 @@ def exact_divide_by_2_inplace(mut x: BigUInt):
 
     The caller must ensure that x is even (divisible by 2).
     Uses base-10^9 long division from MSB to LSB.
+
+    Args:
+        x: The `BigUInt` value to divide, modified in place.
     """
     var carry: UInt32 = 0
     for i in range(len(x.words) - 1, -1, -1):
@@ -1894,6 +1917,9 @@ def exact_divide_by_3_inplace(mut x: BigUInt):
 
     The caller must ensure that x is divisible by 3.
     Uses base-10^9 long division from MSB to LSB.
+
+    Args:
+        x: The `BigUInt` value to divide, modified in place.
     """
     var carry: UInt32 = 0
     for i in range(len(x.words) - 1, -1, -1):
@@ -2238,6 +2264,9 @@ def floor_divide_by_uint32(x: BigUInt, y: UInt32) -> BigUInt:
 
     This function is used internally for division by single word divisors.
     It is not intended for public use. You need to ensure that y is non-zero.
+
+    Returns:
+        The quotient of x divided by y.
     """
     debug_assert[assert_mode="none"](
         y != 0, "biguint.arithmetics.floor_divide_by_uint32(): Division by zero"
@@ -2304,8 +2333,11 @@ def floor_divide_by_uint64(x: BigUInt, y: UInt64) -> BigUInt:
     """Divides a BigUInt by UInt64.
 
     Args:
-        x: The BigUInt value to divide by the divisor.
-        y: The UInt64 divisor. Must be smaller than 10^18.
+        x: The `BigUInt` dividend.
+        y: The `UInt64` divisor. Must be smaller than 10^18.
+
+    Returns:
+        The quotient of x divided by y.
     """
     debug_assert[assert_mode="none"](
         y != 0,
@@ -2379,8 +2411,11 @@ def floor_divide_by_uint128(x: BigUInt, y: UInt128) -> BigUInt:
     """Divides a BigUInt by UInt128.
 
     Args:
-        x: The BigUInt value to divide by the divisor.
-        y: The UInt128 divisor. Must be smaller than 10^36.
+        x: The `BigUInt` dividend.
+        y: The `UInt128` divisor. Must be smaller than 10^36.
+
+    Returns:
+        The quotient of x divided by y.
     """
     debug_assert[assert_mode="none"](
         y != 0,
@@ -2630,6 +2665,9 @@ def floor_divide_burnikel_ziegler(
         cut_off: The cutoff value for the number of words in the divisor to use
             the schoolbook division algorithm. It also determines the size of
             the blocks used in the recursive division algorithm.
+
+    Returns:
+        The quotient of `a` divided by `b`.
     """
 
     var BLOCK_SIZE_OF_WORDS = cut_off
@@ -3179,6 +3217,13 @@ def truncate_divide(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
     """Returns the quotient of two BigUInt numbers, truncating toward zero.
     It is equal to floored division for unsigned numbers.
     See `floor_divide` for more details.
+
+    Args:
+        x1: The dividend.
+        x2: The divisor.
+
+    Returns:
+        The quotient of `x1` divided by `x2`.
     """
     return floor_divide(x1, x2)
 
@@ -3423,6 +3468,9 @@ def normalize_carries_lt_2_bases(mut x: BigUInt):
     a situation where some words are larger than BASE. This function
     normalizes the carries, ensuring that all words are within the valid range.
     It modifies the input BigUInt in-place.
+
+    Args:
+        x: The `BigUInt` to normalize, modified in place.
     """
 
     # Yuhao ZHU:
@@ -3459,6 +3507,9 @@ def normalize_carries_lt_4_bases(mut x: BigUInt):
     a situation where some words are ge than BASE but le BASE * 4 - 4.
     This function normalizes the carries, ensuring that all words are within the
     valid range. It modifies the input BigUInt in-place.
+
+    Args:
+        x: The `BigUInt` to normalize, modified in place.
     """
 
     # Yuhao ZHU:
@@ -3536,6 +3587,9 @@ def normalize_borrows(mut x: BigUInt):
     a situation where some words are **underflowed**. We can take advantage of
     the overflowed values of the words to normalize the borrows,
     ensuring that all words are within the valid range.
+
+    Args:
+        x: The `BigUInt` to normalize, modified in place.
     """
 
     comptime NEG_BASE_MAX = UInt32(3294967297)  # UInt32(0) - BigUInt.BASE_MAX
@@ -3664,7 +3718,15 @@ def calculate_ndigits_for_normalization(msw: UInt32) -> Int:
 
 
 def to_uint64_with_2_words(a: BigUInt, bounds_x: Tuple[Int, Int]) -> UInt64:
-    """Convert two words at given index of the BigUInt to UInt64."""
+    """Convert two words at given index of the BigUInt to UInt64.
+
+    Args:
+        a: The `BigUInt` containing the words to convert.
+        bounds_x: A tuple of (start, end) indices specifying the word slice.
+
+    Returns:
+        The `UInt64` representation of the specified words.
+    """
     var n_words = bounds_x[1] - bounds_x[0]
     if n_words == 1:
         return (
@@ -3678,7 +3740,15 @@ def to_uint64_with_2_words(a: BigUInt, bounds_x: Tuple[Int, Int]) -> UInt64:
 
 
 def to_uint128_with_2_words(a: BigUInt, bounds_x: Tuple[Int, Int]) -> UInt128:
-    """Convert two words at given index of the BigUInt to UInt128."""
+    """Convert two words at given index of the BigUInt to UInt128.
+
+    Args:
+        a: The `BigUInt` containing the words to convert.
+        bounds_x: A tuple of (start, end) indices specifying the word slice.
+
+    Returns:
+        The `UInt128` representation of the specified words.
+    """
     var n_words = bounds_x[1] - bounds_x[0]
     if n_words == 1:
         return (
@@ -3696,7 +3766,15 @@ def to_uint128_with_2_words(a: BigUInt, bounds_x: Tuple[Int, Int]) -> UInt128:
 
 
 def to_uint128_with_4_words(a: BigUInt, bounds_x: Tuple[Int, Int]) -> UInt128:
-    """Convert four words at given index of the BigUInt to UInt128."""
+    """Convert four words at given index of the BigUInt to UInt128.
+
+    Args:
+        a: The `BigUInt` containing the words to convert.
+        bounds_x: A tuple of (start, end) indices specifying the word slice.
+
+    Returns:
+        The `UInt128` representation of the specified words.
+    """
     var n_words = bounds_x[1] - bounds_x[0]
     if n_words == 1:
         return (

@@ -477,6 +477,13 @@ def arctan(x: BigDecimal, precision: Int) raises -> BigDecimal:
     y = arctan(x),
     where x can be all real numbers,
     and y is in the range (-π/2, π/2).
+
+    Args:
+        x: The input number to compute the arctangent of.
+        precision: The number of significant digits for the result.
+
+    Returns:
+        The arctangent of x in radians, in the range (-π/2, π/2).
     """
 
     comptime BUFFER_DIGITS = 9  # word-length, easy to append and trim

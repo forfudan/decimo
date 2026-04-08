@@ -111,44 +111,108 @@ def compare(x1: BigDecimal, x2: BigDecimal) -> Int8:
 
 
 def equal(x1: BigDecimal, x2: BigDecimal) -> Bool:
-    """Returns whether x1 equals x2."""
+    """Returns whether x1 equals x2.
+
+    Args:
+        x1: The first operand.
+        x2: The second operand.
+
+    Returns:
+        True if x1 equals x2, False otherwise.
+    """
     return compare(x1, x2) == 0
 
 
 def not_equal(x1: BigDecimal, x2: BigDecimal) -> Bool:
-    """Returns whether x1 does not equal x2."""
+    """Returns whether x1 does not equal x2.
+
+    Args:
+        x1: The first operand.
+        x2: The second operand.
+
+    Returns:
+        True if x1 does not equal x2, False otherwise.
+    """
     return compare(x1, x2) != 0
 
 
 def less(x1: BigDecimal, x2: BigDecimal) -> Bool:
-    """Returns whether x1 is less than x2."""
+    """Returns whether x1 is less than x2.
+
+    Args:
+        x1: The first operand.
+        x2: The second operand.
+
+    Returns:
+        True if x1 is less than x2, False otherwise.
+    """
     return compare(x1, x2) < 0
 
 
 def less_equal(x1: BigDecimal, x2: BigDecimal) -> Bool:
-    """Returns whether x1 is less than or equal to x2."""
+    """Returns whether x1 is less than or equal to x2.
+
+    Args:
+        x1: The first operand.
+        x2: The second operand.
+
+    Returns:
+        True if x1 is less than or equal to x2, False otherwise.
+    """
     return compare(x1, x2) <= 0
 
 
 def greater(x1: BigDecimal, x2: BigDecimal) -> Bool:
-    """Returns whether x1 is greater than x2."""
+    """Returns whether x1 is greater than x2.
+
+    Args:
+        x1: The first operand.
+        x2: The second operand.
+
+    Returns:
+        True if x1 is greater than x2, False otherwise.
+    """
     return compare(x1, x2) > 0
 
 
 def greater_equal(x1: BigDecimal, x2: BigDecimal) -> Bool:
-    """Returns whether x1 is greater than or equal to x2."""
+    """Returns whether x1 is greater than or equal to x2.
+
+    Args:
+        x1: The first operand.
+        x2: The second operand.
+
+    Returns:
+        True if x1 is greater than or equal to x2, False otherwise.
+    """
     return compare(x1, x2) >= 0
 
 
 def max(x1: BigDecimal, x2: BigDecimal) -> BigDecimal:
-    """Returns the maximum of x1 and x2."""
+    """Returns the maximum of x1 and x2.
+
+    Args:
+        x1: The first operand.
+        x2: The second operand.
+
+    Returns:
+        The larger of the two values.
+    """
     if compare(x1, x2) >= 0:
         return x1.copy()
     return x2.copy()
 
 
 def min(x1: BigDecimal, x2: BigDecimal) -> BigDecimal:
-    """Returns the minimum of x1 and x2."""
+    """Returns the minimum of x1 and x2.
+
+    Args:
+        x1: The first operand.
+        x2: The second operand.
+
+    Returns:
+        The smaller of the two values.
+    """
     if compare(x1, x2) <= 0:
         return x1.copy()
     return x2.copy()
