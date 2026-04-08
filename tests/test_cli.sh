@@ -3,7 +3,7 @@ set -e  # Exit immediately if any command fails
 
 # ── Unit tests ─────────────────────────────────────────────────────────────
 for f in tests/cli/*.mojo; do
-    pixi run mojo run -I src -I src/cli -D ASSERT=all --debug-level=line-tables "$f"
+    pixi run mojo run -I src -I src/cli -D ASSERT=all --debug-level=full "$f"
 done
 
 # ── Integration tests (exercise the compiled binary) ───────────────────────
