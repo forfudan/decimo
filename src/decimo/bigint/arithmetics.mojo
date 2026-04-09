@@ -715,11 +715,9 @@ def _divmod_magnitudes(
             divisor_is_zero = False
             break
     if divisor_is_zero:
-        raise Error(
-            ZeroDivisionError(
-                function="_divmod_magnitudes()",
-                message="Division by zero",
-            )
+        raise ZeroDivisionError(
+            function="_divmod_magnitudes()",
+            message="Division by zero.",
         )
 
     # Compare magnitudes to handle trivial cases

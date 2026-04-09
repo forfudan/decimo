@@ -76,7 +76,7 @@ comptime ConversionError = DecimoError[error_type="ConversionError"]
 """Type for conversion errors in Decimo."""
 
 
-struct DecimoError[error_type: String = "DecimoError"](Writable):
+struct DecimoError[error_type: StringLiteral = "DecimoError"](Writable):
     """Base type for all Decimo errors.
 
     The error message format mimics Python's traceback:

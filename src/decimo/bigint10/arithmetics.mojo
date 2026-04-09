@@ -355,11 +355,9 @@ def truncate_modulo(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
             x1.magnitude, x2.magnitude
         )
     except e:
-        raise Error(
-            DecimoError(
-                message="See the above exception.",
-                function="truncate_modulo()",
-                previous_error=e^,
-            ),
+        raise DecimoError(
+            message="See the above exception.",
+            function="truncate_modulo()",
+            previous_error=e^,
         )
     return BigInt10(magnitude^, sign=x1.sign)
