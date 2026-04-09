@@ -95,18 +95,16 @@ def round(
     if scale_diff > 0:
         # If the digits of result > 29, directly raise an error
         if ndigits_of_x + scale_diff > Decimal128.MAX_NUM_DIGITS:
-            raise Error(
-                OverflowError(
-                    message=String(
-                        "ndigits={} causes the number of significant figures"
-                        " ({}) to exceed the maximum capacity ({})."
-                    ).format(
-                        ndigits,
-                        ndigits_of_x + scale_diff,
-                        Decimal128.MAX_NUM_DIGITS,
-                    ),
-                    function="round()",
-                )
+            raise OverflowError(
+                message=String(
+                    "ndigits={} causes the number of significant figures"
+                    " ({}) to exceed the maximum capacity ({})."
+                ).format(
+                    ndigits,
+                    ndigits_of_x + scale_diff,
+                    Decimal128.MAX_NUM_DIGITS,
+                ),
+                function="round()",
             )
 
         # If the digits of result <= 29, calculate the result by scaling up
@@ -117,14 +115,12 @@ def round(
             if (ndigits_of_x + scale_diff == Decimal128.MAX_NUM_DIGITS) and (
                 res_coef > Decimal128.MAX_AS_UINT128
             ):
-                raise Error(
-                    OverflowError(
-                        message=String(
-                            "ndigits={} causes the significant digits ({})"
-                            " to exceed the maximum capacity ({})."
-                        ).format(ndigits, res_coef, Decimal128.MAX_AS_UINT128),
-                        function="round()",
-                    )
+                raise OverflowError(
+                    message=String(
+                        "ndigits={} causes the significant digits ({})"
+                        " to exceed the maximum capacity ({})."
+                    ).format(ndigits, res_coef, Decimal128.MAX_AS_UINT128),
+                    function="round()",
                 )
 
             # In other cases, return the result

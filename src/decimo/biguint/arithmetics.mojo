@@ -25,7 +25,6 @@ from std.memory import memcpy, memset_zero
 from decimo.biguint.biguint import BigUInt
 import decimo.biguint.comparison
 from decimo.errors import (
-    DecimoError,
     OverflowError,
     ValueError,
     ZeroDivisionError,
@@ -108,11 +107,9 @@ def negative(x: BigUInt) raises -> BigUInt:
         debug_assert[assert_mode="none"](
             len(x.words) == 1, "negative(): leading zero words"
         )
-        raise Error(
-            OverflowError(
-                function="negative()",
-                message="Negative of non-zero unsigned integer is undefined",
-            )
+        raise OverflowError(
+            function="negative()",
+            message="Negative of non-zero unsigned integer is undefined",
         )
     return BigUInt.zero()  # Return zero
 
@@ -538,14 +535,12 @@ def subtract_school(x: BigUInt, y: BigUInt) raises -> BigUInt:
         # |x| = |y|
         return BigUInt.zero()  # Return zero
     if comparison_result < 0:
-        raise Error(
-            OverflowError(
-                function="subtract_school()",
-                message=(
-                    "biguint.arithmetics.subtract(): Result is negative due to"
-                    " x < y"
-                ),
-            )
+        raise OverflowError(
+            function="subtract_school()",
+            message=(
+                "biguint.arithmetics.subtract(): Result is negative due to"
+                " x < y"
+            ),
         )
 
     # Now it is safe to subtract the smaller number from the larger one
@@ -632,14 +627,12 @@ def subtract_simd(x: BigUInt, y: BigUInt) raises -> BigUInt:
         # |x| = |y|
         return BigUInt.zero()  # Return zero
     if comparison_result < 0:
-        raise Error(
-            OverflowError(
-                function="subtract()",
-                message=(
-                    "biguint.arithmetics.subtract(): Result is negative due to"
-                    " x < y"
-                ),
-            )
+        raise OverflowError(
+            function="subtract()",
+            message=(
+                "biguint.arithmetics.subtract(): Result is negative due to"
+                " x < y"
+            ),
         )
 
     # Now it is safe to subtract the smaller number from the larger one
@@ -703,14 +696,12 @@ def subtract_inplace(mut x: BigUInt, y: BigUInt) raises -> None:
         x.words.resize(unsafe_uninit_length=1)
         x.words[0] = UInt32(0)  # Result is zero
     elif comparison_result < 0:
-        raise Error(
-            OverflowError(
-                function="subtract_inplace()",
-                message=(
-                    "biguint.arithmetics.subtract(): Result is negative due to"
-                    " x < y"
-                ),
-            )
+        raise OverflowError(
+            function="subtract_inplace()",
+            message=(
+                "biguint.arithmetics.subtract(): Result is negative due to"
+                " x < y"
+            ),
         )
 
     # Now it is safe to subtract the smaller number from the larger one
@@ -1977,11 +1968,9 @@ def floor_divide(x: BigUInt, y: BigUInt) raises -> BigUInt:
 
     # CASE: y is zero
     if y.is_zero():
-        raise Error(
-            ZeroDivisionError(
-                function="floor_divide()",
-                message="Division by zero",
-            )
+        raise ZeroDivisionError(
+            function="floor_divide()",
+            message="Division by zero",
         )
 
     # CASE: Dividend is zero
@@ -2078,10 +2067,8 @@ def floor_divide_school(x: BigUInt, y: BigUInt) raises -> BigUInt:
     # handled properly to improve performance.
     # CASE: y is zero
     if y.is_zero():
-        raise Error(
-            ZeroDivisionError(
-                message="Division by zero", function="floor_divide()"
-            )
+        raise ZeroDivisionError(
+            message="Division by zero", function="floor_divide()"
         )
 
     # CASE: Dividend is zero
@@ -3142,11 +3129,9 @@ def floor_divide_three_by_two_uint32(
     b = b1 * BASE + b0.
     """
     if b1 < 500_000_000:
-        raise Error(
-            ValueError(
-                message="b1 must be at least 500_000_000",
-                function="floor_divide_three_by_two_uint32()",
-            )
+        raise ValueError(
+            message="b1 must be at least 500_000_000",
+            function="floor_divide_three_by_two_uint32()",
         )
 
     var a2a1 = UInt64(a2) * 1_000_000_000 + UInt64(a1)
@@ -3198,42 +3183,32 @@ def floor_divide_four_by_two_uint32(
     """
 
     if b1 < 500_000_000:
-        raise Error(
-            ValueError(
-                message="b1 must be at least 500_000_000",
-                function="floor_divide_four_by_two_uint32()",
-            )
+        raise ValueError(
+            message="b1 must be at least 500_000_000",
+            function="floor_divide_four_by_two_uint32()",
         )
     if a3 > b1:
-        raise Error(
-            ValueError(
-                message="a must be less than b * 10^18",
-                function="floor_divide_four_by_two_uint32()",
-            )
+        raise ValueError(
+            message="a must be less than b * 10^18",
+            function="floor_divide_four_by_two_uint32()",
         )
     elif a3 == b1:
         if a2 > b0:
-            raise Error(
-                ValueError(
-                    message="a must be less than b * 10^18",
-                    function="floor_divide_four_by_two_uint32()",
-                )
+            raise ValueError(
+                message="a must be less than b * 10^18",
+                function="floor_divide_four_by_two_uint32()",
             )
         elif a2 == b0:
             if a1 > 0:
-                raise Error(
-                    ValueError(
-                        message="a must be less than b * 10^18",
-                        function="floor_divide_four_by_two_uint32()",
-                    )
+                raise ValueError(
+                    message="a must be less than b * 10^18",
+                    function="floor_divide_four_by_two_uint32()",
                 )
             elif a1 == 0:
                 if a0 >= 0:
-                    raise Error(
-                        ValueError(
-                            message="a must be less than b * 10^18",
-                            function="floor_divide_four_by_two_uint32()",
-                        )
+                    raise ValueError(
+                        message="a must be less than b * 10^18",
+                        function="floor_divide_four_by_two_uint32()",
                     )
 
     var q1, r1, r0 = floor_divide_three_by_two_uint32(a3, a2, a1, b1, b0)
@@ -3277,10 +3252,8 @@ def ceil_divide(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
             len(x2.words) == 1,
             "ceil_divide(): leading zero words",
         )
-        raise Error(
-            ZeroDivisionError(
-                message="Division by zero", function="ceil_divide()"
-            )
+        raise ZeroDivisionError(
+            message="Division by zero", function="ceil_divide()"
         )
 
     # Apply floor division and check if there is a remainder
@@ -3316,11 +3289,9 @@ def floor_modulo(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
             len(x2.words) == 1,
             "truncate_modulo(): leading zero words",
         )
-        raise Error(
-            ZeroDivisionError(
-                function="floor_modulo()",
-                message="Division by zero",
-            )
+        raise ZeroDivisionError(
+            function="floor_modulo()",
+            message="Division by zero",
         )
 
     # CASE: Dividend is zero
@@ -3343,12 +3314,10 @@ def floor_modulo(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
     try:
         quotient = floor_divide(x1, x2)
     except e:
-        raise Error(
-            DecimoError(
-                message="See the above exception.",
-                function="floor_modulo()",
-                previous_error=e^,
-            )
+        raise ZeroDivisionError(
+            message="See the above exception.",
+            function="floor_modulo()",
+            previous_error=e^,
         )
 
     # Calculate remainder: dividend - (divisor * quotient)
@@ -3356,12 +3325,10 @@ def floor_modulo(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
     try:
         remainder = subtract(x1, multiply(x2, quotient))
     except e:
-        raise Error(
-            DecimoError(
-                message="See the above exception.",
-                function="floor_modulo()",
-                previous_error=e^,
-            )
+        raise ZeroDivisionError(
+            message="See the above exception.",
+            function="floor_modulo()",
+            previous_error=e^,
         )
 
     return remainder^
@@ -3386,12 +3353,10 @@ def truncate_modulo(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
     try:
         return floor_modulo(x1, x2)
     except e:
-        raise Error(
-            DecimoError(
-                message="See the above exception.",
-                function="truncate_modulo()",
-                previous_error=e^,
-            )
+        raise ZeroDivisionError(
+            message="See the above exception.",
+            function="truncate_modulo()",
+            previous_error=e^,
         )
 
 
@@ -3415,10 +3380,8 @@ def ceil_modulo(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
         debug_assert[assert_mode="none"](
             len(x2.words) == 1, "ceil_modulo(): leading zero words"
         )
-        raise Error(
-            ZeroDivisionError(
-                message="Division by zero", function="ceil_modulo()"
-            )
+        raise ZeroDivisionError(
+            message="Division by zero", function="ceil_modulo()"
         )
 
     # CASE: Dividend is zero
@@ -3475,12 +3438,10 @@ def floor_divide_modulo(
         var remainder = subtract(x1, multiply(x2, quotient))
         return (quotient^, remainder^)
     except e:
-        raise Error(
-            DecimoError(
-                message="See the above exception.",
-                function="floor_divide_modulo()",
-                previous_error=e^,
-            )
+        raise ZeroDivisionError(
+            message="See the above exception.",
+            function="floor_divide_modulo()",
+            previous_error=e^,
         )
 
 
@@ -3661,11 +3622,9 @@ def power_of_10(n: Int) raises -> BigUInt:
         DecimoError: If n is negative.
     """
     if n < 0:
-        raise Error(
-            DecimoError(
-                function="power_of_10()",
-                message="Negative exponent not supported",
-            )
+        raise ValueError(
+            function="power_of_10()",
+            message="Negative exponent not supported",
         )
 
     if n == 0:

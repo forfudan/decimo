@@ -37,7 +37,6 @@ from std import testing
 from decimo.decimal128.decimal128 import Decimal128
 from decimo.rounding_mode import RoundingMode
 from decimo.errors import (
-    DecimoError,
     OverflowError,
     ZeroDivisionError,
 )
@@ -129,11 +128,9 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             # Check for overflow (UInt128 can store values beyond our 96-bit limit)
             # We need to make sure the sum fits in 96 bits (our Decimal128 capacity)
             if summation > Decimal128.MAX_AS_UINT128:  # 2^96-1
-                raise Error(
-                    OverflowError(
-                        message="Decimal128 overflow in addition.",
-                        function="add()",
-                    )
+                raise OverflowError(
+                    message="Decimal128 overflow in addition.",
+                    function="add()",
                 )
 
             return Decimal128.from_uint128(summation, 0, x1.is_negative())
@@ -164,11 +161,9 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             # Check for overflow (UInt128 can store values beyond our 96-bit limit)
             # We need to make sure the sum fits in 96 bits (our Decimal128 capacity)
             if summation > Decimal128.MAX_AS_UINT128:  # 2^96-1
-                raise Error(
-                    OverflowError(
-                        message="Decimal128 overflow in addition.",
-                        function="add()",
-                    )
+                raise OverflowError(
+                    message="Decimal128 overflow in addition.",
+                    function="add()",
                 )
 
             # Determine the scale for the result
@@ -389,12 +384,10 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     try:
         return x1 + (-x2)
     except e:
-        raise Error(
-            DecimoError(
-                message="Subtraction failed.",
-                function="subtract()",
-                previous_error=e^,
-            )
+        raise OverflowError(
+            message="Subtraction failed.",
+            function="subtract()",
+            previous_error=e^,
         )
 
 
@@ -565,13 +558,11 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         elif combined_num_bits <= 128:
             var prod: UInt128 = UInt128(x1_coef) * UInt128(x2_coef)
             if prod > Decimal128.MAX_AS_UINT128:
-                raise Error(
-                    OverflowError(
-                        message=String(
-                            "The product {} exceeds Decimal128 capacity."
-                        ).format(prod),
-                        function="multiply()",
-                    )
+                raise OverflowError(
+                    message=String(
+                        "The product {} exceeds Decimal128 capacity."
+                    ).format(prod),
+                    function="multiply()",
                 )
             else:
                 return Decimal128.from_uint128(prod, 0, is_negative)
@@ -579,13 +570,11 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         # Large integers, it will definitely overflow
         else:
             var prod: UInt256 = UInt256(x1_coef) * UInt256(x2_coef)
-            raise Error(
-                OverflowError(
-                    message=String(
-                        "The product {} exceeds Decimal128 capacity."
-                    ).format(prod),
-                    function="multiply()",
-                )
+            raise OverflowError(
+                message=String(
+                    "The product {} exceeds Decimal128 capacity."
+                ).format(prod),
+                function="multiply()",
             )
 
     # SPECIAL CASE: Both operands are integers but with scales
@@ -601,11 +590,9 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             x2_integral_part
         )
         if prod > Decimal128.MAX_AS_UINT256:
-            raise Error(
-                OverflowError(
-                    message="Decimal128 overflow in multiplication.",
-                    function="multiply()",
-                )
+            raise OverflowError(
+                message="Decimal128 overflow in multiplication.",
+                function="multiply()",
             )
         else:
             var num_digits = decimo.decimal128.utility.number_of_digits(prod)
@@ -698,11 +685,9 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         if (num_digits_of_integral_part >= Decimal128.MAX_NUM_DIGITS) & (
             truncated_prod_at_max_length > Decimal128.MAX_AS_UINT128
         ):
-            raise Error(
-                OverflowError(
-                    message="Decimal128 overflow in multiplication.",
-                    function="multiply()",
-                )
+            raise OverflowError(
+                message="Decimal128 overflow in multiplication.",
+                function="multiply()",
             )
 
         # Otherwise, the value will not overflow even after rounding
@@ -764,11 +749,9 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     if (num_digits_of_integral_part >= Decimal128.MAX_NUM_DIGITS) & (
         truncated_prod_at_max_length > Decimal128.MAX_AS_UINT256
     ):
-        raise Error(
-            OverflowError(
-                message="Decimal128 overflow in multiplication.",
-                function="multiply()",
-            )
+        raise OverflowError(
+            message="Decimal128 overflow in multiplication.",
+            function="multiply()",
         )
 
     # Otherwise, the value will not overflow even after rounding
@@ -831,11 +814,9 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     # 特例: 除數爲零
     # Check for division by zero
     if x2.is_zero():
-        raise Error(
-            ZeroDivisionError(
-                message="Division by zero.",
-                function="divide()",
-            )
+        raise ZeroDivisionError(
+            message="Division by zero.",
+            function="divide()",
         )
 
     # SPECIAL CASE: zero dividend
@@ -893,11 +874,9 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             else:
                 var quot = UInt256(x1_coef) * UInt256(10) ** (-diff_scale)
                 if quot > Decimal128.MAX_AS_UINT256:
-                    raise Error(
-                        OverflowError(
-                            message="Decimal128 overflow in division.",
-                            function="divide()",
-                        )
+                    raise OverflowError(
+                        message="Decimal128 overflow in division.",
+                        function="divide()",
                     )
                 else:
                     var low = UInt32(quot & 0xFFFFFFFF)
@@ -963,11 +942,9 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             else:
                 var quot = UInt256(quot) * UInt256(10) ** (-diff_scale)
                 if quot > Decimal128.MAX_AS_UINT256:
-                    raise Error(
-                        OverflowError(
-                            message="Decimal128 overflow in division.",
-                            function="divide()",
-                        )
+                    raise OverflowError(
+                        message="Decimal128 overflow in division.",
+                        function="divide()",
                     )
                 else:
                     var low = UInt32(quot & 0xFFFFFFFF)
@@ -1245,11 +1222,9 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
                 (ndigits_quot_int_part == Decimal128.MAX_NUM_DIGITS)
                 and (truncated_quot > Decimal128.MAX_AS_UINT256)
             ):
-                raise Error(
-                    OverflowError(
-                        message="Decimal128 overflow in division.",
-                        function="divide()",
-                    )
+                raise OverflowError(
+                    message="Decimal128 overflow in division.",
+                    function="divide()",
                 )
 
             var scale_of_truncated_quot = (
@@ -1301,12 +1276,10 @@ def truncate_divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     try:
         return divide(x1, x2).round(0, RoundingMode.down())
     except e:
-        raise Error(
-            DecimoError(
-                message="Division failed.",
-                function="truncate_divide()",
-                previous_error=e^,
-            )
+        raise ZeroDivisionError(
+            message="Division failed.",
+            function="truncate_divide()",
+            previous_error=e^,
         )
 
 
@@ -1324,10 +1297,8 @@ def modulo(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     try:
         return x1 - (truncate_divide(x1, x2) * x2)
     except e:
-        raise Error(
-            DecimoError(
-                message="Modulo failed.",
-                function="modulo()",
-                previous_error=e^,
-            )
+        raise ZeroDivisionError(
+            message="Modulo failed.",
+            function="modulo()",
+            previous_error=e^,
         )

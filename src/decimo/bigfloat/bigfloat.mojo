@@ -38,7 +38,7 @@ from std.memory import UnsafePointer
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.biguint.biguint import BigUInt
-from decimo.errors import DecimoError, ConversionError
+from decimo.errors import ConversionError, RuntimeError
 from decimo.bigfloat.mpfr_wrapper import (
     mpfrw_available,
     mpfrw_init,
@@ -146,23 +146,19 @@ struct BigFloat(Comparable, Movable, Writable):
             precision: Number of significant decimal digits.
         """
         if not mpfrw_available():
-            raise Error(
-                DecimoError(
-                    message=(
-                        "BigFloat requires MPFR (brew install mpfr / apt"
-                        " install libmpfr-dev)"
-                    ),
-                    function="BigFloat.__init__()",
-                )
+            raise RuntimeError(
+                message=(
+                    "BigFloat requires MPFR (brew install mpfr / apt"
+                    " install libmpfr-dev)"
+                ),
+                function="BigFloat.__init__()",
             )
         var bits = _dps_to_bits(precision)
         self.handle = mpfrw_init(bits)
         if self.handle < 0:
-            raise Error(
-                DecimoError(
-                    message="MPFR handle pool exhausted",
-                    function="BigFloat.__init__()",
-                )
+            raise RuntimeError(
+                message="MPFR handle pool exhausted",
+                function="BigFloat.__init__()",
             )
         self.precision = precision
         var s_bytes = value.as_bytes()
@@ -173,11 +169,9 @@ struct BigFloat(Comparable, Movable, Writable):
         )
         if result_code != 0:
             mpfrw_clear(self.handle)
-            raise Error(
-                ConversionError(
-                    message="Invalid number string: " + value,
-                    function="BigFloat.__init__()",
-                )
+            raise ConversionError(
+                message="Invalid number string: " + value,
+                function="BigFloat.__init__()",
             )
 
     def __init__(out self, value: Int, precision: Int = PRECISION) raises:
@@ -245,11 +239,9 @@ struct BigFloat(Comparable, Movable, Writable):
         var d = digits if digits > 0 else self.precision
         var address = mpfrw_get_str(self.handle, Int32(d))
         if address == 0:
-            raise Error(
-                ConversionError(
-                    message="Failed to export string",
-                    function="BigFloat.to_string()",
-                )
+            raise ConversionError(
+                message="Failed to export string",
+                function="BigFloat.to_string()",
             )
         var result = _read_c_string(address)
         mpfrw_free_str(address)
@@ -330,11 +322,9 @@ struct BigFloat(Comparable, Movable, Writable):
             self.handle, Int32(d), UnsafePointer(to=exp)
         )
         if address == 0:
-            raise Error(
-                ConversionError(
-                    message="mpfr_get_str failed",
-                    function="BigFloat.to_bigdecimal()",
-                )
+            raise ConversionError(
+                message="mpfr_get_str failed",
+                function="BigFloat.to_bigdecimal()",
             )
 
         # 2. Single memcpy into a Mojo-owned buffer
@@ -469,11 +459,9 @@ struct BigFloat(Comparable, Movable, Writable):
         """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
-            raise Error(
-                DecimoError(
-                    message="Handle allocation failed.",
-                    function="BigFloat.__neg__()",
-                )
+            raise RuntimeError(
+                message="Handle allocation failed.",
+                function="BigFloat.__neg__()",
             )
         mpfrw_neg(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
@@ -486,11 +474,9 @@ struct BigFloat(Comparable, Movable, Writable):
         """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
-            raise Error(
-                DecimoError(
-                    message="Handle allocation failed.",
-                    function="BigFloat.__abs__()",
-                )
+            raise RuntimeError(
+                message="Handle allocation failed.",
+                function="BigFloat.__abs__()",
             )
         mpfrw_abs(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
@@ -511,11 +497,9 @@ struct BigFloat(Comparable, Movable, Writable):
         var prec = max(self.precision, other.precision)
         var h = mpfrw_init(_dps_to_bits(prec))
         if h < 0:
-            raise Error(
-                DecimoError(
-                    message="Handle allocation failed.",
-                    function="BigFloat.__add__()",
-                )
+            raise RuntimeError(
+                message="Handle allocation failed.",
+                function="BigFloat.__add__()",
             )
         mpfrw_add(h, self.handle, other.handle)
         return Self(_handle=h, _precision=prec)
@@ -532,11 +516,9 @@ struct BigFloat(Comparable, Movable, Writable):
         var prec = max(self.precision, other.precision)
         var h = mpfrw_init(_dps_to_bits(prec))
         if h < 0:
-            raise Error(
-                DecimoError(
-                    message="Handle allocation failed.",
-                    function="BigFloat.__sub__()",
-                )
+            raise RuntimeError(
+                message="Handle allocation failed.",
+                function="BigFloat.__sub__()",
             )
         mpfrw_sub(h, self.handle, other.handle)
         return Self(_handle=h, _precision=prec)
@@ -553,11 +535,9 @@ struct BigFloat(Comparable, Movable, Writable):
         var prec = max(self.precision, other.precision)
         var h = mpfrw_init(_dps_to_bits(prec))
         if h < 0:
-            raise Error(
-                DecimoError(
-                    message="Handle allocation failed.",
-                    function="BigFloat.__mul__()",
-                )
+            raise RuntimeError(
+                message="Handle allocation failed.",
+                function="BigFloat.__mul__()",
             )
         mpfrw_mul(h, self.handle, other.handle)
         return Self(_handle=h, _precision=prec)
@@ -574,11 +554,9 @@ struct BigFloat(Comparable, Movable, Writable):
         var prec = max(self.precision, other.precision)
         var h = mpfrw_init(_dps_to_bits(prec))
         if h < 0:
-            raise Error(
-                DecimoError(
-                    message="Handle allocation failed.",
-                    function="BigFloat.__truediv__()",
-                )
+            raise RuntimeError(
+                message="Handle allocation failed.",
+                function="BigFloat.__truediv__()",
             )
         mpfrw_div(h, self.handle, other.handle)
         return Self(_handle=h, _precision=prec)
@@ -606,11 +584,9 @@ struct BigFloat(Comparable, Movable, Writable):
         """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
-            raise Error(
-                DecimoError(
-                    message="Handle allocation failed.",
-                    function="BigFloat.sqrt()",
-                )
+            raise RuntimeError(
+                message="Handle allocation failed.",
+                function="BigFloat.sqrt()",
             )
         mpfrw_sqrt(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
@@ -623,11 +599,9 @@ struct BigFloat(Comparable, Movable, Writable):
         """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
-            raise Error(
-                DecimoError(
-                    message="Handle allocation failed.",
-                    function="BigFloat.exp()",
-                )
+            raise RuntimeError(
+                message="Handle allocation failed.",
+                function="BigFloat.exp()",
             )
         mpfrw_exp(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
@@ -640,11 +614,9 @@ struct BigFloat(Comparable, Movable, Writable):
         """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
-            raise Error(
-                DecimoError(
-                    message="Handle allocation failed.",
-                    function="BigFloat.ln()",
-                )
+            raise RuntimeError(
+                message="Handle allocation failed.",
+                function="BigFloat.ln()",
             )
         mpfrw_log(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
@@ -657,11 +629,9 @@ struct BigFloat(Comparable, Movable, Writable):
         """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
-            raise Error(
-                DecimoError(
-                    message="Handle allocation failed.",
-                    function="BigFloat.sin()",
-                )
+            raise RuntimeError(
+                message="Handle allocation failed.",
+                function="BigFloat.sin()",
             )
         mpfrw_sin(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
@@ -674,11 +644,9 @@ struct BigFloat(Comparable, Movable, Writable):
         """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
-            raise Error(
-                DecimoError(
-                    message="Handle allocation failed.",
-                    function="BigFloat.cos()",
-                )
+            raise RuntimeError(
+                message="Handle allocation failed.",
+                function="BigFloat.cos()",
             )
         mpfrw_cos(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
@@ -691,11 +659,9 @@ struct BigFloat(Comparable, Movable, Writable):
         """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
-            raise Error(
-                DecimoError(
-                    message="Handle allocation failed.",
-                    function="BigFloat.tan()",
-                )
+            raise RuntimeError(
+                message="Handle allocation failed.",
+                function="BigFloat.tan()",
             )
         mpfrw_tan(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
@@ -712,11 +678,9 @@ struct BigFloat(Comparable, Movable, Writable):
         var prec = max(self.precision, exponent.precision)
         var h = mpfrw_init(_dps_to_bits(prec))
         if h < 0:
-            raise Error(
-                DecimoError(
-                    message="Handle allocation failed.",
-                    function="BigFloat.power()",
-                )
+            raise RuntimeError(
+                message="Handle allocation failed.",
+                function="BigFloat.power()",
             )
         mpfrw_pow(h, self.handle, exponent.handle)
         return Self(_handle=h, _precision=prec)
@@ -732,11 +696,9 @@ struct BigFloat(Comparable, Movable, Writable):
         """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
-            raise Error(
-                DecimoError(
-                    message="Handle allocation failed.",
-                    function="BigFloat.root()",
-                )
+            raise RuntimeError(
+                message="Handle allocation failed.",
+                function="BigFloat.root()",
             )
         mpfrw_rootn_ui(h, self.handle, n)
         return Self(_handle=h, _precision=self.precision)
@@ -752,22 +714,18 @@ struct BigFloat(Comparable, Movable, Writable):
             A `BigFloat` containing π at the requested precision.
         """
         if not mpfrw_available():
-            raise Error(
-                DecimoError(
-                    message=(
-                        "BigFloat requires MPFR (brew install mpfr / apt"
-                        " install libmpfr-dev)"
-                    ),
-                    function="BigFloat.pi()",
-                )
+            raise RuntimeError(
+                message=(
+                    "BigFloat requires MPFR (brew install mpfr / apt"
+                    " install libmpfr-dev)"
+                ),
+                function="BigFloat.pi()",
             )
         var h = mpfrw_init(_dps_to_bits(precision))
         if h < 0:
-            raise Error(
-                DecimoError(
-                    message="Handle allocation failed.",
-                    function="BigFloat.pi()",
-                )
+            raise RuntimeError(
+                message="Handle allocation failed.",
+                function="BigFloat.pi()",
             )
         mpfrw_const_pi(h)
         return BigFloat(_handle=h, _precision=precision)

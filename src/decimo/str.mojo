@@ -126,11 +126,9 @@ def parse_numeric_string(
     var n = len(value_bytes)
 
     if n == 0:
-        raise Error(
-            ValueError(
-                message="Empty string.",
-                function="parse_numeric_string()",
-            )
+        raise ValueError(
+            message="Empty string.",
+            function="parse_numeric_string()",
         )
 
     var ptr = value_bytes.unsafe_ptr()
@@ -195,20 +193,14 @@ def parse_numeric_string(
         elif c == 46:
             last_was_separator = False
             if in_exponent:
-                raise Error(
-                    ValueError(
-                        message=(
-                            "Decimal point cannot appear in the exponent part."
-                        ),
-                        function="parse_numeric_string()",
-                    )
+                raise ValueError(
+                    message="Decimal point cannot appear in the exponent part.",
+                    function="parse_numeric_string()",
                 )
             if decimal_point_pos != -1:
-                raise Error(
-                    ValueError(
-                        message="Decimal point can only appear once.",
-                        function="parse_numeric_string()",
-                    )
+                raise ValueError(
+                    message="Decimal point can only appear once.",
+                    function="parse_numeric_string()",
                 )
             decimal_point_pos = i
             sign_read = True
@@ -217,18 +209,14 @@ def parse_numeric_string(
         elif c == 101 or c == 69:
             last_was_separator = True
             if in_exponent:
-                raise Error(
-                    ValueError(
-                        message="Exponential notation can only appear once.",
-                        function="parse_numeric_string()",
-                    )
+                raise ValueError(
+                    message="Exponential notation can only appear once.",
+                    function="parse_numeric_string()",
                 )
             if total_mantissa_digits == 0:
-                raise Error(
-                    ValueError(
-                        message="Exponential notation must follow a number.",
-                        function="parse_numeric_string()",
-                    )
+                raise ValueError(
+                    message="Exponential notation must follow a number.",
+                    function="parse_numeric_string()",
                 )
             exponent_pos = i
             in_exponent = True
@@ -238,26 +226,21 @@ def parse_numeric_string(
             last_was_separator = True
             if in_exponent:
                 if exponent_sign_read:
-                    raise Error(
-                        ValueError(
-                            message=(
-                                "Exponent sign can only appear once,"
-                                " before exponent digits."
-                            ),
-                            function="parse_numeric_string()",
-                        )
+                    raise ValueError(
+                        message=(
+                            "Exponent sign can only appear once,"
+                            " before exponent digits."
+                        ),
+                        function="parse_numeric_string()",
                     )
                 exponent_sign_read = True
             else:
                 if sign_read:
-                    raise Error(
-                        ValueError(
-                            message=(
-                                "Minus sign can only appear once at the"
-                                " beginning."
-                            ),
-                            function="parse_numeric_string()",
-                        )
+                    raise ValueError(
+                        message=(
+                            "Minus sign can only appear once at the beginning."
+                        ),
+                        function="parse_numeric_string()",
                     )
                 sign = True
                 sign_read = True
@@ -267,53 +250,42 @@ def parse_numeric_string(
             last_was_separator = True
             if in_exponent:
                 if exponent_sign_read:
-                    raise Error(
-                        ValueError(
-                            message=(
-                                "Exponent sign can only appear once,"
-                                " before exponent digits."
-                            ),
-                            function="parse_numeric_string()",
-                        )
+                    raise ValueError(
+                        message=(
+                            "Exponent sign can only appear once,"
+                            " before exponent digits."
+                        ),
+                        function="parse_numeric_string()",
                     )
                 exponent_sign_read = True
             else:
                 if sign_read:
-                    raise Error(
-                        ValueError(
-                            message=(
-                                "Plus sign can only appear once at the"
-                                " beginning."
-                            ),
-                            function="parse_numeric_string()",
-                        )
+                    raise ValueError(
+                        message=(
+                            "Plus sign can only appear once at the beginning."
+                        ),
+                        function="parse_numeric_string()",
                     )
                 sign_read = True
 
         else:
-            raise Error(
-                ValueError(
-                    message=String(
-                        "Invalid character in the string of the number: {}"
-                    ).format(chr(Int(c))),
-                    function="parse_numeric_string()",
-                )
+            raise ValueError(
+                message=String(
+                    "Invalid character in the string of the number: {}"
+                ).format(chr(Int(c))),
+                function="parse_numeric_string()",
             )
 
     if last_was_separator:
-        raise Error(
-            ValueError(
-                message="Unexpected end character in the string of the number.",
-                function="parse_numeric_string()",
-            )
+        raise ValueError(
+            message="Unexpected end character in the string of the number.",
+            function="parse_numeric_string()",
         )
 
     if total_mantissa_digits == 0:
-        raise Error(
-            ValueError(
-                message="No digits found in the string of the number.",
-                function="parse_numeric_string()",
-            )
+        raise ValueError(
+            message="No digits found in the string of the number.",
+            function="parse_numeric_string()",
         )
 
     # ==================================================================

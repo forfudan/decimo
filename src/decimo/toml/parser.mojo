@@ -472,20 +472,15 @@ def _set_value(
                 var existing = root[key].table_values.copy()
                 for entry in value.table_values.items():
                     if entry.key in existing:
-                        raise Error(
-                            ValueError(
-                                message="Duplicate key: "
-                                + key
-                                + "."
-                                + entry.key,
-                                function="parse()",
-                            )
+                        raise ValueError(
+                            message="Duplicate key: " + key + "." + entry.key,
+                            function="parse()",
                         )
                     existing[entry.key] = entry.value.copy()
                 root[key] = _make_table(existing^)
                 return
-            raise Error(
-                ValueError(message="Duplicate key: " + key, function="parse()")
+            raise ValueError(
+                message="Duplicate key: " + key, function="parse()"
             )
         root[key] = value^
         return
@@ -507,11 +502,9 @@ def _set_value(
                 arr[len(arr) - 1] = _make_table(last_tbl^)
                 root[first].array_values = arr^
                 return
-        raise Error(
-            ValueError(
-                message="Key exists but is not a table: " + first,
-                function="parse()",
-            )
+        raise ValueError(
+            message="Key exists but is not a table: " + first,
+            function="parse()",
         )
 
     var table = root[first].table_values.copy()
@@ -549,11 +542,9 @@ def _ensure_table_path(
             root[first].array_values = arr^
             return
     elif root[first].type != TOMLValueType.TABLE:
-        raise Error(
-            ValueError(
-                message="Key exists but is not a table: " + first,
-                function="parse()",
-            )
+        raise ValueError(
+            message="Key exists but is not a table: " + first,
+            function="parse()",
         )
 
     if len(path) > 1:
@@ -574,11 +565,9 @@ def _append_array_of_tables(
 ) raises:
     """Append a new empty table to the array-of-tables at `path`."""
     if len(path) == 0:
-        raise Error(
-            ValueError(
-                message="Array of tables path cannot be empty",
-                function="parse()",
-            )
+        raise ValueError(
+            message="Array of tables path cannot be empty",
+            function="parse()",
         )
 
     if len(path) == 1:
@@ -595,11 +584,9 @@ def _append_array_of_tables(
                 _make_table(Dict[String, TOMLValue]())
             )
         else:
-            raise Error(
-                ValueError(
-                    message="Cannot redefine as array of tables: " + key,
-                    function="parse()",
-                )
+            raise ValueError(
+                message="Cannot redefine as array of tables: " + key,
+                function="parse()",
             )
         return
 
@@ -627,11 +614,9 @@ def _append_array_of_tables(
             arr[len(arr) - 1] = _make_table(last_tbl^)
             root[first].array_values = arr^
     else:
-        raise Error(
-            ValueError(
-                message="Key exists but is not a table or array: " + first,
-                function="parse()",
-            )
+        raise ValueError(
+            message="Key exists but is not a table or array: " + first,
+            function="parse()",
         )
 
 
@@ -705,7 +690,7 @@ struct TOMLParser:
         var parts = List[String]()
 
         if not self._is_key_token():
-            raise Error(ValueError(message="Expected key", function="parse()"))
+            raise ValueError(message="Expected key", function="parse()")
 
         parts.append(self._tok().value)
         self._advance()
@@ -714,10 +699,8 @@ struct TOMLParser:
         while self._tok().type == TokenType.DOT:
             self._advance()  # skip dot
             if not self._is_key_token():
-                raise Error(
-                    ValueError(
-                        message="Expected key after dot", function="parse()"
-                    )
+                raise ValueError(
+                    message="Expected key after dot", function="parse()"
                 )
             parts.append(self._tok().value)
             self._advance()
@@ -856,11 +839,9 @@ struct TOMLParser:
 
             # Expect equals
             if self._tok().type != TokenType.EQUAL:
-                raise Error(
-                    ValueError(
-                        message="Expected '=' in inline table",
-                        function="parse()",
-                    )
+                raise ValueError(
+                    message="Expected '=' in inline table",
+                    function="parse()",
                 )
             self._advance()
 
@@ -870,12 +851,10 @@ struct TOMLParser:
             # Set value at potentially nested path
             if len(key_parts) == 1:
                 if key_parts[0] in table:
-                    raise Error(
-                        ValueError(
-                            message="Duplicate key in inline table: "
-                            + key_parts[0],
-                            function="TOMLParser._parse_inline_table()",
-                        )
+                    raise ValueError(
+                        message="Duplicate key in inline table: "
+                        + key_parts[0],
+                        function="TOMLParser._parse_inline_table()",
                     )
                 table[key_parts[0]] = value^
             else:
@@ -893,11 +872,9 @@ struct TOMLParser:
                 self._advance()
                 break
             else:
-                raise Error(
-                    ValueError(
-                        message="Expected ',' or '}' in inline table",
-                        function="parse()",
-                    )
+                raise ValueError(
+                    message="Expected ',' or '}' in inline table",
+                    function="parse()",
                 )
 
         return _make_table(table^)
@@ -912,11 +889,9 @@ struct TOMLParser:
         if self._tok().type == TokenType.ARRAY_END:
             self._advance()
         else:
-            raise Error(
-                ValueError(
-                    message="Expected ']' after table header",
-                    function="parse()",
-                )
+            raise ValueError(
+                message="Expected ']' after table header",
+                function="parse()",
             )
 
         return path^
@@ -929,20 +904,16 @@ struct TOMLParser:
         if self._tok().type == TokenType.ARRAY_END:
             self._advance()
         else:
-            raise Error(
-                ValueError(
-                    message="Expected ']]' after array of tables header",
-                    function="parse()",
-                )
+            raise ValueError(
+                message="Expected ']]' after array of tables header",
+                function="parse()",
             )
         if self._tok().type == TokenType.ARRAY_END:
             self._advance()
         else:
-            raise Error(
-                ValueError(
-                    message="Expected ']]' after array of tables header",
-                    function="parse()",
-                )
+            raise ValueError(
+                message="Expected ']]' after array of tables header",
+                function="parse()",
             )
 
         return path^

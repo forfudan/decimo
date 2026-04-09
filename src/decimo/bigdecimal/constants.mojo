@@ -165,10 +165,8 @@ def pi(precision: Int) raises -> BigDecimal:
     """
 
     if precision < 0:
-        raise Error(
-            ValueError(
-                message="Precision must be non-negative", function="pi()"
-            )
+        raise ValueError(
+            message="Precision must be non-negative", function="pi()"
         )
 
     # TODO: When global variables are supported,
