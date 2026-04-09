@@ -400,10 +400,12 @@ struct Decimal128(
 
         if scale > UInt32(Self.MAX_SCALE):
             raise Error(
-                String(
-                    "Error in Decimal128 constructor with five components:"
-                    " Scale must be between 0 and 28, but got {}"
-                ).format(scale)
+                ValueError(
+                    message=String(
+                        "Scale must be between 0 and 28, but got {}."
+                    ).format(scale),
+                    function="Decimal128.from_components()",
+                )
             )
 
         var flags: UInt32 = 0
@@ -635,6 +637,7 @@ struct Decimal128(
                         message=String(
                             "Invalid characters in decimal128 string: {}"
                         ).format(value),
+                        function="Decimal128.from_string()",
                     )
                 )
 
@@ -672,6 +675,7 @@ struct Decimal128(
                             message=(
                                 "Minus sign cannot appear twice in exponent."
                             ),
+                            function="Decimal128.from_string()",
                         )
                     )
                 elif exponent_notation_read:
@@ -684,6 +688,7 @@ struct Decimal128(
                                 "Minus sign can only appear once at the"
                                 " beginning."
                             ),
+                            function="Decimal128.from_string()",
                         )
                     )
                 else:
@@ -698,6 +703,7 @@ struct Decimal128(
                             message=(
                                 "Plus sign cannot appear twice in exponent."
                             ),
+                            function="Decimal128.from_string()",
                         )
                     )
                 elif exponent_notation_read:
@@ -709,6 +715,7 @@ struct Decimal128(
                                 "Plus sign can only appear once at the"
                                 " beginning."
                             ),
+                            function="Decimal128.from_string()",
                         )
                     )
                 else:
@@ -720,6 +727,7 @@ struct Decimal128(
                     raise Error(
                         ValueError(
                             message="Decimal point can only appear once.",
+                            function="Decimal128.from_string()",
                         )
                     )
                 else:
@@ -734,6 +742,7 @@ struct Decimal128(
                             message=(
                                 "Exponential notation can only appear once."
                             ),
+                            function="Decimal128.from_string()",
                         )
                     )
                 if not mantissa_start:
@@ -742,6 +751,7 @@ struct Decimal128(
                             message=(
                                 "Exponential notation must follow a number."
                             ),
+                            function="Decimal128.from_string()",
                         )
                     )
                 else:
@@ -789,6 +799,7 @@ struct Decimal128(
                                 message=String(
                                     "Exponent part is too large: {}"
                                 ).format(raw_exponent),
+                                function="Decimal128.from_string()",
                             )
                         )
 
@@ -825,6 +836,7 @@ struct Decimal128(
                         message=String(
                             "Invalid character in decimal128 string: {}"
                         ).format(chr(Int(code))),
+                        function="Decimal128.from_string()",
                     )
                 )
 
@@ -832,6 +844,7 @@ struct Decimal128(
             raise Error(
                 ValueError(
                     message="Unexpected end character in decimal128 string.",
+                    function="Decimal128.from_string()",
                 )
             )
 

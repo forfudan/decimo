@@ -119,6 +119,7 @@ struct BigInt10(
         except e:
             raise Error(
                 DecimoError(
+                    message="See the above exception.",
                     function=(
                         "BigInt10.__init__(var words: List[UInt32], sign: Bool)"
                     ),
@@ -231,6 +232,7 @@ struct BigInt10(
         except e:
             raise Error(
                 DecimoError(
+                    message="See the above exception.",
                     function=(
                         "BigInt10.from_list(var words: List[UInt32], sign:"
                         " Bool)"
@@ -636,6 +638,7 @@ struct BigInt10(
         except e:
             raise Error(
                 DecimoError(
+                    message="See the above exception.",
                     function="BigInt10.__floordiv__()",
                     previous_error=e^,
                 )
@@ -656,6 +659,7 @@ struct BigInt10(
         except e:
             raise Error(
                 DecimoError(
+                    message="See the above exception.",
                     function="BigInt10.__mod__()",
                     previous_error=e^,
                 )
