@@ -39,10 +39,10 @@ import decimo.str
 from decimo.bigint10.bigint10 import BigInt10
 from decimo.biguint.biguint import BigUInt
 from decimo.errors import (
-    DecimoError,
     ConversionError,
     OverflowError,
     ValueError,
+    ZeroDivisionError,
 )
 
 # Type aliases
@@ -468,30 +468,26 @@ struct BigInt(
         # For BigInt (integer type), the fractional part must be zero.
         if scale > 0:
             if scale >= len(coef):
-                raise Error(
-                    ConversionError(
+                raise ConversionError(
+                    function="BigInt.from_string(value: String)",
+                    message=(
+                        'The input value "'
+                        + value
+                        + '" is not an integer.\n'
+                        + "The scale is larger than the number of digits."
+                    ),
+                )
+            # Check that the fractional digits are all zero
+            for i in range(1, scale + 1):
+                if coef[-i] != 0:
+                    raise ConversionError(
                         function="BigInt.from_string(value: String)",
                         message=(
                             'The input value "'
                             + value
                             + '" is not an integer.\n'
-                            + "The scale is larger than the number of digits."
+                            + "The fractional part is not zero."
                         ),
-                    )
-                )
-            # Check that the fractional digits are all zero
-            for i in range(1, scale + 1):
-                if coef[-i] != 0:
-                    raise Error(
-                        ConversionError(
-                            function="BigInt.from_string(value: String)",
-                            message=(
-                                'The input value "'
-                                + value
-                                + '" is not an integer.\n'
-                                + "The fractional part is not zero."
-                            ),
-                        )
                     )
             # Remove fractional zeros from coefficient
             coef.resize(len(coef) - scale, UInt8(0))
@@ -629,11 +625,9 @@ struct BigInt(
         # Int is 64-bit, so we need at most 2 words to represent it.
         # Int.MAX = 9_223_372_036_854_775_807 = 0x7FFF_FFFF_FFFF_FFFF
         if len(self.words) > 2:
-            raise Error(
-                OverflowError(
-                    message="The number exceeds the size of Int",
-                    function="BigInt.to_int()",
-                )
+            raise OverflowError(
+                message="The number exceeds the size of Int",
+                function="BigInt.to_int()",
             )
 
         var magnitude: UInt64 = UInt64(self.words[0])
@@ -643,11 +637,9 @@ struct BigInt(
         if self.sign:
             # Negative: check against Int.MIN magnitude (2^63)
             if magnitude > UInt64(9_223_372_036_854_775_808):
-                raise Error(
-                    OverflowError(
-                        message="The number exceeds the size of Int",
-                        function="BigInt.to_int()",
-                    )
+                raise OverflowError(
+                    message="The number exceeds the size of Int",
+                    function="BigInt.to_int()",
                 )
             if magnitude == UInt64(9_223_372_036_854_775_808):
                 return Int.MIN
@@ -655,11 +647,9 @@ struct BigInt(
         else:
             # Positive: check against Int.MAX (2^63 - 1)
             if magnitude > UInt64(9_223_372_036_854_775_807):
-                raise Error(
-                    OverflowError(
-                        message="The number exceeds the size of Int",
-                        function="BigInt.to_int()",
-                    )
+                raise OverflowError(
+                    message="The number exceeds the size of Int",
+                    function="BigInt.to_int()",
                 )
             return Int(magnitude)
 
@@ -984,12 +974,10 @@ struct BigInt(
         try:
             return decimo.bigint.arithmetics.floor_divide(self, other)
         except e:
-            raise Error(
-                DecimoError(
-                    message="See the above exception.",
-                    function="BigInt.__floordiv__()",
-                    previous_error=e^,
-                )
+            raise ZeroDivisionError(
+                message="See the above exception.",
+                function="BigInt.__floordiv__()",
+                previous_error=e^,
             )
 
     @always_inline
@@ -1005,12 +993,10 @@ struct BigInt(
         try:
             return decimo.bigint.arithmetics.floor_modulo(self, other)
         except e:
-            raise Error(
-                DecimoError(
-                    message="See the above exception.",
-                    function="BigInt.__mod__()",
-                    previous_error=e^,
-                )
+            raise ZeroDivisionError(
+                message="See the above exception.",
+                function="BigInt.__mod__()",
+                previous_error=e^,
             )
 
     @always_inline
@@ -1026,12 +1012,10 @@ struct BigInt(
         try:
             return decimo.bigint.arithmetics.floor_divmod(self, other)
         except e:
-            raise Error(
-                DecimoError(
-                    message="See the above exception.",
-                    function="BigInt.__divmod__()",
-                    previous_error=e^,
-                )
+            raise ZeroDivisionError(
+                message="See the above exception.",
+                function="BigInt.__divmod__()",
+                previous_error=e^,
             )
 
     @always_inline
@@ -1468,21 +1452,17 @@ struct BigInt(
             Error: If the exponent is negative or too large.
         """
         if exponent.is_negative():
-            raise Error(
-                ValueError(
-                    message="Exponent must be non-negative",
-                    function="BigInt.power()",
-                )
+            raise ValueError(
+                message="Exponent must be non-negative",
+                function="BigInt.power()",
             )
         var exp_int: Int
         try:
             exp_int = exponent.to_int()
         except e:
-            raise Error(
-                OverflowError(
-                    message="Exponent too large to fit in Int",
-                    function="BigInt.power()",
-                )
+            raise OverflowError(
+                message="Exponent too large to fit in Int",
+                function="BigInt.power()",
             )
         return self.power(exp_int)
 

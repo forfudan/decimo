@@ -320,11 +320,9 @@ def true_divide(
     """
     # Check for division by zero
     if y.coefficient.is_zero():
-        raise Error(
-            ZeroDivisionError(
-                message="Division by zero.",
-                function="true_divide()",
-            )
+        raise ZeroDivisionError(
+            message="Division by zero.",
+            function="true_divide()",
         )
 
     # Handle dividend of zero
@@ -698,11 +696,9 @@ def true_divide_inexact(
 
     # Check for division by zero
     if x2.coefficient.is_zero():
-        raise Error(
-            ZeroDivisionError(
-                message="Division by zero.",
-                function="true_divide_inexact()",
-            )
+        raise ZeroDivisionError(
+            message="Division by zero.",
+            function="true_divide_inexact()",
         )
 
     # Handle dividend of zero
@@ -916,11 +912,9 @@ def truncate_divide(x1: BigDecimal, x2: BigDecimal) raises -> BigDecimal:
     """
     # Check for division by zero
     if x2.coefficient.is_zero():
-        raise Error(
-            ZeroDivisionError(
-                message="Division by zero.",
-                function="truncate_divide()",
-            )
+        raise ZeroDivisionError(
+            message="Division by zero.",
+            function="truncate_divide()",
         )
 
     # Handle dividend of zero
@@ -961,11 +955,9 @@ def truncate_modulo(
     """
     # Check for division by zero
     if x2.coefficient.is_zero():
-        raise Error(
-            ZeroDivisionError(
-                message="Division by zero.",
-                function="truncate_modulo()",
-            )
+        raise ZeroDivisionError(
+            message="Division by zero.",
+            function="truncate_modulo()",
         )
 
     return subtract(

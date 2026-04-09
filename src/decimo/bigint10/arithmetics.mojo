@@ -20,7 +20,7 @@ Implements basic arithmetic functions for the BigInt10 type.
 
 from decimo.bigint10.bigint10 import BigInt10
 from decimo.biguint.biguint import BigUInt
-from decimo.errors import DecimoError
+from decimo.errors import ZeroDivisionError
 from decimo.rounding_mode import RoundingMode
 
 
@@ -225,12 +225,10 @@ def floor_divide(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
                 x1.magnitude, x2.magnitude
             )
         except e:
-            raise Error(
-                DecimoError(
-                    message="See the above exception.",
-                    function="floor_divide()",
-                    previous_error=e^,
-                ),
+            raise ZeroDivisionError(
+                message="See the above exception.",
+                function="floor_divide()",
+                previous_error=e^,
             )
         return BigInt10(magnitude^, sign=False)
 
@@ -241,12 +239,10 @@ def floor_divide(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
                 x1.magnitude, x2.magnitude
             )
         except e:
-            raise Error(
-                DecimoError(
-                    message="See the above exception.",
-                    function="floor_divide()",
-                    previous_error=e^,
-                ),
+            raise ZeroDivisionError(
+                message="See the above exception.",
+                function="floor_divide()",
+                previous_error=e^,
             )
         return BigInt10(magnitude^, sign=True)
 
@@ -272,12 +268,10 @@ def truncate_divide(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
             x1.magnitude, x2.magnitude
         )
     except e:
-        raise Error(
-            DecimoError(
-                message="See the above exception.",
-                function="truncate_divide()",
-                previous_error=e^,
-            ),
+        raise ZeroDivisionError(
+            message="See the above exception.",
+            function="truncate_divide()",
+            previous_error=e^,
         )
     return BigInt10(magnitude^, sign=x1.sign != x2.sign)
 
@@ -308,12 +302,10 @@ def floor_modulo(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
                 x1.magnitude, x2.magnitude
             )
         except e:
-            raise Error(
-                DecimoError(
-                    message="See the above exception.",
-                    function="floor_modulo()",
-                    previous_error=e^,
-                ),
+            raise ZeroDivisionError(
+                message="See the above exception.",
+                function="floor_modulo()",
+                previous_error=e^,
             )
         return BigInt10(magnitude^, sign=x2.sign)
 
@@ -324,12 +316,10 @@ def floor_modulo(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
                 x1.magnitude, x2.magnitude
             )
         except e:
-            raise Error(
-                DecimoError(
-                    message="See the above exception.",
-                    function="floor_modulo()",
-                    previous_error=e^,
-                ),
+            raise ZeroDivisionError(
+                message="See the above exception.",
+                function="floor_modulo()",
+                previous_error=e^,
             )
         return BigInt10(magnitude^, sign=x2.sign)
 
@@ -355,11 +345,9 @@ def truncate_modulo(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
             x1.magnitude, x2.magnitude
         )
     except e:
-        raise Error(
-            DecimoError(
-                message="See the above exception.",
-                function="truncate_modulo()",
-                previous_error=e^,
-            ),
+        raise ZeroDivisionError(
+            message="See the above exception.",
+            function="truncate_modulo()",
+            previous_error=e^,
         )
     return BigInt10(magnitude^, sign=x1.sign)

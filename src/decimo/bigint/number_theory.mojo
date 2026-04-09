@@ -34,7 +34,7 @@ from decimo.bigint.arithmetics import (
     subtract_inplace,
     right_shift_inplace,
 )
-from decimo.errors import DecimoError
+from decimo.errors import ValueError
 
 
 # ===----------------------------------------------------------------------=== #
@@ -245,19 +245,15 @@ def mod_pow(base: BigInt, exponent: BigInt, modulus: BigInt) raises -> BigInt:
         If exponent < 0 or modulus <= 0.
     """
     if exponent.is_negative():
-        raise Error(
-            DecimoError(
-                function="mod_pow()",
-                message="Exponent must be non-negative",
-            )
+        raise ValueError(
+            function="mod_pow()",
+            message="Exponent must be non-negative",
         )
 
     if not modulus.is_positive():
-        raise Error(
-            DecimoError(
-                function="mod_pow()",
-                message="Modulus must be positive",
-            )
+        raise ValueError(
+            function="mod_pow()",
+            message="Modulus must be positive",
         )
 
     # x mod 1 = 0 for all x
@@ -326,11 +322,9 @@ def mod_inverse(a: BigInt, modulus: BigInt) raises -> BigInt:
         If modulus <= 0 or the inverse does not exist (gcd(a, modulus) != 1).
     """
     if not modulus.is_positive():
-        raise Error(
-            DecimoError(
-                function="mod_inverse()",
-                message="Modulus must be positive",
-            )
+        raise ValueError(
+            function="mod_inverse()",
+            message="Modulus must be positive",
         )
 
     var result = extended_gcd(a, modulus)
@@ -338,11 +332,9 @@ def mod_inverse(a: BigInt, modulus: BigInt) raises -> BigInt:
     var x = result[1].copy()
 
     if not g.is_one():
-        raise Error(
-            DecimoError(
-                function="mod_inverse()",
-                message="Modular inverse does not exist (gcd != 1)",
-            )
+        raise ValueError(
+            function="mod_inverse()",
+            message="Modular inverse does not exist (gcd != 1)",
         )
 
     # Ensure result is in [0, modulus)

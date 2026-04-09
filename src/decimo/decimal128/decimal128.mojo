@@ -33,7 +33,6 @@ import decimo.decimal128.exponential
 import decimo.decimal128.rounding
 from decimo.rounding_mode import RoundingMode
 from decimo.errors import (
-    DecimoError,
     ValueError,
     OverflowError,
     ConversionError,
@@ -297,12 +296,10 @@ struct Decimal128(
         try:
             self = Decimal128.from_components(low, mid, high, scale, sign)
         except e:
-            raise Error(
-                DecimoError(
-                    message="Cannot initialize with five components.",
-                    function="Decimal128.__init__()",
-                    previous_error=e^,
-                )
+            raise ConversionError(
+                message="Cannot initialize with five components.",
+                function="Decimal128.__init__()",
+                previous_error=e^,
             )
 
     def __init__(out self, value: Int):
@@ -325,12 +322,10 @@ struct Decimal128(
         try:
             self = Decimal128.from_int(value, scale)
         except e:
-            raise Error(
-                ConversionError(
-                    message="Cannot initialize Decimal128 from Int.",
-                    function="Decimal128.__init__()",
-                    previous_error=e^,
-                )
+            raise ConversionError(
+                message="Cannot initialize Decimal128 from Int.",
+                function="Decimal128.__init__()",
+                previous_error=e^,
             )
 
     def __init__(out self, value: String) raises:
@@ -343,12 +338,10 @@ struct Decimal128(
         try:
             self = Decimal128.from_string(value)
         except e:
-            raise Error(
-                ConversionError(
-                    message="Cannot initialize Decimal128 from String.",
-                    function="Decimal128.__init__()",
-                    previous_error=e^,
-                )
+            raise ConversionError(
+                message="Cannot initialize Decimal128 from String.",
+                function="Decimal128.__init__()",
+                previous_error=e^,
             )
 
     def __init__(out self, value: Float64) raises:
@@ -362,12 +355,10 @@ struct Decimal128(
         try:
             self = Decimal128.from_float(value)
         except e:
-            raise Error(
-                ConversionError(
-                    message="Cannot initialize Decimal128 from Float64.",
-                    function="Decimal128.__init__()",
-                    previous_error=e^,
-                )
+            raise ConversionError(
+                message="Cannot initialize Decimal128 from Float64.",
+                function="Decimal128.__init__()",
+                previous_error=e^,
             )
 
     # ===------------------------------------------------------------------=== #
@@ -399,13 +390,11 @@ struct Decimal128(
         """
 
         if scale > UInt32(Self.MAX_SCALE):
-            raise Error(
-                ValueError(
-                    message=String(
-                        "Scale must be between 0 and 28, but got {}."
-                    ).format(scale),
-                    function="Decimal128.from_components()",
-                )
+            raise ValueError(
+                message=String(
+                    "Scale must be between 0 and 28, but got {}."
+                ).format(scale),
+                function="Decimal128.from_components()",
             )
 
         var flags: UInt32 = 0
@@ -525,13 +514,11 @@ struct Decimal128(
         var flags: UInt32
 
         if scale > UInt32(Self.MAX_SCALE):
-            raise Error(
-                ValueError(
-                    message=String(
-                        "Scale must be between 0 and 28, but got {}"
-                    ).format(scale),
-                    function="Decimal128.from_int()",
-                )
+            raise ValueError(
+                message=String(
+                    "Scale must be between 0 and 28, but got {}"
+                ).format(scale),
+                function="Decimal128.from_int()",
             )
 
         if value >= 0:
@@ -569,23 +556,19 @@ struct Decimal128(
         """
 
         if value >> 96 != 0:
-            raise Error(
-                ValueError(
-                    message=String(
-                        "Value must fit in 96 bits, but got {}"
-                    ).format(value),
-                    function="Decimal128.from_uint128()",
-                )
+            raise ValueError(
+                message=String("Value must fit in 96 bits, but got {}").format(
+                    value
+                ),
+                function="Decimal128.from_uint128()",
             )
 
         if scale > UInt32(Self.MAX_SCALE):
-            raise Error(
-                ValueError(
-                    message=String(
-                        "Scale must be between 0 and 28, but got {}"
-                    ).format(scale),
-                    function="Decimal128.from_uint128()",
-                )
+            raise ValueError(
+                message=String(
+                    "Scale must be between 0 and 28, but got {}"
+                ).format(scale),
+                function="Decimal128.from_uint128()",
             )
 
         var result = UnsafePointer(to=value).bitcast[Decimal128]()[]
@@ -632,13 +615,11 @@ struct Decimal128(
         # Check for non-ASCII characters (each non-ASCII char is multi-byte)
         for byte in value_bytes:
             if byte > 127:
-                raise Error(
-                    ValueError(
-                        message=String(
-                            "Invalid characters in decimal128 string: {}"
-                        ).format(value),
-                        function="Decimal128.from_string()",
-                    )
+                raise ValueError(
+                    message=String(
+                        "Invalid characters in decimal128 string: {}"
+                    ).format(value),
+                    function="Decimal128.from_string()",
                 )
 
         # Yuhao's notes:
@@ -670,26 +651,19 @@ struct Decimal128(
             elif code == 45:
                 unexpected_end_char = True
                 if exponent_sign_read:
-                    raise Error(
-                        ValueError(
-                            message=(
-                                "Minus sign cannot appear twice in exponent."
-                            ),
-                            function="Decimal128.from_string()",
-                        )
+                    raise ValueError(
+                        message="Minus sign cannot appear twice in exponent.",
+                        function="Decimal128.from_string()",
                     )
                 elif exponent_notation_read:
                     exponent_sign = True
                     exponent_sign_read = True
                 elif mantissa_sign_read:
-                    raise Error(
-                        ValueError(
-                            message=(
-                                "Minus sign can only appear once at the"
-                                " beginning."
-                            ),
-                            function="Decimal128.from_string()",
-                        )
+                    raise ValueError(
+                        message=(
+                            "Minus sign can only appear once at the beginning."
+                        ),
+                        function="Decimal128.from_string()",
                     )
                 else:
                     mantissa_sign = True
@@ -698,25 +672,18 @@ struct Decimal128(
             elif code == 43:
                 unexpected_end_char = True
                 if exponent_sign_read:
-                    raise Error(
-                        ValueError(
-                            message=(
-                                "Plus sign cannot appear twice in exponent."
-                            ),
-                            function="Decimal128.from_string()",
-                        )
+                    raise ValueError(
+                        message="Plus sign cannot appear twice in exponent.",
+                        function="Decimal128.from_string()",
                     )
                 elif exponent_notation_read:
                     exponent_sign_read = True
                 elif mantissa_sign_read:
-                    raise Error(
-                        ValueError(
-                            message=(
-                                "Plus sign can only appear once at the"
-                                " beginning."
-                            ),
-                            function="Decimal128.from_string()",
-                        )
+                    raise ValueError(
+                        message=(
+                            "Plus sign can only appear once at the beginning."
+                        ),
+                        function="Decimal128.from_string()",
                     )
                 else:
                     mantissa_sign_read = True
@@ -724,11 +691,9 @@ struct Decimal128(
             elif code == 46:
                 unexpected_end_char = False
                 if decimal_point_read:
-                    raise Error(
-                        ValueError(
-                            message="Decimal point can only appear once.",
-                            function="Decimal128.from_string()",
-                        )
+                    raise ValueError(
+                        message="Decimal point can only appear once.",
+                        function="Decimal128.from_string()",
                     )
                 else:
                     decimal_point_read = True
@@ -737,22 +702,14 @@ struct Decimal128(
             elif code == 101 or code == 69:
                 unexpected_end_char = True
                 if exponent_notation_read:
-                    raise Error(
-                        ValueError(
-                            message=(
-                                "Exponential notation can only appear once."
-                            ),
-                            function="Decimal128.from_string()",
-                        )
+                    raise ValueError(
+                        message="Exponential notation can only appear once.",
+                        function="Decimal128.from_string()",
                     )
                 if not mantissa_start:
-                    raise Error(
-                        ValueError(
-                            message=(
-                                "Exponential notation must follow a number."
-                            ),
-                            function="Decimal128.from_string()",
-                        )
+                    raise ValueError(
+                        message="Exponential notation must follow a number.",
+                        function="Decimal128.from_string()",
                     )
                 else:
                     exponent_notation_read = True
@@ -794,13 +751,11 @@ struct Decimal128(
                     if (not exponent_sign) and (
                         raw_exponent > Decimal128.MAX_NUM_DIGITS * 2
                     ):
-                        raise Error(
-                            OverflowError(
-                                message=String(
-                                    "Exponent part is too large: {}"
-                                ).format(raw_exponent),
-                                function="Decimal128.from_string()",
-                            )
+                        raise OverflowError(
+                            message=String(
+                                "Exponent part is too large: {}"
+                            ).format(raw_exponent),
+                            function="Decimal128.from_string()",
                         )
 
                     # Skip the digit if exponent is negatively too large
@@ -831,21 +786,17 @@ struct Decimal128(
                         scale += 1
 
             else:
-                raise Error(
-                    ValueError(
-                        message=String(
-                            "Invalid character in decimal128 string: {}"
-                        ).format(chr(Int(code))),
-                        function="Decimal128.from_string()",
-                    )
+                raise ValueError(
+                    message=String(
+                        "Invalid character in decimal128 string: {}"
+                    ).format(chr(Int(code))),
+                    function="Decimal128.from_string()",
                 )
 
         if unexpected_end_char:
-            raise Error(
-                ValueError(
-                    message="Unexpected end character in decimal128 string.",
-                    function="Decimal128.from_string()",
-                )
+            raise ValueError(
+                message="Unexpected end character in decimal128 string.",
+                function="Decimal128.from_string()",
             )
 
         # print("DEBUG: coef = ", coef)
@@ -967,14 +918,12 @@ struct Decimal128(
 
         # Early exit if the value is too large
         if UInt128(abs_value) > Decimal128.MAX_AS_UINT128:
-            raise Error(
-                OverflowError(
-                    message=String(
-                        "The float value {} is too large (>=2^96) to be"
-                        " transformed into Decimal128."
-                    ).format(value),
-                    function="Decimal128.from_float()",
-                )
+            raise OverflowError(
+                message=String(
+                    "The float value {} is too large (>=2^96) to be"
+                    " transformed into Decimal128."
+                ).format(value),
+                function="Decimal128.from_float()",
             )
 
         # Extract binary exponent using IEEE 754 bit manipulation
@@ -989,11 +938,9 @@ struct Decimal128(
 
         # CASE: Infinity or NaN
         if biased_exponent == 0x7FF:
-            raise Error(
-                ValueError(
-                    message="Cannot convert infinity or NaN to Decimal128.",
-                    function="Decimal128.from_float()",
-                )
+            raise ValueError(
+                message="Cannot convert infinity or NaN to Decimal128.",
+                function="Decimal128.from_float()",
             )
 
         # Get unbias exponent
@@ -1175,12 +1122,10 @@ struct Decimal128(
         try:
             return Int(self.to_int64())
         except e:
-            raise Error(
-                ConversionError(
-                    message="Cannot convert Decimal128 to Int.",
-                    function="Decimal128.to_int()",
-                    previous_error=e^,
-                )
+            raise ConversionError(
+                message="Cannot convert Decimal128 to Int.",
+                function="Decimal128.to_int()",
+                previous_error=e^,
             )
 
     def to_int64(self) raises -> Int64:
@@ -1196,19 +1141,15 @@ struct Decimal128(
         var result = self.to_int128()
 
         if result > Int128(Int64.MAX):
-            raise Error(
-                OverflowError(
-                    message="Decimal128 is too large to fit in Int64.",
-                    function="Decimal128.to_int64()",
-                )
+            raise OverflowError(
+                message="Decimal128 is too large to fit in Int64.",
+                function="Decimal128.to_int64()",
             )
 
         if result < Int128(Int64.MIN):
-            raise Error(
-                OverflowError(
-                    message="Decimal128 is too small to fit in Int64.",
-                    function="Decimal128.to_int64()",
-                )
+            raise OverflowError(
+                message="Decimal128 is too small to fit in Int64.",
+                function="Decimal128.to_int64()",
             )
 
         return Int64(result & 0xFFFF_FFFF_FFFF_FFFF)
@@ -2064,13 +2005,9 @@ struct Decimal128(
         End of examples.
         """
         if precision_diff < 0:
-            raise Error(
-                ValueError(
-                    message=(
-                        "precision_diff must be greater than or equal to 0."
-                    ),
-                    function="Decimal128.extend_precision()",
-                )
+            raise ValueError(
+                message="precision_diff must be greater than or equal to 0.",
+                function="Decimal128.extend_precision()",
             )
 
         if precision_diff == 0:

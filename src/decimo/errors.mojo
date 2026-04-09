@@ -75,8 +75,12 @@ comptime ZeroDivisionError = DecimoError[error_type="ZeroDivisionError"]
 comptime ConversionError = DecimoError[error_type="ConversionError"]
 """Type for conversion errors in Decimo."""
 
+comptime RuntimeError = DecimoError[error_type="RuntimeError"]
+"""Type for runtime infrastructure errors in Decimo (e.g., resource allocation
+failures, missing native libraries)."""
 
-struct DecimoError[error_type: String = "DecimoError"](Writable):
+
+struct DecimoError[error_type: StringLiteral = "DecimoError"](Writable):
     """Base type for all Decimo errors.
 
     The error message format mimics Python's traceback:

@@ -29,11 +29,11 @@ from decimo.bigint10.bigint10 import BigInt10
 import decimo.biguint.arithmetics
 import decimo.biguint.comparison
 from decimo.errors import (
-    DecimoError,
     ConversionError,
     ValueError,
     IndexError,
     OverflowError,
+    ZeroDivisionError,
 )
 import decimo.str
 
@@ -203,12 +203,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         try:
             self = Self.from_list(words^)
         except e:
-            raise Error(
-                DecimoError(
-                    message="See the above exception.",
-                    function="BigUInt.__init__(var words: List[UInt32])",
-                    previous_error=e^,
-                )
+            raise ConversionError(
+                message="See the above exception.",
+                function="BigUInt.__init__(var words: List[UInt32])",
+                previous_error=e^,
             )
 
     def __init__(out self, *, var raw_words: List[UInt32]):
@@ -249,12 +247,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         try:
             self = Self.from_int(value)
         except e:
-            raise Error(
-                DecimoError(
-                    message="See the above exception.",
-                    function="BigUInt.__init__(value: Int)",
-                    previous_error=e^,
-                )
+            raise ConversionError(
+                message="See the above exception.",
+                function="BigUInt.__init__(value: Int)",
+                previous_error=e^,
             )
 
     @implicit
@@ -285,12 +281,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         try:
             self = Self.from_string(value, ignore_sign=ignore_sign)
         except e:
-            raise Error(
-                DecimoError(
-                    message="See the above exception.",
-                    function="BigUInt.__init__(value: String)",
-                    previous_error=e^,
-                )
+            raise ConversionError(
+                message="See the above exception.",
+                function="BigUInt.__init__(value: String)",
+                previous_error=e^,
             )
 
     # ===------------------------------------------------------------------=== #
@@ -328,15 +322,13 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         # Check if the words are valid
         for word in words:
             if word > UInt32(999_999_999):
-                raise Error(
-                    OverflowError(
-                        message=(
-                            "Word value "
-                            + String(word)
-                            + " exceeds maximum value of 999_999_999"
-                        ),
-                        function="BigUInt.from_list()",
-                    )
+                raise OverflowError(
+                    message=(
+                        "Word value "
+                        + String(word)
+                        + " exceeds maximum value of 999_999_999"
+                    ),
+                    function="BigUInt.from_list()",
                 )
 
         var res = Self(raw_words=words^)
@@ -394,15 +386,13 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         # Check if the words are valid
         for word in words:
             if word > UInt32(999_999_999):
-                raise Error(
-                    OverflowError(
-                        message=(
-                            "Word value "
-                            + String(word)
-                            + " exceeds maximum value of 999_999_999"
-                        ),
-                        function="BigUInt.from_words()",
-                    )
+                raise OverflowError(
+                    message=(
+                        "Word value "
+                        + String(word)
+                        + " exceeds maximum value of 999_999_999"
+                    ),
+                    function="BigUInt.from_words()",
                 )
             else:
                 list_of_words.append(word)
@@ -468,15 +458,13 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             return Self()
 
         if value < 0:
-            raise Error(
-                OverflowError(
-                    function="BigUInt.from_int(value: Int)",
-                    message=(
-                        "The input value "
-                        + String(value)
-                        + " is negative and is not compatible with BigUInt."
-                    ),
-                )
+            raise OverflowError(
+                function="BigUInt.from_int(value: Int)",
+                message=(
+                    "The input value "
+                    + String(value)
+                    + " is negative and is not compatible with BigUInt."
+                ),
             )
 
         var list_of_words = List[UInt32]()
@@ -668,17 +656,14 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         var sign: Bool = _tuple[2]
 
         if (not ignore_sign) and sign:
-            raise Error(
-                OverflowError(
-                    function="BigUInt.from_string(value: String)",
-                    message=(
-                        'The input value "'
-                        + value
-                        + '" is negative but `ignore_sign` is False.\n'
-                        + "Consider using `ignore_sign=True` to ignore the"
-                        " sign."
-                    ),
-                )
+            raise OverflowError(
+                function="BigUInt.from_string(value: String)",
+                message=(
+                    'The input value "'
+                    + value
+                    + '" is negative but `ignore_sign` is False.\n'
+                    + "Consider using `ignore_sign=True` to ignore the sign."
+                ),
             )
 
         # Check if the number is zero
@@ -690,29 +675,25 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         # If the fractional part is zero, remove the fractional part
         if scale > 0:
             if scale >= len(coef):
-                raise Error(
-                    ConversionError(
+                raise ConversionError(
+                    function="BigUInt.from_string(value: String)",
+                    message=(
+                        'The input value "'
+                        + value
+                        + '" is not an integer.\n'
+                        + "The scale is larger than the number of digits."
+                    ),
+                )
+            for i in range(1, scale + 1):
+                if coef[-i] != 0:
+                    raise ConversionError(
                         function="BigUInt.from_string(value: String)",
                         message=(
                             'The input value "'
                             + value
                             + '" is not an integer.\n'
-                            + "The scale is larger than the number of digits."
+                            + "The fractional part is not zero."
                         ),
-                    )
-                )
-            for i in range(1, scale + 1):
-                if coef[-i] != 0:
-                    raise Error(
-                        ConversionError(
-                            function="BigUInt.from_string(value: String)",
-                            message=(
-                                'The input value "'
-                                + value
-                                + '" is not an integer.\n'
-                                + "The fractional part is not zero."
-                            ),
-                        )
                     )
             coef.resize(len(coef) - scale, UInt8(0))
             scale = 0
@@ -789,12 +770,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         try:
             return self.to_int()
         except e:
-            raise Error(
-                DecimoError(
-                    message="See the above exception.",
-                    function="BigUInt.__int__()",
-                    previous_error=e^,
-                )
+            raise ConversionError(
+                message="See the above exception.",
+                function="BigUInt.__int__()",
+                previous_error=e^,
             )
 
     def write_repr_to[W: Writer](self, mut writer: W):
@@ -837,23 +816,24 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         # 2^63-1 = 9_223_372_036_854_775_807
         # is larger than 10^18 -1 but smaller than 10^27 - 1
 
-        var overflow_error: Error = Error(
-            OverflowError(
-                function="BigUInt.to_int()",
-                message="The number exceeds the size of Int ("
-                + String(Int.MAX)
-                + ")",
-            )
+        var overflow_msg = (
+            "The number exceeds the size of Int (" + String(Int.MAX) + ")"
         )
         if len(self.words) > 3:
-            raise overflow_error^
+            raise OverflowError(
+                function="BigUInt.to_int()",
+                message=overflow_msg,
+            )
 
         var value: Int128 = 0
         for i in range(len(self.words)):
             value += Int128(self.words[i]) * Int128(1_000_000_000) ** i
 
         if value > Int128(Int.MAX):
-            raise overflow_error^
+            raise OverflowError(
+                function="BigUInt.to_int()",
+                message=overflow_msg,
+            )
 
         return Int(value)
 
@@ -867,15 +847,13 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             Error: If the number exceeds the size of UInt64.
         """
         if self.is_uint64_overflow():
-            raise Error(
-                OverflowError(
-                    function="BigUInt.to_uint64()",
-                    message=(
-                        "The number exceeds the size of UInt64 ("
-                        + String(UInt64.MAX)
-                        + ")"
-                    ),
-                )
+            raise OverflowError(
+                function="BigUInt.to_uint64()",
+                message=(
+                    "The number exceeds the size of UInt64 ("
+                    + String(UInt64.MAX)
+                    + ")"
+                ),
             )
 
         if len(self.words) == 1:
@@ -1152,13 +1130,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         try:
             return decimo.biguint.arithmetics.subtract(self, other)
         except e:
-            raise Error(
-                DecimoError(
-                    message="See the above exception.",
-                    function="BigUInt.__sub__(other: Self)",
-                    previous_error=e^,
-                )
-            )
+            raise e^
 
     @always_inline
     def __mul__(self, other: Self) -> Self:
@@ -1185,12 +1157,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         try:
             return decimo.biguint.arithmetics.floor_divide(self, other)
         except e:
-            raise Error(
-                DecimoError(
-                    message="See the above exception.",
-                    function="BigUInt.__floordiv__(other: Self)",
-                    previous_error=e^,
-                )
+            raise ZeroDivisionError(
+                message="See the above exception.",
+                function="BigUInt.__floordiv__(other: Self)",
+                previous_error=e^,
             )
 
     @always_inline
@@ -1206,12 +1176,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         try:
             return decimo.biguint.arithmetics.ceil_divide(self, other)
         except e:
-            raise Error(
-                DecimoError(
-                    message="See the above exception.",
-                    function="BigUInt.__ceildiv__(other: Self)",
-                    previous_error=e^,
-                )
+            raise ZeroDivisionError(
+                message="See the above exception.",
+                function="BigUInt.__ceildiv__(other: Self)",
+                previous_error=e^,
             )
 
     @always_inline
@@ -1227,12 +1195,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         try:
             return decimo.biguint.arithmetics.floor_modulo(self, other)
         except e:
-            raise Error(
-                DecimoError(
-                    message="See the above exception.",
-                    function="BigUInt.__mod__(other: Self)",
-                    previous_error=e^,
-                )
+            raise ZeroDivisionError(
+                message="See the above exception.",
+                function="BigUInt.__mod__(other: Self)",
+                previous_error=e^,
             )
 
     @always_inline
@@ -1248,13 +1214,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         try:
             return decimo.biguint.arithmetics.floor_divide_modulo(self, other)
         except e:
-            raise Error(
-                DecimoError(
-                    message="See the above exception.",
-                    function="BigUInt.__divmod__(other: Self)",
-                    previous_error=e^,
-                )
-            )
+            raise e^
 
     @always_inline
     def __pow__(self, exponent: Self) raises -> Self:
@@ -1269,12 +1229,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         try:
             return self.power(exponent)
         except e:
-            raise Error(
-                DecimoError(
-                    message="See the above exception.",
-                    function="BigUInt.__pow__(exponent: Self)",
-                    previous_error=e^,
-                )
+            raise ValueError(
+                message="See the above exception.",
+                function="BigUInt.__pow__(exponent: Self)",
+                previous_error=e^,
             )
 
     @always_inline
@@ -1290,12 +1248,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         try:
             return self.power(exponent)
         except e:
-            raise Error(
-                DecimoError(
-                    message="See the above exception.",
-                    function="BigUInt.__pow__(exponent: Int)",
-                    previous_error=e^,
-                )
+            raise ValueError(
+                message="See the above exception.",
+                function="BigUInt.__pow__(exponent: Int)",
+                previous_error=e^,
             )
 
     # ===------------------------------------------------------------------=== #
@@ -1721,32 +1677,28 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             Error: If the exponent is too large, e.g., larger than 1_000_000_000.
         """
         if exponent < 0:
-            raise Error(
-                ValueError(
-                    function="BigUInt.power(exponent: Int)",
-                    message=(
-                        "The exponent "
-                        + String(exponent)
-                        + " is negative.\n"
-                        + "Consider using a non-negative exponent."
-                    ),
-                )
+            raise ValueError(
+                function="BigUInt.power(exponent: Int)",
+                message=(
+                    "The exponent "
+                    + String(exponent)
+                    + " is negative.\n"
+                    + "Consider using a non-negative exponent."
+                ),
             )
 
         if exponent == 0:
             return Self(raw_words=[1])
 
         if exponent >= 1_000_000_000:
-            raise Error(
-                ValueError(
-                    function="BigUInt.power(exponent: Int)",
-                    message=(
-                        "The exponent "
-                        + String(exponent)
-                        + " is too large.\n"
-                        + "Consider using an exponent below 1_000_000_000."
-                    ),
-                )
+            raise ValueError(
+                function="BigUInt.power(exponent: Int)",
+                message=(
+                    "The exponent "
+                    + String(exponent)
+                    + " is too large.\n"
+                    + "Consider using an exponent below 1_000_000_000."
+                ),
             )
 
         var result = Self(raw_words=[1])
@@ -1773,16 +1725,14 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             The result of raising this number to the power of `exponent`.
         """
         if len(exponent.words) > 1:
-            raise Error(
-                ValueError(
-                    function="BigUInt.power(exponent: BigUInt)",
-                    message=(
-                        "The exponent "
-                        + String(exponent)
-                        + " is too large.\n"
-                        + "Consider using an exponent below 1_000_000_000."
-                    ),
-                )
+            raise ValueError(
+                function="BigUInt.power(exponent: BigUInt)",
+                message=(
+                    "The exponent "
+                    + String(exponent)
+                    + " is too large.\n"
+                    + "Consider using an exponent below 1_000_000_000."
+                ),
             )
         var exponent_as_int = exponent.to_int()
         return self.power(exponent_as_int)
@@ -2062,16 +2012,14 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             IndexError: If the index is negative.
         """
         if i < 0:
-            raise Error(
-                IndexError(
-                    function="BigUInt.ith_digit(i: Int)",
-                    message=(
-                        "The index "
-                        + String(i)
-                        + " is negative.\n"
-                        + "Consider using a non-negative index."
-                    ),
-                )
+            raise IndexError(
+                function="BigUInt.ith_digit(i: Int)",
+                message=(
+                    "The index "
+                    + String(i)
+                    + " is negative.\n"
+                    + "Consider using a non-negative index."
+                ),
             )
         if i >= len(self.words) * 9:
             return 0
@@ -2202,29 +2150,25 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         `remove_extra_digit_due_to_rounding` is True, the result will be 10.
         """
         if ndigits < 0:
-            raise Error(
-                ValueError(
-                    function="BigUInt.remove_trailing_digits_with_rounding()",
-                    message=(
-                        "The number of digits to remove is negative: "
-                        + String(ndigits)
-                    ),
-                )
+            raise ValueError(
+                function="BigUInt.remove_trailing_digits_with_rounding()",
+                message=(
+                    "The number of digits to remove is negative: "
+                    + String(ndigits)
+                ),
             )
         if ndigits == 0:
             return self.copy()
         if ndigits > self.number_of_digits():
-            raise Error(
-                ValueError(
-                    function="BigUInt.remove_trailing_digits_with_rounding()",
-                    message=(
-                        "The number of digits to remove is larger than the "
-                        "number of digits in the BigUInt: "
-                        + String(ndigits)
-                        + " > "
-                        + String(self.number_of_digits())
-                    ),
-                )
+            raise ValueError(
+                function="BigUInt.remove_trailing_digits_with_rounding()",
+                message=(
+                    "The number of digits to remove is larger than the "
+                    "number of digits in the BigUInt: "
+                    + String(ndigits)
+                    + " > "
+                    + String(self.number_of_digits())
+                ),
             )
 
         # floor_divide_by_power_of_ten is the same as removing the last n digits
@@ -2276,11 +2220,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         # TODO: Remove this fallback once Mojo has proper enum support,
         # which will make exhaustive matching a compile-time guarantee.
         else:
-            raise Error(
-                ValueError(
-                    function="BigUInt.remove_trailing_digits_with_rounding()",
-                    message=("Unknown rounding mode: " + String(rounding_mode)),
-                )
+            raise ValueError(
+                function="BigUInt.remove_trailing_digits_with_rounding()",
+                message=("Unknown rounding mode: " + String(rounding_mode)),
             )
 
         if round_up:

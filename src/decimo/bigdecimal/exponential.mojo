@@ -236,20 +236,14 @@ def power(
     # Special cases
     if base.coefficient.is_zero():
         if exponent.coefficient.is_zero():
-            raise Error(
-                ValueError(
-                    message="0^0 is undefined.",
-                    function="power()",
-                )
+            raise ValueError(
+                message="0^0 is undefined.",
+                function="power()",
             )
         elif exponent.sign:
-            raise Error(
-                ZeroDivisionError(
-                    message=(
-                        "Division by zero (negative exponent with zero base)."
-                    ),
-                    function="power()",
-                )
+            raise ZeroDivisionError(
+                message="Division by zero (negative exponent with zero base).",
+                function="power()",
             )
         else:
             return BigDecimal(BigUInt.zero(), 0, False)
@@ -273,14 +267,12 @@ def power(
 
     # Check for negative base with non-integer exponent
     if base.sign and not exponent.is_integer():
-        raise Error(
-            ValueError(
-                message=(
-                    "Negative base with non-integer exponent would produce"
-                    " a complex result."
-                ),
-                function="power()",
-            )
+        raise ValueError(
+            message=(
+                "Negative base with non-integer exponent would produce"
+                " a complex result."
+            ),
+            function="power()",
         )
 
     # Optimization for integer exponents
@@ -449,11 +441,9 @@ def root(x: BigDecimal, n: BigDecimal, precision: Int) raises -> BigDecimal:
 
     # Check for n = 0
     if n.coefficient.is_zero():
-        raise Error(
-            ValueError(
-                message="Cannot compute zeroth root.",
-                function="root()",
-            )
+        raise ValueError(
+            message="Cannot compute zeroth root.",
+            function="root()",
         )
 
     # Special case for integer roots - use more efficient implementation
@@ -512,14 +502,11 @@ def root(x: BigDecimal, n: BigDecimal, precision: Int) raises -> BigDecimal:
         var n_is_integer = n.is_integer()
         var n_is_odd_reciprocal = is_odd_reciprocal(n)
         if not n_is_integer and not n_is_odd_reciprocal:
-            raise Error(
-                ValueError(
-                    message=(
-                        "Cannot compute non-odd-integer root of a negative"
-                        " number."
-                    ),
-                    function="root()",
-                )
+            raise ValueError(
+                message=(
+                    "Cannot compute non-odd-integer root of a negative number."
+                ),
+                function="root()",
             )
         elif n_is_integer:
             var result = integer_root(x, n, precision)
@@ -574,27 +561,21 @@ def integer_root(
 
     # Handle special case: n must be a positive integer
     if n.sign:
-        raise Error(
-            ValueError(
-                message="Root value must be positive.",
-                function="integer_root()",
-            )
+        raise ValueError(
+            message="Root value must be positive.",
+            function="integer_root()",
         )
 
     if not n.is_integer():
-        raise Error(
-            ValueError(
-                message="Root value must be an integer.",
-                function="integer_root()",
-            )
+        raise ValueError(
+            message="Root value must be an integer.",
+            function="integer_root()",
         )
 
     if n.coefficient.is_zero():
-        raise Error(
-            ValueError(
-                message="Cannot compute zeroth root.",
-                function="integer_root()",
-            )
+        raise ValueError(
+            message="Cannot compute zeroth root.",
+            function="integer_root()",
         )
 
     # Special case: n = 1 (1st root is just the number itself)
@@ -633,11 +614,9 @@ def integer_root(
         if n_uint.words[0] % 2 == 1:  # Odd root
             result_sign = True
         else:  # n_uint.words[0] % 2 == 0:  # Even root
-            raise Error(
-                ValueError(
-                    message="Cannot compute even root of a negative number.",
-                    function="integer_root()",
-                )
+            raise ValueError(
+                message="Cannot compute even root of a negative number.",
+                function="integer_root()",
             )
 
     # Extract n as Int for Newton's method
@@ -1225,11 +1204,9 @@ def sqrt_exact(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
     # Handle special cases
     if x.sign:
-        raise Error(
-            ValueError(
-                message="Cannot compute square root of a negative number.",
-                function="sqrt_exact()",
-            )
+        raise ValueError(
+            message="Cannot compute square root of a negative number.",
+            function="sqrt_exact()",
         )
 
     if x.coefficient.is_zero():
@@ -1361,11 +1338,9 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
     # Handle special cases
     if x.sign:
-        raise Error(
-            ValueError(
-                message="Cannot compute square root of a negative number.",
-                function="sqrt_reciprocal()",
-            )
+        raise ValueError(
+            message="Cannot compute square root of a negative number.",
+            function="sqrt_reciprocal()",
         )
 
     if x.coefficient.is_zero():
@@ -1546,11 +1521,9 @@ def sqrt_newton(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
     # Handle special cases
     if x.sign:
-        raise Error(
-            ValueError(
-                message="Cannot compute square root of a negative number.",
-                function="sqrt_newton()",
-            )
+        raise ValueError(
+            message="Cannot compute square root of a negative number.",
+            function="sqrt_newton()",
         )
 
     if x.coefficient.is_zero():
@@ -1634,11 +1607,9 @@ def sqrt_decimal_approach(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
     # Handle special cases
     if x.sign:
-        raise Error(
-            ValueError(
-                message="Cannot compute square root of a negative number.",
-                function="sqrt_decimal_approach()",
-            )
+        raise ValueError(
+            message="Cannot compute square root of a negative number.",
+            function="sqrt_decimal_approach()",
         )
 
     if x.coefficient.is_zero():
@@ -1820,10 +1791,8 @@ def exp(x: BigDecimal, precision: Int) raises -> BigDecimal:
     # For very large positive values, result will overflow BigDecimal capacity
     # TODO: Use BigInt10 as scale can avoid overflow in this case
     if not x.sign and x.adjusted() >= 20:  # x > 10^20
-        raise Error(
-            OverflowError(
-                message="Result too large to represent", function="exp()"
-            )
+        raise OverflowError(
+            message="Result too large to represent", function="exp()"
         )
 
     # For very large negative values, result will be effectively zero
@@ -2031,17 +2000,13 @@ def ln(
 
     # Handle special cases
     if x.sign:
-        raise Error(
-            ValueError(
-                message="Cannot compute logarithm of negative number",
-                function="ln()",
-            )
+        raise ValueError(
+            message="Cannot compute logarithm of negative number",
+            function="ln()",
         )
     if x.coefficient.is_zero():
-        raise Error(
-            ValueError(
-                message="Cannot compute logarithm of zero", function="ln()"
-            )
+        raise ValueError(
+            message="Cannot compute logarithm of zero", function="ln()"
         )
     if x == BigDecimal(BigUInt.one(), 0, False):
         return BigDecimal(BigUInt.zero(), 0, False)  # ln(1) = 0
@@ -2131,36 +2096,26 @@ def log(x: BigDecimal, base: BigDecimal, precision: Int) raises -> BigDecimal:
 
     # Special cases
     if x.sign:
-        raise Error(
-            ValueError(
-                message="Cannot compute logarithm of a negative number",
-                function="log()",
-            )
+        raise ValueError(
+            message="Cannot compute logarithm of a negative number",
+            function="log()",
         )
     if x.coefficient.is_zero():
-        raise Error(
-            ValueError(
-                message="Cannot compute logarithm of zero", function="log()"
-            )
+        raise ValueError(
+            message="Cannot compute logarithm of zero", function="log()"
         )
 
     # Base validation
     if base.sign:
-        raise Error(
-            ValueError(message="Cannot use a negative base", function="log()")
-        )
+        raise ValueError(message="Cannot use a negative base", function="log()")
     if base.coefficient.is_zero():
-        raise Error(
-            ValueError(message="Cannot use zero as a base", function="log()")
-        )
+        raise ValueError(message="Cannot use zero as a base", function="log()")
     if (
         base.coefficient.number_of_digits() == base.scale + 1
         and base.coefficient.words[-1] == 1
     ):
-        raise Error(
-            ValueError(
-                message="Cannot use base 1 for logarithm", function="log()"
-            )
+        raise ValueError(
+            message="Cannot use base 1 for logarithm", function="log()"
         )
 
     # Special cases
@@ -2209,17 +2164,13 @@ def log10(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
     # Special cases
     if x.sign:
-        raise Error(
-            ValueError(
-                message="Cannot compute logarithm of a negative number",
-                function="log10()",
-            )
+        raise ValueError(
+            message="Cannot compute logarithm of a negative number",
+            function="log10()",
         )
     if x.coefficient.is_zero():
-        raise Error(
-            ValueError(
-                message="Cannot compute logarithm of zero", function="log10()"
-            )
+        raise ValueError(
+            message="Cannot compute logarithm of zero", function="log10()"
         )
 
     # Fast path: Powers of 10 are handled directly
