@@ -27,7 +27,7 @@ from std.memory import UnsafePointer
 from std.python import PythonObject
 from std import testing
 
-from decimo.errors import DecimoError
+from decimo.errors import DecimoError, ConversionError, ValueError
 from decimo.rounding_mode import RoundingMode
 from decimo.bigdecimal.rounding import round_to_precision
 from decimo.bigint10.bigint10 import BigInt10
@@ -362,14 +362,22 @@ struct BigDecimal(
             return Self(coefficient=BigUInt.zero(), scale=0, sign=False)
 
         if value != value:  # Check for NaN
-            raise Error("`from_scalar()`: Cannot convert NaN to BigUInt")
+            raise Error(
+                ValueError(
+                    message="Cannot convert NaN to BigDecimal.",
+                    function="BigDecimal.from_scalar()",
+                )
+            )
         # Convert to string with full precision
         try:
             return Self.from_string(String(value))
         except e:
             raise Error(
-                "`from_scalar()`: Cannot get decimal from string\nTrace back: "
-                + String(e),
+                ConversionError(
+                    message="Cannot convert scalar to BigDecimal.",
+                    function="BigDecimal.from_scalar()",
+                    previous_error=e^,
+                )
             )
 
     @staticmethod
@@ -537,11 +545,9 @@ struct BigDecimal(
 
         except e:
             raise Error(
-                DecimoError(
-                    file="src/decimo/bigdecimal/bigdecimal.mojo",
-                    function="from_python_decimal()",
-                    message="Failed to convert Python Decimal to BigDecimal: "
-                    + "as_tuple() returned invalid data or conversion failed.",
+                ConversionError(
+                    message="Failed to convert Python Decimal to BigDecimal.",
+                    function="BigDecimal.from_python_decimal()",
                     previous_error=e^,
                 ),
             )

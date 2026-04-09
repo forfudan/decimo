@@ -52,6 +52,7 @@ Pattern expansion in string values:
 
 from .toml import parse_file as parse_toml_file
 from .toml.parser import TOMLDocument
+from .errors import DecimoError
 from std.python import Python, PythonObject
 from std.collections import List
 from std import os
@@ -303,10 +304,11 @@ def parse_file(file_path: String) raises -> TOMLDocument:
         return parse_toml_file(file_path)
     except e:
         raise Error(
-            "tests.parse_file(): Failed to parse TOML file:",
-            file_path,
-            "\nTraceback:",
-            e,
+            DecimoError(
+                message="Failed to parse TOML file: " + file_path,
+                function="parse_file()",
+                previous_error=e^,
+            )
         )
 
 

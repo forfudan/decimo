@@ -17,6 +17,7 @@
 """Useful constants for Decimal128 type."""
 
 from decimo.decimal128.decimal128 import Decimal128
+from decimo.errors import ValueError
 
 # ===----------------------------------------------------------------------=== #
 #
@@ -461,7 +462,12 @@ def N_DIVIDE_NEXT(n: Int) raises -> Decimal128:
         # 20/21 = 0.95238095238095238095238095238095...
         return Decimal128(0x33CF3CF4, 0xCD78948D, 0x1EC5E91C, 0x1C0000)
     else:
-        raise Error("N_DIVIDE_NEXT: n must be between 1 and 20, inclusive")
+        raise Error(
+            ValueError(
+                message="n must be between 1 and 20, inclusive.",
+                function="N_DIVIDE_NEXT()",
+            )
+        )
 
 
 # ===----------------------------------------------------------------------=== #

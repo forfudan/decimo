@@ -20,6 +20,7 @@ import std.math
 from std import testing
 from std import time
 
+from decimo.errors import DecimoError, ValueError, OverflowError
 import decimo.decimal128.constants
 import decimo.decimal128.special
 import decimo.decimal128.utility
@@ -55,13 +56,24 @@ def power(base: Decimal128, exponent: Decimal128) raises -> Decimal128:
         try:
             return power(base, Int(exponent))
         except e:
-            raise Error("Error in `power()` with Decimal128 exponent: ", e)
+            raise Error(
+                DecimoError(
+                    message="Failed to compute power with Decimal128 exponent.",
+                    function="power()",
+                    previous_error=e^,
+                )
+            )
 
     # CASE: For negative bases, only integer exponents are supported
     if base.is_negative():
         raise Error(
-            "Negative base with non-integer exponent results in a complex"
-            " number"
+            ValueError(
+                message=(
+                    "Negative base with non-integer exponent results in a"
+                    " complex number."
+                ),
+                function="power()",
+            )
         )
 
     # CASE: If the exponent is simple fractions
@@ -70,13 +82,23 @@ def power(base: Decimal128, exponent: Decimal128) raises -> Decimal128:
         try:
             return sqrt(base)
         except e:
-            raise Error("Error in `power()` with Decimal128 exponent: ", e)
+            raise Error(
+                DecimoError(
+                    function="power()",
+                    previous_error=e^,
+                )
+            )
     # -0.5
     if exponent == Decimal128(5, 0, 0, 0x80010000):
         try:
             return Decimal128.ONE() / sqrt(base)
         except e:
-            raise Error("Error in `power()` with Decimal128 exponent: ", e)
+            raise Error(
+                DecimoError(
+                    function="power()",
+                    previous_error=e^,
+                )
+            )
 
     # GENERAL CASE
     # Use the identity x^y = e^(y * ln(x))
@@ -85,7 +107,12 @@ def power(base: Decimal128, exponent: Decimal128) raises -> Decimal128:
         var product = exponent * ln_base
         return exp(product)
     except e:
-        raise Error("Error in `power()` with Decimal128 exponent: ", e)
+        raise Error(
+            DecimoError(
+                function="power()",
+                previous_error=e^,
+            )
+        )
 
 
 def power(base: Decimal128, exponent: Int) raises -> Decimal128:
@@ -114,7 +141,12 @@ def power(base: Decimal128, exponent: Int) raises -> Decimal128:
             return Decimal128.ZERO()
         else:
             # 0^n is undefined for n < 0
-            raise Error("Zero cannot be raised to a negative power")
+            raise Error(
+                ValueError(
+                    message="Zero cannot be raised to a negative power.",
+                    function="power()",
+                )
+            )
 
     if base.coefficient() == 1 and base.scale() == 0:
         # 1^n = 1 for any n
@@ -165,7 +197,12 @@ def root(x: Decimal128, n: Int) raises -> Decimal128:
 
     # Special cases for n
     if n <= 0:
-        raise Error("Error in `root()`: Cannot compute non-positive root")
+        raise Error(
+            ValueError(
+                message="Cannot compute non-positive root.",
+                function="root()",
+            )
+        )
     if n == 1:
         return x
     if n == 2:
@@ -179,8 +216,10 @@ def root(x: Decimal128, n: Int) raises -> Decimal128:
     if x.is_negative():
         if n % 2 == 0:
             raise Error(
-                "Error in `root()`: Cannot compute even root of a negative"
-                " number"
+                ValueError(
+                    message="Cannot compute even root of a negative number.",
+                    function="root()",
+                )
             )
         # For odd roots of negative numbers, compute |x|^(1/n) and negate
         return -root(-x, n)
@@ -193,7 +232,13 @@ def root(x: Decimal128, n: Int) raises -> Decimal128:
             # Direct calculation: x^n = e^(ln(x)/n)
             return exp(ln(x) / Decimal128(n))
         except e:
-            raise Error("Error in `root()`: ", e)
+            raise Error(
+                DecimoError(
+                    message="Root computation failed.",
+                    function="root()",
+                    previous_error=e^,
+                )
+            )
 
     # Initial guess
     # use floating point approach to quickly find a good guess
@@ -335,7 +380,10 @@ def sqrt(x: Decimal128) raises -> Decimal128:
     # Special cases
     if x.is_negative():
         raise Error(
-            "Error in sqrt: Cannot compute square root of a negative number"
+            ValueError(
+                message="Cannot compute square root of a negative number.",
+                function="sqrt()",
+            )
         )
 
     if x.is_zero():
@@ -464,8 +512,13 @@ def exp(x: Decimal128) raises -> Decimal128:
 
     if x > Decimal128.from_int(value=6654, scale=UInt32(2)):
         raise Error(
-            "decimal.exponential.exp(): x is too large. It must be no greater"
-            " than 66.54 to avoid overflow. Consider using `BigDecimal` type."
+            OverflowError(
+                message=(
+                    "x is too large (must be <= 66.54). Consider using"
+                    " BigDecimal type."
+                ),
+                function="exp()",
+            )
         )
 
     # Handle special cases
@@ -673,7 +726,10 @@ def ln(x: Decimal128) raises -> Decimal128:
     # Handle special cases
     if x.is_negative() or x.is_zero():
         raise Error(
-            "Error in ln(): Cannot compute logarithm of a non-positive number"
+            ValueError(
+                message="Cannot compute logarithm of a non-positive number.",
+                function="ln()",
+            )
         )
 
     if x.is_one():
@@ -936,18 +992,29 @@ def log(x: Decimal128, base: Decimal128) raises -> Decimal128:
     # Special cases: x <= 0
     if x.is_negative() or x.is_zero():
         raise Error(
-            "Error in log(): Cannot compute logarithm of a non-positive number"
+            ValueError(
+                message="Cannot compute logarithm of a non-positive number.",
+                function="log()",
+            )
         )
 
     # Special cases: base <= 0
     if base.is_negative() or base.is_zero():
         raise Error(
-            "Error in log(): Cannot use non-positive base for logarithm"
+            ValueError(
+                message="Cannot use non-positive base for logarithm.",
+                function="log()",
+            )
         )
 
     # Special case: base = 1
     if base.is_one():
-        raise Error("Error in log(): Cannot use base 1 for logarithm")
+        raise Error(
+            ValueError(
+                message="Cannot use base 1 for logarithm.",
+                function="log()",
+            )
+        )
 
     # Special case: x = 1
     # log_base(1) = 0 for any valid base
@@ -988,8 +1055,10 @@ def log10(x: Decimal128) raises -> Decimal128:
     # Special cases: x <= 0
     if x.is_negative() or x.is_zero():
         raise Error(
-            "Error in log10(): Cannot compute logarithm of a non-positive"
-            " number"
+            ValueError(
+                message="Cannot compute logarithm of a non-positive number.",
+                function="log10()",
+            )
         )
 
     var x_scale = x.scale()
