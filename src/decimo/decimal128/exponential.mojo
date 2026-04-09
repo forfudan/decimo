@@ -84,6 +84,7 @@ def power(base: Decimal128, exponent: Decimal128) raises -> Decimal128:
         except e:
             raise Error(
                 DecimoError(
+                    message="See the above exception.",
                     function="power()",
                     previous_error=e^,
                 )
@@ -95,6 +96,7 @@ def power(base: Decimal128, exponent: Decimal128) raises -> Decimal128:
         except e:
             raise Error(
                 DecimoError(
+                    message="See the above exception.",
                     function="power()",
                     previous_error=e^,
                 )
@@ -109,6 +111,7 @@ def power(base: Decimal128, exponent: Decimal128) raises -> Decimal128:
     except e:
         raise Error(
             DecimoError(
+                message="See the above exception.",
                 function="power()",
                 previous_error=e^,
             )

@@ -986,6 +986,7 @@ struct BigInt(
         except e:
             raise Error(
                 DecimoError(
+                    message="See the above exception.",
                     function="BigInt.__floordiv__()",
                     previous_error=e^,
                 )
@@ -1006,6 +1007,7 @@ struct BigInt(
         except e:
             raise Error(
                 DecimoError(
+                    message="See the above exception.",
                     function="BigInt.__mod__()",
                     previous_error=e^,
                 )
@@ -1026,6 +1028,7 @@ struct BigInt(
         except e:
             raise Error(
                 DecimoError(
+                    message="See the above exception.",
                     function="BigInt.__divmod__()",
                     previous_error=e^,
                 )

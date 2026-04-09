@@ -3345,6 +3345,7 @@ def floor_modulo(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
     except e:
         raise Error(
             DecimoError(
+                message="See the above exception.",
                 function="floor_modulo()",
                 previous_error=e^,
             )
@@ -3357,6 +3358,7 @@ def floor_modulo(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
     except e:
         raise Error(
             DecimoError(
+                message="See the above exception.",
                 function="floor_modulo()",
                 previous_error=e^,
             )
@@ -3386,6 +3388,7 @@ def truncate_modulo(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
     except e:
         raise Error(
             DecimoError(
+                message="See the above exception.",
                 function="truncate_modulo()",
                 previous_error=e^,
             )
@@ -3474,6 +3477,7 @@ def floor_divide_modulo(
     except e:
         raise Error(
             DecimoError(
+                message="See the above exception.",
                 function="floor_divide_modulo()",
                 previous_error=e^,
             )
