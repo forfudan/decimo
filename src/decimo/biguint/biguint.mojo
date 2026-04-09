@@ -196,6 +196,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
                 Each UInt32 word represents digits ranging from 0 to 10^9 - 1.
                 The words are stored in little-endian order.
 
+        Raises:
+            ConversionError: If any word exceeds 999_999_999.
+
         Notes:
 
         This is equal to `BigUInt.from_list()`.
@@ -242,7 +245,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             value: The integer to initialize the `BigUInt` from.
 
         Raises:
-            Error: Calling `BigUInt.from_int()`.
+            ConversionError: If the value is negative.
         """
         try:
             self = Self.from_int(value)
@@ -273,7 +276,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
                 If False, the sign is considered.
 
         Raises:
-            Error: If an error occurs in `from_string()`.
+            ConversionError: If the string cannot be parsed.
 
         Notes:
             This is equal to `BigUInt.from_string()`.
@@ -310,7 +313,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
                 The words are stored in little-endian order.
 
         Raises:
-            Error: If any word is larger than `999_999_999`.
+            OverflowError: If any word exceeds 999_999_999.
 
         Returns:
             The BigUInt representation of the list of UInt32 words.
@@ -364,7 +367,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
                 The words are stored in little-endian order.
 
         Raises:
-            Error: If any word is larger than `999_999_999`.
+            OverflowError: If any word exceeds 999_999_999.
 
         Notes:
 
@@ -452,7 +455,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             The BigUInt representation of the integer value.
 
         Raises:
-            Error: If the input value is negative.
+            OverflowError: If the value is negative.
         """
         if value == 0:
             return Self()
@@ -765,7 +768,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             The number as Int.
 
         Raises:
-            Error: If to_int() raises an error.
+            ConversionError: If the number exceeds the size of Int.
         """
         try:
             return self.to_int()
@@ -844,7 +847,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             The number as UInt64.
 
         Raises:
-            Error: If the number exceeds the size of UInt64.
+            OverflowError: If the number exceeds the size of UInt64.
         """
         if self.is_uint64_overflow():
             raise OverflowError(
@@ -1081,6 +1084,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             The negated value.
+
+        Raises:
+            OverflowError: If the number is non-zero (negative of unsigned is undefined).
         """
         return decimo.biguint.arithmetics.negative(self)
 
@@ -1126,6 +1132,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             The difference.
+
+        Raises:
+            OverflowError: If the result would be negative.
         """
         try:
             return decimo.biguint.arithmetics.subtract(self, other)
@@ -1153,6 +1162,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             The quotient.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         try:
             return decimo.biguint.arithmetics.floor_divide(self, other)
@@ -1172,6 +1184,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             The quotient rounded up.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         try:
             return decimo.biguint.arithmetics.ceil_divide(self, other)
@@ -1191,6 +1206,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             The remainder.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         try:
             return decimo.biguint.arithmetics.floor_modulo(self, other)
@@ -1210,6 +1228,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             A tuple of (quotient, remainder).
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         try:
             return decimo.biguint.arithmetics.floor_divide_modulo(self, other)
@@ -1225,6 +1246,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             The power `self` raised to `exponent`.
+
+        Raises:
+            ValueError: If the exponent is too large.
         """
         try:
             return self.power(exponent)
@@ -1244,6 +1268,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             The power `self` raised to `exponent`.
+
+        Raises:
+            ValueError: If the exponent is negative or too large.
         """
         try:
             return self.power(exponent)
@@ -1281,6 +1308,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             The difference.
+
+        Raises:
+            OverflowError: If the result would be negative.
         """
         return decimo.biguint.arithmetics.subtract(other, self)
 
@@ -1305,6 +1335,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             The quotient.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return decimo.biguint.arithmetics.floor_divide(other, self)
 
@@ -1317,6 +1350,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             The remainder.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return decimo.biguint.arithmetics.floor_modulo(other, self)
 
@@ -1329,6 +1365,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             A tuple of (quotient, remainder).
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return decimo.biguint.arithmetics.floor_divide_modulo(other, self)
 
@@ -1341,6 +1380,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             The power `base` raised to `self`.
+
+        Raises:
+            ValueError: If the exponent is too large.
         """
         return base.power(self)
 
@@ -1368,6 +1410,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Args:
             other: The operand to subtract.
+
+        Raises:
+            OverflowError: If the result would be negative.
         """
         decimo.biguint.arithmetics.subtract_inplace(self, other)
 
@@ -1386,6 +1431,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Args:
             other: The divisor.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         self = decimo.biguint.arithmetics.floor_divide(self, other)
 
@@ -1395,6 +1443,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Args:
             other: The divisor.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         self = decimo.biguint.arithmetics.floor_modulo(self, other)
 
@@ -1673,8 +1724,8 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             A `BigUInt` representing `self` raised to the power of `exponent`.
 
         Raises:
-            Error: If the exponent is negative.
-            Error: If the exponent is too large, e.g., larger than 1_000_000_000.
+            ValueError: If the exponent is negative.
+            ValueError: If the exponent is too large, e.g., larger than 1_000_000_000.
         """
         if exponent < 0:
             raise ValueError(

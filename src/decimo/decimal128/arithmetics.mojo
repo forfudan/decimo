@@ -57,7 +57,7 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         A new Decimal128 containing the sum of x1 and x2.
 
     Raises:
-        Error: If the operation would overflow.
+        OverflowError: If the result overflows Decimal128 capacity.
     """
     var x1_coef = x1.coefficient()
     var x2_coef = x2.coefficient()
@@ -367,6 +367,9 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     Returns:
         A new Decimal128 containing the difference.
 
+    Raises:
+        OverflowError: If the result overflows Decimal128 capacity.
+
     Notes:
     ------
     This method is implemented using the existing `__add__()` and `__neg__()` methods.
@@ -439,6 +442,9 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
     Returns:
         A new Decimal128 containing the product of x1 and x2.
+
+    Raises:
+        OverflowError: If the product overflows Decimal128 capacity.
     """
 
     var x1_coef = x1.coefficient()
@@ -804,7 +810,8 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         A new Decimal128 containing the result of x1 / x2.
 
     Raises:
-        Error: If x2 is zero.
+        ZeroDivisionError: If the divisor is zero.
+        OverflowError: If the result overflows Decimal128 capacity.
     """
 
     # Treatment for special cases
@@ -1272,6 +1279,10 @@ def truncate_divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
     Returns:
         A new Decimal128 containing the integral part of x1 / x2.
+
+    Raises:
+        ZeroDivisionError: If the divisor is zero.
+        OverflowError: If the result overflows.
     """
     try:
         return divide(x1, x2).round(0, RoundingMode.down())
@@ -1289,6 +1300,10 @@ def modulo(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
     Returns:
         A new Decimal128 containing the remainder of x1 / x2.
+
+    Raises:
+        ZeroDivisionError: If the divisor is zero.
+        OverflowError: If the result overflows.
     """
     try:
         return x1 - (truncate_divide(x1, x2) * x2)

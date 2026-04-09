@@ -221,8 +221,9 @@ def power(
         The result of base^exponent.
 
     Raises:
-        Error: If base is negative and exponent is not an integer.
-        Error: If base is zero and exponent is negative or zero.
+        ValueError: If base is negative and exponent is not an integer.
+        ValueError: If base is zero and exponent is zero.
+        ZeroDivisionError: If base is zero and exponent is negative.
 
     Notes:
 
@@ -425,8 +426,8 @@ def root(x: BigDecimal, n: BigDecimal, precision: Int) raises -> BigDecimal:
         The nth root of x with the specified precision.
 
     Raises:
-        Error: If x is negative and n is not an odd integer.
-        Error: If n is zero.
+        ValueError: If x is negative and n is not an odd integer.
+        ValueError: If n is zero.
 
     Notes:
         Uses the identity x^(1/n) = exp(ln(|x|)/n) for calculation.
@@ -552,9 +553,9 @@ def integer_root(
         The nth root of x with the specified precision.
 
     Raises:
-        Error: If x is negative and n is even.
-        Error: If n is not a positive integer.
-        Error: If n is zero.
+        ValueError: If x is negative and n is even.
+        ValueError: If n is not a positive integer.
+        ValueError: If n is zero.
     """
     comptime BUFFER_DIGITS = 9
     var working_precision = precision + BUFFER_DIGITS
@@ -1016,7 +1017,7 @@ def sqrt(x: BigDecimal, precision: Int) raises -> BigDecimal:
         The square root of x with the specified precision.
 
     Raises:
-        Error: If x is negative.
+        ValueError: If x is negative.
     """
     return sqrt_exact(x, precision)
 
@@ -1199,7 +1200,7 @@ def sqrt_exact(x: BigDecimal, precision: Int) raises -> BigDecimal:
         The square root of x with the specified precision.
 
     Raises:
-        Error: If x is negative.
+        ValueError: If x is negative.
     """
 
     # Handle special cases
@@ -1333,7 +1334,7 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
         The square root of x with the specified precision.
 
     Raises:
-        Error: If x is negative.
+        ValueError: If x is negative.
     """
 
     # Handle special cases
@@ -1496,7 +1497,7 @@ def sqrt_newton(x: BigDecimal, precision: Int) raises -> BigDecimal:
         The square root of x with the specified precision.
 
     Raises:
-        Error: If x is negative.
+        ValueError: If x is negative.
 
     Notes:
 
@@ -1593,7 +1594,7 @@ def sqrt_decimal_approach(x: BigDecimal, precision: Int) raises -> BigDecimal:
         The square root of x with the specified precision.
 
     Raises:
-        Error: If x is negative.
+        ValueError: If x is negative.
 
     Notes:
 
@@ -1746,9 +1747,6 @@ def cbrt(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
     Returns:
         The cube root of x with the specified precision.
-
-    Raises:
-        Error: If x is negative.
     """
 
     result = integer_root(
@@ -1773,6 +1771,9 @@ def exp(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
     Returns:
         The natural exponential of x (e^x) to the specified precision.
+
+    Raises:
+        OverflowError: If the result is too large to represent.
 
     Notes:
         Uses aggressive range reduction for optimal performance:
@@ -1970,7 +1971,7 @@ def ln(x: BigDecimal, precision: Int) raises -> BigDecimal:
         The natural logarithm of x to the specified precision.
 
     Raises:
-        Error: If x is negative or zero.
+        ValueError: If x is negative or zero.
     """
     var cache = MathCache()
     return ln(x, precision, cache)
@@ -1993,7 +1994,7 @@ def ln(
         The natural logarithm of x to the specified precision.
 
     Raises:
-        Error: If x is negative or zero.
+        ValueError: If x is negative or zero.
     """
     comptime BUFFER_DIGITS = 9  # word-length, easy to append and trim
     var working_precision = precision + BUFFER_DIGITS
@@ -2088,8 +2089,8 @@ def log(x: BigDecimal, base: BigDecimal, precision: Int) raises -> BigDecimal:
         The logarithm of x with respect to base.
 
     Raises:
-        Error: If x is negative or zero.
-        Error: If base is negative, zero, or one.
+        ValueError: If x is negative or zero.
+        ValueError: If base is negative, zero, or one.
     """
     comptime BUFFER_DIGITS = 9  # word-length, easy to append and trim
     var working_precision = precision + BUFFER_DIGITS
@@ -2157,7 +2158,7 @@ def log10(x: BigDecimal, precision: Int) raises -> BigDecimal:
         The base-10 logarithm of x.
 
     Raises:
-        Error: If x is negative or zero.
+        ValueError: If x is negative or zero.
     """
     comptime BUFFER_DIGITS = 9  # word-length, easy to append and trim
     var working_precision = precision + BUFFER_DIGITS

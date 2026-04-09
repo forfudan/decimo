@@ -32,6 +32,10 @@ def factorial(n: Int) raises -> Decimal128:
     Returns:
         The factorial of n.
 
+    Raises:
+        ValueError: If n is negative.
+        OverflowError: If n > 27.
+
     Notes:
 
     27! is the largest factorial that can be represented by Decimal128.
@@ -137,6 +141,9 @@ def factorial_reciprocal(n: Int) raises -> Decimal128:
 
     Returns:
         The reciprocal of factorial of n (1/n!).
+
+    Raises:
+        ValueError: If n is negative.
 
     Notes:
         This function is optimized for Taylor series calculations.

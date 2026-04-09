@@ -208,8 +208,7 @@ def floor_divide(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
         The quotient of x1 / x2, rounded toward negative infinity.
 
     Raises:
-        DecimoError: If `decimo.biguint.arithmetics.floor_divide()` fails.
-        DecimoError: If `decimo.biguint.arithmetics.ceil_divide()` fails.
+        ZeroDivisionError: If the divisor is zero.
     """
 
     # For floor division, the sign rules are:
@@ -260,7 +259,7 @@ def truncate_divide(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
         The quotient of x1 / x2, truncated toward zero.
 
     Raises:
-        DecimoError: If `decimo.biguint.arithmetics.floor_divide()` fails.
+        ZeroDivisionError: If the divisor is zero.
     """
     var magnitude: BigUInt
     try:
@@ -289,8 +288,7 @@ def floor_modulo(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
         The remainder of x1 being divided by x2, with the same sign as x2.
 
     Raises:
-        DecimoError: If `decimo.biguint.arithmetics.floor_modulo()` fails.
-        DecimoError: If `decimo.biguint.arithmetics.ceil_modulo()` fails.
+        ZeroDivisionError: If the divisor is zero.
     """
 
     var magnitude: BigUInt
@@ -337,7 +335,7 @@ def truncate_modulo(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
         The remainder of x1 being divided by x2, with the same sign as x1.
 
     Raises:
-        DecimoError: If `decimo.biguint.arithmetics.floor_modulo()` fails.
+        ZeroDivisionError: If the divisor is zero.
     """
     var magnitude: BigUInt
     try:

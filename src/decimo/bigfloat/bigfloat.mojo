@@ -144,6 +144,10 @@ struct BigFloat(Comparable, Movable, Writable):
         Args:
             value: A decimal number string (e.g. "3.14159", "-1.5e10").
             precision: Number of significant decimal digits.
+
+        Raises:
+            RuntimeError: If MPFR is not available or handle pool is exhausted.
+            ConversionError: If the string is not a valid number.
         """
         if not mpfrw_available():
             raise RuntimeError(
@@ -235,6 +239,9 @@ struct BigFloat(Comparable, Movable, Writable):
 
         Returns:
             A decimal string representation.
+
+        Raises:
+            ConversionError: If string export fails.
         """
         var d = digits if digits > 0 else self.precision
         var address = mpfrw_get_str(self.handle, Int32(d))
@@ -308,6 +315,9 @@ struct BigFloat(Comparable, Movable, Writable):
 
         Returns:
             A BigDecimal with the requested number of significant digits.
+
+        Raises:
+            ConversionError: If raw digit export fails.
         """
         var d = precision if precision > 0 else self.precision
 
@@ -456,6 +466,9 @@ struct BigFloat(Comparable, Movable, Writable):
 
         Returns:
             The negated value.
+
+        Raises:
+            RuntimeError: If MPFR handle allocation fails.
         """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
@@ -471,6 +484,9 @@ struct BigFloat(Comparable, Movable, Writable):
 
         Returns:
             The absolute value.
+
+        Raises:
+            RuntimeError: If MPFR handle allocation fails.
         """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
@@ -493,6 +509,9 @@ struct BigFloat(Comparable, Movable, Writable):
 
         Returns:
             The sum.
+
+        Raises:
+            RuntimeError: If MPFR handle allocation fails.
         """
         var prec = max(self.precision, other.precision)
         var h = mpfrw_init(_dps_to_bits(prec))
@@ -512,6 +531,9 @@ struct BigFloat(Comparable, Movable, Writable):
 
         Returns:
             The difference.
+
+        Raises:
+            RuntimeError: If MPFR handle allocation fails.
         """
         var prec = max(self.precision, other.precision)
         var h = mpfrw_init(_dps_to_bits(prec))
@@ -531,6 +553,9 @@ struct BigFloat(Comparable, Movable, Writable):
 
         Returns:
             The product.
+
+        Raises:
+            RuntimeError: If MPFR handle allocation fails.
         """
         var prec = max(self.precision, other.precision)
         var h = mpfrw_init(_dps_to_bits(prec))
@@ -550,6 +575,9 @@ struct BigFloat(Comparable, Movable, Writable):
 
         Returns:
             The quotient.
+
+        Raises:
+            RuntimeError: If MPFR handle allocation fails.
         """
         var prec = max(self.precision, other.precision)
         var h = mpfrw_init(_dps_to_bits(prec))
@@ -581,6 +609,9 @@ struct BigFloat(Comparable, Movable, Writable):
 
         Returns:
             The square root of this value.
+
+        Raises:
+            RuntimeError: If MPFR handle allocation fails.
         """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
@@ -596,6 +627,9 @@ struct BigFloat(Comparable, Movable, Writable):
 
         Returns:
             The exponential of this value.
+
+        Raises:
+            RuntimeError: If MPFR handle allocation fails.
         """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
@@ -611,6 +645,9 @@ struct BigFloat(Comparable, Movable, Writable):
 
         Returns:
             The natural logarithm of this value.
+
+        Raises:
+            RuntimeError: If MPFR handle allocation fails.
         """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
@@ -626,6 +663,9 @@ struct BigFloat(Comparable, Movable, Writable):
 
         Returns:
             The sine of this value.
+
+        Raises:
+            RuntimeError: If MPFR handle allocation fails.
         """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
@@ -641,6 +681,9 @@ struct BigFloat(Comparable, Movable, Writable):
 
         Returns:
             The cosine of this value.
+
+        Raises:
+            RuntimeError: If MPFR handle allocation fails.
         """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
@@ -656,6 +699,9 @@ struct BigFloat(Comparable, Movable, Writable):
 
         Returns:
             The tangent of this value.
+
+        Raises:
+            RuntimeError: If MPFR handle allocation fails.
         """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
@@ -674,6 +720,9 @@ struct BigFloat(Comparable, Movable, Writable):
 
         Returns:
             The result of `self` raised to `exponent`.
+
+        Raises:
+            RuntimeError: If MPFR handle allocation fails.
         """
         var prec = max(self.precision, exponent.precision)
         var h = mpfrw_init(_dps_to_bits(prec))
@@ -693,6 +742,9 @@ struct BigFloat(Comparable, Movable, Writable):
 
         Returns:
             The n-th root of this value.
+
+        Raises:
+            RuntimeError: If MPFR handle allocation fails.
         """
         var h = mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
@@ -712,6 +764,9 @@ struct BigFloat(Comparable, Movable, Writable):
 
         Returns:
             A `BigFloat` containing π at the requested precision.
+
+        Raises:
+            RuntimeError: If MPFR is not available or handle allocation fails.
         """
         if not mpfrw_available():
             raise RuntimeError(

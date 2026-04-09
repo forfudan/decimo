@@ -65,6 +65,9 @@ def round(
 
     Returns:
         A new Decimal128 rounded to the specified number of decimal places.
+
+    Raises:
+        OverflowError: If rounding causes the result to exceed Decimal128 capacity.
     """
 
     # Number of decimal places of the number is equal to the scale of the number

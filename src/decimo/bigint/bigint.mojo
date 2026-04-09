@@ -193,6 +193,9 @@ struct BigInt(
 
         Args:
             value: The string representation of the integer.
+
+        Raises:
+            ConversionError: If the string cannot be converted to a BigInt.
         """
         self = Self.from_string(value)
 
@@ -451,11 +454,21 @@ struct BigInt(
             The BigInt representation.
 
         Raises:
-            Error: If the string is empty, contains invalid characters,
-                or represents a non-integer value.
+            ConversionError: If the string cannot be parsed as an integer.
         """
         # Use the shared string parser for format handling
-        _tuple = decimo.str.parse_numeric_string(value)
+        try:
+            _tuple = decimo.str.parse_numeric_string(value)
+        except e:
+            raise ConversionError(
+                function="BigInt.from_string(value: String)",
+                message=(
+                    'The input value "'
+                    + value
+                    + '" cannot be parsed as an integer.\n'
+                    + String(e)
+                ),
+            )
         var ref coef: List[UInt8] = _tuple[0]
         var scale: Int = _tuple[1]
         var sign: Bool = _tuple[2]
@@ -572,6 +585,9 @@ struct BigInt(
 
         Returns:
             The `Int` representation.
+
+        Raises:
+            OverflowError: If the number exceeds the size of Int.
         """
         return self.to_int()
 
@@ -620,7 +636,7 @@ struct BigInt(
             The number as Int.
 
         Raises:
-            Error: If the number is too large or too small to fit in Int.
+            OverflowError: If the number exceeds the size of Int.
         """
         # Int is 64-bit, so we need at most 2 words to represent it.
         # Int.MAX = 9_223_372_036_854_775_807 = 0x7FFF_FFFF_FFFF_FFFF
@@ -970,6 +986,9 @@ struct BigInt(
 
         Returns:
             The quotient, rounded toward negative infinity.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         try:
             return decimo.bigint.arithmetics.floor_divide(self, other)
@@ -989,6 +1008,9 @@ struct BigInt(
 
         Returns:
             The floor remainder with the same sign as the divisor.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         try:
             return decimo.bigint.arithmetics.floor_modulo(self, other)
@@ -1008,6 +1030,9 @@ struct BigInt(
 
         Returns:
             A tuple of (quotient, remainder) using floor division.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         try:
             return decimo.bigint.arithmetics.floor_divmod(self, other)
@@ -1027,6 +1052,10 @@ struct BigInt(
 
         Returns:
             The result of raising to the given power.
+
+        Raises:
+            ValueError: If the exponent is negative.
+            OverflowError: If the exponent is too large to fit in Int.
         """
         return self.power(exponent)
 
@@ -1039,6 +1068,9 @@ struct BigInt(
 
         Returns:
             The result of raising to the given power.
+
+        Raises:
+            ValueError: If the exponent is negative or too large.
         """
         return self.power(exponent)
 
@@ -1115,6 +1147,9 @@ struct BigInt(
 
         Returns:
             The quotient, rounded toward negative infinity.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return decimo.bigint.arithmetics.floor_divide(other, self)
 
@@ -1127,6 +1162,9 @@ struct BigInt(
 
         Returns:
             The floor remainder with the same sign as the divisor.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return decimo.bigint.arithmetics.floor_modulo(other, self)
 
@@ -1139,6 +1177,9 @@ struct BigInt(
 
         Returns:
             A tuple of (quotient, remainder) using floor division.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return decimo.bigint.arithmetics.floor_divmod(other, self)
 
@@ -1151,6 +1192,9 @@ struct BigInt(
 
         Returns:
             The result of raising the base to this power.
+
+        Raises:
+            ValueError: If the exponent is negative.
         """
         return base.power(self)
 
@@ -1201,6 +1245,9 @@ struct BigInt(
 
         Args:
             other: The right-hand side operand.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         decimo.bigint.arithmetics.floor_divide_inplace(self, other)
 
@@ -1210,6 +1257,9 @@ struct BigInt(
 
         Args:
             other: The right-hand side operand.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         decimo.bigint.arithmetics.floor_modulo_inplace(self, other)
 
@@ -1435,7 +1485,8 @@ struct BigInt(
             The result of self raised to the given exponent.
 
         Raises:
-            Error: If the exponent is negative.
+            ValueError: If the exponent is negative.
+            ValueError: If the exponent is too large (>= 1_000_000_000).
         """
         return decimo.bigint.arithmetics.power(self, exponent)
 
@@ -1449,7 +1500,8 @@ struct BigInt(
             The result of self raised to the given exponent.
 
         Raises:
-            Error: If the exponent is negative or too large.
+            ValueError: If the exponent is negative.
+            OverflowError: If the exponent is too large to fit in Int.
         """
         if exponent.is_negative():
             raise ValueError(
