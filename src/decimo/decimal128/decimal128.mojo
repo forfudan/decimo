@@ -291,6 +291,9 @@ struct Decimal128(
             high: The most significant 32 bits of the coefficient.
             scale: The number of decimal places (0-28).
             sign: `True` if the number is negative, `False` otherwise.
+
+        Raises:
+            ConversionError: If the initialization fails.
         """
 
         try:
@@ -318,6 +321,9 @@ struct Decimal128(
         Args:
             value: The integer value to convert.
             scale: The number of decimal places (0-28).
+
+        Raises:
+            ConversionError: If the value cannot be represented.
         """
         try:
             self = Decimal128.from_int(value, scale)
@@ -334,6 +340,9 @@ struct Decimal128(
 
         Args:
             value: The string representation of the decimal number.
+
+        Raises:
+            ConversionError: If the string cannot be parsed.
         """
         try:
             self = Decimal128.from_string(value)
@@ -350,6 +359,9 @@ struct Decimal128(
 
         Args:
             value: The floating-point value to convert.
+
+        Raises:
+            ConversionError: If the float cannot be converted.
         """
 
         try:
@@ -386,7 +398,7 @@ struct Decimal128(
             A Decimal128 instance with the given components.
 
         Raises:
-            Error: If the scale is greater than MAX_SCALE.
+            ValueError: If the scale exceeds 28.
         """
 
         if scale > UInt32(Self.MAX_SCALE):
@@ -494,7 +506,7 @@ struct Decimal128(
             The Decimal128 representation of the integer.
 
         Raises:
-            Error: If the scale is greater than MAX_SCALE.
+            ValueError: If the scale exceeds 28.
 
         Notes:
 
@@ -551,8 +563,8 @@ struct Decimal128(
             The Decimal128 representation of the UInt128 value.
 
         Raises:
-            Error: If the most significant word of the UInt128 is not zero.
-            Error: If the scale is greater than MAX_SCALE.
+            ValueError: If the value does not fit in 96 bits.
+            ValueError: If the scale exceeds 28.
         """
 
         if value >> 96 != 0:
@@ -588,7 +600,8 @@ struct Decimal128(
             The Decimal128 representation of the string.
 
         Raises:
-            Error: If an error occurs during the conversion, forward the error.
+            ValueError: If the string contains invalid characters.
+            OverflowError: If the exponent is too large.
 
         Notes:
 
@@ -890,8 +903,8 @@ struct Decimal128(
             The Decimal128 representation of the floating-point value.
 
         Raises:
-            Error: If the input is too large to be transformed into Decimal128.
-            Error: If the input is infinity or NaN.
+            OverflowError: If the value is too large for Decimal128.
+            ValueError: If the value is infinity or NaN.
 
         Example:
         ```mojo
@@ -1037,6 +1050,9 @@ struct Decimal128(
 
         Returns:
             The `Int` representation.
+
+        Raises:
+            ConversionError: If the conversion fails.
         """
         return self.to_int()
 
@@ -1117,7 +1133,7 @@ struct Decimal128(
             The signed integral part of the Decimal128.
 
         Raises:
-            Error: If the Decimal128 is too large to fit in Int.
+            ConversionError: If the conversion fails.
         """
         try:
             return Int(self.to_int64())
@@ -1136,7 +1152,7 @@ struct Decimal128(
             The signed integral part of the Decimal128.
 
         Raises:
-            Error: If the Decimal128 is too large to fit in Int64.
+            OverflowError: If the value exceeds the Int64 range.
         """
         var result = self.to_int128()
 
@@ -1985,7 +2001,7 @@ struct Decimal128(
             A new Decimal128 with increased precision.
 
         Raises:
-            Error: If the level is less than 0.
+            ValueError: If precision_diff is negative.
 
         Examples:
         ```mojo

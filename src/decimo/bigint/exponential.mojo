@@ -261,7 +261,7 @@ def sqrt(x: BigInt) raises -> BigInt:
         The integer square root of x.
 
     Raises:
-        Error: If x is negative.
+        ValueError: If x is negative.
 
     Notes:
 
@@ -494,6 +494,6 @@ def isqrt(x: BigInt) raises -> BigInt:
         The integer square root of x.
 
     Raises:
-        Error: If x is negative.
+        ValueError: If x is negative.
     """
     return sqrt(x)

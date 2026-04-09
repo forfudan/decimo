@@ -299,6 +299,9 @@ def parse_file(file_path: String) raises -> TOMLDocument:
 
     Returns:
         A `TOMLDocument` containing the parsed TOML data.
+
+    Raises:
+        ValueError: If the TOML file cannot be parsed.
     """
     try:
         return parse_toml_file(file_path)

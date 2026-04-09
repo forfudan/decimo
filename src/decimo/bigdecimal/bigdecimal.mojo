@@ -345,6 +345,10 @@ struct BigDecimal(
         Returns:
             The BigDecimal representation of the Scalar value.
 
+        Raises:
+            ValueError: If the value is NaN.
+            ConversionError: If the conversion from scalar to BigDecimal fails.
+
         Notes:
 
         If the value is a floating-point number, it is converted to a string
@@ -430,7 +434,7 @@ struct BigDecimal(
             The BigDecimal representation of the Python Decimal.
 
         Raises:
-            Error: If the conversion from Python Decimal fails, or if
+            ConversionError: If the conversion from Python Decimal fails, or if
                 the as_tuple() method returns invalid data.
 
         Examples:

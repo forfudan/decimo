@@ -399,7 +399,7 @@ def N_DIVIDE_NEXT(n: Int) raises -> Decimal128:
         A Decimal128 representing the value of n/(n+1).
 
     Raises:
-        Error: If n is outside the range [1, 20].
+        ValueError: If n is not between 1 and 20.
     """
     if n == 1:
         # 1/2 = 0.5

@@ -162,6 +162,9 @@ def pi(precision: Int) raises -> BigDecimal:
 
     Returns:
         The value of π to the specified precision.
+
+    Raises:
+        ValueError: If the precision is negative.
     """
 
     if precision < 0:

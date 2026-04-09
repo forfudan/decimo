@@ -460,6 +460,9 @@ def _set_value(
     Navigates through `path` (creating intermediate tables as needed),
     then sets `key = value` in the target table.  Raises on duplicate
     non-table keys.
+
+    Raises:
+        ValueError: If a duplicate key is found or a key exists but is not a table.
     """
     if len(path) == 0:
         # Set directly in root
@@ -522,7 +525,11 @@ def _set_value(
 def _ensure_table_path(
     mut root: Dict[String, TOMLValue], path: List[String]
 ) raises:
-    """Ensure all tables along `path` exist in `root`."""
+    """Ensure all tables along `path` exist in `root`.
+
+    Raises:
+        ValueError: If a key exists but is not a table.
+    """
     if len(path) == 0:
         return
 
@@ -563,7 +570,11 @@ def _ensure_table_path(
 def _append_array_of_tables(
     mut root: Dict[String, TOMLValue], path: List[String]
 ) raises:
-    """Append a new empty table to the array-of-tables at `path`."""
+    """Append a new empty table to the array-of-tables at `path`.
+
+    Raises:
+        ValueError: If the path is empty or a key cannot be redefined as array of tables.
+    """
     if len(path) == 0:
         raise ValueError(
             message="Array of tables path cannot be empty",
@@ -686,6 +697,9 @@ struct TOMLParser:
 
         Returns a list of key parts.  Accepts both KEY and STRING tokens
         as key components.
+
+        Raises:
+            ValueError: If a key token is expected but not found.
         """
         var parts = List[String]()
 
@@ -826,7 +840,11 @@ struct TOMLParser:
     # ---- inline tables ---------------------------------------------------
 
     def _parse_inline_table(mut self) raises -> TOMLValue:
-        """Parse an inline table { key = value, ... } (opening { consumed)."""
+        """Parse an inline table { key = value, ... } (opening { consumed).
+
+        Raises:
+            ValueError: If a syntax error or duplicate key is found.
+        """
         var table = Dict[String, TOMLValue]()
 
         if self._tok().type == TokenType.INLINE_TABLE_END:
@@ -882,7 +900,11 @@ struct TOMLParser:
     # ---- table header parsing --------------------------------------------
 
     def _parse_table_header(mut self) raises -> List[String]:
-        """Parse [a.b.c] and return the path.  Opening [ already consumed."""
+        """Parse [a.b.c] and return the path.  Opening [ already consumed.
+
+        Raises:
+            ValueError: If the closing ']' is missing.
+        """
         var path = self._parse_key_path()
 
         # Expect closing ]
@@ -897,7 +919,11 @@ struct TOMLParser:
         return path^
 
     def _parse_array_of_tables_header(mut self) raises -> List[String]:
-        """Parse [[a.b.c]] and return the path.  Opening [[ already consumed."""
+        """Parse [[a.b.c]] and return the path.  Opening [[ already consumed.
+
+        Raises:
+            ValueError: If the closing ']]' is missing.
+        """
         var path = self._parse_key_path()
 
         # Expect closing ]]
