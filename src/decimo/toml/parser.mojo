@@ -871,7 +871,11 @@ struct TOMLParser:
             if len(key_parts) == 1:
                 if key_parts[0] in table:
                     raise Error(
-                        "Duplicate key in inline table: " + key_parts[0]
+                        ValueError(
+                            message="Duplicate key in inline table: "
+                            + key_parts[0],
+                            function="TOMLParser._parse_inline_table()",
+                        )
                     )
                 table[key_parts[0]] = value^
             else:

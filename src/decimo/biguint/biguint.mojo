@@ -205,6 +205,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
+                    message="See the above exception.",
                     function="BigUInt.__init__(var words: List[UInt32])",
                     previous_error=e^,
                 )
@@ -250,6 +251,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
+                    message="See the above exception.",
                     function="BigUInt.__init__(value: Int)",
                     previous_error=e^,
                 )
@@ -285,6 +287,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
+                    message="See the above exception.",
                     function="BigUInt.__init__(value: String)",
                     previous_error=e^,
                 )
@@ -788,6 +791,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
+                    message="See the above exception.",
                     function="BigUInt.__int__()",
                     previous_error=e^,
                 )
@@ -1150,6 +1154,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
+                    message="See the above exception.",
                     function="BigUInt.__sub__(other: Self)",
                     previous_error=e^,
                 )
@@ -1182,6 +1187,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
+                    message="See the above exception.",
                     function="BigUInt.__floordiv__(other: Self)",
                     previous_error=e^,
                 )
@@ -1202,6 +1208,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
+                    message="See the above exception.",
                     function="BigUInt.__ceildiv__(other: Self)",
                     previous_error=e^,
                 )
@@ -1222,6 +1229,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
+                    message="See the above exception.",
                     function="BigUInt.__mod__(other: Self)",
                     previous_error=e^,
                 )
@@ -1242,6 +1250,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
+                    message="See the above exception.",
                     function="BigUInt.__divmod__(other: Self)",
                     previous_error=e^,
                 )
@@ -1262,6 +1271,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
+                    message="See the above exception.",
                     function="BigUInt.__pow__(exponent: Self)",
                     previous_error=e^,
                 )
@@ -1282,6 +1292,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         except e:
             raise Error(
                 DecimoError(
+                    message="See the above exception.",
                     function="BigUInt.__pow__(exponent: Int)",
                     previous_error=e^,
                 )

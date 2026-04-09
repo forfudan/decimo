@@ -26,8 +26,8 @@ ValueError: description of what went wrong
 ```
 
 File name and line number are automatically captured at the raise site using
-`call_location()`. Function name is an optional argument -- Mojo does not have
-a built-in way to get the current function name at runtime.
+`call_location()`. Function name must be provided manually since Mojo does not
+have a built-in way to get the current function name at runtime.
 """
 
 from std.reflection import call_location
@@ -88,7 +88,7 @@ struct DecimoError[error_type: String = "DecimoError"](Writable):
     ```
 
     File name and line number are automatically captured at the raise site.
-    Function name is an optional argument since Mojo does not yet support
+    Function name must be provided manually since Mojo does not yet support
     runtime introspection of the current function name.
 
     Parameters:
@@ -99,10 +99,10 @@ struct DecimoError[error_type: String = "DecimoError"](Writable):
     """The source file where the error occurred (auto-captured)."""
     var line: Int
     """The line number where the error occurred (auto-captured)."""
-    var function: Optional[String]
-    """An optional function name where the error occurred."""
-    var message: Optional[String]
-    """An optional message describing the error."""
+    var function: String
+    """The function name where the error occurred."""
+    var message: String
+    """A message describing the error."""
     var previous_error: Optional[String]
     """An optional formatted string of a previous error that caused this one."""
 
@@ -110,8 +110,8 @@ struct DecimoError[error_type: String = "DecimoError"](Writable):
     def __init__(
         out self,
         *,
-        message: Optional[String] = None,
-        function: Optional[String] = None,
+        message: String,
+        function: String,
         previous_error: Optional[Error] = None,
     ):
         """Creates a new `DecimoError` with auto-captured file and line.
@@ -119,8 +119,8 @@ struct DecimoError[error_type: String = "DecimoError"](Writable):
         File name and line number are automatically captured from the call site.
 
         Args:
-            message: An optional message describing the error.
-            function: An optional function name where the error occurred.
+            message: A message describing the error.
+            function: The function name where the error occurred.
             previous_error: An optional previous error that caused this one.
         """
         var loc = call_location()
@@ -193,20 +193,18 @@ struct DecimoError[error_type: String = "DecimoError"](Writable):
         writer.write(_CLR_LINE_NUM)
         writer.write(String(self.line))
         writer.write(_RESET)
-        if self.function is not None:
-            writer.write(", in ")
-            writer.write(_CLR_FUNC_NAME)
-            writer.write(self.function.value())
-            writer.write(_RESET)
+        writer.write(", in ")
+        writer.write(_CLR_FUNC_NAME)
+        writer.write(self.function)
+        writer.write(_RESET)
         writer.write("\n")
 
         # "ValueError: description of what went wrong"
         writer.write(_CLR_ERROR_TYPE)
         writer.write(Self.error_type)
         writer.write(_RESET)
-        if self.message is not None:
-            writer.write(": ")
-            writer.write(_CLR_MSG_TEXT)
-            writer.write(self.message.value())
-            writer.write(_RESET)
+        writer.write(": ")
+        writer.write(_CLR_MSG_TEXT)
+        writer.write(self.message)
+        writer.write(_RESET)
         writer.write("\n")
