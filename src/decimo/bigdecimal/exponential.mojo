@@ -222,7 +222,8 @@ def power(
 
     Raises:
         ValueError: If base is negative and exponent is not an integer.
-        ZeroDivisionError: If base is zero and exponent is negative or zero.
+        ValueError: If base is zero and exponent is zero.
+        ZeroDivisionError: If base is zero and exponent is negative.
 
     Notes:
 

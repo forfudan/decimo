@@ -361,7 +361,18 @@ struct BigInt10(
         Raises:
             ConversionError: If the string cannot be parsed.
         """
-        _tuple = decimo.str.parse_numeric_string(value)
+        try:
+            _tuple = decimo.str.parse_numeric_string(value)
+        except e:
+            raise ConversionError(
+                function="BigInt10.from_string(value: String)",
+                message=(
+                    'The input value "'
+                    + value
+                    + '" cannot be parsed as an integer.\n'
+                    + String(e)
+                ),
+            )
         var ref coef: List[UInt8] = _tuple[0]
         var sign: Bool = _tuple[2]
 

@@ -195,7 +195,7 @@ struct BigInt(
             value: The string representation of the integer.
 
         Raises:
-            ConversionError: If the string cannot be parsed as an integer.
+            ConversionError: If the string cannot be converted to a BigInt.
         """
         self = Self.from_string(value)
 
@@ -457,7 +457,18 @@ struct BigInt(
             ConversionError: If the string cannot be parsed as an integer.
         """
         # Use the shared string parser for format handling
-        _tuple = decimo.str.parse_numeric_string(value)
+        try:
+            _tuple = decimo.str.parse_numeric_string(value)
+        except e:
+            raise ConversionError(
+                function="BigInt.from_string(value: String)",
+                message=(
+                    'The input value "'
+                    + value
+                    + '" cannot be parsed as an integer.\n'
+                    + String(e)
+                ),
+            )
         var ref coef: List[UInt8] = _tuple[0]
         var scale: Int = _tuple[1]
         var sign: Bool = _tuple[2]

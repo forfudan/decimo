@@ -45,6 +45,8 @@ def power(base: Decimal128, exponent: Decimal128) raises -> Decimal128:
 
     Raises:
         ValueError: If the base is negative with a non-integer exponent.
+        ZeroDivisionError: If a reciprocal power is undefined, such as
+            when evaluating `0^-0.5`.
         OverflowError: If the result overflows.
     """
 
