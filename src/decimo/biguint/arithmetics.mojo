@@ -3348,16 +3348,12 @@ def truncate_modulo(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
         The remainder of x1 being divided by x2.
 
     Raises:
-        Error: If `floor_modulo()` raises an OverflowError.
+        ZeroDivisionError: If the divisor is zero.
     """
     try:
         return floor_modulo(x1, x2)
     except e:
-        raise ZeroDivisionError(
-            message="See the above exception.",
-            function="truncate_modulo()",
-            previous_error=e^,
-        )
+        raise e^
 
 
 def ceil_modulo(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
@@ -3373,7 +3369,7 @@ def ceil_modulo(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
         The remainder of x1 being ceil-divided by x2.
 
     Raises:
-        ValueError: If the divisor is zero.
+        ZeroDivisionError: If the divisor is zero.
     """
     # CASE: Division by zero
     if x2.is_zero():

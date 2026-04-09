@@ -1276,11 +1276,7 @@ def truncate_divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     try:
         return divide(x1, x2).round(0, RoundingMode.down())
     except e:
-        raise ZeroDivisionError(
-            message="Division failed.",
-            function="truncate_divide()",
-            previous_error=e^,
-        )
+        raise e^
 
 
 def modulo(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
@@ -1297,8 +1293,4 @@ def modulo(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     try:
         return x1 - (truncate_divide(x1, x2) * x2)
     except e:
-        raise ZeroDivisionError(
-            message="Modulo failed.",
-            function="modulo()",
-            previous_error=e^,
-        )
+        raise e^

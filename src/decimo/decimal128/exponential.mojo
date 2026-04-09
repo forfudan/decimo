@@ -56,11 +56,7 @@ def power(base: Decimal128, exponent: Decimal128) raises -> Decimal128:
         try:
             return power(base, Int(exponent))
         except e:
-            raise ValueError(
-                message="Failed to compute power with Decimal128 exponent.",
-                function="power()",
-                previous_error=e^,
-            )
+            raise e^
 
     # CASE: For negative bases, only integer exponents are supported
     if base.is_negative():
@@ -101,11 +97,7 @@ def power(base: Decimal128, exponent: Decimal128) raises -> Decimal128:
         var product = exponent * ln_base
         return exp(product)
     except e:
-        raise ValueError(
-            message="See the above exception.",
-            function="power()",
-            previous_error=e^,
-        )
+        raise e^
 
 
 def power(base: Decimal128, exponent: Int) raises -> Decimal128:

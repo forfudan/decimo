@@ -1130,11 +1130,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         try:
             return decimo.biguint.arithmetics.subtract(self, other)
         except e:
-            raise ZeroDivisionError(
-                message="See the above exception.",
-                function="BigUInt.__sub__(other: Self)",
-                previous_error=e^,
-            )
+            raise e^
 
     @always_inline
     def __mul__(self, other: Self) -> Self:
@@ -1218,11 +1214,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         try:
             return decimo.biguint.arithmetics.floor_divide_modulo(self, other)
         except e:
-            raise ValueError(
-                message="See the above exception.",
-                function="BigUInt.__divmod__(other: Self)",
-                previous_error=e^,
-            )
+            raise e^
 
     @always_inline
     def __pow__(self, exponent: Self) raises -> Self:
