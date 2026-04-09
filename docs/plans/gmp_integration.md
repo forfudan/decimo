@@ -1321,7 +1321,7 @@ LD_LIBRARY_PATH=./src/decimo/gmp ./myprogram
 
 ```bash
 bash src/decimo/gmp/build_gmp_wrapper.sh \
-&& mojo build -I src \
+&& pixi run mojo build -I src \
     -Xlinker -L./src/decimo/gmp -Xlinker -ldecimo_gmp_wrapper \
     -o /tmp/myprogram myprogram.mojo \
 && DYLD_LIBRARY_PATH=./src/decimo/gmp /tmp/myprogram

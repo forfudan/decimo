@@ -364,8 +364,8 @@ def tan_cot(x: BigDecimal, precision: Int, is_tan: Bool) raises -> BigDecimal:
             # since tan(0) is defined as 0.
             # This is a design choice, not a mathematical one.
             # In practice, cot(0) should raise an error.
-            raise Error(
-                ValueError(message="cot(nπ) is undefined", function="tan_cot()")
+            raise ValueError(
+                message="cot(nπ) is undefined", function="tan_cot()"
             )
 
     var pi = decimo.bigdecimal.constants.pi(precision=working_precision_pi)
@@ -430,9 +430,7 @@ def csc(x: BigDecimal, precision: Int) raises -> BigDecimal:
     This function calculates csc(x) = 1 / sin(x).
     """
     if x.is_zero():
-        raise Error(
-            ValueError(message="csc(nπ) is undefined", function="csc()")
-        )
+        raise ValueError(message="csc(nπ) is undefined", function="csc()")
 
     comptime BUFFER_DIGITS = 9
     var working_precision = precision + BUFFER_DIGITS

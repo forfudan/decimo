@@ -25,7 +25,7 @@ from std import math
 
 from decimo.bigint.bigint import BigInt
 import decimo.bigint.arithmetics
-from decimo.errors import DecimoError
+from decimo.errors import ValueError
 
 
 # ===----------------------------------------------------------------------=== #
@@ -281,11 +281,9 @@ def sqrt(x: BigInt) raises -> BigInt:
     native 64-bit arithmetic (no heap allocation, O(1) per iteration).
     """
     if x.is_negative():
-        raise Error(
-            DecimoError(
-                function="sqrt()",
-                message="Cannot compute square root of a negative number",
-            )
+        raise ValueError(
+            function="sqrt()",
+            message="Cannot compute square root of a negative number",
         )
 
     if x.is_zero():

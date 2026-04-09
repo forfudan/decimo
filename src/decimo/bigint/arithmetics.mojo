@@ -37,7 +37,7 @@ from std.memory import memcpy, memset_zero
 
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.comparison import compare_magnitudes
-from decimo.errors import DecimoError, ZeroDivisionError
+from decimo.errors import ValueError, ZeroDivisionError
 
 
 # Karatsuba cutoff: operands with this many words or fewer use schoolbook.
@@ -715,11 +715,9 @@ def _divmod_magnitudes(
             divisor_is_zero = False
             break
     if divisor_is_zero:
-        raise Error(
-            ZeroDivisionError(
-                function="_divmod_magnitudes()",
-                message="Division by zero",
-            )
+        raise ZeroDivisionError(
+            function="_divmod_magnitudes()",
+            message="Division by zero.",
         )
 
     # Compare magnitudes to handle trivial cases
@@ -1151,11 +1149,9 @@ def _divmod_knuth_d_from_slices(
     if len_a_eff <= 0:
         return ([UInt32(0)], [UInt32(0)])
     if len_b_eff <= 0:
-        raise Error(
-            DecimoError(
-                function="_divmod_knuth_d_from_slices()",
-                message="Division by zero in B-Z base case",
-            )
+        raise ZeroDivisionError(
+            function="_divmod_knuth_d_from_slices()",
+            message="Division by zero in B-Z base case",
         )
 
     # Single-word divisor fast path
@@ -2337,32 +2333,28 @@ def power(base: BigInt, exponent: Int) raises -> BigInt:
         Error: If the exponent is too large (>= 1_000_000_000).
     """
     if exponent < 0:
-        raise Error(
-            DecimoError(
-                function="power()",
-                message=(
-                    "The exponent "
-                    + String(exponent)
-                    + " is negative.\n"
-                    + "Consider using a non-negative exponent."
-                ),
-            )
+        raise ValueError(
+            function="power()",
+            message=(
+                "The exponent "
+                + String(exponent)
+                + " is negative.\n"
+                + "Consider using a non-negative exponent."
+            ),
         )
 
     if exponent == 0:
         return BigInt(1)
 
     if exponent >= 1_000_000_000:
-        raise Error(
-            DecimoError(
-                function="power()",
-                message=(
-                    "The exponent "
-                    + String(exponent)
-                    + " is too large.\n"
-                    + "Consider using an exponent below 1_000_000_000."
-                ),
-            )
+        raise ValueError(
+            function="power()",
+            message=(
+                "The exponent "
+                + String(exponent)
+                + " is too large.\n"
+                + "Consider using an exponent below 1_000_000_000."
+            ),
         )
 
     if base.is_zero():
