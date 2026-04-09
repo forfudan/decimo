@@ -242,7 +242,8 @@ def mod_pow(base: BigInt, exponent: BigInt, modulus: BigInt) raises -> BigInt:
         A BigInt in the range [0, modulus).
 
     Raises:
-        If exponent < 0 or modulus <= 0.
+        ValueError: If the exponent is negative.
+        ValueError: If the modulus is not positive.
     """
     if exponent.is_negative():
         raise ValueError(
@@ -295,6 +296,10 @@ def mod_pow(base: BigInt, exponent: Int, modulus: BigInt) raises -> BigInt:
 
     Returns:
         A BigInt in the range [0, modulus).
+
+    Raises:
+        ValueError: If the exponent is negative.
+        ValueError: If the modulus is not positive.
     """
     return mod_pow(base, BigInt(exponent), modulus)
 
@@ -319,7 +324,8 @@ def mod_inverse(a: BigInt, modulus: BigInt) raises -> BigInt:
         The modular inverse, in [0, modulus).
 
     Raises:
-        If modulus <= 0 or the inverse does not exist (gcd(a, modulus) != 1).
+        ValueError: If the modulus is not positive.
+        ValueError: If the modular inverse does not exist (gcd != 1).
     """
     if not modulus.is_positive():
         raise ValueError(

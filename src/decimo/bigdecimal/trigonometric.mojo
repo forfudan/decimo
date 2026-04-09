@@ -346,6 +346,9 @@ def tan_cot(x: BigDecimal, precision: Int, is_tan: Bool) raises -> BigDecimal:
     Returns:
         The cotangent of x with the specified precision.
 
+    Raises:
+        ValueError: If computing cot(nπ) which is undefined.
+
     Notes:
 
     This function calculates tan(x) = cos(x) / sin(x) or
@@ -424,6 +427,9 @@ def csc(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
     Returns:
         The cosecant of x with the specified precision.
+
+    Raises:
+        ValueError: If x is zero (csc(nπ) is undefined).
 
     Notes:
 

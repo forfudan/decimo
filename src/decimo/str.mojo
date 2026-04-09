@@ -105,6 +105,10 @@ def parse_numeric_string(
     parse_numeric_string("-123")            -> ([1,2,3], 0, True)
     ```
     End of examples.
+
+    Raises:
+        ValueError: If the string is empty, contains invalid characters, or
+            has malformed numeric syntax.
     """
 
     # [Mojo Miji]

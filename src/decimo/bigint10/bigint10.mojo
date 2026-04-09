@@ -111,6 +111,9 @@ struct BigInt10(
                 The words are stored in little-endian order.
             sign: The sign of the BigInt10.
 
+        Raises:
+            ConversionError: If any word exceeds 999_999_999.
+
         Notes:
             This is equal to `BigInt10.from_list()`.
         """
@@ -153,6 +156,9 @@ struct BigInt10(
 
         Args:
             value: The string representation of the integer.
+
+        Raises:
+            ConversionError: If the string cannot be parsed.
         """
         try:
             self = Self.from_string(value)
@@ -193,6 +199,9 @@ struct BigInt10(
 
         Args:
             py: The Python integer object to convert from.
+
+        Raises:
+            ConversionError: If the Python object cannot be converted.
         """
         self = Self.from_python_int(py)
 
@@ -218,7 +227,7 @@ struct BigInt10(
             sign: The sign of the BigInt10.
 
         Raises:
-            Error: If any word is larger than `999_999_999`.
+            ConversionError: If any word exceeds 999_999_999.
 
         Returns:
             The BigInt10 representation of the list of UInt32 words.
@@ -250,6 +259,9 @@ struct BigInt10(
 
         Returns:
             A new `BigInt10` from the given words.
+
+        Raises:
+            ValueError: If any word exceeds 999_999_999.
         """
 
         var list_of_words = List[UInt32](capacity=len(words))
@@ -345,6 +357,9 @@ struct BigInt10(
 
         Returns:
             The BigInt10 representation of the string.
+
+        Raises:
+            ConversionError: If the string cannot be parsed.
         """
         _tuple = decimo.str.parse_numeric_string(value)
         var ref coef: List[UInt8] = _tuple[0]
@@ -369,8 +384,7 @@ struct BigInt10(
             The BigInt10 representation of the Python integer.
 
         Raises:
-            Error: If the conversion from Python int to string fails, or if
-                the string cannot be parsed as a valid integer.
+            ConversionError: If the conversion from Python int fails.
 
         Examples:
         ```mojo
@@ -413,6 +427,9 @@ struct BigInt10(
 
         Returns:
             The `Int` representation of this value.
+
+        Raises:
+            OverflowError: If the number exceeds the size of Int.
         """
         return self.to_int()
 
@@ -450,7 +467,7 @@ struct BigInt10(
             The number as Int.
 
         Raises:
-            Error: If the number is too large or too small to fit in Int.
+            OverflowError: If the number exceeds the size of Int.
         """
 
         # 2^63-1 = 9_223_372_036_854_775_807
@@ -615,6 +632,9 @@ struct BigInt10(
 
         Returns:
             The floor division quotient.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         try:
             return decimo.bigint10.arithmetics.floor_divide(self, other)
@@ -634,6 +654,9 @@ struct BigInt10(
 
         Returns:
             The remainder of the floor division.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         try:
             return decimo.bigint10.arithmetics.floor_modulo(self, other)
@@ -653,6 +676,9 @@ struct BigInt10(
 
         Returns:
             The result of raising to the given power.
+
+        Raises:
+            OverflowError: If the exponent is too large.
         """
         return self.power(exponent)
 
@@ -1032,6 +1058,9 @@ struct BigInt10(
 
         Returns:
             The result of raising to the given power.
+
+        Raises:
+            ValueError: If the exponent is negative or too large.
         """
         var magnitude = self.magnitude.power(exponent)
         var sign = False
@@ -1048,6 +1077,10 @@ struct BigInt10(
 
         Returns:
             The result of raising to the given power.
+
+        Raises:
+            OverflowError: If the exponent is too large.
+            ValueError: If the exponent is negative or too large.
         """
         if exponent > Self(BigUInt(raw_words=[0, 1]), sign=False):
             raise OverflowError(

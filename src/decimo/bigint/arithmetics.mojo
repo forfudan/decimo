@@ -2032,6 +2032,9 @@ def floor_divide_inplace(mut x: BigInt, read other: BigInt) raises:
     Args:
         x: The dividend (modified in-place to hold the quotient).
         other: The divisor.
+
+    Raises:
+        ZeroDivisionError: If the divisor is zero.
     """
     var result = _divmod_magnitudes(x.words, other.words)
     var q_words = result[0].copy()
@@ -2075,6 +2078,9 @@ def floor_modulo_inplace(mut x: BigInt, read other: BigInt) raises:
     Args:
         x: The dividend (modified in-place to hold the remainder).
         other: The divisor.
+
+    Raises:
+        ZeroDivisionError: If the divisor is zero.
     """
     var result = _divmod_magnitudes(x.words, other.words)
     _ = result[0]
@@ -2124,7 +2130,7 @@ def floor_divide(x1: BigInt, x2: BigInt) raises -> BigInt:
         The quotient of x1 / x2, rounded toward negative infinity.
 
     Raises:
-        Error: If x2 is zero.
+        ZeroDivisionError: If the divisor is zero.
     """
     var result = _divmod_magnitudes(x1.words, x2.words)
     var q_words = result[0].copy()
@@ -2171,7 +2177,7 @@ def truncate_divide(x1: BigInt, x2: BigInt) raises -> BigInt:
         The quotient of x1 / x2, truncated toward zero.
 
     Raises:
-        Error: If x2 is zero.
+        ZeroDivisionError: If the divisor is zero.
     """
     var result = _divmod_magnitudes(x1.words, x2.words)
     var q_words = result[0].copy()
@@ -2203,7 +2209,7 @@ def floor_modulo(x1: BigInt, x2: BigInt) raises -> BigInt:
         The remainder with the same sign as x2.
 
     Raises:
-        Error: If x2 is zero.
+        ZeroDivisionError: If the divisor is zero.
     """
     var result = _divmod_magnitudes(x1.words, x2.words)
     _ = result[0]
@@ -2243,7 +2249,7 @@ def truncate_modulo(x1: BigInt, x2: BigInt) raises -> BigInt:
         The remainder with the same sign as x1.
 
     Raises:
-        Error: If x2 is zero.
+        ZeroDivisionError: If the divisor is zero.
     """
     var result = _divmod_magnitudes(x1.words, x2.words)
     _ = result[0]
@@ -2276,7 +2282,7 @@ def floor_divmod(x1: BigInt, x2: BigInt) raises -> Tuple[BigInt, BigInt]:
         A tuple of (quotient, remainder).
 
     Raises:
-        Error: If x2 is zero.
+        ZeroDivisionError: If the divisor is zero.
     """
     var result = _divmod_magnitudes(x1.words, x2.words)
     var q_words = result[0].copy()
@@ -2329,8 +2335,8 @@ def power(base: BigInt, exponent: Int) raises -> BigInt:
         The result of base raised to the given exponent.
 
     Raises:
-        Error: If the exponent is negative.
-        Error: If the exponent is too large (>= 1_000_000_000).
+        ValueError: If the exponent is negative.
+        ValueError: If the exponent is too large (>= 1_000_000_000).
     """
     if exponent < 0:
         raise ValueError(

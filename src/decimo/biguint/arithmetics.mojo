@@ -98,7 +98,7 @@ def negative(x: BigUInt) raises -> BigUInt:
         x: The BigUInt value to compute the negative of.
 
     Raises:
-        Error: If x is not zero, as negative of non-zero unsigned integer is undefined.
+        OverflowError: If the number is non-zero.
 
     Returns:
         A new BigUInt containing the negative of x.
@@ -486,7 +486,7 @@ def subtract(x: BigUInt, y: BigUInt) raises -> BigUInt:
         y: The second unsigned integer (subtrahend).
 
     Raises:
-        Error: If y is greater than x, resulting in an underflow.
+        OverflowError: If x < y (result would be negative).
 
     Returns:
         The result of subtracting y from x.
@@ -681,6 +681,9 @@ def subtract_inplace(mut x: BigUInt, y: BigUInt) raises -> None:
     Args:
         x: The `BigUInt` minuend, modified in place.
         y: The `BigUInt` subtrahend.
+
+    Raises:
+        OverflowError: If x < y (result would be negative).
     """
 
     # If the subtrahend is zero, return the minuend
@@ -1938,7 +1941,7 @@ def floor_divide(x: BigUInt, y: BigUInt) raises -> BigUInt:
         The quotient of x / y, truncated toward zero.
 
     Raises:
-        ValueError: If the divisor is zero.
+        ZeroDivisionError: If the divisor is zero.
 
     Notes:
         It is equal to truncated division for positive numbers.
@@ -2059,7 +2062,7 @@ def floor_divide_school(x: BigUInt, y: BigUInt) raises -> BigUInt:
         The quotient of x // y.
 
     Raises:
-        Error: If the y is zero.
+        ZeroDivisionError: If the divisor is zero.
     """
 
     # Because the Burnikel-Ziegler division algorithm will fall back to this
@@ -3123,6 +3126,9 @@ def floor_divide_three_by_two_uint32(
         (2) the most significant word of the remainder (as UInt32)
         (3) the least significant word of the remainder (as UInt32).
 
+    Raises:
+        ValueError: If b1 < 500_000_000.
+
     Notes:
 
     a = a2 * BASE^2 + a1 * BASE + a0.
@@ -3180,6 +3186,9 @@ def floor_divide_four_by_two_uint32(
         (2) the least significant word of the quotient (as UInt32)
         (3) the most significant word of the remainder (as UInt32)
         (4) the least significant word of the remainder (as UInt32).
+
+    Raises:
+        ValueError: If b1 < 500_000_000 or a >= b * 10^18.
     """
 
     if b1 < 500_000_000:
@@ -3228,6 +3237,9 @@ def truncate_divide(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
 
     Returns:
         The quotient of `x1` divided by `x2`.
+
+    Raises:
+        ZeroDivisionError: If the divisor is zero.
     """
     return floor_divide(x1, x2)
 
@@ -3243,7 +3255,7 @@ def ceil_divide(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
         The quotient of x1 / x2, rounded up.
 
     Raises:
-        ValueError: If the divisor is zero.
+        ZeroDivisionError: If the divisor is zero.
     """
 
     # CASE: Division by zero
@@ -3277,8 +3289,6 @@ def floor_modulo(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
 
     Raises:
         ZeroDivisionError: If the divisor is zero.
-        Error: If `floor_divide()` raises an error.
-        Error: If `subtract()` raises an error.
 
     Notes:
         It is equal to floored modulo for positive numbers.
@@ -3422,8 +3432,7 @@ def floor_divide_modulo(
         The quotient of x1 / x2, truncated toward zero and the remainder.
 
     Raises:
-        Error: If `floor_divide()` raises an error.
-        Error: If `subtract()` raises an error.
+        ZeroDivisionError: If the divisor is zero.
 
     Notes:
         It is equal to truncated division for positive numbers.
@@ -3615,7 +3624,7 @@ def power_of_10(n: Int) raises -> BigUInt:
         A BigUInt representing 10 raised to the power of n.
 
     Raises:
-        DecimoError: If n is negative.
+        ValueError: If n is negative.
     """
     if n < 0:
         raise ValueError(

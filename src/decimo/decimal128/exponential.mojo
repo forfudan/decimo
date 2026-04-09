@@ -44,11 +44,8 @@ def power(base: Decimal128, exponent: Decimal128) raises -> Decimal128:
         A new Decimal128 containing the result of base^exponent.
 
     Raises:
-        Error: If the base is negative or the exponent is negative and not an integer.
-        Error: If an error occurs in calling the power() function with an integer exponent.
-        Error: If an error occurs in calling the sqrt() function with a Decimal128 exponent.
-        Error: If an error occurs in calling the ln() function with a Decimal128 base.
-        Error: If an error occurs in calling the exp() function with a Decimal128 exponent.
+        ValueError: If the base is negative with a non-integer exponent.
+        OverflowError: If the result overflows.
     """
 
     # CASE: If the exponent is integer
@@ -109,6 +106,9 @@ def power(base: Decimal128, exponent: Int) raises -> Decimal128:
 
     Returns:
         A new Decimal128 containing the result.
+
+    Raises:
+        ValueError: If the base is zero and exponent is negative.
     """
 
     # Special cases
@@ -173,8 +173,7 @@ def root(x: Decimal128, n: Int) raises -> Decimal128:
         A new Decimal128 containing the n-th root of x.
 
     Raises:
-        Error: If x is negative and n is even.
-        Error: If n is zero or negative.
+        ValueError: If n is non-positive or the input is invalid.
     """
     # var t0 = time.perf_counter_ns()
 
@@ -352,7 +351,7 @@ def sqrt(x: Decimal128) raises -> Decimal128:
         A new Decimal128 containing the square root of x.
 
     Raises:
-        Error: If x is negative.
+        ValueError: If x is negative.
     """
     # Special cases
     if x.is_negative():
@@ -478,7 +477,7 @@ def exp(x: Decimal128) raises -> Decimal128:
         A Decimal128 approximation of e^x.
 
     Raises:
-        Error: If x is greater than 66.54.
+        OverflowError: If x is too large (> 66.54).
 
     Notes:
         Because ln(2^96-1) ~= 66.54212933375474970405428366,
@@ -688,7 +687,7 @@ def ln(x: Decimal128) raises -> Decimal128:
         A Decimal128 approximation of ln(x).
 
     Raises:
-        Error: If x is less than or equal to zero.
+        ValueError: If x is non-positive.
 
     Notes:
         This implementation uses range reduction to improve accuracy and performance.
@@ -953,8 +952,7 @@ def log(x: Decimal128, base: Decimal128) raises -> Decimal128:
         A Decimal128 approximation of log_base(x).
 
     Raises:
-        Error: If x is less than or equal to zero.
-        Error: If base is less than or equal to zero or equal to 1.
+        ValueError: If x is non-positive, base is non-positive, or base is 1.
 
     Notes:
 
@@ -1012,7 +1010,7 @@ def log10(x: Decimal128) raises -> Decimal128:
         A Decimal128 approximation of log10(x).
 
     Raises:
-        Error: If x is less than or equal to zero.
+        ValueError: If x is non-positive.
 
     Notes:
         This implementation uses the identity log10(x) = ln(x) / ln(10).

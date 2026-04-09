@@ -308,6 +308,9 @@ def true_divide(
         The quotient of x and y, with precision up to `precision`
         significant digits.
 
+    Raises:
+        ZeroDivisionError: If the divisor is zero.
+
     Notes:
 
     - If the coefficients can be divided exactly, the number of digits after
@@ -692,6 +695,9 @@ def true_divide_inexact(
 
     Returns:
         The quotient of x1 and x2.
+
+    Raises:
+        ZeroDivisionError: If the divisor is zero.
     """
 
     # Check for division by zero
@@ -904,7 +910,7 @@ def truncate_divide(x1: BigDecimal, x2: BigDecimal) raises -> BigDecimal:
         The quotient of x1 and x2, truncated to zeros.
 
     Raises:
-        Error: If division by zero is attempted.
+        ZeroDivisionError: If division by zero is attempted.
 
     Notes:
         This function performs integer division that truncates toward zero.
@@ -951,7 +957,7 @@ def truncate_modulo(
         The truncated modulo of x1 and x2.
 
     Raises:
-        Error: If division by zero is attempted.
+        ZeroDivisionError: If division by zero is attempted.
     """
     # Check for division by zero
     if x2.coefficient.is_zero():
