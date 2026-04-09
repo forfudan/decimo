@@ -21,6 +21,7 @@
 from std import time
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
+from decimo.errors import ValueError
 from decimo.rounding_mode import RoundingMode
 import decimo.bigdecimal.constants
 import decimo.bigdecimal.exponential
@@ -364,7 +365,7 @@ def tan_cot(x: BigDecimal, precision: Int, is_tan: Bool) raises -> BigDecimal:
             # This is a design choice, not a mathematical one.
             # In practice, cot(0) should raise an error.
             raise Error(
-                "bigdecimal.trigonometric.tan_cot: cot(nπ) is undefined."
+                ValueError(message="cot(nπ) is undefined", function="tan_cot()")
             )
 
     var pi = decimo.bigdecimal.constants.pi(precision=working_precision_pi)
@@ -429,7 +430,9 @@ def csc(x: BigDecimal, precision: Int) raises -> BigDecimal:
     This function calculates csc(x) = 1 / sin(x).
     """
     if x.is_zero():
-        raise Error("bigdecimal.trigonometric.csc: csc(nπ) is undefined.")
+        raise Error(
+            ValueError(message="csc(nπ) is undefined", function="csc()")
+        )
 
     comptime BUFFER_DIGITS = 9
     var working_precision = precision + BUFFER_DIGITS

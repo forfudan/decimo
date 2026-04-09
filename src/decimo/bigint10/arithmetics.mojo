@@ -227,9 +227,7 @@ def floor_divide(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
         except e:
             raise Error(
                 DecimoError(
-                    file="src/decimo/bigint10/arithmetics",
                     function="floor_divide()",
-                    message=None,
                     previous_error=e^,
                 ),
             )
@@ -244,9 +242,7 @@ def floor_divide(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
         except e:
             raise Error(
                 DecimoError(
-                    file="src/decimo/bigint10/arithmetics",
                     function="floor_divide()",
-                    message=None,
                     previous_error=e^,
                 ),
             )
@@ -276,9 +272,7 @@ def truncate_divide(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
     except e:
         raise Error(
             DecimoError(
-                file="src/decimo/bigint10/arithmetics",
                 function="truncate_divide()",
-                message=None,
                 previous_error=e^,
             ),
         )
@@ -313,9 +307,7 @@ def floor_modulo(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
         except e:
             raise Error(
                 DecimoError(
-                    file="src/decimo/bigint10/arithmetics",
                     function="floor_modulo()",
-                    message=None,
                     previous_error=e^,
                 ),
             )
@@ -330,9 +322,7 @@ def floor_modulo(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
         except e:
             raise Error(
                 DecimoError(
-                    file="src/decimo/bigint10/arithmetics",
                     function="floor_modulo()",
-                    message=None,
                     previous_error=e^,
                 ),
             )
@@ -362,9 +352,7 @@ def truncate_modulo(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
     except e:
         raise Error(
             DecimoError(
-                file="src/decimo/bigint10/arithmetics",
                 function="truncate_modulo()",
-                message=None,
                 previous_error=e^,
             ),
         )

@@ -20,6 +20,7 @@ Implements functions for mathematical operations on BigDecimal objects.
 
 from std import math
 
+from decimo.errors import ZeroDivisionError
 from decimo.rounding_mode import RoundingMode
 
 # ===----------------------------------------------------------------------=== #
@@ -319,7 +320,12 @@ def true_divide(
     """
     # Check for division by zero
     if y.coefficient.is_zero():
-        raise Error("bigdecimal.arithmetics.true_divide(): Division by zero")
+        raise Error(
+            ZeroDivisionError(
+                message="Division by zero.",
+                function="true_divide()",
+            )
+        )
 
     # Handle dividend of zero
     if x.coefficient.is_zero():
@@ -692,7 +698,12 @@ def true_divide_inexact(
 
     # Check for division by zero
     if x2.coefficient.is_zero():
-        raise Error("Division by zero")
+        raise Error(
+            ZeroDivisionError(
+                message="Division by zero.",
+                function="true_divide_inexact()",
+            )
+        )
 
     # Handle dividend of zero
     if x1.coefficient.is_zero():
@@ -905,7 +916,12 @@ def truncate_divide(x1: BigDecimal, x2: BigDecimal) raises -> BigDecimal:
     """
     # Check for division by zero
     if x2.coefficient.is_zero():
-        raise Error("Division by zero")
+        raise Error(
+            ZeroDivisionError(
+                message="Division by zero.",
+                function="truncate_divide()",
+            )
+        )
 
     # Handle dividend of zero
     if x1.coefficient.is_zero():
@@ -945,7 +961,12 @@ def truncate_modulo(
     """
     # Check for division by zero
     if x2.coefficient.is_zero():
-        raise Error("Division by zero")
+        raise Error(
+            ZeroDivisionError(
+                message="Division by zero.",
+                function="truncate_modulo()",
+            )
+        )
 
     return subtract(
         x1,

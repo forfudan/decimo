@@ -283,10 +283,8 @@ def sqrt(x: BigInt) raises -> BigInt:
     if x.is_negative():
         raise Error(
             DecimoError(
-                file="src/decimo/bigint/exponential.mojo",
                 function="sqrt()",
                 message="Cannot compute square root of a negative number",
-                previous_error=None,
             )
         )
 

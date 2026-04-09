@@ -20,6 +20,8 @@
 
 """Implements functions for special operations on Decimal128 objects."""
 
+from decimo.errors import ValueError, OverflowError
+
 
 def factorial(n: Int) raises -> Decimal128:
     """Calculates the factorial of a non-negative integer.
@@ -37,11 +39,21 @@ def factorial(n: Int) raises -> Decimal128:
     """
 
     if n < 0:
-        raise Error("Factorial is not defined for negative numbers")
+        raise Error(
+            ValueError(
+                message="Factorial is not defined for negative numbers.",
+                function="factorial()",
+            )
+        )
 
     if n > 27:
         raise Error(
-            String("{}! is too large to be represented by Decimal128").format(n)
+            OverflowError(
+                message=String(
+                    "{}! is too large to be represented by Decimal128."
+                ).format(n),
+                function="factorial()",
+            )
         )
 
     # Directly return the factorial for n = 0 to 27
@@ -166,7 +178,14 @@ def factorial_reciprocal(n: Int) raises -> Decimal128:
     # 1/27! = 0.0000000000000000000000000001, Decimal128.from_words(0x1, 0x0, 0x0, 0x1c0000)
 
     if n < 0:
-        raise Error("Factorial reciprocal is not defined for negative numbers")
+        raise Error(
+            ValueError(
+                message=(
+                    "Factorial reciprocal is not defined for negative numbers."
+                ),
+                function="factorial_reciprocal()",
+            )
+        )
 
     # For n > 27, 1/n! is essentially 0 at Decimal128 precision
     # Return 0 with max scale

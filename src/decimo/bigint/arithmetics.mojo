@@ -37,7 +37,7 @@ from std.memory import memcpy, memset_zero
 
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.comparison import compare_magnitudes
-from decimo.errors import DecimoError
+from decimo.errors import DecimoError, ZeroDivisionError
 
 
 # Karatsuba cutoff: operands with this many words or fewer use schoolbook.
@@ -716,11 +716,9 @@ def _divmod_magnitudes(
             break
     if divisor_is_zero:
         raise Error(
-            DecimoError(
-                file="src/decimo/bigint/arithmetics",
+            ZeroDivisionError(
                 function="_divmod_magnitudes()",
                 message="Division by zero",
-                previous_error=None,
             )
         )
 
@@ -1155,10 +1153,8 @@ def _divmod_knuth_d_from_slices(
     if len_b_eff <= 0:
         raise Error(
             DecimoError(
-                file="src/decimo/bigint/arithmetics",
                 function="_divmod_knuth_d_from_slices()",
                 message="Division by zero in B-Z base case",
-                previous_error=None,
             )
         )
 
@@ -2343,7 +2339,6 @@ def power(base: BigInt, exponent: Int) raises -> BigInt:
     if exponent < 0:
         raise Error(
             DecimoError(
-                file="src/decimo/bigint/arithmetics.mojo",
                 function="power()",
                 message=(
                     "The exponent "
@@ -2351,7 +2346,6 @@ def power(base: BigInt, exponent: Int) raises -> BigInt:
                     + " is negative.\n"
                     + "Consider using a non-negative exponent."
                 ),
-                previous_error=None,
             )
         )
 
@@ -2361,7 +2355,6 @@ def power(base: BigInt, exponent: Int) raises -> BigInt:
     if exponent >= 1_000_000_000:
         raise Error(
             DecimoError(
-                file="src/decimo/bigint/arithmetics.mojo",
                 function="power()",
                 message=(
                     "The exponent "
@@ -2369,7 +2362,6 @@ def power(base: BigInt, exponent: Int) raises -> BigInt:
                     + " is too large.\n"
                     + "Consider using an exponent below 1_000_000_000."
                 ),
-                previous_error=None,
             )
         )
 

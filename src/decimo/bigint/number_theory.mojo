@@ -247,20 +247,16 @@ def mod_pow(base: BigInt, exponent: BigInt, modulus: BigInt) raises -> BigInt:
     if exponent.is_negative():
         raise Error(
             DecimoError(
-                file="src/decimo/bigint/number_theory.mojo",
                 function="mod_pow()",
                 message="Exponent must be non-negative",
-                previous_error=None,
             )
         )
 
     if not modulus.is_positive():
         raise Error(
             DecimoError(
-                file="src/decimo/bigint/number_theory.mojo",
                 function="mod_pow()",
                 message="Modulus must be positive",
-                previous_error=None,
             )
         )
 
@@ -332,10 +328,8 @@ def mod_inverse(a: BigInt, modulus: BigInt) raises -> BigInt:
     if not modulus.is_positive():
         raise Error(
             DecimoError(
-                file="src/decimo/bigint/number_theory.mojo",
                 function="mod_inverse()",
                 message="Modulus must be positive",
-                previous_error=None,
             )
         )
 
@@ -346,10 +340,8 @@ def mod_inverse(a: BigInt, modulus: BigInt) raises -> BigInt:
     if not g.is_one():
         raise Error(
             DecimoError(
-                file="src/decimo/bigint/number_theory.mojo",
                 function="mod_inverse()",
                 message="Modular inverse does not exist (gcd != 1)",
-                previous_error=None,
             )
         )
 

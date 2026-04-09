@@ -38,7 +38,12 @@ import decimo.bigint.number_theory
 import decimo.str
 from decimo.bigint10.bigint10 import BigInt10
 from decimo.biguint.biguint import BigUInt
-from decimo.errors import DecimoError, ConversionError
+from decimo.errors import (
+    DecimoError,
+    ConversionError,
+    OverflowError,
+    ValueError,
+)
 
 # Type aliases
 comptime BInt = BigInt
@@ -465,7 +470,6 @@ struct BigInt(
             if scale >= len(coef):
                 raise Error(
                     ConversionError(
-                        file="src/decimo/bigint/bigint.mojo",
                         function="BigInt.from_string(value: String)",
                         message=(
                             'The input value "'
@@ -473,7 +477,6 @@ struct BigInt(
                             + '" is not an integer.\n'
                             + "The scale is larger than the number of digits."
                         ),
-                        previous_error=None,
                     )
                 )
             # Check that the fractional digits are all zero
@@ -481,7 +484,6 @@ struct BigInt(
                 if coef[-i] != 0:
                     raise Error(
                         ConversionError(
-                            file="src/decimo/bigint/bigint.mojo",
                             function="BigInt.from_string(value: String)",
                             message=(
                                 'The input value "'
@@ -489,7 +491,6 @@ struct BigInt(
                                 + '" is not an integer.\n'
                                 + "The fractional part is not zero."
                             ),
-                            previous_error=None,
                         )
                     )
             # Remove fractional zeros from coefficient
@@ -628,7 +629,12 @@ struct BigInt(
         # Int is 64-bit, so we need at most 2 words to represent it.
         # Int.MAX = 9_223_372_036_854_775_807 = 0x7FFF_FFFF_FFFF_FFFF
         if len(self.words) > 2:
-            raise Error("BigInt.to_int(): The number exceeds the size of Int")
+            raise Error(
+                OverflowError(
+                    message="The number exceeds the size of Int",
+                    function="BigInt.to_int()",
+                )
+            )
 
         var magnitude: UInt64 = UInt64(self.words[0])
         if len(self.words) == 2:
@@ -638,7 +644,10 @@ struct BigInt(
             # Negative: check against Int.MIN magnitude (2^63)
             if magnitude > UInt64(9_223_372_036_854_775_808):
                 raise Error(
-                    "BigInt.to_int(): The number exceeds the size of Int"
+                    OverflowError(
+                        message="The number exceeds the size of Int",
+                        function="BigInt.to_int()",
+                    )
                 )
             if magnitude == UInt64(9_223_372_036_854_775_808):
                 return Int.MIN
@@ -647,7 +656,10 @@ struct BigInt(
             # Positive: check against Int.MAX (2^63 - 1)
             if magnitude > UInt64(9_223_372_036_854_775_807):
                 raise Error(
-                    "BigInt.to_int(): The number exceeds the size of Int"
+                    OverflowError(
+                        message="The number exceeds the size of Int",
+                        function="BigInt.to_int()",
+                    )
                 )
             return Int(magnitude)
 
@@ -974,9 +986,7 @@ struct BigInt(
         except e:
             raise Error(
                 DecimoError(
-                    message=None,
                     function="BigInt.__floordiv__()",
-                    file="src/decimo/bigint/bigint.mojo",
                     previous_error=e^,
                 )
             )
@@ -996,9 +1006,7 @@ struct BigInt(
         except e:
             raise Error(
                 DecimoError(
-                    message=None,
                     function="BigInt.__mod__()",
-                    file="src/decimo/bigint/bigint.mojo",
                     previous_error=e^,
                 )
             )
@@ -1018,9 +1026,7 @@ struct BigInt(
         except e:
             raise Error(
                 DecimoError(
-                    message=None,
                     function="BigInt.__divmod__()",
-                    file="src/decimo/bigint/bigint.mojo",
                     previous_error=e^,
                 )
             )
@@ -1459,12 +1465,22 @@ struct BigInt(
             Error: If the exponent is negative or too large.
         """
         if exponent.is_negative():
-            raise Error("BigInt.power(): Exponent must be non-negative")
+            raise Error(
+                ValueError(
+                    message="Exponent must be non-negative",
+                    function="BigInt.power()",
+                )
+            )
         var exp_int: Int
         try:
             exp_int = exponent.to_int()
         except e:
-            raise Error("BigInt.power(): Exponent too large to fit in Int")
+            raise Error(
+                OverflowError(
+                    message="Exponent too large to fit in Int",
+                    function="BigInt.power()",
+                )
+            )
         return self.power(exp_int)
 
     def sqrt(self) raises -> Self:

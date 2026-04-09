@@ -33,6 +33,7 @@ from std import testing
 
 from decimo.decimal128.decimal128 import Decimal128
 from decimo.rounding_mode import RoundingMode
+from decimo.errors import OverflowError
 import decimo.decimal128.utility
 
 # ===------------------------------------------------------------------------===#
@@ -95,14 +96,16 @@ def round(
         # If the digits of result > 29, directly raise an error
         if ndigits_of_x + scale_diff > Decimal128.MAX_NUM_DIGITS:
             raise Error(
-                String(
-                    "Error in `round()`: `ndigits = {}` causes the number of"
-                    " digits in the significant figures of the result (={})"
-                    " exceeds the maximum capacity (={})."
-                ).format(
-                    ndigits,
-                    ndigits_of_x + scale_diff,
-                    Decimal128.MAX_NUM_DIGITS,
+                OverflowError(
+                    message=String(
+                        "ndigits={} causes the number of significant figures"
+                        " ({}) to exceed the maximum capacity ({})."
+                    ).format(
+                        ndigits,
+                        ndigits_of_x + scale_diff,
+                        Decimal128.MAX_NUM_DIGITS,
+                    ),
+                    function="round()",
                 )
             )
 
@@ -115,11 +118,13 @@ def round(
                 res_coef > Decimal128.MAX_AS_UINT128
             ):
                 raise Error(
-                    String(
-                        "Error in `round()`: `ndigits = {}` causes the"
-                        " significant digits of the result (={}) exceeds the"
-                        " maximum capacity (={})."
-                    ).format(ndigits, res_coef, Decimal128.MAX_AS_UINT128)
+                    OverflowError(
+                        message=String(
+                            "ndigits={} causes the significant digits ({})"
+                            " to exceed the maximum capacity ({})."
+                        ).format(ndigits, res_coef, Decimal128.MAX_AS_UINT128),
+                        function="round()",
+                    )
                 )
 
             # In other cases, return the result
