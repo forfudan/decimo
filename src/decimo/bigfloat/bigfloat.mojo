@@ -38,7 +38,7 @@ from std.memory import UnsafePointer
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.biguint.biguint import BigUInt
-from decimo.errors import DecimoError, ConversionError, ValueError
+from decimo.errors import DecimoError, ConversionError
 from decimo.bigfloat.mpfr_wrapper import (
     mpfrw_available,
     mpfrw_init,

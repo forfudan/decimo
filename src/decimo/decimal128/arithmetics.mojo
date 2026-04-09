@@ -834,7 +834,7 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         raise Error(
             ZeroDivisionError(
                 message="Division by zero.",
-                function="true_divide()",
+                function="divide()",
             )
         )
 
@@ -896,7 +896,7 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
                     raise Error(
                         OverflowError(
                             message="Decimal128 overflow in division.",
-                            function="true_divide()",
+                            function="divide()",
                         )
                     )
                 else:
@@ -966,7 +966,7 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
                     raise Error(
                         OverflowError(
                             message="Decimal128 overflow in division.",
-                            function="true_divide()",
+                            function="divide()",
                         )
                     )
                 else:
@@ -1248,7 +1248,7 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
                 raise Error(
                     OverflowError(
                         message="Decimal128 overflow in division.",
-                        function="true_divide()",
+                        function="divide()",
                     )
                 )
 

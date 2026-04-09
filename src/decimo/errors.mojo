@@ -30,7 +30,6 @@ File name and line number are automatically captured at the raise site using
 a built-in way to get the current function name at runtime.
 """
 
-from std.pathlib.path import cwd
 from std.reflection import call_location
 
 

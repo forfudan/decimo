@@ -701,7 +701,7 @@ def true_divide_inexact(
         raise Error(
             ZeroDivisionError(
                 message="Division by zero.",
-                function="floor_divide()",
+                function="true_divide_inexact()",
             )
         )
 

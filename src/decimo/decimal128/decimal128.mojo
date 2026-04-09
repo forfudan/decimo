@@ -2053,7 +2053,9 @@ struct Decimal128(
         if precision_diff < 0:
             raise Error(
                 ValueError(
-                    message="precision_diff must be greater than 0.",
+                    message=(
+                        "precision_diff must be greater than or equal to 0."
+                    ),
                     function="Decimal128.extend_precision()",
                 )
             )
