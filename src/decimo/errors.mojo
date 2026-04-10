@@ -21,13 +21,15 @@ The error messages follow the Python traceback format as closely as possible:
 
 ```
 Traceback (most recent call last):
-  File "/path/to/file.mojo", line 42, in my_function
+  File "./src/decimo/bigint/bigint.mojo", line 42, in my_function
 ValueError: description of what went wrong
 ```
 
 File name and line number are automatically captured at the raise site using
-`call_location()`. Function name must be provided manually since Mojo does not
-have a built-in way to get the current function name at runtime.
+`call_location()`. The absolute path is automatically shortened to a relative
+path (e.g. ``./src/...``, ``./tests/...``) for readability and privacy.
+Function name must be provided manually since Mojo does not have a built-in way
+to get the current function name at runtime.
 """
 
 from std.reflection import call_location
@@ -80,6 +82,46 @@ comptime RuntimeError = DecimoError[error_type="RuntimeError"]
 failures, missing native libraries)."""
 
 
+def _shorten_path(full_path: String) -> String:
+    """Shorten an absolute file path to a relative path.
+
+    Looks for known directory markers (``src/``, ``tests/``, ``benches/``) and
+    returns a ``./``-prefixed relative path from the rightmost marker found.
+    If no marker is found, returns just the filename.
+
+    Uses ``rfind`` (reverse search) to handle paths that contain a marker more
+    than once, e.g. ``/home/user/src/projects/decimo/src/decimo/bigint.mojo``
+    correctly shortens to ``./src/decimo/bigint.mojo``.  When more than one
+    marker type appears, the rightmost position wins to produce the shortest
+    possible relative path.
+
+    Args:
+        full_path: The absolute file path to shorten.
+
+    Returns:
+        A shortened relative path string.
+    """
+    var src_idx = full_path.rfind("src/")
+    var tests_idx = full_path.rfind("tests/")
+    var benches_idx = full_path.rfind("benches/")
+
+    # We need to handle the cases like the following paths:
+    # .../tests/.../src/...
+    # .../benches/.../src/...
+    var idx = src_idx
+    if tests_idx > idx:
+        idx = tests_idx
+    if benches_idx > idx:
+        idx = benches_idx
+
+    if idx >= 0:
+        return "./" + String(full_path[byte=idx:])
+    var last_slash = full_path.rfind("/")
+    if last_slash >= 0:
+        return String(full_path[byte = last_slash + 1 :])
+    return full_path
+
+
 struct DecimoError[error_type: StringLiteral = "DecimoError"](Writable):
     """Base type for all Decimo errors.
 
@@ -87,11 +129,12 @@ struct DecimoError[error_type: StringLiteral = "DecimoError"](Writable):
 
     ```
     Traceback (most recent call last):
-      File "/path/to/file.mojo", line 42, in my_function
+      File "./src/decimo/bigint/bigint.mojo", line 42, in my_function
     ValueError: description of what went wrong
     ```
 
     File name and line number are automatically captured at the raise site.
+    The absolute path is shortened to a relative path for readability.
     Function name must be provided manually since Mojo does not yet support
     runtime introspection of the current function name.
 
@@ -127,8 +170,8 @@ struct DecimoError[error_type: StringLiteral = "DecimoError"](Writable):
             function: The function name where the error occurred.
             previous_error: An optional previous error that caused this one.
         """
-        var loc = call_location()
-        self.file = String(loc.file_name)
+        var loc = call_location()  # Comptime evaluated
+        self.file = _shorten_path(String(loc.file_name))
         self.line = loc.line
         self.function = function
         self.message = message
@@ -144,7 +187,7 @@ struct DecimoError[error_type: StringLiteral = "DecimoError"](Writable):
 
         ```
         Traceback (most recent call last):
-          File "/path/to/file.mojo", line 42, in my_function
+          File "./src/decimo/bigint/bigint.mojo", line 42, in my_function
         ValueError: description of what went wrong
         ```
 
@@ -152,13 +195,13 @@ struct DecimoError[error_type: StringLiteral = "DecimoError"](Writable):
 
         ```
         Traceback (most recent call last):
-          File "/path/to/inner.mojo", line 10
+          File "./src/decimo/bigint/bigint.mojo", line 10
         ValueError: inner error message
 
         The above exception was the direct cause of the following exception:
 
         Traceback (most recent call last):
-          File "/path/to/outer.mojo", line 20, in outer_function
+          File "./src/decimo/bigint/bigint.mojo", line 20, in outer_function
         DecimoError: outer error message
         ```
 
