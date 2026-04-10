@@ -35,7 +35,7 @@ The core types are[^auxiliary]:
 - An arbitrary-precision signed integer type `BInt`[^bigint], which is a Mojo-native equivalent of Python's `int`.
 - An arbitrary-precision decimal implementation (`Decimal`) allowing for calculations with unlimited digits and decimal places[^arbitrary], which is a Mojo-native equivalent of Python's `decimal.Decimal`.
 - A 128-bit fixed-point decimal implementation (`Dec128`) supporting up to 29 significant digits with a maximum of 28 decimal places[^fixed].
-- A arbitrary-precision decimal impletation (`Float`) backed by the GNU MPFR library, supporting floating-point numbers with unlimited precision and a wide range of exponents. This type is optional and requires MPFR/GMP to be installed on the user's system.
+- An arbitrary-precision floating-point implementation (`Float`) backed by the GNU MPFR library, supporting computations with configurable precision and a wide exponent range. Unlike `Decimal`, which uses base-10 arithmetic, `Float` uses binary floating-point internally. This type is optional and requires MPFR/GMP to be installed on the user's system.
 
 | Type      | Other names          | Information                              | Internal representation |
 | --------- | -------------------- | ---------------------------------------- | ----------------------- |

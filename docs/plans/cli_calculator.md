@@ -319,7 +319,7 @@ Format the final `BigDecimal` result based on CLI flags:
 | 3.4  | Built-in features (free with ArgMojo v0.5.0)                    |   ✓    | Typo suggestions, `NO_COLOR`, CJK full-width correction, prefix matching, `--` stop marker                         |
 | 3.5  | Shell completion (`--completions bash\|zsh\|fish`)              |   ✓    | Built-in — zero code; needs documentation in user manual and README                                                |
 | 3.6  | `allow_negative_numbers()` to allow pure negative numbers       |   ✓    | Explicit opt-in in hybrid bridge; `decimo "-3"` works, expressions need quoting or `--`                            |
-| 3.7  | Numeric range on `precision`                                    |   ✓    | `has_range=True, range_min=1, range_max=1000000`; rejects `--precision 0` or `-5`                                  |
+| 3.7  | Numeric range on `precision`                                    |   ✓    | `has_range=True, range_min=1, range_max=1000000000`; rejects `--precision 0` or `-5`                               |
 | 3.8  | Value names for help readability                                |   ✓    | `--precision <N>`, `--delimiter <CHAR>`, `--rounding-mode <MODE>`                                                  |
 | 3.9  | Argument groups in help output                                  |   ✓    | `Computation` and `Formatting` groups in `--help`                                                                  |
 | 3.10 | Custom usage line                                               |   ✓    | `Usage: decimo [OPTIONS] <EXPR>`                                                                                   |
