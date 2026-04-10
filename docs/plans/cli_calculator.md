@@ -22,18 +22,19 @@ Rows are sorted by implementation priority for `decimo` (top = implement first).
 | 3   | Large integers (arbitrary) | ✓      | ✓   | ✓   | ✓    | ✓             | ✓          | ✗    | ✗          | 1     |
 | 4   | Pipeline/Batch scripting   | ✓      | ✓   | ✓   | ✓    | ✓             | ✓          | ✓    | ✓          | 1     |
 | 5   | Built-in math functions    | ✓      | ✓   | ✗   | ✓    | ✓             | ✓          | ✗    | ✓          | 2     |
-| 6   | Interactive REPL           | ✓      | ✓   | ✓   | ✓    | ✓             | ✗          | ✗    | ✓          | 3     |
-| 7   | Variables/State            | ✓      | ✓   | ✓   | ✓    | ✓             | ✓          | ✗    | ✓          | 3     |
-| 8   | Unit conversion            | ✗      | ✗   | ✗   | ✓    | ✗             | ✗          | ✗    | ✗          | 4     |
-| 9   | Matrix/Linear algebra      | ✗      | ✗   | ✗   | ✗    | ✓             | ✗          | ✗    | ✓          | 4     |
-| 10  | Symbolic computation       | ✗      | ✗   | ✗   | △    | ✗             | ✗          | ✗    | ✗          | 4     |
+| 6   | Interactive REPL           | ✓      | ✓   | ✓   | ✓    | ✓             | ✗          | ✗    | ✓          | 4     |
+| 7   | Variables/State            | ✓      | ✓   | ✓   | ✓    | ✓             | ✓          | ✗    | ✓          | 4     |
+| 8   | Unit conversion            | ✗      | ✗   | ✗   | ✓    | ✗             | ✗          | ✗    | ✗          | 5     |
+| 9   | Matrix/Linear algebra      | ✗      | ✗   | ✗   | ✗    | ✓             | ✗          | ✗    | ✓          | 5     |
+| 10  | Symbolic computation       | ✗      | ✗   | ✗   | △    | ✗             | ✗          | ✗    | ✗          | 5     |
 
 **Priority rationale:**
 
 1. **Basic arithmetic + High-precision + Large integers + Pipeline** (Phase 1) — These are the raison d'être of `decimo`. Decimo already provides arbitrary-precision `BigDecimal`; wiring up tokenizer → parser → evaluator gives immediate value. Pipeline/batch is nearly free once one-shot works (just loop over stdin lines).
 2. **Built-in math functions** (Phase 2) — `sqrt`, `ln`, `exp`, `sin`, `cos`, `tan`, `root` already exist in the Decimo API. Adding them mostly means extending the tokenizer/parser to recognize function names.
-3. **Interactive REPL + Variables/State** (Phase 3) — Valuable for exploration, but requires a read-eval-print loop, `ans` tracking, named variable storage and session-level precision management. More engineering effort, less urgency.
-4. **Unit conversion / Matrix / Symbolic** (Phase 4) — Out of scope. `decimo` is a numerical calculator, not a CAS or unit library. These can be revisited if there is demand.
+3. **Polish & ArgMojo integration** (Phase 3) — Error diagnostics, edge-case handling, and exploiting ArgMojo v0.5.0 features (shell completions, argument groups, numeric range validation, etc.). Mostly CLI UX refinement.
+4. **Interactive REPL + Subcommands** (Phase 4) — Requires a read-eval-print loop, `ans` tracking, named variable storage, session-level precision management, and CLI restructuring with subcommands. More engineering effort, less urgency.
+5. **Future enhancements** (Phase 5) — CJK full-width detection, response files, unit conversion, matrix, symbolic. Out of scope for now.
 
 ## Usage Design
 
@@ -161,15 +162,20 @@ Best for: interactive exploration, multi-step calculations, experimenting with p
 
 ### Layer 1: ArgMojo — CLI Argument Parsing
 
-ArgMojo handles the outer CLI structure. No modifications to ArgMojo are needed.
+ArgMojo handles the outer CLI structure via its struct-based declarative API (`Parsable` trait).
 
 ```mojo
-var cmd = Command("decimo", "Arbitrary-precision CLI calculator.", version="0.1.0")
-cmd.add_arg(Arg("expr", help="Math expression").positional().required())
-cmd.add_arg(Arg("precision", help="Decimal precision").long("precision").short("p").default("50"))
-cmd.add_arg(Arg("sci", help="Scientific notation").long("sci").flag())
-cmd.add_arg(Arg("eng", help="Engineering notation").long("eng").flag())
-cmd.add_arg(Arg("pad", help="Pad trailing zeros to precision").long("pad-to-precision").flag())
+from argmojo import Parsable, Option, Flag, Positional, Command
+
+struct DecimoArgs(Parsable):
+    var expr: Positional[String, help="Math expression to evaluate", required=True]
+    var precision: Option[Int, long="precision", short="p", help="Number of significant digits", default="50"]
+    var scientific: Flag[long="scientific", short="s", help="Output in scientific notation"]
+    var engineering: Flag[long="engineering", short="e", help="Output in engineering notation"]
+    var pad: Flag[long="pad", short="P", help="Pad trailing zeros to the specified precision"]
+    var delimiter: Option[String, long="delimiter", short="d", help="Digit-group separator", default=""]
+    var rounding_mode: Option[String, long="rounding-mode", short="r", help="Rounding mode",
+        default="half-even", choices="half-even,half-up,half-down,up,down,ceiling,floor"]
 ```
 
 ### Layer 2: Tokenizer — Lexical Analysis
@@ -290,34 +296,49 @@ Format the final `BigDecimal` result based on CLI flags:
 | 2.9  | `--delimiter` / `-d` (digit grouping)                             |   ✓    | Extra feature beyond original plan              |
 | 2.10 | `--rounding-mode` / `-r`                                          |   ✓    | 7 modes; extra feature beyond original plan     |
 
-### Phase 3: Polish
+### Phase 3: Polish & ArgMojo Deep Integration
+
+> ArgMojo v0.5.0 is installed via pixi. Reference: <https://github.com/forfudan/argmojo> · [User Manual](https://github.com/forfudan/argmojo/wiki)
 
 1. Error messages: clear diagnostics for malformed expressions (e.g., "Unexpected token '*' at position 5").
 2. Edge cases: division by zero, negative sqrt, overflow, empty expression.
-3. Upgrade to ArgMojo v0.2.0 (once available in pixi). See [ArgMojo v0.2.0 Upgrade Tasks](#argmojo-v020-upgrade-tasks) below.
-4. Performance: ensure the tokenizer/parser overhead is negligible compared to BigDecimal computation.
-5. Documentation and examples in README.
-6. Build and distribute as a single binary.
+3. Upgrade to ArgMojo v0.5.0 and adopt declarative API.
+4. Exploit ArgMojo v0.5.0 features: shell completions, numeric validation, help readability, argument groups.
+5. Performance: ensure the tokenizer/parser overhead is negligible compared to BigDecimal computation.
+6. Documentation and examples in README (include shell completion setup).
+7. Build and distribute as a single binary.
 
-| #   | Task                                                                   | Status | Notes                                         |
-| --- | ---------------------------------------------------------------------- | :----: | --------------------------------------------- |
-| 3.1 | Error messages with position info + caret display                      |   ✓    | Colored stderr: red `Error:`, green `^` caret |
-| 3.2 | Edge cases (div-by-zero, negative sqrt, empty expression, etc.)        |   ✓    | 27 error-handling tests                       |
-| 3.3 | ArgMojo v0.2.0 upgrade (`add_tip()`, `allow_negative_numbers()`, etc.) |   ?    | Blocked: waiting for ArgMojo v0.2.0 in pixi   |
-| 3.4 | Performance validation                                                 |   ✗    | No CLI-level benchmarks yet                   |
-| 3.5 | Documentation (user manual for CLI)                                    |   ✗    | Will be `docs/user_manual_cli.md`             |
-| 3.6 | Build and distribute as single binary                                  |   ✗    |                                               |
+| #    | Task                                                            | Status | Notes                                                                                      |
+| ---- | --------------------------------------------------------------- | :----: | ------------------------------------------------------------------------------------------ |
+| 3.1  | Error messages with position info + caret display               |   ✓    | Colored stderr: red `Error:`, green `^` caret                                              |
+| 3.2  | Edge cases (div-by-zero, negative sqrt, empty expression, etc.) |   ✓    | 27 error-handling tests                                                                    |
+| 3.3  | ArgMojo v0.5.0 declarative API migration                        |   ✓    | `Parsable` struct, `add_tip()`, `mutually_exclusive()`, `choices`, `--version` all working |
+| 3.4  | Built-in features (free with ArgMojo v0.5.0)                    |   ✓    | Typo suggestions, `NO_COLOR`, CJK full-width correction, prefix matching, `--` stop marker |
+| 3.5  | Shell completion (`--completions bash\|zsh\|fish`)              |   ✗    | Built-in — zero code; document in user manual and README                                   |
+| 3.6  | `allow_negative_numbers()`                                      |   ✗    | Explicit opt-in in hybrid bridge so `decimo "-3+4"` works without quoting                  |
+| 3.7  | Numeric range on `precision`                                    |   ✗    | `range_min=1, range_max=1000000`; consider `clamp=True` for gentler UX                     |
+| 3.8  | Value names for help readability                                |   ✗    | `value_name="N"/"CHAR"/"MODE"` → `--precision <N>` instead of `--precision <precision>`    |
+| 3.9  | Argument groups in help output                                  |   ✗    | `group="Formatting"` / `group="Computation"` to keep `--help` tidy                         |
+| 3.10 | Custom usage line                                               |   ✗    | `cmd.usage("decimo [OPTIONS] <EXPR>")`                                                     |
+| 3.11 | `Parsable.run()` override                                       |   ✗    | Move eval logic into `DecimoArgs.run()` for cleaner separation                             |
+| 3.12 | Performance validation                                          |   ✗    | No CLI-level benchmarks yet                                                                |
+| 3.13 | Documentation (user manual for CLI)                             |   ✗    | `docs/user_manual_cli.md`; include shell completion setup                                  |
+| 3.14 | Build and distribute as single binary                           |   ✗    |                                                                                            |
 
-### Phase 4: Interactive REPL
+### Phase 4: Interactive REPL & Subcommands
 
-1. Read-eval-print loop: read a line from stdin, evaluate, print result, repeat.
-2. Custom prompt (`decimo>`).
-3. `ans` variable to reference the previous result.
-4. Variable assignment: `x = sqrt(2)`, usable in subsequent expressions.
-5. Session-level precision: settable via `decimo -p 100` at launch or `:precision 100` command mid-session.
-6. Graceful exit: `exit`, `quit`, `Ctrl-D`.
-7. Clear error messages without crashing the session (e.g., "Error: division by zero", then continue).
-8. History (if Mojo gets readline-like support).
+1. Restructure CLI with subcommands: `decimo eval "expr"` (default), `decimo repl`, `decimo help functions`.
+2. Persistent flags (`--precision`, `--scientific`, etc.) across subcommands.
+3. Subcommand dispatch via `parse_full()`.
+4. No-args + TTY detection → launch REPL directly.
+5. Read-eval-print loop: read a line from stdin, evaluate, print result, repeat.
+6. Custom prompt (`decimo>`).
+7. `ans` variable to reference the previous result.
+8. Variable assignment: `x = sqrt(2)`, usable in subsequent expressions.
+9. Session-level precision: settable via `decimo -p 100` at launch or `:precision 100` command mid-session.
+10. Graceful exit: `exit`, `quit`, `Ctrl-D`.
+11. Clear error messages without crashing the session (e.g., "Error: division by zero", then continue).
+12. History (if Mojo gets readline-like support).
 
 ```bash
 $ decimo
@@ -334,80 +355,32 @@ Error: division by zero
 decimo> exit
 ```
 
-| #   | Task                                     | Status | Notes |
-| --- | ---------------------------------------- | :----: | ----- |
-| 4.1 | Read-eval-print loop                     |   ✗    |       |
-| 4.2 | Custom prompt (`decimo>`)                |   ✗    |       |
-| 4.3 | `ans` variable (previous result)         |   ✗    |       |
-| 4.4 | Variable assignment (`x = expr`)         |   ✗    |       |
-| 4.5 | Session-level precision (`:precision N`) |   ✗    |       |
-| 4.6 | Graceful exit (`exit`, `quit`, Ctrl-D)   |   ✗    |       |
-| 4.7 | Error recovery (don't crash session)     |   ✗    |       |
+| #    | Task                                     | Status | Notes                                                                                                           |
+| ---- | ---------------------------------------- | :----: | --------------------------------------------------------------------------------------------------------------- |
+| 4.1  | Subcommand restructure                   |   ✗    | `decimo eval "expr"` (default), `decimo repl`, `decimo help functions`; use `subcommands()` hook                |
+| 4.2  | Persistent flags across subcommands      |   ✗    | `precision`, `--scientific`, etc. as `persistent=True`; both `decimo repl -p 100` and `decimo -p 100 repl` work |
+| 4.3  | `parse_full()` for subcommand dispatch   |   ✗    | Typed struct + `ParseResult.subcommand` for dispatching to eval/repl/help handlers                              |
+| 4.4  | No-args + TTY → launch REPL directly     |   ✗    | Replace `help_on_no_arguments()` with REPL auto-launch when terminal detected                                   |
+| 4.5  | Read-eval-print loop                     |   ✗    |                                                                                                                 |
+| 4.6  | Custom prompt (`decimo>`)                |   ✗    |                                                                                                                 |
+| 4.7  | `ans` variable (previous result)         |   ✗    |                                                                                                                 |
+| 4.8  | Variable assignment (`x = expr`)         |   ✗    |                                                                                                                 |
+| 4.9  | Session-level precision (`:precision N`) |   ✗    |                                                                                                                 |
+| 4.10 | Graceful exit (`exit`, `quit`, Ctrl-D)   |   ✗    |                                                                                                                 |
+| 4.11 | Error recovery (don't crash session)     |   ✗    |                                                                                                                 |
+| 4.12 | Interactive prompting for missing values |   ✗    | Use `.prompt()` on subcommand args for interactive precision input, etc.                                        |
+| 4.13 | Subcommand aliases                       |   ✗    | `command_aliases(["e"])` for `eval`, `command_aliases(["r"])` for `repl`                                        |
+| 4.14 | Hidden subcommands                       |   ✗    | Hide `debug` / internal subcommands from help                                                                   |
 
 ### Phase 5: Future Enhancements
 
 1. Detect full-width digits/operators for CJK users while parsing.
+2. Response files (`@expressions.txt`) — when Mojo compiler bug is fixed, use ArgMojo's `cmd.response_file_prefix("@")`.
 
-### ArgMojo v0.2.0 Upgrade Tasks
-
-> **Prerequisite:** ArgMojo ≥ v0.2.0 is available as a pixi package.
->
-> Reference: <https://github.com/forfudan/argmojo/releases/tag/v0.2.0>
-
-Once ArgMojo v0.2.0 lands in pixi, apply the following changes to `decimo`:
-
-#### 1. Auto-show help when no positional arg is given
-
-ArgMojo v0.2.0 automatically displays help when a required positional argument is missing — no code change needed on our side. Remove the `.required()` guard if it interferes, or verify the behaviour works out of the box.
-
-**Current (v0.1.x):** missing `expr` prints a raw error.
-**After:** missing `expr` prints the full help text.
-
-#### 2. Shell-quoting tips via `add_tip()`
-
-Replace the inline description workaround with ArgMojo's dedicated `add_tip()` API. Tips render as a separate section at the bottom of `--help` output.
-
-```mojo
-cmd.add_tip('If your expression contains *, ( or ), wrap it in quotes:')
-cmd.add_tip('  decimo "2 * (3 + 4)"')
-cmd.add_tip('Or use noglob:  noglob decimo 2*(3+4)')
-cmd.add_tip("Or add to ~/.zshrc:  alias decimo='noglob decimo'")
-```
-
-Remove the corresponding note that is currently embedded in the `Command` description string.
-
-#### 3. Negative number passthrough
-
-Enable `allow_negative_numbers()` so that expressions like `decimo -3+4` or `decimo -3.14` are treated as math, not as unknown CLI flags.
-
-```mojo
-cmd.allow_negative_numbers()
-```
-
-#### 4. Rename `Arg` → `Argument`
-
-`Arg` is kept as an alias in v0.2.0, so this is optional but recommended for consistency with the new API naming.
-
-```mojo
-# Before
-from argmojo import Arg, Command
-# After
-from argmojo import Argument, Command
-```
-
-#### 5. Colored error messages from ArgMojo
-
-ArgMojo v0.2.0 produces ANSI-colored stderr errors for its own parse errors (e.g., unknown flags). Our custom `display.mojo` colors still handle calculator-level errors. Verify that both layers look consistent (same RED styling).
-
-#### 6. Subcommands (Phase 4 REPL prep)
-
-Although not needed immediately, the new `add_subcommand()` API could later support:
-
-- `decimo repl` — launch interactive REPL
-- `decimo eval "expr"` — explicit one-shot evaluation (current default)
-- `decimo help <topic>` — extended help on functions, constants, etc.
-
-This is deferred to Phase 4 planning.
+| #   | Task                                        | Status | Notes                                                                          |
+| --- | ------------------------------------------- | :----: | ------------------------------------------------------------------------------ |
+| 5.1 | Full-width digit/operator detection for CJK |   ✗    | Tokenizer-level handling for CJK users                                         |
+| 5.2 | Response files (`@expressions.txt`)         |   ✗    | Blocked on Mojo compiler bug; `cmd.response_file_prefix("@")` ready when fixed |
 
 ## Design Decisions
 
