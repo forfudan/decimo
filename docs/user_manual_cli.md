@@ -91,7 +91,7 @@ decimo "2^256"
 - **Negative expressions:** `-3*pi`, `-3*pi*(sin(1))`
 - **Unary minus:** `2 * -3`, `sqrt(-1 + 2)`
 
-Negative numbers and expressions starting with `-` can be passed directly as the positional argument (no `--` separator needed). See [Negative Expressions](#negative-expressions) for details.
+Negative numbers and many expressions starting with `-` can be passed directly as the positional argument. However, if the expression token looks like a CLI flag (e.g., `-e`), use `--` to force positional parsing. See [Negative Expressions](#negative-expressions) for details.
 
 ### Operators
 
@@ -261,7 +261,7 @@ decimo 2 * (3 + 4)
 
 ### Negative Expressions
 
-Expressions starting with a hyphen (`-`) are treated as positional arguments, not as option flags. This means you can pass negative numbers and negative expressions directly without the `--` separator:
+Most expressions starting with a hyphen (`-`) are treated as positional arguments, not as option flags:
 
 ```bash
 # Negative number
@@ -280,6 +280,16 @@ decimo "-3*pi*(sin(1))"
 decimo -p 10 "-3*pi"
 decimo "-3*pi" -p 10
 ```
+
+**Caveat:** If the expression looks like an existing CLI flag (e.g., `-e` matches `--engineering`), ArgMojo will consume it as an option. Use `--` to force positional parsing in those cases:
+
+```bash
+# -e is the engineering flag, so use -- to treat it as an expression
+decimo -- "-e"
+# → -2.71828…
+```
+
+> **Note:** A future release will rename short flags to uppercase (`-S`, `-E`) to eliminate these collisions entirely.
 
 ### Using noglob
 

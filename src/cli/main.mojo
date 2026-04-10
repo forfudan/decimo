@@ -24,7 +24,6 @@ struct DecimoArgs(Parsable):
         String,
         help="Math expression to evaluate (e.g. 'sqrt(abs(1.1*-12-23/17))')",
         required=True,
-        allow_hyphen=True,
     ]
     var precision: Option[
         Int,
@@ -104,6 +103,12 @@ def _run() raises:
     var cmd = DecimoArgs.to_command()
     cmd.usage("decimo [OPTIONS] <EXPR>")
     cmd.mutually_exclusive(["scientific", "engineering"])
+    # Allow expressions starting with '-' (e.g. "-3*pi*(sin(1))") to be
+    # treated as positional values rather than option flags.
+    for i in range(len(cmd.args)):
+        if cmd.args[i].name == "expr":
+            cmd.args[i]._allow_hyphen_values = True
+            break
     cmd.add_tip(
         'If your expression contains *, ( or ), quote it: decimo "2 * (3 + 4)"'
     )

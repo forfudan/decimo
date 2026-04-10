@@ -55,14 +55,14 @@ assert_output "rounding mode ceiling" "0.33334" "$BINARY" "1/3" -p 5 -r ceiling
 # Pad flag (--pad / -P)
 assert_output "pad trailing zeros" "0.33333" "$BINARY" "1/3" -p 5 --pad
 
-# ── Negative expressions (allow_hyphen_values) ────────────────────────────
+# ── Negative expressions (allow_hyphen) ───────────────────────────────────
 assert_output "negative number" "-3.14" "$BINARY" "-3.14"
 assert_output "negative integer" "-42" "$BINARY" "-42"
 assert_output "negative expression" "-6" "$BINARY" "-3*2"
 assert_output "negative expression with pi" "-9.424777961" "$BINARY" "-3*pi" -p 10
-assert_output "negative expression with function" "-6" "$BINARY" "-3*2" -p 10
+assert_output "negative expr with abs()" "-3" "$BINARY" "-abs(3)" -p 10
 assert_output "negative expression complex" "17.32428719" "$BINARY" "-3*pi/sin(10)" -p 10
-assert_output "negative expression with parens" "-7.9306771922443685366581979690091558499739419154171" "$BINARY" "-3*pi*(sin(1))"
+assert_output "negative expression with parens" "-7.9306771922443685366581979690091558499739419154171" "$BINARY" "-3*pi*(sin(1))" -p 50
 assert_output "negative zero" "-0" "$BINARY" "-0"
 assert_output "negative minus negative" "1" "$BINARY" "-1*-1"
 assert_output "negative power" "-8" "$BINARY" "-2^3"
