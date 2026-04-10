@@ -311,23 +311,24 @@ Format the final `BigDecimal` result based on CLI flags:
 6. Documentation and examples in README (include shell completion setup).
 7. Build and distribute as a single binary.
 
-| #    | Task                                                            | Status | Notes                                                                                                              |
-| ---- | --------------------------------------------------------------- | :----: | ------------------------------------------------------------------------------------------------------------------ |
-| 3.1  | Error messages with position info + caret display               |   ✓    | Colored stderr: red `Error:`, green `^` caret                                                                      |
-| 3.2  | Edge cases (div-by-zero, negative sqrt, empty expression, etc.) |   ✓    | 27 error-handling tests                                                                                            |
-| 3.3  | ArgMojo v0.5.0 declarative API migration                        |   ✓    | `Parsable` struct, `add_tip()`, `mutually_exclusive()`, `choices`, `--version` all working                         |
-| 3.4  | Built-in features (free with ArgMojo v0.5.0)                    |   ✓    | Typo suggestions, `NO_COLOR`, CJK full-width correction, prefix matching, `--` stop marker                         |
-| 3.5  | Shell completion (`--completions bash\|zsh\|fish`)              |   ✓    | Built-in — zero code; needs documentation in user manual and README                                                |
-| 3.6  | `allow_negative_numbers()` to allow pure negative numbers       |   ✓    | Explicit opt-in in hybrid bridge; `decimo "-3"` works, expressions need quoting or `--`                            |
-| 3.7  | Numeric range on `precision`                                    |   ✓    | `has_range=True, range_min=1, range_max=1000000000`; rejects `--precision 0` or `-5`                               |
-| 3.8  | Value names for help readability                                |   ✓    | `--precision <N>`, `--delimiter <CHAR>`, `--rounding-mode <MODE>`                                                  |
-| 3.9  | Argument groups in help output                                  |   ✓    | `Computation` and `Formatting` groups in `--help`                                                                  |
-| 3.10 | Custom usage line                                               |   ✓    | `Usage: decimo [OPTIONS] <EXPR>`                                                                                   |
-| 3.11 | `Parsable.run()` override                                       |   ✗    | Move eval logic into `DecimoArgs.run()` for cleaner separation                                                     |
-| 3.12 | Performance validation                                          |   ✗    | No CLI-level benchmarks yet                                                                                        |
-| 3.13 | Documentation (user manual for CLI)                             |   ✗    | `docs/user_manual_cli.md`; include shell completion setup                                                          |
-| 3.14 | Build and distribute as single binary                           |   ✗    |                                                                                                                    |
-| 3.15 | Allow negative expressions                                      |   ✗    | This needs ArgMojo to regard arguments with a hyphen and followed by more than one letter as a positional argument |
+| #    | Task                                                            | Status | Notes                                                                                      |
+| ---- | --------------------------------------------------------------- | :----: | ------------------------------------------------------------------------------------------ |
+| 3.1  | Error messages with position info + caret display               |   ✓    | Colored stderr: red `Error:`, green `^` caret                                              |
+| 3.2  | Edge cases (div-by-zero, negative sqrt, empty expression, etc.) |   ✓    | 27 error-handling tests                                                                    |
+| 3.3  | ArgMojo v0.5.0 declarative API migration                        |   ✓    | `Parsable` struct, `add_tip()`, `mutually_exclusive()`, `choices`, `--version` all working |
+| 3.4  | Built-in features (free with ArgMojo v0.5.0)                    |   ✓    | Typo suggestions, `NO_COLOR`, CJK full-width correction, prefix matching, `--` stop marker |
+| 3.5  | Shell completion (`--completions bash\|zsh\|fish`)              |   ✓    | Built-in — zero code; needs documentation in user manual and README                        |
+| 3.6  | `allow_negative_numbers()` to allow pure negative numbers       |   ✓    | Superseded by 3.15 `allow_hyphen_values`; removed in favour of the more general approach   |
+| 3.7  | Numeric range on `precision`                                    |   ✓    | `has_range=True, range_min=1, range_max=1000000000`; rejects `--precision 0` or `-5`       |
+| 3.8  | Value names for help readability                                |   ✓    | `--precision <N>`, `--delimiter <CHAR>`, `--rounding-mode <MODE>`                          |
+| 3.9  | Argument groups in help output                                  |   ✓    | `Computation` and `Formatting` groups in `--help`                                          |
+| 3.10 | Custom usage line                                               |   ✓    | `Usage: decimo [OPTIONS] <EXPR>`                                                           |
+| 3.11 | `Parsable.run()` override                                       |   ✗    | Move eval logic into `DecimoArgs.run()` for cleaner separation                             |
+| 3.12 | Performance validation                                          |   ✗    | No CLI-level benchmarks yet                                                                |
+| 3.13 | Documentation (user manual for CLI)                             |   ✗    | `docs/user_manual_cli.md`; include shell completion setup                                  |
+| 3.14 | Build and distribute as single binary                           |   ✗    |                                                                                            |
+| 3.15 | Allow negative expressions                                      |   ✓    | `allow_hyphen=True` on `Positional`; `decimo "-3*pi*(sin(1))"` works                       |
+| 3.16 | Make short names upper cases to avoid expression collisions     |   ✗    | `-sin(1)` clashes with `-s` (scientific), `-e` clashes with `--engineering`                |
 
 ### Phase 4: Interactive REPL & Subcommands
 

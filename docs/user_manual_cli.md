@@ -20,6 +20,7 @@
   - [Rounding Mode (`--rounding-mode`, `-r`)](#rounding-mode---rounding-mode--r)
 - [Shell Integration](#shell-integration)
   - [Quoting Expressions](#quoting-expressions)
+  - [Negative Expressions](#negative-expressions)
   - [Using noglob](#using-noglob)
 - [Examples](#examples)
   - [Basic Arithmetic](#basic-arithmetic)
@@ -87,7 +88,10 @@ decimo "2^256"
 - **Integers:** `42`, `-7`, `1000000`
 - **Decimals:** `3.14`, `0.001`, `.5`
 - **Negative numbers:** `-3`, `-3.14`, `(-5 + 2)`
+- **Negative expressions:** `-3*pi`, `-3*pi*(sin(1))`
 - **Unary minus:** `2 * -3`, `sqrt(-1 + 2)`
+
+Negative numbers and expressions starting with `-` can be passed directly as the positional argument (no `--` separator needed). See [Negative Expressions](#negative-expressions) for details.
 
 ### Operators
 
@@ -253,6 +257,28 @@ decimo "2 * (3 + 4)"
 
 # ✗ Wrong: shell may glob or split
 decimo 2 * (3 + 4)
+```
+
+### Negative Expressions
+
+Expressions starting with a hyphen (`-`) are treated as positional arguments, not as option flags. This means you can pass negative numbers and negative expressions directly without the `--` separator:
+
+```bash
+# Negative number
+decimo "-3.14"
+# → -3.14
+
+# Negative expression
+decimo "-3*2"
+# → -6
+
+# Complex negative expression
+decimo "-3*pi*(sin(1))"
+# → -7.930677192244368536658197969…
+
+# Options can appear before or after the expression
+decimo -p 10 "-3*pi"
+decimo "-3*pi" -p 10
 ```
 
 ### Using noglob
