@@ -20,6 +20,7 @@
   - [Rounding Mode (`--rounding-mode`, `-r`)](#rounding-mode---rounding-mode--r)
 - [Shell Integration](#shell-integration)
   - [Quoting Expressions](#quoting-expressions)
+  - [Negative Expressions](#negative-expressions)
   - [Using noglob](#using-noglob)
 - [Examples](#examples)
   - [Basic Arithmetic](#basic-arithmetic)
@@ -87,7 +88,10 @@ decimo "2^256"
 - **Integers:** `42`, `-7`, `1000000`
 - **Decimals:** `3.14`, `0.001`, `.5`
 - **Negative numbers:** `-3`, `-3.14`, `(-5 + 2)`
+- **Negative expressions:** `-3*pi`, `-3*pi*(sin(1))`
 - **Unary minus:** `2 * -3`, `sqrt(-1 + 2)`
+
+Negative numbers and many expressions starting with `-` can be passed directly as the positional argument. However, if the expression token looks like a CLI flag (e.g., `-e`), use `--` to force positional parsing. See [Negative Expressions](#negative-expressions) for details.
 
 ### Operators
 
@@ -254,6 +258,38 @@ decimo "2 * (3 + 4)"
 # ✗ Wrong: shell may glob or split
 decimo 2 * (3 + 4)
 ```
+
+### Negative Expressions
+
+Most expressions starting with a hyphen (`-`) are treated as positional arguments, not as option flags:
+
+```bash
+# Negative number
+decimo "-3.14"
+# → -3.14
+
+# Negative expression
+decimo "-3*2"
+# → -6
+
+# Complex negative expression
+decimo "-3*pi*(sin(1))"
+# → -7.930677192244368536658197969…
+
+# Options can appear before or after the expression
+decimo -p 10 "-3*pi"
+decimo "-3*pi" -p 10
+```
+
+**Caveat:** If the expression looks like an existing CLI flag (e.g., `-e` matches `--engineering`), ArgMojo will consume it as an option. Use `--` to force positional parsing in those cases:
+
+```bash
+# -e is the engineering flag, so use -- to treat it as an expression
+decimo -- "-e"
+# → -2.71828…
+```
+
+> **Note:** A future release will rename short flags to uppercase (`-S`, `-E`) to eliminate these collisions entirely.
 
 ### Using noglob
 
