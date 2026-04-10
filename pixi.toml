@@ -80,8 +80,8 @@ dec_debug = """clear && pixi run package && cd benches/decimal128 \
 # Fetch argmojo source code for CLI calculator
 # Only do this when necessary
 # (argmojo is not compatible with the latest mojo version)
-# fetch = """git clone https://github.com/forfudan/argmojo.git temp/argmojo 2>/dev/null || true \
-# && cd temp/argmojo && git checkout 29b6f54545f850e19d9a9ccfd1185d87f54e92b2 2>/dev/null"""
+fetch = """git clone https://github.com/forfudan/argmojo.git temp/argmojo 2>/dev/null || true \
+&& cd temp/argmojo && git checkout 29b6f54545f850e19d9a9ccfd1185d87f54e92b2 2>/dev/null"""
 
 # cli calculator
 bcli = "clear && pixi run buildcli"

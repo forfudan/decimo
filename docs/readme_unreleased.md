@@ -2,6 +2,8 @@
 
 An arbitrary-precision integer and decimal library for [Mojo](https://www.modular.com/mojo), inspired by Python's `int` and `Decimal`.
 
+A CLI calculator tool, built on top of Decimo and powered by [ArgMojo](https://github.com/forfudan/argmojo) (a feature-rich command-line argument parser library for Mojo).
+
 [![Version](https://img.shields.io/github/v/tag/forfudan/decimo?label=version&color=blue)](https://github.com/forfudan/decimo/releases)
 [![Mojo](https://img.shields.io/badge/mojo-0.26.2-orange)](https://docs.modular.com/mojo/manual/)
 [![pixi](https://img.shields.io/badge/pixi%20add-decimo-purple)](https://prefix.dev/channels/modular-community/packages/decimo)
@@ -33,16 +35,18 @@ The core types are[^auxiliary]:
 - An arbitrary-precision signed integer type `BInt`[^bigint], which is a Mojo-native equivalent of Python's `int`.
 - An arbitrary-precision decimal implementation (`Decimal`) allowing for calculations with unlimited digits and decimal places[^arbitrary], which is a Mojo-native equivalent of Python's `decimal.Decimal`.
 - A 128-bit fixed-point decimal implementation (`Dec128`) supporting up to 29 significant digits with a maximum of 28 decimal places[^fixed].
+- An arbitrary-precision floating-point implementation (`Float`) backed by the GNU MPFR library, supporting computations with configurable precision and a wide exponent range. Unlike `Decimal`, which uses base-10 arithmetic, `Float` uses binary floating-point internally. This type is optional and requires MPFR/GMP to be installed on the user's system.
 
 | Type      | Other names          | Information                              | Internal representation |
 | --------- | -------------------- | ---------------------------------------- | ----------------------- |
 | `BInt`    | `BigInt`             | Equivalent to Python's `int`             | Base-2^32               |
 | `Decimal` | `BDec`, `BigDecimal` | Equivalent to Python's `decimal.Decimal` | Base-10^9               |
 | `Dec128`  | `Decimal128`         | 128-bit fixed-precision decimal type     | Triple 32-bit words     |
+| `Float`   | `BigFloat`           | Arbitrary-precision floating-point type  | MPFR/GMP                |
 
 **Decimo** combines "**Deci**mal" and "**Mo**jo" - reflecting its purpose and implementation language. "Decimo" is also a Latin word meaning "tenth" and is the root of the word "decimal".
 
-A CLI calculator tool, built on top of the Decimo library and powered by [ArgMojo](https://github.com/forfudan/argmojo) (a command-line argument parser library), is also available in this repository. It provides a convenient way to perform high-precision calculations directly from the command line.
+A CLI calculator tool, built on top of the Decimo library and powered by [ArgMojo](https://github.com/forfudan/argmojo) (a feature-rich command-line argument parser library for Mojo, with both builder and struct-based declarative APIs), is also available in this repository. It provides a convenient way to perform high-precision calculations directly from the command line.
 
 This repository includes a built-in [TOML parser](./docs/readme_toml.md) (`decimo.toml`), a lightweight pure-Mojo implementation supporting TOML v1.0. It parses configuration files and test data, supporting basic types, arrays, and nested tables. While created for Decimo's testing framework, it offers general-purpose structured data parsing with a clean, simple API.
 
