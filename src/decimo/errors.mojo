@@ -80,6 +80,38 @@ comptime RuntimeError = DecimoError[error_type="RuntimeError"]
 failures, missing native libraries)."""
 
 
+def _shorten_path(full_path: String) -> String:
+    """Shorten an absolute file path to a relative path.
+
+    Looks for known directory markers (``src/``, ``tests/``, ``benches/``) and
+    returns a ``./``-prefixed relative path from the last marker found.
+    If no marker is found, returns just the filename.
+
+    Uses ``rfind`` (reverse search) to handle paths that contain a marker more
+    than once, e.g. ``/home/user/src/projects/decimo/src/decimo/bigint.mojo``
+    correctly shortens to ``./src/decimo/bigint.mojo``.
+
+    Args:
+        full_path: The absolute file path to shorten.
+
+    Returns:
+        A shortened relative path string.
+    """
+    var idx = full_path.rfind("src/")
+    if idx >= 0:
+        return "./" + String(full_path[byte=idx:])
+    idx = full_path.rfind("tests/")
+    if idx >= 0:
+        return "./" + String(full_path[byte=idx:])
+    idx = full_path.rfind("benches/")
+    if idx >= 0:
+        return "./" + String(full_path[byte=idx:])
+    var last_slash = full_path.rfind("/")
+    if last_slash >= 0:
+        return String(full_path[byte = last_slash + 1 :])
+    return full_path
+
+
 struct DecimoError[error_type: StringLiteral = "DecimoError"](Writable):
     """Base type for all Decimo errors.
 
@@ -127,8 +159,8 @@ struct DecimoError[error_type: StringLiteral = "DecimoError"](Writable):
             function: The function name where the error occurred.
             previous_error: An optional previous error that caused this one.
         """
-        var loc = call_location()
-        self.file = String(loc.file_name)
+        var loc = call_location()  # Comptime evaluated
+        self.file = _shorten_path(String(loc.file_name))
         self.line = loc.line
         self.function = function
         self.message = message
