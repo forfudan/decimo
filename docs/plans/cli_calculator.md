@@ -169,13 +169,16 @@ from argmojo import Parsable, Option, Flag, Positional, Command
 
 struct DecimoArgs(Parsable):
     var expr: Positional[String, help="Math expression to evaluate", required=True]
-    var precision: Option[Int, long="precision", short="p", help="Number of significant digits", default="50"]
-    var scientific: Flag[long="scientific", short="s", help="Output in scientific notation"]
-    var engineering: Flag[long="engineering", short="e", help="Output in engineering notation"]
-    var pad: Flag[long="pad", short="P", help="Pad trailing zeros to the specified precision"]
-    var delimiter: Option[String, long="delimiter", short="d", help="Digit-group separator", default=""]
+    var precision: Option[Int, long="precision", short="p", help="Number of significant digits",
+        default="50", value_name="N", has_range=True, range_min=1, range_max=1000000000, group="Computation"]
+    var scientific: Flag[long="scientific", short="s", help="Output in scientific notation", group="Formatting"]
+    var engineering: Flag[long="engineering", short="e", help="Output in engineering notation", group="Formatting"]
+    var pad: Flag[long="pad", short="P", help="Pad trailing zeros to the specified precision", group="Formatting"]
+    var delimiter: Option[String, long="delimiter", short="d", help="Digit-group separator",
+        default="", value_name="CHAR", group="Formatting"]
     var rounding_mode: Option[String, long="rounding-mode", short="r", help="Rounding mode",
-        default="half-even", choices="half-even,half-up,half-down,up,down,ceiling,floor"]
+        default="half-even", choices="half-even,half-up,half-down,up,down,ceiling,floor",
+        value_name="MODE", group="Computation"]
 ```
 
 ### Layer 2: Tokenizer — Lexical Analysis
@@ -314,12 +317,12 @@ Format the final `BigDecimal` result based on CLI flags:
 | 3.2  | Edge cases (div-by-zero, negative sqrt, empty expression, etc.) |   ✓    | 27 error-handling tests                                                                    |
 | 3.3  | ArgMojo v0.5.0 declarative API migration                        |   ✓    | `Parsable` struct, `add_tip()`, `mutually_exclusive()`, `choices`, `--version` all working |
 | 3.4  | Built-in features (free with ArgMojo v0.5.0)                    |   ✓    | Typo suggestions, `NO_COLOR`, CJK full-width correction, prefix matching, `--` stop marker |
-| 3.5  | Shell completion (`--completions bash\|zsh\|fish`)              |   ✗    | Built-in — zero code; document in user manual and README                                   |
-| 3.6  | `allow_negative_numbers()`                                      |   ✗    | Explicit opt-in in hybrid bridge so `decimo "-3+4"` works without quoting                  |
-| 3.7  | Numeric range on `precision`                                    |   ✗    | `range_min=1, range_max=1000000`; consider `clamp=True` for gentler UX                     |
-| 3.8  | Value names for help readability                                |   ✗    | `value_name="N"/"CHAR"/"MODE"` → `--precision <N>` instead of `--precision <precision>`    |
-| 3.9  | Argument groups in help output                                  |   ✗    | `group="Formatting"` / `group="Computation"` to keep `--help` tidy                         |
-| 3.10 | Custom usage line                                               |   ✗    | `cmd.usage("decimo [OPTIONS] <EXPR>")`                                                     |
+| 3.5  | Shell completion (`--completions bash\|zsh\|fish`)              |   ✓    | Built-in — zero code; needs documentation in user manual and README                        |
+| 3.6  | `allow_negative_numbers()`                                      |   ✓    | Explicit opt-in in hybrid bridge; `decimo "-3"` works, expressions need quoting or `--`    |
+| 3.7  | Numeric range on `precision`                                    |   ✓    | `has_range=True, range_min=1, range_max=1000000`; rejects `--precision 0` or `-5`          |
+| 3.8  | Value names for help readability                                |   ✓    | `--precision <N>`, `--delimiter <CHAR>`, `--rounding-mode <MODE>`                          |
+| 3.9  | Argument groups in help output                                  |   ✓    | `Computation` and `Formatting` groups in `--help`                                          |
+| 3.10 | Custom usage line                                               |   ✓    | `Usage: decimo [OPTIONS] <EXPR>`                                                           |
 | 3.11 | `Parsable.run()` override                                       |   ✗    | Move eval logic into `DecimoArgs.run()` for cleaner separation                             |
 | 3.12 | Performance validation                                          |   ✗    | No CLI-level benchmarks yet                                                                |
 | 3.13 | Documentation (user manual for CLI)                             |   ✗    | `docs/user_manual_cli.md`; include shell completion setup                                  |

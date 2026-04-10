@@ -31,21 +31,29 @@ struct DecimoArgs(Parsable):
         short="p",
         help="Number of significant digits",
         default="50",
+        value_name="N",
+        has_range=True,
+        range_min=1,
+        range_max=1_000_000_000,  # One billion digits is more than sufficient
+        group="Computation",
     ]
     var scientific: Flag[
         long="scientific",
         short="s",
         help="Output in scientific notation (e.g. 1.23E+10)",
+        group="Formatting",
     ]
     var engineering: Flag[
         long="engineering",
         short="e",
         help="Output in engineering notation (exponent multiple of 3)",
+        group="Formatting",
     ]
     var pad: Flag[
         long="pad",
         short="P",
         help="Pad trailing zeros to the specified precision",
+        group="Formatting",
     ]
     var delimiter: Option[
         String,
@@ -53,6 +61,8 @@ struct DecimoArgs(Parsable):
         short="d",
         help="Digit-group separator inserted every 3 digits (e.g. '_' gives 1_234.567_89)",
         default="",
+        value_name="CHAR",
+        group="Formatting",
     ]
     var rounding_mode: Option[
         String,
@@ -61,6 +71,8 @@ struct DecimoArgs(Parsable):
         help="Rounding mode for the final result",
         default="half-even",
         choices="half-even,half-up,half-down,up,down,ceiling,floor",
+        value_name="MODE",
+        group="Computation",
     ]
 
     @staticmethod
@@ -89,6 +101,8 @@ def main():
 
 def _run() raises:
     var cmd = DecimoArgs.to_command()
+    cmd.usage("decimo [OPTIONS] <EXPR>")
+    cmd.allow_negative_numbers()
     cmd.mutually_exclusive(["scientific", "engineering"])
     cmd.add_tip(
         'If your expression contains *, ( or ), quote it: decimo "2 * (3 + 4)"'
