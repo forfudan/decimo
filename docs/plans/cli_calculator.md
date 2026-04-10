@@ -328,7 +328,7 @@ Format the final `BigDecimal` result based on CLI flags:
 | 3.13 | Documentation (user manual for CLI)                             |   ✗    | `docs/user_manual_cli.md`; include shell completion setup                                  |
 | 3.14 | Build and distribute as single binary                           |   ✗    |                                                                                            |
 | 3.15 | Allow negative expressions                                      |   ✓    | `allow_hyphen=True` on `Positional`; `decimo "-3*pi*(sin(1))"` works                       |
-| 3.16 | Make short names upper cases to avoid expression collisions     |   ✗    | `-sin(1)` clashes with `-s` (scientific), `-e` clashes with `--engineering`                |
+| 3.16 | Make short names upper cases to avoid expression collisions     |   ✓    | `-P`, `-S`, `-E`, `-D`, `-R`; `--pad` has no short name; `-e`, `-pi`, `-sin(1)` all work   |
 | 3.17 | Define `allow_hyphen_values` in declarative API                 |   ✗    | When argmojo supports it                                                                   |
 
 ### Phase 4: Interactive REPL & Subcommands

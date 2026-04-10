@@ -12,12 +12,12 @@
   - [Functions](#functions)
   - [Constants](#constants)
 - [CLI Options](#cli-options)
-  - [Precision (`--precision`, `-p`)](#precision---precision--p)
-  - [Scientific Notation (`--scientific`, `-s`)](#scientific-notation---scientific--s)
-  - [Engineering Notation (`--engineering`, `-e`)](#engineering-notation---engineering--e)
-  - [Pad to Precision (`--pad`, `-P`)](#pad-to-precision---pad--p)
-  - [Digit Separator (`--delimiter`, `-d`)](#digit-separator---delimiter--d)
-  - [Rounding Mode (`--rounding-mode`, `-r`)](#rounding-mode---rounding-mode--r)
+  - [Precision (`--precision`, `-P`)](#precision---precision--p)
+  - [Scientific Notation (`--scientific`, `-S`)](#scientific-notation---scientific--s)
+  - [Engineering Notation (`--engineering`, `-E`)](#engineering-notation---engineering--e)
+  - [Pad to Precision (`--pad`)](#pad-to-precision---pad)
+  - [Digit Separator (`--delimiter`, `-D`)](#digit-separator---delimiter--d)
+  - [Rounding Mode (`--rounding-mode`, `-R`)](#rounding-mode---rounding-mode--r)
 - [Shell Integration](#shell-integration)
   - [Quoting Expressions](#quoting-expressions)
   - [Negative Expressions](#negative-expressions)
@@ -66,15 +66,15 @@ decimo "1 + 2 * 3"
 # → 7
 
 # High-precision division
-decimo "1/3" -p 100
+decimo "1/3" -P 100
 # → 0.3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
 
 # Square root of 2 to 50 digits
-decimo "sqrt(2)" -p 50
+decimo "sqrt(2)" -P 50
 # → 1.4142135623730950488016887242096980785696718753770
 
 # 1000 digits of pi
-decimo "pi" -p 1000
+decimo "pi" -P 1000
 
 # Large integer exponentiation
 decimo "2^256"
@@ -91,7 +91,7 @@ decimo "2^256"
 - **Negative expressions:** `-3*pi`, `-3*pi*(sin(1))`
 - **Unary minus:** `2 * -3`, `sqrt(-1 + 2)`
 
-Negative numbers and many expressions starting with `-` can be passed directly as the positional argument. However, if the expression token looks like a CLI flag (e.g., `-e`), use `--` to force positional parsing. See [Negative Expressions](#negative-expressions) for details.
+Negative numbers and many expressions starting with `-` can be passed directly as the positional argument. See [Negative Expressions](#negative-expressions) for details.
 
 ### Operators
 
@@ -122,7 +122,7 @@ Right-associativity of `^` means `2^3^2` = `2^(3^2)` = `2^9` = `512`, not `(2^3)
 
 ### Functions
 
-All functions use the CLI's precision setting (default 50, configurable with `-p`).
+All functions use the CLI's precision setting (default 50, configurable with `-P`).
 
 **Single-argument functions:**
 
@@ -164,67 +164,67 @@ decimo "ln(exp(1))"   # → 1
 Constants are computed to the requested precision:
 
 ```bash
-decimo "pi" -p 100        # 100 digits of π
-decimo "e" -p 500         # 500 digits of e
+decimo "pi" -P 100        # 100 digits of π
+decimo "e" -P 500         # 500 digits of e
 decimo "2 * pi * 6371"    # Circumference using π
 ```
 
 ## CLI Options
 
-### Precision (`--precision`, `-p`)
+### Precision (`--precision`, `-P`)
 
 Number of significant digits in the result. Default: **50**.
 
 ```bash
-decimo "1/7" -p 10       # 0.1428571429
-decimo "1/7" -p 100      # 100 significant digits
-decimo "1/7" -p 200      # 200 significant digits
+decimo "1/7" -P 10       # 0.1428571429
+decimo "1/7" -P 100      # 100 significant digits
+decimo "1/7" -P 200      # 200 significant digits
 ```
 
-### Scientific Notation (`--scientific`, `-s`)
+### Scientific Notation (`--scientific`, `-S`)
 
 Output in scientific notation (e.g., `1.23E+10`).
 
 ```bash
-decimo "123456789 * 987654321" -s
+decimo "123456789 * 987654321" -S
 # → 1.21932631112635269E+17
 ```
 
-### Engineering Notation (`--engineering`, `-e`)
+### Engineering Notation (`--engineering`, `-E`)
 
 Output in engineering notation (exponent is always a multiple of 3).
 
 ```bash
-decimo "123456789 * 987654321" -e
+decimo "123456789 * 987654321" -E
 # → 121.932631112635269E+15
 ```
 
 > `--scientific` and `--engineering` are mutually exclusive.
 
-### Pad to Precision (`--pad`, `-P`)
+### Pad to Precision (`--pad`)
 
 Pad trailing zeros so the fractional part has exactly `precision` digits after the decimal point.
 
 When used together with `--precision`, the `precision` value is treated as the number of fractional digits for padding purposes, not as a strict limit on total significant digits. As a result, the formatted number can have more than `precision` significant digits.
 
 ```bash
-decimo "1.5" -P -p 10
+decimo "1.5" --pad -P 10
 # → 1.5000000000 (10 fractional digits, 11 significant digits)
 ```
 
-### Digit Separator (`--delimiter`, `-d`)
+### Digit Separator (`--delimiter`, `-D`)
 
 Insert a character every 3 digits for readability.
 
 ```bash
-decimo "2^64" -d _
+decimo "2^64" -D _
 # → 18_446_744_073_709_551_616
 
-decimo "pi" -p 30 -d _
+decimo "pi" -P 30 -D _
 # → 3.141_592_653_589_793_238_462_643_383_28
 ```
 
-### Rounding Mode (`--rounding-mode`, `-r`)
+### Rounding Mode (`--rounding-mode`, `-R`)
 
 Choose how the final result is rounded. Default: **half-even** (banker's rounding).
 
@@ -239,10 +239,10 @@ Choose how the final result is rounded. Default: **half-even** (banker's roundin
 | `floor`     | Round toward −∞                     |
 
 ```bash
-decimo "1/6" -p 5 -r half-up       # 0.16667
-decimo "1/6" -p 5 -r half-even     # 0.16667
-decimo "1/6" -p 5 -r down          # 0.16666
-decimo "1/6" -p 5 -r up            # 0.16667
+decimo "1/6" -P 5 -R half-up       # 0.16667
+decimo "1/6" -P 5 -R half-even     # 0.16667
+decimo "1/6" -P 5 -R down          # 0.16666
+decimo "1/6" -P 5 -R up            # 0.16667
 ```
 
 ## Shell Integration
@@ -277,19 +277,31 @@ decimo "-3*pi*(sin(1))"
 # → -7.930677192244368536658197969…
 
 # Options can appear before or after the expression
-decimo -p 10 "-3*pi"
-decimo "-3*pi" -p 10
+decimo -P 10 "-3*pi"
+decimo "-3*pi" -P 10
 ```
 
-**Caveat:** If the expression looks like an existing CLI flag (e.g., `-e` matches `--engineering`), ArgMojo will consume it as an option. Use `--` to force positional parsing in those cases:
+Because all short option names are uppercase (`-P`, `-S`, `-E`, `-D`, `-R`), expressions like `-e`, `-sin(1)`, and `-pi` are never mistaken for flags:
 
 ```bash
-# -e is the engineering flag, so use -- to treat it as an expression
-decimo -- "-e"
+# Euler's number, negated
+decimo "-e"
 # → -2.71828…
+
+# Negative sine
+decimo "-sin(1)"
+# → -0.84147…
+
+# Negative pi
+decimo "-pi"
+# → -3.14159…
 ```
 
-> **Note:** A future release will rename short flags to uppercase (`-S`, `-E`) to eliminate these collisions entirely.
+The `--` separator still works if you prefer explicit positional parsing:
+
+```bash
+decimo -- "-e"
+```
 
 ### Using noglob
 
@@ -328,34 +340,34 @@ decimo "2 ^ 256"
 
 ```bash
 # 200 digits of 1/7
-decimo "1/7" -p 200
+decimo "1/7" -P 200
 
 # π to 1000 digits
-decimo "pi" -p 1000
+decimo "pi" -P 1000
 
 # e to 500 digits
-decimo "e" -p 500
+decimo "e" -P 500
 
 # sqrt(2) to 100 digits
-decimo "sqrt(2)" -p 100
+decimo "sqrt(2)" -P 100
 ```
 
 ### Mathematical Functions
 
 ```bash
 # Trigonometry
-decimo "sin(pi/6)" -p 50       # → 0.5
-decimo "cos(pi/3)" -p 50       # → 0.5
-decimo "tan(pi/4)" -p 50       # → 1
+decimo "sin(pi/6)" -P 50       # → 0.5
+decimo "cos(pi/3)" -P 50       # → 0.5
+decimo "tan(pi/4)" -P 50       # → 1
 
 # Logarithms
-decimo "ln(2)" -p 100
+decimo "ln(2)" -P 100
 decimo "log10(1000)"            # → 3
 decimo "log(256, 2)"            # → 8
 
 # Nested functions
-decimo "sqrt(abs(1.1 * -12 - 23/17))" -p 30
-decimo "exp(ln(100))" -p 30     # → 100
+decimo "sqrt(abs(1.1 * -12 - 23/17))" -P 30
+decimo "exp(ln(100))" -P 30     # → 100
 
 # Cube root
 decimo "cbrt(27)"               # → 3
@@ -366,19 +378,19 @@ decimo "root(1000000, 6)"       # → 10
 
 ```bash
 # Scientific notation
-decimo "123456789.987654321" -s
+decimo "123456789.987654321" -S
 # → 1.23456789987654321E+8
 
 # Engineering notation
-decimo "123456789.987654321" -e
+decimo "123456789.987654321" -E
 # → 123.456789987654321E+6
 
 # Digit separators
-decimo "2^100" -d _
+decimo "2^100" -D _
 # → 1_267_650_600_228_229_401_496_703_205_376
 
 # Pad trailing zeros
-decimo "1/4" -p 20 -P
+decimo "1/4" -P 20 --pad
 # → 0.25000000000000000000
 ```
 
@@ -386,11 +398,11 @@ decimo "1/4" -p 20 -P
 
 ```bash
 # Compare rounding of 2.5 to 0 decimal places:
-decimo "2.5 + 0" -p 1 -r half-even   # → 2 (banker's: round to even)
-decimo "2.5 + 0" -p 1 -r half-up     # → 3 (traditional)
-decimo "2.5 + 0" -p 1 -r down        # → 2 (truncate)
-decimo "2.5 + 0" -p 1 -r ceiling     # → 3 (toward +∞)
-decimo "2.5 + 0" -p 1 -r floor       # → 2 (toward −∞)
+decimo "2.5 + 0" -P 1 -R half-even   # → 2 (banker's: round to even)
+decimo "2.5 + 0" -P 1 -R half-up     # → 3 (traditional)
+decimo "2.5 + 0" -P 1 -R down        # → 2 (truncate)
+decimo "2.5 + 0" -P 1 -R ceiling     # → 3 (toward +∞)
+decimo "2.5 + 0" -P 1 -R floor       # → 2 (toward −∞)
 ```
 
 ## Error Messages
@@ -441,17 +453,17 @@ Arguments:
   expr    Math expression to evaluate (e.g. 'sqrt(abs(1.1*-12-23/17))')
 
 Options:
-  -p, --precision <precision>
+  -P, --precision <precision>
           Number of significant digits (default: 50)
-  -s, --scientific
+  -S, --scientific
           Output in scientific notation (e.g. 1.23E+10)
-  -e, --engineering
+  -E, --engineering
           Output in engineering notation (exponent multiple of 3)
-  -P, --pad
+  --pad
           Pad trailing zeros to the specified precision
-  -d, --delimiter <delimiter>
+  -D, --delimiter <delimiter>
           Digit-group separator inserted every 3 digits (e.g. '_' gives 1_234.567_89)
-  -r, --rounding-mode {half-even,half-up,half-down,up,down,ceiling,floor}
+  -R, --rounding-mode {half-even,half-up,half-down,up,down,ceiling,floor}
           Rounding mode for the final result (default: half-even)
   -h, --help
           Show this help message

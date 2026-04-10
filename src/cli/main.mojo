@@ -28,7 +28,7 @@ struct DecimoArgs(Parsable):
     var precision: Option[
         Int,
         long="precision",
-        short="p",
+        short="P",
         help="Number of significant digits",
         default="50",
         value_name="N",
@@ -39,26 +39,25 @@ struct DecimoArgs(Parsable):
     ]
     var scientific: Flag[
         long="scientific",
-        short="s",
+        short="S",
         help="Output in scientific notation (e.g. 1.23E+10)",
         group="Formatting",
     ]
     var engineering: Flag[
         long="engineering",
-        short="e",
+        short="E",
         help="Output in engineering notation (exponent multiple of 3)",
         group="Formatting",
     ]
     var pad: Flag[
         long="pad",
-        short="P",
         help="Pad trailing zeros to the specified precision",
         group="Formatting",
     ]
     var delimiter: Option[
         String,
         long="delimiter",
-        short="d",
+        short="D",
         help="Digit-group separator inserted every 3 digits (e.g. '_' gives 1_234.567_89)",
         default="",
         value_name="CHAR",
@@ -67,7 +66,7 @@ struct DecimoArgs(Parsable):
     var rounding_mode: Option[
         String,
         long="rounding-mode",
-        short="r",
+        short="R",
         help="Rounding mode for the final result",
         default="half-even",
         choices="half-even,half-up,half-down,up,down,ceiling,floor",
