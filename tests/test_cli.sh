@@ -101,6 +101,72 @@ else
     PASS=$((PASS + 1))
 fi
 
+# ── Pipe mode (stdin) ────────────────────────────────────────────────────
+assert_pipe_output() {
+    local description="$1"
+    local input="$2"
+    local expected="$3"
+    shift 3
+    local actual
+    actual=$(printf '%s' "$input" | "$BINARY" "$@" 2>&1)
+    if [[ "$actual" == "$expected" ]]; then
+        PASS=$((PASS + 1))
+    else
+        echo "FAIL: $description"
+        echo "  expected: $expected"
+        echo "  actual:   $actual"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+assert_pipe_output "pipe single expression" "1+2" "3"
+assert_pipe_output "pipe sqrt" "sqrt(2)" "1.4142135623730950488016887242096980785696718753769"
+assert_pipe_output "pipe with precision" "1/3" "0.3333333333" -P 10
+assert_pipe_output "pipe multiple lines" \
+    "$(printf '1+2\nsqrt(4)\npi')" \
+    "$(printf '3\n2\n3.1415926535897932384626433832795028841971693993751')"
+assert_pipe_output "pipe skip comments" \
+    "$(printf '# comment\n1+2\n\n# another\nsqrt(4)')" \
+    "$(printf '3\n2')"
+assert_pipe_output "pipe skip blank lines" \
+    "$(printf '\n\n1+2\n\n')" \
+    "3"
+assert_pipe_output "pipe with scientific" "12345.678" "1.2345678E+4" -S
+assert_pipe_output "pipe with engineering" "12345.678" "12.345678E+3" -E
+assert_pipe_output "pipe with delimiter" "1234567.89" "1_234_567.89" -D "_"
+
+# ── File mode (-F/--file flag) ────────────────────────────────────────────
+TMPFILE=$(mktemp /tmp/decimo_test_XXXXXX.dm)
+cat > "$TMPFILE" << 'FILE_EOF'
+# Test expression file
+pi
+e
+sqrt(2)
+
+# Arithmetic
+100 * 12 - 23/17
+FILE_EOF
+
+assert_output "file mode basic" \
+    "$(printf '3.1415926535897932384626433832795028841971693993751\n2.7182818284590452353602874713526624977572470937000\n1.4142135623730950488016887242096980785696718753769\n1198.6470588235294117647058823529411764705882352941')" \
+    "$BINARY" -F "$TMPFILE"
+
+assert_output "file mode with precision" \
+    "$(printf '3.141592654\n2.718281828\n1.414213562\n1198.647059')" \
+    "$BINARY" -F "$TMPFILE" -P 10
+
+rm -f "$TMPFILE"
+
+# File mode: nonexistent file gives a clear error
+NONEXIST_OUTPUT=$("$BINARY" -F "nonexistent_file.dm" 2>&1 || true)
+if echo "$NONEXIST_OUTPUT" | grep -qi "file not found"; then
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: file mode nonexistent should report 'file not found'"
+    echo "  actual: $NONEXIST_OUTPUT"
+    FAIL=$((FAIL + 1))
+fi
+
 echo ""
 echo "CLI integration tests: $PASS passed, $FAIL failed"
 

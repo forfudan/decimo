@@ -18,6 +18,10 @@
   - [Pad to Precision (`--pad`)](#pad-to-precision---pad)
   - [Digit Separator (`--delimiter`, `-D`)](#digit-separator---delimiter--d)
   - [Rounding Mode (`--rounding-mode`, `-R`)](#rounding-mode---rounding-mode--r)
+- [Input Modes](#input-modes)
+  - [Expression Mode (Default)](#expression-mode-default)
+  - [Pipe Mode (stdin)](#pipe-mode-stdin)
+  - [File Mode (`-F`)](#file-mode--f)
 - [Shell Integration](#shell-integration)
   - [Quoting Expressions](#quoting-expressions)
   - [Negative Expressions](#negative-expressions)
@@ -245,6 +249,81 @@ decimo "1/6" -P 5 -R down          # 0.16666
 decimo "1/6" -P 5 -R up            # 0.16667
 ```
 
+## Input Modes
+
+`decimo` accepts input in three ways: a single expression on the command line, piped stdin, or a file.
+
+| Mode       | Invocation              | When used                                                       |
+| ---------- | ----------------------- | --------------------------------------------------------------- |
+| Expression | `decimo "EXPR"`         | A positional argument that is not a file path                   |
+| Pipe       | `echo "EXPR" \| decimo` | No positional argument and stdin is not a TTY                   |
+| File       | `decimo FILE.dm`        | Positional argument ends in `.dm` or `.txt` and the file exists |
+
+If no expression is given and stdin is a TTY (interactive terminal), `decimo` prints an error and exits.
+
+### Expression Mode (Default)
+
+Pass a single expression as the positional argument:
+
+```bash
+decimo "1/3" -P 100
+```
+
+This is the most common usage. See [Expression Syntax](#expression-syntax) for what you can write.
+
+### Pipe Mode (stdin)
+
+When no positional argument is provided and stdin is piped, `decimo` reads all of stdin and evaluates each non-empty, non-comment line:
+
+```bash
+# Single expression
+echo "sqrt(2)" | decimo -P 30
+# → 1.41421356237309504880168872421
+
+# Multiple expressions (one per line)
+printf '1/3\nsqrt(2)\npi' | decimo -P 20
+# → 0.33333333333333333333
+# → 1.4142135623730950488
+# → 3.1415926535897932385
+
+# Lines starting with '#' are comments; blank lines are skipped
+printf '# constants\npi\n\ne' | decimo -P 10
+# → 3.141592654
+# → 2.718281828
+```
+
+All CLI options (`-P`, `-S`, `-E`, `-D`, `-R`, `--pad`) apply to every line.
+
+If any expression fails, `decimo` prints the error for that line, continues evaluating the remaining lines, and exits with code 1.
+
+### File Mode (`-F`)
+
+Use the `-F` (or `--file`) flag to evaluate expressions from a file, one per line:
+
+```bash
+decimo -F expressions.dm -P 50
+```
+
+Example file (`expressions.dm`):
+
+```text
+# Basic arithmetic
+1 + 2
+100 * 12 - 23/17
+
+# High-precision constants
+pi
+e
+
+# Functions
+sqrt(2)
+ln(10)
+```
+
+Comments start with `#`. Inline comments are also supported (e.g. `1+2 # add`). Leading whitespace before `#` is allowed. Blank lines and whitespace-only lines are skipped.
+
+If the specified file does not exist, `decimo` reports a "file not found" error and exits.
+
 ## Shell Integration
 
 ### Quoting Expressions
@@ -441,19 +520,19 @@ Error: unmatched '('
 ```txt
 Arbitrary-precision CLI calculator powered by Decimo.
 
-Note: if your expression contains *, ( or ), your shell may
-intercept them before decimo runs. Use quotes or noglob:
-  decimo "2 * (3 + 4)"         # with quotes
-  noglob decimo 2*(3+4)        # with noglob
-  alias decimo='noglob decimo' # add to ~/.zshrc
+Tip: If your expression contains *, ( or ), quote it: decimo "2 * (3 + 4)"
+Tip: Or use noglob: alias decimo='noglob decimo' (add to ~/.zshrc)
+Tip: Pipe expressions: echo '1/3' | decimo -P 100
+Tip: Evaluate a file: decimo -F expressions.dm -P 50
 
-Usage: decimo <expr> [OPTIONS]
+Usage: decimo [OPTIONS] [EXPR]
 
 Arguments:
-  expr    Math expression to evaluate (e.g. 'sqrt(abs(1.1*-12-23/17))')
+  expr    Math expression to evaluate
+          (e.g. 'sqrt(2)')
 
 Options:
-  -P, --precision <precision>
+  -P, --precision <N>
           Number of significant digits (default: 50)
   -S, --scientific
           Output in scientific notation (e.g. 1.23E+10)
@@ -461,10 +540,13 @@ Options:
           Output in engineering notation (exponent multiple of 3)
   --pad
           Pad trailing zeros to the specified precision
-  -D, --delimiter <delimiter>
+  -D, --delimiter <CHAR>
           Digit-group separator inserted every 3 digits (e.g. '_' gives 1_234.567_89)
-  -R, --rounding-mode {half-even,half-up,half-down,up,down,ceiling,floor}
+  -R, --rounding-mode <MODE>
           Rounding mode for the final result (default: half-even)
+          {half-even,half-up,half-down,up,down,ceiling,floor}
+  -F, --file <PATH>
+          Evaluate expressions from a file (one per line)
   -h, --help
           Show this help message
   -V, --version

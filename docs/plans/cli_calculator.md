@@ -95,7 +95,7 @@ cat expressions.txt | decimo
 decimo < expressions.txt
 
 # Evaluate a script file (.dm)
-decimo file.dm
+decimo -F file.dm
 ```
 
 Example `expressions.dm`:
@@ -266,17 +266,17 @@ Format the final `BigDecimal` result based on CLI flags:
 6. Handle unary minus.
 7. Test with basic expressions.
 
-| #   | Task                                             | Status | Notes                         |
-| --- | ------------------------------------------------ | :----: | ----------------------------- |
-| 1.1 | Project structure (src/cli/, calculator module)  |   ✓    |                               |
-| 1.2 | Tokenizer (numbers, `+ - * /`, parens)           |   ✓    |                               |
-| 1.3 | Shunting-yard parser (infix → RPN)               |   ✓    |                               |
-| 1.4 | RPN evaluator using `BigDecimal`                 |   ✓    |                               |
-| 1.5 | ArgMojo wiring (`expr`, `--precision`, `--help`) |   ✓    |                               |
-| 1.6 | Unary minus                                      |   ✓    |                               |
-| 1.7 | Basic expression tests                           |   ✓    | 4 test files, 118 tests total |
-| 1.8 | Pipeline / stdin input (`echo "1+2" \| decimo`)  |   ✗    | Not yet implemented           |
-| 1.9 | File input (`decimo file.dm`)                    |   ✗    | Not yet implemented           |
+| #   | Task                                             | Status | Notes                                                                                        |
+| --- | ------------------------------------------------ | :----: | -------------------------------------------------------------------------------------------- |
+| 1.1 | Project structure (src/cli/, calculator module)  |   ✓    |                                                                                              |
+| 1.2 | Tokenizer (numbers, `+ - * /`, parens)           |   ✓    |                                                                                              |
+| 1.3 | Shunting-yard parser (infix → RPN)               |   ✓    |                                                                                              |
+| 1.4 | RPN evaluator using `BigDecimal`                 |   ✓    |                                                                                              |
+| 1.5 | ArgMojo wiring (`expr`, `--precision`, `--help`) |   ✓    |                                                                                              |
+| 1.6 | Unary minus                                      |   ✓    |                                                                                              |
+| 1.7 | Basic expression tests                           |   ✓    | 4 test files                                                                                 |
+| 1.8 | Pipeline / stdin input (`echo "1+2" \| decimo`)  |   ✓    | Pipe mode: reads stdin when no positional arg and stdin is not a TTY                         |
+| 1.9 | File input (`decimo -F file.dm`)                 |   ✓    | File mode via `-F/--file` flag: reads files line by line, skips comments (#) and blank lines |
 
 ### Phase 2: Power and Functions
 
@@ -408,7 +408,7 @@ This is the natural choice for a calculator: users expect `7 / 2` to be `3.5`, n
 | ------------------------------------- | ------------------------------------- |
 | `decimo "expr"`                       | One-shot: evaluate and exit           |
 | `echo "expr" \| decimo`               | Pipe: read stdin line by line         |
-| `decimo file.dm`                      | File: read and evaluate each line     |
+| `decimo -F file.dm`                   | File: read and evaluate each line     |
 | `decimo` (no args, terminal is a TTY) | REPL: interactive session             |
 | `decimo -i`                           | REPL: force interactive even if piped |
 

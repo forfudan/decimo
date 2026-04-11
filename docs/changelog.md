@@ -2,6 +2,17 @@
 
 This is a list of changes for the Decimo package (formerly DeciMojo).
 
+## Unreleased - under development
+
+### ⭐️ New in v0.10.0
+
+**CLI Calculator:**
+
+1. Add **pipe/stdin mode**: read expressions from standard input, one per line, when no positional argument is given and stdin is piped (e.g. `echo "1+2" | decimo`, `printf "pi\nsqrt(2)" | decimo -P 100`). Blank lines and comment lines (starting with `#`) are automatically skipped.
+1. Add **file mode**: use `--file` / `-F` flag to evaluate expressions from a file, one per line (e.g. `decimo -F expressions.dm -P 50`). Comments (`#`), inline comments, and blank lines are skipped. All CLI flags (precision, formatting, rounding) apply to every expression.
+
+### 🦋 Changed in v0.10.0
+
 ## 20260323 (v0.9.0)
 
 Decimo v0.9.0 updates the codebase to **Mojo v0.26.2** and marks the **"make it useful"** phase. This release introduces three major additions:
