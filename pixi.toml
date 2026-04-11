@@ -49,7 +49,7 @@ bgmp = "clear && pixi run buildgmp"
 buildgmp = "bash src/decimo/gmp/build_gmp_wrapper.sh"
 
 # tests (use the mojo testing tool)
-test = "pixi run package && bash ./tests/test_all.sh"
+test = "pixi run package && pixi run buildcli && bash ./tests/test_all.sh"
 testdecimo = "pixi run package && bash ./tests/test_decimo.sh"
 testtoml = "pixi run package && bash ./tests/test_toml.sh"
 # bigfloat (build test binary linking the C wrapper, then run it)
@@ -91,7 +91,7 @@ bcli = "clear && pixi run buildcli"
 # && pixi run mojo build -I src -I src/cli -I temp -o decimo src/cli/main.mojo"""
 buildcli = """pixi run mojo build -I src -I src/cli -o decimo src/cli/main.mojo"""
 tcli = "clear && pixi run testcli"
-testcli = "bash tests/test_cli.sh"
+testcli = "pixi run buildcli && bash tests/test_cli.sh"
 
 # python bindings (mojo4py)
 bpy = "clear && pixi run buildpy"
