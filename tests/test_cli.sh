@@ -136,27 +136,52 @@ assert_pipe_output "pipe with engineering" "12345.678" "12.345678E+3" -E
 assert_pipe_output "pipe with delimiter" "1234567.89" "1_234_567.89" -D "_"
 
 # ── File mode (-F/--file flag) ────────────────────────────────────────────
-TMPFILE=$(mktemp /tmp/decimo_test_XXXXXX.dm)
-cat > "$TMPFILE" << 'FILE_EOF'
-# Test expression file
-pi
-e
-sqrt(2)
+# All test files live in tests/cli/test_data/ — no temp files needed.
+DATA="tests/cli/test_data"
 
-# Arithmetic
-100 * 12 - 23/17
-FILE_EOF
-
-assert_output "file mode basic" \
+# --- basic.dm: constants, functions, arithmetic ---
+assert_output "file mode basic.dm" \
     "$(printf '3.1415926535897932384626433832795028841971693993751\n2.7182818284590452353602874713526624977572470937000\n1.4142135623730950488016887242096980785696718753769\n1198.6470588235294117647058823529411764705882352941')" \
-    "$BINARY" -F "$TMPFILE"
+    "$BINARY" -F "$DATA/basic.dm"
 
-assert_output "file mode with precision" \
+assert_output "file mode basic.dm -P 10" \
     "$(printf '3.141592654\n2.718281828\n1.414213562\n1198.647059')" \
-    "$BINARY" -F "$TMPFILE" -P 10
+    "$BINARY" -F "$DATA/basic.dm" -P 10
 
-rm -f "$TMPFILE"
+# --- comments.txt: comments, blank lines, inline comments, whitespace ---
+assert_output "file mode comments.txt" \
+    "$(printf '2\n4\n6')" \
+    "$BINARY" -F "$DATA/comments.txt"
 
+# --- edge_cases.dm: zeros, negatives, nested parens, powers ---
+assert_output "file mode edge_cases.dm" \
+    "$(printf '0\n-0\n42\n-42\n0.001\n-0.001\n-6\n0\n-50\n6\n1\n1\n1\n10000000000')" \
+    "$BINARY" -F "$DATA/edge_cases.dm"
+
+assert_output "file mode edge_cases.dm -P 10" \
+    "$(printf '0\n-0\n42\n-42\n0.001\n-0.001\n-6\n0\n-50\n6\n1\n1\n1\n1.000000000E+10')" \
+    "$BINARY" -F "$DATA/edge_cases.dm" -P 10
+
+# --- torture: deeply nested functions, trig, multi-arg, long chains ---
+assert_output "file mode torture (no ext)" \
+    "$(printf '1.0713523668582555369923173752696402459121546287121\n1.0538965678284563733480142148872799027597789207696\n1.1579208923731619542357098500868790785326998466564E+77\n515377520732011331036461129765621272702107522001\n11.796081289703860754690015480540861635182913811879\n3\n1E+1\n10\n10.000000000000000000000000000000000000000000000000\n3.1415926535897932384626433832795028841971693993751\n2.0000000000000000000000000000000000000000000000000\n2.0000000000000000000000000000000000000000000000000\n-4.0085856587109635320394984475849874956541040162735\n-3.2563470670302936892264646109942871401480252761141\n53.631111111111111111111111111111111111111111111111\n1.1579208923731619542357098500920328537400190717884E+77\n19')" \
+    "$BINARY" -F "$DATA/torture"
+
+# --- precision.dm: high-precision stress (repeating decimals, near-integers) ---
+assert_output "file mode precision.dm" \
+    "$(printf '0.14285714285714285714285714285714285714285714285714\n-2.6676418906242231236893288649633380405195232780734E-7\n2.0000000000000000000000000000000000000000000000000\n262537412640768743.99999999999925007259719818568888\n0.00022627290348967980473191579710694220169153814440402')" \
+    "$BINARY" -F "$DATA/precision.dm"
+
+# --- File mode with formatting flags ---
+assert_output "file mode basic.dm -S" \
+    "$(printf '3.1415926535897932384626433832795028841971693993751E0\n2.7182818284590452353602874713526624977572470937E0\n1.4142135623730950488016887242096980785696718753769E0\n1.1986470588235294117647058823529411764705882352941E+3')" \
+    "$BINARY" -F "$DATA/basic.dm" -S
+
+assert_output "file mode basic.dm -D _" \
+    "$(printf '3.141_592_653_589_793_238_462_643_383_279_502_884_197_169_399_375_1\n2.718_281_828_459_045_235_360_287_471_352_662_497_757_247_093_700_0\n1.414_213_562_373_095_048_801_688_724_209_698_078_569_671_875_376_9\n1_198.647_058_823_529_411_764_705_882_352_941_176_470_588_235_294_1')" \
+    "$BINARY" -F "$DATA/basic.dm" -D _
+
+# --- Error cases ---
 # File mode: nonexistent file gives a clear error
 NONEXIST_OUTPUT=$("$BINARY" -F "nonexistent_file.dm" 2>&1 || true)
 if echo "$NONEXIST_OUTPUT" | grep -qi "cannot read file"; then
