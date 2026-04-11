@@ -253,11 +253,11 @@ decimo "1/6" -P 5 -R up            # 0.16667
 
 `decimo` accepts input in three ways: a single expression on the command line, piped stdin, or a file.
 
-| Mode       | Invocation              | When used                                                       |
-| ---------- | ----------------------- | --------------------------------------------------------------- |
-| Expression | `decimo "EXPR"`         | A positional argument that is not a file path                   |
-| Pipe       | `echo "EXPR" \| decimo` | No positional argument and stdin is not a TTY                   |
-| File       | `decimo FILE.dm`        | Positional argument ends in `.dm` or `.txt` and the file exists |
+| Mode       | Invocation              | When used                                          |
+| ---------- | ----------------------- | -------------------------------------------------- |
+| Expression | `decimo "EXPR"`         | A positional argument is provided as an expression |
+| Pipe       | `echo "EXPR" \| decimo` | No positional argument and stdin is not a TTY      |
+| File       | `decimo -F FILE.dm`     | The `-F`/`--file` option is used                   |
 
 If no expression is given and stdin is a TTY (interactive terminal), `decimo` prints an error and exits.
 
@@ -322,7 +322,7 @@ ln(10)
 
 Comments start with `#`. Inline comments are also supported (e.g. `1+2 # add`). Leading whitespace before `#` is allowed. Blank lines and whitespace-only lines are skipped.
 
-If the specified file does not exist, `decimo` reports a "file not found" error and exits.
+If the specified file does not exist or cannot be read, `decimo` reports an error and exits.
 
 ## Shell Integration
 

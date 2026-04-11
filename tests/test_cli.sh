@@ -159,10 +159,10 @@ rm -f "$TMPFILE"
 
 # File mode: nonexistent file gives a clear error
 NONEXIST_OUTPUT=$("$BINARY" -F "nonexistent_file.dm" 2>&1 || true)
-if echo "$NONEXIST_OUTPUT" | grep -qi "file not found"; then
+if echo "$NONEXIST_OUTPUT" | grep -qi "cannot read file"; then
     PASS=$((PASS + 1))
 else
-    echo "FAIL: file mode nonexistent should report 'file not found'"
+    echo "FAIL: file mode nonexistent should report 'cannot read file'"
     echo "  actual: $NONEXIST_OUTPUT"
     FAIL=$((FAIL + 1))
 fi

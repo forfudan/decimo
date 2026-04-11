@@ -23,11 +23,8 @@ from calculator.io import (
     stdin_is_tty,
     read_stdin,
     split_into_lines,
-    strip_comment,
-    is_blank,
-    strip,
+    filter_expression_lines,
     read_file_text,
-    file_exists,
 )
 
 
@@ -217,19 +214,13 @@ def _run_pipe_mode(
     if len(text) == 0:
         return
 
-    var lines = split_into_lines(text)
+    var expressions = filter_expression_lines(split_into_lines(text))
     var had_error = False
 
-    for i in range(len(lines)):
-        # Strip comments and whitespace
-        var line = strip(strip_comment(lines[i]))
-
-        if is_blank(line):
-            continue
-
+    for i in range(len(expressions)):
         try:
             _evaluate_and_print(
-                line,
+                expressions[i],
                 precision,
                 scientific,
                 engineering,
@@ -256,11 +247,6 @@ def _run_file_mode(
     rounding_mode: RoundingMode,
 ) raises:
     """Reads expressions from a file (one per line) and evaluates each."""
-    if not file_exists(path):
-        print_error("file not found: " + path)
-        exit(1)
-        return  # Unreachable, but keeps the compiler happy
-
     var text: String
     try:
         text = read_file_text(path)
@@ -269,19 +255,13 @@ def _run_file_mode(
         exit(1)
         return  # Unreachable, but keeps the compiler happy
 
-    var lines = split_into_lines(text)
+    var expressions = filter_expression_lines(split_into_lines(text))
     var had_error = False
 
-    for i in range(len(lines)):
-        # Strip comments and whitespace
-        var line = strip(strip_comment(lines[i]))
-
-        if is_blank(line):
-            continue
-
+    for i in range(len(expressions)):
         try:
             _evaluate_and_print(
-                line,
+                expressions[i],
                 precision,
                 scientific,
                 engineering,

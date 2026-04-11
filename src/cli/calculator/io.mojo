@@ -161,9 +161,8 @@ def is_comment_or_blank(line: String) -> Bool:
     """Returns True if the line is blank, whitespace-only, or a comment
     (first non-whitespace character is ``#``).
 
-    Equivalent to ``is_blank(strip_comment(line))`` but implemented as
-    a single pass for efficiency. Kept for backward compatibility with
-    existing callers.
+    Equivalent to ``is_blank(strip_comment(line))``.  Provided as a
+    convenience for callers that do not need the intermediate results.
     """
     return is_blank(strip_comment(line))
 
@@ -221,8 +220,12 @@ def read_file_text(path: String) raises -> String:
     """Reads the entire contents of a file and returns it as a String.
 
     Uses POSIX ``open()`` + ``dup2()`` + ``getchar()`` to read the file
-    by redirecting stdin.  This avoids FFI signature conflicts with
-    Mojo's stdlib and ArgMojo for ``read``/``fclose``.
+    by temporarily redirecting stdin.  This avoids FFI signature conflicts
+    with Mojo's stdlib and ArgMojo for ``read``/``fclose``.
+
+    The original stdin is saved via ``dup()`` before redirection and
+    restored afterwards, so callers (e.g. a future REPL ``:load`` command)
+    can continue reading from the real stdin after this call returns.
 
     Args:
         path: The file path to read.
@@ -232,14 +235,28 @@ def read_file_text(path: String) raises -> String:
     """
     var c_path = _to_cstr(path)
 
+    # Save original stdin so we can restore it after reading.
+    var saved_stdin = external_call["dup", Int32](Int32(0))
+
     # open(path, O_RDONLY=0)
     var fd = external_call["open", Int32](c_path.unsafe_ptr(), Int32(0))
     if fd < 0:
+        # Restore stdin before raising.
+        if saved_stdin >= 0:
+            _ = external_call["dup2", Int32](saved_stdin, Int32(0))
+            _ = external_call["close", Int32](saved_stdin)
         raise Error("cannot open file: " + path)
 
     # Redirect stdin (fd 0) to the file
     var dup_result = external_call["dup2", Int32](fd, Int32(0))
+    # Close the original fd — dup2 made a copy on fd 0.
+    _ = external_call["close", Int32](fd)
+
     if dup_result < 0:
+        # Restore stdin before raising.
+        if saved_stdin >= 0:
+            _ = external_call["dup2", Int32](saved_stdin, Int32(0))
+            _ = external_call["close", Int32](saved_stdin)
         raise Error("cannot redirect stdin to file: " + path)
 
     # Read all bytes via getchar()
@@ -249,6 +266,11 @@ def read_file_text(path: String) raises -> String:
         if c < 0:  # EOF
             break
         chunks.append(UInt8(c))
+
+    # Restore original stdin.
+    if saved_stdin >= 0:
+        _ = external_call["dup2", Int32](saved_stdin, Int32(0))
+        _ = external_call["close", Int32](saved_stdin)
 
     if len(chunks) == 0:
         return String("")
