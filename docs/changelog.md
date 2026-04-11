@@ -10,6 +10,8 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 
 1. Add **pipe/stdin mode**: read expressions from standard input, one per line, when no positional argument is given and stdin is piped (e.g. `echo "1+2" | decimo`, `printf "pi\nsqrt(2)" | decimo -P 100`). Blank lines and comment lines (starting with `#`) are automatically skipped.
 1. Add **file mode**: use `--file` / `-F` flag to evaluate expressions from a file, one per line (e.g. `decimo -F expressions.dm -P 50`). Comments (`#`), inline comments, and blank lines are skipped. All CLI flags (precision, formatting, rounding) apply to every expression.
+1. Add **shell completion** documentation for Bash, Zsh, and Fish (`decimo --completions bash|zsh|fish`).
+1. Add **CLI performance benchmarks** (`benches/cli/bench_cli.sh`) comparing correctness and timing against `bc` and `python3` across 47 comparisons — all results match to 15 significant digits; `decimo` is 3–4× faster than `python3 -c`.
 
 ### 🦋 Changed in v0.10.0
 

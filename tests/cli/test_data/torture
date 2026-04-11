@@ -1,0 +1,41 @@
+# Torture test - complex expressions to stress the tokenizer, parser,
+# and the Decimo BigDecimal engine.
+
+# Deeply nested functions
+sqrt(abs(sin(1) * cos(1) + ln(2)))
+
+# Chained arithmetic with many terms
+1/7 + 2/11 + 3/13 + 4/17 + 5/19
+
+# Large integer powers
+2 ^ 256
+3 ^ 100
+
+# Mixed operations with constants
+pi * e + sqrt(2) * ln(10)
+
+# Multi-argument functions
+root(27, 3)
+log(1024, 2)
+root(1000000, 6)
+
+# Function composition chains
+ln(exp(sqrt(abs(-100))))
+exp(ln(pi))
+
+# Trig function stress
+sin(pi/6) + cos(pi/3) + tan(pi/4)
+cot(pi/4) + csc(pi/2)
+
+# Negative expressions with functions
+-3 * pi * (sin(1) + cos(2))
+-sqrt(2) * ln(10)
+
+# Very long arithmetic chain
+1 + 2 - 3 * 4 / 5 ^ 2 + 6 * 7 - 8 / 9 + 10
+
+# Big integer arithmetic
+2^256 + 3^100 - 5^50
+
+# Deeply parenthesised
+(((((1 + 2) * (3 + 4)) - ((5 - 6) * (7 + 8))) / 2) + 1)

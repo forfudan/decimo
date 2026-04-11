@@ -1,0 +1,18 @@
+# This file exercises comment handling and blank-line skipping.
+#
+# It has: leading comments, inline comments, multiple blank lines,
+# lines with only whitespace, and indented expressions.
+#
+
+
+1 + 1       # inline comment
+
+
+   2 + 2    # leading whitespace is fine
+
+# comment between expressions
+
+3 + 3
+
+
+# trailing comment
