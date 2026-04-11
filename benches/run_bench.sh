@@ -22,10 +22,11 @@ if [[ -z "$TYPE" ]]; then
     echo "Usage: pixi run bench <type> [operation]"
     echo ""
     echo "Types:"
-    echo "  bigint   (int)    BigInt benchmarks (BigInt10 vs BigInt vs Python int)"
-    echo "  biguint  (uint)   BigUInt benchmarks (BigUInt vs Python int)"
+    echo "  bigint   (int)        BigInt benchmarks (BigInt10 vs BigInt vs Python int)"
+    echo "  biguint  (uint)       BigUInt benchmarks (BigUInt vs Python int)"
     echo "  decimal128 (dec128)   Decimal128 benchmarks (Decimal128 vs Python decimal)"
-    echo "  bigdecimal (dec)  BigDecimal benchmarks (BigDecimal vs Python decimal)"
+    echo "  bigdecimal (dec)      BigDecimal benchmarks (BigDecimal vs Python decimal)"
+    echo "  cli                   CLI calculator end-to-end latency benchmarks"
     echo ""
     echo "Omit operation to get interactive menu for that type."
     echo ""
@@ -33,6 +34,7 @@ if [[ -z "$TYPE" ]]; then
     echo "  pixi run bench bigint add"
     echo "  pixi run bench dec sqrt"
     echo "  pixi run bench biguint"
+    echo "  pixi run bench cli"
     exit 0
 fi
 
@@ -43,6 +45,11 @@ case "$TYPE" in
     dec128)   TYPE="decimal128" ;;
     dec)  TYPE="bigdecimal" ;;
 esac
+
+# --- CLI benchmarks (special case — shell script, not Mojo) ---
+if [[ "$TYPE" == "cli" ]]; then
+    exec bash benches/cli/bench_cli.sh
+fi
 
 DIR="benches/$TYPE"
 

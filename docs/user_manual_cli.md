@@ -26,6 +26,8 @@
   - [Quoting Expressions](#quoting-expressions)
   - [Negative Expressions](#negative-expressions)
   - [Using noglob](#using-noglob)
+  - [Shell Completions](#shell-completions)
+- [Performance](#performance)
 - [Examples](#examples)
   - [Basic Arithmetic](#basic-arithmetic)
   - [High-Precision Calculations](#high-precision-calculations)
@@ -398,6 +400,60 @@ alias decimo='noglob decimo'
 
 # Then use without quotes:
 decimo 2*(3+4)
+```
+
+### Shell Completions
+
+`decimo` can generate completion scripts for **Bash**, **Zsh**, and **Fish**. Tab-completion will suggest option names, rounding mode values, and file paths.
+
+**Zsh** — add to `~/.zshrc`:
+
+```zsh
+eval "$(decimo --completions zsh)"
+```
+
+**Bash** — add to `~/.bashrc`:
+
+```bash
+eval "$(decimo --completions bash)"
+```
+
+**Fish** — run once:
+
+```sh
+decimo --completions fish | source
+# Or persist:
+decimo --completions fish > ~/.config/fish/completions/decimo.fish
+```
+
+After reloading your shell, pressing Tab after `decimo -` will show all available options, and pressing Tab after `--rounding-mode` will list the seven available modes.
+
+## Performance
+
+`decimo` compiles to a single native binary. For most expressions, end-to-end latency is dominated by process startup rather than computation. The benchmark suite verifies both **correctness** (results agree with `bc` and `python3` to 15 significant digits) and **performance** (wall-clock timing).
+
+Typical latencies (measured on Apple M1 Max, macOS):
+
+| Expression          | Precision | `decimo` | `bc -l` | `python3` | Match |
+| ------------------- | :-------: | -------: | ------: | --------: | :---: |
+| `1 + 1`             |    50     |    ~6 ms |   ~4 ms |    ~18 ms |   ✓   |
+| `100*12 - 23/17`    |    50     |    ~6 ms |   ~4 ms |    ~21 ms |   ✓   |
+| `sqrt(2)`           |    50     |    ~5 ms |   ~4 ms |    ~21 ms |   ✓   |
+| `ln(2)`             |    50     |    ~5 ms |   ~4 ms |    ~41 ms |   ✓   |
+| `sin(1)`            |    50     |    ~6 ms |   ~4 ms |    ~41 ms |   ✓   |
+| `pi`                |    50     |    ~6 ms |   ~4 ms |    ~41 ms |   ✓   |
+| `sqrt(2)`           |   1000    |    ~6 ms |   ~5 ms |    ~22 ms |   ✓   |
+| `pi`                |   1000    |   ~49 ms |  ~13 ms |    ~40 ms |   ✓   |
+| pipe: 5 mixed exprs |    50     |    ~8 ms |     N/A |       N/A |       |
+
+Tokenizer and parser overhead is negligible — trivial (`1+1`) and moderate (`sqrt(2)`) expressions complete in ~5 ms. Computation time only becomes visible for expensive operations at very high precision (e.g., computing π to 1000 digits).
+
+`decimo` is **3–4× faster than `python3`** and comparable to `bc` (a lightweight BSD utility).
+
+To run the full benchmark (correctness + performance, all 3 tools):
+
+```bash
+bash benches/cli/bench_cli.sh
 ```
 
 ## Examples
