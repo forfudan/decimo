@@ -5,8 +5,10 @@
 # Decimo (BigDecimal) and ArgMojo (CLI parsing).
 #
 # Usage:
-#   mojo run -I src -I src/cli src/cli/main.mojo "100 * 12 - 23/17" -p 50
-#   ./decimo "100 * 12 - 23/17" -p 50
+#   mojo run -I src -I src/cli src/cli/main.mojo "100 * 12 - 23/17" -P 50
+#   ./decimo "100 * 12 - 23/17" -P 50
+#   echo "1+2" | mojo run -I src -I src/cli src/cli/main.mojo
+#   mojo run -I src -I src/cli src/cli/main.mojo -F expressions.dm -P 100
 # ===----------------------------------------------------------------------=== #
 
 from std.sys import exit
@@ -17,18 +19,34 @@ from calculator.tokenizer import tokenize
 from calculator.parser import parse_to_rpn
 from calculator.evaluator import evaluate_rpn, final_round
 from calculator.display import print_error
+from calculator.io import (
+    stdin_is_tty,
+    read_stdin,
+    split_into_lines,
+    filter_expression_lines,
+    read_file_text,
+)
 
 
 struct DecimoArgs(Parsable):
     var expr: Positional[
         String,
-        help="Math expression to evaluate (e.g. 'sqrt(abs(1.1*-12-23/17))')",
-        required=True,
+        help="Math expression to evaluate (e.g. 'sqrt(2)', '1/3 + pi')",
+        required=False,
+    ]
+    var file: Option[
+        String,
+        long="file",
+        short="F",
+        help="Evaluate expressions from a file (one per line)",
+        default="",
+        value_name="PATH",
+        group="Input",
     ]
     var precision: Option[
         Int,
         long="precision",
-        short="p",
+        short="P",
         help="Number of significant digits",
         default="50",
         value_name="N",
@@ -39,26 +57,25 @@ struct DecimoArgs(Parsable):
     ]
     var scientific: Flag[
         long="scientific",
-        short="s",
+        short="S",
         help="Output in scientific notation (e.g. 1.23E+10)",
         group="Formatting",
     ]
     var engineering: Flag[
         long="engineering",
-        short="e",
+        short="E",
         help="Output in engineering notation (exponent multiple of 3)",
         group="Formatting",
     ]
     var pad: Flag[
         long="pad",
-        short="P",
         help="Pad trailing zeros to the specified precision",
         group="Formatting",
     ]
     var delimiter: Option[
         String,
         long="delimiter",
-        short="d",
+        short="D",
         help="Digit-group separator inserted every 3 digits (e.g. '_' gives 1_234.567_89)",
         default="",
         value_name="CHAR",
@@ -67,7 +84,7 @@ struct DecimoArgs(Parsable):
     var rounding_mode: Option[
         String,
         long="rounding-mode",
-        short="r",
+        short="R",
         help="Rounding mode for the final result",
         default="half-even",
         choices="half-even,half-up,half-down,up,down,ceiling,floor",
@@ -101,7 +118,7 @@ def main():
 
 def _run() raises:
     var cmd = DecimoArgs.to_command()
-    cmd.usage("decimo [OPTIONS] <EXPR>")
+    cmd.usage("decimo [OPTIONS] [EXPR]")
     cmd.mutually_exclusive(["scientific", "engineering"])
     # Allow expressions starting with '-' (e.g. "-3*pi*(sin(1))") to be
     # treated as positional values rather than option flags.
@@ -113,9 +130,10 @@ def _run() raises:
         'If your expression contains *, ( or ), quote it: decimo "2 * (3 + 4)"'
     )
     cmd.add_tip("Or use noglob: alias decimo='noglob decimo' (add to ~/.zshrc)")
+    cmd.add_tip("Pipe expressions: echo '1/3' | decimo -P 100")
+    cmd.add_tip("Evaluate a file: decimo -F expressions.dm -P 50")
     var args = DecimoArgs.parse_from_command(cmd^)
 
-    var expr = args.expr.value
     var precision = args.precision.value
     var scientific = args.scientific.value
     var engineering = args.engineering.value
@@ -123,14 +141,174 @@ def _run() raises:
     var delimiter = args.delimiter.value
     var rounding_mode = _parse_rounding_mode(args.rounding_mode.value)
 
-    # ── Phase 1: Tokenize & parse ──────────────────────────────────────────
+    # ── Mode detection ─────────────────────────────────────────────────────
+    # 1. --file flag provided        → file mode
+    # 2. Positional expr provided    → expression mode (one-shot)
+    # 3. No expr, stdin is piped     → pipe mode
+    # 4. No expr, stdin is a TTY     → error (no input)
+
+    var has_file = len(args.file.value) > 0
+    var has_expr = len(args.expr.value) > 0
+
+    if has_file and has_expr:
+        # Ambiguous: both --file and a positional expression were given.
+        print_error("cannot use both -F/--file and a positional expression")
+        exit(1)
+    elif has_file:
+        # ── File mode ────────────────────────────────────────────────────
+        _run_file_mode(
+            args.file.value,
+            precision,
+            scientific,
+            engineering,
+            pad,
+            delimiter,
+            rounding_mode,
+        )
+    elif has_expr:
+        # ── Expression mode (one-shot) ───────────────────────────────────
+        try:
+            _evaluate_and_print(
+                args.expr.value,
+                precision,
+                scientific,
+                engineering,
+                pad,
+                delimiter,
+                rounding_mode,
+                show_expr_on_error=True,
+            )
+        except:
+            exit(1)
+    elif not stdin_is_tty():
+        # ── Pipe mode ────────────────────────────────────────────────────
+        _run_pipe_mode(
+            precision,
+            scientific,
+            engineering,
+            pad,
+            delimiter,
+            rounding_mode,
+        )
+    else:
+        # No expression, no file, no pipe — show help.
+        print_error("no expression provided")
+        print(
+            "Usage: decimo [OPTIONS] [EXPR]\n"
+            "       echo 'EXPR' | decimo [OPTIONS]\n"
+            "       decimo -F FILE [OPTIONS]\n"
+            "\n"
+            "Run 'decimo --help' for more information."
+        )
+        exit(1)
+
+
+# ===----------------------------------------------------------------------=== #
+# Mode implementations
+# ===----------------------------------------------------------------------=== #
+
+
+def _run_pipe_mode(
+    precision: Int,
+    scientific: Bool,
+    engineering: Bool,
+    pad: Bool,
+    delimiter: String,
+    rounding_mode: RoundingMode,
+) raises:
+    """Read expressions from stdin (one per line) and evaluate each."""
+    var text = read_stdin()
+    if len(text) == 0:
+        return
+
+    var expressions = filter_expression_lines(split_into_lines(text))
+    var had_error = False
+
+    for i in range(len(expressions)):
+        try:
+            _evaluate_and_print(
+                expressions[i],
+                precision,
+                scientific,
+                engineering,
+                pad,
+                delimiter,
+                rounding_mode,
+                show_expr_on_error=True,
+            )
+        except:
+            had_error = True
+            # Continue processing remaining lines
+
+    if had_error:
+        exit(1)
+
+
+def _run_file_mode(
+    path: String,
+    precision: Int,
+    scientific: Bool,
+    engineering: Bool,
+    pad: Bool,
+    delimiter: String,
+    rounding_mode: RoundingMode,
+) raises:
+    """Reads expressions from a file (one per line) and evaluates each."""
+    var text: String
+    try:
+        text = read_file_text(path)
+    except e:
+        print_error("cannot read file '" + path + "': " + String(e))
+        exit(1)
+        return  # Unreachable, but keeps the compiler happy
+
+    var expressions = filter_expression_lines(split_into_lines(text))
+    var had_error = False
+
+    for i in range(len(expressions)):
+        try:
+            _evaluate_and_print(
+                expressions[i],
+                precision,
+                scientific,
+                engineering,
+                pad,
+                delimiter,
+                rounding_mode,
+                show_expr_on_error=True,
+            )
+        except:
+            had_error = True
+            # Continue processing remaining lines
+
+    if had_error:
+        exit(1)
+
+
+# ===----------------------------------------------------------------------=== #
+# Core evaluation and formatting
+# ===----------------------------------------------------------------------=== #
+
+
+def _evaluate_and_print(
+    expr: String,
+    precision: Int,
+    scientific: Bool,
+    engineering: Bool,
+    pad: Bool,
+    delimiter: String,
+    rounding_mode: RoundingMode,
+    show_expr_on_error: Bool = False,
+) raises:
+    """Tokenize, parse, evaluate, and print one expression.
+
+    On error, displays a coloured diagnostic and raises to signal failure
+    to the caller.
+    """
     try:
         var tokens = tokenize(expr)
         var rpn = parse_to_rpn(tokens^)
 
-        # ── Phase 2: Evaluate ────────────────────────────────────────────
-        # Syntax was fine — any error here is a math error (division by
-        # zero, negative sqrt, …).  No glob hint needed.
         try:
             var value = final_round(
                 evaluate_rpn(rpn^, precision), precision, rounding_mode
@@ -149,16 +327,22 @@ def _run() raises:
             else:
                 print(value.to_string(delimiter=delimiter))
         except eval_err:
-            _display_calc_error(String(eval_err), expr)
-            exit(1)
+            if show_expr_on_error:
+                _display_calc_error(String(eval_err), expr)
+            else:
+                print_error(String(eval_err))
+            raise eval_err^
 
     except parse_err:
-        _display_calc_error(String(parse_err), expr)
-        exit(1)
+        if show_expr_on_error:
+            _display_calc_error(String(parse_err), expr)
+        else:
+            print_error(String(parse_err))
+        raise parse_err^
 
 
 def _display_calc_error(error_msg: String, expr: String):
-    """Parse a calculator error message and display it with colours
+    """Parses a calculator error message and displays it with colours
     and a caret indicator.
 
     The calculator engine produces errors in two forms:
@@ -201,7 +385,7 @@ def _display_calc_error(error_msg: String, expr: String):
 
 
 def _pad_to_precision(plain: String, precision: Int) -> String:
-    """Pad (or add) trailing zeros so the fractional part has exactly
+    """Pads (or adds) trailing zeros so the fractional part has exactly
     `precision` digits.
     """
     if precision <= 0:
@@ -225,7 +409,8 @@ def _pad_to_precision(plain: String, precision: Int) -> String:
 
 
 def _parse_rounding_mode(name: String) -> RoundingMode:
-    """Convert a CLI rounding-mode name (hyphenated) to a RoundingMode value."""
+    """Converts a CLI rounding-mode name (hyphenated) to a RoundingMode value.
+    """
     if name == "half-even":
         return RoundingMode.half_even()
     elif name == "half-up":

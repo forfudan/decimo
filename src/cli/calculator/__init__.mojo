@@ -45,3 +45,15 @@ from .tokenizer import (
 from .parser import parse_to_rpn
 from .evaluator import evaluate_rpn, evaluate
 from .display import print_error, print_warning, print_hint
+from .io import (
+    stdin_is_tty,
+    read_stdin,
+    split_into_lines,
+    strip_comment,
+    is_blank,
+    is_comment_or_blank,
+    strip,
+    filter_expression_lines,
+    read_file_text,
+    file_exists,
+)
