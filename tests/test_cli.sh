@@ -167,6 +167,16 @@ else
     FAIL=$((FAIL + 1))
 fi
 
+# File mode + positional expr should be rejected
+BOTH_OUTPUT=$("$BINARY" -F "nonexistent_file.dm" "1+2" 2>&1 || true)
+if echo "$BOTH_OUTPUT" | grep -qi "cannot use both"; then
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: -F + positional expr should be rejected"
+    echo "  actual: $BOTH_OUTPUT"
+    FAIL=$((FAIL + 1))
+fi
+
 echo ""
 echo "CLI integration tests: $PASS passed, $FAIL failed"
 

@@ -150,7 +150,11 @@ def _run() raises:
     var has_file = len(args.file.value) > 0
     var has_expr = len(args.expr.value) > 0
 
-    if has_file:
+    if has_file and has_expr:
+        # Ambiguous: both --file and a positional expression were given.
+        print_error("cannot use both -F/--file and a positional expression")
+        exit(1)
+    elif has_file:
         # ── File mode ────────────────────────────────────────────────────
         _run_file_mode(
             args.file.value,
@@ -163,16 +167,19 @@ def _run() raises:
         )
     elif has_expr:
         # ── Expression mode (one-shot) ───────────────────────────────────
-        _evaluate_and_print(
-            args.expr.value,
-            precision,
-            scientific,
-            engineering,
-            pad,
-            delimiter,
-            rounding_mode,
-            show_expr_on_error=True,
-        )
+        try:
+            _evaluate_and_print(
+                args.expr.value,
+                precision,
+                scientific,
+                engineering,
+                pad,
+                delimiter,
+                rounding_mode,
+                show_expr_on_error=True,
+            )
+        except:
+            exit(1)
     elif not stdin_is_tty():
         # ── Pipe mode ────────────────────────────────────────────────────
         _run_pipe_mode(

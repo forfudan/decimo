@@ -186,8 +186,9 @@ def test_filter_basic() raises:
 
 
 def test_file_exists_nonexistent() raises:
+    # Use a path with enough entropy to avoid false positives on any machine.
     testing.assert_false(
-        file_exists(String("/tmp/nonexistent_decimo_test_12345.dm"))
+        file_exists(String("/tmp/_decimo_no_such_file_a1b2c3d4e5f6_.dm"))
     )
 
 

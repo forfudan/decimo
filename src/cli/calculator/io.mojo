@@ -237,14 +237,15 @@ def read_file_text(path: String) raises -> String:
 
     # Save original stdin so we can restore it after reading.
     var saved_stdin = external_call["dup", Int32](Int32(0))
+    if saved_stdin < 0:
+        raise Error("cannot save stdin (dup failed)")
 
     # open(path, O_RDONLY=0)
     var fd = external_call["open", Int32](c_path.unsafe_ptr(), Int32(0))
     if fd < 0:
         # Restore stdin before raising.
-        if saved_stdin >= 0:
-            _ = external_call["dup2", Int32](saved_stdin, Int32(0))
-            _ = external_call["close", Int32](saved_stdin)
+        _ = external_call["dup2", Int32](saved_stdin, Int32(0))
+        _ = external_call["close", Int32](saved_stdin)
         raise Error("cannot open file: " + path)
 
     # Redirect stdin (fd 0) to the file
@@ -254,9 +255,8 @@ def read_file_text(path: String) raises -> String:
 
     if dup_result < 0:
         # Restore stdin before raising.
-        if saved_stdin >= 0:
-            _ = external_call["dup2", Int32](saved_stdin, Int32(0))
-            _ = external_call["close", Int32](saved_stdin)
+        _ = external_call["dup2", Int32](saved_stdin, Int32(0))
+        _ = external_call["close", Int32](saved_stdin)
         raise Error("cannot redirect stdin to file: " + path)
 
     # Read all bytes via getchar()
@@ -268,9 +268,8 @@ def read_file_text(path: String) raises -> String:
         chunks.append(UInt8(c))
 
     # Restore original stdin.
-    if saved_stdin >= 0:
-        _ = external_call["dup2", Int32](saved_stdin, Int32(0))
-        _ = external_call["close", Int32](saved_stdin)
+    _ = external_call["dup2", Int32](saved_stdin, Int32(0))
+    _ = external_call["close", Int32](saved_stdin)
 
     if len(chunks) == 0:
         return String("")
