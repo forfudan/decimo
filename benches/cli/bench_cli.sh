@@ -66,14 +66,53 @@ elapsed_ms() {
     ' -- "$@"
 }
 
-# Extract the first 15 significant digits from a numeric string.
+# Extract a canonical comparison key from a numeric string:
+# adjusted base-10 exponent + first 15 significant digits.
+# This ensures values that differ only by exponent (e.g. 1E+10 vs 1E+11)
+# are correctly detected as a MISMATCH.
 sig_digits() {
-    local s="${1#-}"                                        # strip sign
-    s=$(echo "$s" | sed 's/[eE][+-]*[0-9]*//')             # strip exponent
-    if [[ "$s" == *.* ]]; then                              # strip trailing .0's
-        s=$(echo "$s" | sed 's/0*$//; s/\.$//')
+    local s="${1#-}"            # strip sign; check_match handles sign separately
+    local explicit_exp=0
+    local mantissa="$s"
+
+    # Split off explicit exponent (e.g. 1.23E+45 → mantissa=1.23, exp=45)
+    if [[ "$mantissa" =~ ^([^eE]+)[eE]([+-]?[0-9]+)$ ]]; then
+        mantissa="${BASH_REMATCH[1]}"
+        explicit_exp="${BASH_REMATCH[2]}"
     fi
-    echo "$s" | tr -d '.' | sed 's/^0*//' | cut -c1-15     # first 15 sig digits
+
+    local int_part frac_part digits int_len adjusted_exp first_nonzero
+
+    if [[ "$mantissa" == *.* ]]; then
+        int_part="${mantissa%%.*}"
+        frac_part="${mantissa#*.}"
+        # Strip trailing zeros from fractional part — they are not significant
+        frac_part=$(echo "$frac_part" | sed 's/0*$//')
+    else
+        int_part="$mantissa"
+        frac_part=""
+    fi
+
+    digits="${int_part}${frac_part}"
+    digits=$(echo "$digits" | sed 's/^0*//; s/0*$//')
+
+    if [[ -z "$digits" ]]; then
+        echo "ZERO"
+        return 0
+    fi
+
+    # Compute adjusted exponent so the key is position-independent
+    if [[ "$int_part" =~ [1-9] ]]; then
+        int_part=$(echo "$int_part" | sed 's/^0*//')
+        int_len=${#int_part}
+        adjusted_exp=$(( explicit_exp + int_len - 1 ))
+    else
+        first_nonzero=$(echo "$frac_part" | sed -n 's/^\(0*\)[1-9].*$/\1/p' | wc -c | tr -d ' ')
+        first_nonzero=$(( first_nonzero - 1 ))
+        adjusted_exp=$(( explicit_exp - first_nonzero - 1 ))
+    fi
+
+    echo "${adjusted_exp}:$(echo "$digits" | cut -c1-15)"
 }
 
 # Compare two results by leading significant digits.
@@ -131,6 +170,11 @@ bench_compare() {
     d_result=$("$BINARY" "$d_expr" -P "$prec" 2>/dev/null || echo "ERROR")
     d_ms=$(elapsed_ms "$BINARY" "$d_expr" -P "$prec")
     printf "    %-10s %-38s %8s ms\n" "decimo:" "$(preview "$d_result")" "$d_ms"
+    if [[ "$d_result" == "ERROR" ]]; then
+        record "ERROR"
+        echo ""
+        return
+    fi
 
     # ── bc ──
     if [[ -n "$bc_expr" ]] && $HAS_BC; then

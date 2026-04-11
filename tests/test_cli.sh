@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e  # Exit immediately if any command fails
 
+# Derive repo root from the script's own location so the tests work
+# regardless of the caller's working directory.
+REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
+cd "$REPO_ROOT"
+
 # ── Unit tests ─────────────────────────────────────────────────────────────
 for f in tests/cli/*.mojo; do
     pixi run mojo run -I src -I src/cli -D ASSERT=all --debug-level=full "$f"
