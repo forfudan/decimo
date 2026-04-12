@@ -41,6 +41,9 @@ HAS_PY=false;  command -v python3 &>/dev/null && HAS_PY=true
 
 # ── Counters ───────────────────────────────────────────────────────────────
 
+# Decimo errors — any decimo failure is fatal.
+DECIMO_ERRORS=0
+
 # bc is the golden reference — mismatches here fail the script.
 BC_COMPARISONS=0
 BC_MATCHES=0
@@ -218,8 +221,7 @@ bench_compare() {
     d_ms=$(elapsed_ms "$BINARY" "$d_expr" -P "$prec")
     printf "    %-10s %-38s %8s ms\n" "decimo:" "$(preview "$d_result")" "$d_ms"
     if [[ "$d_result" == "ERROR" ]]; then
-        [[ -n "$bc_expr" ]] && record bc "ERROR"
-        [[ -n "$py_code" ]] && record py "ERROR"
+        DECIMO_ERRORS=$((DECIMO_ERRORS + 1))
         echo ""
         return
     fi
@@ -409,6 +411,9 @@ echo ""
 # ── Summary ────────────────────────────────────────────────────────────────
 
 echo "============================================================"
+if (( DECIMO_ERRORS > 0 )); then
+    printf " decimo:        %d ERROR(s)\n" "$DECIMO_ERRORS"
+fi
 printf " bc (golden):  %d comparisons — %d MATCH, %d MISMATCH" \
     "$BC_COMPARISONS" "$BC_MATCHES" "$BC_MISMATCHES"
 if (( BC_ERRORS > 0 )); then
@@ -423,6 +428,10 @@ fi
 echo ""
 echo "============================================================"
 
+if (( DECIMO_ERRORS > 0 )); then
+    echo "FAIL: decimo evaluation errors detected."
+    exit 1
+fi
 if (( BC_MISMATCHES > 0 )); then
     echo "FAIL: bc (golden reference) mismatches detected."
     exit 1

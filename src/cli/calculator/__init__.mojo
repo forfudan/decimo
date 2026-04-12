@@ -44,6 +44,7 @@ from .tokenizer import (
 )
 from .parser import parse_to_rpn
 from .evaluator import evaluate_rpn, evaluate
+from .engine import evaluate_and_print, display_calc_error, pad_to_precision
 from .display import print_error, print_warning, print_hint, write_prompt
 from .io import (
     stdin_is_tty,
