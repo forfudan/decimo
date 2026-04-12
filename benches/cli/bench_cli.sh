@@ -3,8 +3,12 @@
 # CLI Calculator Benchmarks — Correctness & Performance
 #
 # Compares decimo against bc and python3 on every expression:
-#   1. Correctness — first 15 significant digits must agree
+#   1. Correctness — all significant digits must agree at full precision
+#      (minus 1 guard digit for last-digit rounding differences)
 #   2. Performance — average wall-clock latency over $ITERATIONS runs
+#
+# bc is the golden reference (mismatches fail the script).
+# python3/mpmath is informational (mismatches are shown but do not fail).
 #
 # Usage:
 #   bash benches/cli/bench_cli.sh
@@ -37,10 +41,17 @@ HAS_PY=false;  command -v python3 &>/dev/null && HAS_PY=true
 
 # ── Counters ───────────────────────────────────────────────────────────────
 
-COMPARISONS=0
-MATCHES=0
-MISMATCHES=0
-ERRORS=0
+# bc is the golden reference — mismatches here fail the script.
+BC_COMPARISONS=0
+BC_MATCHES=0
+BC_MISMATCHES=0
+BC_ERRORS=0
+
+# python3 is informational — mismatches are reported but do not fail.
+PY_COMPARISONS=0
+PY_MATCHES=0
+PY_MISMATCHES=0
+PY_ERRORS=0
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -67,9 +78,9 @@ elapsed_ms() {
 }
 
 # Extract a canonical comparison key from a numeric string:
-# adjusted base-10 exponent + first 15 significant digits.
+# adjusted base-10 exponent + ALL significant digits.
 # This ensures values that differ only by exponent (e.g. 1E+10 vs 1E+11)
-# are correctly detected as a MISMATCH.
+# are correctly detected as a MISMATCH, and full-precision agreement is verified.
 sig_digits() {
     local s="${1#-}"            # strip sign; check_match handles sign separately
     local explicit_exp=0
@@ -112,10 +123,14 @@ sig_digits() {
         adjusted_exp=$(( explicit_exp - first_nonzero - 1 ))
     fi
 
-    echo "${adjusted_exp}:$(echo "$digits" | cut -c1-15)"
+    echo "${adjusted_exp}:${digits}"
 }
 
-# Compare two results by leading significant digits.
+# Compare two results by all significant digits.
+# Both keys are "adjusted_exp:digits".  The exponents must match exactly.
+# The digit strings are compared up to the length of the shorter one,
+# minus 1 guard digit (the very last digit often differs between tools
+# due to rounding vs truncation — standard in MP arithmetic).
 check_match() {
     local a="$1" b="$2"
     local sign_a="" sign_b=""
@@ -125,7 +140,26 @@ check_match() {
     local sa sb
     sa=$(sig_digits "$a")
     sb=$(sig_digits "$b")
-    if [[ "$sa" == "$sb" ]]; then echo "MATCH"; else echo "MISMATCH"; fi
+
+    # Split into exponent and digit parts
+    local exp_a="${sa%%:*}" digits_a="${sa#*:}"
+    local exp_b="${sb%%:*}" digits_b="${sb#*:}"
+
+    # Exponents must match exactly
+    if [[ "$exp_a" != "$exp_b" ]]; then echo "MISMATCH"; return 0; fi
+
+    # Compare digits up to (shorter length - 1) to allow last-digit rounding
+    local len_a=${#digits_a} len_b=${#digits_b}
+    local min_len=$len_a
+    if (( len_b < min_len )); then min_len=$len_b; fi
+    local cmp_len=$(( min_len - 1 ))
+    if (( cmp_len < 1 )); then cmp_len=1; fi
+
+    if [[ "${digits_a:0:$cmp_len}" == "${digits_b:0:$cmp_len}" ]]; then
+        echo "MATCH"
+    else
+        echo "MISMATCH"
+    fi
     return 0
 }
 
@@ -134,17 +168,30 @@ preview() {
     if (( ${#1} > PREVIEW )); then echo "${1:0:$PREVIEW}..."; else echo "$1"; fi
 }
 
-# Record a comparison result.
+# Record a comparison result for a specific tool.
 record() {
-    local tag="$1"
-    if [[ "$tag" == "ERROR" ]]; then
-        ERRORS=$((ERRORS + 1))
-    else
-        COMPARISONS=$((COMPARISONS + 1))
-        if [[ "$tag" == "MATCH" ]]; then
-            MATCHES=$((MATCHES + 1))
+    local tool="$1" tag="$2"
+    if [[ "$tool" == "bc" ]]; then
+        if [[ "$tag" == "ERROR" ]]; then
+            BC_ERRORS=$((BC_ERRORS + 1))
         else
-            MISMATCHES=$((MISMATCHES + 1))
+            BC_COMPARISONS=$((BC_COMPARISONS + 1))
+            if [[ "$tag" == "MATCH" ]]; then
+                BC_MATCHES=$((BC_MATCHES + 1))
+            else
+                BC_MISMATCHES=$((BC_MISMATCHES + 1))
+            fi
+        fi
+    else
+        if [[ "$tag" == "ERROR" ]]; then
+            PY_ERRORS=$((PY_ERRORS + 1))
+        else
+            PY_COMPARISONS=$((PY_COMPARISONS + 1))
+            if [[ "$tag" == "MATCH" ]]; then
+                PY_MATCHES=$((PY_MATCHES + 1))
+            else
+                PY_MISMATCHES=$((PY_MISMATCHES + 1))
+            fi
         fi
     fi
     return 0
@@ -171,7 +218,8 @@ bench_compare() {
     d_ms=$(elapsed_ms "$BINARY" "$d_expr" -P "$prec")
     printf "    %-10s %-38s %8s ms\n" "decimo:" "$(preview "$d_result")" "$d_ms"
     if [[ "$d_result" == "ERROR" ]]; then
-        record "ERROR"
+        [[ -n "$bc_expr" ]] && record bc "ERROR"
+        [[ -n "$py_code" ]] && record py "ERROR"
         echo ""
         return
     fi
@@ -189,7 +237,7 @@ bench_compare() {
             tag=$(check_match "$d_result" "$b_result")
         fi
         printf "    %-10s %-38s %8s ms   %s\n" "bc:" "$(preview "$b_result")" "$b_ms" "$tag"
-        record "$tag"
+        record bc "$tag"
     fi
 
     # ── python3 ──
@@ -204,7 +252,7 @@ bench_compare() {
             tag=$(check_match "$d_result" "$p_result")
         fi
         printf "    %-10s %-38s %8s ms   %s\n" "python3:" "$(preview "$p_result")" "$p_ms" "$tag"
-        record "$tag"
+        record py "$tag"
     fi
 
     echo ""
@@ -276,10 +324,12 @@ bench_compare "exp(1)" 50 \
     "e(1)" \
     "${PY_MP};print(mp.exp(1))"
 
+# NOTE: mpmath diverges from decimo & WolframAlpha at digit ~21 for sin(near-pi).
+# See docs/internal_notes.md. Kept here as a reference comparison.
 bench_compare "sin(3.1415926535897932384626433833)" 50 \
     "sin(3.1415926535897932384626433833)" \
     "s(3.1415926535897932384626433833)" \
-    "${PY_MP};print(mp.sin(3.1415926535897932384626433833))"
+    "${PY_MP};print(mp.sin(mp.mpf('3.1415926535897932384626433833')))"
 
 bench_compare "cos(0)" 50 \
     "cos(0)" \
@@ -359,14 +409,21 @@ echo ""
 # ── Summary ────────────────────────────────────────────────────────────────
 
 echo "============================================================"
-printf " Summary: %d comparisons — %d MATCH, %d MISMATCH" \
-    "$COMPARISONS" "$MATCHES" "$MISMATCHES"
-if (( ERRORS > 0 )); then
-    printf ", %d ERROR (tool missing or failed)" "$ERRORS"
+printf " bc (golden):  %d comparisons — %d MATCH, %d MISMATCH" \
+    "$BC_COMPARISONS" "$BC_MATCHES" "$BC_MISMATCHES"
+if (( BC_ERRORS > 0 )); then
+    printf ", %d ERROR" "$BC_ERRORS"
+fi
+echo ""
+printf " python3 (ref): %d comparisons — %d MATCH, %d MISMATCH" \
+    "$PY_COMPARISONS" "$PY_MATCHES" "$PY_MISMATCHES"
+if (( PY_ERRORS > 0 )); then
+    printf ", %d ERROR" "$PY_ERRORS"
 fi
 echo ""
 echo "============================================================"
 
-if (( MISMATCHES > 0 )); then
+if (( BC_MISMATCHES > 0 )); then
+    echo "FAIL: bc (golden reference) mismatches detected."
     exit 1
 fi
