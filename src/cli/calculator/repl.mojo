@@ -60,7 +60,9 @@ def run_repl(
     Errors are caught per-line and displayed without crashing the session.
     The loop exits on `exit`, `quit`, or EOF (Ctrl-D).
     """
-    _print_banner(precision, scientific, engineering, pad, delimiter)
+    _print_banner(
+        precision, scientific, engineering, pad, delimiter, rounding_mode
+    )
 
     while True:
         write_prompt("decimo> ")
@@ -147,6 +149,7 @@ def _print_banner(
     engineering: Bool,
     pad: Bool,
     delimiter: String,
+    rounding_mode: RoundingMode,
 ):
     """Print the REPL welcome banner to stderr."""
     print(
@@ -168,6 +171,8 @@ def _print_banner(
         settings += " Zero-padded."
     if delimiter:
         settings += " Delimiter: '" + delimiter + "'."
+    if not (rounding_mode == RoundingMode.half_even()):
+        settings += " Rounding: " + String(rounding_mode) + "."
     print(settings, file=stderr)
 
 
