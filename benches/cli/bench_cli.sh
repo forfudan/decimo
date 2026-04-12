@@ -36,7 +36,10 @@ if ! [[ -x "$BINARY" ]]; then
     exit 1
 fi
 
-HAS_BC=false;  command -v bc      &>/dev/null && HAS_BC=true
+if ! command -v bc &>/dev/null; then
+    echo "Error: bc is required (golden reference) but not found."
+    exit 1
+fi
 HAS_PY=false;  command -v python3 &>/dev/null && HAS_PY=true
 
 # ── Counters ───────────────────────────────────────────────────────────────
@@ -227,7 +230,7 @@ bench_compare() {
     fi
 
     # ── bc ──
-    if [[ -n "$bc_expr" ]] && $HAS_BC; then
+    if [[ -n "$bc_expr" ]]; then
         local full_bc="scale=$prec; $bc_expr"
         local b_result b_ms tag
         # tr -d '\\\n' removes bc's backslash line-continuations
@@ -434,5 +437,9 @@ if (( DECIMO_ERRORS > 0 )); then
 fi
 if (( BC_MISMATCHES > 0 )); then
     echo "FAIL: bc (golden reference) mismatches detected."
+    exit 1
+fi
+if (( BC_ERRORS > 0 )); then
+    echo "FAIL: bc (golden reference) errors detected."
     exit 1
 fi

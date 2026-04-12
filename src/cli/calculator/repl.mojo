@@ -81,8 +81,10 @@ def run_repl(
         if line == "exit" or line == "quit":
             break
 
-        # Evaluate the expression — errors are caught and printed,
-        # then the loop continues.
+        # Evaluate the expression.  evaluate_and_print displays the
+        # error itself before raising, so we catch and continue.
+        # Mojo has no typed exceptions, so we cannot selectively catch
+        # only user-input errors here.
         try:
             evaluate_and_print(
                 line,
@@ -95,7 +97,7 @@ def run_repl(
                 show_expr_on_error=True,
             )
         except:
-            pass  # error already displayed by evaluate_and_print
+            continue  # error already displayed; proceed to next prompt
 
 
 def _print_banner(

@@ -16,11 +16,7 @@ from std.sys import exit
 from argmojo import Parsable, Option, Flag, Positional, Command
 from decimo.rounding_mode import RoundingMode
 from calculator.display import print_error
-from calculator.engine import (
-    evaluate_and_print,
-    display_calc_error,
-    pad_to_precision,
-)
+from calculator.engine import evaluate_and_print
 from calculator.io import (
     stdin_is_tty,
     read_stdin,
