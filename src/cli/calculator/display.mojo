@@ -93,7 +93,7 @@ def print_error(message: String, expr: String, position: Int):
 
 
 def print_warning(message: String):
-    """Print a coloured warning message to stderr.
+    """Prints a coloured warning message to stderr.
 
     Format:  `Warning: <message>`
 
@@ -105,7 +105,7 @@ def print_warning(message: String):
 
 
 def print_warning(message: String, expr: String, position: Int):
-    """Print a coloured warning message with a caret indicator."""
+    """Prints a coloured warning message with a caret indicator."""
     _write_stderr(
         BOLD + WARNING_COLOR + "Warning" + RESET + BOLD + ": " + RESET + message
     )
@@ -113,7 +113,7 @@ def print_warning(message: String, expr: String, position: Int):
 
 
 def print_hint(message: String):
-    """Print a coloured hint message to stderr.
+    """Prints a coloured hint message to stderr.
 
     Format:  `Hint: <message>`
 
@@ -125,7 +125,7 @@ def print_hint(message: String):
 
 
 def write_prompt(prompt: String):
-    """Write a REPL prompt to stderr (no trailing newline).
+    """Writes a REPL prompt to stderr (no trailing newline).
 
     The prompt is written to stderr so that stdout remains clean for
     piping results.
@@ -138,12 +138,12 @@ def write_prompt(prompt: String):
 
 
 def _write_stderr(msg: String):
-    """Write a line to stderr."""
+    """Writes a line to stderr."""
     print(msg, file=stderr)
 
 
 def _write_caret(expr: String, position: Int):
-    """Print the expression line and a green caret (^) under the
+    """Prints the expression line and a green caret (^) under the
     given column position to stderr.
 
     ```text

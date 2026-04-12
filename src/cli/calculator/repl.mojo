@@ -52,7 +52,7 @@ def run_repl(
     delimiter: String,
     rounding_mode: RoundingMode,
 ) raises:
-    """Run the interactive REPL.
+    """Runs the interactive REPL.
 
     Prints a welcome banner, then loops: prompt → read → eval → print.
     Errors are caught per-line and displayed without crashing the session.
@@ -108,7 +108,7 @@ def _print_banner(
     delimiter: String,
     rounding_mode: RoundingMode,
 ):
-    """Print the REPL welcome banner to stderr."""
+    """Prints the REPL welcome banner to stderr."""
     print(
         "Decimo — arbitrary-precision calculator",
         file=stderr,
