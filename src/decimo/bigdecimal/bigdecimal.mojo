@@ -586,20 +586,20 @@ struct BigDecimal(
     ) -> String:
         """Returns string representation of the number.
 
-        This method follows CPython's ``Decimal.__str__`` logic exactly for
+        This method follows CPython's `Decimal.__str__` logic exactly for
         the default and scientific-notation paths.
 
-        - Engineering notation (``engineering=True``) is tried first.
-          The exponent is always a multiple of 3 (e.g. ``12.34E+6``,
-          ``500E-3``).  Trailing zeros in the mantissa are stripped.
+        - Engineering notation (`engineering=True`) is tried first.
+          The exponent is always a multiple of 3 (e.g. `12.34E+6`,
+          `500E-3`).  Trailing zeros in the mantissa are stripped.
         - Scientific notation is used when:
-          1. ``scientific`` parameter is True, OR
+          1. `scientific` parameter is True, OR
           2. The internal exponent > 0 (i.e., scale < 0), OR
           3. There are more than 6 leading zeros after the decimal
-             point (adjusted exponent < -6), unless ``force_plain=True``.
+             point (adjusted exponent < -6), unless `force_plain=True`.
         - Otherwise, plain (fixed-point) notation is used.
 
-        When both ``engineering`` and ``scientific`` are True, engineering
+        When both `engineering` and `scientific` are True, engineering
         notation takes precedence.
 
         Args:
@@ -610,13 +610,13 @@ struct BigDecimal(
                 notation (exponent is a multiple of 3, trailing zeros
                 stripped).
             force_plain: If True, suppress the CPython-compatible
-                auto-detection of scientific notation (the ``scale < 0`` and
-                ``leftdigits <= -6`` rules are not applied).  Useful when a
+                auto-detection of scientific notation (the `scale < 0` and
+                `leftdigits <= -6` rules are not applied).  Useful when a
                 guaranteed fixed-point string is needed regardless of
-                magnitude.  Has no effect when ``scientific`` or
-                ``engineering`` is True.
+                magnitude.  Has no effect when `scientific` or
+                `engineering` is True.
             delimiter: A string inserted every 3 digits in both the integer
-                and fractional parts (e.g. ``"_"`` gives ``1_234.567_89``).
+                and fractional parts (e.g. `"_"` gives `1_234.567_89`).
                 An empty string (default) disables grouping.
             line_width: The maximum line width for the string representation.
                 If 0, the string is returned as a single line.
@@ -2424,18 +2424,18 @@ struct BigDecimal(
 
 
 def _insert_digit_separators(s: String, delimiter: String) -> String:
-    """Insert ``delimiter`` every 3 digits in both the integer and
+    """Insert `delimiter` every 3 digits in both the integer and
     fractional parts of a numeric string.
 
-    The function is aware of an optional leading ``-`` sign and a trailing
-    exponent suffix (``E+3``, ``E-12``, …).  Only the mantissa digits are
+    The function is aware of an optional leading `-` sign and a trailing
+    exponent suffix (`E+3`, `E-12`, …).  Only the mantissa digits are
     grouped; the sign and exponent are preserved verbatim.
 
-    Examples (with ``delimiter = "_"``):
-      ``"1234567"``          → ``"1_234_567"``
-      ``"1234567.891011"``   → ``"1_234_567.891_011"``
-      ``"12.345678E+6"``     → ``"12.345_678E+6"``
-      ``"-0.00123"``         → ``"-0.001_23"``
+    Examples (with `delimiter = "_"`):
+      `"1234567"`          → `"1_234_567"`
+      `"1234567.891011"`   → `"1_234_567.891_011"`
+      `"12.345678E+6"`     → `"12.345_678E+6"`
+      `"-0.00123"`         → `"-0.001_23"`
     """
     if not delimiter:
         return s

@@ -131,13 +131,13 @@ fn mpfrw_get_raw_digits(
     """Exports MPFR value as raw digit string via mpfr_get_str.
 
     Returns a pointer to a null-terminated pure digit string (no dot, no
-    exponent notation). Negative values have a ``-`` prefix. The decimal
-    exponent is written to ``out_exp``.
+    exponent notation). Negative values have a `-` prefix. The decimal
+    exponent is written to `out_exp`.
 
-    Meaning: raw = ``"31415..."`` with exp = 1 → value = 0.31415… × 10^1.
+    Meaning: raw = `"31415..."` with exp = 1 → value = 0.31415… × 10^1.
 
     The digit string is allocated by MPFR and must be freed with
-    ``mpfrw_free_raw_str``.
+    `mpfrw_free_raw_str`.
 
     Args:
         handle: MPFR handle index.
@@ -151,10 +151,10 @@ fn mpfrw_get_raw_digits(
 
 
 fn mpfrw_free_raw_str(addr: Int):
-    """Frees a digit string returned by ``mpfrw_get_raw_digits``.
+    """Frees a digit string returned by `mpfrw_get_raw_digits`.
 
     Args:
-        addr: Raw address returned by ``mpfrw_get_raw_digits``.
+        addr: Raw address returned by `mpfrw_get_raw_digits`.
     """
     external_call["mpfrw_free_raw_str", NoneType](addr)
 
