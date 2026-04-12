@@ -753,7 +753,7 @@ struct BigInt(
     def to_decimal_string(self, line_width: Int = 0) -> String:
         """Returns the decimal string representation of the BigInt.
 
-        Deprecated: Use ``to_string(line_width=...)`` instead.
+        Deprecated: Use `to_string(line_width=...)` instead.
 
         Args:
             line_width: The maximum line width for the output.

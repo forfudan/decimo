@@ -59,9 +59,9 @@ comptime CARET_COLOR = GREEN
 def print_error(message: String):
     """Print a coloured error message to stderr.
 
-    Format:  ``Error: <message>``
+    Format:  `Error: <message>`
 
-    The label ``Error`` is displayed in bold red.  The message text
+    The label `Error` is displayed in bold red.  The message text
     follows in the default terminal colour.
     """
     _write_stderr(
@@ -95,9 +95,9 @@ def print_error(message: String, expr: String, position: Int):
 def print_warning(message: String):
     """Print a coloured warning message to stderr.
 
-    Format:  ``Warning: <message>``
+    Format:  `Warning: <message>`
 
-    The label ``Warning`` is displayed in bold orange/yellow.
+    The label `Warning` is displayed in bold orange/yellow.
     """
     _write_stderr(
         BOLD + WARNING_COLOR + "Warning" + RESET + BOLD + ": " + RESET + message
@@ -115,13 +115,23 @@ def print_warning(message: String, expr: String, position: Int):
 def print_hint(message: String):
     """Print a coloured hint message to stderr.
 
-    Format:  ``Hint: <message>``
+    Format:  `Hint: <message>`
 
-    The label ``Hint`` is displayed in bold cyan.
+    The label `Hint` is displayed in bold cyan.
     """
     _write_stderr(
         BOLD + HINT_COLOR + "Hint" + RESET + BOLD + ": " + RESET + message
     )
+
+
+def write_prompt(prompt: String):
+    """Write a REPL prompt to stderr (no trailing newline).
+
+    The prompt is written to stderr so that stdout remains clean for
+    piping results.
+    """
+    var styled = BOLD + GREEN + prompt + RESET
+    print(styled, end="", file=stderr, flush=True)
 
 
 # ── Internal helpers ─────────────────────────────────────────────────────────

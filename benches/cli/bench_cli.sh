@@ -276,10 +276,10 @@ bench_compare "exp(1)" 50 \
     "e(1)" \
     "${PY_MP};print(mp.exp(1))"
 
-bench_compare "sin(1)" 50 \
-    "sin(1)" \
-    "s(1)" \
-    "${PY_MP};print(mp.sin(1))"
+bench_compare "sin(3.1415926535897932384626433833)" 50 \
+    "sin(3.1415926535897932384626433833)" \
+    "s(3.1415926535897932384626433833)" \
+    "${PY_MP};print(mp.sin(3.1415926535897932384626433833))"
 
 bench_compare "cos(0)" 50 \
     "cos(0)" \

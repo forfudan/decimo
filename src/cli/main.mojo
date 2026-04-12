@@ -26,6 +26,7 @@ from calculator.io import (
     filter_expression_lines,
     read_file_text,
 )
+from calculator.repl import run_repl
 
 
 struct DecimoArgs(Parsable):
@@ -191,16 +192,16 @@ def _run() raises:
             rounding_mode,
         )
     else:
-        # No expression, no file, no pipe — show help.
-        print_error("no expression provided")
-        print(
-            "Usage: decimo [OPTIONS] [EXPR]\n"
-            "       echo 'EXPR' | decimo [OPTIONS]\n"
-            "       decimo -F FILE [OPTIONS]\n"
-            "\n"
-            "Run 'decimo --help' for more information."
+        # ── REPL mode ───────────────────────────────────────────────────
+        # No expression, no file, no pipe — launch interactive session.
+        run_repl(
+            precision,
+            scientific,
+            engineering,
+            pad,
+            delimiter,
+            rounding_mode,
         )
-        exit(1)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -347,8 +348,8 @@ def _display_calc_error(error_msg: String, expr: String):
 
     The calculator engine produces errors in two forms:
 
-    1. ``Error at position N: <description>``  — with position info.
-    2. ``<description>``  — without position info.
+    1. `Error at position N: <description>`  — with position info.
+    2. `<description>`  — without position info.
 
     This function detects form (1), extracts the position, and calls
     `print_error(description, expr, position)` so the user sees a

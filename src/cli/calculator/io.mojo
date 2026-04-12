@@ -21,7 +21,7 @@ Provides functions for detecting whether stdin is a pipe or terminal,
 reading lines from stdin, reading expression files, and line-level text
 processing (comment stripping, whitespace handling).
 
-The text-processing primitives (``strip_comment``, ``is_blank``, ``strip``)
+The text-processing primitives (`strip_comment`, `is_blank`, `strip`)
 are designed to be composable and reusable across all input modes —
 pipe, file, and future REPL.
 """
@@ -45,11 +45,42 @@ def stdin_is_tty() -> Bool:
 # ===----------------------------------------------------------------------=== #
 
 
+def read_line() -> Optional[String]:
+    """Reads a single line from stdin (up to and including the newline).
+
+    Returns the line content (without the trailing newline), or None
+    on EOF (e.g. Ctrl-D on an empty line).
+
+    This is designed for REPL use: it reads one character at a time
+    via `getchar()` and stops at `\\n` or EOF.
+    """
+    var chars = List[UInt8]()
+
+    while True:
+        var c = external_call["getchar", Int32]()
+        if c < 0:  # EOF
+            if len(chars) == 0:
+                return None
+            break
+        if UInt8(c) == 10:  # '\n'
+            break
+        chars.append(UInt8(c))
+
+    # Strip trailing \r if present (Windows line endings from copy-paste)
+    if len(chars) > 0 and chars[len(chars) - 1] == 13:
+        _ = chars.pop()
+
+    if len(chars) == 0:
+        return String("")
+
+    return String(unsafe_from_utf8=chars^)
+
+
 def read_stdin() -> String:
     """Reads all data from stdin and return it as a String.
 
-    Uses the C ``getchar()`` function to read one byte at a time until
-    EOF. This avoids FFI conflicts with the POSIX ``read()`` syscall.
+    Uses the C `getchar()` function to read one byte at a time until
+    EOF. This avoids FFI conflicts with the POSIX `read()` syscall.
     Returns an empty string if stdin is empty.
     """
     var chunks = List[UInt8]()
@@ -75,7 +106,7 @@ def read_stdin() -> String:
 def split_into_lines(text: String) -> List[String]:
     """Splits a string into individual lines.
 
-    Handles both ``\\n`` and ``\\r\\n`` line endings.
+    Handles both `\\n` and `\\r\\n` line endings.
     Trailing empty lines from a final newline are not included.
     """
     var lines = List[String]()
@@ -104,13 +135,13 @@ def split_into_lines(text: String) -> List[String]:
 
 
 def strip_comment(line: String) -> String:
-    """Removes a ``#``-style comment from a line.
+    """Removes a `#`-style comment from a line.
 
-    Returns everything before the first ``#`` character. If there is
-    no ``#``, the line is returned unchanged.
+    Returns everything before the first `#` character. If there is
+    no `#`, the line is returned unchanged.
 
     This is a composable primitive — use it in combination with
-    ``strip()`` and ``is_blank()`` for full line processing.
+    `strip()` and `is_blank()` for full line processing.
 
     Examples::
 
@@ -139,7 +170,7 @@ def is_blank(line: String) -> Bool:
     """Returns True if the line is empty or contains only whitespace
     (spaces and tabs).
 
-    This is a composable primitive — combine with ``strip_comment()``
+    This is a composable primitive — combine with `strip_comment()`
     to check for comment-or-blank lines.
     """
     var n = len(line)
@@ -159,9 +190,9 @@ def is_blank(line: String) -> Bool:
 
 def is_comment_or_blank(line: String) -> Bool:
     """Returns True if the line is blank, whitespace-only, or a comment
-    (first non-whitespace character is ``#``).
+    (first non-whitespace character is `#`).
 
-    Equivalent to ``is_blank(strip_comment(line))``.  Provided as a
+    Equivalent to `is_blank(strip_comment(line))`.  Provided as a
     convenience for callers that do not need the intermediate results.
     """
     return is_blank(strip_comment(line))
@@ -199,7 +230,7 @@ def strip(s: String) -> String:
 def filter_expression_lines(lines: List[String]) -> List[String]:
     """Filters a list of lines to only those that are valid expressions.
 
-    Removes blank lines and comment lines (starting with ``#``).
+    Removes blank lines and comment lines (starting with `#`).
     Also strips inline comments and leading/trailing whitespace from
     each expression line.
     """
@@ -219,12 +250,12 @@ def filter_expression_lines(lines: List[String]) -> List[String]:
 def read_file_text(path: String) raises -> String:
     """Reads the entire contents of a file and returns it as a String.
 
-    Uses POSIX ``open()`` + ``dup2()`` + ``getchar()`` to read the file
+    Uses POSIX `open()` + `dup2()` + `getchar()` to read the file
     by temporarily redirecting stdin.  This avoids FFI signature conflicts
-    with Mojo's stdlib and ArgMojo for ``read``/``fclose``.
+    with Mojo's stdlib and ArgMojo for `read`/`fclose`.
 
-    The original stdin is saved via ``dup()`` before redirection and
-    restored afterwards, so callers (e.g. a future REPL ``:load`` command)
+    The original stdin is saved via `dup()` before redirection and
+    restored afterwards, so callers (e.g. a future REPL `:load` command)
     can continue reading from the real stdin after this call returns.
 
     Args:
@@ -280,7 +311,7 @@ def read_file_text(path: String) raises -> String:
 def file_exists(path: String) -> Bool:
     """Returns True if the given path exists as a readable file.
 
-    Uses the POSIX ``access()`` syscall with ``R_OK`` (4).
+    Uses the POSIX `access()` syscall with `R_OK` (4).
     """
     var c_path = _to_cstr(path)
     # access(path, R_OK=4) returns 0 on success

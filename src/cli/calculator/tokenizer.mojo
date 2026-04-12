@@ -51,7 +51,7 @@ struct Token(Copyable, ImplicitlyCopyable, Movable):
     var position: Int
     """0-based column index in the original expression where this token
     starts.  Used to produce clear diagnostics such as
-    ``Error at position 5: unexpected '*'``."""
+    `Error at position 5: unexpected '*'`."""
 
     def __init__(out self, kind: Int, value: String = "", position: Int = 0):
         self.kind = kind

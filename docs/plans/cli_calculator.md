@@ -33,8 +33,8 @@ Rows are sorted by implementation priority for `decimo` (top = implement first).
 1. **Basic arithmetic + High-precision + Large integers + Pipeline** (Phase 1) — These are the raison d'être of `decimo`. Decimo already provides arbitrary-precision `BigDecimal`; wiring up tokenizer → parser → evaluator gives immediate value. Pipeline/batch is nearly free once one-shot works (just loop over stdin lines).
 2. **Built-in math functions** (Phase 2) — `sqrt`, `ln`, `exp`, `sin`, `cos`, `tan`, `root` already exist in the Decimo API. Adding them mostly means extending the tokenizer/parser to recognize function names.
 3. **Polish & ArgMojo integration** (Phase 3) — Error diagnostics, edge-case handling, and exploiting ArgMojo v0.5.0 features (shell completions, argument groups, numeric range validation, etc.). Mostly CLI UX refinement.
-4. **Interactive REPL + Subcommands** (Phase 4) — Requires a read-eval-print loop, `ans` tracking, named variable storage, session-level precision management, and CLI restructuring with subcommands. More engineering effort, less urgency.
-5. **Future enhancements** (Phase 5) — CJK full-width detection, response files, unit conversion, matrix, symbolic. Out of scope for now.
+4. **Interactive REPL** (Phase 4) — Requires a read-eval-print loop, `ans` tracking, named variable storage, session-level precision management. No subcommands — mode is determined by invocation context (same as `bc`, `python3`, `calc`).
+5. **Future enhancements** (Phase 5) — Binary distribution, CJK full-width detection, response files, unit conversion, matrix, symbolic. Out of scope for now.
 
 ## Usage Design
 
@@ -326,25 +326,31 @@ Format the final `BigDecimal` result based on CLI flags:
 | 3.11 | `Parsable.run()` override                                       |   ✗    | Move eval logic into `DecimoArgs.run()` for cleaner separation                             |
 | 3.12 | Performance validation                                          |   ✓    | `benches/cli/bench_cli.sh`; 47 correctness checks + timing vs `bc` and `python3`           |
 | 3.13 | Documentation (user manual for CLI)                             |   ✓    | `docs/user_manual_cli.md`; includes shell completions setup and performance data           |
-| 3.14 | Build and distribute as single binary                           |   ✗    |                                                                                            |
-| 3.15 | Allow negative expressions                                      |   ✓    | `allow_hyphen=True` on `Positional`; `decimo "-3*pi*(sin(1))"` works                       |
-| 3.16 | Make short names upper cases to avoid expression collisions     |   ✓    | `-P`, `-S`, `-E`, `-D`, `-R`; `--pad` has no short name; `-e`, `-pi`, `-sin(1)` all work   |
-| 3.17 | Define `allow_hyphen_values` in declarative API                 |   ✗    | When argmojo supports it                                                                   |
+| 3.14 | Allow negative expressions                                      |   ✓    | `allow_hyphen=True` on `Positional`; `decimo "-3*pi*(sin(1))"` works                       |
+| 3.15 | Make short names upper cases to avoid expression collisions     |   ✓    | `-P`, `-S`, `-E`, `-D`, `-R`; `--pad` has no short name; `-e`, `-pi`, `-sin(1)` all work   |
+| 3.16 | Define `allow_hyphen_values` in declarative API                 |   ✗    | When argmojo supports it                                                                   |
 
-### Phase 4: Interactive REPL & Subcommands
+### Phase 4: Interactive REPL
 
-1. Restructure CLI with subcommands: `decimo eval "expr"` (default), `decimo repl`, `decimo help functions`.
-2. Persistent flags (`--precision`, `--scientific`, etc.) across subcommands.
-3. Subcommand dispatch via `parse_full()`.
-4. No-args + TTY detection → launch REPL directly.
-5. Read-eval-print loop: read a line from stdin, evaluate, print result, repeat.
-6. Custom prompt (`decimo>`).
-7. `ans` variable to reference the previous result.
-8. Variable assignment: `x = sqrt(2)`, usable in subsequent expressions.
-9. Session-level precision: settable via `decimo -p 100` at launch or `:precision 100` command mid-session.
-10. Graceful exit: `exit`, `quit`, `Ctrl-D`.
-11. Clear error messages without crashing the session (e.g., "Error: division by zero", then continue).
-12. History (if Mojo gets readline-like support).
+No subcommands — mode is determined by invocation context (same as `bc`, `python3`, `calc`):
+
+| Invocation                         | Mode     |
+| ---------------------------------- | -------- |
+| `decimo "expr"`                    | One-shot |
+| `echo "expr" \| decimo`            | Pipe     |
+| `decimo -F file.dm`                | File     |
+| `decimo` (no args, stdin is a TTY) | REPL     |
+
+Design rationale: subcommands (`decimo eval`, `decimo repl`) create collision risk with expression identifiers (e.g. `log`, `exp`) and multi-arg function names. Every comparable tool (`bc`, `dc`, `calc`, `qalc`, `python3`) uses the same zero-subcommand pattern.
+
+**REPL features:**
+
+1. Read-eval-print loop: read a line, evaluate, print result, repeat.
+2. `ans` — automatically holds the previous result.
+3. Variable assignment — `x = <expr>` stores a named value.
+4. Meta-commands with `:` prefix — avoids collision with expressions.
+5. Error recovery — display error and continue, don't crash the session.
+6. Exit via `exit`, `quit`, or Ctrl-D.
 
 ```bash
 $ decimo
@@ -356,37 +362,36 @@ decimo> x = sqrt(2)
 1.41421356237309504880168872420969807856967187537694
 decimo> x ^ 2
 2
+decimo> :precision 100
+Precision set to 100
 decimo> 1/0
 Error: division by zero
 decimo> exit
 ```
 
-| #    | Task                                     | Status | Notes                                                                                                           |
-| ---- | ---------------------------------------- | :----: | --------------------------------------------------------------------------------------------------------------- |
-| 4.1  | Subcommand restructure                   |   ✗    | `decimo eval "expr"` (default), `decimo repl`, `decimo help functions`; use `subcommands()` hook                |
-| 4.2  | Persistent flags across subcommands      |   ✗    | `precision`, `--scientific`, etc. as `persistent=True`; both `decimo repl -p 100` and `decimo -p 100 repl` work |
-| 4.3  | `parse_full()` for subcommand dispatch   |   ✗    | Typed struct + `ParseResult.subcommand` for dispatching to eval/repl/help handlers                              |
-| 4.4  | No-args + TTY → launch REPL directly     |   ✗    | Replace `help_on_no_arguments()` with REPL auto-launch when terminal detected                                   |
-| 4.5  | Read-eval-print loop                     |   ✗    |                                                                                                                 |
-| 4.6  | Custom prompt (`decimo>`)                |   ✗    |                                                                                                                 |
-| 4.7  | `ans` variable (previous result)         |   ✗    |                                                                                                                 |
-| 4.8  | Variable assignment (`x = expr`)         |   ✗    |                                                                                                                 |
-| 4.9  | Session-level precision (`:precision N`) |   ✗    |                                                                                                                 |
-| 4.10 | Graceful exit (`exit`, `quit`, Ctrl-D)   |   ✗    |                                                                                                                 |
-| 4.11 | Error recovery (don't crash session)     |   ✗    |                                                                                                                 |
-| 4.12 | Interactive prompting for missing values |   ✗    | Use `.prompt()` on subcommand args for interactive precision input, etc.                                        |
-| 4.13 | Subcommand aliases                       |   ✗    | `command_aliases(["e"])` for `eval`, `command_aliases(["r"])` for `repl`                                        |
-| 4.14 | Hidden subcommands                       |   ✗    | Hide `debug` / internal subcommands from help                                                                   |
+| #   | Task                                    | Status | Notes                                                                      |
+| --- | --------------------------------------- | :----: | -------------------------------------------------------------------------- |
+| 4.1 | No-args + TTY → launch REPL             |   ✓    | Replace "no expression" error with REPL auto-launch when terminal detected |
+| 4.2 | Read-eval-print loop                    |   ✓    | `read_line()` via `getchar()`; one expression per line                     |
+| 4.3 | Custom prompt (`decimo>`)               |   ✓    | Coloured prompt to stderr so results can be piped                          |
+| 4.4 | `ans` variable (previous result)        |   ✗    | Injected as a constant into the evaluator; starts as `0`                   |
+| 4.5 | Variable assignment (`x = expr`)        |   ✗    | Parse `name = expr` syntax; store in a name→BigDecimal map                 |
+| 4.6 | Meta-commands (`:precision N`, `:vars`) |   ✗    | `:` prefix avoids collision with expressions                               |
+| 4.7 | Graceful exit (`exit`, `quit`, Ctrl-D)  |   ✓    |                                                                            |
+| 4.8 | Error recovery (don't crash session)    |   ✓    | Catch exceptions per-line, display error, continue loop                    |
+| 4.9 | History (if Mojo gets readline support) |   ✗    | Future — depends on Mojo FFI evolution                                     |
 
 ### Phase 5: Future Enhancements
 
-1. Detect full-width digits/operators for CJK users while parsing.
-2. Response files (`@expressions.txt`) — when Mojo compiler bug is fixed, use ArgMojo's `cmd.response_file_prefix("@")`.
+1. Build and distribute as a single binary (Homebrew, GitHub Releases, etc.) — defer until REPL is stable so first-run experience is complete.
+2. Detect full-width digits/operators for CJK users while parsing.
+3. Response files (`@expressions.txt`) — when Mojo compiler bug is fixed, use ArgMojo's `cmd.response_file_prefix("@")`.
 
 | #   | Task                                        | Status | Notes                                                                          |
 | --- | ------------------------------------------- | :----: | ------------------------------------------------------------------------------ |
-| 5.1 | Full-width digit/operator detection for CJK |   ✗    | Tokenizer-level handling for CJK users                                         |
-| 5.2 | Response files (`@expressions.txt`)         |   ✗    | Blocked on Mojo compiler bug; `cmd.response_file_prefix("@")` ready when fixed |
+| 5.1 | Build and distribute as single binary       |   ✗    | Defer until REPL is stable; Homebrew, GitHub Releases, `curl \| sh` installer  |
+| 5.2 | Full-width digit/operator detection for CJK |   ✗    | Tokenizer-level handling for CJK users                                         |
+| 5.3 | Response files (`@expressions.txt`)         |   ✗    | Blocked on Mojo compiler bug; `cmd.response_file_prefix("@")` ready when fixed |
 
 ## Design Decisions
 
@@ -404,13 +409,12 @@ This is the natural choice for a calculator: users expect `7 / 2` to be `3.5`, n
 
 `decimo` automatically detects its mode based on how it is invoked:
 
-| Invocation                            | Mode                                  |
-| ------------------------------------- | ------------------------------------- |
-| `decimo "expr"`                       | One-shot: evaluate and exit           |
-| `echo "expr" \| decimo`               | Pipe: read stdin line by line         |
-| `decimo -F file.dm`                   | File: read and evaluate each line     |
-| `decimo` (no args, terminal is a TTY) | REPL: interactive session             |
-| `decimo -i`                           | REPL: force interactive even if piped |
+| Invocation                            | Mode                              |
+| ------------------------------------- | --------------------------------- |
+| `decimo "expr"`                       | One-shot: evaluate and exit       |
+| `echo "expr" \| decimo`               | Pipe: read stdin line by line     |
+| `decimo -F file.dm`                   | File: read and evaluate each line |
+| `decimo` (no args, terminal is a TTY) | REPL: interactive session         |
 
 ## Notes
 

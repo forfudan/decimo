@@ -44,9 +44,10 @@ from .tokenizer import (
 )
 from .parser import parse_to_rpn
 from .evaluator import evaluate_rpn, evaluate
-from .display import print_error, print_warning, print_hint
+from .display import print_error, print_warning, print_hint, write_prompt
 from .io import (
     stdin_is_tty,
+    read_line,
     read_stdin,
     split_into_lines,
     strip_comment,
@@ -57,3 +58,4 @@ from .io import (
     read_file_text,
     file_exists,
 )
+from .repl import run_repl
