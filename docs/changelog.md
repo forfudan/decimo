@@ -12,6 +12,7 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 1. Add **file mode**: use `--file` / `-F` flag to evaluate expressions from a file, one per line (e.g. `decimo -F expressions.dm -P 50`). Comments (`#`), inline comments, and blank lines are skipped. All CLI flags (precision, formatting, rounding) apply to every expression.
 1. Add **shell completion** documentation for Bash, Zsh, and Fish (`decimo --completions bash|zsh|fish`).
 1. Add **CLI performance benchmarks** (`benches/cli/bench_cli.sh`) comparing correctness and timing against `bc` and `python3` across 47 comparisons — all results match to 15 significant digits; `decimo` is 3–4× faster than `python3 -c`.
+1. Add **interactive REPL**: launch with `decimo` (no arguments, TTY attached). Features coloured `decimo>` prompt on stderr, per-line error recovery with caret diagnostics, comment/blank-line skipping, and graceful exit via `exit`, `quit`, or Ctrl-D. All CLI flags (`-P`, `--scientific`, etc.) apply to the REPL session.
 
 ### 🦋 Changed in v0.10.0
 

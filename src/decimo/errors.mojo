@@ -27,7 +27,7 @@ ValueError: description of what went wrong
 
 File name and line number are automatically captured at the raise site using
 `call_location()`. The absolute path is automatically shortened to a relative
-path (e.g. ``./src/...``, ``./tests/...``) for readability and privacy.
+path (e.g. `./src/...`, `./tests/...`) for readability and privacy.
 Function name must be provided manually since Mojo does not have a built-in way
 to get the current function name at runtime.
 """
@@ -85,13 +85,13 @@ failures, missing native libraries)."""
 def _shorten_path(full_path: String) -> String:
     """Shorten an absolute file path to a relative path.
 
-    Looks for known directory markers (``src/``, ``tests/``, ``benches/``) and
-    returns a ``./``-prefixed relative path from the rightmost marker found.
+    Looks for known directory markers (`src/`, `tests/`, `benches/`) and
+    returns a `./`-prefixed relative path from the rightmost marker found.
     If no marker is found, returns just the filename.
 
-    Uses ``rfind`` (reverse search) to handle paths that contain a marker more
-    than once, e.g. ``/home/user/src/projects/decimo/src/decimo/bigint.mojo``
-    correctly shortens to ``./src/decimo/bigint.mojo``.  When more than one
+    Uses `rfind` (reverse search) to handle paths that contain a marker more
+    than once, e.g. `/home/user/src/projects/decimo/src/decimo/bigint.mojo`
+    correctly shortens to `./src/decimo/bigint.mojo`.  When more than one
     marker type appears, the rightmost position wins to produce the shortest
     possible relative path.
 

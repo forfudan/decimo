@@ -15,10 +15,8 @@ from std.sys import exit
 
 from argmojo import Parsable, Option, Flag, Positional, Command
 from decimo.rounding_mode import RoundingMode
-from calculator.tokenizer import tokenize
-from calculator.parser import parse_to_rpn
-from calculator.evaluator import evaluate_rpn, final_round
 from calculator.display import print_error
+from calculator.engine import evaluate_and_print
 from calculator.io import (
     stdin_is_tty,
     read_stdin,
@@ -26,6 +24,7 @@ from calculator.io import (
     filter_expression_lines,
     read_file_text,
 )
+from calculator.repl import run_repl
 
 
 struct DecimoArgs(Parsable):
@@ -145,7 +144,7 @@ def _run() raises:
     # 1. --file flag provided        → file mode
     # 2. Positional expr provided    → expression mode (one-shot)
     # 3. No expr, stdin is piped     → pipe mode
-    # 4. No expr, stdin is a TTY     → error (no input)
+    # 4. No expr, stdin is a TTY     → interactive REPL
 
     var has_file = len(args.file.value) > 0
     var has_expr = len(args.expr.value) > 0
@@ -168,7 +167,7 @@ def _run() raises:
     elif has_expr:
         # ── Expression mode (one-shot) ───────────────────────────────────
         try:
-            _evaluate_and_print(
+            evaluate_and_print(
                 args.expr.value,
                 precision,
                 scientific,
@@ -191,16 +190,16 @@ def _run() raises:
             rounding_mode,
         )
     else:
-        # No expression, no file, no pipe — show help.
-        print_error("no expression provided")
-        print(
-            "Usage: decimo [OPTIONS] [EXPR]\n"
-            "       echo 'EXPR' | decimo [OPTIONS]\n"
-            "       decimo -F FILE [OPTIONS]\n"
-            "\n"
-            "Run 'decimo --help' for more information."
+        # ── REPL mode ───────────────────────────────────────────────────
+        # No expression, no file, no pipe — launch interactive session.
+        run_repl(
+            precision,
+            scientific,
+            engineering,
+            pad,
+            delimiter,
+            rounding_mode,
         )
-        exit(1)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -226,7 +225,7 @@ def _run_pipe_mode(
 
     for i in range(len(expressions)):
         try:
-            _evaluate_and_print(
+            evaluate_and_print(
                 expressions[i],
                 precision,
                 scientific,
@@ -267,7 +266,7 @@ def _run_file_mode(
 
     for i in range(len(expressions)):
         try:
-            _evaluate_and_print(
+            evaluate_and_print(
                 expressions[i],
                 precision,
                 scientific,
@@ -283,129 +282,6 @@ def _run_file_mode(
 
     if had_error:
         exit(1)
-
-
-# ===----------------------------------------------------------------------=== #
-# Core evaluation and formatting
-# ===----------------------------------------------------------------------=== #
-
-
-def _evaluate_and_print(
-    expr: String,
-    precision: Int,
-    scientific: Bool,
-    engineering: Bool,
-    pad: Bool,
-    delimiter: String,
-    rounding_mode: RoundingMode,
-    show_expr_on_error: Bool = False,
-) raises:
-    """Tokenize, parse, evaluate, and print one expression.
-
-    On error, displays a coloured diagnostic and raises to signal failure
-    to the caller.
-    """
-    try:
-        var tokens = tokenize(expr)
-        var rpn = parse_to_rpn(tokens^)
-
-        try:
-            var value = final_round(
-                evaluate_rpn(rpn^, precision), precision, rounding_mode
-            )
-
-            if scientific:
-                print(value.to_string(scientific=True, delimiter=delimiter))
-            elif engineering:
-                print(value.to_string(engineering=True, delimiter=delimiter))
-            elif pad:
-                print(
-                    _pad_to_precision(
-                        value.to_string(force_plain=True), precision
-                    )
-                )
-            else:
-                print(value.to_string(delimiter=delimiter))
-        except eval_err:
-            if show_expr_on_error:
-                _display_calc_error(String(eval_err), expr)
-            else:
-                print_error(String(eval_err))
-            raise eval_err^
-
-    except parse_err:
-        if show_expr_on_error:
-            _display_calc_error(String(parse_err), expr)
-        else:
-            print_error(String(parse_err))
-        raise parse_err^
-
-
-def _display_calc_error(error_msg: String, expr: String):
-    """Parses a calculator error message and displays it with colours
-    and a caret indicator.
-
-    The calculator engine produces errors in two forms:
-
-    1. ``Error at position N: <description>``  — with position info.
-    2. ``<description>``  — without position info.
-
-    This function detects form (1), extracts the position, and calls
-    `print_error(description, expr, position)` so the user sees a
-    visual caret under the offending column.  For form (2) it falls
-    back to a plain coloured error.
-    """
-    comptime PREFIX = "Error at position "
-
-    if error_msg.startswith(PREFIX):
-        # Find the colon after the position number.
-        var after_prefix = len(PREFIX)
-        var colon_pos = -1
-        for i in range(after_prefix, len(error_msg)):
-            if error_msg[byte=i] == ":":
-                colon_pos = i
-                break
-
-        if colon_pos > after_prefix:
-            # Extract position number and description.
-            var pos_str = String(error_msg[byte=after_prefix:colon_pos])
-            var description = String(
-                error_msg[byte = colon_pos + 2 :]
-            )  # skip ": "
-
-            try:
-                var pos = Int(pos_str)
-                print_error(description, expr, pos)
-                return
-            except:
-                pass  # fall through to plain display
-
-    # Fallback: no position info — just show the message.
-    print_error(error_msg)
-
-
-def _pad_to_precision(plain: String, precision: Int) -> String:
-    """Pads (or adds) trailing zeros so the fractional part has exactly
-    `precision` digits.
-    """
-    if precision <= 0:
-        return plain
-
-    var dot_pos = -1
-    for i in range(len(plain)):
-        if plain[byte=i] == ".":
-            dot_pos = i
-            break
-
-    if dot_pos < 0:
-        # No decimal point — add one with `precision` zeros
-        return plain + "." + "0" * precision
-
-    var frac_len = len(plain) - dot_pos - 1
-    if frac_len >= precision:
-        return plain
-
-    return plain + "0" * (precision - frac_len)
 
 
 def _parse_rounding_mode(name: String) -> RoundingMode:
