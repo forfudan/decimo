@@ -60,7 +60,7 @@ def evaluate_and_print(
         variables: A name→value mapping of user-defined variables.
     """
     try:
-        var tokens = tokenize(expr, _variable_names(variables))
+        var tokens = tokenize(expr, variables)
         var rpn = parse_to_rpn(tokens^)
         var value = final_round(
             evaluate_rpn(rpn^, precision, variables), precision, rounding_mode
@@ -174,7 +174,7 @@ def evaluate_and_return(
     to the caller.
     """
     try:
-        var tokens = tokenize(expr, _variable_names(variables))
+        var tokens = tokenize(expr, variables)
         var rpn = parse_to_rpn(tokens^)
         var value = final_round(
             evaluate_rpn(rpn^, precision, variables), precision, rounding_mode
@@ -195,11 +195,3 @@ def evaluate_and_return(
     except e:
         display_calc_error(String(e), expr)
         raise e^
-
-
-def _variable_names(variables: Dict[String, Decimal]) -> List[String]:
-    """Extract variable names from a Dict as a List[String]."""
-    var names = List[String]()
-    for entry in variables.items():
-        names.append(entry.key)
-    return names^

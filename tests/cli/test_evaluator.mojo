@@ -448,10 +448,7 @@ def _eval_with_vars(
     expr: String, variables: Dict[String, Decimal], precision: Int = 50
 ) raises -> Decimal:
     """Helper to evaluate an expression with variables."""
-    var var_names = List[String]()
-    for entry in variables.items():
-        var_names.append(entry.key)
-    var tokens = tokenize(expr, var_names)
+    var tokens = tokenize(expr, variables)
     var rpn = parse_to_rpn(tokens^)
     return final_round(evaluate_rpn(rpn^, precision, variables), precision)
 
@@ -508,7 +505,7 @@ def test_undefined_variable_raises() raises:
         _ = _eval_with_vars("y + 1", vars)
     except:
         raised = True
-    testing.assert_true(raised, "should raise on undefined variable 'y')")
+    testing.assert_true(raised, "should raise on undefined variable 'y'")
 
 
 # ===----------------------------------------------------------------------=== #

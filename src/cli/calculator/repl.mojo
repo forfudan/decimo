@@ -42,10 +42,10 @@ from .display import write_prompt, print_error
 from .engine import evaluate_and_return
 from .io import read_line, strip, is_comment_or_blank
 from .tokenizer import (
-    _is_alpha_or_underscore,
-    _is_alnum_or_underscore,
-    _is_known_function,
-    _is_known_constant,
+    is_alpha_or_underscore,
+    is_alnum_or_underscore,
+    is_known_function,
+    is_known_constant,
 )
 
 
@@ -163,12 +163,12 @@ def _parse_assignment(line: String) -> Optional[Tuple[String, String]]:
         return None
 
     # Must start with alpha or underscore
-    if not _is_alpha_or_underscore(line_bytes[i]):
+    if not is_alpha_or_underscore(line_bytes[i]):
         return None
 
     var name_start = i
     i += 1
-    while i < n and _is_alnum_or_underscore(line_bytes[i]):
+    while i < n and is_alnum_or_underscore(line_bytes[i]):
         i += 1
     var name_end = i
 
@@ -220,9 +220,9 @@ def _validate_variable_name(name: String) -> Optional[String]:
             "cannot assign to 'ans' (read-only; it always holds the last"
             " result)"
         )
-    if _is_known_function(name):
+    if is_known_function(name):
         return "cannot assign to '" + name + "' (built-in function)"
-    if _is_known_constant(name):
+    if is_known_constant(name):
         return "cannot assign to '" + name + "' (built-in constant)"
     return None
 

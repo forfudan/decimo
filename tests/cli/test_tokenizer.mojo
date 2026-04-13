@@ -1,6 +1,8 @@
 """Test the tokenizer: lexical analysis of expression strings."""
 
 from std import testing
+from std.collections import Dict
+from decimo import Decimal
 
 from calculator.tokenizer import (
     Token,
@@ -335,11 +337,11 @@ def test_unknown_identifier() raises:
 # ===----------------------------------------------------------------------=== #
 
 
-def _make_vars(*names: String) -> List[String]:
-    """Build a List[String] from variadic arguments."""
-    var result = List[String]()
+def _make_vars(*names: String) -> Dict[String, Decimal]:
+    """Build a Dict[String, Decimal] from variadic name arguments."""
+    var result = Dict[String, Decimal]()
     for i in range(len(names)):
-        result.append(names[i])
+        result[names[i]] = Decimal()
     return result^
 
 
