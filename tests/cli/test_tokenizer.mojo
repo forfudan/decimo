@@ -17,6 +17,7 @@ from calculator.tokenizer import (
     TOKEN_FUNC,
     TOKEN_CONST,
     TOKEN_COMMA,
+    TOKEN_VARIABLE,
 )
 
 
@@ -327,6 +328,73 @@ def test_unknown_identifier() raises:
     except:
         raised = True
     testing.assert_true(raised, "should raise on unknown identifier 'foo'")
+
+
+# ===----------------------------------------------------------------------=== #
+# Tests: variable tokens (Phase 4)
+# ===----------------------------------------------------------------------=== #
+
+
+def _make_vars(*names: String) -> List[String]:
+    """Build a List[String] from variadic arguments."""
+    var result = List[String]()
+    for i in range(len(names)):
+        result.append(names[i])
+    return result^
+
+
+def test_variable_token() raises:
+    """Known variable names produce TOKEN_VARIABLE tokens."""
+    var vars = _make_vars("x", "y")
+    var toks = tokenize("x + y", vars)
+    testing.assert_equal(len(toks), 3, "x + y token count")
+    assert_token(toks, 0, TOKEN_VARIABLE, "x", "variable x")
+    assert_token(toks, 1, TOKEN_PLUS, "+", "plus")
+    assert_token(toks, 2, TOKEN_VARIABLE, "y", "variable y")
+
+
+def test_variable_ans() raises:
+    """The special variable 'ans' is tokenized correctly."""
+    var vars = _make_vars("ans")
+    var toks = tokenize("ans * 2", vars)
+    testing.assert_equal(len(toks), 3, "ans * 2 token count")
+    assert_token(toks, 0, TOKEN_VARIABLE, "ans", "variable ans")
+
+
+def test_variable_vs_function() raises:
+    """Functions take priority over variable names."""
+    var vars = _make_vars("sqrt")
+    var toks = tokenize("sqrt(4)", vars)
+    assert_token(toks, 0, TOKEN_FUNC, "sqrt", "function, not variable")
+
+
+def test_variable_vs_constant() raises:
+    """Constants take priority over variable names."""
+    var vars = _make_vars("pi")
+    var toks = tokenize("pi", vars)
+    assert_token(toks, 0, TOKEN_CONST, "pi", "constant, not variable")
+
+
+def test_unknown_without_known_variables() raises:
+    """Without known variables, unknown identifiers still raise."""
+    var raised = False
+    try:
+        _ = tokenize("x + 1")
+    except:
+        raised = True
+    testing.assert_true(raised, "should raise on unknown 'x' without vars")
+
+
+def test_variable_in_expression() raises:
+    """Variables work in complex expressions."""
+    var vars = _make_vars("x", "ans")
+    var toks = tokenize("x^2 + ans", vars)
+    testing.assert_equal(len(toks), 5, "x^2 + ans token count")
+    assert_token(toks, 0, TOKEN_VARIABLE, "x", "var x")
+    assert_token(toks, 1, TOKEN_CARET, "^", "caret")
+    assert_token(toks, 2, TOKEN_NUMBER, "2", "number 2")
+    assert_token(toks, 3, TOKEN_PLUS, "+", "plus")
+    assert_token(toks, 4, TOKEN_VARIABLE, "ans", "var ans")
 
 
 # ===----------------------------------------------------------------------=== #

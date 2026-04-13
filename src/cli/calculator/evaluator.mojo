@@ -20,8 +20,9 @@ RPN evaluator for the Decimo CLI calculator.
 Evaluates a Reverse Polish Notation token list using BigDecimal arithmetic.
 """
 
-from decimo import BDec
+from decimo import Decimal
 from decimo.rounding_mode import RoundingMode
+from std.collections import Dict
 
 from .tokenizer import (
     Token,
@@ -34,6 +35,7 @@ from .tokenizer import (
     TOKEN_CARET,
     TOKEN_FUNC,
     TOKEN_CONST,
+    TOKEN_VARIABLE,
 )
 from .parser import parse_to_rpn
 from .tokenizer import tokenize
@@ -45,7 +47,7 @@ from .tokenizer import tokenize
 
 
 def _call_func(
-    name: String, mut stack: List[BDec], precision: Int, position: Int
+    name: String, mut stack: List[Decimal], precision: Int, position: Int
 ) raises:
     """Pop argument(s) from `stack`, call the named Decimo function,
     and push the result back.
@@ -168,13 +170,24 @@ def _call_func(
 # ===----------------------------------------------------------------------=== #
 
 
-def evaluate_rpn(rpn: List[Token], precision: Int) raises -> BDec:
+def evaluate_rpn(
+    rpn: List[Token],
+    precision: Int,
+    variables: Dict[String, Decimal] = Dict[String, Decimal](),
+) raises -> Decimal:
     """Evaluate an RPN token list using BigDecimal arithmetic.
 
     Internally uses `working_precision = precision + GUARD_DIGITS` for all
     computations to absorb intermediate rounding errors.  The caller is
     responsible for rounding the final result to `precision` significant
     digits (see `final_round`).
+
+    Args:
+        rpn: The Reverse Polish Notation token list.
+        precision: Number of significant digits.
+        variables: A name→value mapping of user-defined variables (e.g.
+            `ans`, `x`).  If a TOKEN_VARIABLE token's name is not found
+            in this dict, an error is raised.
 
     Raises:
         Error: On division by zero, missing operands, or other runtime
@@ -186,25 +199,38 @@ def evaluate_rpn(rpn: List[Token], precision: Int) raises -> BDec:
     # accumulated rounding errors from intermediate operations.
     comptime GUARD_DIGITS = 9
     var working_precision = precision + GUARD_DIGITS
-    var stack = List[BDec]()
+    var stack = List[Decimal]()
 
     for i in range(len(rpn)):
         var kind = rpn[i].kind
 
         if kind == TOKEN_NUMBER:
-            stack.append(BDec.from_string(rpn[i].value))
+            stack.append(Decimal.from_string(rpn[i].value))
 
         elif kind == TOKEN_CONST:
             if rpn[i].value == "pi":
-                stack.append(BDec.pi(working_precision))
+                stack.append(Decimal.pi(working_precision))
             elif rpn[i].value == "e":
-                stack.append(BDec.e(working_precision))
+                stack.append(Decimal.e(working_precision))
             else:
                 raise Error(
                     "Error at position "
                     + String(rpn[i].position)
                     + ": unknown constant '"
                     + rpn[i].value
+                    + "'"
+                )
+
+        elif kind == TOKEN_VARIABLE:
+            var var_name = rpn[i].value
+            if var_name in variables:
+                stack.append(variables[var_name].copy())
+            else:
+                raise Error(
+                    "Error at position "
+                    + String(rpn[i].position)
+                    + ": undefined variable '"
+                    + var_name
                     + "'"
                 )
 
@@ -306,10 +332,10 @@ def evaluate_rpn(rpn: List[Token], precision: Int) raises -> BDec:
 
 
 def final_round(
-    value: BDec,
+    value: Decimal,
     precision: Int,
     rounding_mode: RoundingMode = RoundingMode.half_even(),
-) raises -> BDec:
+) raises -> Decimal:
     """Round a BigDecimal to `precision` significant digits.
 
     This should be called on the result of `evaluate_rpn` before
@@ -327,7 +353,7 @@ def evaluate(
     expr: String,
     precision: Int = 50,
     rounding_mode: RoundingMode = RoundingMode.half_even(),
-) raises -> BDec:
+) raises -> Decimal:
     """Evaluate a math expression string and return a BigDecimal result.
 
     This is the main entry point for the calculator engine.

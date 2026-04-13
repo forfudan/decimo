@@ -34,16 +34,17 @@ from .tokenizer import (
     TOKEN_FUNC,
     TOKEN_CONST,
     TOKEN_COMMA,
+    TOKEN_VARIABLE,
 )
 
 
 def parse_to_rpn(tokens: List[Token]) raises -> List[Token]:
-    """Converts infix tokens to Reverse Polish Notation using
-    Dijkstra's shunting-yard algorithm.
+    """Converts infix tokens to Reverse Polish Notation using Dijkstra's
+    shunting-yard algorithm.
 
-    Supports binary operators (+, -, *, /, ^), unary minus,
-    function calls (sqrt, ln, …), constants (pi, e), and commas
-    for multi-argument functions like root(x, n).
+    Supports binary operators (+, -, *, /, ^), unary minus, function calls
+    (sqrt, ln, …), constants (pi, e), and commas for multi-argument functions
+    like root(x, n).
 
     Raises:
         Error: On mismatched parentheses, misplaced commas, or trailing
@@ -55,8 +56,12 @@ def parse_to_rpn(tokens: List[Token]) raises -> List[Token]:
     for i in range(len(tokens)):
         var kind = tokens[i].kind
 
-        # Numbers and constants go straight to output
-        if kind == TOKEN_NUMBER or kind == TOKEN_CONST:
+        # Numbers, constants, and variables go straight to output
+        if (
+            kind == TOKEN_NUMBER
+            or kind == TOKEN_CONST
+            or kind == TOKEN_VARIABLE
+        ):
             output.append(tokens[i])
 
         # Functions are pushed onto the operator stack

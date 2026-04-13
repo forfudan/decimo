@@ -36,6 +36,7 @@ comptime TOKEN_CARET = 8
 comptime TOKEN_FUNC = 9
 comptime TOKEN_CONST = 10
 comptime TOKEN_COMMA = 11
+comptime TOKEN_VARIABLE = 12
 
 
 # ===----------------------------------------------------------------------=== #
@@ -156,16 +157,25 @@ def _is_alnum_or_underscore(c: UInt8) -> Bool:
     return _is_alpha_or_underscore(c) or (c >= 48 and c <= 57)
 
 
-def tokenize(expr: String) raises -> List[Token]:
+def tokenize(
+    expr: String, known_variables: List[String] = List[String]()
+) raises -> List[Token]:
     """Converts an expression string into a list of tokens.
 
     Handles: numbers (integer and decimal), operators (+, -, *, /, ^),
     parentheses, commas, function calls (sqrt, ln, …), built-in
-    constants (pi, e), and distinguishes unary minus from binary minus.
+    constants (pi, e), user-defined variables, and distinguishes unary
+    minus from binary minus.
 
     Each token records its 0-based column position in the source
     expression so that downstream stages can emit user-friendly
     diagnostics that pinpoint where the problem is.
+
+    Args:
+        expr: The expression string to tokenize.
+        known_variables: Optional list of known variable names. When
+            provided, identifiers matching a known variable are emitted
+            as TOKEN_VARIABLE tokens instead of raising an error.
 
     Raises:
         Error: On empty/whitespace-only input (without position info),
@@ -232,6 +242,16 @@ def tokenize(expr: String) raises -> List[Token]:
             # Check if it is a known function
             if _is_known_function(name):
                 tokens.append(Token(TOKEN_FUNC, name^, position=start))
+                continue
+
+            # Check if it is a known variable
+            var is_variable = False
+            for vi in range(len(known_variables)):
+                if known_variables[vi] == name:
+                    is_variable = True
+                    break
+            if is_variable:
+                tokens.append(Token(TOKEN_VARIABLE, name^, position=start))
                 continue
 
             raise Error(

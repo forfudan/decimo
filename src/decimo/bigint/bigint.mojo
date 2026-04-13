@@ -48,6 +48,8 @@ from decimo.errors import (
 # Type aliases
 comptime BInt = BigInt
 """An arbitrary-precision signed integer, similar to Python's `int`."""
+comptime Integer = BigInt
+"""An arbitrary-precision signed integer, similar to Python's `int`."""
 
 
 struct BigInt(

@@ -369,17 +369,22 @@ Error: division by zero
 decimo> exit
 ```
 
-| #   | Task                                    | Status | Notes                                                                      |
-| --- | --------------------------------------- | :----: | -------------------------------------------------------------------------- |
-| 4.1 | No-args + TTY → launch REPL             |   ✓    | Replace "no expression" error with REPL auto-launch when terminal detected |
-| 4.2 | Read-eval-print loop                    |   ✓    | `read_line()` via `getchar()`; one expression per line                     |
-| 4.3 | Custom prompt (`decimo>`)               |   ✓    | Coloured prompt to stderr so results can be piped                          |
-| 4.4 | `ans` variable (previous result)        |   ✗    | Injected as a constant into the evaluator; starts as `0`                   |
-| 4.5 | Variable assignment (`x = expr`)        |   ✗    | Parse `name = expr` syntax; store in a name→BigDecimal map                 |
-| 4.6 | Meta-commands (`:precision N`, `:vars`) |   ✗    | `:` prefix avoids collision with expressions                               |
-| 4.7 | Graceful exit (`exit`, `quit`, Ctrl-D)  |   ✓    |                                                                            |
-| 4.8 | Error recovery (don't crash session)    |   ✓    | Catch exceptions per-line, display error, continue loop                    |
-| 4.9 | History (if Mojo gets readline support) |   ✗    | Future — depends on Mojo FFI evolution                                     |
+| #    | Task                                       | Status | Notes                                                                      |
+| ---- | ------------------------------------------ | :----: | -------------------------------------------------------------------------- |
+| 4.1  | No-args + TTY → launch REPL                |   ✓    | Replace "no expression" error with REPL auto-launch when terminal detected |
+| 4.2  | Read-eval-print loop                       |   ✓    | `read_line()` via `getchar()`; one expression per line                     |
+| 4.3  | Custom prompt (`decimo>`)                  |   ✓    | Coloured prompt to stderr so results can be piped                          |
+| 4.4  | `ans` variable (previous result)           |   ✓    | Stored in `Dict[String, BDec]`; updated after each successful evaluation   |
+| 4.5  | Variable assignment (`x = expr`)           |   ✓    | `name = expr` detection in REPL; protected names (pi, e, functions, ans)   |
+| 4.6  | Meta-commands (`:precision N`, `:vars`)    |   ✗    | `:` prefix avoids collision with expressions, allow short aliases          |
+| 4.7  | One-line quick setting                     |   ✗    | `:p 100 s down` sets precision, scientific notation, and round_down mode   |
+| 4.7  | Same-line temp precision setting           |   ✗    | `2*sqrt(1.23):p 100 s down` for a temporay setting for the expression      |
+| 4.8  | Print settings (`:settings`)               |   ✗    | Display current precision, formatting options, etc.                        |
+| 4.9  | Variable listing (`:vars` and `:variable`) |   ✗    | List all user-defined variables and their values                           |
+| 4.10 | Everything in REPL are case-insensitive    |   x    | Map all input chars to lower case at pre-tokenizer stage                   |
+| 4.11 | Graceful exit (`exit`, `quit`, Ctrl-D)     |   ✓    |                                                                            |
+| 4.12 | Error recovery (don't crash session)       |   ✓    | Catch exceptions per-line, display error, continue loop                    |
+| 4.13 | History (if Mojo gets readline support)    |   ✗    | Future — depends on Mojo FFI evolution                                     |
 
 ### Phase 5: Future Enhancements
 
@@ -387,11 +392,12 @@ decimo> exit
 2. Detect full-width digits/operators for CJK users while parsing.
 3. Response files (`@expressions.txt`) — when Mojo compiler bug is fixed, use ArgMojo's `cmd.response_file_prefix("@")`.
 
-| #   | Task                                        | Status | Notes                                                                          |
-| --- | ------------------------------------------- | :----: | ------------------------------------------------------------------------------ |
-| 5.1 | Build and distribute as single binary       |   ✗    | Defer until REPL is stable; Homebrew, GitHub Releases, `curl \| sh` installer  |
-| 5.2 | Full-width digit/operator detection for CJK |   ✗    | Tokenizer-level handling for CJK users                                         |
-| 5.3 | Response files (`@expressions.txt`)         |   ✗    | Blocked on Mojo compiler bug; `cmd.response_file_prefix("@")` ready when fixed |
+| #   | Task                                        | Status | Notes                                                                             |
+| --- | ------------------------------------------- | :----: | --------------------------------------------------------------------------------- |
+| 5.1 | Full-width digit/operator detection for CJK |   ✗    | Tokenizer-level handling for CJK users                                            |
+| 5.2 | Full-width to half-width normalization      |   ✗    | Pre-tokenizer normalization step to convert full-width chars to ASCII equivalents |
+| 5.3 | Build and distribute as single binary       |   ✗    | Defer until REPL is stable; Homebrew, GitHub Releases, `curl \| sh` installer     |
+| 5.4 | Response files (`@expressions.txt`)         |   ✗    | Blocked on Mojo compiler bug; `cmd.response_file_prefix("@")` ready when fixed    |
 
 ## Design Decisions
 
