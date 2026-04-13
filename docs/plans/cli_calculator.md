@@ -369,22 +369,22 @@ Error: division by zero
 decimo> exit
 ```
 
-| #    | Task                                       | Status | Notes                                                                      |
-| ---- | ------------------------------------------ | :----: | -------------------------------------------------------------------------- |
-| 4.1  | No-args + TTY → launch REPL                |   ✓    | Replace "no expression" error with REPL auto-launch when terminal detected |
-| 4.2  | Read-eval-print loop                       |   ✓    | `read_line()` via `getchar()`; one expression per line                     |
-| 4.3  | Custom prompt (`decimo>`)                  |   ✓    | Coloured prompt to stderr so results can be piped                          |
+| #    | Task                                       | Status | Notes                                                                       |
+| ---- | ------------------------------------------ | :----: | --------------------------------------------------------------------------- |
+| 4.1  | No-args + TTY → launch REPL                |   ✓    | Replace "no expression" error with REPL auto-launch when terminal detected  |
+| 4.2  | Read-eval-print loop                       |   ✓    | `read_line()` via `getchar()`; one expression per line                      |
+| 4.3  | Custom prompt (`decimo>`)                  |   ✓    | Coloured prompt to stderr so results can be piped                           |
 | 4.4  | `ans` variable (previous result)           |   ✓    | Stored in `Dict[String, Decimal]`; updated after each successful evaluation |
-| 4.5  | Variable assignment (`x = expr`)           |   ✓    | `name = expr` detection in REPL; protected names (pi, e, functions, ans)   |
-| 4.6  | Meta-commands (`:precision N`, `:vars`)    |   ✗    | `:` prefix avoids collision with expressions, allow short aliases          |
-| 4.7  | One-line quick setting                     |   ✗    | `:p 100 s down` sets precision, scientific notation, and round_down mode   |
-| 4.8  | Same-line temp precision setting           |   ✗    | `2*sqrt(1.23):p 100 s down` for a temporary setting for the expression     |
-| 4.9  | Print settings (`:settings`)               |   ✗    | Display current precision, formatting options, etc.                        |
-| 4.10 | Variable listing (`:vars` and `:variable`) |   ✗    | List all user-defined variables and their values                           |
-| 4.11 | Everything in the REPL is case-insensitive |   ✗    | Map all input chars to lower case at pre-tokenizer stage                   |
-| 4.12 | Graceful exit (`exit`, `quit`, Ctrl-D)     |   ✓    |                                                                            |
-| 4.13 | Error recovery (don't crash session)       |   ✓    | Catch exceptions per-line, display error, continue loop                    |
-| 4.14 | History (if Mojo gets readline support)    |   ✗    | Future — depends on Mojo FFI evolution                                     |
+| 4.5  | Variable assignment (`x = expr`)           |   ✓    | `name = expr` detection in REPL; protected names (pi, e, functions, ans)    |
+| 4.6  | Meta-commands (`:precision N`, `:vars`)    |   ✗    | `:` prefix avoids collision with expressions, allow short aliases           |
+| 4.7  | One-line quick setting                     |   ✗    | `:p 100 s down` sets precision, scientific notation, and round_down mode    |
+| 4.8  | Same-line temp precision setting           |   ✗    | `2*sqrt(1.23):p 100 s down` for a temporary setting for the expression      |
+| 4.9  | Print settings (`:settings`)               |   ✗    | Display current precision, formatting options, etc.                         |
+| 4.10 | Variable listing (`:vars` and `:variable`) |   ✗    | List all user-defined variables and their values                            |
+| 4.11 | Everything in the REPL is case-insensitive |   ✗    | Map all input chars to lower case at pre-tokenizer stage                    |
+| 4.12 | Graceful exit (`exit`, `quit`, Ctrl-D)     |   ✓    |                                                                             |
+| 4.13 | Error recovery (don't crash session)       |   ✓    | Catch exceptions per-line, display error, continue loop                     |
+| 4.14 | History (if Mojo gets readline support)    |   ✗    | Future — depends on Mojo FFI evolution                                      |
 
 ### Phase 5: Future Enhancements
 
