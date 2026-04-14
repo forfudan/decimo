@@ -33,9 +33,11 @@ from decimo.bigdecimal.rounding import round_to_precision
 from decimo.bigint10.bigint10 import BigInt10
 import decimo.str
 
-comptime BDec = BigDecimal
+# Type aliases for the arbitrary-precision decimal type.
+# The names BigDecimal, Decimal, and BDec can be used interchangeably.
+comptime BDec = Decimal
 """An arbitrary-precision decimal, similar to Python's `decimal.Decimal`."""
-comptime Decimal = BigDecimal
+comptime BigDecimal = Decimal
 """An arbitrary-precision decimal, similar to Python's `decimal.Decimal`."""
 
 comptime PRECISION = 28  # Same as Python's decimal module default precision of 28 places.
@@ -44,7 +46,19 @@ This will be configurable in future when Mojo supports global variables.
 """
 
 
-struct BigDecimal(
+# [Mojo Miji]
+# The name BigDecimal, Decimal, and BDec can be used interchangeably.
+# They are just aliases for the same struct.
+# However, we have to decide on one canonical name for the struct itself.
+# Intially, I chose BigDecimal as the canonical name because it is the most
+# descriptive and unambiguous.
+# However, now I prefer to use Decimal as the canonical name for two reasons:
+# First, it is more familiar to Python users (`decimal.Decimal`).
+# Second, BigDecimal is a bit long to type, and in most cases, users just use
+# the Decimal alias. Nevertheless, Mojo does not provide a complete docstring
+# when users hover over the alias, so it is important to name the struct itself
+# with a more popular name to provide better discoverability and documentation.
+struct Decimal(
     Absable,
     Comparable,
     Copyable,
@@ -188,7 +202,7 @@ struct BigDecimal(
             " avoid unintentional loss of precision. If you want to create"
             " a BigDecimal from a floating-point number, please consider"
             " wrapping it with quotation marks or using the"
-            " `BigDecimal.from_float()` (or `BDec.from_float()`) method"
+            " `Decimal.from_float()` method"
             " instead."
             "\n***********************************************************"
         )

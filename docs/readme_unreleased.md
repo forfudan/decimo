@@ -37,9 +37,9 @@ The core types are[^auxiliary]:
 - A 128-bit fixed-point decimal implementation (`Dec128`) supporting up to 29 significant digits with a maximum of 28 decimal places[^fixed].
 - An arbitrary-precision floating-point implementation (`Float`) backed by the GNU MPFR library, supporting computations with configurable precision and a wide exponent range. Unlike `Decimal`, which uses base-10 arithmetic, `Float` uses binary floating-point internally. This type is optional and requires MPFR/GMP to be installed on the user's system.
 
-| Type      | Other names          | Information                              | Internal representation |
+| Type      | Alternative names    | Information                              | Internal representation |
 | --------- | -------------------- | ---------------------------------------- | ----------------------- |
-| `BInt`    | `BigInt`             | Equivalent to Python's `int`             | Base-2^32               |
+| `BInt`    | `BigInt`, `Integer`  | Equivalent to Python's `int`             | Base-2^32               |
 | `Decimal` | `BDec`, `BigDecimal` | Equivalent to Python's `decimal.Decimal` | Base-10^9               |
 | `Dec128`  | `Decimal128`         | 128-bit fixed-precision decimal type     | Triple 32-bit words     |
 | `Float`   | `BigFloat`           | Arbitrary-precision floating-point type  | MPFR/GMP                |
@@ -97,10 +97,10 @@ from decimo import *
 
 This will import the following types or aliases into your namespace:
 
-- `BInt` (alias of `BigInt`): An arbitrary-precision signed integer type, equivalent to Python's `int`.
-- `Decimal` or `BDec` (aliases of `BigDecimal`): An arbitrary-precision decimal type, equivalent to Python's `decimal.Decimal`.
-- `Dec128` (alias of `Decimal128`): A 128-bit fixed-precision decimal type.
-- `RoundingMode`: An enumeration for rounding modes.
+- `BInt` (and its aliases `BigInt`, `Integer`): An arbitrary-precision signed integer type, equivalent to Python's `int`.
+- `Decimal` (and its aliases `BigDecimal`, `BDec`): An arbitrary-precision decimal type, equivalent to Python's `decimal.Decimal`.
+- `Dec128` (and its alias `Decimal128`): A 128-bit fixed-precision decimal type.
+- `RoundingMode` (and its alias `RD`): An enumeration for rounding modes.
 - `ROUND_DOWN`, `ROUND_HALF_UP`, `ROUND_HALF_EVEN`, `ROUND_UP`: Constants for common rounding modes.
 
 ---
@@ -112,10 +112,10 @@ from decimo.prelude import *
 
 
 fn main() raises:
-    var a = BDec("123456789.123456789")  # BDec is an alias for BigDecimal
-    var b = Decimal(
+    var a = Decimal("123456789.123456789") 
+    var b = BDec(
         "1234.56789"
-    )  # Decimal is a Python-like alias for BigDecimal
+    ) # BDec is an alias for Decimal
 
     # === Basic Arithmetic === #
     print(a + b)  # 123458023.691346789
@@ -322,7 +322,7 @@ Bug reports and feature requests are welcome! If you encounter issues, please [f
 decimo/
 ├── src/                          # All source code
 │   ├── decimo/                   # Core library (mojo package)
-│   │   ├── bigdecimal/           #   Arbitrary-precision decimal (Decimal/BDec)
+│   │   ├── bigdecimal/           #   Arbitrary-precision decimal (Decimal)
 │   │   ├── bigint/               #   Arbitrary-precision signed integer (BInt)
 │   │   ├── bigint10/             #   Base-10 signed integer (BigInt10)
 │   │   ├── biguint/              #   Base-10 unsigned integer (BigUInt)
