@@ -6,7 +6,7 @@ license = "Apache-2.0"
 name = "decimo"
 platforms = ["osx-arm64", "linux-64"]
 readme = "README.md"
-version = "0.9.0"
+version = "0.10.0"
 
 [dependencies]
 # argmojo = ">=0.4.0" # CLI argument parsing for the Decimo calculator (TODO: waiting for argmojo 0.4.0 compatible with mojo 0.26.2)

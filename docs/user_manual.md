@@ -25,20 +25,20 @@ from decimo.prelude import *
   - [Query Methods](#query-methods)
   - [Constants and Factory Methods](#constants-and-factory-methods)
 - [Part II — Decimal](#part-ii--decimal)
-  - [Overview](#overview-1)
+  - [Overview — Decimal](#overview--decimal)
   - [How Precision Works](#how-precision-works)
-  - [Construction](#construction-1)
-  - [Arithmetic Operations](#arithmetic-operations-1)
+  - [Construction — Decimal](#construction--decimal)
+  - [Decimal Arithmetic](#decimal-arithmetic)
   - [Division Methods](#division-methods)
-  - [Comparison](#comparison-1)
+  - [Decimal Comparison](#decimal-comparison)
   - [Rounding and Formatting](#rounding-and-formatting)
   - [RoundingMode](#roundingmode)
   - [Mathematical Functions — Roots and Powers](#mathematical-functions--roots-and-powers)
   - [Mathematical Functions — Exponential and Logarithmic](#mathematical-functions--exponential-and-logarithmic)
   - [Mathematical Functions — Trigonometric](#mathematical-functions--trigonometric)
   - [Mathematical Constants](#mathematical-constants)
-  - [Conversion and Output](#conversion-and-output-1)
-  - [Query Methods](#query-methods-1)
+  - [Decimal Conversion and Output](#decimal-conversion-and-output)
+  - [Decimal Query Methods](#decimal-query-methods)
   - [Python Interoperability](#python-interoperability)
   - [Appendix A — Import Paths](#appendix-a--import-paths)
   - [Appendix B — Traits Implemented](#appendix-b--traits-implemented)
@@ -61,7 +61,7 @@ pixi add decimo
 Or add it manually to `pixi.toml`:
 
 ```toml
-decimo = "==0.9.0"
+decimo = "==0.10.0"
 ```
 
 Then run `pixi install`.
@@ -418,7 +418,7 @@ print(x.is_positive())      # True
 
 ## Part II — Decimal
 
-### Overview
+### Overview — Decimal
 
 `Decimal` is an arbitrary-precision decimal type — the Mojo-native equivalent of Python's `decimal.Decimal`. It can represent numbers with unlimited digits and decimal places, making it suitable for financial modeling, scientific computing, and applications where floating-point errors are unacceptable.
 
@@ -447,28 +447,40 @@ print(x.sqrt(precision=1000))  # 1000 significant digits
 
 > **Note:** The default precision of 28 will be configurable globally in a future version when Mojo supports global variables.
 
-### Construction
+### Construction — Decimal
 
-#### From zero <!-- omit from toc -->
+Decimal can be constructed from various types of input using the `Decimal()` constructor or factory methods. Among these, the most common way is from a **string representation** of the decimal number, which is the most accurate way to create a Decimal without any precision loss.
 
-```mojo
-var x = Decimal()  # 0
-```
+#### From `String` (Decimal) <!-- omit from toc -->
 
-#### From `Int` <!-- omit from toc -->
+It is highly recommended to construct `Decimal` from a string. Please consider using this method whenever possible.
 
 ```mojo
-var x = Decimal(42)
-var y: Decimal = 100     # Implicit conversion
-```
-
-#### From `String` <!-- omit from toc -->
-
-```mojo
-var a = Decimal("123456789.123456789")  # Plain notation
+var a = Decimal("123456789.123456789")  # Basic decimal string
 var b = Decimal("1.23E+10")             # Scientific notation
 var c = Decimal("-0.000001")            # Negative
 var d = Decimal("1_000_000.50")         # Separator support
+```
+
+#### From zero (Decimal) <!-- omit from toc -->
+
+```mojo
+var x = Decimal("0")  # Explicitly from string
+var x = Decimal()    # Default constructor creates zero, same as Decimal("0")
+```
+
+#### From `Int` (Decimal) <!-- omit from toc -->
+
+Although you can construct a `Decimal` from an `Int` directly, it is still risky if the `Int` is so large that it exceeds the maximum value of `Int` (which is 2^63-1).
+
+```mojo
+# These work
+var x = Decimal(42)     # From Int
+var y: Decimal = 100    # Implicit conversion (IntLiteral -> Int -> Decimal)
+
+# This is dangerous!
+var z: Decimal = 9223372036854775808  # 2^63, exceeds Int range!
+print(z)  # Prints -9223372036854775808, overflowed!
 ```
 
 #### From integral scalars <!-- omit from toc -->
@@ -482,14 +494,22 @@ Works with all integral SIMD types. **Floating-point scalars are rejected at com
 
 #### From floating-point — `from_float()` <!-- omit from toc -->
 
+When constructing a `Decimal` from a floating-point number, the number is first converted to its string representation and then parsed as a `Decimal`.
+
+Note that not all decimal numbers can be represented exactly as binary floating-point. You may lose precision without awareness.
+
+To make the conversion from float to `Decimal` more explicit so that you are aware of the potential precision issues, the `Decimal()` constructor does not accept floating-point numbers directly. Instead, to create a `Decimal` from a float, you must use the `from_float()` factory method.
+
+Consider never using `Decimal.from_float()` in performance-sensitive code, but use string construction instead.
+
 ```mojo
 var x = Decimal.from_float(3.14159)
 var y = Decimal.from_float(Float64(2.71828))
 ```
 
-> **Why no implicit Float64 constructor?** Implicit conversion from float would silently introduce floating-point artifacts (e.g., `0.1` → `0.1000000000000000055...`). The `from_float()` method makes this explicit.
-
 #### From Python — `from_python_decimal()` <!-- omit from toc -->
+
+You can always safely construct a `Decimal` from a Python `decimal.Decimal` using the `from_python_decimal()` method without worrying about precision loss.
 
 ```mojo
 from python import Python
@@ -498,10 +518,10 @@ var decimal = Python.import_module("decimal")
 var py_dec = decimal.Decimal("123.456")
 
 var a = Decimal.from_python_decimal(py_dec)
-var b = Decimal(py=py_dec)  # Alternative keyword syntax
+var b = Decimal(py=py_dec)  # Alternative keyword-only syntax
 ```
 
-#### Summary of constructors <!-- omit from toc -->
+#### Summary of Decimal constructors <!-- omit from toc -->
 
 | Constructor                           | Description                     |
 | ------------------------------------- | ------------------------------- |
@@ -518,7 +538,7 @@ var b = Decimal(py=py_dec)  # Alternative keyword syntax
 | `Decimal.from_string(value)`          | Explicit factory from string    |
 | `Decimal.from_python_decimal(py_obj)` | From Python `Decimal` (raises)  |
 
-#### Unsafe constructors <!-- omit from toc -->
+#### Unsafe Decimal constructors <!-- omit from toc -->
 
 These constructors skip validation for performance-sensitive code. The caller must ensure the data is valid.
 
@@ -528,7 +548,7 @@ These constructors skip validation for performance-sensitive code. The caller mu
 | `Decimal.from_raw_components(words, scale=0, sign=False)` | From raw `List[UInt32]` words (unsafe) |
 | `Decimal.from_raw_components(word, scale=0, sign=False)`  | From a single `UInt32` word (unsafe)   |
 
-### Arithmetic Operations
+### Decimal Arithmetic
 
 Addition, subtraction, and multiplication are always **exact** (no precision loss).
 
@@ -587,7 +607,7 @@ print(Decimal("7") // Decimal("4"))    # 1
 print(Decimal("-7") // Decimal("4"))   # -1  (toward zero)
 ```
 
-### Comparison
+### Decimal Comparison
 
 All six comparison operators are supported:
 
@@ -799,7 +819,7 @@ print(Decimal.e(precision=100))     # 100 digits of e
 print(Decimal.e(precision=1000))    # 1000 digits of e
 ```
 
-### Conversion and Output
+### Decimal Conversion and Output
 
 #### String output <!-- omit from toc -->
 
@@ -831,14 +851,14 @@ x.to_string_with_separators("_")       # to_string(delimiter="_")
 print(repr(Decimal("123.45")))  # BigDecimal("123.45")
 ```
 
-#### Numeric conversions <!-- omit from toc -->
+#### Decimal numeric conversions <!-- omit from toc -->
 
 ```mojo
 var n = Int(Decimal("123.99"))     # 123 (truncates)
 var f = Float64(Decimal("3.14"))   # 3.14 (may lose precision)
 ```
 
-### Query Methods
+### Decimal Query Methods
 
 | Method                 | Return | Description                               |
 | ---------------------- | ------ | ----------------------------------------- |
