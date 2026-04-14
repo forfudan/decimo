@@ -22,7 +22,9 @@ used by both one-shot/pipe/file modes (main.mojo) and the interactive REPL
 (repl.mojo).
 """
 
+from decimo import Decimal
 from decimo.rounding_mode import RoundingMode
+from std.collections import Dict
 from .tokenizer import tokenize
 from .parser import parse_to_rpn
 from .evaluator import evaluate_rpn, final_round
@@ -38,6 +40,7 @@ def evaluate_and_print(
     delimiter: String,
     rounding_mode: RoundingMode,
     show_expr_on_error: Bool = False,
+    variables: Dict[String, Decimal] = Dict[String, Decimal](),
 ) raises:
     """Tokenize, parse, evaluate, and print one expression.
 
@@ -54,12 +57,13 @@ def evaluate_and_print(
         rounding_mode: Rounding mode for the final result.
         show_expr_on_error: If True, show the expression with a caret
             indicator on error. If False, show only the error message.
+        variables: A name→value mapping of user-defined variables.
     """
     try:
-        var tokens = tokenize(expr)
+        var tokens = tokenize(expr, variables)
         var rpn = parse_to_rpn(tokens^)
         var value = final_round(
-            evaluate_rpn(rpn^, precision), precision, rounding_mode
+            evaluate_rpn(rpn^, precision, variables), precision, rounding_mode
         )
 
         if scientific:
@@ -149,3 +153,45 @@ def pad_to_precision(plain: String, precision: Int) -> String:
         return plain
 
     return plain + "0" * (precision - frac_len)
+
+
+def evaluate_and_return(
+    expr: String,
+    precision: Int,
+    scientific: Bool,
+    engineering: Bool,
+    pad: Bool,
+    delimiter: String,
+    rounding_mode: RoundingMode,
+    variables: Dict[String, Decimal] = Dict[String, Decimal](),
+) raises -> Decimal:
+    """Tokenize, parse, evaluate, print, and return the result.
+
+    Like `evaluate_and_print` but also returns the `Decimal` value so the
+    REPL can store it in `ans` or a named variable.
+
+    On error, displays a coloured diagnostic and raises to signal failure
+    to the caller.
+    """
+    try:
+        var tokens = tokenize(expr, variables)
+        var rpn = parse_to_rpn(tokens^)
+        var value = final_round(
+            evaluate_rpn(rpn^, precision, variables), precision, rounding_mode
+        )
+
+        if scientific:
+            print(value.to_string(scientific=True, delimiter=delimiter))
+        elif engineering:
+            print(value.to_string(engineering=True, delimiter=delimiter))
+        elif pad:
+            print(
+                pad_to_precision(value.to_string(force_plain=True), precision)
+            )
+        else:
+            print(value.to_string(delimiter=delimiter))
+
+        return value^
+    except e:
+        display_calc_error(String(e), expr)
+        raise e^
