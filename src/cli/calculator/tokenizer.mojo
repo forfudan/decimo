@@ -20,6 +20,9 @@ Tokenizer for the Decimo CLI calculator.
 Converts an expression string into a list of tokens for the parser.
 """
 
+from std.collections import Dict
+from decimo import Decimal
+
 # ===----------------------------------------------------------------------=== #
 # Token kinds
 # ===----------------------------------------------------------------------=== #
@@ -36,6 +39,7 @@ comptime TOKEN_CARET = 8
 comptime TOKEN_FUNC = 9
 comptime TOKEN_CONST = 10
 comptime TOKEN_COMMA = 11
+comptime TOKEN_VARIABLE = 12
 
 
 # ===----------------------------------------------------------------------=== #
@@ -122,7 +126,7 @@ struct Token(Copyable, ImplicitlyCopyable, Movable):
 # Known function names and built-in constants.
 
 
-def _is_known_function(name: String) -> Bool:
+def is_known_function(name: String) -> Bool:
     """Returns True if `name` is a recognized function."""
     return (
         name == "sqrt"
@@ -141,31 +145,41 @@ def _is_known_function(name: String) -> Bool:
     )
 
 
-def _is_known_constant(name: String) -> Bool:
+def is_known_constant(name: String) -> Bool:
     """Returns True if `name` is a recognized constant."""
     return name == "pi" or name == "e"
 
 
-def _is_alpha_or_underscore(c: UInt8) -> Bool:
+def is_alpha_or_underscore(c: UInt8) -> Bool:
     """Returns True if c is a-z, A-Z, or '_'."""
     return (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or c == 95
 
 
-def _is_alnum_or_underscore(c: UInt8) -> Bool:
+def is_alnum_or_underscore(c: UInt8) -> Bool:
     """Returns True if c is a-z, A-Z, 0-9, or '_'."""
-    return _is_alpha_or_underscore(c) or (c >= 48 and c <= 57)
+    return is_alpha_or_underscore(c) or (c >= 48 and c <= 57)
 
 
-def tokenize(expr: String) raises -> List[Token]:
+def tokenize(
+    expr: String,
+    known_variables: Dict[String, Decimal] = Dict[String, Decimal](),
+) raises -> List[Token]:
     """Converts an expression string into a list of tokens.
 
     Handles: numbers (integer and decimal), operators (+, -, *, /, ^),
     parentheses, commas, function calls (sqrt, ln, …), built-in
-    constants (pi, e), and distinguishes unary minus from binary minus.
+    constants (pi, e), user-defined variables, and distinguishes unary
+    minus from binary minus.
 
     Each token records its 0-based column position in the source
     expression so that downstream stages can emit user-friendly
     diagnostics that pinpoint where the problem is.
+
+    Args:
+        expr: The expression string to tokenize.
+        known_variables: Optional name→value mapping of user-defined
+            variables.  Identifiers matching a key are emitted as
+            TOKEN_VARIABLE tokens instead of raising an error.
 
     Raises:
         Error: On empty/whitespace-only input (without position info),
@@ -214,10 +228,10 @@ def tokenize(expr: String) raises -> List[Token]:
             continue
 
         # --- Alphabetical identifier: function name or constant ---
-        if _is_alpha_or_underscore(c):
+        if is_alpha_or_underscore(c):
             var start = i
             i += 1
-            while i < n and _is_alnum_or_underscore(ptr[i]):
+            while i < n and is_alnum_or_underscore(ptr[i]):
                 i += 1
             var id_bytes = List[UInt8](capacity=i - start)
             for j in range(start, i):
@@ -225,13 +239,18 @@ def tokenize(expr: String) raises -> List[Token]:
             var name = String(unsafe_from_utf8=id_bytes^)
 
             # Check if it is a known constant
-            if _is_known_constant(name):
+            if is_known_constant(name):
                 tokens.append(Token(TOKEN_CONST, name^, position=start))
                 continue
 
             # Check if it is a known function
-            if _is_known_function(name):
+            if is_known_function(name):
                 tokens.append(Token(TOKEN_FUNC, name^, position=start))
+                continue
+
+            # Check if it is a known variable
+            if name in known_variables:
+                tokens.append(Token(TOKEN_VARIABLE, name^, position=start))
                 continue
 
             raise Error(

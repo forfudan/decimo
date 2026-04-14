@@ -1,8 +1,13 @@
 """Test the evaluator: end-to-end expression evaluation with BigDecimal."""
 
 from std import testing
+from std.collections import Dict
 
 from calculator import evaluate
+from calculator.tokenizer import tokenize
+from calculator.parser import parse_to_rpn
+from calculator.evaluator import evaluate_rpn, final_round
+from decimo import Decimal
 from decimo.rounding_mode import RoundingMode
 
 
@@ -432,6 +437,75 @@ def test_rounding_half_up_division() raises:
         evaluate("2/3", precision=4, rounding_mode=RoundingMode.half_up())
     )
     testing.assert_equal(result, "0.6667", "2/3 half_up p=4")
+
+
+# ===----------------------------------------------------------------------=== #
+# Tests: variable evaluation (Phase 4)
+# ===----------------------------------------------------------------------=== #
+
+
+def _eval_with_vars(
+    expr: String, variables: Dict[String, Decimal], precision: Int = 50
+) raises -> Decimal:
+    """Helper to evaluate an expression with variables."""
+    var tokens = tokenize(expr, variables)
+    var rpn = parse_to_rpn(tokens^)
+    return final_round(evaluate_rpn(rpn^, precision, variables), precision)
+
+
+def test_variable_simple() raises:
+    """Simple variable reference."""
+    var vars = Dict[String, Decimal]()
+    vars["x"] = Decimal(42)
+    testing.assert_equal(String(_eval_with_vars("x", vars)), "42")
+
+
+def test_variable_in_arithmetic() raises:
+    """Variable used in arithmetic."""
+    var vars = Dict[String, Decimal]()
+    vars["x"] = Decimal(10)
+    testing.assert_equal(String(_eval_with_vars("x + 5", vars)), "15")
+
+
+def test_variable_ans() raises:
+    """The 'ans' variable works like any other variable."""
+    var vars = Dict[String, Decimal]()
+    vars["ans"] = Decimal(100)
+    testing.assert_equal(String(_eval_with_vars("ans * 2", vars)), "200")
+
+
+def test_multiple_variables() raises:
+    """Multiple variables in one expression."""
+    var vars = Dict[String, Decimal]()
+    vars["x"] = Decimal(3)
+    vars["y"] = Decimal(4)
+    testing.assert_equal(String(_eval_with_vars("x + y", vars)), "7")
+
+
+def test_variable_with_function() raises:
+    """Variable as argument to a function."""
+    var vars = Dict[String, Decimal]()
+    vars["x"] = Decimal(4)
+    testing.assert_equal(String(_eval_with_vars("sqrt(x)", vars)), "2")
+
+
+def test_variable_in_power() raises:
+    """Variable as base in exponentiation."""
+    var vars = Dict[String, Decimal]()
+    vars["x"] = Decimal(2)
+    testing.assert_equal(String(_eval_with_vars("x ^ 10", vars)), "1024")
+
+
+def test_undefined_variable_raises() raises:
+    """Referencing an undefined variable raises an error."""
+    var vars = Dict[String, Decimal]()
+    vars["x"] = Decimal(1)
+    var raised = False
+    try:
+        _ = _eval_with_vars("y + 1", vars)
+    except:
+        raised = True
+    testing.assert_true(raised, "should raise on undefined variable 'y'")
 
 
 # ===----------------------------------------------------------------------=== #
