@@ -348,11 +348,8 @@ def integer_power(
             )
 
         # Use inplace multiply for squaring is not beneficial
-        # because we need to copy first — just use regular multiply.
-        # Explicit copy to avoid self-aliasing crash with
-        # --debug-level=full (Mojo compiler setting).
-        var cp = current_power.copy()
-        current_power = cp * current_power
+        # because we need to copy first — just use regular multiply
+        current_power = current_power * current_power
         # Round to avoid coefficient explosion
         current_power.round_to_precision(
             working_precision,
@@ -1858,10 +1855,7 @@ def exp(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
         # Square result M times: exp(x) = exp(x/2^M)^(2^M)
         for _ in range(m):
-            # Explicit copy to avoid self-aliasing crash with
-            # --debug-level=full (Mojo compiler setting).
-            var copy = result.copy()
-            result = copy * result
+            result = result * result
             result.round_to_precision(
                 precision=working_precision,
                 rounding_mode=RoundingMode.half_up(),
