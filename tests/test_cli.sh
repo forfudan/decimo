@@ -8,6 +8,7 @@ cd "$REPO_ROOT"
 
 # ── Unit tests ─────────────────────────────────────────────────────────────
 for f in tests/cli/*.mojo; do
+    echo "=== $f ==="
     pixi run mojo run -I src -I src/cli -D ASSERT=all --debug-level=full "$f"
 done
 

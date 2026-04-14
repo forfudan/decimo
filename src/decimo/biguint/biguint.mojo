@@ -1758,7 +1758,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         while exp > 0:
             if exp % 2 == 1:
                 result = result * base
-            base = base * base
+            # Explicit copy to avoid self-aliasing crash with
+            # --debug-level=full (Mojo compiler setting).
+            var cp = base.copy()
+            base = cp * base
             exp //= 2
 
         return result^

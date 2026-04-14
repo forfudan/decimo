@@ -154,7 +154,10 @@ def power(base: Decimal128, exponent: Int) raises -> Decimal128:
         abs_exp >>= 1  # exp_value = exp_value / 2
 
         if abs_exp > 0:
-            current_base = current_base * current_base
+            # Explicit copy to avoid self-aliasing crash with
+            # --debug-level=full (Mojo compiler setting).
+            var cp = current_base.copy()
+            current_base = cp * current_base
 
     # For negative exponents, take the reciprocal
     if negative_exponent:
