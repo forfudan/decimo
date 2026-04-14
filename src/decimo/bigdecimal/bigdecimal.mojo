@@ -75,7 +75,7 @@ This will be configurable in future when Mojo supports global variables.
 # The name BigDecimal, Decimal, and BDec can be used interchangeably.
 # They are just aliases for the same struct.
 #
-# Intially, I chose BigDecimal as the canonical name because it is the most
+# Initially, I chose BigDecimal as the canonical name because it is the most
 # descriptive and unambiguous.
 #
 # However, now I prefer to use Decimal as the canonical name for two reasons:

@@ -12,7 +12,7 @@ This is a to-do list for Decimo.
 - [x] (PR #127, #128, #131) Make all default constructor "safe", which means that the words are checked and normalized to ensure that there are no zero words and that the number is in a valid state. This will help prevent bugs and ensure that all `BigUInt` instances are in a consistent state. Also allow users to create "unsafe" `BigUInt` instances if they want to, but there must be a key-word only argument, e.g., `raw_words`.
 
 - [x] (#31) The `exp()` function performs slower than Python's counterpart in specific cases. Detailed investigation reveals the bottleneck stems from multiplication operations between decimals with significant fractional components. These operations currently rely on UInt256 arithmetic, which introduces performance overhead. Optimization of the `multiply()` function is required to address these performance bottlenecks, particularly for high-precision decimal multiplication with many digits after the decimal point. Internally, also use `Decimal` instead of `BigDecimal` or `BDec` to be consistent.
-- [x] Implement different methods for augmented arithmetic assignments to improve memeory-efficiency and performance.
+- [x] Implement different methods for augmented arithmetic assignments to improve memory-efficiency and performance.
 - [x] Implement a method `remove_leading_zeros` for `BigUInt`, which removes the zero words from the most significant end of the number.
 - [x] Use debug mode to check for uninitialized `BigUInt` before all arithmetic operations. This will help ensure that there are no uninitialized `BigUInt`.
 
