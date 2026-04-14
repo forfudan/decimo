@@ -9,93 +9,40 @@ your Mojo file:
 from decimo.prelude import *
 ```
 
+- [Installation](#installation)
+- [Quick Start](#quick-start)
 - [Part I — BigInt (`BInt`)](#part-i--bigint-bint)
   - [Overview](#overview)
   - [Construction](#construction)
-    - [From zero](#from-zero)
-    - [From `Int`](#from-int)
-    - [From `String`](#from-string)
-    - [From `Scalar` (any integral SIMD type)](#from-scalar-any-integral-simd-type)
-    - [Summary of constructors](#summary-of-constructors)
   - [Arithmetic Operations](#arithmetic-operations)
-    - [Binary operators](#binary-operators)
-    - [Unary operators](#unary-operators)
-    - [In-place operators](#in-place-operators)
   - [Division Semantics](#division-semantics)
   - [Comparison](#comparison)
   - [Bitwise Operations](#bitwise-operations)
   - [Shift Operations](#shift-operations)
   - [Mathematical Functions](#mathematical-functions)
-    - [Exponentiation](#exponentiation)
-    - [Integer square root](#integer-square-root)
   - [Number Theory](#number-theory)
-    - [GCD — Greatest Common Divisor](#gcd--greatest-common-divisor)
-    - [LCM — Least Common Multiple](#lcm--least-common-multiple)
-    - [Extended GCD](#extended-gcd)
-    - [Modular Exponentiation](#modular-exponentiation)
-    - [Modular Inverse](#modular-inverse)
   - [Conversion and Output](#conversion-and-output)
-    - [String conversions](#string-conversions)
-    - [Numeric conversions](#numeric-conversions)
   - [Query Methods](#query-methods)
   - [Constants and Factory Methods](#constants-and-factory-methods)
 - [Part II — Decimal](#part-ii--decimal)
   - [Overview](#overview-1)
   - [How Precision Works](#how-precision-works)
   - [Construction](#construction-1)
-    - [From zero](#from-zero-1)
-    - [From `Int`](#from-int-1)
-    - [From `String`](#from-string-1)
-    - [From integral scalars](#from-integral-scalars)
-    - [From floating-point — `from_float()`](#from-floating-point--from_float)
-    - [From Python — `from_python_decimal()`](#from-python--from_python_decimal)
-    - [Summary of constructors](#summary-of-constructors-1)
   - [Arithmetic Operations](#arithmetic-operations-1)
   - [Division Methods](#division-methods)
-    - [`true_divide()` — recommended for decimal division](#true_divide--recommended-for-decimal-division)
-    - [Operator `/` — true division with default precision](#operator---true-division-with-default-precision)
-    - [Operator `//` — truncated (integer) division](#operator---truncated-integer-division)
   - [Comparison](#comparison-1)
   - [Rounding and Formatting](#rounding-and-formatting)
-    - [`round()` — round to decimal places](#round--round-to-decimal-places)
-    - [`quantize()` — match scale of another decimal](#quantize--match-scale-of-another-decimal)
-    - [`normalize()` — remove trailing zeros](#normalize--remove-trailing-zeros)
-    - [`__ceil__`, `__floor__`, `__trunc__`](#__ceil__-__floor__-__trunc__)
   - [RoundingMode](#roundingmode)
   - [Mathematical Functions — Roots and Powers](#mathematical-functions--roots-and-powers)
-    - [Square root](#square-root)
-    - [Cube root](#cube-root)
-    - [Nth root](#nth-root)
-    - [Power / exponentiation](#power--exponentiation)
   - [Mathematical Functions — Exponential and Logarithmic](#mathematical-functions--exponential-and-logarithmic)
-    - [Exponential (e^x)](#exponential-ex)
-    - [Natural logarithm](#natural-logarithm)
-    - [Logarithm with arbitrary base](#logarithm-with-arbitrary-base)
-    - [Base-10 logarithm](#base-10-logarithm)
   - [Mathematical Functions — Trigonometric](#mathematical-functions--trigonometric)
-    - [Basic functions](#basic-functions)
-    - [Reciprocal functions](#reciprocal-functions)
-    - [Inverse functions](#inverse-functions)
   - [Mathematical Constants](#mathematical-constants)
-    - [π (pi)](#π-pi)
-    - [e (Euler's number)](#e-eulers-number)
   - [Conversion and Output](#conversion-and-output-1)
-    - [String output](#string-output)
-    - [`repr()`](#repr)
-    - [Numeric conversions](#numeric-conversions-1)
   - [Query Methods](#query-methods-1)
-    - [`as_tuple()` — Python-compatible decomposition](#as_tuple--python-compatible-decomposition)
-    - [Other methods](#other-methods)
   - [Python Interoperability](#python-interoperability)
-    - [From Python](#from-python)
-    - [Matching Python's API](#matching-pythons-api)
   - [Appendix A — Import Paths](#appendix-a--import-paths)
   - [Appendix B — Traits Implemented](#appendix-b--traits-implemented)
-    - [BigInt](#bigint)
-    - [Decimal](#decimal)
   - [Appendix C — Complete API Tables](#appendix-c--complete-api-tables)
-    - [BigInt — All Operators](#bigint--all-operators)
-    - [Decimal — Mathematical Functions](#decimal--mathematical-functions)
 
 ## Installation
 
@@ -141,29 +88,29 @@ fn main() raises:
     print(Decimal.pi(precision=1000))     # 1000 digits of π
 ```
 
-# Part I — BigInt (`BInt`)
+## Part I — BigInt (`BInt`)
 
-## Overview
+### Overview
 
-`BigInt` (alias `BInt`) is an arbitrary-precision signed integer type — the Mojo-native equivalent of Python's `int`. It supports unlimited-precision integer arithmetic, bitwise operations, and number-theoretic functions.
+`BigInt` (aliases `BInt`, `Integer`) is an arbitrary-precision signed integer type — the Mojo-native equivalent of Python's `int`. It supports unlimited-precision integer arithmetic, bitwise operations, and number-theoretic functions.
 
 | Property          | Value                        |
 | ----------------- | ---------------------------- |
 | Full name         | `BigInt`                     |
-| Short alias       | `BInt`                       |
+| Aliases           | `BInt`, `Integer`            |
 | Internal base     | 2^32 (binary representation) |
 | Word type         | `UInt32` (little-endian)     |
 | Python equivalent | `int`                        |
 
-## Construction
+### Construction
 
-### From zero
+#### From zero <!-- omit from toc -->
 
 ```mojo
 var x = BInt()          # 0
 ```
 
-### From `Int`
+#### From `Int` <!-- omit from toc -->
 
 ```mojo
 var x = BInt(42)
@@ -173,7 +120,7 @@ var z: BInt = 42        # Implicit conversion from Int
 
 The constructor is marked `@implicit`, so Mojo can automatically convert `Int` to `BInt` where expected.
 
-### From `String`
+#### From `String` <!-- omit from toc -->
 
 ```mojo
 var a = BInt("12345678901234567890")  # Basic decimal string
@@ -186,7 +133,7 @@ var f = BInt("1991_10,18")            # Mixed separators (= 19911018)
 
 > **Note:** The string must represent an integer. `BInt("1.5")` raises an error. Scientific notation like `"1.23e5"` is accepted only if the result is an integer.
 
-### From `Scalar` (any integral SIMD type)
+#### From `Scalar` (any integral SIMD type) <!-- omit from toc -->
 
 ```mojo
 var x = BInt(UInt32(42))
@@ -196,22 +143,31 @@ var z: BInt = UInt32(99)     # Implicit conversion
 
 Accepts any integral scalar type (`Int8` through `Int256`, `UInt8` through `UInt256`, etc.).
 
-### Summary of constructors
+#### Summary of constructors <!-- omit from toc -->
 
-| Constructor                 | Description                           |
-| --------------------------- | ------------------------------------- |
-| `BInt()`                    | Zero                                  |
-| `BInt(value: Int)`          | From `Int` (implicit)                 |
-| `BInt(value: String)`       | From decimal string (raises)          |
-| `BInt(value: Scalar)`       | From integral scalar (implicit)       |
-| `BInt.from_uint64(value)`   | From `UInt64`                         |
-| `BInt.from_uint128(value)`  | From `UInt128`                        |
-| `BInt.from_string(value)`   | Explicit factory from string (raises) |
-| `BInt.from_bigint10(value)` | Convert from `BigInt10`               |
+| Constructor                        | Description                           |
+| ---------------------------------- | ------------------------------------- |
+| `BInt()`                           | Zero                                  |
+| `BInt(value: Int)`                 | From `Int` (implicit)                 |
+| `BInt(value: String)`              | From decimal string (raises)          |
+| `BInt(value: Scalar)`              | From integral scalar (implicit)       |
+| `BInt.from_int(value)`             | Explicit factory from `Int`           |
+| `BInt.from_integral_scalar(value)` | From any integral scalar type         |
+| `BInt.from_string(value)`          | Explicit factory from string (raises) |
+| `BInt.from_bigint10(value)`        | Convert from `BigInt10`               |
 
-## Arithmetic Operations
+#### Unsafe constructors <!-- omit from toc -->
 
-### Binary operators
+These constructors skip validation for performance-sensitive code. The caller must ensure the data is valid.
+
+| Constructor                               | Description                               |
+| ----------------------------------------- | ----------------------------------------- |
+| `BInt(uninitialized_capacity=n)`          | Empty words list with reserved capacity   |
+| `BInt(raw_words=List[UInt32], sign=Bool)` | From raw words, no leading-zero stripping |
+
+### Arithmetic Operations
+
+#### Binary operators <!-- omit from toc -->
 
 | Expression    | Description                       | Raises?            |
 | ------------- | --------------------------------- | ------------------ |
@@ -223,7 +179,7 @@ Accepts any integral scalar type (`Int8` through `Int256`, `UInt8` through `UInt
 | `divmod(a,b)` | Floor quotient and remainder      | Yes (zero div)     |
 | `a ** b`      | Exponentiation                    | Yes (negative exp) |
 
-### Unary operators
+#### Unary operators <!-- omit from toc -->
 
 | Expression | Description                    |
 | ---------- | ------------------------------ |
@@ -233,7 +189,7 @@ Accepts any integral scalar type (`Int8` through `Int256`, `UInt8` through `UInt
 | `bool(a)`  | `True` if nonzero              |
 | `~a`       | Bitwise NOT (two's complement) |
 
-### In-place operators
+#### In-place operators <!-- omit from toc -->
 
 `+=`, `-=`, `*=`, `//=`, `%=`, `<<=`, `>>=` are all supported and perform true in-place mutation to reduce memory allocation.
 
@@ -248,7 +204,7 @@ print(a % b)   # 9615
 print(BInt(2) ** 10)  # 1024
 ```
 
-## Division Semantics
+### Division Semantics
 
 BigInt supports two division conventions:
 
@@ -272,7 +228,7 @@ print(a.truncate_divide(b))      # -3
 print(a.truncate_modulo(b))      #  1
 ```
 
-## Comparison
+### Comparison
 
 All six comparison operators (`==`, `!=`, `>`, `>=`, `<`, `<=`) are supported. Each accepts both `BInt` and `Int` as the right operand.
 
@@ -290,7 +246,7 @@ a.compare(b)              # Returns Int8: 1, 0, or -1
 a.compare_magnitudes(b)   # Compares |a| vs |b|
 ```
 
-## Bitwise Operations
+### Bitwise Operations
 
 All bitwise operations follow **Python's two's complement semantics** for negative numbers.
 
@@ -315,7 +271,7 @@ print(~a)      # -13
 print(BInt(-1) & BInt(255))  # 255
 ```
 
-## Shift Operations
+### Shift Operations
 
 | Operator | Description                         |
 | -------- | ----------------------------------- |
@@ -328,9 +284,9 @@ print(x << 100)         # 1267650600228229401496703205376 (= 2^100)
 print(BInt(1024) >> 5)  # 32
 ```
 
-## Mathematical Functions
+### Mathematical Functions
 
-### Exponentiation
+#### Exponentiation <!-- omit from toc -->
 
 ```mojo
 print(BInt(2).power(100))    # 2^100
@@ -339,7 +295,7 @@ print(BInt(2) ** 100)         # Same via ** operator
 
 Both `power(exponent: Int)` and `power(exponent: BigInt)` are supported. The exponent must be non-negative.
 
-### Integer square root
+#### Integer square root <!-- omit from toc -->
 
 ```mojo
 var x = BInt("100000000000000000000")
@@ -349,7 +305,7 @@ print(x.isqrt())   # Same as sqrt()
 
 Raises if the value is negative.
 
-## Number Theory
+### Number Theory
 
 All number-theory operations are available as both **instance methods** and **free functions**:
 
@@ -357,7 +313,7 @@ All number-theory operations are available as both **instance methods** and **fr
 from decimo import BInt, gcd, lcm, extended_gcd, mod_pow, mod_inverse
 ```
 
-### GCD — Greatest Common Divisor
+#### GCD — Greatest Common Divisor <!-- omit from toc -->
 
 ```mojo
 var a = BInt(48)
@@ -366,14 +322,14 @@ print(a.gcd(b))      # 6
 print(gcd(a, b))      # 6 (free function)
 ```
 
-### LCM — Least Common Multiple
+#### LCM — Least Common Multiple <!-- omit from toc -->
 
 ```mojo
 print(BInt(12).lcm(BInt(18)))    # 36
 print(lcm(BInt(12), BInt(18)))   # 36
 ```
 
-### Extended GCD
+#### Extended GCD <!-- omit from toc -->
 
 Returns `(g, x, y)` such that `a*x + b*y = g`:
 
@@ -382,7 +338,7 @@ var result = BInt(35).extended_gcd(BInt(15))
 # result = (5, 1, -2)   — since 35×1 + 15×(−2) = 5
 ```
 
-### Modular Exponentiation
+#### Modular Exponentiation <!-- omit from toc -->
 
 Computes $(base^{exp}) \mod m$ efficiently without computing the full power:
 
@@ -391,7 +347,7 @@ print(BInt(2).mod_pow(BInt(100), BInt(1000000007)))
 print(mod_pow(BInt(2), BInt(100), BInt(1000000007)))  # free function
 ```
 
-### Modular Inverse
+#### Modular Inverse <!-- omit from toc -->
 
 Finds $x$ such that $(a \cdot x) \equiv 1 \pmod{m}$:
 
@@ -400,9 +356,9 @@ print(BInt(3).mod_inverse(BInt(7)))      # 5 (since 3×5 = 15 ≡ 1 mod 7)
 print(mod_inverse(BInt(3), BInt(7)))      # 5
 ```
 
-## Conversion and Output
+### Conversion and Output
 
-### String conversions
+#### String conversions <!-- omit from toc -->
 
 | Method                             | Example output      |
 | ---------------------------------- | ------------------- |
@@ -414,7 +370,7 @@ print(mod_inverse(BInt(3), BInt(7)))      # 5
 | `x.to_binary_string()`             | `"0b110101"`        |
 | `x.to_string(line_width=20)`       | Multi-line output   |
 
-### Numeric conversions
+#### Numeric conversions <!-- omit from toc -->
 
 | Method            | Description                                       |
 | ----------------- | ------------------------------------------------- |
@@ -428,7 +384,7 @@ print(x.to_string_with_separators())  # 123_456_789_012_345_678_901_234_567_890
 print(x.to_hex_string())              # 0x...
 ```
 
-## Query Methods
+### Query Methods
 
 | Method                 | Return | Description                           |
 | ---------------------- | ------ | ------------------------------------- |
@@ -449,7 +405,7 @@ print(x.number_of_digits()) # 2
 print(x.is_positive())      # True
 ```
 
-## Constants and Factory Methods
+### Constants and Factory Methods
 
 | Method / Constant      | Value |
 | ---------------------- | ----- |
@@ -460,9 +416,9 @@ print(x.is_positive())      # True
 | `BigInt.ONE`           | 1     |
 | `BigInt.BITS_PER_WORD` | 32    |
 
-# Part II — Decimal
+## Part II — Decimal
 
-## Overview
+### Overview
 
 `Decimal` is an arbitrary-precision decimal type — the Mojo-native equivalent of Python's `decimal.Decimal`. It can represent numbers with unlimited digits and decimal places, making it suitable for financial modeling, scientific computing, and applications where floating-point errors are unacceptable.
 
@@ -476,7 +432,7 @@ print(x.is_positive())      # True
 
 `Decimal`, `BigDecimal`, and `BDec` are all the same type. We recommend `Decimal` for consistency with Python's `decimal.Decimal`.
 
-## How Precision Works
+### How Precision Works
 
 - **Addition, subtraction, multiplication** are always **exact** — no precision loss.
 - **Division** and **mathematical functions** (`sqrt`, `ln`, `exp`, etc.) accept an optional `precision` parameter specifying the number of **significant digits** in the result.
@@ -491,22 +447,22 @@ print(x.sqrt(precision=1000))  # 1000 significant digits
 
 > **Note:** The default precision of 28 will be configurable globally in a future version when Mojo supports global variables.
 
-## Construction
+### Construction
 
-### From zero
+#### From zero <!-- omit from toc -->
 
 ```mojo
 var x = Decimal()  # 0
 ```
 
-### From `Int`
+#### From `Int` <!-- omit from toc -->
 
 ```mojo
 var x = Decimal(42)
 var y: Decimal = 100     # Implicit conversion
 ```
 
-### From `String`
+#### From `String` <!-- omit from toc -->
 
 ```mojo
 var a = Decimal("123456789.123456789")  # Plain notation
@@ -515,7 +471,7 @@ var c = Decimal("-0.000001")            # Negative
 var d = Decimal("1_000_000.50")         # Separator support
 ```
 
-### From integral scalars
+#### From integral scalars <!-- omit from toc -->
 
 ```mojo
 var x = Decimal(Int64(123456789))
@@ -524,7 +480,7 @@ var y = Decimal(UInt128(99999999999999))
 
 Works with all integral SIMD types. **Floating-point scalars are rejected at compile time** — use `from_float()` instead.
 
-### From floating-point — `from_float()`
+#### From floating-point — `from_float()` <!-- omit from toc -->
 
 ```mojo
 var x = Decimal.from_float(3.14159)
@@ -533,7 +489,7 @@ var y = Decimal.from_float(Float64(2.71828))
 
 > **Why no implicit Float64 constructor?** Implicit conversion from float would silently introduce floating-point artifacts (e.g., `0.1` → `0.1000000000000000055...`). The `from_float()` method makes this explicit.
 
-### From Python — `from_python_decimal()`
+#### From Python — `from_python_decimal()` <!-- omit from toc -->
 
 ```mojo
 from python import Python
@@ -545,19 +501,34 @@ var a = Decimal.from_python_decimal(py_dec)
 var b = Decimal(py=py_dec)  # Alternative keyword syntax
 ```
 
-### Summary of constructors
+#### Summary of constructors <!-- omit from toc -->
 
 | Constructor                           | Description                     |
 | ------------------------------------- | ------------------------------- |
 | `Decimal()`                           | Zero                            |
 | `Decimal(value: Int)`                 | From `Int` (implicit)           |
+| `Decimal(value: UInt)`                | From `UInt` (implicit)          |
 | `Decimal(value: String)`              | From string (raises)            |
 | `Decimal(value: Scalar)`              | From integral scalar (implicit) |
+| `Decimal(py=py_obj)`                  | From Python `Decimal` (raises)  |
+| `Decimal.from_int(value)`             | Explicit factory from `Int`     |
+| `Decimal.from_uint(value)`            | Explicit factory from `UInt`    |
+| `Decimal.from_integral_scalar(value)` | From any integral scalar type   |
 | `Decimal.from_float(value)`           | From floating-point (raises)    |
+| `Decimal.from_string(value)`          | Explicit factory from string    |
 | `Decimal.from_python_decimal(py_obj)` | From Python `Decimal` (raises)  |
-| `Decimal(coefficient, scale, sign)`   | From raw components             |
 
-## Arithmetic Operations
+#### Unsafe constructors <!-- omit from toc -->
+
+These constructors skip validation for performance-sensitive code. The caller must ensure the data is valid.
+
+| Constructor                                               | Description                            |
+| --------------------------------------------------------- | -------------------------------------- |
+| `Decimal(coefficient: BigUInt, scale: Int, sign: Bool)`   | From raw components                    |
+| `Decimal.from_raw_components(words, scale=0, sign=False)` | From raw `List[UInt32]` words (unsafe) |
+| `Decimal.from_raw_components(word, scale=0, sign=False)`  | From a single `UInt32` word (unsafe)   |
+
+### Arithmetic Operations
 
 Addition, subtraction, and multiplication are always **exact** (no precision loss).
 
@@ -589,11 +560,11 @@ print(a - b)   # 123455554.555566789
 print(a * b)   # 152415787654.32099750190521
 ```
 
-## Division Methods
+### Division Methods
 
 Division is the primary operation where precision matters. Decimo provides several variants:
 
-### `true_divide()` — recommended for decimal division
+#### `true_divide()` — recommended for decimal division <!-- omit from toc -->
 
 ```mojo
 var a = Decimal("1")
@@ -603,20 +574,20 @@ print(a.true_divide(b, precision=50))  # 50 significant digits
 print(a.true_divide(b, precision=200)) # 200 significant digits
 ```
 
-### Operator `/` — true division with default precision
+#### Operator `/` — true division with default precision <!-- omit from toc -->
 
 ```mojo
 var result = a / b  # Same as a.true_divide(b, precision=28)
 ```
 
-### Operator `//` — truncated (integer) division
+#### Operator `//` — truncated (integer) division <!-- omit from toc -->
 
 ```mojo
 print(Decimal("7") // Decimal("4"))    # 1
 print(Decimal("-7") // Decimal("4"))   # -1  (toward zero)
 ```
 
-## Comparison
+### Comparison
 
 All six comparison operators are supported:
 
@@ -636,9 +607,9 @@ a.max(b)               # Returns the larger value
 a.min(b)               # Returns the smaller value
 ```
 
-## Rounding and Formatting
+### Rounding and Formatting
 
-### `round()` — round to decimal places
+#### `round()` — round to decimal places <!-- omit from toc -->
 
 ```mojo
 var x = Decimal("123.456")
@@ -656,7 +627,7 @@ Also works with `round()` builtin:
 print(round(Decimal("123.456"), 2))  # 123.46
 ```
 
-### `quantize()` — match scale of another decimal
+#### `quantize()` — match scale of another decimal <!-- omit from toc -->
 
 Adjusts the scale (number of decimal places) to match the scale of `exp`. The actual value of `exp` is ignored — only its scale matters.
 
@@ -671,13 +642,13 @@ var price = Decimal("19.999")
 print(price.quantize(Decimal("0.01")))  # 20.00
 ```
 
-### `normalize()` — remove trailing zeros
+#### `normalize()` — remove trailing zeros <!-- omit from toc -->
 
 ```mojo
 print(Decimal("1.2345000").normalize())  # 1.2345
 ```
 
-### `__ceil__`, `__floor__`, `__trunc__`
+#### `__ceil__`, `__floor__`, `__trunc__` <!-- omit from toc -->
 
 ```mojo
 from math import ceil, floor, trunc
@@ -686,7 +657,7 @@ print(floor(Decimal("1.9")))   # 1
 print(trunc(Decimal("-1.9")))  # -1
 ```
 
-## RoundingMode
+### RoundingMode
 
 Seven rounding modes are available:
 
@@ -710,32 +681,32 @@ print(x.round(0, ROUND_CEILING))    # 3
 print(x.round(0, ROUND_FLOOR))      # 2
 ```
 
-## Mathematical Functions — Roots and Powers
+### Mathematical Functions — Roots and Powers
 
 All mathematical functions accept an optional `precision` parameter (default=28).
 
-### Square root
+#### Square root <!-- omit from toc -->
 
 ```mojo
 print(Decimal("2").sqrt())               # 1.414213562373095048801688724
 print(Decimal("2").sqrt(precision=100))  # 100 significant digits
 ```
 
-### Cube root
+#### Cube root <!-- omit from toc -->
 
 ```mojo
 print(Decimal("27").cbrt())  # 3
 print(Decimal("2").cbrt(precision=50))
 ```
 
-### Nth root
+#### Nth root <!-- omit from toc -->
 
 ```mojo
 print(Decimal("256").root(Decimal("8")))    # 2
 print(Decimal("100").root(Decimal("3")))    # 4.641588833612778892...
 ```
 
-### Power / exponentiation
+#### Power / exponentiation <!-- omit from toc -->
 
 ```mojo
 print(Decimal("2").power(Decimal("10")))                 # 1024
@@ -743,16 +714,16 @@ print(Decimal("2").power(Decimal("0.5"), precision=50))  # sqrt(2) to 50 digits
 print(Decimal("2") ** 10)                                # 1024
 ```
 
-## Mathematical Functions — Exponential and Logarithmic
+### Mathematical Functions — Exponential and Logarithmic
 
-### Exponential (e^x)
+#### Exponential (e^x) <!-- omit from toc -->
 
 ```mojo
 print(Decimal("1").exp())                # e ≈ 2.718281828459045235360287471
 print(Decimal("10").exp(precision=50))   # e^10 to 50 digits
 ```
 
-### Natural logarithm
+#### Natural logarithm <!-- omit from toc -->
 
 ```mojo
 print(Decimal("10").ln(precision=50))    # ln(10) to 50 digits
@@ -768,25 +739,25 @@ var r1 = x1.ln(100, cache)
 var r2 = x2.ln(100, cache)  # Reuses cached ln(2) and ln(1.25)
 ```
 
-### Logarithm with arbitrary base
+#### Logarithm with arbitrary base <!-- omit from toc -->
 
 ```mojo
 print(Decimal("100").log(Decimal("10")))  # 2
 print(Decimal("8").log(Decimal("2")))     # 3
 ```
 
-### Base-10 logarithm
+#### Base-10 logarithm <!-- omit from toc -->
 
 ```mojo
 print(Decimal("1000").log10())  # 3 (exact for powers of 10)
 print(Decimal("2").log10(precision=50))
 ```
 
-## Mathematical Functions — Trigonometric
+### Mathematical Functions — Trigonometric
 
 All trigonometric functions take inputs in **radians** and accept an optional `precision` parameter.
 
-### Basic functions
+#### Basic functions <!-- omit from toc -->
 
 ```mojo
 print(Decimal("0.5").sin(precision=50))
@@ -794,7 +765,7 @@ print(Decimal("0.5").cos(precision=50))
 print(Decimal("0.5").tan(precision=50))
 ```
 
-### Reciprocal functions
+#### Reciprocal functions <!-- omit from toc -->
 
 ```mojo
 print(Decimal("1").cot(precision=50))   # cos/sin
@@ -802,15 +773,15 @@ print(Decimal("1").csc(precision=50))   # 1/sin
 print(Decimal("1").sec(precision=50))   # 1/cos
 ```
 
-### Inverse functions
+#### Inverse functions <!-- omit from toc -->
 
 ```mojo
 print(Decimal("1").arctan(precision=50))  # π/4 to 50 digits
 ```
 
-## Mathematical Constants
+### Mathematical Constants
 
-### π (pi)
+#### π (pi) <!-- omit from toc -->
 
 Computed using the **Chudnovsky algorithm** with binary splitting:
 
@@ -819,7 +790,7 @@ print(Decimal.pi(precision=100))    # 100 digits of π
 print(Decimal.pi(precision=1000))   # 1000 digits of π
 ```
 
-### e (Euler's number)
+#### e (Euler's number) <!-- omit from toc -->
 
 Computed as `exp(1)`:
 
@@ -828,9 +799,9 @@ print(Decimal.e(precision=100))     # 100 digits of e
 print(Decimal.e(precision=1000))    # 1000 digits of e
 ```
 
-## Conversion and Output
+### Conversion and Output
 
-### String output
+#### String output <!-- omit from toc -->
 
 The `to_string()` method provides flexible formatting:
 
@@ -854,20 +825,20 @@ x.to_eng_string()                      # to_string(engineering=True)
 x.to_string_with_separators("_")       # to_string(delimiter="_")
 ```
 
-### `repr()`
+#### `repr()` <!-- omit from toc -->
 
 ```mojo
-print(repr(Decimal("123.45")))  # Decimal("123.45")
+print(repr(Decimal("123.45")))  # BigDecimal("123.45")
 ```
 
-### Numeric conversions
+#### Numeric conversions <!-- omit from toc -->
 
 ```mojo
 var n = Int(Decimal("123.99"))     # 123 (truncates)
 var f = Float64(Decimal("3.14"))   # 3.14 (may lose precision)
 ```
 
-## Query Methods
+### Query Methods
 
 | Method                 | Return | Description                               |
 | ---------------------- | ------ | ----------------------------------------- |
@@ -881,14 +852,14 @@ var f = Float64(Decimal("3.14"))   # 3.14 (may lose precision)
 | `x.adjusted()`         | `Int`  | Adjusted exponent (≈ floor(log10(\|x\|))) |
 | `x.same_quantum(y)`    | `Bool` | `True` if both have same scale            |
 
-### `as_tuple()` — Python-compatible decomposition
+#### `as_tuple()` — Python-compatible decomposition <!-- omit from toc -->
 
 ```mojo
 var sign, digits, exp = Decimal("7.25").as_tuple()
 # sign=False, digits=[7, 2, 5], exp=-2
 ```
 
-### Other methods
+#### Other methods <!-- omit from toc -->
 
 ```mojo
 x.copy_abs()             # Copy with positive sign
@@ -898,9 +869,9 @@ x.fma(a, b)              # Fused multiply-add: x*a+b (exact)
 x.scaleb(n)              # Multiply by 10^n (O(1), adjusts scale only)
 ```
 
-## Python Interoperability
+### Python Interoperability
 
-### From Python
+#### From Python <!-- omit from toc -->
 
 ```mojo
 from python import Python
@@ -908,12 +879,12 @@ from python import Python
 var decimal = Python.import_module("decimal")
 var py_val = decimal.Decimal("3.14159265358979323846")
 
-var d = BigDecimal.from_python_decimal(py_val)
+var d = Decimal.from_python_decimal(py_val)
 # Or:
-var d = BigDecimal(py=py_val)
+var d = Decimal(py=py_val)
 ```
 
-### Matching Python's API
+#### Matching Python's API <!-- omit from toc -->
 
 Many methods mirror Python's `decimal.Decimal` API:
 
@@ -929,16 +900,17 @@ Many methods mirror Python's `decimal.Decimal` API:
 | `d.adjusted()`          | `x.adjusted()`          |
 | `d.same_quantum(other)` | `x.same_quantum(other)` |
 
-## Appendix A — Import Paths
+### Appendix A — Import Paths
 
 ```mojo
 # Recommended: import everything commonly needed
 from decimo.prelude import *
-# Brings in: BInt, Decimal, Dec128, RoundingMode,
-#   ROUND_DOWN, ROUND_HALF_UP, ROUND_HALF_EVEN, ROUND_UP, ROUND_CEILING, ROUND_FLOOR
+# Brings in: BigInt, BInt, Integer, Decimal, BigDecimal, BDec, Dec128,
+#   RoundingMode, ROUND_DOWN, ROUND_HALF_UP, ROUND_HALF_EVEN,
+#   ROUND_UP, ROUND_CEILING, ROUND_FLOOR
 
 # Or import specific types
-from decimo import BInt, BigInt
+from decimo import BInt, BigInt, Integer
 from decimo import Decimal  # also available as BigDecimal or BDec
 from decimo import RoundingMode
 
@@ -946,9 +918,9 @@ from decimo import RoundingMode
 from decimo import gcd, lcm, extended_gcd, mod_pow, mod_inverse
 ```
 
-## Appendix B — Traits Implemented
+### Appendix B — Traits Implemented
 
-### BigInt
+#### BigInt <!-- omit from toc -->
 
 | Trait              | What it enables                  |
 | ------------------ | -------------------------------- |
@@ -962,7 +934,7 @@ from decimo import gcd, lcm, extended_gcd, mod_pow, mod_inverse
 | `Stringable`       | `String(x)`, `str(x)`            |
 | `Writable`         | `print(x)`, writer protocol      |
 
-### Decimal
+#### Decimal <!-- omit from toc -->
 
 | Trait              | What it enables                  |
 | ------------------ | -------------------------------- |
@@ -977,9 +949,9 @@ from decimo import gcd, lcm, extended_gcd, mod_pow, mod_inverse
 | `Stringable`       | `String(x)`, `str(x)`            |
 | `Writable`         | `print(x)`, writer protocol      |
 
-## Appendix C — Complete API Tables
+### Appendix C — Complete API Tables
 
-### BigInt — All Operators
+#### BigInt — All Operators <!-- omit from toc -->
 
 | Operator / Method   | Accepts              | Raises? | Description            |
 | ------------------- | -------------------- | ------- | ---------------------- |
@@ -1004,7 +976,7 @@ from decimo import gcd, lcm, extended_gcd, mod_pow, mod_inverse
 | `a.mod_pow(e, m)`   | `BInt`/`Int`, `BInt` | Yes     | Modular exponentiation |
 | `a.mod_inverse(m)`  | `BInt`               | Yes     | Modular inverse        |
 
-### Decimal — Mathematical Functions
+#### Decimal — Mathematical Functions <!-- omit from toc -->
 
 | Function | Signature                    | Default | Description          |
 | -------- | ---------------------------- | ------- | -------------------- |
