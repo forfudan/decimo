@@ -330,7 +330,7 @@ bench_compare "exp(1)" 50 \
     "${PY_MP};print(mp.exp(1))"
 
 # NOTE: mpmath diverges from decimo & WolframAlpha at digit ~21 for sin(near-pi).
-# See docs/internal_notes.md. Kept here as a reference comparison.
+# See docs/internal/internal_notes.md. Kept here as a reference comparison.
 bench_compare "sin(3.1415926535897932384626433833)" 50 \
     "sin(3.1415926535897932384626433833)" \
     "s(3.1415926535897932384626433833)" \

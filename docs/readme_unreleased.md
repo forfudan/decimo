@@ -37,10 +37,10 @@ The core types are[^auxiliary]:
 - A 128-bit fixed-point decimal implementation (`Dec128`) supporting up to 29 significant digits with a maximum of 28 decimal places[^fixed].
 - An arbitrary-precision floating-point implementation (`Float`) backed by the GNU MPFR library, supporting computations with configurable precision and a wide exponent range. Unlike `Decimal`, which uses base-10 arithmetic, `Float` uses binary floating-point internally. This type is optional and requires MPFR/GMP to be installed on the user's system.
 
-| Type      | Other names          | Information                              | Internal representation |
+| Type      | Alternative names    | Information                              | Internal representation |
 | --------- | -------------------- | ---------------------------------------- | ----------------------- |
-| `BInt`    | `BigInt`             | Equivalent to Python's `int`             | Base-2^32               |
-| `Decimal` | `BDec`, `BigDecimal` | Equivalent to Python's `decimal.Decimal` | Base-10^9               |
+| `BInt`    | `BigInt`, `Integer`  | Equivalent to Python's `int`             | Base-2^32               |
+| `Decimal` | `BigDecimal`, `BDec` | Equivalent to Python's `decimal.Decimal` | Base-10^9               |
 | `Dec128`  | `Decimal128`         | 128-bit fixed-precision decimal type     | Triple 32-bit words     |
 | `Float`   | `BigFloat`           | Arbitrary-precision floating-point type  | MPFR/GMP                |
 
@@ -65,7 +65,7 @@ Then, you can install Decimo using any of these methods:
 1. In the `mojoproject.toml` file of your project, add the following dependency:
 
     ```toml
-    decimo = "==0.9.0"
+    decimo = "==0.10.0"
     ```
 
     Then run `pixi install` to download and install the package.
@@ -86,6 +86,7 @@ The following table summarizes the package versions and their corresponding Mojo
 | `decimojo` | v0.7.0  | ==0.26.1      | pixi            |
 | `decimo`   | v0.8.0  | ==0.26.1      | pixi            |
 | `decimo`   | v0.9.0  | ==0.26.2      | pixi            |
+| `decimo`   | v0.10.0 | ==0.26.2      | pixi            |
 
 ## Quick start
 
@@ -97,9 +98,9 @@ from decimo import *
 
 This will import the following types or aliases into your namespace:
 
-- `BInt` (alias of `BigInt`): An arbitrary-precision signed integer type, equivalent to Python's `int`.
-- `Decimal` or `BDec` (aliases of `BigDecimal`): An arbitrary-precision decimal type, equivalent to Python's `decimal.Decimal`.
-- `Dec128` (alias of `Decimal128`): A 128-bit fixed-precision decimal type.
+- `BInt` (and its aliases `BigInt`, `Integer`): An arbitrary-precision signed integer type, equivalent to Python's `int`.
+- `Decimal` (and its aliases `BigDecimal`, `BDec`): An arbitrary-precision decimal type, equivalent to Python's `decimal.Decimal`.
+- `Dec128` (and its alias `Decimal128`): A 128-bit fixed-precision decimal type.
 - `RoundingMode`: An enumeration for rounding modes.
 - `ROUND_DOWN`, `ROUND_HALF_UP`, `ROUND_HALF_EVEN`, `ROUND_UP`: Constants for common rounding modes.
 
@@ -112,10 +113,8 @@ from decimo.prelude import *
 
 
 fn main() raises:
-    var a = BDec("123456789.123456789")  # BDec is an alias for BigDecimal
-    var b = Decimal(
-        "1234.56789"
-    )  # Decimal is a Python-like alias for BigDecimal
+    var a = Decimal("123456789.123456789") 
+    var b = Decimal("1234.56789")
 
     # === Basic Arithmetic === #
     print(a + b)  # 123458023.691346789
@@ -322,7 +321,7 @@ Bug reports and feature requests are welcome! If you encounter issues, please [f
 decimo/
 ├── src/                          # All source code
 │   ├── decimo/                   # Core library (mojo package)
-│   │   ├── bigdecimal/           #   Arbitrary-precision decimal (Decimal/BDec)
+│   │   ├── bigdecimal/           #   Arbitrary-precision decimal (Decimal)
 │   │   ├── bigint/               #   Arbitrary-precision signed integer (BInt)
 │   │   ├── bigint10/             #   Base-10 signed integer (BigInt10)
 │   │   ├── biguint/              #   Base-10 unsigned integer (BigUInt)
@@ -333,7 +332,7 @@ decimo/
 │       └── calculator/           #   Calculator engine (mojo package)
 │           ├── tokenizer.mojo    #     Lexer: expression → tokens
 │           ├── parser.mojo       #     Shunting-yard: infix → RPN
-│           └── evaluator.mojo    #     RPN evaluator using BigDecimal
+│           └── evaluator.mojo    #     RPN evaluator using Decimal
 ├── tests/                        # Unit tests (one subfolder per module)
 │   ├── bigdecimal/
 │   ├── bigint/
@@ -367,7 +366,7 @@ If you find Decimo useful, consider listing it in your citations.
     year         = {2026},
     title        = {Decimo: An arbitrary-precision integer and decimal library for Mojo},
     url          = {https://github.com/forfudan/decimo},
-    version      = {0.9.0},
+    version      = {0.10.0},
     note         = {Computer Software}
 }
 ```
@@ -382,4 +381,4 @@ The `BigFloat` type optionally uses the [GNU MPFR Library](https://www.mpfr.org/
 [^bigint]: The `BigInt` implementation uses a base-2^32 representation with a little-endian format, where the least significant word is stored at index 0. Each word is a `UInt32`, allowing for efficient storage and arithmetic operations on large integers. This design choice optimizes performance for binary computations while still supporting arbitrary precision.
 [^auxiliary]: The auxiliary types include a base-10 arbitrary-precision signed integer type (`BigInt10`) and a base-10 arbitrary-precision unsigned integer type (`BigUInt`) supporting unlimited digits[^bigint10]. `BigUInt` is used as the internal representation for `BigInt10` and `Decimal`.
 [^bigint10]: The BigInt10 implementation uses a base-10 representation for users (maintaining decimal semantics), while internally using an optimized base-10^9 storage system for efficient calculations. This approach balances human-readable decimal operations with high-performance computing. It provides both floor division (round toward negative infinity) and truncate division (round toward zero) semantics, enabling precise handling of division operations with correct mathematical behavior regardless of operand signs.
-[^arbitrary]: Built on top of our completed BigInt10 implementation, BigDecimal will support arbitrary precision for both the integer and fractional parts, similar to `decimal` and `mpmath` in Python, `java.math.BigDecimal` in Java, etc.
+[^arbitrary]: Built on top of our completed BigInt10 implementation, Decimal supports arbitrary precision for both the integer and fractional parts, similar to `decimal` and `mpmath` in Python, `java.math.BigDecimal` in Java, etc.
