@@ -37,7 +37,7 @@ The core types are[^auxiliary]:
 | Type      | Other names          | Information                              | Internal representation |
 | --------- | -------------------- | ---------------------------------------- | ----------------------- |
 | `BInt`    | `BigInt`             | Equivalent to Python's `int`             | Base-2^32               |
-| `Decimal` | `BDec`, `BigDecimal` | Equivalent to Python's `decimal.Decimal` | Base-10^9               |
+| `Decimal` | `BigDecimal`, `BDec` | Equivalent to Python's `decimal.Decimal` | Base-10^9               |
 | `Dec128`  | `Decimal128`         | 128-bit fixed-precision decimal type     | Triple 32-bit words     |
 
 **Decimo** combines "**Deci**mal" and "**Mo**jo" - reflecting its purpose and implementation language. "Decimo" is also a Latin word meaning "tenth" and is the root of the word "decimal".
@@ -94,7 +94,7 @@ from decimo import *
 This will import the following types or aliases into your namespace:
 
 - `BInt` (alias of `BigInt`): An arbitrary-precision signed integer type, equivalent to Python's `int`.
-- `Decimal` or `BDec` (aliases of `BigDecimal`): An arbitrary-precision decimal type, equivalent to Python's `decimal.Decimal`.
+- `Decimal` (also available as `BigDecimal` or `BDec`): An arbitrary-precision decimal type, equivalent to Python's `decimal.Decimal`.
 - `Dec128` (alias of `Decimal128`): A 128-bit fixed-precision decimal type.
 - `RoundingMode`: An enumeration for rounding modes.
 - `ROUND_DOWN`, `ROUND_HALF_UP`, `ROUND_HALF_EVEN`, `ROUND_UP`: Constants for common rounding modes.
@@ -108,10 +108,10 @@ from decimo.prelude import *
 
 
 fn main() raises:
-    var a = BDec("123456789.123456789")  # BDec is an alias for BigDecimal
+    var a = Decimal("123456789.123456789")
     var b = Decimal(
         "1234.56789"
-    )  # Decimal is a Python-like alias for BigDecimal
+    )
 
     # === Basic Arithmetic === #
     print(a + b)  # 123458023.691346789
@@ -342,4 +342,4 @@ This repository and its contributions are licensed under the Apache License v2.0
 [^bigint]: The `BigInt` implementation uses a base-2^32 representation with a little-endian format, where the least significant word is stored at index 0. Each word is a `UInt32`, allowing for efficient storage and arithmetic operations on large integers. This design choice optimizes performance for binary computations while still supporting arbitrary precision.
 [^auxiliary]: The auxiliary types include a base-10 arbitrary-precision signed integer type (`BigInt10`) and a base-10 arbitrary-precision unsigned integer type (`BigUInt`) supporting unlimited digits[^bigint10]. `BigUInt` is used as the internal representation for `BigInt10` and `Decimal`.
 [^bigint10]: The BigInt10 implementation uses a base-10 representation for users (maintaining decimal semantics), while internally using an optimized base-10^9 storage system for efficient calculations. This approach balances human-readable decimal operations with high-performance computing. It provides both floor division (round toward negative infinity) and truncate division (round toward zero) semantics, enabling precise handling of division operations with correct mathematical behavior regardless of operand signs.
-[^arbitrary]: Built on top of our completed BigInt10 implementation, BigDecimal will support arbitrary precision for both the integer and fractional parts, similar to `decimal` and `mpmath` in Python, `java.math.BigDecimal` in Java, etc.
+[^arbitrary]: Built on top of our completed BigInt10 implementation, Decimal supports arbitrary precision for both the integer and fractional parts, similar to `decimal` and `mpmath` in Python, `java.math.BigDecimal` in Java, etc.

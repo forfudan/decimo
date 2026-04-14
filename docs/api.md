@@ -21,7 +21,7 @@ Note: Mojo now supports keyword-only arguments of the same data type.
 | `BigUInt(value: Int)`                    | ✓         | ✓                     | ✓               |                                        |
 | `BigUInt(value: Scalar)`                 | ✓         | ✓                     | ✓               | Only unsigned scalars are supported.   |
 
-## Initialization of BigDecimal
+## Initialization of Decimal
 
 ### Python Interoperability: `from_python_decimal()`
 
@@ -29,18 +29,18 @@ Method Signature is
 
 ```mojo
 @staticmethod
-fn from_python_decimal(value: PythonObject) raises -> BigDecimal
+fn from_python_decimal(value: PythonObject) raises -> Decimal
 ```
 
 ---
 
 Why use `as_tuple()` instead of direct memory copy (memcpy)?
 
-Python's `decimal` module (libmpdec) internally uses a base-10^9 representation on 64-bit systems (base 10^4 on 32-bit), which happens to match BigDecimal's internal representation. This raises the question: why not directly memcpy the internal limbs for better performance?
+Python's `decimal` module (libmpdec) internally uses a base-10^9 representation on 64-bit systems (base 10^4 on 32-bit), which happens to match Decimal's internal representation. This raises the question: why not directly memcpy the internal limbs for better performance?
 
 Direct memcpy is theoretically possible because:
 
-- On 64-bit systems: libmpdec uses base 10^9, same as BigDecimal
+- On 64-bit systems: libmpdec uses base 10^9, same as Decimal
 - Both use `uint32_t` limbs for storage
 - Direct memory mapping would avoid digit decomposition overhead
 
@@ -48,9 +48,9 @@ However, this approach is **NOT** used due to significant practical issues:
 
 1. No mature API for direct access.
 1. Using direct memory access would require unsafe pointer manipulation, breaking Decimo's current design principles of using safe Mojo as much as possible.
-1. Platform dependency. 32-bit systems use base 10^4 (incompatible with BigDecimal's 10^9). This would require runtime platform detection.
+1. Platform dependency. 32-bit systems use base 10^4 (incompatible with Decimal's 10^9). This would require runtime platform detection.
 1. Maintenance burden. CPython internal structure (`mpd_t`) may change between versions.
-1. Marginal performance gain. `as_tuple()` overhead: O(n) where n = number of digits. Direct memcpy: O(m) where m = number of limbs. Theoretical speedup: ~10x. But how often are users really converting Python decimals to BigDecimal?
+1. Marginal performance gain. `as_tuple()` overhead: O(n) where n = number of digits. Direct memcpy: O(m) where m = number of limbs. Theoretical speedup: ~10x. But how often are users really converting Python decimals to Decimal?
 
 ---
 

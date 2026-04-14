@@ -2,10 +2,8 @@ from decimo.prelude import *
 
 
 def main() raises:
-    var b = Decimal(
-        "1234.56789"
-    )  # Decimal is a Python-like alias for BigDecimal
-    var a = BDec("123456789.123456789")  # BDec is another alias for BigDecimal
+    var a = Decimal("123456789.123456789")
+    var b = Decimal("1234.56789")
 
     # === Basic Arithmetic === #
     print(a + b)  # 123458023.691346789

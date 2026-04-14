@@ -39,7 +39,7 @@ from decimo.prelude import *
     - [Numeric conversions](#numeric-conversions)
   - [Query Methods](#query-methods)
   - [Constants and Factory Methods](#constants-and-factory-methods)
-- [Part II — BigDecimal (`Decimal`)](#part-ii--bigdecimal-decimal)
+- [Part II — Decimal](#part-ii--decimal)
   - [Overview](#overview-1)
   - [How Precision Works](#how-precision-works)
   - [Construction](#construction-1)
@@ -92,10 +92,10 @@ from decimo.prelude import *
   - [Appendix A — Import Paths](#appendix-a--import-paths)
   - [Appendix B — Traits Implemented](#appendix-b--traits-implemented)
     - [BigInt](#bigint)
-    - [BigDecimal](#bigdecimal)
+    - [Decimal](#decimal)
   - [Appendix C — Complete API Tables](#appendix-c--complete-api-tables)
     - [BigInt — All Operators](#bigint--all-operators)
-    - [BigDecimal — Mathematical Functions](#bigdecimal--mathematical-functions)
+    - [Decimal — Mathematical Functions](#decimal--mathematical-functions)
 
 ## Installation
 
@@ -460,25 +460,21 @@ print(x.is_positive())      # True
 | `BigInt.ONE`           | 1     |
 | `BigInt.BITS_PER_WORD` | 32    |
 
-# Part II — BigDecimal (`Decimal`)
+# Part II — Decimal
 
 ## Overview
 
-`BigDecimal` (aliases `Decimal`, `BDec`) is an arbitrary-precision decimal type — the Mojo-native equivalent of Python's `decimal.Decimal`. It can represent numbers with unlimited digits and decimal places, making it suitable for financial modeling, scientific computing, and applications where floating-point errors are unacceptable.
+`Decimal` is an arbitrary-precision decimal type — the Mojo-native equivalent of Python's `decimal.Decimal`. It can represent numbers with unlimited digits and decimal places, making it suitable for financial modeling, scientific computing, and applications where floating-point errors are unacceptable.
 
 | Property          | Value                                   |
 | ----------------- | --------------------------------------- |
-| Full name         | `BigDecimal`                            |
-| Aliases           | `Decimal`, `BDec`                       |
+| Name              | `Decimal`                               |
+| Aliases           | `BigDecimal`, `BDec`                    |
 | Internal base     | Base-10^9 (each word stores ≤ 9 digits) |
 | Default precision | 28 significant digits                   |
 | Python equivalent | `decimal.Decimal`                       |
 
-`Decimal`, `BDec`, and `BigDecimal` are all the same type — use whichever you prefer:
-
-- `Decimal` — familiar to Python users.
-- `BDec` — short and concise.
-- `BigDecimal` — full explicit name.
+`Decimal`, `BigDecimal`, and `BDec` are all the same type. We recommend `Decimal` for consistency with Python's `decimal.Decimal`.
 
 ## How Precision Works
 
@@ -514,7 +510,7 @@ var y: Decimal = 100     # Implicit conversion
 
 ```mojo
 var a = Decimal("123456789.123456789")  # Plain notation
-var b = BDec("1.23E+10")                # Scientific notation
+var b = Decimal("1.23E+10")             # Scientific notation
 var c = Decimal("-0.000001")            # Negative
 var d = Decimal("1_000_000.50")         # Separator support
 ```
@@ -532,7 +528,7 @@ Works with all integral SIMD types. **Floating-point scalars are rejected at com
 
 ```mojo
 var x = Decimal.from_float(3.14159)
-var y = BDec.from_float(Float64(2.71828))
+var y = Decimal.from_float(Float64(2.71828))
 ```
 
 > **Why no implicit Float64 constructor?** Implicit conversion from float would silently introduce floating-point artifacts (e.g., `0.1` → `0.1000000000000000055...`). The `from_float()` method makes this explicit.
@@ -545,8 +541,8 @@ from python import Python
 var decimal = Python.import_module("decimal")
 var py_dec = decimal.Decimal("123.456")
 
-var a = BigDecimal.from_python_decimal(py_dec)
-var b = BigDecimal(py=py_dec)  # Alternative keyword syntax
+var a = Decimal.from_python_decimal(py_dec)
+var b = Decimal(py=py_dec)  # Alternative keyword syntax
 ```
 
 ### Summary of constructors
@@ -861,7 +857,7 @@ x.to_string_with_separators("_")       # to_string(delimiter="_")
 ### `repr()`
 
 ```mojo
-print(repr(Decimal("123.45")))  # BigDecimal("123.45")
+print(repr(Decimal("123.45")))  # Decimal("123.45")
 ```
 
 ### Numeric conversions
@@ -938,12 +934,12 @@ Many methods mirror Python's `decimal.Decimal` API:
 ```mojo
 # Recommended: import everything commonly needed
 from decimo.prelude import *
-# Brings in: BInt, Decimal, BDec, Dec128, RoundingMode,
+# Brings in: BInt, Decimal, Dec128, RoundingMode,
 #   ROUND_DOWN, ROUND_HALF_UP, ROUND_HALF_EVEN, ROUND_UP, ROUND_CEILING, ROUND_FLOOR
 
 # Or import specific types
 from decimo import BInt, BigInt
-from decimo import Decimal, BDec, BigDecimal
+from decimo import Decimal  # also available as BigDecimal or BDec
 from decimo import RoundingMode
 
 # Number-theory free functions
@@ -966,7 +962,7 @@ from decimo import gcd, lcm, extended_gcd, mod_pow, mod_inverse
 | `Stringable`       | `String(x)`, `str(x)`            |
 | `Writable`         | `print(x)`, writer protocol      |
 
-### BigDecimal
+### Decimal
 
 | Trait              | What it enables                  |
 | ------------------ | -------------------------------- |
@@ -1008,7 +1004,7 @@ from decimo import gcd, lcm, extended_gcd, mod_pow, mod_inverse
 | `a.mod_pow(e, m)`   | `BInt`/`Int`, `BInt` | Yes     | Modular exponentiation |
 | `a.mod_inverse(m)`  | `BInt`               | Yes     | Modular inverse        |
 
-### BigDecimal — Mathematical Functions
+### Decimal — Mathematical Functions
 
 | Function | Signature                    | Default | Description          |
 | -------- | ---------------------------- | ------- | -------------------- |
