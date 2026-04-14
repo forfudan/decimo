@@ -466,7 +466,7 @@ var d = Decimal("1_000_000.50")         # Separator support
 
 ```mojo
 var x = Decimal("0")  # Explicitly from string
-var x = Decimal()    # Default constructor creates zero, same as Decimal("0")
+var y = Decimal()    # Default constructor creates zero, same as Decimal("0")
 ```
 
 #### From `Int` (Decimal) <!-- omit from toc -->

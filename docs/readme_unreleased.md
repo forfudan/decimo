@@ -101,7 +101,7 @@ This will import the following types or aliases into your namespace:
 - `BInt` (and its aliases `BigInt`, `Integer`): An arbitrary-precision signed integer type, equivalent to Python's `int`.
 - `Decimal` (and its aliases `BigDecimal`, `BDec`): An arbitrary-precision decimal type, equivalent to Python's `decimal.Decimal`.
 - `Dec128` (and its alias `Decimal128`): A 128-bit fixed-precision decimal type.
-- `RoundingMode` (and its alias `RD`): An enumeration for rounding modes.
+- `RoundingMode`: An enumeration for rounding modes.
 - `ROUND_DOWN`, `ROUND_HALF_UP`, `ROUND_HALF_EVEN`, `ROUND_UP`: Constants for common rounding modes.
 
 ---
