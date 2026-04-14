@@ -33,10 +33,37 @@ from decimo.bigdecimal.rounding import round_to_precision
 from decimo.bigint10.bigint10 import BigInt10
 import decimo.str
 
-comptime BDec = BigDecimal
-"""An arbitrary-precision decimal, similar to Python's `decimal.Decimal`."""
+# Type aliases for the arbitrary-precision decimal type.
+# The names BigDecimal, Decimal, and BDec can be used interchangeably.
+# The preferred name that is exposed to users is Decimal.
 comptime Decimal = BigDecimal
-"""An arbitrary-precision decimal, similar to Python's `decimal.Decimal`."""
+"""An arbitrary-precision decimal, similar to Python's `decimal.Decimal`.
+
+Notes:
+
+Internal Representation:
+
+- A base-10 unsigned integer (BigUInt) for coefficient.
+- A Int value for the scale
+- A Bool value for the sign.
+
+Final value:
+(-1)**sign * coefficient * 10^(-scale)
+"""
+comptime BDec = BigDecimal
+"""An arbitrary-precision decimal, similar to Python's `decimal.Decimal`.
+
+Notes:
+
+Internal Representation:
+
+- A base-10 unsigned integer (BigUInt) for coefficient.
+- A Int value for the scale
+- A Bool value for the sign.
+
+Final value:
+(-1)**sign * coefficient * 10^(-scale)
+"""
 
 comptime PRECISION = 28  # Same as Python's decimal module default precision of 28 places.
 """Default precision for BigDecimal operations.
@@ -44,6 +71,28 @@ This will be configurable in future when Mojo supports global variables.
 """
 
 
+# [Mojo Miji]
+# The name BigDecimal, Decimal, and BDec can be used interchangeably.
+# They are just aliases for the same struct.
+#
+# Initially, I chose BigDecimal as the canonical name because it is the most
+# descriptive and unambiguous.
+#
+# However, now I prefer to use Decimal as the canonical name for two reasons:
+# First, it is more familiar to Python users (`decimal.Decimal`).
+# Second, BigDecimal is a bit long to type, and in most cases, users just use
+# the Decimal alias. Nevertheless, Mojo does not provide a complete docstring
+# when users hover over the alias, so it is important to name the struct itself
+# with a more popular name to provide better discoverability and documentation.
+#
+# Nevertheless, there is a Mojo compiler issue (still in v0.26.2) that, when
+# I change the struct name to Decimal and make BigDecimal an alias, the compile
+# fails at setting `--debug-level=full`. I could not tell why this happens,
+# but it seems that the compiler gets confused about the alias and the struct
+# name when other modules import BigDecimal instead of Decimal.
+#
+# Thus, for now I will keep the struct name as BigDecimal and make Decimal an
+# alias, and wait for the Mojo compiler to fix this issue in the future.
 struct BigDecimal(
     Absable,
     Comparable,
@@ -188,7 +237,7 @@ struct BigDecimal(
             " avoid unintentional loss of precision. If you want to create"
             " a BigDecimal from a floating-point number, please consider"
             " wrapping it with quotation marks or using the"
-            " `BigDecimal.from_float()` (or `BDec.from_float()`) method"
+            " `Decimal.from_float()` method"
             " instead."
             "\n***********************************************************"
         )

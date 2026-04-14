@@ -2,5 +2,6 @@
 set -e
 
 for f in tests/bigint/*.mojo; do
+    echo "=== $f ==="
     pixi run mojo run -I src -D ASSERT=all --debug-level=full "$f"
 done

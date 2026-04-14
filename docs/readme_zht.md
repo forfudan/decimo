@@ -28,7 +28,7 @@ Decimo 爲 Mojo 提供任意精度整數和小數運算庫，爲金融建模、�
 | 類型      | 別名                 | 信息                               | 內部表示     |
 | --------- | -------------------- | ---------------------------------- | ------------ |
 | `BInt`    | `BigInt`             | 等價於 Python 的 `int`             | Base-2^32    |
-| `Decimal` | `BDec`, `BigDecimal` | 等價於 Python 的 `decimal.Decimal` | Base-10^9    |
+| `Decimal` | `BigDecimal`, `BDec` | 等價於 Python 的 `decimal.Decimal` | Base-10^9    |
 | `Dec128`  | `Decimal128`         | 128 位定點精度小數類型             | 三個 32 位字 |
 
 輔助類型包括基於 10 進制的任意精度有符號整數類型 (`BigInt10`) 和任意精度無符號整數類型 (`BigUInt`)，支持無限位數[^bigint10]。`BigUInt` 是 `BigInt10` 和 `Decimal` 的內部表示。
@@ -92,24 +92,24 @@ from decimo import *
 這將導入以下類型或別名到您的命名空間：
 
 - `BInt`（`BigInt` 的別名）：任意精度有符號整數類型，等價於 Python 的 `int`。
-- `Decimal` 或 `BDec`（`BigDecimal` 的別名）：任意精度小數類型，等價於 Python 的 `decimal.Decimal`。
+- `Decimal`（也可用 `BigDecimal` 或 `BDec`）：任意精度小數類型，等價於 Python 的 `decimal.Decimal`。
 - `Dec128`（`Decimal128` 的別名）：128 位定點精度小數類型。
 - `RoundingMode`：捨入模式的枚舉。
 - `ROUND_DOWN`、`ROUND_HALF_UP`、`ROUND_HALF_EVEN`、`ROUND_UP`：常用捨入模式的常量。
 
 ---
 
-以下是一些展示 `BigDecimal` 類型（別名：`BDec` 和 `Decimal`）任意精度特性的例子。對於某些數學運算，默認精度（有效數字位數）設為 `28`。您可以通過向函數傳遞 `precision` 參數來更改精度。當 Mojo 支持全局變量時，此默認精度將可以全局配置。
+以下是一些展示 `Decimal` 類型任意精度特性的例子。對於某些數學運算，默認精度（有效數字位數）設為 `28`。您可以通過向函數傳遞 `precision` 參數來更改精度。當 Mojo 支持全局變量時，此默認精度將可以全局配置。
 
 ```mojo
 from decimo.prelude import *
 
 
 fn main() raises:
-    var a = BDec("123456789.123456789")  # BDec 是 BigDecimal 的別名
+    var a = Decimal("123456789.123456789")
     var b = Decimal(
         "1234.56789"
-    )  # Decimal 是類似 Python 的 BigDecimal 別名
+    )
 
     # === 基本算術 === #
     print(a + b)  # 123458023.691346789
@@ -339,4 +339,4 @@ fn main() raises:
 [^fixed]: `Decimal128` 類型可以表示最多 29 位有效數字，小數點後最多 28 位數字的值。當數值超過最大可表示值（`2^96 - 1`）時，Decimo 會拋出錯誤或將數值捨入以符合這些約束。例如，`8.8888888888888888888888888888`（總共 29 個 8，小數點後 28 位）的有效數字超過了最大可表示值（`2^96 - 1`），會自動捨入爲 `8.888888888888888888888888889`（總共 28 個 8，小數點後 27 位）。Decimo 的 `Decimal128` 類型類似於 `System.Decimal`（C#/.NET）、Rust 中的 `rust_decimal`、SQL Server 中的 `DECIMAL/NUMERIC` 等。
 [^bigint]: `BigInt` 使用 base-2^32 表示，採用小端格式，最低有效字存儲在索引 0。每個字是一個 `UInt32`，允許對大整數進行高效存儲和算術運算。這種設計優化了二進制計算的性能，同時支持任意精度。
 [^bigint10]: BigInt10 使用基於 10 的表示（保持十進制語義），而內部使用優化的基於 10^9 的存儲系統進行高效計算。這種方法在人類可讀的十進制操作與高性能計算之間取得平衡。它提供向下整除（向負無窮舍入）和截斷除法（向零舍入）語義，無論操作數符號如何，都能確保除法操作具有正確的數學行爲。
-[^arbitrary]: 建立在已完成的 BigInt10 實現之上，BigDecimal 支持整數和小數部分的任意精度，類似於 Python 中的 `decimal` 和 `mpmath`、Java 中的 `java.math.BigDecimal` 等。
+[^arbitrary]: 建立在已完成的 BigInt10 實現之上，Decimal 支持整數和小數部分的任意精度，類似於 Python 中的 `decimal` 和 `mpmath`、Java 中的 `java.math.BigDecimal` 等。

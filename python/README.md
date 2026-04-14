@@ -14,7 +14,7 @@
 ## What is decimo?
 
 `decimo` is an arbitrary-precision decimal and integer library, originally written in [Mojo](https://www.modular.com/mojo).  
-This package exposes `decimo`'s `BigDecimal` type to Python via a Mojo-built CPython extension module (`_decimo.so`),
+This package exposes `decimo`'s `Decimal` type to Python via a Mojo-built CPython extension module (`_decimo.so`),
 with a thin Python wrapper providing full Pythonic operator support.
 
 ```python
@@ -30,13 +30,13 @@ print(a / b)   # 0.12499999...
 
 ## Status
 
-| Feature                                                | Status        |
-| ------------------------------------------------------ | ------------- |
-| `Decimal` (BigDecimal) arithmetic (`+`, `-`, `*`, `/`) | ✓ Working     |
-| Comparison operators                                   | ✓ Working     |
-| Unary `-`, `abs()`, `bool()`                           | ✓ Working     |
-| Pre-built wheels on PyPI                               | ? Coming soon |
-| `BigInt` / `Decimal128` Python bindings                | ? Planned     |
+| Feature                                   | Status        |
+| ----------------------------------------- | ------------- |
+| `Decimal` arithmetic (`+`, `-`, `*`, `/`) | ✓ Working     |
+| Comparison operators                      | ✓ Working     |
+| Unary `-`, `abs()`, `bool()`              | ✓ Working     |
+| Pre-built wheels on PyPI                  | ? Coming soon |
+| `BigInt` / `Decimal128` Python bindings   | ? Planned     |
 
 ## Building from source
 
