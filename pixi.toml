@@ -50,16 +50,12 @@ bgmp = "clear && pixi run buildgmp"
 buildgmp = "bash src/decimo/gmp/build_gmp_wrapper.sh"
 
 # tests (use the mojo testing tool)
-test = "pixi run package && pixi run buildcli && bash ./tests/test_all.sh"
-testdecimo = "pixi run package && bash ./tests/test_decimo.sh"
-testtoml = "pixi run package && bash ./tests/test_toml.sh"
+test = "bash tests/test.sh"
 # bigfloat (build test binary linking the C wrapper, then run it)
-testfloat = "pixi run buildgmp && bash ./tests/test_bigfloat.sh"
+testfloat = "pixi run buildgmp && bash tests/test.sh bigfloat"
 # shortcut for tests
 t = "clear && pixi run test"
-tdecimo = "clear && pixi run testdecimo"
 tf = "clear && pixi run testfloat"
-ttoml = "clear && pixi run testtoml"
 
 # bench
 bench = "pixi run package && bash benches/run_bench.sh"
@@ -91,8 +87,8 @@ bcli = "clear && pixi run buildcli"
 # buildcli = """pixi run mojo package temp/argmojo/src/argmojo -o temp/argmojo.mojopkg \
 # && pixi run mojo build -I src -I src/cli -I temp -o decimo src/cli/main.mojo"""
 buildcli = """pixi run mojo build -I src -I src/cli -o decimo src/cli/main.mojo"""
-tcli = "clear && pixi run testcli"
-testcli = "pixi run buildcli && bash tests/test_cli.sh"
+tcli = "clear && pixi run test cli"
+testcli = "pixi run buildcli && bash tests/test.sh cli"
 
 # python bindings (mojo4py)
 bpy = "clear && pixi run buildpy"
