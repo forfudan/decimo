@@ -66,3 +66,4 @@ from .io import (
     file_exists,
 )
 from .repl import run_repl
+from .settings import Settings, parse_settings, split_inline_settings

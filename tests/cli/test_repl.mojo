@@ -1,8 +1,14 @@
-"""Test REPL helpers: _parse_assignment, _validate_variable_name."""
+"""Test REPL helpers: _parse_assignment, _validate_variable_name,
+_is_meta_command, _strip_colon_prefix."""
 
 from std import testing
 
-from calculator.repl import _parse_assignment, _validate_variable_name
+from calculator.repl import (
+    _parse_assignment,
+    _validate_variable_name,
+    _is_meta_command,
+    _strip_colon_prefix,
+)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -125,6 +131,66 @@ def test_valid_name_with_underscore() raises:
     """Names with underscores are valid."""
     var err = _validate_variable_name("my_var")
     testing.assert_false(Bool(err), "underscore name is valid")
+
+
+# ===----------------------------------------------------------------------=== #
+# Tests: _is_meta_command
+# ===----------------------------------------------------------------------=== #
+
+
+def test_meta_command_colon_prefix() raises:
+    """`:p 100` is a meta-command."""
+    testing.assert_true(_is_meta_command(":p 100"), "colon prefix")
+
+
+def test_meta_command_with_leading_space() raises:
+    """Leading whitespace before `:` is handled."""
+    testing.assert_true(_is_meta_command("  :p 100"), "leading space")
+
+
+def test_meta_command_with_tab() raises:
+    """Leading tab before `:` is handled."""
+    testing.assert_true(_is_meta_command("\t:s"), "leading tab")
+
+
+def test_not_meta_command_expression() raises:
+    """A plain expression is not a meta-command."""
+    testing.assert_false(_is_meta_command("1 + 2"), "plain expression")
+
+
+def test_not_meta_command_empty() raises:
+    """Empty line is not a meta-command."""
+    testing.assert_false(_is_meta_command(""), "empty line")
+
+
+def test_not_meta_command_inline_colon() raises:
+    """Colon inside expression is not a meta-command."""
+    testing.assert_false(_is_meta_command("sqrt(2):p 100"), "inline colon")
+
+
+# ===----------------------------------------------------------------------=== #
+# Tests: _strip_colon_prefix
+# ===----------------------------------------------------------------------=== #
+
+
+def test_strip_colon_basic() raises:
+    """`:p 100` → `p 100`."""
+    testing.assert_equal(_strip_colon_prefix(":p 100"), "p 100")
+
+
+def test_strip_colon_with_leading_space() raises:
+    """` :s` → `s`."""
+    testing.assert_equal(_strip_colon_prefix("  :s"), "s")
+
+
+def test_strip_colon_only() raises:
+    """`:` alone → empty string."""
+    testing.assert_equal(_strip_colon_prefix(":"), "")
+
+
+def test_strip_colon_with_tab() raises:
+    """Tab before `:` is stripped."""
+    testing.assert_equal(_strip_colon_prefix("\t:p 50"), "p 50")
 
 
 # ===----------------------------------------------------------------------=== #

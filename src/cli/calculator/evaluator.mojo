@@ -189,6 +189,9 @@ def evaluate_rpn(
             `ans`, `x`).  If a TOKEN_VARIABLE token's name is not found
             in this dict, an error is raised.
 
+    Returns:
+        The evaluated Decimal result before final rounding.
+
     Raises:
         Error: On division by zero, missing operands, or other runtime
             errors — with source position when available.
@@ -341,6 +344,14 @@ def final_round(
     This should be called on the result of `evaluate_rpn` before
     displaying it to the user, so that guard digits are removed and
     the last visible digit is correctly rounded.
+
+    Args:
+        value: The Decimal value to round.
+        precision: Number of significant digits.
+        rounding_mode: The rounding mode to apply.
+
+    Returns:
+        A new Decimal rounded to the requested precision.
     """
     if value.is_zero():
         return value.copy()

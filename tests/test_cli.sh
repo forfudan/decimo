@@ -51,8 +51,8 @@ assert_output "scientific notation" "1.2345678E+4" "$BINARY" "12345.678" --scien
 # Engineering notation (--engineering / -E)
 assert_output "engineering notation" "12.345678E+3" "$BINARY" "12345.678" --engineering
 
-# Delimiter flag (-D)
-assert_output "delimiter underscore" "1_234_567.89" "$BINARY" "1234567.89" -D "_"
+# Delimiter flag (--delimiter)
+assert_output "delimiter underscore" "1_234_567.89" "$BINARY" "1234567.89" --delimiter "_"
 
 # Rounding mode (--rounding-mode / -R)
 assert_output "rounding mode ceiling" "0.33334" "$BINARY" "1/3" -P 5 -R ceiling
@@ -82,8 +82,8 @@ assert_output "mixed order: flag expr option" "1.732428719E+1" "$BINARY" -S "-3*
 assert_output "mixed order: option expr flag" "1.732428719E+1" "$BINARY" -P 10 "-3*pi/sin(10)" -S
 assert_output "engineering before expr" "-12.345678E+3" "$BINARY" -E "-12345.678"
 assert_output "engineering after expr" "-12.345678E+3" "$BINARY" "-12345.678" -E
-assert_output "delimiter before expr" "3.141_592_654" "$BINARY" -D _ -P 10 "pi"
-assert_output "delimiter after expr" "3.141_592_654" "$BINARY" "pi" -P 10 -D _
+assert_output "delimiter before expr" "3.141_592_654" "$BINARY" --delimiter _ -P 10 "pi"
+assert_output "delimiter after expr" "3.141_592_654" "$BINARY" "pi" -P 10 --delimiter _
 assert_output "rounding before expr" "0.33334" "$BINARY" -P 5 -R ceiling "1/3"
 assert_output "all options before expr" "0.33334" "$BINARY" -P 5 -R ceiling --pad "1/3"
 assert_output "all options after expr" "0.33334" "$BINARY" "1/3" -P 5 -R ceiling --pad
@@ -138,7 +138,7 @@ assert_pipe_output "pipe skip blank lines" \
     "3"
 assert_pipe_output "pipe with scientific" "12345.678" "1.2345678E+4" -S
 assert_pipe_output "pipe with engineering" "12345.678" "12.345678E+3" -E
-assert_pipe_output "pipe with delimiter" "1234567.89" "1_234_567.89" -D "_"
+assert_pipe_output "pipe with delimiter" "1234567.89" "1_234_567.89" --delimiter "_"
 
 # ── File mode (-F/--file flag) ────────────────────────────────────────────
 # All test files live in tests/cli/test_data/ — no temp files needed.
@@ -182,9 +182,9 @@ assert_output "file mode basic.dm -S" \
     "$(printf '3.1415926535897932384626433832795028841971693993751E0\n2.7182818284590452353602874713526624977572470937E0\n1.4142135623730950488016887242096980785696718753769E0\n1.1986470588235294117647058823529411764705882352941E+3')" \
     "$BINARY" -F "$DATA/basic.dm" -S
 
-assert_output "file mode basic.dm -D _" \
+assert_output "file mode basic.dm --delimiter _" \
     "$(printf '3.141_592_653_589_793_238_462_643_383_279_502_884_197_169_399_375_1\n2.718_281_828_459_045_235_360_287_471_352_662_497_757_247_093_700_0\n1.414_213_562_373_095_048_801_688_724_209_698_078_569_671_875_376_9\n1_198.647_058_823_529_411_764_705_882_352_941_176_470_588_235_294_1')" \
-    "$BINARY" -F "$DATA/basic.dm" -D _
+    "$BINARY" -F "$DATA/basic.dm" --delimiter _
 
 # --- Error cases ---
 # File mode: nonexistent file gives a clear error
