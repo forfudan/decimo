@@ -52,7 +52,7 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             echo "=== test attempt $attempt ==="
-            if bash ./tests/test_bigdecimal.sh; then
+            if bash tests/test.sh bigdecimal; then
               echo "=== tests passed on attempt $attempt ==="
               break
             fi
@@ -98,7 +98,7 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             echo "=== test attempt $attempt ==="
-            if bash ./tests/test_bigint.sh; then
+            if bash tests/test.sh bigint; then
               echo "=== tests passed on attempt $attempt ==="
               break
             fi
@@ -144,7 +144,7 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             echo "=== test attempt $attempt ==="
-            if bash ./tests/test_biguint.sh; then
+            if bash tests/test.sh biguint; then
               echo "=== tests passed on attempt $attempt ==="
               break
             fi
@@ -190,7 +190,7 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             echo "=== test attempt $attempt ==="
-            if bash ./tests/test_bigint10.sh; then
+            if bash tests/test.sh bigint10; then
               echo "=== tests passed on attempt $attempt ==="
               break
             fi
@@ -236,7 +236,7 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             echo "=== test attempt $attempt ==="
-            if bash ./tests/test_decimal128.sh; then
+            if bash tests/test.sh decimal128; then
               echo "=== tests passed on attempt $attempt ==="
               break
             fi
@@ -284,7 +284,7 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             echo "=== test attempt $attempt ==="
-            if bash ./tests/test_bigfloat.sh; then
+            if bash tests/test.sh bigfloat; then
               echo "=== tests passed on attempt $attempt ==="
               break
             fi
@@ -330,7 +330,7 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             echo "=== test attempt $attempt ==="
-            if bash ./tests/test_toml.sh; then
+            if bash tests/test.sh toml; then
               echo "=== tests passed on attempt $attempt ==="
               break
             fi
@@ -376,7 +376,7 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             echo "=== test attempt $attempt ==="
-            if bash ./tests/test_cli.sh; then
+            if bash tests/test.sh cli; then
               echo "=== tests passed on attempt $attempt ==="
               break
             fi
