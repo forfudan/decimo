@@ -327,8 +327,8 @@ Format the final `BigDecimal` result based on CLI flags:
 | 3.12 | Performance validation                                          |   ✓    | `benches/cli/bench_cli.sh`; 47 correctness checks + timing vs `bc` and `python3`           |
 | 3.13 | Documentation (user manual for CLI)                             |   ✓    | `docs/user_manual_cli.md`; includes shell completions setup and performance data           |
 | 3.14 | Allow negative expressions                                      |   ✓    | `allow_hyphen=True` on `Positional`; `decimo "-3*pi*(sin(1))"` works                       |
-| 3.15 | Make short names upper cases to avoid expression collisions     |   ✓    | `-P`, `-S`, `-E`, `-D`, `-R`; `--pad` has no short name; `-e`, `-pi`, `-sin(1)` all work   |
-| 3.16 | Define `allow_hyphen_values` in declarative API                 |   ✗    | When argmojo supports it                                                                   |
+| 3.15 | Make short names upper cases to avoid expression collisions     |   ✓    | `-P`, `-S`, `-E`, `-R`; `--pad`, `--delimiter` have no short name                          |
+| 3.16 | Define `allow_hyphen_values` in declarative API                 |   ✗    | When argmojo supports it (expected in v0.6.0)                                              |
 
 ### Phase 4: Interactive REPL
 
@@ -376,15 +376,20 @@ decimo> exit
 | 4.3  | Custom prompt (`decimo>`)                  |   ✓    | Coloured prompt to stderr so results can be piped                           |
 | 4.4  | `ans` variable (previous result)           |   ✓    | Stored in `Dict[String, Decimal]`; updated after each successful evaluation |
 | 4.5  | Variable assignment (`x = expr`)           |   ✓    | `name = expr` detection in REPL; protected names (pi, e, functions, ans)    |
-| 4.6  | Meta-commands (`:precision N`, `:vars`)    |   ✗    | `:` prefix avoids collision with expressions, allow short aliases           |
-| 4.7  | One-line quick setting                     |   ✗    | `:p 100 s down` sets precision, scientific notation, and round_down mode    |
-| 4.8  | Same-line temp precision setting           |   ✗    | `2*sqrt(1.23):p 100 s down` for a temporary setting for the expression      |
+| 4.6  | Meta-commands (`:precision N`, `:vars`)    |   ✓    | `:` prefix avoids collision with expressions; all CLI names + aliases       |
+| 4.7  | One-line quick setting                     |   ✓    | `:p 100 s r down` sets precision, scientific, and rounding in one line      |
+| 4.8  | Same-line temp precision setting           |   ✓    | `2*sqrt(1.23):p 100 s r down` — temp override via `:` separator             |
 | 4.9  | Print settings (`:settings`)               |   ✗    | Display current precision, formatting options, etc.                         |
 | 4.10 | Variable listing (`:vars` and `:variable`) |   ✗    | List all user-defined variables and their values                            |
-| 4.11 | Everything in the REPL is case-insensitive |   ✗    | Map all input chars to lower case at pre-tokenizer stage                    |
-| 4.12 | Graceful exit (`exit`, `quit`, Ctrl-D)     |   ✓    |                                                                             |
-| 4.13 | Error recovery (don't crash session)       |   ✓    | Catch exceptions per-line, display error, continue loop                     |
-| 4.14 | History (if Mojo gets readline support)    |   ✗    | Future — depends on Mojo FFI evolution                                      |
+| 4.11 | Help command (`:help`)                     |   ✗    | REPL-specific help with available commands and usage examples               |
+| 4.12 | Better header banner                       |   ✗    | Show title, settings, how to display help `:help`, how to quit `:q`         |
+| 4.13 | Everything in the REPL is case-insensitive |   ✗    | Map all input chars to lower case at pre-tokenizer stage                    |
+| 4.14 | Graceful exit (`exit`, `quit`, Ctrl-D)     |   ✓    |                                                                             |
+| 4.15 | Error recovery (don't crash session)       |   ✓    | Catch exceptions per-line, display error, continue loop                     |
+| 4.16 | Line editing (left/right, backspace, del)  |   ✗    | Implemented via `limo` package; see `docs/plans/line_editor.md`             |
+| 4.17 | Input history (up/down arrow navigation)   |   ✗    | Implemented via `limo` package; see `docs/plans/line_editor.md`             |
+
+將所有的設定放在一行，這個靈感主要來自於 argmojo，其實就是把 CLI 的選項直接放到了 REPL 的表達式行中。這個想法我個人是很喜歡的，因為它簡潔明瞭，避免了多行設定的冗長。
 
 ### Phase 5: Future Enhancements
 

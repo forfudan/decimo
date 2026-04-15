@@ -96,6 +96,10 @@ def display_calc_error(error_msg: String, expr: String):
     For form (1), extracts the position and calls `print_error` with a
     visual caret under the offending column. For form (2) falls back
     to a plain coloured error.
+
+    Args:
+        error_msg: The error message string to parse and display.
+        expr: The original expression string for caret display.
     """
     comptime PREFIX = "Error at position "
 
@@ -172,6 +176,19 @@ def evaluate_and_return(
 
     On error, displays a coloured diagnostic and raises to signal failure
     to the caller.
+
+    Args:
+        expr: The expression string to evaluate.
+        precision: Number of significant digits.
+        scientific: Whether to use scientific notation.
+        engineering: Whether to use engineering notation.
+        pad: Whether to zero-pad results.
+        delimiter: Digit-group delimiter string.
+        rounding_mode: The rounding mode to apply.
+        variables: Optional name→value mapping of user-defined variables.
+
+    Returns:
+        The evaluated Decimal result.
     """
     try:
         var tokens = tokenize(expr, variables)

@@ -36,7 +36,11 @@ from std.ffi import external_call
 
 def stdin_is_tty() -> Bool:
     """Returns True if stdin is connected to a terminal (TTY),
-    False if it is a pipe or redirected file."""
+    False if it is a pipe or redirected file.
+
+    Returns:
+        True if stdin is a TTY, False otherwise.
+    """
     return external_call["isatty", Int32](Int32(0)) != 0
 
 
@@ -53,6 +57,9 @@ def read_line() -> Optional[String]:
 
     This is designed for REPL use: it reads one character at a time
     via `getchar()` and stops at `\\n` or EOF.
+
+    Returns:
+        The line content without trailing newline, or None on EOF.
     """
     var chars = List[UInt8]()
 
@@ -81,7 +88,9 @@ def read_stdin() -> String:
 
     Uses the C `getchar()` function to read one byte at a time until
     EOF. This avoids FFI conflicts with the POSIX `read()` syscall.
-    Returns an empty string if stdin is empty.
+
+    Returns:
+        The full stdin content, or an empty string if stdin is empty.
     """
     var chunks = List[UInt8]()
 
@@ -108,6 +117,12 @@ def split_into_lines(text: String) -> List[String]:
 
     Handles both `\\n` and `\\r\\n` line endings.
     Trailing empty lines from a final newline are not included.
+
+    Args:
+        text: The input string to split.
+
+    Returns:
+        A list of line strings without line terminators.
     """
     var lines = List[String]()
     var start = 0
@@ -143,12 +158,18 @@ def strip_comment(line: String) -> String:
     This is a composable primitive — use it in combination with
     `strip()` and `is_blank()` for full line processing.
 
+    Args:
+        line: The input line to process.
+
+    Returns:
+        The line content before any `#` comment.
+
     Examples::
 
-        strip_comment("1+2 # add")    → "1+2 "
-        strip_comment("# comment")    → ""
-        strip_comment("sqrt(2)")      → "sqrt(2)"
-        strip_comment("")             → ""
+        strip_comment("1+2 # add")    → `1+2 `.
+        strip_comment("# comment")    → `""`.
+        strip_comment("sqrt(2)")      → `sqrt(2)`.
+        strip_comment("")             → `""`.
     """
     var n = len(line)
     if n == 0:
@@ -172,6 +193,12 @@ def is_blank(line: String) -> Bool:
 
     This is a composable primitive — combine with `strip_comment()`
     to check for comment-or-blank lines.
+
+    Args:
+        line: The input line to check.
+
+    Returns:
+        True if the line is empty or whitespace-only.
     """
     var n = len(line)
     if n == 0:
@@ -194,6 +221,12 @@ def is_comment_or_blank(line: String) -> Bool:
 
     Equivalent to `is_blank(strip_comment(line))`.  Provided as a
     convenience for callers that do not need the intermediate results.
+
+    Args:
+        line: The input line to check.
+
+    Returns:
+        True if the line is blank or a comment.
     """
     return is_blank(strip_comment(line))
 
@@ -203,6 +236,12 @@ def strip(s: String) -> String:
 
     Removes spaces (32), tabs (9), carriage returns (13), and
     newlines (10).
+
+    Args:
+        s: The input string to strip.
+
+    Returns:
+        The string with leading and trailing whitespace removed.
     """
     var bytes = StringSlice(s).as_bytes()
     var ptr = bytes.unsafe_ptr()
@@ -233,6 +272,12 @@ def filter_expression_lines(lines: List[String]) -> List[String]:
     Removes blank lines and comment lines (starting with `#`).
     Also strips inline comments and leading/trailing whitespace from
     each expression line.
+
+    Args:
+        lines: The input list of lines to filter.
+
+    Returns:
+        A new list containing only non-empty expression lines.
     """
     var result = List[String]()
     for i in range(len(lines)):
@@ -260,6 +305,9 @@ def read_file_text(path: String) raises -> String:
 
     Args:
         path: The file path to read.
+
+    Returns:
+        The file contents as a string, or an empty string if the file is empty.
 
     Raises:
         If the file cannot be opened.
@@ -312,6 +360,12 @@ def file_exists(path: String) -> Bool:
     """Returns True if the given path exists as a readable file.
 
     Uses the POSIX `access()` syscall with `R_OK` (4).
+
+    Args:
+        path: The file path to check.
+
+    Returns:
+        True if the file exists and is readable.
     """
     var c_path = _to_cstr(path)
     # access(path, R_OK=4) returns 0 on success

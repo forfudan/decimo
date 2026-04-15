@@ -24,12 +24,11 @@ until the user types `exit`, `quit`, or presses Ctrl-D.
 Features:
 - `ans` — automatically holds the result of the last successful evaluation.
 - Variable assignment — `x = <expr>` stores a named value for later use.
+- Meta-commands — lines starting with `:` change session settings without
+  evaluation.  Example: `:p 100 s r down`.
+- Inline temp settings — append `:settings` to an expression for one-off
+  overrides.  Example: `sqrt(2):p 100`.
 - Error recovery — display error and continue, don't crash the session.
-
-Architecture notes for future PRs:
-
-- Meta-commands (4.6): Lines starting with `:` are intercepted before
-  evaluation.  Examples: `:precision 100`, `:vars`, `:help`.
 """
 
 from std.sys import stderr
@@ -37,10 +36,11 @@ from std.collections import Dict
 
 from decimo import Decimal
 from decimo.rounding_mode import RoundingMode
-from .display import BOLD, RESET, YELLOW
-from .display import write_prompt, print_error
+from .display import BOLD, RESET, YELLOW, GREEN
+from .display import write_prompt, print_error, print_hint
 from .engine import evaluate_and_return
 from .io import read_line, strip, is_comment_or_blank
+from .settings import Settings, parse_settings, split_inline_settings
 from .tokenizer import (
     is_alpha_or_underscore,
     is_alnum_or_underscore,
@@ -66,10 +66,30 @@ def run_repl(
     Maintains a variable store with:
     - `ans`: automatically updated after each successful evaluation.
     - User-defined variables via `name = expr` assignment syntax.
+
+    Supports:
+    - Meta-commands (4.6): lines starting with `:` change session settings
+      globally.  Example: `:p 100 s r down`.
+    - Inline temp settings (4.8): append `:settings` to an expression for
+      one-off overrides.  Example: `sqrt(2):p 100`.
+
+    Args:
+        precision: Initial number of significant digits.
+        scientific: Initial scientific notation flag.
+        engineering: Initial engineering notation flag.
+        pad: Initial zero-padding flag.
+        delimiter: Initial digit-group delimiter.
+        rounding_mode: Initial rounding mode.
     """
-    _print_banner(
-        precision, scientific, engineering, pad, delimiter, rounding_mode
+    var settings = Settings(
+        precision,
+        scientific,
+        engineering,
+        pad,
+        delimiter,
+        rounding_mode,
     )
+    _print_banner(settings)
 
     var variables = Dict[String, Decimal]()
     variables["ans"] = Decimal()  # "0" by default, updated after each eval
@@ -93,7 +113,36 @@ def run_repl(
         if line == "exit" or line == "quit":
             break
 
-        # Check for variable assignment: `name = expr`
+        # == Meta-command: line starts with `:` ===========================
+        if _is_meta_command(line):
+            var cmd_str = _strip_colon_prefix(line)
+            try:
+                parse_settings(cmd_str, settings)
+                # Print confirmation to stderr
+                print(String(settings), file=stderr)
+            except e:
+                print_error(String(e))
+            continue
+
+        # == Check for inline temp settings (4.8): `expr:settings` ========
+        var inline = split_inline_settings(line)
+        if inline:
+            var expr = inline.value()[0]
+            var settings_str = inline.value()[1]
+
+            # Build a temp copy of settings and apply overrides
+            var temp = settings.copy()
+            try:
+                parse_settings(settings_str, temp)
+            except e:
+                print_error(String(e))
+                continue
+
+            # Evaluate expression with temp settings
+            _eval_line(expr, temp, variables)
+            continue
+
+        # == Check for variable assignment: `name = expr` =================
         var assignment = _parse_assignment(line)
 
         if assignment:
@@ -110,12 +159,12 @@ def run_repl(
             try:
                 var result = evaluate_and_return(
                     expr,
-                    precision,
-                    scientific,
-                    engineering,
-                    pad,
-                    delimiter,
-                    rounding_mode,
+                    settings.precision,
+                    settings.scientific,
+                    settings.engineering,
+                    settings.pad,
+                    settings.delimiter,
+                    settings.rounding_mode,
                     variables,
                 )
                 variables[var_name] = result.copy()
@@ -124,20 +173,54 @@ def run_repl(
                 continue  # error already displayed
         else:
             # Regular expression — evaluate and update ans
-            try:
-                var result = evaluate_and_return(
-                    line,
-                    precision,
-                    scientific,
-                    engineering,
-                    pad,
-                    delimiter,
-                    rounding_mode,
-                    variables,
-                )
-                variables["ans"] = result^
-            except:
-                continue  # error already displayed
+            _eval_line(line, settings, variables)
+
+
+def _eval_line(
+    expr: String,
+    settings: Settings,
+    mut variables: Dict[String, Decimal],
+):
+    """Evaluate an expression with the given settings and update `ans`."""
+    try:
+        var result = evaluate_and_return(
+            expr,
+            settings.precision,
+            settings.scientific,
+            settings.engineering,
+            settings.pad,
+            settings.delimiter,
+            settings.rounding_mode,
+            variables,
+        )
+        variables["ans"] = result^
+    except:
+        pass  # error already displayed by evaluate_and_return
+
+
+def _is_meta_command(line: String) -> Bool:
+    """Check if a line is a meta-command (starts with `:` after whitespace)."""
+    var bytes = StringSlice(line).as_bytes()
+    var n = len(bytes)
+    var i = 0
+    while i < n and (bytes[i] == 32 or bytes[i] == 9):
+        i += 1
+    return i < n and bytes[i] == 58  # ':'
+
+
+def _strip_colon_prefix(line: String) -> String:
+    """Strip leading whitespace and the `:` prefix from a meta-command."""
+    var bytes = StringSlice(line).as_bytes()
+    var n = len(bytes)
+    var i = 0
+    while i < n and (bytes[i] == 32 or bytes[i] == 9):
+        i += 1
+    if i < n and bytes[i] == 58:  # ':'
+        i += 1
+    var result = List[UInt8](capacity=n - i)
+    for j in range(i, n):
+        result.append(bytes[j])
+    return String(unsafe_from_utf8=result^)
 
 
 def _parse_assignment(line: String) -> Optional[Tuple[String, String]]:
@@ -227,14 +310,7 @@ def _validate_variable_name(name: String) -> Optional[String]:
     return None
 
 
-def _print_banner(
-    precision: Int,
-    scientific: Bool,
-    engineering: Bool,
-    pad: Bool,
-    delimiter: String,
-    rounding_mode: RoundingMode,
-):
+def _print_banner(settings: Settings):
     """Prints the REPL welcome banner to stderr."""
     comptime message = (
         BOLD
@@ -244,20 +320,8 @@ def _print_banner(
         + """Type an expression to evaluate, e.g., `pi + sin(-ln(1.23)) * sqrt(e^2)`.
 You can assign variables with `name = expression`, e.g., `x = 1.023^365`.
 You can use `ans` to refer to the last result.
+Use `:` to change settings, e.g., `:p 100 s r down`.
 Type 'exit' or 'quit', or press Ctrl-D, to quit."""
     )
     print(message, file=stderr)
-
-    # Build settings line: "Precision: N. Engineering notation."
-    var settings = "Precision: " + String(precision) + "."
-    if scientific:
-        settings += " Scientific notation."
-    elif engineering:
-        settings += " Engineering notation."
-    if pad:
-        settings += " Zero-padded."
-    if delimiter:
-        settings += " Delimiter: '" + delimiter + "'."
-    if not (rounding_mode == RoundingMode.half_even()):
-        settings += " Rounding: " + String(rounding_mode) + "."
-    print(settings, file=stderr)
+    print(String(settings), file=stderr)
