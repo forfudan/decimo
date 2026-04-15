@@ -143,7 +143,7 @@ def print_hint(message: String):
 
     Format:  `Hint: <message>`
 
-    The label `Hint` is displayed in bold cyan.
+    The label `Hint` is displayed in bold yellow.
 
     Args:
         message: Human-readable hint text.

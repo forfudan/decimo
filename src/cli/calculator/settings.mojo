@@ -136,8 +136,8 @@ def parse_settings(input: String, mut settings: Settings) raises:
 
     Splits by whitespace, scans tokens left-to-right. Each token is
     matched against known option/flag names (case-insensitive). Options
-    consume the next token as their value; flags set a Bool to True
-    (or False when prefixed with ``no-``).
+    consume the next token as their value; flags toggle their Bool value
+    each time they appear.
 
     Raises on unknown tokens or missing values.
 
@@ -234,8 +234,8 @@ def split_inline_settings(
 ) -> Optional[Tuple[String, String]]:
     """Detects inline settings in a REPL line.
 
-    If the line contains a `:` that is not at position 0 and not inside
-    parentheses, splits into (expression, settings_string).
+    If the line contains a `:` that is not at position 0, splits at the
+    last `:` into (expression, settings_string).
 
     Args:
         line: The REPL input line to examine.

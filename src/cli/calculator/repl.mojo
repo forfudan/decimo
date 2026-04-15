@@ -36,8 +36,8 @@ from std.collections import Dict
 
 from decimo import Decimal
 from decimo.rounding_mode import RoundingMode
-from .display import BOLD, RESET, YELLOW, GREEN
-from .display import write_prompt, print_error, print_hint
+from .display import BOLD, RESET, YELLOW
+from .display import write_prompt, print_error
 from .engine import evaluate_and_return
 from .io import read_line, strip, is_comment_or_blank
 from .settings import Settings, parse_settings, split_inline_settings
