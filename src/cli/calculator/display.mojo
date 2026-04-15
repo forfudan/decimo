@@ -31,29 +31,43 @@ in an expression.  Modelled after ArgMojo's colour system.
 
 from std.sys import stderr
 
-# ── ANSI colour codes ────────────────────────────────────────────────────────
+# == ANSI colour codes ========================================================
 
 comptime RESET = "\x1b[0m"
+"""ANSI escape code to reset all attributes."""
 comptime BOLD = "\x1b[1m"
+"""ANSI escape code for bold text."""
 
 # Bright foreground colours.
 comptime RED = "\x1b[91m"
+"""ANSI escape code for bright red."""
 comptime GREEN = "\x1b[92m"
+"""ANSI escape code for bright green."""
 comptime YELLOW = "\x1b[93m"
+"""ANSI escape code for bright yellow."""
 comptime BLUE = "\x1b[94m"
+"""ANSI escape code for bright blue."""
 comptime MAGENTA = "\x1b[95m"
+"""ANSI escape code for bright magenta."""
 comptime CYAN = "\x1b[96m"
+"""ANSI escape code for bright cyan."""
 comptime WHITE = "\x1b[97m"
+"""ANSI escape code for bright white."""
 comptime ORANGE = "\x1b[33m"  # dark yellow — renders as orange on most terminals
+"""ANSI escape code for orange (dark yellow)."""
 
 # Semantic aliases.
 comptime ERROR_COLOR = RED
+"""Colour used for error labels."""
 comptime WARNING_COLOR = ORANGE
+"""Colour used for warning labels."""
 comptime HINT_COLOR = YELLOW
+"""Colour used for hint labels."""
 comptime CARET_COLOR = GREEN
+"""Colour used for caret indicators."""
 
 
-# ── Public API ───────────────────────────────────────────────────────────────
+# == Public API ===============================================================
 
 
 def print_error(message: String):
@@ -63,6 +77,9 @@ def print_error(message: String):
 
     The label `Error` is displayed in bold red.  The message text
     follows in the default terminal colour.
+
+    Args:
+        message: Human-readable error description.
     """
     _write_stderr(
         BOLD + ERROR_COLOR + "Error" + RESET + BOLD + ": " + RESET + message
@@ -98,6 +115,9 @@ def print_warning(message: String):
     Format:  `Warning: <message>`
 
     The label `Warning` is displayed in bold orange/yellow.
+
+    Args:
+        message: Human-readable warning description.
     """
     _write_stderr(
         BOLD + WARNING_COLOR + "Warning" + RESET + BOLD + ": " + RESET + message
@@ -105,7 +125,13 @@ def print_warning(message: String):
 
 
 def print_warning(message: String, expr: String, position: Int):
-    """Prints a coloured warning message with a caret indicator."""
+    """Prints a coloured warning message with a caret indicator.
+
+    Args:
+        message: Human-readable warning description.
+        expr: The original expression string.
+        position: 0-based column index to place the caret indicator.
+    """
     _write_stderr(
         BOLD + WARNING_COLOR + "Warning" + RESET + BOLD + ": " + RESET + message
     )
@@ -117,7 +143,10 @@ def print_hint(message: String):
 
     Format:  `Hint: <message>`
 
-    The label `Hint` is displayed in bold cyan.
+    The label `Hint` is displayed in bold yellow.
+
+    Args:
+        message: Human-readable hint text.
     """
     _write_stderr(
         BOLD + HINT_COLOR + "Hint" + RESET + BOLD + ": " + RESET + message
@@ -129,12 +158,15 @@ def write_prompt(prompt: String):
 
     The prompt is written to stderr so that stdout remains clean for
     piping results.
+
+    Args:
+        prompt: The prompt string to display.
     """
     var styled = BOLD + GREEN + prompt + RESET
     print(styled, end="", file=stderr, flush=True)
 
 
-# ── Internal helpers ─────────────────────────────────────────────────────────
+# == Internal helpers =========================================================
 
 
 def _write_stderr(msg: String):

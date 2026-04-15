@@ -16,7 +16,7 @@
   - [Scientific Notation (`--scientific`, `-S`)](#scientific-notation---scientific--s)
   - [Engineering Notation (`--engineering`, `-E`)](#engineering-notation---engineering--e)
   - [Pad to Precision (`--pad`)](#pad-to-precision---pad)
-  - [Digit Separator (`--delimiter`, `-D`)](#digit-separator---delimiter--d)
+  - [Digit Separator (`--delimiter`)](#digit-separator---delimiter)
   - [Rounding Mode (`--rounding-mode`, `-R`)](#rounding-mode---rounding-mode--r)
 - [Input Modes](#input-modes)
   - [Expression Mode (Default)](#expression-mode-default)
@@ -218,15 +218,15 @@ decimo "1.5" --pad -P 10
 # → 1.5000000000 (10 fractional digits, 11 significant digits)
 ```
 
-### Digit Separator (`--delimiter`, `-D`)
+### Digit Separator (`--delimiter`)
 
 Insert a character every 3 digits for readability.
 
 ```bash
-decimo "2^64" -D _
+decimo "2^64" --delimiter _
 # → 18_446_744_073_709_551_616
 
-decimo "pi" -P 30 -D _
+decimo "pi" -P 30 --delimiter _
 # → 3.141_592_653_589_793_238_462_643_383_28
 ```
 
@@ -294,7 +294,7 @@ printf '# constants\npi\n\ne' | decimo -P 10
 # → 2.718281828
 ```
 
-All CLI options (`-P`, `-S`, `-E`, `-D`, `-R`, `--pad`) apply to every line.
+All CLI options (`-P`, `-S`, `-E`, `--delimiter`, `-R`, `--pad`) apply to every line.
 
 If any expression fails, `decimo` prints the error for that line, continues evaluating the remaining lines, and exits with code 1.
 
@@ -362,7 +362,7 @@ decimo -P 10 "-3*pi"
 decimo "-3*pi" -P 10
 ```
 
-Because all short option names are uppercase (`-P`, `-S`, `-E`, `-D`, `-R`), expressions like `-e`, `-sin(1)`, and `-pi` are never mistaken for flags:
+Because all short option names are uppercase (`-P`, `-S`, `-E`, `-R`), expressions like `-e`, `-sin(1)`, and `-pi` are never mistaken for flags:
 
 ```bash
 # Euler's number, negated
@@ -521,7 +521,7 @@ decimo "123456789.987654321" -E
 # → 123.456789987654321E+6
 
 # Digit separators
-decimo "2^100" -D _
+decimo "2^100" --delimiter _
 # → 1_267_650_600_228_229_401_496_703_205_376
 
 # Pad trailing zeros
@@ -596,7 +596,7 @@ Options:
           Output in engineering notation (exponent multiple of 3)
   --pad
           Pad trailing zeros to the specified precision
-  -D, --delimiter <CHAR>
+  --delimiter <CHAR>
           Digit-group separator inserted every 3 digits (e.g. '_' gives 1_234.567_89)
   -R, --rounding-mode <MODE>
           Rounding mode for the final result (default: half-even)

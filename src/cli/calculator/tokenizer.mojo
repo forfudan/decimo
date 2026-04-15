@@ -28,18 +28,31 @@ from decimo import Decimal
 # ===----------------------------------------------------------------------=== #
 
 comptime TOKEN_NUMBER = 0
+"""Token kind for numeric literals."""
 comptime TOKEN_PLUS = 1
+"""Token kind for the `+` operator."""
 comptime TOKEN_MINUS = 2
+"""Token kind for the binary `-` operator."""
 comptime TOKEN_STAR = 3
+"""Token kind for the `*` operator."""
 comptime TOKEN_SLASH = 4
+"""Token kind for the `/` operator."""
 comptime TOKEN_LPAREN = 5
+"""Token kind for `(`."""
 comptime TOKEN_RPAREN = 6
+"""Token kind for `)`."""
 comptime TOKEN_UNARY_MINUS = 7
+"""Token kind for unary minus."""
 comptime TOKEN_CARET = 8
+"""Token kind for the `^` (power) operator."""
 comptime TOKEN_FUNC = 9
+"""Token kind for function names (sqrt, ln, etc.)."""
 comptime TOKEN_CONST = 10
+"""Token kind for built-in constants (pi, e)."""
 comptime TOKEN_COMMA = 11
+"""Token kind for `,` (argument separator)."""
 comptime TOKEN_VARIABLE = 12
+"""Token kind for user-defined variables."""
 
 
 # ===----------------------------------------------------------------------=== #
@@ -51,29 +64,52 @@ struct Token(Copyable, ImplicitlyCopyable, Movable):
     """A token produced by the lexer."""
 
     var kind: Int
+    """Integer tag identifying the token type (see TOKEN_* constants)."""
     var value: String
+    """The textual content of the token."""
     var position: Int
     """0-based column index in the original expression where this token
     starts.  Used to produce clear diagnostics such as
     `Error at position 5: unexpected '*'`."""
 
     def __init__(out self, kind: Int, value: String = "", position: Int = 0):
+        """Creates a new Token.
+
+        Args:
+            kind: The token type tag.
+            value: The textual content of the token.
+            position: 0-based column index in the source expression.
+        """
         self.kind = kind
         self.value = value
         self.position = position
 
     def __init__(out self, *, copy: Self):
+        """Creates a copy of an existing Token.
+
+        Args:
+            copy: The token to copy from.
+        """
         self.kind = copy.kind
         self.value = copy.value
         self.position = copy.position
 
     def __init__(out self, *, deinit take: Self):
+        """Move-constructs a Token.
+
+        Args:
+            take: The token to move from.
+        """
         self.kind = take.kind
         self.value = take.value^
         self.position = take.position
 
     def is_operator(self) -> Bool:
-        """Returns True if this token is a binary or unary operator."""
+        """Returns True if this token is a binary or unary operator.
+
+        Returns:
+            True if the token kind is an operator.
+        """
         return (
             self.kind == TOKEN_PLUS
             or self.kind == TOKEN_MINUS
@@ -92,6 +128,9 @@ struct Token(Copyable, ImplicitlyCopyable, Movable):
         |     2      | *, /      | Left          |
         |     3      | ^         | Right         |
         |  4 (high)  | unary -   | Right         |
+
+        Returns:
+            The integer precedence level, or 0 for non-operators.
         """
         if self.kind == TOKEN_PLUS or self.kind == TOKEN_MINUS:
             return 1
@@ -104,7 +143,11 @@ struct Token(Copyable, ImplicitlyCopyable, Movable):
         return 0
 
     def is_left_associative(self) -> Bool:
-        """Returns True if this operator is left-associative."""
+        """Returns True if this operator is left-associative.
+
+        Returns:
+            True for left-associative operators, False for right-associative.
+        """
         if self.kind == TOKEN_UNARY_MINUS or self.kind == TOKEN_CARET:
             return False
         return True
@@ -127,7 +170,14 @@ struct Token(Copyable, ImplicitlyCopyable, Movable):
 
 
 def is_known_function(name: String) -> Bool:
-    """Returns True if `name` is a recognized function."""
+    """Returns True if `name` is a recognized function.
+
+    Args:
+        name: The identifier to check.
+
+    Returns:
+        True if the name matches a built-in function.
+    """
     return (
         name == "sqrt"
         or name == "root"
@@ -146,17 +196,38 @@ def is_known_function(name: String) -> Bool:
 
 
 def is_known_constant(name: String) -> Bool:
-    """Returns True if `name` is a recognized constant."""
+    """Returns True if `name` is a recognized constant.
+
+    Args:
+        name: The identifier to check.
+
+    Returns:
+        True if the name matches a built-in constant.
+    """
     return name == "pi" or name == "e"
 
 
 def is_alpha_or_underscore(c: UInt8) -> Bool:
-    """Returns True if c is a-z, A-Z, or '_'."""
+    """Returns True if c is a-z, A-Z, or '_'.
+
+    Args:
+        c: The byte value to check.
+
+    Returns:
+        True if the byte is an ASCII letter or underscore.
+    """
     return (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or c == 95
 
 
 def is_alnum_or_underscore(c: UInt8) -> Bool:
-    """Returns True if c is a-z, A-Z, 0-9, or '_'."""
+    """Returns True if c is a-z, A-Z, 0-9, or '_'.
+
+    Args:
+        c: The byte value to check.
+
+    Returns:
+        True if the byte is an ASCII alphanumeric character or underscore.
+    """
     return is_alpha_or_underscore(c) or (c >= 48 and c <= 57)
 
 
@@ -180,6 +251,9 @@ def tokenize(
         known_variables: Optional name→value mapping of user-defined
             variables.  Identifiers matching a key are emitted as
             TOKEN_VARIABLE tokens instead of raising an error.
+
+    Returns:
+        A list of tokens representing the expression.
 
     Raises:
         Error: On empty/whitespace-only input (without position info),

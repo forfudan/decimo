@@ -46,6 +46,12 @@ def parse_to_rpn(tokens: List[Token]) raises -> List[Token]:
     (sqrt, ln, …), constants (pi, e), and commas for multi-argument functions
     like root(x, n).
 
+    Args:
+        tokens: The list of infix tokens to convert.
+
+    Returns:
+        A new list of tokens in RPN order.
+
     Raises:
         Error: On mismatched parentheses, misplaced commas, or trailing
             operators — with position information when available.

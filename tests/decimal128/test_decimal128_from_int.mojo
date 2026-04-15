@@ -60,7 +60,7 @@ def test_from_int() raises:
     # from_int with scale: use a=integer, b=scale
     var scale_cases = load_test_cases(toml, "from_int_with_scale_tests")
     for tc in scale_cases:
-        var result = Dec128.from_int(Int(tc.a), Int(tc.b))
+        var result = Dec128.from_int(Int(tc.a), UInt32(Int(tc.b)))
         try:
             testing.assert_equal(
                 lhs=String(result),
@@ -218,7 +218,7 @@ def test_from_int_with_scale_advanced() raises:
     testing.assert_equal(r5.scale(), 25)
 
     # Max scale
-    var r6 = Dec128.from_int(1, Decimal128.MAX_SCALE)
+    var r6 = Dec128.from_int(1, UInt32(Decimal128.MAX_SCALE))
     testing.assert_equal(r6.scale(), Decimal128.MAX_SCALE)
 
     # Arithmetic with scaled value: 1.0 / 0.03

@@ -74,7 +74,6 @@ struct DecimoArgs(Parsable):
     var delimiter: Option[
         String,
         long="delimiter",
-        short="D",
         help="Digit-group separator inserted every 3 digits (e.g. '_' gives 1_234.567_89)",
         default="",
         value_name="CHAR",

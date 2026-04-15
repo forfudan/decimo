@@ -27,7 +27,8 @@ format = """pixi run mojo format ./src \
 &&pixi run ruff format ./python"""
 
 # doc
-doc = "pixi run mojo doc --diagnose-missing-doc-strings src/decimo > /dev/null"
+doc = """pixi run mojo doc --diagnose-missing-doc-strings src/decimo > /dev/null \
+&& pixi run mojo doc --diagnose-missing-doc-strings -I src src/cli/calculator > /dev/null"""
 
 # compile the package
 p = "clear && pixi run package"
@@ -81,7 +82,7 @@ dec_debug = """clear && pixi run package && cd benches/decimal128 \
 # Only do this when necessary
 # (argmojo is not compatible with the latest mojo version)
 fetch = """git clone https://github.com/forfudan/argmojo.git temp/argmojo 2>/dev/null || true \
-&& cd temp/argmojo && git checkout 29b6f54545f850e19d9a9ccfd1185d87f54e92b2 2>/dev/null"""
+&&cd temp/argmojo && git checkout 29b6f54545f850e19d9a9ccfd1185d87f54e92b2 2>/dev/null"""
 
 # cli calculator
 bcli = "clear && pixi run buildcli"
