@@ -36,11 +36,11 @@ from std.collections import Dict
 
 from decimo import Decimal
 from decimo.rounding_mode import RoundingMode
-from .display import BOLD, RESET, YELLOW
+from .display import BOLD, RESET, YELLOW, CYAN, GREEN
 from .display import write_prompt, print_error
 from .engine import evaluate_and_return
 from .io import read_line, strip, is_comment_or_blank
-from .settings import Settings, parse_settings, split_inline_settings
+from .settings import Settings, parse_settings, split_inline_settings, to_lower
 from .tokenizer import (
     is_alpha_or_underscore,
     is_alnum_or_underscore,
@@ -103,7 +103,10 @@ def run_repl(
             print(file=stderr)  # newline after the prompt
             break
 
-        var line = strip(maybe_line.value())
+        # Case-insensitive — lowercase all input before processing
+        # By doing this early, we ensure that meta-commands, variable names, and
+        # function names are all case-insensitive in a consistent way.
+        var line = to_lower(strip(maybe_line.value()))
 
         # Skip blank lines and comments
         if is_comment_or_blank(line):
@@ -116,6 +119,32 @@ def run_repl(
         # == Meta-command: line starts with `:` ===========================
         if _is_meta_command(line):
             var cmd_str = _strip_colon_prefix(line)
+
+            # `:help` / `:h`
+            # This displays a complete command reference for REPL features
+            if _is_help_command(cmd_str):
+                _print_help()
+                continue
+
+            # `:settings` / `:show`
+            # This displays all current settings and their values
+            # (precision, sci/eng, pad, delimiter, rounding mode)
+            if _is_settings_command(cmd_str):
+                _print_settings(settings)
+                continue
+
+            # `:vars` / `:variables`
+            # This displays all user-defined variables and their current values,
+            # including `ans`.
+            if _is_vars_command(cmd_str):
+                _print_variables(variables)
+                continue
+
+            # `:q` / `:quit` / `:exit`
+            # This exits the REPL session gracefully (same as Ctrl-D).
+            if _is_quit_command(cmd_str):
+                break
+
             try:
                 parse_settings(cmd_str, settings)
                 # Print confirmation to stderr
@@ -312,16 +341,165 @@ def _validate_variable_name(name: String) -> Optional[String]:
 
 def _print_banner(settings: Settings):
     """Prints the REPL welcome banner to stderr."""
-    comptime message = (
+    comptime title = (
         BOLD
         + YELLOW
-        + "Decimo — arbitrary-precision calculator, written in pure Mojo 🔥\n"
+        + "Decimo — arbitrary-precision calculator, written in Mojo 🔥\n"
         + RESET
-        + """Type an expression to evaluate, e.g., `pi + sin(-ln(1.23)) * sqrt(e^2)`.
-You can assign variables with `name = expression`, e.g., `x = 1.023^365`.
-You can use `ans` to refer to the last result.
-Use `:` to change settings, e.g., `:p 100 s r down`.
-Type 'exit' or 'quit', or press Ctrl-D, to quit."""
     )
-    print(message, file=stderr)
+    comptime hints = "Type :h for help, :show for settings, :q to quit."
+    print(title + hints, file=stderr)
     print(String(settings), file=stderr)
+
+
+# ===----------------------------------------------------------------------=== #
+# Meta-command detection helpers
+# ===----------------------------------------------------------------------=== #
+
+
+fn _is_help_command(cmd: String) -> Bool:
+    """Match: help, h, ?."""
+    return cmd == "help" or cmd == "h" or cmd == "?"
+
+
+fn _is_settings_command(cmd: String) -> Bool:
+    """Match: settings, show."""
+    return cmd == "settings" or cmd == "show"
+
+
+fn _is_vars_command(cmd: String) -> Bool:
+    """Match: vars, variables, var."""
+    return cmd == "vars" or cmd == "variables" or cmd == "var"
+
+
+fn _is_quit_command(cmd: String) -> Bool:
+    """Match: q, quit, exit."""
+    return cmd == "q" or cmd == "quit" or cmd == "exit"
+
+
+# ===----------------------------------------------------------------------=== #
+# Meta-command display helpers (4.9, 4.10, 4.11)
+# ===----------------------------------------------------------------------=== #
+
+
+def _print_settings(settings: Settings):
+    """Display all current settings to stderr (4.9)."""
+    print(
+        BOLD + CYAN + "Current settings" + RESET + BOLD + ":" + RESET,
+        file=stderr,
+    )
+    print("  Precision     : " + String(settings.precision), file=stderr)
+    print(
+        "  Scientific    : " + ("on" if settings.scientific else "off"),
+        file=stderr,
+    )
+    print(
+        "  Engineering   : " + ("on" if settings.engineering else "off"),
+        file=stderr,
+    )
+    print(
+        "  Pad           : " + ("on" if settings.pad else "off"),
+        file=stderr,
+    )
+    print(
+        "  Delimiter     : "
+        + ("'" + settings.delimiter + "'" if settings.delimiter else "(none)"),
+        file=stderr,
+    )
+    print("  Rounding mode : " + String(settings.rounding_mode), file=stderr)
+
+
+def _print_variables(variables: Dict[String, Decimal]) raises:
+    """Display all user-defined variables and their values to stderr (4.10)."""
+    var count = len(variables)
+    if count == 0:
+        print("No variables defined.", file=stderr)
+        return
+
+    print(
+        BOLD + CYAN + "Variables" + RESET + BOLD + ":" + RESET,
+        file=stderr,
+    )
+
+    # Always show `ans` first if present
+    if "ans" in variables:
+        print(
+            "  ans = " + variables["ans"].to_string(),
+            file=stderr,
+        )
+
+    # Show user-defined variables
+    for entry in variables.items():
+        if entry.key != "ans":
+            print(
+                "  " + entry.key + " = " + entry.value.to_string(),
+                file=stderr,
+            )
+
+
+def _print_help():
+    """Display REPL-specific help to stderr (4.11)."""
+    comptime help_text = (
+        BOLD
+        + CYAN
+        + "Decimo REPL help"
+        + RESET
+        + BOLD
+        + ":"
+        + RESET
+        + "\n\n"
+        + BOLD
+        + "Expressions"
+        + RESET
+        + ":\n"
+        "  Type any math expression to evaluate it.\n"
+        "  Example: pi + sin(-ln(1.23)) * sqrt(e^2)\n"
+        "\n"
+        + BOLD
+        + "Variables"
+        + RESET
+        + ":\n"
+        "  name = expr   Assign a value:  x = 1.023^365\n"
+        "  ans           Refers to the last result.\n"
+        "\n"
+        + BOLD
+        + "Functions"
+        + RESET
+        + ":\n"
+        "  sqrt  cbrt  root(x,n)  abs  exp  ln  log10  log(x,base)\n"
+        "  sin  cos  tan  cot  csc\n"
+        "\n"
+        + BOLD
+        + "Constants"
+        + RESET
+        + ":\n  pi  e\n\n"
+        + BOLD
+        + "Settings commands"
+        + RESET
+        + " (prefix with :):\n"
+        "  :p N          Set precision to N digits.\n"
+        "  :s            Toggle scientific notation.\n"
+        "  :e            Toggle engineering notation.\n"
+        "  :pad          Toggle zero-padding.\n"
+        "  :r MODE       Set rounding mode (he/hu/hd/u/d/c/f/b).\n"
+        "  :delimiter C  Set digit-group delimiter.\n"
+        "  :p 100 s r d  Combine multiple settings in one line.\n"
+        "\n"
+        + BOLD
+        + "Inline temp settings"
+        + RESET
+        + ":\n  expr:p 100    Override settings for one expression only.\n\n"
+        + BOLD
+        + "Info commands"
+        + RESET
+        + " (prefix with :):\n"
+        "  :settings     Show current settings.\n"
+        "  :vars         List all variables.\n"
+        "  :help         Show this help.\n"
+        "\n"
+        + BOLD
+        + "Quit"
+        + RESET
+        + ":\n  :q  exit  quit  Ctrl-D"
+    )
+    print(help_text, file=stderr)

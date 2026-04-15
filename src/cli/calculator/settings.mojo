@@ -154,7 +154,7 @@ def parse_settings(input: String, mut settings: Settings) raises:
 
     var i = 0
     while i < n:
-        var token = _to_lower(tokens[i])
+        var token = to_lower(tokens[i])
 
         # == Options (consume next token as value) ========================
         if _is_precision_name(token):
@@ -170,7 +170,7 @@ def parse_settings(input: String, mut settings: Settings) raises:
             i += 1
             if i >= n:
                 raise Error("expected a value after '" + tokens[i - 1] + "'")
-            var dval = _to_lower(tokens[i])
+            var dval = to_lower(tokens[i])
             if dval == "off" or dval == "none" or dval == '""' or dval == "''":
                 settings.delimiter = ""
             else:
@@ -182,7 +182,7 @@ def parse_settings(input: String, mut settings: Settings) raises:
                 raise Error(
                     "expected a rounding mode after '" + tokens[i - 1] + "'"
                 )
-            settings.rounding_mode = _parse_rounding_mode(_to_lower(tokens[i]))
+            settings.rounding_mode = _parse_rounding_mode(to_lower(tokens[i]))
 
         # == Flags (toggle; enforce mutual exclusion) =====================
         elif _is_scientific_name(token):
@@ -204,7 +204,7 @@ def parse_settings(input: String, mut settings: Settings) raises:
 
         # == Standalone rounding modes (no `r` prefix needed) ============
         elif _is_standalone_rounding_mode(token):
-            settings.rounding_mode = _parse_rounding_mode(token)
+            settings.rounding_mode = _parse_rounding_mode(to_lower(token))
 
         else:
             raise Error("unknown setting: '" + tokens[i] + "'")
@@ -447,8 +447,15 @@ fn _split_whitespace(s: String) -> List[String]:
     return result^
 
 
-fn _to_lower(s: String) -> String:
-    """Convert a string to lowercase (ASCII only)."""
+fn to_lower(s: String) -> String:
+    """Convert a string to lowercase (ASCII only).
+
+    Args:
+        s: The input string.
+
+    Returns:
+        A new string with all ASCII uppercase letters converted to lowercase.
+    """
     var bytes = StringSlice(s).as_bytes()
     var n = len(bytes)
     var result = List[UInt8](capacity=n)
