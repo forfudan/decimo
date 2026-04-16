@@ -379,7 +379,7 @@ decimo> exit
 | 4.6  | Meta-commands (`:precision N`, etc.)       |   ✓    | `:` prefix avoids collision; settings names + aliases (`:vars` not yet)     |
 | 4.7  | One-line quick setting                     |   ✓    | `:p 100 s r down` sets precision, scientific, and rounding in one line      |
 | 4.8  | Same-line temp precision setting           |   ✓    | `2*sqrt(1.23):p 100 s r down` — temp override via `:` separator             |
-| 4.9  | Print settings (`:settings`)               |   ✓    | `:settings` / `:show` displays all current options in a labelled list       |
+| 4.9  | Print settings (`:show`)                   |   ✓    | `:show` / `:settings` displays all current options in a labelled list       |
 | 4.10 | Variable listing (`:vars` and `:variable`) |   ✓    | `:vars` / `:variables` / `:var` lists `ans` first, then user variables      |
 | 4.11 | Help command (`:help`)                     |   ✓    | `:help` / `:h` / `:?` shows expressions, variables, functions, commands     |
 | 4.12 | Better header banner                       |   ✓    | Compact: title + "Type :help for help, :q to quit." + current settings      |

@@ -385,7 +385,7 @@ decimo> sqrt(2):p 100
 
 | Command     | Effect                      |
 | ----------- | --------------------------- |
-| `:settings` | Show all current settings.  |
+| `:show`     | Show all current settings.  |
 | `:vars`     | List all defined variables. |
 | `:help`     | Show REPL help.             |
 

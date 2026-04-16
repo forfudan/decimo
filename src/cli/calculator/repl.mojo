@@ -126,7 +126,7 @@ def run_repl(
                 _print_help()
                 continue
 
-            # `:settings` / `:show`
+            # `:show` / `:settings`
             # This displays all current settings and their values
             # (precision, sci/eng, pad, delimiter, rounding mode)
             if _is_settings_command(cmd_str):
@@ -147,8 +147,7 @@ def run_repl(
 
             try:
                 parse_settings(cmd_str, settings)
-                # Print confirmation to stderr
-                print(String(settings), file=stderr)
+                _print_settings(settings)
             except e:
                 print_error(String(e))
             continue
@@ -360,8 +359,8 @@ fn _is_help_command(cmd: String) -> Bool:
 
 
 fn _is_settings_command(cmd: String) -> Bool:
-    """Match: settings, show."""
-    return cmd == "settings" or cmd == "show"
+    """Match: show, settings."""
+    return cmd == "show" or cmd == "settings"
 
 
 fn _is_vars_command(cmd: String) -> Bool:
@@ -491,9 +490,9 @@ def _print_help():
         + "Info commands"
         + RESET
         + " (prefix with :):\n"
-        "  :settings     Show current settings.\n"
-        "  :vars         List all variables.\n"
-        "  :help, :h, :? Show this help.\n"
+        "  :show, :settings  Show current settings.\n"
+        "  :vars             List all variables.\n"
+        "  :help, :h, :?     Show this help.\n"
         "\n"
         + BOLD
         + "Quit"

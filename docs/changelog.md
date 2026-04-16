@@ -13,10 +13,11 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 1. Add **shell completion** documentation for Bash, Zsh, and Fish (`decimo --completions bash|zsh|fish`).
 1. Add **CLI performance benchmarks** (`benches/cli/bench_cli.sh`) comparing correctness and timing against `bc` and `python3` across 47 comparisons — all results match to 15 significant digits; `decimo` is 3–4× faster than `python3 -c`.
 1. Add **interactive REPL**: launch with `decimo` (no arguments, TTY attached). Features coloured `decimo>` prompt on stderr, per-line error recovery with caret diagnostics, comment/blank-line skipping, and graceful exit via `exit`, `quit`, or Ctrl-D. All CLI flags (`-P`, `--scientific`, etc.) apply to the REPL session.
-1. Add **REPL info commands**: `:settings` / `:show` displays all current options, `:vars` / `:variables` lists all defined variables and their values, `:help` / `:h` shows a complete command reference, and `:q` / `:quit` / `:exit` exits the session.
+1. Add **REPL info commands**: `:show` / `:settings` displays all current options, `:vars` / `:variables` lists all defined variables and their values, `:help` / `:h` shows a complete command reference, and `:q` / `:quit` / `:exit` exits the session.
 1. Add **case-insensitive input** in the REPL: all input is lowercased before processing, so `PI`, `Sqrt(2)`, `SIN(1)` all work.
 1. Streamline the **REPL welcome banner** to a compact one-liner with a hint to `:help` and `:q`.
 1. Add **standalone integer precision shortcut** in settings: `:100` is equivalent to `:p 100`. Any all-digit token in a settings command is treated as the precision value.
+1. Print **full settings block** after every settings change (`:...` commands) instead of a one-line summary, so the effect is immediately visible.
 
 ### 🦋 Changed in v0.10.0
 
