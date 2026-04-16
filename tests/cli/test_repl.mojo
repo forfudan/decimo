@@ -1,5 +1,6 @@
 """Test REPL helpers: _parse_assignment, _validate_variable_name,
-_is_meta_command, _strip_colon_prefix."""
+_is_meta_command, _strip_colon_prefix, _is_help_command, _is_settings_command,
+_is_vars_command, _is_quit_command."""
 
 from std import testing
 
@@ -8,6 +9,10 @@ from calculator.repl import (
     _validate_variable_name,
     _is_meta_command,
     _strip_colon_prefix,
+    _is_help_command,
+    _is_settings_command,
+    _is_vars_command,
+    _is_quit_command,
 )
 
 
@@ -191,6 +196,101 @@ def test_strip_colon_only() raises:
 def test_strip_colon_with_tab() raises:
     """Tab before `:` is stripped."""
     testing.assert_equal(_strip_colon_prefix("\t:p 50"), "p 50")
+
+
+# ===----------------------------------------------------------------------=== #
+# Tests: _is_help_command (4.11)
+# ===----------------------------------------------------------------------=== #
+
+
+def test_help_command_help() raises:
+    """`help` matches."""
+    testing.assert_true(_is_help_command("help"), "help")
+
+
+def test_help_command_h() raises:
+    """`h` matches."""
+    testing.assert_true(_is_help_command("h"), "h")
+
+
+def test_help_command_question() raises:
+    """`?` matches."""
+    testing.assert_true(_is_help_command("?"), "?")
+
+
+def test_help_command_no_match() raises:
+    """`hello` does not match."""
+    testing.assert_false(_is_help_command("hello"), "hello")
+
+
+# ===----------------------------------------------------------------------=== #
+# Tests: _is_settings_command (4.9)
+# ===----------------------------------------------------------------------=== #
+
+
+def test_settings_command_settings() raises:
+    """`settings` matches."""
+    testing.assert_true(_is_settings_command("settings"), "settings")
+
+
+def test_settings_command_show() raises:
+    """`show` matches."""
+    testing.assert_true(_is_settings_command("show"), "show")
+
+
+def test_settings_command_no_match() raises:
+    """`set` does not match."""
+    testing.assert_false(_is_settings_command("set"), "set")
+
+
+# ===----------------------------------------------------------------------=== #
+# Tests: _is_vars_command (4.10)
+# ===----------------------------------------------------------------------=== #
+
+
+def test_vars_command_vars() raises:
+    """`vars` matches."""
+    testing.assert_true(_is_vars_command("vars"), "vars")
+
+
+def test_vars_command_variables() raises:
+    """`variables` matches."""
+    testing.assert_true(_is_vars_command("variables"), "variables")
+
+
+def test_vars_command_var() raises:
+    """`var` matches."""
+    testing.assert_true(_is_vars_command("var"), "var")
+
+
+def test_vars_command_no_match() raises:
+    """`v` does not match."""
+    testing.assert_false(_is_vars_command("v"), "v")
+
+
+# ===----------------------------------------------------------------------=== #
+# Tests: _is_quit_command
+# ===----------------------------------------------------------------------=== #
+
+
+def test_quit_command_q() raises:
+    """`q` matches."""
+    testing.assert_true(_is_quit_command("q"), "q")
+
+
+def test_quit_command_quit() raises:
+    """`quit` matches."""
+    testing.assert_true(_is_quit_command("quit"), "quit")
+
+
+def test_quit_command_exit() raises:
+    """`exit` matches."""
+    testing.assert_true(_is_quit_command("exit"), "exit")
+
+
+def test_quit_command_no_match() raises:
+    """`bye` does not match."""
+    testing.assert_false(_is_quit_command("bye"), "bye")
 
 
 # ===----------------------------------------------------------------------=== #
