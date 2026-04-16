@@ -36,7 +36,7 @@ from std.collections import Dict
 
 from decimo import Decimal
 from decimo.rounding_mode import RoundingMode
-from .display import BOLD, RESET, YELLOW, CYAN, GREEN
+from .display import BOLD, RESET, YELLOW, CYAN
 from .display import write_prompt, print_error
 from .engine import evaluate_and_return
 from .io import read_line, strip, is_comment_or_blank
@@ -495,7 +495,7 @@ def _print_help():
         + " (prefix with :):\n"
         "  :settings     Show current settings.\n"
         "  :vars         List all variables.\n"
-        "  :help         Show this help.\n"
+        "  :help, :h, :? Show this help.\n"
         "\n"
         + BOLD
         + "Quit"

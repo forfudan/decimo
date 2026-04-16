@@ -204,7 +204,7 @@ def parse_settings(input: String, mut settings: Settings) raises:
 
         # == Standalone rounding modes (no `r` prefix needed) ============
         elif _is_standalone_rounding_mode(token):
-            settings.rounding_mode = _parse_rounding_mode(to_lower(token))
+            settings.rounding_mode = _parse_rounding_mode(token)
 
         else:
             raise Error("unknown setting: '" + tokens[i] + "'")

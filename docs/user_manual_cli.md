@@ -338,7 +338,7 @@ When invoked with no expression and stdin is a TTY, `decimo` launches an interac
 ```sh
 $ decimo
 Decimo — arbitrary-precision calculator, written in Mojo 🔥
-Type :help for help, :q to quit.
+Type :h for help, :show for settings, :q to quit.
 Precision: 50.
 decimo> 100 * 12 - 23/17
 1198.6470588235294117647058823529411764705882352941
@@ -374,7 +374,7 @@ decimo> :q
 
 #### Inline temp settings
 
-Append `:settings` to an expression to override settings for that single evaluation:
+Append `:<settings>` to an expression to override settings for that single evaluation:
 
 ```sh
 decimo> sqrt(2):p 100
