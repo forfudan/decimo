@@ -383,11 +383,11 @@ decimo> sqrt(2):p 100
 
 #### Info commands (prefix with `:`)
 
-| Command     | Effect                      |
-| ----------- | --------------------------- |
-| `:show`     | Show all current settings.  |
-| `:vars`     | List all defined variables. |
-| `:help`     | Show REPL help.             |
+| Command | Effect                      |
+| ------- | --------------------------- |
+| `:show` | Show all current settings.  |
+| `:vars` | List all defined variables. |
+| `:help` | Show REPL help.             |
 
 #### Quitting
 
