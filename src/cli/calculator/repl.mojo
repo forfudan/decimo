@@ -342,10 +342,7 @@ def _validate_variable_name(name: String) -> Optional[String]:
 def _print_banner(settings: Settings):
     """Prints the REPL welcome banner to stderr."""
     comptime title = (
-        BOLD
-        + YELLOW
-        + "Decimo — arbitrary-precision calculator, written in Mojo 🔥\n"
-        + RESET
+        BOLD + YELLOW + "Decimo — arbitrary-precision calculator 🔥\n" + RESET
     )
     comptime hints = "Type :h for help, :show for settings, :q to quit."
     print(title + hints, file=stderr)
@@ -478,6 +475,7 @@ def _print_help():
         + RESET
         + " (prefix with :):\n"
         "  :p N          Set precision to N digits.\n"
+        "  :N            Shortcut for :p N (e.g. :100).\n"
         "  :s            Toggle scientific notation.\n"
         "  :e            Toggle engineering notation.\n"
         "  :pad          Toggle zero-padding.\n"

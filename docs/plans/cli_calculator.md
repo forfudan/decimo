@@ -386,7 +386,7 @@ decimo> exit
 | 4.13 | Everything in the REPL is case-insensitive |   ✓    | `to_lower()` applied to all input before processing (pre-tokenizer stage)   |
 | 4.14 | Graceful exit (`exit`, `quit`, Ctrl-D)     |   ✓    |                                                                             |
 | 4.15 | Error recovery (don't crash session)       |   ✓    | Catch exceptions per-line, display error, continue loop                     |
-| 4.16 | `:100` in REPL settings to set precision   |   ✗    | Shortcut of `:p 100`. If `token[0]` is 0-9, it means precision              |
+| 4.16 | `:100` in REPL settings to set precision   |   ✓    | Shortcut of `:p 100`. Any all-digit token is treated as precision           |
 | 4.17 | Add `--about`/`--info` flag and in REPL    |   ✗    | Display version, build info, links to docs/repo, etc, for both CLI and REPL |
 | 4.18 | Line editing (left/right, backspace, del)  |   ✗    | Implemented via `limo` package; see `docs/plans/line_editor.md`             |
 | 4.19 | Input history (up/down arrow navigation)   |   ✗    | Implemented via `limo` package; see `docs/plans/line_editor.md`             |

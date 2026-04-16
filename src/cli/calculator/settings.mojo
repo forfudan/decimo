@@ -27,6 +27,7 @@ it against known names, and consume a following value for options.  Flags
 (scientific, engineering, pad) toggle on each use — repeat to turn off.
 
     `:p 100 s d`  →  precision=100, scientific=True, rounding=down
+    `50 e hd`     →  precision=50, engineering=True, rounding=half-down
 
 Name mapping (mirrors DecimoArgs, case-insensitive inside the REPL):
 
@@ -43,6 +44,9 @@ Name mapping (mirrors DecimoArgs, case-insensitive inside the REPL):
     Standalone rounding modes (set directly, no `r` prefix needed):
         he  hu  hd  u  d  c  f  b
         half-even  half-up  half-down  up  down  ceiling  floor  bankers
+
+    Standalone precision (set directly, no `p` prefix needed):
+        [\\d]+  (e.g. `100`) — any integer is treated as a precision value
 
 Rounding-mode values (accepted after `r` or standalone):
     half-even  half_even  he  b  bankers  (default, banker's rounding)
@@ -157,6 +161,10 @@ def parse_settings(input: String, mut settings: Settings) raises:
         var token = to_lower(tokens[i])
 
         # == Options (consume next token as value) ========================
+        # TODO: Maybe the improvement is marginal but can try:
+        # Re-order the checks so that more common options are checked first
+        # (e.g. precision > scentific/engineering > rounding mode > delimiter),
+        # to reduce average checks per token.
         if _is_precision_name(token):
             i += 1
             if i >= n:
@@ -205,6 +213,14 @@ def parse_settings(input: String, mut settings: Settings) raises:
         # == Standalone rounding modes (no `r` prefix needed) ============
         elif _is_standalone_rounding_mode(token):
             settings.rounding_mode = _parse_rounding_mode(token)
+
+        # == Standalone precision (no `p` prefix needed) ==================
+        elif _is_integer_name(token):
+            # Standalone precision: any integer token sets the precision.
+            var val = Int(token)
+            if val < 1:
+                raise Error("precision must be >= 1, got " + String(val))
+            settings.precision = val
 
         else:
             raise Error("unknown setting: '" + tokens[i] + "'")
@@ -295,6 +311,20 @@ def split_inline_settings(
 # ===----------------------------------------------------------------------=== #
 # Name matching — mirrors DecimoArgs CLI definitions
 # ===----------------------------------------------------------------------=== #
+
+
+fn _is_integer_name(token: String) -> Bool:
+    """Match standalone integer tokens for precision setting.
+
+    Returns True if the token is a non-empty string of ASCII digits.
+    """
+    var bytes = token.as_bytes()  # No copy
+    if len(bytes) == 0:
+        return False
+    for i in range(len(bytes)):
+        if bytes[i] < 48 or bytes[i] > 57:  # not '0'-'9'
+            return False
+    return True
 
 
 fn _is_precision_name(token: String) -> Bool:

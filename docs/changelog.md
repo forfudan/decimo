@@ -16,6 +16,7 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 1. Add **REPL info commands**: `:settings` / `:show` displays all current options, `:vars` / `:variables` lists all defined variables and their values, `:help` / `:h` shows a complete command reference, and `:q` / `:quit` / `:exit` exits the session.
 1. Add **case-insensitive input** in the REPL: all input is lowercased before processing, so `PI`, `Sqrt(2)`, `SIN(1)` all work.
 1. Streamline the **REPL welcome banner** to a compact one-liner with a hint to `:help` and `:q`.
+1. Add **standalone integer precision shortcut** in settings: `:100` is equivalent to `:p 100`. Any all-digit token in a settings command is treated as the precision value.
 
 ### 🦋 Changed in v0.10.0
 

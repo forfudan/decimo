@@ -337,7 +337,7 @@ When invoked with no expression and stdin is a TTY, `decimo` launches an interac
 
 ```sh
 $ decimo
-Decimo — arbitrary-precision calculator, written in Mojo 🔥
+Decimo — arbitrary-precision calculator 🔥
 Type :h for help, :show for settings, :q to quit.
 Precision: 50.
 decimo> 100 * 12 - 23/17
@@ -364,6 +364,7 @@ decimo> :q
 | Command        | Effect                                                  |
 | -------------- | ------------------------------------------------------- |
 | `:p N`         | Set precision to `N` digits.                            |
+| `:N`           | Shortcut for `:p N` (e.g. `:100`).                      |
 | `:s`           | Toggle scientific notation.                             |
 | `:e`           | Toggle engineering notation.                            |
 | `:pad`         | Toggle zero-padding.                                    |
