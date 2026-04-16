@@ -376,6 +376,67 @@ def test_standalone_in_one_liner() raises:
 
 
 # ===----------------------------------------------------------------------=== #
+# Tests: parse_settings — standalone integer precision
+# ===----------------------------------------------------------------------=== #
+
+
+def test_standalone_precision_basic() raises:
+    """`100` sets precision to 100."""
+    var s = Settings()
+    parse_settings("100", s)
+    testing.assert_equal(s.precision, 100)
+
+
+def test_standalone_precision_one() raises:
+    """`1` is the minimum valid precision."""
+    var s = Settings()
+    parse_settings("1", s)
+    testing.assert_equal(s.precision, 1)
+
+
+def test_standalone_precision_large() raises:
+    """`5000` sets a large precision."""
+    var s = Settings()
+    parse_settings("5000", s)
+    testing.assert_equal(s.precision, 5000)
+
+
+def test_standalone_precision_with_other_settings() raises:
+    """`100 s` sets precision and toggles scientific."""
+    var s = Settings()
+    parse_settings("100 s", s)
+    testing.assert_equal(s.precision, 100)
+    testing.assert_true(s.scientific, "scientific on")
+
+
+def test_standalone_precision_with_rounding() raises:
+    """`200 d` sets precision and rounding down."""
+    var s = Settings()
+    parse_settings("200 d", s)
+    testing.assert_equal(s.precision, 200)
+    testing.assert_true(s.rounding_mode == RoundingMode.down(), "rounding down")
+
+
+def test_standalone_precision_zero_raises() raises:
+    """`0` is below the minimum and should raise."""
+    var s = Settings()
+    var raised = False
+    try:
+        parse_settings("0", s)
+    except:
+        raised = True
+    testing.assert_true(raised, "expected error for precision 0")
+
+
+def test_standalone_precision_after_flag() raises:
+    """`s 100` toggles scientific then sets precision."""
+    var s = Settings()
+    parse_settings("s 100", s)
+    testing.assert_true(s.scientific, "scientific on")
+    testing.assert_equal(s.precision, 100)
+
+
+# ===----------------------------------------------------------------------=== #
 # Tests: parse_settings — multi-token (4.7 one-liner)
 # ===----------------------------------------------------------------------=== #
 

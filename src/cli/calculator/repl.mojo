@@ -36,7 +36,7 @@ from std.collections import Dict
 
 from decimo import Decimal
 from decimo.rounding_mode import RoundingMode
-from .display import BOLD, RESET, YELLOW, CYAN
+from .display import BOLD, RESET, YELLOW, CYAN, GREEN, MAGENTA
 from .display import write_prompt, print_error
 from .engine import evaluate_and_return
 from .io import read_line, strip, is_comment_or_blank
@@ -116,24 +116,32 @@ def run_repl(
         if line == "exit" or line == "quit":
             break
 
+        # == Bare commands (no `:` prefix) ================================
+        # `?` — show help
+        if line == "?":
+            _print_help()
+            continue
+
+        # `$` — show variables
+        if line == "$":
+            _print_variables(variables)
+            continue
+
         # == Meta-command: line starts with `:` ===========================
         if _is_meta_command(line):
             var cmd_str = _strip_colon_prefix(line)
 
-            # `:help` / `:h`
-            # This displays a complete command reference for REPL features
+            # Bare `:` — show current settings
+            if cmd_str == "":
+                _print_settings(settings)
+                continue
+
+            # `:help` / `:h` / `:?` — show help
             if _is_help_command(cmd_str):
                 _print_help()
                 continue
 
-            # `:settings` / `:show`
-            # This displays all current settings and their values
-            # (precision, sci/eng, pad, delimiter, rounding mode)
-            if _is_settings_command(cmd_str):
-                _print_settings(settings)
-                continue
-
-            # `:vars` / `:variables`
+            # `:v` / `:vars`
             # This displays all user-defined variables and their current values,
             # including `ans`.
             if _is_vars_command(cmd_str):
@@ -147,8 +155,7 @@ def run_repl(
 
             try:
                 parse_settings(cmd_str, settings)
-                # Print confirmation to stderr
-                print(String(settings), file=stderr)
+                _print_settings(settings)
             except e:
                 print_error(String(e))
             continue
@@ -342,12 +349,9 @@ def _validate_variable_name(name: String) -> Optional[String]:
 def _print_banner(settings: Settings):
     """Prints the REPL welcome banner to stderr."""
     comptime title = (
-        BOLD
-        + YELLOW
-        + "Decimo — arbitrary-precision calculator, written in Mojo 🔥\n"
-        + RESET
+        BOLD + YELLOW + "Decimo — arbitrary-precision calculator 🔥\n" + RESET
     )
-    comptime hints = "Type :h for help, :show for settings, :q to quit."
+    comptime hints = "Type ? for help, : for settings, :q to quit."
     print(title + hints, file=stderr)
     print(String(settings), file=stderr)
 
@@ -362,14 +366,9 @@ fn _is_help_command(cmd: String) -> Bool:
     return cmd == "help" or cmd == "h" or cmd == "?"
 
 
-fn _is_settings_command(cmd: String) -> Bool:
-    """Match: settings, show."""
-    return cmd == "settings" or cmd == "show"
-
-
 fn _is_vars_command(cmd: String) -> Bool:
-    """Match: vars, variables, var."""
-    return cmd == "vars" or cmd == "variables" or cmd == "var"
+    """Match: v, vars."""
+    return cmd == "v" or cmd == "vars"
 
 
 fn _is_quit_command(cmd: String) -> Bool:
@@ -438,68 +437,382 @@ def _print_variables(variables: Dict[String, Decimal]) raises:
 
 
 def _print_help():
-    """Display REPL-specific help to stderr (4.11)."""
-    comptime help_text = (
-        BOLD
-        + CYAN
-        + "Decimo REPL help"
-        + RESET
-        + BOLD
-        + ":"
-        + RESET
-        + "\n\n"
-        + BOLD
-        + "Expressions"
-        + RESET
-        + ":\n"
-        "  Type any math expression to evaluate it.\n"
-        "  Example: pi + sin(-ln(1.23)) * sqrt(e^2)\n"
-        "\n"
-        + BOLD
-        + "Variables"
-        + RESET
-        + ":\n"
-        "  name = expr   Assign a value:  x = 1.023^365\n"
-        "  ans           Refers to the last result.\n"
-        "\n"
-        + BOLD
-        + "Functions"
-        + RESET
-        + ":\n"
-        "  sqrt  cbrt  root(x,n)  abs  exp  ln  log10  log(x,base)\n"
-        "  sin  cos  tan  cot  csc\n"
-        "\n"
-        + BOLD
-        + "Constants"
-        + RESET
-        + ":\n  pi  e\n\n"
-        + BOLD
-        + "Settings commands"
-        + RESET
-        + " (prefix with :):\n"
-        "  :p N          Set precision to N digits.\n"
-        "  :s            Toggle scientific notation.\n"
-        "  :e            Toggle engineering notation.\n"
-        "  :pad          Toggle zero-padding.\n"
-        "  :r MODE       Set rounding mode (he/hu/hd/u/d/c/f/b).\n"
-        "  :delimiter C  Set digit-group delimiter.\n"
-        "  :p 100 s r d  Combine multiple settings in one line.\n"
-        "\n"
-        + BOLD
-        + "Inline temp settings"
-        + RESET
-        + ":\n  expr:p 100    Override settings for one expression only.\n\n"
-        + BOLD
-        + "Info commands"
-        + RESET
-        + " (prefix with :):\n"
-        "  :settings     Show current settings.\n"
-        "  :vars         List all variables.\n"
-        "  :help, :h, :? Show this help.\n"
-        "\n"
-        + BOLD
-        + "Quit"
-        + RESET
-        + ":\n  :q  exit  quit  Ctrl-D"
+    """Display REPL-specific help to stderr.
+
+    All description columns are aligned at visible column 30
+    (2-char indent + 28-char command column).
+    """
+    # Colour aliases — zero visible width, used for styling only.
+    comptime B = BOLD
+    comptime R = RESET
+    comptime H = BOLD + CYAN  # section Heading
+    comptime L = BOLD + GREEN  # Long name / command
+    comptime S = BOLD + YELLOW  # Short name / alias
+    comptime V = MAGENTA  # Value placeholder
+
+    var w = stderr
+
+    # --- title ---
+    print(H + "Decimo REPL help" + R + B + ":" + R + "\n", file=w)
+
+    # --- expressions ---
+    print(H + "Expressions" + R + B + ":" + R, file=w)
+    print("  Type any math expression to evaluate it.", file=w)
+    print(
+        "  Example: " + S + "pi + sin(-ln(1.23)) * sqrt(e^2)" + R + "\n", file=w
     )
-    print(help_text, file=stderr)
+
+    # --- variables (col 28) ---
+    print(H + "Variables" + R + B + ":" + R, file=w)
+    #     |name = expr       |                 <- 11 + 17 = 28
+    print(
+        "  "
+        + V
+        + "name"
+        + R
+        + " = "
+        + V
+        + "expr"
+        + R
+        + "                 Assign a value:  x = 1.023^365",
+        file=w,
+    )
+    #     |ans               |                 <- 3 + 25 = 28
+    print(
+        "  "
+        + L
+        + "ans"
+        + R
+        + "                         Refers to the last result.\n",
+        file=w,
+    )
+
+    # --- functions ---
+    print(H + "Functions" + R + B + ":" + R, file=w)
+    print(
+        "  "
+        + L
+        + "sqrt"
+        + R
+        + "  "
+        + L
+        + "cbrt"
+        + R
+        + "  "
+        + L
+        + "root"
+        + R
+        + "("
+        + V
+        + "x"
+        + R
+        + ","
+        + V
+        + "n"
+        + R
+        + ")  "
+        + L
+        + "abs"
+        + R
+        + "  "
+        + L
+        + "exp"
+        + R
+        + "  "
+        + L
+        + "ln"
+        + R
+        + "  "
+        + L
+        + "log10"
+        + R
+        + "  "
+        + L
+        + "log"
+        + R
+        + "("
+        + V
+        + "x"
+        + R
+        + ","
+        + V
+        + "base"
+        + R
+        + ")",
+        file=w,
+    )
+    print(
+        "  "
+        + L
+        + "sin"
+        + R
+        + "  "
+        + L
+        + "cos"
+        + R
+        + "  "
+        + L
+        + "tan"
+        + R
+        + "  "
+        + L
+        + "cot"
+        + R
+        + "  "
+        + L
+        + "csc"
+        + R
+        + "\n",
+        file=w,
+    )
+
+    # --- constants ---
+    print(H + "Constants" + R + B + ":" + R, file=w)
+    print("  " + L + "pi" + R + "  " + L + "e" + R + "\n", file=w)
+
+    # --- settings commands (col 28) ---
+    print(H + "Settings commands" + R + B + ":" + R, file=w)
+    #     |:p, :precision N  |            <- 16 + 12 = 28
+    print(
+        "  "
+        + S
+        + ":p"
+        + R
+        + ", "
+        + L
+        + ":precision"
+        + R
+        + " "
+        + V
+        + "N"
+        + R
+        + "            Set precision to "
+        + V
+        + "N"
+        + R
+        + " digits.",
+        file=w,
+    )
+    #     |:N                |            <- 2 + 26 = 28
+    print(
+        "  "
+        + S
+        + ":"
+        + R
+        + V
+        + "N"
+        + R
+        + "                          Shortcut for :p "
+        + V
+        + "N"
+        + R
+        + " (e.g. "
+        + S
+        + ":100"
+        + R
+        + ").",
+        file=w,
+    )
+    #     |:s, :scientific, :sci|         <- 21 + 7 = 28
+    print(
+        "  "
+        + S
+        + ":s"
+        + R
+        + ", "
+        + L
+        + ":scientific"
+        + R
+        + ", "
+        + L
+        + ":sci"
+        + R
+        + "       Toggle scientific notation.",
+        file=w,
+    )
+    #     |:e, :engineering, :eng|        <- 22 + 6 = 28
+    print(
+        "  "
+        + S
+        + ":e"
+        + R
+        + ", "
+        + L
+        + ":engineering"
+        + R
+        + ", "
+        + L
+        + ":eng"
+        + R
+        + "      Toggle engineering notation.",
+        file=w,
+    )
+    #     |:pad              |            <- 4 + 24 = 28
+    print(
+        "  " + S + ":pad" + R + "                        Toggle zero-padding.",
+        file=w,
+    )
+    #     |:r, :round, :rm MODE|          <- 20 + 8 = 28
+    print(
+        "  "
+        + S
+        + ":r"
+        + R
+        + ", "
+        + L
+        + ":round"
+        + R
+        + ", "
+        + L
+        + ":rm"
+        + R
+        + " "
+        + V
+        + "MODE"
+        + R
+        + "        Set rounding mode ("
+        + S
+        + "he"
+        + R
+        + "/"
+        + S
+        + "hu"
+        + R
+        + "/"
+        + S
+        + "hd"
+        + R
+        + "/"
+        + S
+        + "u"
+        + R
+        + "/"
+        + S
+        + "d"
+        + R
+        + "/"
+        + S
+        + "c"
+        + R
+        + "/"
+        + S
+        + "f"
+        + R
+        + "/"
+        + S
+        + "b"
+        + R
+        + ").",
+        file=w,
+    )
+    #     |:delimiter C      |            <- 12 + 16 = 28
+    print(
+        "  "
+        + L
+        + ":delimiter"
+        + R
+        + " "
+        + V
+        + "C"
+        + R
+        + "                Set digit-group delimiter.",
+        file=w,
+    )
+    #     |:p 100 s r d      |            <- 12 + 16 = 28
+    print(
+        "  "
+        + S
+        + ":p 100 s r d"
+        + R
+        + "                Combine multiple settings in one line.\n",
+        file=w,
+    )
+
+    # --- inline temp settings (col 28) ---
+    print(H + "Inline temp settings" + R + B + ":" + R, file=w)
+    #     |expr:settings     |            <- 13 + 15 = 28
+    print(
+        "  "
+        + V
+        + "expr"
+        + R
+        + ":"
+        + V
+        + "settings"
+        + R
+        + "               Override settings for one expression only.",
+        file=w,
+    )
+    print("  Example: " + S + "sqrt(2):p 100" + R + "\n", file=w)
+
+    # --- info commands (col 28) ---
+    print(H + "Info commands" + R + B + ":" + R, file=w)
+    #     |:                 |            <- 1 + 27 = 28
+    print(
+        "  "
+        + S
+        + ":"
+        + R
+        + "                           Show current settings.",
+        file=w,
+    )
+    #     |?, :help, :h, :?  |            <- 16 + 12 = 28
+    print(
+        "  "
+        + S
+        + "?"
+        + R
+        + ", "
+        + L
+        + ":help"
+        + R
+        + ", "
+        + S
+        + ":h"
+        + R
+        + ", "
+        + S
+        + ":?"
+        + R
+        + "            Show this help.",
+        file=w,
+    )
+    #     |$, :v, :vars      |            <- 12 + 16 = 28
+    print(
+        "  "
+        + S
+        + "$"
+        + R
+        + ", "
+        + S
+        + ":v"
+        + R
+        + ", "
+        + L
+        + ":vars"
+        + R
+        + "                List all variables.\n",
+        file=w,
+    )
+
+    # --- quit ---
+    print(H + "Quit" + R + B + ":" + R, file=w)
+    print(
+        "  "
+        + S
+        + ":q"
+        + R
+        + "  "
+        + L
+        + "exit"
+        + R
+        + "  "
+        + L
+        + "quit"
+        + R
+        + "  "
+        + S
+        + "Ctrl-D"
+        + R,
+        file=w,
+    )
