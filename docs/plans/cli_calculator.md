@@ -379,14 +379,14 @@ decimo> exit
 | 4.6  | Meta-commands (`:precision N`, etc.)       |   ✓    | `:` prefix avoids collision; settings names + aliases (`:vars` not yet)     |
 | 4.7  | One-line quick setting                     |   ✓    | `:p 100 s r down` sets precision, scientific, and rounding in one line      |
 | 4.8  | Same-line temp precision setting           |   ✓    | `2*sqrt(1.23):p 100 s r down` — temp override via `:` separator             |
-| 4.9  | Print settings (`:settings`)               |   ✓    | `:settings` / `:show` displays all current options in a labelled list       |
-| 4.10 | Variable listing (`:vars` and `:variable`) |   ✓    | `:vars` / `:variables` / `:var` lists `ans` first, then user variables      |
-| 4.11 | Help command (`:help`)                     |   ✓    | `:help` / `:h` / `:?` shows expressions, variables, functions, commands     |
-| 4.12 | Better header banner                       |   ✓    | Compact: title + "Type :help for help, :q to quit." + current settings      |
+| 4.9  | Print settings (`:`)                       |   ✓    | Bare `:` displays full settings block; shown after every `:...` change      |
+| 4.10 | Variable listing (`:v`, `:vars`, `$`)      |   ✓    | `:v` / `:vars` or bare `$` lists `ans` first, then user variables           |
+| 4.11 | Help command (`?`)                         |   ✓    | `?` / `:help` / `:h` / `:?`; colourful output with section headings         |
+| 4.12 | Better header banner                       |   ✓    | Compact: title + "Type ? for help, : for settings, :q to quit."             |
 | 4.13 | Everything in the REPL is case-insensitive |   ✓    | `to_lower()` applied to all input before processing (pre-tokenizer stage)   |
 | 4.14 | Graceful exit (`exit`, `quit`, Ctrl-D)     |   ✓    |                                                                             |
 | 4.15 | Error recovery (don't crash session)       |   ✓    | Catch exceptions per-line, display error, continue loop                     |
-| 4.16 | `:100` in REPL settings to set precision   |   ✗    | Shortcut of `:p 100`. If `token[0]` is 0-9, it means precision              |
+| 4.16 | `:100` in REPL settings to set precision   |   ✓    | Shortcut of `:p 100`. Any all-digit token is treated as precision           |
 | 4.17 | Add `--about`/`--info` flag and in REPL    |   ✗    | Display version, build info, links to docs/repo, etc, for both CLI and REPL |
 | 4.18 | Line editing (left/right, backspace, del)  |   ✗    | Implemented via `limo` package; see `docs/plans/line_editor.md`             |
 | 4.19 | Input history (up/down arrow navigation)   |   ✗    | Implemented via `limo` package; see `docs/plans/line_editor.md`             |

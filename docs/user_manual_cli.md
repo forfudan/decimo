@@ -26,7 +26,7 @@
     - [Variables](#variables)
     - [Settings commands (prefix with `:`)](#settings-commands-prefix-with-)
     - [Inline temp settings](#inline-temp-settings)
-    - [Info commands (prefix with `:`)](#info-commands-prefix-with-)
+    - [Info commands](#info-commands)
     - [Quitting](#quitting)
 - [Shell Integration](#shell-integration)
   - [Quoting Expressions](#quoting-expressions)
@@ -337,9 +337,9 @@ When invoked with no expression and stdin is a TTY, `decimo` launches an interac
 
 ```sh
 $ decimo
-Decimo — arbitrary-precision calculator, written in Mojo 🔥
-Type :h for help, :show for settings, :q to quit.
-Precision: 50.
+Decimo — arbitrary-precision calculator 🔥
+Type ? for help, : for settings, :q to quit.
+Precision: 50. Rounding: ROUND_HALF_EVEN.
 decimo> 100 * 12 - 23/17
 1198.6470588235294117647058823529411764705882352941
 decimo> ans + 1
@@ -361,16 +361,17 @@ decimo> :q
 
 #### Settings commands (prefix with `:`)
 
-| Command        | Effect                                                  |
-| -------------- | ------------------------------------------------------- |
-| `:p N`         | Set precision to `N` digits.                            |
-| `:s`           | Toggle scientific notation.                             |
-| `:e`           | Toggle engineering notation.                            |
-| `:pad`         | Toggle zero-padding.                                    |
-| `:r MODE`      | Set rounding mode (`he`/`hu`/`hd`/`u`/`d`/`c`/`f`/`b`). |
-| `:MODE`        | Set rounding mode (`he`/`hu`/`hd`/`u`/`d`/`c`/`f`/`b`). |
-| `:delimiter C` | Set digit-group delimiter.                              |
-| `:p 100 s r d` | Combine multiple settings in one line.                  |
+| Command                      | Effect                                                  |
+| ---------------------------- | ------------------------------------------------------- |
+| `:p N`, `:precision N`       | Set precision to `N` digits.                            |
+| `:N`                         | Shortcut for `:p N` (e.g. `:100`).                      |
+| `:s`, `:scientific`, `:sci`  | Toggle scientific notation.                             |
+| `:e`, `:engineering`, `:eng` | Toggle engineering notation.                            |
+| `:pad`                       | Toggle zero-padding.                                    |
+| `:r MODE`, `:round`, `:rm`   | Set rounding mode (`he`/`hu`/`hd`/`u`/`d`/`c`/`f`/`b`). |
+| `:MODE`                      | Set rounding mode (`he`/`hu`/`hd`/`u`/`d`/`c`/`f`/`b`). |
+| `:delimiter C`               | Set digit-group delimiter.                              |
+| `:p 100 s r d`               | Combine multiple settings in one line.                  |
 
 #### Inline temp settings
 
@@ -380,13 +381,13 @@ Append `:<settings>` to an expression to override settings for that single evalu
 decimo> sqrt(2):p 100
 ```
 
-#### Info commands (prefix with `:`)
+#### Info commands
 
-| Command     | Effect                      |
-| ----------- | --------------------------- |
-| `:settings` | Show all current settings.  |
-| `:vars`     | List all defined variables. |
-| `:help`     | Show REPL help.             |
+| Command                  | Effect                      |
+| ------------------------ | --------------------------- |
+| `:`                      | Show all current settings.  |
+| `?`, `:help`, `:h`, `:?` | Show REPL help.             |
+| `$`, `:v`, `:vars`       | List all defined variables. |
 
 #### Quitting
 
