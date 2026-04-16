@@ -26,7 +26,7 @@
     - [Variables](#variables)
     - [Settings commands (prefix with `:`)](#settings-commands-prefix-with-)
     - [Inline temp settings](#inline-temp-settings)
-    - [Info commands (prefix with `:`)](#info-commands-prefix-with-)
+    - [Info commands](#info-commands)
     - [Quitting](#quitting)
 - [Shell Integration](#shell-integration)
   - [Quoting Expressions](#quoting-expressions)
@@ -338,8 +338,8 @@ When invoked with no expression and stdin is a TTY, `decimo` launches an interac
 ```sh
 $ decimo
 Decimo — arbitrary-precision calculator 🔥
-Type :h for help, :show for settings, :q to quit.
-Precision: 50.
+Type ? for help, : for settings, :q to quit.
+Precision: 50. Rounding: ROUND_HALF_EVEN.
 decimo> 100 * 12 - 23/17
 1198.6470588235294117647058823529411764705882352941
 decimo> ans + 1
@@ -381,13 +381,15 @@ Append `:<settings>` to an expression to override settings for that single evalu
 decimo> sqrt(2):p 100
 ```
 
-#### Info commands (prefix with `:`)
+#### Info commands
 
 | Command | Effect                      |
 | ------- | --------------------------- |
-| `:show` | Show all current settings.  |
+| `:`     | Show all current settings.  |
+| `?`     | Show REPL help.             |
+| `$`     | List all defined variables. |
+| `:v`    | List all defined variables. |
 | `:vars` | List all defined variables. |
-| `:help` | Show REPL help.             |
 
 #### Quitting
 

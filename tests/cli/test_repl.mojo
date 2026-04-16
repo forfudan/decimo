@@ -1,5 +1,5 @@
 """Test REPL helpers: _parse_assignment, _validate_variable_name,
-_is_meta_command, _strip_colon_prefix, _is_help_command, _is_settings_command,
+_is_meta_command, _strip_colon_prefix, _is_help_command,
 _is_vars_command, _is_quit_command."""
 
 from std import testing
@@ -10,7 +10,6 @@ from calculator.repl import (
     _is_meta_command,
     _strip_colon_prefix,
     _is_help_command,
-    _is_settings_command,
     _is_vars_command,
     _is_quit_command,
 )
@@ -214,8 +213,8 @@ def test_help_command_h() raises:
 
 
 def test_help_command_question() raises:
-    """`?` matches."""
-    testing.assert_true(_is_help_command("?"), "?")
+    """`?` no longer matches (bare `?` is handled directly in loop)."""
+    testing.assert_false(_is_help_command("?"), "? not a colon command")
 
 
 def test_help_command_no_match() raises:
@@ -224,28 +223,13 @@ def test_help_command_no_match() raises:
 
 
 # ===----------------------------------------------------------------------=== #
-# Tests: _is_settings_command (4.9)
-# ===----------------------------------------------------------------------=== #
-
-
-def test_settings_command_settings() raises:
-    """`settings` matches."""
-    testing.assert_true(_is_settings_command("settings"), "settings")
-
-
-def test_settings_command_show() raises:
-    """`show` matches."""
-    testing.assert_true(_is_settings_command("show"), "show")
-
-
-def test_settings_command_no_match() raises:
-    """`set` does not match."""
-    testing.assert_false(_is_settings_command("set"), "set")
-
-
-# ===----------------------------------------------------------------------=== #
 # Tests: _is_vars_command (4.10)
 # ===----------------------------------------------------------------------=== #
+
+
+def test_vars_command_v() raises:
+    """`v` matches."""
+    testing.assert_true(_is_vars_command("v"), "v")
 
 
 def test_vars_command_vars() raises:
@@ -253,19 +237,19 @@ def test_vars_command_vars() raises:
     testing.assert_true(_is_vars_command("vars"), "vars")
 
 
-def test_vars_command_variables() raises:
-    """`variables` matches."""
-    testing.assert_true(_is_vars_command("variables"), "variables")
+def test_vars_command_variables_no_match() raises:
+    """`variables` no longer matches."""
+    testing.assert_false(_is_vars_command("variables"), "variables")
 
 
-def test_vars_command_var() raises:
-    """`var` matches."""
-    testing.assert_true(_is_vars_command("var"), "var")
+def test_vars_command_var_no_match() raises:
+    """`var` no longer matches."""
+    testing.assert_false(_is_vars_command("var"), "var")
 
 
 def test_vars_command_no_match() raises:
-    """`v` does not match."""
-    testing.assert_false(_is_vars_command("v"), "v")
+    """`variable` does not match."""
+    testing.assert_false(_is_vars_command("variable"), "variable")
 
 
 # ===----------------------------------------------------------------------=== #

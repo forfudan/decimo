@@ -116,24 +116,32 @@ def run_repl(
         if line == "exit" or line == "quit":
             break
 
+        # == Bare commands (no `:` prefix) ================================
+        # `?` — show help
+        if line == "?":
+            _print_help()
+            continue
+
+        # `$` — show variables
+        if line == "$":
+            _print_variables(variables)
+            continue
+
         # == Meta-command: line starts with `:` ===========================
         if _is_meta_command(line):
             var cmd_str = _strip_colon_prefix(line)
 
-            # `:help` / `:h`
-            # This displays a complete command reference for REPL features
+            # Bare `:` — show current settings
+            if cmd_str == "":
+                _print_settings(settings)
+                continue
+
+            # `:help` / `:h` — also show help (`:?` removed; use bare `?`)
             if _is_help_command(cmd_str):
                 _print_help()
                 continue
 
-            # `:show` / `:settings`
-            # This displays all current settings and their values
-            # (precision, sci/eng, pad, delimiter, rounding mode)
-            if _is_settings_command(cmd_str):
-                _print_settings(settings)
-                continue
-
-            # `:vars` / `:variables`
+            # `:v` / `:vars`
             # This displays all user-defined variables and their current values,
             # including `ans`.
             if _is_vars_command(cmd_str):
@@ -343,7 +351,7 @@ def _print_banner(settings: Settings):
     comptime title = (
         BOLD + YELLOW + "Decimo — arbitrary-precision calculator 🔥\n" + RESET
     )
-    comptime hints = "Type :h for help, :show for settings, :q to quit."
+    comptime hints = "Type ? for help, : for settings, :q to quit."
     print(title + hints, file=stderr)
     print(String(settings), file=stderr)
 
@@ -354,18 +362,13 @@ def _print_banner(settings: Settings):
 
 
 fn _is_help_command(cmd: String) -> Bool:
-    """Match: help, h, ?."""
-    return cmd == "help" or cmd == "h" or cmd == "?"
-
-
-fn _is_settings_command(cmd: String) -> Bool:
-    """Match: show, settings."""
-    return cmd == "show" or cmd == "settings"
+    """Match: help, h."""
+    return cmd == "help" or cmd == "h"
 
 
 fn _is_vars_command(cmd: String) -> Bool:
-    """Match: vars, variables, var."""
-    return cmd == "vars" or cmd == "variables" or cmd == "var"
+    """Match: v, vars."""
+    return cmd == "v" or cmd == "vars"
 
 
 fn _is_quit_command(cmd: String) -> Bool:
@@ -489,10 +492,11 @@ def _print_help():
         + BOLD
         + "Info commands"
         + RESET
-        + " (prefix with :):\n"
-        "  :show, :settings  Show current settings.\n"
-        "  :vars             List all variables.\n"
-        "  :help, :h, :?     Show this help.\n"
+        + ":\n"
+        "  :             Show current settings.\n"
+        "  ?             Show this help.\n"
+        "  $             List all variables.\n"
+        "  :v, :vars     List all variables.\n"
         "\n"
         + BOLD
         + "Quit"

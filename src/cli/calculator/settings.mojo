@@ -126,8 +126,7 @@ struct Settings(Copyable, Movable, Writable):
             writer.write(" Zero-padded.")
         if self.delimiter:
             writer.write(" Delimiter: '", self.delimiter, "'.")
-        if not (self.rounding_mode == RoundingMode.half_even()):
-            writer.write(" Rounding: ", self.rounding_mode, ".")
+        writer.write(" Rounding: ", self.rounding_mode, ".")
 
 
 # ===----------------------------------------------------------------------=== #
