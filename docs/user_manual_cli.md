@@ -361,17 +361,17 @@ decimo> :q
 
 #### Settings commands (prefix with `:`)
 
-| Command        | Effect                                                  |
-| -------------- | ------------------------------------------------------- |
-| `:p N`         | Set precision to `N` digits.                            |
-| `:N`           | Shortcut for `:p N` (e.g. `:100`).                      |
-| `:s`           | Toggle scientific notation.                             |
-| `:e`           | Toggle engineering notation.                            |
-| `:pad`         | Toggle zero-padding.                                    |
-| `:r MODE`      | Set rounding mode (`he`/`hu`/`hd`/`u`/`d`/`c`/`f`/`b`). |
-| `:MODE`        | Set rounding mode (`he`/`hu`/`hd`/`u`/`d`/`c`/`f`/`b`). |
-| `:delimiter C` | Set digit-group delimiter.                              |
-| `:p 100 s r d` | Combine multiple settings in one line.                  |
+| Command                      | Effect                                                  |
+| ---------------------------- | ------------------------------------------------------- |
+| `:p N`, `:precision N`       | Set precision to `N` digits.                            |
+| `:N`                         | Shortcut for `:p N` (e.g. `:100`).                      |
+| `:s`, `:scientific`, `:sci`  | Toggle scientific notation.                             |
+| `:e`, `:engineering`, `:eng` | Toggle engineering notation.                            |
+| `:pad`                       | Toggle zero-padding.                                    |
+| `:r MODE`, `:round`, `:rm`   | Set rounding mode (`he`/`hu`/`hd`/`u`/`d`/`c`/`f`/`b`). |
+| `:MODE`                      | Set rounding mode (`he`/`hu`/`hd`/`u`/`d`/`c`/`f`/`b`). |
+| `:delimiter C`               | Set digit-group delimiter.                              |
+| `:p 100 s r d`               | Combine multiple settings in one line.                  |
 
 #### Inline temp settings
 
@@ -383,13 +383,11 @@ decimo> sqrt(2):p 100
 
 #### Info commands
 
-| Command | Effect                      |
-| ------- | --------------------------- |
-| `:`     | Show all current settings.  |
-| `?`     | Show REPL help.             |
-| `$`     | List all defined variables. |
-| `:v`    | List all defined variables. |
-| `:vars` | List all defined variables. |
+| Command                  | Effect                      |
+| ------------------------ | --------------------------- |
+| `:`                      | Show all current settings.  |
+| `?`, `:help`, `:h`, `:?` | Show REPL help.             |
+| `$`, `:v`, `:vars`       | List all defined variables. |
 
 #### Quitting
 

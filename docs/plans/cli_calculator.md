@@ -381,7 +381,7 @@ decimo> exit
 | 4.8  | Same-line temp precision setting           |   ✓    | `2*sqrt(1.23):p 100 s r down` — temp override via `:` separator             |
 | 4.9  | Print settings (`:`)                       |   ✓    | Bare `:` displays full settings block; shown after every `:...` change      |
 | 4.10 | Variable listing (`:v`, `:vars`, `$`)      |   ✓    | `:v` / `:vars` or bare `$` lists `ans` first, then user variables           |
-| 4.11 | Help command (`?`)                         |   ✓    | Bare `?` or `:help` / `:h` shows expressions, variables, functions, cmds    |
+| 4.11 | Help command (`?`)                         |   ✓    | `?` / `:help` / `:h` / `:?`; colourful output with section headings         |
 | 4.12 | Better header banner                       |   ✓    | Compact: title + "Type ? for help, : for settings, :q to quit."             |
 | 4.13 | Everything in the REPL is case-insensitive |   ✓    | `to_lower()` applied to all input before processing (pre-tokenizer stage)   |
 | 4.14 | Graceful exit (`exit`, `quit`, Ctrl-D)     |   ✓    |                                                                             |

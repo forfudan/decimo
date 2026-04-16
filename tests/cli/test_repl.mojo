@@ -213,8 +213,8 @@ def test_help_command_h() raises:
 
 
 def test_help_command_question() raises:
-    """`?` no longer matches (bare `?` is handled directly in loop)."""
-    testing.assert_false(_is_help_command("?"), "? not a colon command")
+    """`?` matches."""
+    testing.assert_true(_is_help_command("?"), "?")
 
 
 def test_help_command_no_match() raises:

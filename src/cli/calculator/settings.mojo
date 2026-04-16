@@ -162,7 +162,7 @@ def parse_settings(input: String, mut settings: Settings) raises:
         # == Options (consume next token as value) ========================
         # TODO: Maybe the improvement is marginal but can try:
         # Re-order the checks so that more common options are checked first
-        # (e.g. precision > scentific/engineering > rounding mode > delimiter),
+        # (e.g. precision > scientific/engineering > rounding mode > delimiter),
         # to reduce average checks per token.
         if _is_precision_name(token):
             i += 1
@@ -216,7 +216,7 @@ def parse_settings(input: String, mut settings: Settings) raises:
         # == Standalone precision (no `p` prefix needed) ==================
         elif _is_integer_name(token):
             # Standalone precision: any integer token sets the precision.
-            var val = Int(token)
+            var val = _parse_int(token, "precision")
             if val < 1:
                 raise Error("precision must be >= 1, got " + String(val))
             settings.precision = val
