@@ -8,6 +8,7 @@ from calculator.settings import (
     Settings,
     parse_settings,
     split_inline_settings,
+    to_lower,
 )
 
 
@@ -487,6 +488,36 @@ def test_inline_colon_inside_parens_ignored() raises:
     var result = split_inline_settings("sqrt(2):p 100")
     testing.assert_true(Bool(result), "colon after paren")
     testing.assert_equal(result.value()[0], "sqrt(2)")
+
+
+# ===----------------------------------------------------------------------=== #
+# Tests: to_lower (4.13)
+# ===----------------------------------------------------------------------=== #
+
+
+def test_to_lower_basic() raises:
+    """Uppercase letters are lowered."""
+    testing.assert_equal(to_lower("ABC"), "abc")
+
+
+def test_to_lower_mixed() raises:
+    """Mixed case is fully lowered."""
+    testing.assert_equal(to_lower("Hello World"), "hello world")
+
+
+def test_to_lower_already_lower() raises:
+    """Lowercase stays unchanged."""
+    testing.assert_equal(to_lower("abc"), "abc")
+
+
+def test_to_lower_with_digits() raises:
+    """Digits and special chars are preserved."""
+    testing.assert_equal(to_lower("PI + SIN(1.23)"), "pi + sin(1.23)")
+
+
+def test_to_lower_empty() raises:
+    """Empty string stays empty."""
+    testing.assert_equal(to_lower(""), "")
 
 
 # ===----------------------------------------------------------------------=== #

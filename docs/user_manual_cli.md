@@ -22,6 +22,12 @@
   - [Expression Mode (Default)](#expression-mode-default)
   - [Pipe Mode (stdin)](#pipe-mode-stdin)
   - [File Mode (`-F`)](#file-mode--f)
+  - [Interactive REPL](#interactive-repl)
+    - [Variables](#variables)
+    - [Settings commands (prefix with `:`)](#settings-commands-prefix-with-)
+    - [Inline temp settings](#inline-temp-settings)
+    - [Info commands (prefix with `:`)](#info-commands-prefix-with-)
+    - [Quitting](#quitting)
 - [Shell Integration](#shell-integration)
   - [Quoting Expressions](#quoting-expressions)
   - [Negative Expressions](#negative-expressions)
@@ -253,15 +259,14 @@ decimo "1/6" -P 5 -R up            # 0.16667
 
 ## Input Modes
 
-`decimo` accepts input in three ways: a single expression on the command line, piped stdin, or a file.
+`decimo` accepts input in four ways: a single expression on the command line, piped stdin, a file, or an interactive REPL session.
 
 | Mode       | Invocation              | When used                                          |
 | ---------- | ----------------------- | -------------------------------------------------- |
 | Expression | `decimo "EXPR"`         | A positional argument is provided as an expression |
 | Pipe       | `echo "EXPR" \| decimo` | No positional argument and stdin is not a TTY      |
 | File       | `decimo -F FILE.dm`     | The `-F`/`--file` option is used                   |
-
-If no expression is given and stdin is a TTY (interactive terminal), `decimo` prints an error and exits.
+| REPL       | `decimo`                | No positional argument and stdin is a TTY          |
 
 ### Expression Mode (Default)
 
@@ -325,6 +330,67 @@ ln(10)
 Comments start with `#`. Inline comments are also supported (e.g. `1+2 # add`). Leading whitespace before `#` is allowed. Blank lines and whitespace-only lines are skipped.
 
 If the specified file does not exist or cannot be read, `decimo` reports an error and exits.
+
+### Interactive REPL
+
+When invoked with no expression and stdin is a TTY, `decimo` launches an interactive session:
+
+```sh
+$ decimo
+Decimo — arbitrary-precision calculator, written in Mojo 🔥
+Type :h for help, :show for settings, :q to quit.
+Precision: 50.
+decimo> 100 * 12 - 23/17
+1198.6470588235294117647058823529411764705882352941
+decimo> ans + 1
+1199.6470588235294117647058823529411764705882352941
+decimo> x = sqrt(2)
+1.4142135623730950488016887242096980785696718753769
+decimo> x ^ 2
+2
+decimo> :q
+```
+
+**All input is case-insensitive** — `PI`, `Sqrt`, `SIN` are equivalent to `pi`, `sqrt`, `sin`.
+
+#### Variables
+
+- `ans` — automatically holds the result of the last successful evaluation.
+- `name = expr` — assigns the result of `expr` to a user-defined variable.
+- Protected names (`pi`, `e`, `ans`, function names) cannot be used as variable names.
+
+#### Settings commands (prefix with `:`)
+
+| Command        | Effect                                                  |
+| -------------- | ------------------------------------------------------- |
+| `:p N`         | Set precision to `N` digits.                            |
+| `:s`           | Toggle scientific notation.                             |
+| `:e`           | Toggle engineering notation.                            |
+| `:pad`         | Toggle zero-padding.                                    |
+| `:r MODE`      | Set rounding mode (`he`/`hu`/`hd`/`u`/`d`/`c`/`f`/`b`). |
+| `:MODE`        | Set rounding mode (`he`/`hu`/`hd`/`u`/`d`/`c`/`f`/`b`). |
+| `:delimiter C` | Set digit-group delimiter.                              |
+| `:p 100 s r d` | Combine multiple settings in one line.                  |
+
+#### Inline temp settings
+
+Append `:<settings>` to an expression to override settings for that single evaluation:
+
+```sh
+decimo> sqrt(2):p 100
+```
+
+#### Info commands (prefix with `:`)
+
+| Command     | Effect                      |
+| ----------- | --------------------------- |
+| `:settings` | Show all current settings.  |
+| `:vars`     | List all defined variables. |
+| `:help`     | Show REPL help.             |
+
+#### Quitting
+
+Type `:q`, `exit`, `quit`, or press Ctrl-D.
 
 ## Shell Integration
 

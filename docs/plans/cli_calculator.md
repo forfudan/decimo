@@ -379,15 +379,17 @@ decimo> exit
 | 4.6  | Meta-commands (`:precision N`, etc.)       |   ✓    | `:` prefix avoids collision; settings names + aliases (`:vars` not yet)     |
 | 4.7  | One-line quick setting                     |   ✓    | `:p 100 s r down` sets precision, scientific, and rounding in one line      |
 | 4.8  | Same-line temp precision setting           |   ✓    | `2*sqrt(1.23):p 100 s r down` — temp override via `:` separator             |
-| 4.9  | Print settings (`:settings`)               |   ✗    | Display current precision, formatting options, etc.                         |
-| 4.10 | Variable listing (`:vars` and `:variable`) |   ✗    | List all user-defined variables and their values                            |
-| 4.11 | Help command (`:help`)                     |   ✗    | REPL-specific help with available commands and usage examples               |
-| 4.12 | Better header banner                       |   ✗    | Show title, settings, how to display help `:help`, how to quit `:q`         |
-| 4.13 | Everything in the REPL is case-insensitive |   ✗    | Map all input chars to lower case at pre-tokenizer stage                    |
+| 4.9  | Print settings (`:settings`)               |   ✓    | `:settings` / `:show` displays all current options in a labelled list       |
+| 4.10 | Variable listing (`:vars` and `:variable`) |   ✓    | `:vars` / `:variables` / `:var` lists `ans` first, then user variables      |
+| 4.11 | Help command (`:help`)                     |   ✓    | `:help` / `:h` / `:?` shows expressions, variables, functions, commands     |
+| 4.12 | Better header banner                       |   ✓    | Compact: title + "Type :help for help, :q to quit." + current settings      |
+| 4.13 | Everything in the REPL is case-insensitive |   ✓    | `to_lower()` applied to all input before processing (pre-tokenizer stage)   |
 | 4.14 | Graceful exit (`exit`, `quit`, Ctrl-D)     |   ✓    |                                                                             |
 | 4.15 | Error recovery (don't crash session)       |   ✓    | Catch exceptions per-line, display error, continue loop                     |
-| 4.16 | Line editing (left/right, backspace, del)  |   ✗    | Implemented via `limo` package; see `docs/plans/line_editor.md`             |
-| 4.17 | Input history (up/down arrow navigation)   |   ✗    | Implemented via `limo` package; see `docs/plans/line_editor.md`             |
+| 4.16 | `:100` in REPL settings to set precision   |   ✗    | Shortcut of `:p 100`. If `token[0]` is 0-9, it means precision              |
+| 4.17 | Add `--about`/`--info` flag and in REPL    |   ✗    | Display version, build info, links to docs/repo, etc, for both CLI and REPL |
+| 4.18 | Line editing (left/right, backspace, del)  |   ✗    | Implemented via `limo` package; see `docs/plans/line_editor.md`             |
+| 4.19 | Input history (up/down arrow navigation)   |   ✗    | Implemented via `limo` package; see `docs/plans/line_editor.md`             |
 
 將所有的設定放在一行，這個靈感主要來自於 argmojo，其實就是把 CLI 的選項直接放到了 REPL 的表達式行中。這個想法我個人是很喜歡的，因為它簡潔明瞭，避免了多行設定的冗長。
 
