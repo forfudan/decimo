@@ -38,7 +38,7 @@ from decimo import Decimal
 from decimo.rounding_mode import RoundingMode
 from limo import LineEditor
 from .display import BOLD, RESET, YELLOW, CYAN, GREEN, MAGENTA
-from .display import print_error
+from .display import print_error, format_about, DECIMO_VERSION
 from .engine import evaluate_and_return
 from .io import strip, is_comment_or_blank
 from .settings import Settings, parse_settings, split_inline_settings, to_lower
@@ -142,7 +142,17 @@ def run_repl(
                 _print_help()
                 continue
 
-            # `:v` / `:vars`
+            # `:about` / `:a` / `:info` — show about/info
+            if _is_about_command(cmd_str):
+                print(format_about(), file=stderr)
+                continue
+
+            # `:version` / `:v` — show version
+            if _is_version_command(cmd_str):
+                print("decimo " + DECIMO_VERSION, file=stderr)
+                continue
+
+            # `:vars`
             # This displays all user-defined variables and their current values,
             # including `ans`.
             if _is_vars_command(cmd_str):
@@ -368,8 +378,18 @@ def _is_help_command(cmd: String) -> Bool:
 
 
 def _is_vars_command(cmd: String) -> Bool:
-    """Match: v, vars."""
-    return cmd == "v" or cmd == "vars"
+    """Match: vars."""
+    return cmd == "vars"
+
+
+def _is_about_command(cmd: String) -> Bool:
+    """Match: about, a, info."""
+    return cmd == "about" or cmd == "a" or cmd == "info"
+
+
+def _is_version_command(cmd: String) -> Bool:
+    """Match: version, v."""
+    return cmd == "version" or cmd == "v"
 
 
 def _is_quit_command(cmd: String) -> Bool:
@@ -778,21 +798,47 @@ def _print_help():
         + "            Show this help.",
         file=w,
     )
-    #     |$, :v, :vars      |            <- 12 + 16 = 28
+    #     |$, :vars          |            <- 8 + 20 = 28
     print(
         "  "
         + S
         + "$"
         + R
         + ", "
-        + S
-        + ":v"
-        + R
-        + ", "
         + L
         + ":vars"
         + R
-        + "                List all variables.\n",
+        + "                    List all variables.",
+        file=w,
+    )
+    #     |:about, :a, :info |            <- 18 + 10 = 28
+    print(
+        "  "
+        + L
+        + ":about"
+        + R
+        + ", "
+        + S
+        + ":a"
+        + R
+        + ", "
+        + L
+        + ":info"
+        + R
+        + "          Show version, author, license, and links.",
+        file=w,
+    )
+    #     |:version, :v      |            <- 12 + 16 = 28
+    print(
+        "  "
+        + L
+        + ":version"
+        + R
+        + ", "
+        + S
+        + ":v"
+        + R
+        + "              Show version number.\n",
         file=w,
     )
 

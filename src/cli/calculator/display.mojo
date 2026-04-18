@@ -30,6 +30,8 @@ in an expression.  Modelled after ArgMojo's colour system.
 """
 
 from std.sys import stderr
+from std.sys.defines import MOJO_VERSION
+from decimo import DECIMO_VERSION
 
 # == ANSI colour codes ========================================================
 
@@ -164,6 +166,73 @@ def write_prompt(prompt: String):
     """
     var styled = BOLD + GREEN + prompt + RESET
     print(styled, end="", file=stderr, flush=True)
+
+
+# === About / Info ============================================================
+
+
+def format_about() -> String:
+    """Returns a formatted about/info string with ANSI colours.
+
+    Used by both ``--about`` (CLI, printed to stdout) and ``:about``
+    (REPL, printed to stderr).
+    """
+    # Colour aliases.
+    comptime TITLE_COLOR = BOLD + ORANGE  # Title/label colour (orange theme)
+    comptime LABEL_COLOR = BOLD + MAGENTA  # Field label colour (magenta theme)
+    comptime VALUE_COLOR = WHITE  # Value colour
+    return (
+        TITLE_COLOR
+        + "Decimo — arbitrary-precision calculator 🔥"
+        + RESET
+        + "\n"
+        + LABEL_COLOR
+        + "  Version       "
+        + RESET
+        + VALUE_COLOR
+        + DECIMO_VERSION
+        + RESET
+        + "\n"
+        + LABEL_COLOR
+        + "  Author        "
+        + RESET
+        + VALUE_COLOR
+        + "ZHU Yuhao (朱宇浩) <dr.yuhao.zhu@outlook.com>"
+        + RESET
+        + "\n"
+        + LABEL_COLOR
+        + "  License       "
+        + RESET
+        + VALUE_COLOR
+        + "Apache-2.0"
+        + RESET
+        + "\n"
+        + LABEL_COLOR
+        + "  Mojo          "
+        + RESET
+        + VALUE_COLOR
+        + "v"
+        + String(MOJO_VERSION.major)
+        + "."
+        + String(MOJO_VERSION.minor)
+        + "."
+        + String(MOJO_VERSION.patch)
+        + RESET
+        + "\n"
+        + LABEL_COLOR
+        + "  GitHub        "
+        + RESET
+        + VALUE_COLOR
+        + "https://github.com/forfudan/decimo"
+        + RESET
+        + "\n"
+        + LABEL_COLOR
+        + "  Documentation "
+        + RESET
+        + VALUE_COLOR
+        + "https://github.com/forfudan/decimo/blob/main/docs/user_manual.md"
+        + RESET
+    )
 
 
 # == Internal helpers =========================================================

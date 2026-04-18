@@ -14,8 +14,9 @@
 from std.sys import exit
 
 from argmojo import Parsable, Option, Flag, Positional, Command
+from decimo import DECIMO_VERSION
 from decimo.rounding_mode import RoundingMode
-from calculator.display import print_error
+from calculator.display import print_error, format_about
 from calculator.engine import evaluate_and_print
 from calculator.io import (
     stdin_is_tty,
@@ -89,6 +90,17 @@ struct DecimoArgs(Parsable):
         value_name="MODE",
         group="Computation",
     ]
+    var about: Flag[
+        long="about",
+        short="A",
+        help="Display version, author, license, and links",
+        group="Info",
+    ]
+    var info: Flag[
+        long="info",
+        help="Same as --about",
+        group="Info",
+    ]
 
     @staticmethod
     def description() -> String:
@@ -96,7 +108,7 @@ struct DecimoArgs(Parsable):
 
     @staticmethod
     def version() -> String:
-        return "0.1.0"
+        return DECIMO_VERSION
 
     @staticmethod
     def name() -> String:
@@ -138,6 +150,11 @@ def _run() raises:
     var pad = args.pad.value
     var delimiter = args.delimiter.value
     var rounding_mode = _parse_rounding_mode(args.rounding_mode.value)
+
+    # ── About / Info ───────────────────────────────────────────────────────
+    if args.about.value or args.info.value:
+        print(format_about())
+        return
 
     # ── Mode detection ─────────────────────────────────────────────────────
     # 1. --file flag provided        → file mode
