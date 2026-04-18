@@ -464,402 +464,437 @@ def _print_help():
     (2-char indent + 28-char command column).
     """
     # Colour aliases — zero visible width, used for styling only.
-    comptime H = BOLD + CYAN  # section Heading
-    comptime L = BOLD + GREEN  # Long name / command
-    comptime S = BOLD + YELLOW  # Short name / alias
-    comptime V = MAGENTA  # Value placeholder
-    comptime R = RESET  # Reset
-    comptime B = BOLD  # Bold
+    comptime HEADING_COLOR = BOLD + CYAN  # section Heading
+    comptime LONG_NAME_COLOR = BOLD + GREEN  # Long name / command
+    comptime SHORT_NAME_COLOR = BOLD + YELLOW  # Short name / alias
+    comptime VALUE_NAME_COLOR = MAGENTA  # Value placeholder
 
     var w = stderr
 
     # --- title ---
-    print(H + "Decimo REPL help" + R + B + ":" + R + "\n", file=w)
+    print(
+        SHORT_NAME_COLOR
+        + "Decimo REPL help"
+        + RESET
+        + BOLD
+        + ":"
+        + RESET
+        + "\n",
+        file=w,
+    )
 
     # --- expressions ---
-    print(H + "Expressions" + R + B + ":" + R, file=w)
+    print(HEADING_COLOR + "Expressions" + RESET + BOLD + ":" + RESET, file=w)
     print("  Type any math expression to evaluate it.", file=w)
     print(
-        "  Example: " + S + "pi + sin(-ln(1.23)) * sqrt(e^2)" + R + "\n", file=w
+        "  Example: "
+        + SHORT_NAME_COLOR
+        + "pi + sin(-ln(1.23)) * sqrt(e^2)"
+        + RESET
+        + "\n",
+        file=w,
     )
 
     # --- variables (col 28) ---
-    print(H + "Variables" + R + B + ":" + R, file=w)
+    print(HEADING_COLOR + "Variables" + RESET + BOLD + ":" + RESET, file=w)
     #     |name = expr       |                 <- 11 + 17 = 28
     print(
         "  "
-        + V
+        + VALUE_NAME_COLOR
         + "name"
-        + R
+        + RESET
         + " = "
-        + V
+        + VALUE_NAME_COLOR
         + "expr"
-        + R
+        + RESET
         + "                 Assign a value:  x = 1.023^365",
         file=w,
     )
     #     |ans               |                 <- 3 + 25 = 28
     print(
         "  "
-        + L
+        + LONG_NAME_COLOR
         + "ans"
-        + R
+        + RESET
         + "                         Refers to the last result.\n",
         file=w,
     )
 
     # --- functions ---
-    print(H + "Functions" + R + B + ":" + R, file=w)
+    print(HEADING_COLOR + "Functions" + RESET + BOLD + ":" + RESET, file=w)
     print(
         "  "
-        + L
+        + LONG_NAME_COLOR
         + "sqrt"
-        + R
+        + RESET
         + "  "
-        + L
+        + LONG_NAME_COLOR
         + "cbrt"
-        + R
+        + RESET
         + "  "
-        + L
+        + LONG_NAME_COLOR
         + "root"
-        + R
+        + RESET
         + "("
-        + V
+        + VALUE_NAME_COLOR
         + "x"
-        + R
+        + RESET
         + ","
-        + V
+        + VALUE_NAME_COLOR
         + "n"
-        + R
+        + RESET
         + ")  "
-        + L
+        + LONG_NAME_COLOR
         + "abs"
-        + R
+        + RESET
         + "  "
-        + L
+        + LONG_NAME_COLOR
         + "exp"
-        + R
+        + RESET
         + "  "
-        + L
+        + LONG_NAME_COLOR
         + "ln"
-        + R
+        + RESET
         + "  "
-        + L
+        + LONG_NAME_COLOR
         + "log10"
-        + R
+        + RESET
         + "  "
-        + L
+        + LONG_NAME_COLOR
         + "log"
-        + R
+        + RESET
         + "("
-        + V
+        + VALUE_NAME_COLOR
         + "x"
-        + R
+        + RESET
         + ","
-        + V
+        + VALUE_NAME_COLOR
         + "base"
-        + R
+        + RESET
         + ")",
         file=w,
     )
     print(
         "  "
-        + L
+        + LONG_NAME_COLOR
         + "sin"
-        + R
+        + RESET
         + "  "
-        + L
+        + LONG_NAME_COLOR
         + "cos"
-        + R
+        + RESET
         + "  "
-        + L
+        + LONG_NAME_COLOR
         + "tan"
-        + R
+        + RESET
         + "  "
-        + L
+        + LONG_NAME_COLOR
         + "cot"
-        + R
+        + RESET
         + "  "
-        + L
+        + LONG_NAME_COLOR
         + "csc"
-        + R
+        + RESET
         + "\n",
         file=w,
     )
 
     # --- constants ---
-    print(H + "Constants" + R + B + ":" + R, file=w)
-    print("  " + L + "pi" + R + "  " + L + "e" + R + "\n", file=w)
+    print(HEADING_COLOR + "Constants" + RESET + BOLD + ":" + RESET, file=w)
+    print(
+        "  "
+        + LONG_NAME_COLOR
+        + "pi"
+        + RESET
+        + "  "
+        + LONG_NAME_COLOR
+        + "e"
+        + RESET
+        + "\n",
+        file=w,
+    )
 
     # --- settings commands (col 28) ---
-    print(H + "Settings commands" + R + B + ":" + R, file=w)
+    print(
+        HEADING_COLOR + "Settings commands" + RESET + BOLD + ":" + RESET, file=w
+    )
     #     |:p, :precision N  |            <- 16 + 12 = 28
     print(
         "  "
-        + S
+        + SHORT_NAME_COLOR
         + ":p"
-        + R
+        + RESET
         + ", "
-        + L
+        + LONG_NAME_COLOR
         + ":precision"
-        + R
+        + RESET
         + " "
-        + V
+        + VALUE_NAME_COLOR
         + "N"
-        + R
+        + RESET
         + "            Set precision to "
-        + V
+        + VALUE_NAME_COLOR
         + "N"
-        + R
+        + RESET
         + " digits.",
         file=w,
     )
     #     |:N                |            <- 2 + 26 = 28
     print(
         "  "
-        + S
+        + SHORT_NAME_COLOR
         + ":"
-        + R
-        + V
+        + RESET
+        + VALUE_NAME_COLOR
         + "N"
-        + R
+        + RESET
         + "                          Shortcut for :p "
-        + V
+        + VALUE_NAME_COLOR
         + "N"
-        + R
+        + RESET
         + " (e.g. "
-        + S
+        + SHORT_NAME_COLOR
         + ":100"
-        + R
+        + RESET
         + ").",
         file=w,
     )
     #     |:s, :scientific, :sci|         <- 21 + 7 = 28
     print(
         "  "
-        + S
+        + SHORT_NAME_COLOR
         + ":s"
-        + R
+        + RESET
         + ", "
-        + L
+        + LONG_NAME_COLOR
         + ":scientific"
-        + R
+        + RESET
         + ", "
-        + L
+        + LONG_NAME_COLOR
         + ":sci"
-        + R
+        + RESET
         + "       Toggle scientific notation.",
         file=w,
     )
     #     |:e, :engineering, :eng|        <- 22 + 6 = 28
     print(
         "  "
-        + S
+        + SHORT_NAME_COLOR
         + ":e"
-        + R
+        + RESET
         + ", "
-        + L
+        + LONG_NAME_COLOR
         + ":engineering"
-        + R
+        + RESET
         + ", "
-        + L
+        + LONG_NAME_COLOR
         + ":eng"
-        + R
+        + RESET
         + "      Toggle engineering notation.",
         file=w,
     )
     #     |:pad              |            <- 4 + 24 = 28
     print(
-        "  " + S + ":pad" + R + "                        Toggle zero-padding.",
+        "  "
+        + SHORT_NAME_COLOR
+        + ":pad"
+        + RESET
+        + "                        Toggle zero-padding.",
         file=w,
     )
     #     |:r, :round, :rm MODE|          <- 20 + 8 = 28
     print(
         "  "
-        + S
+        + SHORT_NAME_COLOR
         + ":r"
-        + R
+        + RESET
         + ", "
-        + L
+        + LONG_NAME_COLOR
         + ":round"
-        + R
+        + RESET
         + ", "
-        + L
+        + LONG_NAME_COLOR
         + ":rm"
-        + R
+        + RESET
         + " "
-        + V
+        + VALUE_NAME_COLOR
         + "MODE"
-        + R
+        + RESET
         + "        Set rounding mode ("
-        + S
+        + SHORT_NAME_COLOR
         + "he"
-        + R
+        + RESET
         + "/"
-        + S
+        + SHORT_NAME_COLOR
         + "hu"
-        + R
+        + RESET
         + "/"
-        + S
+        + SHORT_NAME_COLOR
         + "hd"
-        + R
+        + RESET
         + "/"
-        + S
+        + SHORT_NAME_COLOR
         + "u"
-        + R
+        + RESET
         + "/"
-        + S
+        + SHORT_NAME_COLOR
         + "d"
-        + R
+        + RESET
         + "/"
-        + S
+        + SHORT_NAME_COLOR
         + "c"
-        + R
+        + RESET
         + "/"
-        + S
+        + SHORT_NAME_COLOR
         + "f"
-        + R
+        + RESET
         + "/"
-        + S
+        + SHORT_NAME_COLOR
         + "b"
-        + R
+        + RESET
         + ").",
         file=w,
     )
     #     |:delimiter C      |            <- 12 + 16 = 28
     print(
         "  "
-        + L
+        + LONG_NAME_COLOR
         + ":delimiter"
-        + R
+        + RESET
         + " "
-        + V
+        + VALUE_NAME_COLOR
         + "C"
-        + R
+        + RESET
         + "                Set digit-group delimiter.",
         file=w,
     )
     #     |:p 100 s r d      |            <- 12 + 16 = 28
     print(
         "  "
-        + S
+        + SHORT_NAME_COLOR
         + ":p 100 s r d"
-        + R
+        + RESET
         + "                Combine multiple settings in one line.\n",
         file=w,
     )
 
     # --- inline temp settings (col 28) ---
-    print(H + "Inline temp settings" + R + B + ":" + R, file=w)
+    print(
+        HEADING_COLOR + "Inline temp settings" + RESET + BOLD + ":" + RESET,
+        file=w,
+    )
     #     |expr:settings     |            <- 13 + 15 = 28
     print(
         "  "
-        + V
+        + VALUE_NAME_COLOR
         + "expr"
-        + R
+        + RESET
         + ":"
-        + V
+        + VALUE_NAME_COLOR
         + "settings"
-        + R
+        + RESET
         + "               Override settings for one expression only.",
         file=w,
     )
-    print("  Example: " + S + "sqrt(2):p 100" + R + "\n", file=w)
+    print(
+        "  Example: " + SHORT_NAME_COLOR + "sqrt(2):p 100" + RESET + "\n",
+        file=w,
+    )
 
     # --- info commands (col 28) ---
-    print(H + "Info commands" + R + B + ":" + R, file=w)
+    print(HEADING_COLOR + "Info commands" + RESET + BOLD + ":" + RESET, file=w)
     #     |:                 |            <- 1 + 27 = 28
     print(
         "  "
-        + S
+        + SHORT_NAME_COLOR
         + ":"
-        + R
+        + RESET
         + "                           Show current settings.",
         file=w,
     )
     #     |?, :help, :h, :?  |            <- 16 + 12 = 28
     print(
         "  "
-        + S
+        + SHORT_NAME_COLOR
         + "?"
-        + R
+        + RESET
         + ", "
-        + L
+        + LONG_NAME_COLOR
         + ":help"
-        + R
+        + RESET
         + ", "
-        + S
+        + SHORT_NAME_COLOR
         + ":h"
-        + R
+        + RESET
         + ", "
-        + S
+        + SHORT_NAME_COLOR
         + ":?"
-        + R
+        + RESET
         + "            Show this help.",
         file=w,
     )
     #     |$, :vars          |            <- 8 + 20 = 28
     print(
         "  "
-        + S
+        + SHORT_NAME_COLOR
         + "$"
-        + R
+        + RESET
         + ", "
-        + L
+        + LONG_NAME_COLOR
         + ":vars"
-        + R
+        + RESET
         + "                    List all variables.",
         file=w,
     )
     #     |:about, :a, :info |            <- 18 + 10 = 28
     print(
         "  "
-        + L
+        + LONG_NAME_COLOR
         + ":about"
-        + R
+        + RESET
         + ", "
-        + S
+        + SHORT_NAME_COLOR
         + ":a"
-        + R
+        + RESET
         + ", "
-        + L
+        + LONG_NAME_COLOR
         + ":info"
-        + R
-        + "          Show version, author, license, and links.",
+        + RESET
+        + "           Show version, author, license, and links.",
         file=w,
     )
     #     |:version, :v      |            <- 12 + 16 = 28
     print(
         "  "
-        + L
+        + LONG_NAME_COLOR
         + ":version"
-        + R
+        + RESET
         + ", "
-        + S
+        + SHORT_NAME_COLOR
         + ":v"
-        + R
-        + "              Show version number.\n",
+        + RESET
+        + "                Show version number.\n",
         file=w,
     )
 
     # --- quit ---
-    print(H + "Quit" + R + B + ":" + R, file=w)
+    print(HEADING_COLOR + "Quit" + RESET + BOLD + ":" + RESET, file=w)
     print(
         "  "
-        + S
+        + SHORT_NAME_COLOR
         + ":q"
-        + R
+        + RESET
         + "  "
-        + L
+        + LONG_NAME_COLOR
         + "exit"
-        + R
+        + RESET
         + "  "
-        + L
+        + LONG_NAME_COLOR
         + "quit"
-        + R
+        + RESET
         + "  "
-        + S
+        + SHORT_NAME_COLOR
         + "Ctrl-D"
-        + R,
+        + RESET,
         file=w,
     )
