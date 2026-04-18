@@ -88,16 +88,17 @@ struct LineEditor(Movable):
     var _history: List[String]
     var _max_history: Int
 
-    fn __init__(out self, max_history: Int = 1000):
+    def __init__(out self, max_history: Int = 1000):
         """Creates a new LineEditor.
 
         Args:
             max_history: Maximum number of history entries to retain.
+                Clamped to 0 if negative.
         """
         self._history = List[String]()
-        self._max_history = max_history
+        self._max_history = max_history if max_history >= 0 else 0
 
-    fn __init__(out self, *, deinit take: Self):
+    def __init__(out self, *, deinit take: Self):
         self._history = take._history^
         self._max_history = take._max_history
 
@@ -131,9 +132,6 @@ struct LineEditor(Movable):
         # History navigation state
         var history_index: Int = -1  # -1 = current line (not navigating)
         var saved_line = String("")
-
-        # Prompt display width (ASCII only for Phase 1)
-        var prompt_len = len(prompt)
 
         # Draw initial prompt
         self._draw_prompt(prompt)
@@ -202,21 +200,21 @@ struct LineEditor(Movable):
                     done = True  # EOF — result stays None
                 else:
                     _action_delete(buffer, cursor)
-                    self._redraw(prompt, buffer, cursor, prompt_len)
+                    self._redraw(prompt, buffer, cursor)
 
             elif action == _ACT_INSERT:
                 _action_insert(buffer, cursor, insert_byte)
-                self._redraw(prompt, buffer, cursor, prompt_len)
+                self._redraw(prompt, buffer, cursor)
 
             elif action == _ACT_BACKSPACE:
                 if cursor > 0:
                     _action_backspace(buffer, cursor)
-                    self._redraw(prompt, buffer, cursor, prompt_len)
+                    self._redraw(prompt, buffer, cursor)
 
             elif action == _ACT_DELETE:
                 if cursor < len(buffer):
                     _action_delete(buffer, cursor)
-                    self._redraw(prompt, buffer, cursor, prompt_len)
+                    self._redraw(prompt, buffer, cursor)
 
             elif action == _ACT_LEFT:
                 if cursor > 0:
@@ -247,28 +245,28 @@ struct LineEditor(Movable):
             elif action == _ACT_KILL_TO_START:
                 if cursor > 0:
                     _action_kill_to_start(buffer, cursor)
-                    self._redraw(prompt, buffer, cursor, prompt_len)
+                    self._redraw(prompt, buffer, cursor)
 
             elif action == _ACT_KILL_WORD_BACK:
                 if cursor > 0:
                     _action_kill_word_back(buffer, cursor)
-                    self._redraw(prompt, buffer, cursor, prompt_len)
+                    self._redraw(prompt, buffer, cursor)
 
             elif action == _ACT_HISTORY_UP:
                 _action_history_up(
                     self._history, buffer, cursor, history_index, saved_line
                 )
-                self._redraw(prompt, buffer, cursor, prompt_len)
+                self._redraw(prompt, buffer, cursor)
 
             elif action == _ACT_HISTORY_DOWN:
                 _action_history_down(
                     self._history, buffer, cursor, history_index, saved_line
                 )
-                self._redraw(prompt, buffer, cursor, prompt_len)
+                self._redraw(prompt, buffer, cursor)
 
             elif action == _ACT_CLEAR_SCREEN:
                 clear_screen()
-                self._redraw(prompt, buffer, cursor, prompt_len)
+                self._redraw(prompt, buffer, cursor)
 
         # Restore terminal before returning
         disable_raw_mode_nothrow(original_settings)
@@ -291,24 +289,26 @@ struct LineEditor(Movable):
         return self._history.copy()
 
     def set_max_history(mut self, max: Int):
-        """Sets the maximum number of history entries to retain."""
-        self._max_history = max
+        """Sets the maximum number of history entries to retain.
+
+        Clamped to 0 if negative.
+        """
+        self._max_history = max if max >= 0 else 0
         while len(self._history) > self._max_history:
             _ = self._history.pop(0)
 
     # == Private helpers ==============================================
 
-    fn _draw_prompt(self, prompt: String):
+    def _draw_prompt(self, prompt: String):
         """Writes the styled prompt to stderr."""
         # Bold green prompt, matching the existing decimo style
         write_stderr("\x1b[1m\x1b[92m" + prompt + "\x1b[0m")
 
-    fn _redraw(
+    def _redraw(
         self,
         prompt: String,
         buffer: List[UInt8],
         cursor: Int,
-        prompt_len: Int,
     ):
         """Redraws the prompt and buffer, then positions the cursor correctly.
 
@@ -401,7 +401,7 @@ struct LineEditor(Movable):
 # === Buffer manipulation helpers (module-level fns) ==========================
 
 
-fn _buffer_to_string(buffer: List[UInt8]) -> String:
+def _buffer_to_string(buffer: List[UInt8]) -> String:
     """Converts a byte buffer to a String."""
     if len(buffer) == 0:
         return String("")
@@ -411,7 +411,7 @@ fn _buffer_to_string(buffer: List[UInt8]) -> String:
     return String(unsafe_from_utf8=copy^)
 
 
-fn _action_insert(mut buffer: List[UInt8], mut cursor: Int, byte: UInt8):
+def _action_insert(mut buffer: List[UInt8], mut cursor: Int, byte: UInt8):
     """Inserts a byte at the cursor position and advances the cursor."""
     if cursor == len(buffer):
         # Append at end — fast path
@@ -427,7 +427,7 @@ fn _action_insert(mut buffer: List[UInt8], mut cursor: Int, byte: UInt8):
     cursor += 1
 
 
-fn _action_backspace(mut buffer: List[UInt8], mut cursor: Int):
+def _action_backspace(mut buffer: List[UInt8], mut cursor: Int):
     """Deletes the byte before the cursor."""
     if cursor <= 0 or cursor > len(buffer):
         return
@@ -440,7 +440,7 @@ fn _action_backspace(mut buffer: List[UInt8], mut cursor: Int):
     cursor -= 1
 
 
-fn _action_delete(mut buffer: List[UInt8], mut cursor: Int):
+def _action_delete(mut buffer: List[UInt8], mut cursor: Int):
     """Deletes the byte at the cursor position."""
     if cursor < 0 or cursor >= len(buffer):
         return
@@ -451,7 +451,7 @@ fn _action_delete(mut buffer: List[UInt8], mut cursor: Int):
     _ = buffer.pop()
 
 
-fn _action_kill_to_start(mut buffer: List[UInt8], mut cursor: Int):
+def _action_kill_to_start(mut buffer: List[UInt8], mut cursor: Int):
     """Deletes everything from the start of the line to the cursor."""
     if cursor <= 0:
         return
@@ -462,7 +462,7 @@ fn _action_kill_to_start(mut buffer: List[UInt8], mut cursor: Int):
     cursor = 0
 
 
-fn _action_kill_word_back(mut buffer: List[UInt8], mut cursor: Int):
+def _action_kill_word_back(mut buffer: List[UInt8], mut cursor: Int):
     """Deletes the word before the cursor (Ctrl+W).
 
     Deletes backward: first skips whitespace, then skips non-whitespace.
@@ -489,7 +489,7 @@ fn _action_kill_word_back(mut buffer: List[UInt8], mut cursor: Int):
         buffer.resize(new_len, 0)
 
 
-fn _action_history_up(
+def _action_history_up(
     history: List[String],
     mut buffer: List[UInt8],
     mut cursor: Int,
@@ -511,7 +511,7 @@ fn _action_history_up(
     _set_buffer_from_string(buffer, cursor, history[history_index])
 
 
-fn _action_history_down(
+def _action_history_down(
     history: List[String],
     mut buffer: List[UInt8],
     mut cursor: Int,
@@ -531,7 +531,7 @@ fn _action_history_down(
         _set_buffer_from_string(buffer, cursor, saved_line)
 
 
-fn _set_buffer_from_string(
+def _set_buffer_from_string(
     mut buffer: List[UInt8], mut cursor: Int, text: String
 ):
     """Replaces the buffer contents with the given string and sets cursor to the end.

@@ -38,7 +38,7 @@ from decimo import Decimal
 from decimo.rounding_mode import RoundingMode
 from limo import LineEditor
 from .display import BOLD, RESET, YELLOW, CYAN, GREEN, MAGENTA
-from .display import write_prompt, print_error
+from .display import print_error
 from .engine import evaluate_and_return
 from .io import strip, is_comment_or_blank
 from .settings import Settings, parse_settings, split_inline_settings, to_lower
@@ -362,17 +362,17 @@ def _print_banner(settings: Settings):
 # ===----------------------------------------------------------------------=== #
 
 
-fn _is_help_command(cmd: String) -> Bool:
+def _is_help_command(cmd: String) -> Bool:
     """Match: help, h, ?."""
     return cmd == "help" or cmd == "h" or cmd == "?"
 
 
-fn _is_vars_command(cmd: String) -> Bool:
+def _is_vars_command(cmd: String) -> Bool:
     """Match: v, vars."""
     return cmd == "v" or cmd == "vars"
 
 
-fn _is_quit_command(cmd: String) -> Bool:
+def _is_quit_command(cmd: String) -> Bool:
     """Match: q, quit, exit."""
     return cmd == "q" or cmd == "quit" or cmd == "exit"
 

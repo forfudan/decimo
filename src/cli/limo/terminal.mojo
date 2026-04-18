@@ -108,71 +108,71 @@ struct TermIOS(Copyable, Movable):
 
     var _buf: List[UInt8]
 
-    fn __init__(out self):
+    def __init__(out self):
         """Creates a zeroed TermIOS."""
         self._buf = List[UInt8](capacity=Self.SIZE)
         self._buf.resize(Self.SIZE, 0)
 
-    fn __init__(out self, *, copy: Self):
+    def __init__(out self, *, copy: Self):
         self._buf = copy._buf.copy()
 
-    fn __init__(out self, *, deinit take: Self):
+    def __init__(out self, *, deinit take: Self):
         self._buf = take._buf^
 
-    fn copy(self) -> Self:
+    def copy(self) -> Self:
         """Returns an explicit copy."""
         return Self(copy=self)
 
     # == Read/write helpers ===========================================
 
     @always_inline
-    fn _read_u64(mut self, offset: Int) -> UInt64:
+    def _read_u64(mut self, offset: Int) -> UInt64:
         return (self._buf.unsafe_ptr() + offset).bitcast[UInt64]()[]
 
     @always_inline
-    fn _write_u64(mut self, offset: Int, value: UInt64):
+    def _write_u64(mut self, offset: Int, value: UInt64):
         (self._buf.unsafe_ptr() + offset).bitcast[UInt64]()[] = value
 
     # == Flag accessors ===============================================
 
-    fn get_iflag(mut self) -> UInt64:
+    def get_iflag(mut self) -> UInt64:
         return self._read_u64(Self._IFLAG)
 
-    fn set_iflag(mut self, value: UInt64):
+    def set_iflag(mut self, value: UInt64):
         self._write_u64(Self._IFLAG, value)
 
-    fn get_oflag(mut self) -> UInt64:
+    def get_oflag(mut self) -> UInt64:
         return self._read_u64(Self._OFLAG)
 
-    fn set_oflag(mut self, value: UInt64):
+    def set_oflag(mut self, value: UInt64):
         self._write_u64(Self._OFLAG, value)
 
-    fn get_cflag(mut self) -> UInt64:
+    def get_cflag(mut self) -> UInt64:
         return self._read_u64(Self._CFLAG)
 
-    fn set_cflag(mut self, value: UInt64):
+    def set_cflag(mut self, value: UInt64):
         self._write_u64(Self._CFLAG, value)
 
-    fn get_lflag(mut self) -> UInt64:
+    def get_lflag(mut self) -> UInt64:
         return self._read_u64(Self._LFLAG)
 
-    fn set_lflag(mut self, value: UInt64):
+    def set_lflag(mut self, value: UInt64):
         self._write_u64(Self._LFLAG, value)
 
     # == Control character access ======================================
 
-    fn get_control_char(self, index: Int) -> UInt8:
+    def get_control_char(self, index: Int) -> UInt8:
         """Returns the control character at the given index in the c_cc array.
         """
         return self._buf[Self._CC + index]
 
-    fn set_control_char(mut self, index: Int, value: UInt8):
+    def set_control_char(mut self, index: Int, value: UInt8):
         """Sets the control character at the given index in the c_cc array."""
         self._buf[Self._CC + index] = value
 
     # == Raw mode configuration =======================================
 
-    fn make_raw(mut self):
+    def make_raw(mut self):
         """Configures this TermIOS for raw mode (equivalent to cfmakeraw).
 
         Disables line buffering, echo, signals, input/output processing.
@@ -213,7 +213,7 @@ struct TermIOS(Copyable, Movable):
 # for the canonical FFI signatures.
 
 
-fn _tcgetattr(file_descriptor: Int32, mut settings: TermIOS) raises:
+def _tcgetattr(file_descriptor: Int32, mut settings: TermIOS) raises:
     """Gets terminal attributes for the given file descriptor."""
     var return_code = external_call["tcgetattr", Int, Int, Int](
         Int(file_descriptor), Int(settings._buf.unsafe_ptr())
@@ -222,7 +222,7 @@ fn _tcgetattr(file_descriptor: Int32, mut settings: TermIOS) raises:
         raise Error("tcgetattr failed")
 
 
-fn _tcsetattr_raw(
+def _tcsetattr_raw(
     file_descriptor: Int32, action: Int32, mut settings: TermIOS
 ) -> Int32:
     """Sets terminal attributes (low-level, returns the return code directly).
@@ -234,7 +234,7 @@ fn _tcsetattr_raw(
     )
 
 
-fn _tcsetattr(
+def _tcsetattr(
     file_descriptor: Int32, action: Int32, mut settings: TermIOS
 ) raises:
     """Sets terminal attributes for the given file descriptor."""
@@ -242,7 +242,7 @@ fn _tcsetattr(
         raise Error("tcsetattr failed")
 
 
-fn _isatty(file_descriptor: Int32) -> Bool:
+def _isatty(file_descriptor: Int32) -> Bool:
     """Checks if the given file descriptor refers to a terminal."""
     return external_call["isatty", Int32](file_descriptor) != 0
 
@@ -250,7 +250,7 @@ fn _isatty(file_descriptor: Int32) -> Bool:
 # === Raw mode control =====================================================
 
 
-fn enable_raw_mode() raises -> TermIOS:
+def enable_raw_mode() raises -> TermIOS:
     """Enters raw mode on stdin and returns the original terminal settings.
 
     The caller must pass the returned TermIOS to `disable_raw_mode()`
@@ -269,12 +269,12 @@ fn enable_raw_mode() raises -> TermIOS:
     return original^
 
 
-fn disable_raw_mode(mut original_settings: TermIOS) raises:
+def disable_raw_mode(mut original_settings: TermIOS) raises:
     """Restores the terminal to the given original settings."""
     _tcsetattr(STDIN_FILENO, TCSAFLUSH, original_settings)
 
 
-fn disable_raw_mode_nothrow(mut original_settings: TermIOS):
+def disable_raw_mode_nothrow(mut original_settings: TermIOS):
     """Restores the terminal to the given original settings (best-effort).
 
     Uses the non-raising variant so it is safe for cleanup paths
@@ -286,7 +286,7 @@ fn disable_raw_mode_nothrow(mut original_settings: TermIOS):
 # === I/O primitives =======================================================
 
 
-fn read_byte() raises -> UInt8:
+def read_byte() raises -> UInt8:
     """Reads a single byte from stdin (blocking).
 
     Requires raw mode to be active for byte-at-a-time reads.
@@ -302,9 +302,13 @@ fn read_byte() raises -> UInt8:
     return buf[0]
 
 
-fn write_stdout(data: String):
+def write_stdout(data: String):
     """Writes a string to stdout (best-effort, for terminal output)."""
     var byte_span = data.as_bytes()
+    # NOTE: Unlike tcgetattr/tcsetattr/read, we do NOT use explicit Int arg
+    # types here because `write` already has a declaration in the Mojo stdlib
+    # with different arg types — adding explicit types would cause an LLVM IR
+    # signature conflict.
     _ = external_call["write", Int](
         Int(STDOUT_FILENO),
         byte_span.unsafe_ptr(),
@@ -312,9 +316,10 @@ fn write_stdout(data: String):
     )
 
 
-fn write_stderr(data: String):
+def write_stderr(data: String):
     """Writes a string to stderr (best-effort, for prompt output)."""
     var byte_span = data.as_bytes()
+    # Same note as write_stdout — no explicit arg types for `write`.
     _ = external_call["write", Int](
         Int(STDERR_FILENO),
         byte_span.unsafe_ptr(),
@@ -325,28 +330,28 @@ fn write_stderr(data: String):
 # === ANSI escape helpers (single-line use) =================================
 
 
-fn cursor_move_left(count: Int):
+def cursor_move_left(count: Int):
     """Moves the cursor left by `count` columns."""
     if count > 0:
         write_stdout("\x1b[" + String(count) + "D")
 
 
-fn cursor_move_right(count: Int):
+def cursor_move_right(count: Int):
     """Moves the cursor right by `count` columns."""
     if count > 0:
         write_stdout("\x1b[" + String(count) + "C")
 
 
-fn clear_line_from_cursor():
+def clear_line_from_cursor():
     """Clears from the cursor to the end of the line."""
     write_stdout("\x1b[K")
 
 
-fn clear_screen():
+def clear_screen():
     """Clears the entire screen and moves the cursor to top-left."""
     write_stdout("\x1b[2J\x1b[H")
 
 
-fn move_to_column_zero():
+def move_to_column_zero():
     """Moves the cursor to the beginning of the current line."""
     write_stdout("\r")

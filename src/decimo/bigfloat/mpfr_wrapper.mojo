@@ -33,7 +33,7 @@ from std.ffi import external_call, c_int, c_char
 # ===----------------------------------------------------------------------=== #
 
 
-fn mpfrw_available() -> Bool:
+def mpfrw_available() -> Bool:
     """Checks if MPFR is available on this system.
 
     First call triggers the lazy load attempt. Result is cached in C.
@@ -50,7 +50,7 @@ fn mpfrw_available() -> Bool:
 # ===----------------------------------------------------------------------=== #
 
 
-fn mpfrw_init(prec_bits: Int) -> Int32:
+def mpfrw_init(prec_bits: Int) -> Int32:
     """Allocates an MPFR handle with the given precision in bits.
 
     Args:
@@ -63,7 +63,7 @@ fn mpfrw_init(prec_bits: Int) -> Int32:
     return external_call["mpfrw_init", Int32](Int32(prec_bits))
 
 
-fn mpfrw_clear(handle: Int32):
+def mpfrw_clear(handle: Int32):
     """Frees an MPFR handle, returning it to the pool.
 
     Args:
@@ -81,7 +81,7 @@ fn mpfrw_clear(handle: Int32):
 # ===----------------------------------------------------------------------=== #
 
 
-fn mpfrw_set_str(
+def mpfrw_set_str(
     handle: Int32, s: UnsafePointer[c_char, _], length: Int32
 ) -> Int32:
     """Sets the MPFR handle value from a decimal string.
@@ -97,7 +97,7 @@ fn mpfrw_set_str(
     return external_call["mpfrw_set_str", Int32](handle, s, length)
 
 
-fn mpfrw_get_str(handle: Int32, digits: Int32) -> Int:
+def mpfrw_get_str(handle: Int32, digits: Int32) -> Int:
     """Exports the MPFR handle value as a decimal string.
 
     Args:
@@ -111,7 +111,7 @@ fn mpfrw_get_str(handle: Int32, digits: Int32) -> Int:
     return external_call["mpfrw_get_str", Int](handle, digits)
 
 
-fn mpfrw_free_str(addr: Int):
+def mpfrw_free_str(addr: Int):
     """Frees a string returned by `mpfrw_get_str`.
 
     Args:
@@ -125,7 +125,7 @@ fn mpfrw_free_str(addr: Int):
 # ===----------------------------------------------------------------------=== #
 
 
-fn mpfrw_get_raw_digits(
+def mpfrw_get_raw_digits(
     handle: Int32, digits: Int32, out_exp: UnsafePointer[Int, _]
 ) -> Int:
     """Exports MPFR value as raw digit string via mpfr_get_str.
@@ -150,7 +150,7 @@ fn mpfrw_get_raw_digits(
     return external_call["mpfrw_get_raw_digits", Int](handle, digits, out_exp)
 
 
-fn mpfrw_free_raw_str(addr: Int):
+def mpfrw_free_raw_str(addr: Int):
     """Frees a digit string returned by `mpfrw_get_raw_digits`.
 
     Args:
@@ -164,7 +164,7 @@ fn mpfrw_free_raw_str(addr: Int):
 # ===----------------------------------------------------------------------=== #
 
 
-fn mpfrw_add(result: Int32, a: Int32, b: Int32):
+def mpfrw_add(result: Int32, a: Int32, b: Int32):
     """Computes result = a + b (MPFR_RNDN).
 
     Args:
@@ -175,7 +175,7 @@ fn mpfrw_add(result: Int32, a: Int32, b: Int32):
     external_call["mpfrw_add", NoneType](result, a, b)
 
 
-fn mpfrw_sub(result: Int32, a: Int32, b: Int32):
+def mpfrw_sub(result: Int32, a: Int32, b: Int32):
     """Computes result = a - b (MPFR_RNDN).
 
     Args:
@@ -186,7 +186,7 @@ fn mpfrw_sub(result: Int32, a: Int32, b: Int32):
     external_call["mpfrw_sub", NoneType](result, a, b)
 
 
-fn mpfrw_mul(result: Int32, a: Int32, b: Int32):
+def mpfrw_mul(result: Int32, a: Int32, b: Int32):
     """Computes result = a * b (MPFR_RNDN).
 
     Args:
@@ -197,7 +197,7 @@ fn mpfrw_mul(result: Int32, a: Int32, b: Int32):
     external_call["mpfrw_mul", NoneType](result, a, b)
 
 
-fn mpfrw_div(result: Int32, a: Int32, b: Int32):
+def mpfrw_div(result: Int32, a: Int32, b: Int32):
     """Computes result = a / b (MPFR_RNDN).
 
     Args:
@@ -208,7 +208,7 @@ fn mpfrw_div(result: Int32, a: Int32, b: Int32):
     external_call["mpfrw_div", NoneType](result, a, b)
 
 
-fn mpfrw_neg(result: Int32, a: Int32):
+def mpfrw_neg(result: Int32, a: Int32):
     """Computes result = -a (MPFR_RNDN).
 
     Args:
@@ -218,7 +218,7 @@ fn mpfrw_neg(result: Int32, a: Int32):
     external_call["mpfrw_neg", NoneType](result, a)
 
 
-fn mpfrw_abs(result: Int32, a: Int32):
+def mpfrw_abs(result: Int32, a: Int32):
     """Computes result = |a| (MPFR_RNDN).
 
     Args:
@@ -228,7 +228,7 @@ fn mpfrw_abs(result: Int32, a: Int32):
     external_call["mpfrw_abs", NoneType](result, a)
 
 
-fn mpfrw_cmp(a: Int32, b: Int32) -> Int32:
+def mpfrw_cmp(a: Int32, b: Int32) -> Int32:
     """Compares a and b.
 
     Args:
@@ -246,7 +246,7 @@ fn mpfrw_cmp(a: Int32, b: Int32) -> Int32:
 # ===----------------------------------------------------------------------=== #
 
 
-fn mpfrw_sqrt(result: Int32, a: Int32):
+def mpfrw_sqrt(result: Int32, a: Int32):
     """Computes result = sqrt(a) (MPFR_RNDN).
 
     Args:
@@ -256,7 +256,7 @@ fn mpfrw_sqrt(result: Int32, a: Int32):
     external_call["mpfrw_sqrt", NoneType](result, a)
 
 
-fn mpfrw_exp(result: Int32, a: Int32):
+def mpfrw_exp(result: Int32, a: Int32):
     """Computes result = exp(a) (MPFR_RNDN).
 
     Args:
@@ -266,7 +266,7 @@ fn mpfrw_exp(result: Int32, a: Int32):
     external_call["mpfrw_exp", NoneType](result, a)
 
 
-fn mpfrw_log(result: Int32, a: Int32):
+def mpfrw_log(result: Int32, a: Int32):
     """Computes result = ln(a) (MPFR_RNDN).
 
     Args:
@@ -276,7 +276,7 @@ fn mpfrw_log(result: Int32, a: Int32):
     external_call["mpfrw_log", NoneType](result, a)
 
 
-fn mpfrw_sin(result: Int32, a: Int32):
+def mpfrw_sin(result: Int32, a: Int32):
     """Computes result = sin(a) (MPFR_RNDN).
 
     Args:
@@ -286,7 +286,7 @@ fn mpfrw_sin(result: Int32, a: Int32):
     external_call["mpfrw_sin", NoneType](result, a)
 
 
-fn mpfrw_cos(result: Int32, a: Int32):
+def mpfrw_cos(result: Int32, a: Int32):
     """Computes result = cos(a) (MPFR_RNDN).
 
     Args:
@@ -296,7 +296,7 @@ fn mpfrw_cos(result: Int32, a: Int32):
     external_call["mpfrw_cos", NoneType](result, a)
 
 
-fn mpfrw_tan(result: Int32, a: Int32):
+def mpfrw_tan(result: Int32, a: Int32):
     """Computes result = tan(a) (MPFR_RNDN).
 
     Args:
@@ -306,7 +306,7 @@ fn mpfrw_tan(result: Int32, a: Int32):
     external_call["mpfrw_tan", NoneType](result, a)
 
 
-fn mpfrw_pow(result: Int32, a: Int32, b: Int32):
+def mpfrw_pow(result: Int32, a: Int32, b: Int32):
     """Computes result = a^b (MPFR_RNDN).
 
     Args:
@@ -317,7 +317,7 @@ fn mpfrw_pow(result: Int32, a: Int32, b: Int32):
     external_call["mpfrw_pow", NoneType](result, a, b)
 
 
-fn mpfrw_rootn_ui(result: Int32, a: Int32, n: UInt32):
+def mpfrw_rootn_ui(result: Int32, a: Int32, n: UInt32):
     """Computes result = a^(1/n) (MPFR_RNDN), the n-th root.
 
     Args:
@@ -328,7 +328,7 @@ fn mpfrw_rootn_ui(result: Int32, a: Int32, n: UInt32):
     external_call["mpfrw_rootn_ui", NoneType](result, a, n)
 
 
-fn mpfrw_const_pi(result: Int32):
+def mpfrw_const_pi(result: Int32):
     """Computes result = π (MPFR_RNDN) to the handle's precision.
 
     Args:

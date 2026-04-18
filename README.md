@@ -107,7 +107,7 @@ Here are some examples showcasing the arbitrary-precision feature of the `Decima
 from decimo.prelude import *
 
 
-fn main() raises:
+def main() raises:
     var a = Decimal("123456789.123456789")
     var b = Decimal(
         "1234.56789"
@@ -186,7 +186,7 @@ Here is a comprehensive quick-start guide showcasing each major function of the 
 from decimo.prelude import *
 
 
-fn main() raises:
+def main() raises:
     # === Construction ===
     var a = BInt("12345678901234567890")  # From string
     var b = BInt(12345)  # From integer
@@ -238,7 +238,7 @@ Here is a comprehensive quick-start guide showcasing each major function of the 
 ```mojo
 from decimo.prelude import *
 
-fn main() raises:
+def main() raises:
     # === Construction ===
     var a = Dec128("123.45")                         # From string
     var b = Dec128(123)                              # From integer

@@ -180,7 +180,7 @@ BigDecimal already has method-based math: `x.sqrt()`, `x.exp()`, `x.ln()`, `x.si
 
 **Gaps to fill:**
 
-- BigDecimal: ensure all free functions have method counterparts (e.g., `truncate_modulo` is free fn only)
+- BigDecimal: ensure all free functions have method counterparts (e.g., `truncate_modulo` is free def only)
 
 ### 5.2 Fluent / Chainable API
 

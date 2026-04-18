@@ -181,37 +181,37 @@ struct LineEditor(Movable):
             process(line.value())
     """
 
-    fn __init__(out self)
-    fn __init__(out self, max_history: Int)
+    def __init__(out self)
+    def __init__(out self, max_history: Int)
 
-    fn read_line(mut self, prompt: String) raises -> Optional[String]
+    def read_line(mut self, prompt: String) raises -> Optional[String]
         """Display prompt, read a line with editing support.
 
         Returns the edited line on Enter, or None on EOF (Ctrl-D on empty line).
         Automatically adds non-empty lines to history.
         """
 
-    fn add_history(mut self, line: String)
+    def add_history(mut self, line: String)
         """Manually add a line to history (e.g., loaded from file)."""
 
-    fn clear_history(mut self)
+    def clear_history(mut self)
         """Clear all history entries."""
 
-    fn get_history(self) -> List[String]
+    def get_history(self) -> List[String]
         """Return a copy of the history buffer."""
 
-    fn set_max_history(mut self, max: Int)
+    def set_max_history(mut self, max: Int)
         """Set maximum number of history entries to retain."""
 
     # Phase 2 additions:
-    fn load_history(mut self, path: String) raises
+    def load_history(mut self, path: String) raises
         """Load history from a file (one line per entry)."""
 
-    fn save_history(self, path: String) raises
+    def save_history(self, path: String) raises
         """Save history to a file."""
 
     # Phase 3 additions:
-    fn set_completion_callback(mut self, callback: fn(String, Int) -> List[String])
+    def set_completion_callback(mut self, callback: fn(String, Int) -> List[String])
         """Register a tab-completion callback.
         The callback receives (current_line, cursor_position) and returns
         a list of completion candidates."""
@@ -256,31 +256,31 @@ The change to `repl.mojo` is minimal — replace `write_prompt()` + `read_line()
 
 The essential features that make the REPL usable. After this phase, the decimo REPL has arrow-key navigation, backspace, delete, home/end, history, and Ctrl shortcuts.
 
-| #    | Task                                                   | Status | Notes                                                              |
-| ---- | ------------------------------------------------------ | :----: | ------------------------------------------------------------------ |
-| 1.1  | Create `src/cli/limo/` package structure               |   ✓    | `__init__.mojo`, `terminal.mojo`, `line_editor.mojo`               |
-| 1.2  | Port `TermIOS` struct from termo                       |   ✓    | macOS arm64 layout (72 bytes); adapt to current Mojo version       |
-| 1.3  | Port `enable_raw_mode` / `disable_raw_mode` from termo |   ✓    | Uses tcgetattr/tcsetattr with argmojo-aligned `Int` signatures     |
-| 1.4  | Port `RawModeGuard` (RAII cleanup) from termo          |   —    | Skipped: manual cleanup with single exit point instead             |
-| 1.5  | Implement `read_byte()` (blocking, stdin)              |   ✓    | Uses `read(2)` with argmojo-aligned `Int` signatures               |
-| 1.6  | Implement escape sequence detection                    |   ✓    | ESC `[` prefix → parse arrow/Home/End/Delete sequences             |
-| 1.7  | Implement ANSI cursor helpers                          |   ✓    | `cursor_move_left`, `cursor_move_right`, `clear_line_from_cursor`  |
-| 1.8  | Implement `LineEditor` struct with buffer + cursor     |   ✓    | `List[UInt8]` buffer, `Int` cursor pos, `Int` prompt display width |
-| 1.9  | Character insertion at cursor position                 |   ✓    | Insert byte(s), advance cursor, redraw from cursor to end          |
-| 1.10 | Backspace and Delete                                   |   ✓    | Remove byte at/before cursor, redraw                               |
-| 1.11 | Left/Right arrow cursor movement                       |   ✓    | Bounds checking, ANSI cursor move                                  |
-| 1.12 | Home/End (and Ctrl+A/Ctrl+E)                           |   ✓    | Jump to column 0 or end of buffer                                  |
-| 1.13 | Enter (accept line) and Ctrl+C (discard)               |   ✓    | Return buffer as String; add to history if non-empty               |
-| 1.14 | Ctrl+D (EOF on empty line, delete otherwise)           |   ✓    | Match readline behavior                                            |
-| 1.15 | Ctrl+K (kill to end) and Ctrl+U (kill to beginning)    |   ✓    | Truncate buffer; redraw                                            |
-| 1.16 | Ctrl+W (delete word backward)                          |   ✓    | Delete backward to previous whitespace boundary                    |
-| 1.17 | Ctrl+L (clear screen and redraw prompt + line)         |   ✓    | Write ESC `[` `2J` ESC `[` `H`, then redraw                        |
-| 1.18 | History buffer (`List[String]`, configurable max size) |   ✓    | FIFO with eviction; default max 1000 entries                       |
-| 1.19 | Up/Down arrow history navigation                       |   ✓    | Save current line, navigate history, restore on return to bottom   |
-| 1.20 | Line redraw function                                   |   ✓    | Clear line → write prompt → write buffer → position cursor         |
-| 1.21 | Integrate into decimo REPL (`repl.mojo`)               |   ✓    | Replace `write_prompt` + `read_line` with `editor.read_line`       |
-| 1.22 | Unit tests for `LineEditor`                            |   ✗    | Buffer manipulation, cursor movement, history navigation           |
-| 1.23 | Manual integration testing                             |   ✗    | Run `decimo` REPL and verify all keybindings work                  |
+| #    | Task                                                   | Status | Notes                                                                                                                            |
+| ---- | ------------------------------------------------------ | :----: | -------------------------------------------------------------------------------------------------------------------------------- |
+| 1.1  | Create `src/cli/limo/` package structure               |   ✓    | `__init__.mojo`, `terminal.mojo`, `line_editor.mojo`                                                                             |
+| 1.2  | Port `TermIOS` struct from termo                       |   ✓    | macOS arm64 layout (72 bytes); adapt to current Mojo version                                                                     |
+| 1.3  | Port `enable_raw_mode` / `disable_raw_mode` from termo |   ✓    | Uses tcgetattr/tcsetattr with argmojo-aligned `Int` signatures                                                                   |
+| 1.4  | Port `RawModeGuard` (RAII cleanup) from termo          |   —    | Skipped: restore raw mode manually via explicit `disable_raw_mode()` cleanup on all exit/error paths, not `RawModeGuard.__del__` |
+| 1.5  | Implement `read_byte()` (blocking, stdin)              |   ✓    | Uses `read(2)` with argmojo-aligned `Int` signatures                                                                             |
+| 1.6  | Implement escape sequence detection                    |   ✓    | ESC `[` prefix → parse arrow/Home/End/Delete sequences                                                                           |
+| 1.7  | Implement ANSI cursor helpers                          |   ✓    | `cursor_move_left`, `cursor_move_right`, `clear_line_from_cursor`                                                                |
+| 1.8  | Implement `LineEditor` struct with buffer + cursor     |   ✓    | `List[UInt8]` buffer, `Int` cursor pos, `Int` prompt display width                                                               |
+| 1.9  | Character insertion at cursor position                 |   ✓    | Insert byte(s), advance cursor, redraw from cursor to end                                                                        |
+| 1.10 | Backspace and Delete                                   |   ✓    | Remove byte at/before cursor, redraw                                                                                             |
+| 1.11 | Left/Right arrow cursor movement                       |   ✓    | Bounds checking, ANSI cursor move                                                                                                |
+| 1.12 | Home/End (and Ctrl+A/Ctrl+E)                           |   ✓    | Jump to column 0 or end of buffer                                                                                                |
+| 1.13 | Enter (accept line) and Ctrl+C (discard)               |   ✓    | Return buffer as String; add to history if non-empty                                                                             |
+| 1.14 | Ctrl+D (EOF on empty line, delete otherwise)           |   ✓    | Match readline behavior                                                                                                          |
+| 1.15 | Ctrl+K (kill to end) and Ctrl+U (kill to beginning)    |   ✓    | Truncate buffer; redraw                                                                                                          |
+| 1.16 | Ctrl+W (delete word backward)                          |   ✓    | Delete backward to previous whitespace boundary                                                                                  |
+| 1.17 | Ctrl+L (clear screen and redraw prompt + line)         |   ✓    | Write ESC `[` `2J` ESC `[` `H`, then redraw                                                                                      |
+| 1.18 | History buffer (`List[String]`, configurable max size) |   ✓    | FIFO with eviction; default max 1000 entries                                                                                     |
+| 1.19 | Up/Down arrow history navigation                       |   ✓    | Save current line, navigate history, restore on return to bottom                                                                 |
+| 1.20 | Line redraw function                                   |   ✓    | Clear line → write prompt → write buffer → position cursor                                                                       |
+| 1.21 | Integrate into decimo REPL (`repl.mojo`)               |   ✓    | Replace `write_prompt` + `read_line` with `editor.read_line`                                                                     |
+| 1.22 | Unit tests for `LineEditor`                            |   ✗    | Buffer manipulation, cursor movement, history navigation                                                                         |
+| 1.23 | Manual integration testing                             |   ✗    | Run `decimo` REPL and verify all keybindings work                                                                                |
 
 **Milestone:** `decimo` REPL supports full arrow-key editing and up/down history.
 

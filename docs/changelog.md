@@ -219,7 +219,7 @@ For example, you can now do the following:
 ```mojo
 from decimojo.prelude import *
 
-fn main() raises:
+def main() raises:
     var a = BInt(Int256(-1234567890))
     var b = BigUInt(31415926)
     var c = BDec("3.14159265358979323")
@@ -263,7 +263,7 @@ Optimize the case when you increase the value of a `BigInt` object in-place by 1
 ```mojo
 from decimojo.prelude import *
 
-fn main() raises:
+def main() raises:
     i = BigInt(0)
     end = BigInt(1_000_000)
     while i < end:

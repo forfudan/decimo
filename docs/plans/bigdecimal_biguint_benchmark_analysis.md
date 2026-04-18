@@ -9,17 +9,17 @@
 
 ## Optimization priority and planning
 
-| Task       | Operation(s) Improved     |            Current vs Python             | Expected After  |  Effort   | Priority     |
-| ---------- | ------------------------- | :--------------------------------------: | :-------------: | :-------: | ------------ |
-| **Task 1** | Asymmetric division       |               ✓ **31–79×**               |   ✓ COMPLETED   |   Done    | High         |
-| **Task 2** | Division (large operands) | ✓ **avg 24.6× (was 0.78×), up to 915×**  |   ✓ COMPLETED   |   Done    | High         |
+| Task       | Operation(s) Improved     |            Current vs Python             |   Expected After    |  Effort   | Priority     |
+| ---------- | ------------------------- | :--------------------------------------: | :-----------------: | :-------: | ------------ |
+| **Task 1** | Asymmetric division       |               ✓ **31–79×**               |     ✓ COMPLETED     |   Done    | High         |
+| **Task 2** | Division (large operands) | ✓ **avg 24.6× (was 0.78×), up to 915×**  |     ✓ COMPLETED     |   Done    | High         |
 | **Task 3** | Exp, ln                   | Exp: **0.87×@p50→5.3×@p2000** (3d done)  | 3a✓,3b✓,3c✓,3d✓,3f✓ |  Medium   | **Critical** |
-| **Task 4** | Sqrt                      |    ✓ **3.53× geo (was 0.66×@p5000)**     |   ✓ COMPLETED   |   Done    | High         |
-| **Task 5** | ALL large operations      |                  varies                  |   2–10× gain    | Very High | Low          |
-| **Task 6** | Large multiplication      | ✓ **+14–29% over Karatsuba (256–4096w)** |   ✓ COMPLETED   |   Done    | Medium       |
-| **Task 7** | Nth root                  |   7a✓ **3.9–25×**; 7c✓ frac roots fast   | 7b remaining    |  Medium   | High         |
-| **Task 8** | All (allocation overhead) |           ✓ **+15–27% exp/ln**           |   ✓ COMPLETED   |   Done    | High         |
-| **Task 9** | Schoolbook multiply base  |                    —                     |     1.5–2×      |    Low    | Medium       |
+| **Task 4** | Sqrt                      |    ✓ **3.53× geo (was 0.66×@p5000)**     |     ✓ COMPLETED     |   Done    | High         |
+| **Task 5** | ALL large operations      |                  varies                  |     2–10× gain      | Very High | Low          |
+| **Task 6** | Large multiplication      | ✓ **+14–29% over Karatsuba (256–4096w)** |     ✓ COMPLETED     |   Done    | Medium       |
+| **Task 7** | Nth root                  |   7a✓ **3.9–25×**; 7c✓ frac roots fast   |    7b remaining     |  Medium   | High         |
+| **Task 8** | All (allocation overhead) |           ✓ **+15–27% exp/ln**           |     ✓ COMPLETED     |   Done    | High         |
+| **Task 9** | Schoolbook multiply base  |                    —                     |       1.5–2×        |    Low    | Medium       |
 
 ### Planned Execution Order
 
@@ -903,8 +903,8 @@ Balanced cases unchanged (15–24× Python). Overall average speedup: **12.4× P
 **Implementation details:**
 
 - Added `struct MathCache` with `get_ln2(precision)` / `get_ln1d25(precision)` methods
-- Added overloaded `fn ln(x, precision, mut cache: MathCache)` as the primary implementation
-- Original `fn ln(x, precision)` delegates to cached version with a local cache (100% backward compatible)
+- Added overloaded `def ln(x, precision, mut cache: MathCache)` as the primary implementation
+- Original `def ln(x, precision)` delegates to cached version with a local cache (100% backward compatible)
 - `log()` and `log10()` now create a local `MathCache` so their 2 internal `ln()` calls share cached constants
 - Added `BigDecimal.ln(precision, cache)` method overload
 - Exported `MathCache` from `decimo` top-level
@@ -1322,7 +1322,7 @@ Biggest wins: exp/ln Taylor series loops (many iterations, each saving 1–2 all
 
 ## Appendix: Comparison with Python `libmpdec` Architecture
 
-| Feature              |     Decimo BigDecimal      |            Python `libmpdec`             |                 Gap                  |
+| Feature              |      Decimo BigDecimal       |            Python `libmpdec`             |                 Gap                  |
 | -------------------- | :--------------------------: | :--------------------------------------: | :----------------------------------: |
 | Base                 |       $10^9$ (UInt32)        | $10^9$ (uint32_t) / $10^{19}$ (uint64_t) | Minor — 64-bit limbs give 2× density |
 | Small multiply       |          Schoolbook          |                Schoolbook                |                Parity                |

@@ -37,7 +37,7 @@ from python.bindings import PythonModuleBuilder
 from os import abort
 
 @export
-fn PyInit_decimo() -> PythonObject:
+def PyInit_decimo() -> PythonObject:
     try:
         var m = PythonModuleBuilder("decimo")
         m.def_function[some_fn]("some_fn", docstring="...")
@@ -69,7 +69,7 @@ For a Mojo struct to be bindable:
 These are hard constraints today, expected to improve over time:
 
 1. **Max 6 `PythonObject` arguments** per bound function (use `def_py_function` workaround for variadic).
-2. **No keyword-only arguments** (`fn foo(*, x: Int)` is unsupported).
+2. **No keyword-only arguments** (`def foo(*, x: Int)` is unsupported).
 3. **No native `*args`/`**kwargs`** syntax — must use `OwnedKwargsDict[PythonObject]` and `def_py_function` respectively.
 4. **No computed properties** (getter/setter via `@property`).
 5. **Non-stdlib Mojo package deps** are not resolvable by the importer hook — must build manually.

@@ -328,11 +328,11 @@ pass all integer and pointer arguments as `Int` (which is `i64` on 64-bit
 platforms). Pointers are cast to `Int` via `Int(ptr)`. This is the convention
 adopted by argmojo and followed by limo:
 
-| C function   | Mojo `external_call` signature (shared by argmojo and limo)   |
-| ------------ | ------------------------------------------------------------- |
-| `tcgetattr`  | `external_call["tcgetattr", Int, Int, Int](fd, ptr)`         |
-| `tcsetattr`  | `external_call["tcsetattr", Int, Int, Int, Int](fd, act, ptr)` |
-| `read`       | `external_call["read", Int, Int, Int, Int](fd, buf, count)`  |
+| C function  | Mojo `external_call` signature (shared by argmojo and limo)    |
+| ----------- | -------------------------------------------------------------- |
+| `tcgetattr` | `external_call["tcgetattr", Int, Int, Int](fd, ptr)`           |
+| `tcsetattr` | `external_call["tcsetattr", Int, Int, Int, Int](fd, act, ptr)` |
+| `read`      | `external_call["read", Int, Int, Int, Int](fd, buf, count)`    |
 
 Because LLVM sees identical declarations from both packages, the merge is clean
 and there is no conflict.
@@ -541,7 +541,7 @@ After any buffer modification (insert, delete, history navigation), we need to
 update what the user sees. The `_redraw()` method does this with a 5-step
 algorithm (same approach as linenoise):
 
-```
+```txt
 Step 1: Write \r (carriage return) — move cursor to column 0
 Step 2: Write the prompt (bold green, to stderr)
 Step 3: Write the entire buffer contents (to stdout)
@@ -628,29 +628,29 @@ Limo intentionally uses descriptive names instead of the traditional C/termios
 abbreviations. If you're reading termios documentation or C source code
 alongside limo, this table maps between the two naming conventions:
 
-| C / termios term   | Limo name                                 | What it means                                                                                                                                                                                 |
-| ------------------ | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fd`               | `file_descriptor`                         | An integer ID that the operating system uses to track an open I/O channel (file, terminal, pipe, socket, etc.). stdin=0, stdout=1, stderr=2.                                                  |
-| `ios` or `termios` | `settings`                                | The `struct termios` data structure that holds all terminal driver configuration (flags, control characters, baud rates).                                                                     |
-| `rc`               | `return_code`                             | The integer returned by a C system call to indicate success (0) or failure (non-zero).                                                                                                        |
-| `c_cc`             | `control_char`                            | An entry in the control characters array (`c_cc[]`) of the termios struct. Each entry configures a different terminal behavior (e.g., VMIN, VTIME). The "cc" stands for "control characters." |
-| `c_iflag`          | input flags                               | Bit flags controlling how incoming bytes are processed (newline translation, flow control, etc.).                                                                                             |
-| `c_oflag`          | output flags                              | Bit flags controlling how outgoing bytes are processed (post-processing, newline mapping).                                                                                                    |
-| `c_cflag`          | control flags                             | Bit flags for serial port control (character size, parity). Mostly historical.                                                                                                                |
-| `c_lflag`          | local flags                               | Bit flags for local terminal behavior (echo, canonical mode, signal generation).                                                                                                              |
-| `TCSAFLUSH`        | *(kept as-is)*                            | A constant passed to `tcsetattr()` meaning "apply settings after draining output and flushing (discarding) unread input."                                                                     |
-| `VMIN`             | *(kept as-is)*                            | Index into `c_cc[]`. Sets the minimum number of bytes for a read to succeed.                                                                                                                  |
-| `VTIME`            | *(kept as-is)*                            | Index into `c_cc[]`. Sets the read timeout in tenths of a second.                                                                                                                             |
-| `cfmakeraw`        | `make_raw()`                              | A C function (and our method) that configures a termios struct for raw mode.                                                                                                                  |
-| `isatty`           | *(kept as-is)*                            | A C function that checks whether a file descriptor refers to a terminal device.                                                                                                               |
-| `ioctl`            | *(kept as-is)*                            | A general-purpose system call for device-specific control operations. Limo uses it as a workaround for tcgetattr/tcsetattr.                                                                   |
-| `TIOCGETA`         | *(kept as-is)*                            | An ioctl request code that means "get terminal attributes" (macOS-specific, equivalent to tcgetattr).                                                                                         |
-| `TIOCSETAF`        | *(kept as-is)*                            | An ioctl request code that means "set terminal attributes with flush" (macOS-specific, equivalent to tcsetattr with TCSAFLUSH).                                                               |
-| `buf`              | `buffer`                                  | The `List[UInt8]` byte array holding the line currently being edited.                                                                                                                         |
-| `orig`             | `original_cursor`                         | The saved cursor position before a multi-character deletion (e.g., kill-word-back).                                                                                                           |
-| `hist_idx`         | `history_index`                           | The current position in the history list during Up/Down navigation. `-1` means "not browsing history."                                                                                        |
-| `b1`, `b2`, `b3`   | `first_byte`, `second_byte`, `third_byte` | The successive bytes of a multi-byte escape sequence (e.g., arrow keys send 3 bytes).                                                                                                         |
-| `CSI`              | *(explained inline)*                      | Control Sequence Introducer — the two-byte prefix `ESC [` (`0x1B 0x5B`) that starts most ANSI escape sequences.                                                                               |
+| C / termios term   | Limo name                                 | What it means                                                                                                                                                                                      |
+| ------------------ | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fd`               | `file_descriptor`                         | An integer ID that the operating system uses to track an open I/O channel (file, terminal, pipe, socket, etc.). stdin=0, stdout=1, stderr=2.                                                       |
+| `ios` or `termios` | `settings`                                | The `struct termios` data structure that holds all terminal driver configuration (flags, control characters, baud rates).                                                                          |
+| `rc`               | `return_code`                             | The integer returned by a C system call to indicate success (0) or failure (non-zero).                                                                                                             |
+| `c_cc`             | `control_char`                            | An entry in the control characters array (`c_cc[]`) of the termios struct. Each entry configures a different terminal behavior (e.g., VMIN, VTIME). The "cc" stands for "control characters."      |
+| `c_iflag`          | input flags                               | Bit flags controlling how incoming bytes are processed (newline translation, flow control, etc.).                                                                                                  |
+| `c_oflag`          | output flags                              | Bit flags controlling how outgoing bytes are processed (post-processing, newline mapping).                                                                                                         |
+| `c_cflag`          | control flags                             | Bit flags for serial port control (character size, parity). Mostly historical.                                                                                                                     |
+| `c_lflag`          | local flags                               | Bit flags for local terminal behavior (echo, canonical mode, signal generation).                                                                                                                   |
+| `TCSAFLUSH`        | *(kept as-is)*                            | A constant passed to `tcsetattr()` meaning "apply settings after draining output and flushing (discarding) unread input."                                                                          |
+| `VMIN`             | *(kept as-is)*                            | Index into `c_cc[]`. Sets the minimum number of bytes for a read to succeed.                                                                                                                       |
+| `VTIME`            | *(kept as-is)*                            | Index into `c_cc[]`. Sets the read timeout in tenths of a second.                                                                                                                                  |
+| `cfmakeraw`        | `make_raw()`                              | A C function (and our method) that configures a termios struct for raw mode.                                                                                                                       |
+| `isatty`           | *(kept as-is)*                            | A C function that checks whether a file descriptor refers to a terminal device.                                                                                                                    |
+| `ioctl`            | *(kept as-is)*                            | A general-purpose system call for device-specific control operations. Not used by limo (which calls `tcgetattr`/`tcsetattr` directly), but relevant background when reading termios documentation. |
+| `TIOCGETA`         | *(kept as-is)*                            | An ioctl request code meaning "get terminal attributes" (macOS-specific, equivalent to `tcgetattr`). Not used by limo.                                                                             |
+| `TIOCSETAF`        | *(kept as-is)*                            | An ioctl request code meaning "set terminal attributes with flush" (macOS-specific, equivalent to `tcsetattr` with `TCSAFLUSH`). Not used by limo.                                                 |
+| `buf`              | `buffer`                                  | The `List[UInt8]` byte array holding the line currently being edited.                                                                                                                              |
+| `orig`             | `original_cursor`                         | The saved cursor position before a multi-character deletion (e.g., kill-word-back).                                                                                                                |
+| `hist_idx`         | `history_index`                           | The current position in the history list during Up/Down navigation. `-1` means "not browsing history."                                                                                             |
+| `b1`, `b2`, `b3`   | `first_byte`, `second_byte`, `third_byte` | The successive bytes of a multi-byte escape sequence (e.g., arrow keys send 3 bytes).                                                                                                              |
+| `CSI`              | *(explained inline)*                      | Control Sequence Introducer — the two-byte prefix `ESC [` (`0x1B 0x5B`) that starts most ANSI escape sequences.                                                                                    |
 
 ## Phase Roadmap
 
