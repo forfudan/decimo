@@ -464,12 +464,12 @@ def _print_help():
     (2-char indent + 28-char command column).
     """
     # Colour aliases — zero visible width, used for styling only.
-    comptime B = BOLD
-    comptime R = RESET
     comptime H = BOLD + CYAN  # section Heading
     comptime L = BOLD + GREEN  # Long name / command
     comptime S = BOLD + YELLOW  # Short name / alias
     comptime V = MAGENTA  # Value placeholder
+    comptime R = RESET  # Reset
+    comptime B = BOLD  # Bold
 
     var w = stderr
 
