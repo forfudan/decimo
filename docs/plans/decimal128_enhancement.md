@@ -191,7 +191,7 @@ So `Decimal128.NAN().is_nan()` returns False.
 Bug B — `is_zero()` returns True for NaN and Infinity:
 
 ```mojo
-fn is_zero(self) -> Bool:
+def is_zero(self) -> Bool:
     return self.low == 0 and self.mid == 0 and self.high == 0
 ```
 
@@ -263,7 +263,7 @@ I should verify `is_one()` handles all representations of 1: `1` (coef=1, scale=
 File: `utility.mojo`
 
 ```mojo
-fn number_of_bits(n: UInt128) -> Int:
+def number_of_bits(n: UInt128) -> Int:
     var count = 0
     var x = n
     while x > 0:

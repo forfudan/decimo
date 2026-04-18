@@ -581,7 +581,7 @@ for 50–10000 digits improved from 0.54× to **0.91×** (+69%).
 `%=`, `<<=`, `>>=`, `&=`, `|=`, `^=`) created a new BigInt2 and replaced `self`:
 
 ```mojo
-fn __iadd__(mut self, other: Self):
+def __iadd__(mut self, other: Self):
     self = arithmetics.add(self, other)  # allocates new BigInt2
 ```
 

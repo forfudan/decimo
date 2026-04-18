@@ -105,7 +105,7 @@ from decimo import *
 from decimo.prelude import *
 
 
-fn main() raises:
+def main() raises:
     var a = Decimal("123456789.123456789")
     var b = Decimal(
         "1234.56789"
@@ -184,7 +184,7 @@ fn main() raises:
 from decimo.prelude import *
 
 
-fn main() raises:
+def main() raises:
     # === 構造 ===
     var a = BInt("12345678901234567890")  # 從字符串
     var b = BInt(12345)  # 從整數
@@ -236,7 +236,7 @@ fn main() raises:
 ```mojo
 from decimo.prelude import *
 
-fn main() raises:
+def main() raises:
     # === 構造 ===
     var a = Dec128("123.45")                         # 從字符串
     var b = Dec128(123)                              # 從整數

@@ -57,7 +57,7 @@ from decimo.toml import parse_string, parse_file
 ```mojo
 from decimo.toml import parse_string, parse_file
 
-fn main() raises:
+def main() raises:
     var doc = parse_string("""
         title = "My App"
         version = 42
@@ -88,7 +88,7 @@ fn main() raises:
 ```mojo
 from decimo.toml import parse_string, parse_file
 
-fn main() raises:
+def main() raises:
     var doc = parse_file("config.toml")
     var db = doc.get_table("database")
     print(db["name"].as_string())           # mydb
@@ -99,7 +99,7 @@ fn main() raises:
 ```mojo
 from decimo.toml import parse_string, parse_file
 
-fn main() raises:
+def main() raises:
     var doc = parse_string("""
         fruit.name = "apple"
         fruit.color = "red"
@@ -131,7 +131,7 @@ fn main() raises:
 ```mojo
 from decimo.toml import parse_string, parse_file
 
-fn main() raises:
+def main() raises:
     var doc = parse_string("""
         point = {x = 1, y = 2}
         animal = {type.name = "pug"}
@@ -152,7 +152,7 @@ fn main() raises:
 ```mojo
 from decimo.toml import parse_string, parse_file
 
-fn main() raises:
+def main() raises:
     var doc = parse_string("""
         colors = [
             "red",
@@ -186,7 +186,7 @@ fn main() raises:
 ```mojo
 from decimo.toml import parse_string, parse_file
 
-fn main() raises:
+def main() raises:
     var doc = parse_string("""
         hex = 0xDEADBEEF
         oct = 0o755

@@ -780,7 +780,7 @@ else:
 
 ```mojo
 # Use the C wrapper's availability check
-fn _check_gmp_available() -> Bool:
+def _check_gmp_available() -> Bool:
     """Call gmpw_available() which returns 1 if GMP is linked."""
     try:
         var result = external_call["gmpw_available", Int32]()

@@ -87,13 +87,13 @@ comptime Float = BigFloat
 """Alias for `BigFloat`."""
 
 
-fn _dps_to_bits(precision: Int) -> Int:
+def _dps_to_bits(precision: Int) -> Int:
     """Converts decimal digit precision to MPFR bit precision with guard bits.
     """
     return precision * _BITS_PER_DIGIT + _GUARD_BITS
 
 
-fn _read_c_string(address: Int) -> String:
+def _read_c_string(address: Int) -> String:
     """Reads a null-terminated C string at the given raw address into a Mojo
     String.
 
@@ -221,7 +221,7 @@ struct BigFloat(Comparable, Movable, Writable):
         self.handle = take.handle
         self.precision = take.precision
 
-    fn __del__(deinit self):
+    def __del__(deinit self):
         """Frees the MPFR handle."""
         if self.handle >= 0:
             mpfrw_clear(self.handle)
