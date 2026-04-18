@@ -24,6 +24,9 @@ from decimo import Decimal, BInt, RoundingMode
 ```
 """
 
+comptime DECIMO_VERSION = "v0.10.0"
+"""Version of the Decimo library."""
+
 # Core types
 from .decimal128.decimal128 import Decimal128, Dec128
 from .bigint.bigint import BigInt, BInt, Integer

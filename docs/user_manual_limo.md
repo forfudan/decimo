@@ -429,7 +429,7 @@ of 18 named actions. This separates "what key was pressed" from "what should
 happen" — for example, both the Left arrow key (ESC `[` `D`) and Ctrl+B (`0x02`)
 map to the same `_ACT_LEFT` action.
 
-```
+```txt
 _ACT_INSERT          = 0    # Printable character — insert into buffer
 _ACT_ACCEPT          = 1    # Enter — accept the line
 _ACT_EOF             = 2    # Ctrl-D on empty line — end of file
@@ -484,7 +484,7 @@ This is the core function. Here's the step-by-step flow:
    - `history_index: Int = -1` — `-1` means "not browsing history right now."
    - `saved_line: String = ""` — saves the in-progress line when the user
      starts browsing history (so pressing Down all the way restores it).
-3. **Draw the initial prompt** — writes `decimo> ` in bold green to stderr.
+3. **Draw the initial prompt** — writes `decimo>` in bold green to stderr.
 4. **Main loop — repeat until done:**
    1. Call `read_byte()` to get one byte from the keyboard.
    2. **Classify** the byte into an action (see the action table above). If the

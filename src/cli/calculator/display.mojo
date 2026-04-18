@@ -30,6 +30,8 @@ in an expression.  Modelled after ArgMojo's colour system.
 """
 
 from std.sys import stderr
+from std.sys.defines import MOJO_VERSION
+from decimo import DECIMO_VERSION
 
 # == ANSI colour codes ========================================================
 
@@ -164,6 +166,64 @@ def write_prompt(prompt: String):
     """
     var styled = BOLD + GREEN + prompt + RESET
     print(styled, end="", file=stderr, flush=True)
+
+
+# === About / Info ============================================================
+
+
+def format_about(use_color: Bool = True) -> String:
+    """Returns a formatted about/info string.
+
+    Used by both ``--about`` (CLI, printed to stdout) and ``:about``
+    (REPL, printed to stderr).  When *use_color* is False the output
+    contains no ANSI escape codes, suitable for piped/redirected output.
+
+    Args:
+        use_color: Whether to include ANSI colour codes.  Defaults to True.
+    """
+    var title_color = BOLD + ORANGE if use_color else ""
+    var label_color = BOLD + MAGENTA if use_color else ""
+    var reset = RESET if use_color else ""
+    return (
+        title_color
+        + "Decimo — arbitrary-precision calculator 🔥"
+        + reset
+        + "\n"
+        + label_color
+        + "  Version       "
+        + reset
+        + DECIMO_VERSION
+        + "\n"
+        + label_color
+        + "  Author        "
+        + reset
+        + "ZHU Yuhao (朱宇浩) <dr.yuhao.zhu@outlook.com>"
+        + "\n"
+        + label_color
+        + "  License       "
+        + reset
+        + "Apache-2.0"
+        + "\n"
+        + label_color
+        + "  Mojo          "
+        + reset
+        + "v"
+        + String(MOJO_VERSION.major)
+        + "."
+        + String(MOJO_VERSION.minor)
+        + "."
+        + String(MOJO_VERSION.patch)
+        + "\n"
+        + label_color
+        + "  GitHub        "
+        + reset
+        + "https://github.com/forfudan/decimo"
+        + "\n"
+        + label_color
+        + "  Documentation "
+        + reset
+        + "https://github.com/forfudan/decimo/blob/main/docs/user_manual.md"
+    )
 
 
 # == Internal helpers =========================================================

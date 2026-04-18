@@ -54,6 +54,7 @@ from .engine import (
 from .display import print_error, print_warning, print_hint, write_prompt
 from .io import (
     stdin_is_tty,
+    stdout_is_tty,
     read_line,
     read_stdin,
     split_into_lines,

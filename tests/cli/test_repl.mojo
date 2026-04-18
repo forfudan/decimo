@@ -1,6 +1,7 @@
 """Test REPL helpers: _parse_assignment, _validate_variable_name,
 _is_meta_command, _strip_colon_prefix, _is_help_command,
-_is_vars_command, _is_quit_command."""
+_is_vars_command, _is_about_command, _is_version_command,
+_is_quit_command."""
 
 from std import testing
 
@@ -11,6 +12,8 @@ from calculator.repl import (
     _strip_colon_prefix,
     _is_help_command,
     _is_vars_command,
+    _is_about_command,
+    _is_version_command,
     _is_quit_command,
 )
 
@@ -228,8 +231,8 @@ def test_help_command_no_match() raises:
 
 
 def test_vars_command_v() raises:
-    """`v` matches."""
-    testing.assert_true(_is_vars_command("v"), "v")
+    """`v` no longer matches vars (now used for :version)."""
+    testing.assert_false(_is_vars_command("v"), "v")
 
 
 def test_vars_command_vars() raises:
@@ -275,6 +278,51 @@ def test_quit_command_exit() raises:
 def test_quit_command_no_match() raises:
     """`bye` does not match."""
     testing.assert_false(_is_quit_command("bye"), "bye")
+
+
+# ===----------------------------------------------------------------------=== #
+# Tests: _is_about_command
+# ===----------------------------------------------------------------------=== #
+
+
+def test_about_command_about() raises:
+    """`about` matches."""
+    testing.assert_true(_is_about_command("about"), "about")
+
+
+def test_about_command_a() raises:
+    """`a` matches."""
+    testing.assert_true(_is_about_command("a"), "a")
+
+
+def test_about_command_info() raises:
+    """`info` matches."""
+    testing.assert_true(_is_about_command("info"), "info")
+
+
+def test_about_command_no_match() raises:
+    """`information` does not match."""
+    testing.assert_false(_is_about_command("information"), "information")
+
+
+# ===----------------------------------------------------------------------=== #
+# Tests: _is_version_command
+# ===----------------------------------------------------------------------=== #
+
+
+def test_version_command_version() raises:
+    """`version` matches."""
+    testing.assert_true(_is_version_command("version"), "version")
+
+
+def test_version_command_v() raises:
+    """`v` matches."""
+    testing.assert_true(_is_version_command("v"), "v")
+
+
+def test_version_command_no_match() raises:
+    """`ver` does not match."""
+    testing.assert_false(_is_version_command("ver"), "ver")
 
 
 # ===----------------------------------------------------------------------=== #
