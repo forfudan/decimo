@@ -36,10 +36,11 @@ from std.collections import Dict
 
 from decimo import Decimal
 from decimo.rounding_mode import RoundingMode
+from limo import LineEditor
 from .display import BOLD, RESET, YELLOW, CYAN, GREEN, MAGENTA
 from .display import write_prompt, print_error
 from .engine import evaluate_and_return
-from .io import read_line, strip, is_comment_or_blank
+from .io import strip, is_comment_or_blank
 from .settings import Settings, parse_settings, split_inline_settings, to_lower
 from .tokenizer import (
     is_alpha_or_underscore,
@@ -68,9 +69,9 @@ def run_repl(
     - User-defined variables via `name = expr` assignment syntax.
 
     Supports:
-    - Meta-commands (4.6): lines starting with `:` change session settings
+    - Meta-commands: lines starting with `:` change session settings
       globally.  Example: `:p 100 s r down`.
-    - Inline temp settings (4.8): append `:settings` to an expression for
+    - Inline temp settings: append `:settings` to an expression for
       one-off overrides.  Example: `sqrt(2):p 100`.
 
     Args:
@@ -94,10 +95,10 @@ def run_repl(
     var variables = Dict[String, Decimal]()
     variables["ans"] = Decimal()  # "0" by default, updated after each eval
 
-    while True:
-        write_prompt("decimo> ")
+    var editor = LineEditor()
 
-        var maybe_line = read_line()
+    while True:
+        var maybe_line = editor.read_line("decimo> ")
         if not maybe_line:
             # EOF (Ctrl-D) — exit gracefully
             print(file=stderr)  # newline after the prompt
@@ -160,7 +161,7 @@ def run_repl(
                 print_error(String(e))
             continue
 
-        # == Check for inline temp settings (4.8): `expr:settings` ========
+        # == Check for inline temp settings: `expr:settings` ========
         var inline = split_inline_settings(line)
         if inline:
             var expr = inline.value()[0]
@@ -377,12 +378,12 @@ fn _is_quit_command(cmd: String) -> Bool:
 
 
 # ===----------------------------------------------------------------------=== #
-# Meta-command display helpers (4.9, 4.10, 4.11)
+# Meta-command display helpers
 # ===----------------------------------------------------------------------=== #
 
 
 def _print_settings(settings: Settings):
-    """Display all current settings to stderr (4.9)."""
+    """Display all current settings to stderr."""
     print(
         BOLD + CYAN + "Current settings" + RESET + BOLD + ":" + RESET,
         file=stderr,
@@ -409,7 +410,7 @@ def _print_settings(settings: Settings):
 
 
 def _print_variables(variables: Dict[String, Decimal]) raises:
-    """Display all user-defined variables and their values to stderr (4.10)."""
+    """Display all user-defined variables and their values to stderr."""
     var count = len(variables)
     if count == 0:
         print("No variables defined.", file=stderr)

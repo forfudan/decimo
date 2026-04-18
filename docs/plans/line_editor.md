@@ -1,6 +1,6 @@
 # Limo — Line Editor for Mojo 🔥
 
-> Date of initial planning: 2025-07-15
+> Date of initial planning: 2026-04-15
 > Author: Yuhao Zhu
 > Scope: A lightweight, reusable line-editing library for Mojo REPL applications
 > Location: `src/cli/limo/` (internal package, parallel to `src/cli/calculator/`)
@@ -258,27 +258,27 @@ The essential features that make the REPL usable. After this phase, the decimo R
 
 | #    | Task                                                   | Status | Notes                                                              |
 | ---- | ------------------------------------------------------ | :----: | ------------------------------------------------------------------ |
-| 1.1  | Create `src/cli/limo/` package structure               |   ✗    | `__init__.mojo`, `terminal.mojo`, `line_editor.mojo`               |
-| 1.2  | Port `TermIOS` struct from termo                       |   ✗    | macOS arm64 layout (72 bytes); adapt to current Mojo version       |
-| 1.3  | Port `enable_raw_mode` / `disable_raw_mode` from termo |   ✗    | Save/restore via `tcgetattr`/`tcsetattr`                           |
-| 1.4  | Port `RawModeGuard` (RAII cleanup) from termo          |   ✗    | Ensures terminal is restored even on panic                         |
-| 1.5  | Implement `read_byte()` (blocking, stdin)              |   ✗    | `external_call["read"]` on fd 0                                    |
-| 1.6  | Implement escape sequence detection                    |   ✗    | ESC `[` prefix → parse arrow/Home/End/Delete sequences             |
-| 1.7  | Implement ANSI cursor helpers                          |   ✗    | `cursor_move_left`, `cursor_move_right`, `clear_line_from_cursor`  |
-| 1.8  | Implement `LineEditor` struct with buffer + cursor     |   ✗    | `List[UInt8]` buffer, `Int` cursor pos, `Int` prompt display width |
-| 1.9  | Character insertion at cursor position                 |   ✗    | Insert byte(s), advance cursor, redraw from cursor to end          |
-| 1.10 | Backspace and Delete                                   |   ✗    | Remove byte at/before cursor, redraw                               |
-| 1.11 | Left/Right arrow cursor movement                       |   ✗    | Bounds checking, ANSI cursor move                                  |
-| 1.12 | Home/End (and Ctrl+A/Ctrl+E)                           |   ✗    | Jump to column 0 or end of buffer                                  |
-| 1.13 | Enter (accept line) and Ctrl+C (discard)               |   ✗    | Return buffer as String; add to history if non-empty               |
-| 1.14 | Ctrl+D (EOF on empty line, delete otherwise)           |   ✗    | Match readline behavior                                            |
-| 1.15 | Ctrl+K (kill to end) and Ctrl+U (kill to beginning)    |   ✗    | Truncate buffer; redraw                                            |
-| 1.16 | Ctrl+W (delete word backward)                          |   ✗    | Delete backward to previous whitespace boundary                    |
-| 1.17 | Ctrl+L (clear screen and redraw prompt + line)         |   ✗    | Write ESC `[` `2J` ESC `[` `H`, then redraw                        |
-| 1.18 | History buffer (`List[String]`, configurable max size) |   ✗    | FIFO with eviction; default max 1000 entries                       |
-| 1.19 | Up/Down arrow history navigation                       |   ✗    | Save current line, navigate history, restore on return to bottom   |
-| 1.20 | Line redraw function                                   |   ✗    | Clear line → write prompt → write buffer → position cursor         |
-| 1.21 | Integrate into decimo REPL (`repl.mojo`)               |   ✗    | Replace `write_prompt` + `read_line` with `editor.read_line`       |
+| 1.1  | Create `src/cli/limo/` package structure               |   ✓    | `__init__.mojo`, `terminal.mojo`, `line_editor.mojo`               |
+| 1.2  | Port `TermIOS` struct from termo                       |   ✓    | macOS arm64 layout (72 bytes); adapt to current Mojo version       |
+| 1.3  | Port `enable_raw_mode` / `disable_raw_mode` from termo |   ✓    | Uses tcgetattr/tcsetattr with argmojo-aligned `Int` signatures     |
+| 1.4  | Port `RawModeGuard` (RAII cleanup) from termo          |   —    | Skipped: manual cleanup with single exit point instead             |
+| 1.5  | Implement `read_byte()` (blocking, stdin)              |   ✓    | Uses `read(2)` with argmojo-aligned `Int` signatures               |
+| 1.6  | Implement escape sequence detection                    |   ✓    | ESC `[` prefix → parse arrow/Home/End/Delete sequences             |
+| 1.7  | Implement ANSI cursor helpers                          |   ✓    | `cursor_move_left`, `cursor_move_right`, `clear_line_from_cursor`  |
+| 1.8  | Implement `LineEditor` struct with buffer + cursor     |   ✓    | `List[UInt8]` buffer, `Int` cursor pos, `Int` prompt display width |
+| 1.9  | Character insertion at cursor position                 |   ✓    | Insert byte(s), advance cursor, redraw from cursor to end          |
+| 1.10 | Backspace and Delete                                   |   ✓    | Remove byte at/before cursor, redraw                               |
+| 1.11 | Left/Right arrow cursor movement                       |   ✓    | Bounds checking, ANSI cursor move                                  |
+| 1.12 | Home/End (and Ctrl+A/Ctrl+E)                           |   ✓    | Jump to column 0 or end of buffer                                  |
+| 1.13 | Enter (accept line) and Ctrl+C (discard)               |   ✓    | Return buffer as String; add to history if non-empty               |
+| 1.14 | Ctrl+D (EOF on empty line, delete otherwise)           |   ✓    | Match readline behavior                                            |
+| 1.15 | Ctrl+K (kill to end) and Ctrl+U (kill to beginning)    |   ✓    | Truncate buffer; redraw                                            |
+| 1.16 | Ctrl+W (delete word backward)                          |   ✓    | Delete backward to previous whitespace boundary                    |
+| 1.17 | Ctrl+L (clear screen and redraw prompt + line)         |   ✓    | Write ESC `[` `2J` ESC `[` `H`, then redraw                        |
+| 1.18 | History buffer (`List[String]`, configurable max size) |   ✓    | FIFO with eviction; default max 1000 entries                       |
+| 1.19 | Up/Down arrow history navigation                       |   ✓    | Save current line, navigate history, restore on return to bottom   |
+| 1.20 | Line redraw function                                   |   ✓    | Clear line → write prompt → write buffer → position cursor         |
+| 1.21 | Integrate into decimo REPL (`repl.mojo`)               |   ✓    | Replace `write_prompt` + `read_line` with `editor.read_line`       |
 | 1.22 | Unit tests for `LineEditor`                            |   ✗    | Buffer manipulation, cursor movement, history navigation           |
 | 1.23 | Manual integration testing                             |   ✗    | Run `decimo` REPL and verify all keybindings work                  |
 
@@ -291,7 +291,7 @@ Quality-of-life improvements and robustness.
 | #    | Task                                    | Status | Notes                                                   |
 | ---- | --------------------------------------- | :----: | ------------------------------------------------------- |
 | 2.1  | History persistence (save/load to file) |   ✗    | `~/.decimo_history` or configurable path                |
-| 2.2  | Duplicate history suppression           |   ✗    | Don't add consecutive duplicate lines                   |
+| 2.2  | Duplicate history suppression           |   ✓    | Included in Phase 1: consecutive duplicate suppression  |
 | 2.3  | Ctrl+T (transpose characters)           |   ✗    | Swap char before cursor with char at cursor             |
 | 2.4  | Alt+B / Alt+F (word movement)           |   ✗    | Move cursor by word boundaries                          |
 | 2.5  | Alt+D (delete word forward)             |   ✗    | Delete from cursor to next word boundary                |
@@ -317,6 +317,20 @@ Features that would make limo competitive as a standalone library.
 | 3.6 | Extract to standalone repo `forfudan/limo`  |   ✗    | Own pixi.toml, tests, README, conda-forge release                  |
 
 **Milestone:** Feature-complete line editor suitable for general-purpose use.
+
+### Future: Re-evaluate FFI Signature Alignment
+
+Limo currently uses `Int`-only signatures for `tcgetattr`, `tcsetattr`, and `read` to match argmojo's `external_call` declarations and avoid LLVM IR conflicts (see [user_manual_limo.md](../user_manual_limo.md), "FFI Signature Convention"). This works but is a workaround — the root cause is that Mojo's `external_call` produces flat C-level symbols whose type signatures must be globally consistent across all packages.
+
+As of Mojo nightly v0.26.3, a new `abi("C")` function effect has been added for declaring C calling convention on function definitions and function pointer types. Additionally, a bug fix now correctly applies platform ABI coercion (System V AMD64 / AAPCS on ARM64) when lowering external calls. These changes improve C interop but do not yet address the `external_call` signature conflict directly — `external_call` still produces global LLVM declarations that must match.
+
+**Check periodically** (e.g., with each Mojo release) whether:
+
+- [ ] `external_call` gains namespace-scoped or module-local declarations, allowing different packages to declare different signatures for the same C function without conflict.
+- [ ] A higher-level C FFI mechanism (e.g., `DLHandle.get_function` with `abi("C")`) becomes the recommended way to call POSIX functions, making `external_call` alignment unnecessary.
+- [ ] The Mojo team explicitly documents whether same-name `external_call` conflicts are a bug to be fixed or a design constraint to live with.
+
+If any of these are resolved, limo (and argmojo) can adopt proper C types (`Int32` for fd, `UnsafePointer` for buffers) instead of the current `Int`-everywhere convention.
 
 ## 5. Design Decisions
 

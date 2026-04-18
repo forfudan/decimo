@@ -240,7 +240,7 @@ def format_settings_confirmation(settings: Settings) -> String:
 
 
 # ===----------------------------------------------------------------------=== #
-# Inline settings detection (4.8)
+# Inline settings detection
 # ===----------------------------------------------------------------------=== #
 
 
