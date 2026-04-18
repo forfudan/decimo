@@ -37,8 +37,9 @@ from std.collections import Dict
 from decimo import Decimal
 from decimo.rounding_mode import RoundingMode
 from limo import LineEditor
+from decimo import DECIMO_VERSION
 from .display import BOLD, RESET, YELLOW, CYAN, GREEN, MAGENTA
-from .display import print_error, format_about, DECIMO_VERSION
+from .display import print_error, format_about
 from .engine import evaluate_and_return
 from .io import strip, is_comment_or_blank
 from .settings import Settings, parse_settings, split_inline_settings, to_lower
@@ -464,6 +465,7 @@ def _print_help():
     (2-char indent + 28-char command column).
     """
     # Colour aliases — zero visible width, used for styling only.
+    comptime TITLE_COLOR = BOLD + YELLOW  # Title and important highlights
     comptime HEADING_COLOR = BOLD + CYAN  # section Heading
     comptime LONG_NAME_COLOR = BOLD + GREEN  # Long name / command
     comptime SHORT_NAME_COLOR = BOLD + YELLOW  # Short name / alias
@@ -473,13 +475,7 @@ def _print_help():
 
     # --- title ---
     print(
-        SHORT_NAME_COLOR
-        + "Decimo REPL help"
-        + RESET
-        + BOLD
-        + ":"
-        + RESET
-        + "\n",
+        TITLE_COLOR + "Decimo REPL help" + RESET + BOLD + ":" + RESET + "\n",
         file=w,
     )
 

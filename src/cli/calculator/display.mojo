@@ -171,40 +171,42 @@ def write_prompt(prompt: String):
 # === About / Info ============================================================
 
 
-def format_about() -> String:
-    """Returns a formatted about/info string with ANSI colours.
+def format_about(use_color: Bool = True) -> String:
+    """Returns a formatted about/info string.
 
     Used by both ``--about`` (CLI, printed to stdout) and ``:about``
-    (REPL, printed to stderr).
+    (REPL, printed to stderr).  When *use_color* is False the output
+    contains no ANSI escape codes, suitable for piped/redirected output.
+
+    Args:
+        use_color: Whether to include ANSI colour codes.  Defaults to True.
     """
-    # Colour aliases.
-    comptime TITLE_COLOR = BOLD + ORANGE  # Title/label colour (orange theme)
-    comptime LABEL_COLOR = BOLD + MAGENTA  # Field label colour (magenta theme)
-    # Values use the terminal's default foreground (after RESET) so they
-    # remain readable on both dark and light terminal backgrounds.
+    var title_color = BOLD + ORANGE if use_color else ""
+    var label_color = BOLD + MAGENTA if use_color else ""
+    var reset = RESET if use_color else ""
     return (
-        TITLE_COLOR
+        title_color
         + "Decimo — arbitrary-precision calculator 🔥"
-        + RESET
+        + reset
         + "\n"
-        + LABEL_COLOR
+        + label_color
         + "  Version       "
-        + RESET
+        + reset
         + DECIMO_VERSION
         + "\n"
-        + LABEL_COLOR
+        + label_color
         + "  Author        "
-        + RESET
+        + reset
         + "ZHU Yuhao (朱宇浩) <dr.yuhao.zhu@outlook.com>"
         + "\n"
-        + LABEL_COLOR
+        + label_color
         + "  License       "
-        + RESET
+        + reset
         + "Apache-2.0"
         + "\n"
-        + LABEL_COLOR
+        + label_color
         + "  Mojo          "
-        + RESET
+        + reset
         + "v"
         + String(MOJO_VERSION.major)
         + "."
@@ -212,14 +214,14 @@ def format_about() -> String:
         + "."
         + String(MOJO_VERSION.patch)
         + "\n"
-        + LABEL_COLOR
+        + label_color
         + "  GitHub        "
-        + RESET
+        + reset
         + "https://github.com/forfudan/decimo"
         + "\n"
-        + LABEL_COLOR
+        + label_color
         + "  Documentation "
-        + RESET
+        + reset
         + "https://github.com/forfudan/decimo/blob/main/docs/user_manual.md"
     )
 

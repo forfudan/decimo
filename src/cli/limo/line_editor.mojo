@@ -191,8 +191,7 @@ struct LineEditor(Movable):
                 done = True
 
             elif action == _ACT_CANCEL:
-                write_stderr("^C")
-                write_stdout("\r\n")
+                write_stderr("^C\r\n")
                 result = String("")
                 done = True
 

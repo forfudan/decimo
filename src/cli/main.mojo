@@ -20,6 +20,7 @@ from calculator.display import print_error, format_about
 from calculator.engine import evaluate_and_print
 from calculator.io import (
     stdin_is_tty,
+    stdout_is_tty,
     read_stdin,
     split_into_lines,
     filter_expression_lines,
@@ -153,7 +154,7 @@ def _run() raises:
 
     # ── About / Info ───────────────────────────────────────────────────────
     if args.about.value or args.info.value:
-        print(format_about())
+        print(format_about(use_color=stdout_is_tty()))
         return
 
     # ── Mode detection ─────────────────────────────────────────────────────
