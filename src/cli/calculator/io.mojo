@@ -44,6 +44,16 @@ def stdin_is_tty() -> Bool:
     return external_call["isatty", Int32](Int32(0)) != 0
 
 
+def stdout_is_tty() -> Bool:
+    """Returns True if stdout is connected to a terminal (TTY),
+    False if it is a pipe or redirected file.
+
+    Returns:
+        True if stdout is a TTY, False otherwise.
+    """
+    return external_call["isatty", Int32](Int32(1)) != 0
+
+
 # ===----------------------------------------------------------------------=== #
 # stdin reading
 # ===----------------------------------------------------------------------=== #
