@@ -82,7 +82,7 @@ struct Settings(Copyable, Movable, Writable):
     var rounding_mode: RoundingMode
     """The rounding mode for final results."""
 
-    fn __init__(
+    def __init__(
         out self,
         precision: Int = 50,
         scientific: Bool = False,
@@ -108,7 +108,7 @@ struct Settings(Copyable, Movable, Writable):
         self.delimiter = delimiter
         self.rounding_mode = rounding_mode
 
-    fn write_to[W: Writer](self, mut writer: W):
+    def write_to[W: Writer](self, mut writer: W):
         """Writes a human-readable summary of the settings.
 
         Parameters:
@@ -240,7 +240,7 @@ def format_settings_confirmation(settings: Settings) -> String:
 
 
 # ===----------------------------------------------------------------------=== #
-# Inline settings detection (4.8)
+# Inline settings detection
 # ===----------------------------------------------------------------------=== #
 
 
@@ -312,7 +312,7 @@ def split_inline_settings(
 # ===----------------------------------------------------------------------=== #
 
 
-fn _is_integer_name(token: String) -> Bool:
+def _is_integer_name(token: String) -> Bool:
     """Match standalone integer tokens for precision setting.
 
     Returns True if the token is a non-empty string of ASCII digits.
@@ -326,17 +326,17 @@ fn _is_integer_name(token: String) -> Bool:
     return True
 
 
-fn _is_precision_name(token: String) -> Bool:
+def _is_precision_name(token: String) -> Bool:
     """Match: precision, p."""
     return token == "precision" or token == "p"
 
 
-fn _is_delimiter_name(token: String) -> Bool:
+def _is_delimiter_name(token: String) -> Bool:
     """Match: delimiter."""
     return token == "delimiter"
 
 
-fn _is_rounding_mode_name(token: String) -> Bool:
+def _is_rounding_mode_name(token: String) -> Bool:
     """Match: rounding-mode, r, rm, round, rounding_mode."""
     return (
         token == "rounding-mode"
@@ -347,22 +347,22 @@ fn _is_rounding_mode_name(token: String) -> Bool:
     )
 
 
-fn _is_scientific_name(token: String) -> Bool:
+def _is_scientific_name(token: String) -> Bool:
     """Match: scientific, s, sci."""
     return token == "scientific" or token == "s" or token == "sci"
 
 
-fn _is_engineering_name(token: String) -> Bool:
+def _is_engineering_name(token: String) -> Bool:
     """Match: engineering, e, eng."""
     return token == "engineering" or token == "e" or token == "eng"
 
 
-fn _is_pad_name(token: String) -> Bool:
+def _is_pad_name(token: String) -> Bool:
     """Match: pad."""
     return token == "pad"
 
 
-fn _is_standalone_rounding_mode(token: String) -> Bool:
+def _is_standalone_rounding_mode(token: String) -> Bool:
     """Match standalone rounding mode shortcuts: he, hu, hd, u, d, c, f, b,
     and their full names."""
     return (
@@ -450,7 +450,7 @@ def _parse_rounding_mode(s: String) raises -> RoundingMode:
 # ===----------------------------------------------------------------------=== #
 
 
-fn _split_whitespace(s: String) -> List[String]:
+def _split_whitespace(s: String) -> List[String]:
     """Split a string by whitespace, returning non-empty tokens."""
     var result = List[String]()
     var bytes = StringSlice(s).as_bytes()
@@ -476,7 +476,7 @@ fn _split_whitespace(s: String) -> List[String]:
     return result^
 
 
-fn to_lower(s: String) -> String:
+def to_lower(s: String) -> String:
     """Convert a string to lowercase (ASCII only).
 
     Args:

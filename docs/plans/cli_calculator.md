@@ -388,8 +388,8 @@ decimo> exit
 | 4.15 | Error recovery (don't crash session)       |   ✓    | Catch exceptions per-line, display error, continue loop                     |
 | 4.16 | `:100` in REPL settings to set precision   |   ✓    | Shortcut of `:p 100`. Any all-digit token is treated as precision           |
 | 4.17 | Add `--about`/`--info` flag and in REPL    |   ✗    | Display version, build info, links to docs/repo, etc, for both CLI and REPL |
-| 4.18 | Line editing (left/right, backspace, del)  |   ✗    | Implemented via `limo` package; see `docs/plans/line_editor.md`             |
-| 4.19 | Input history (up/down arrow navigation)   |   ✗    | Implemented via `limo` package; see `docs/plans/line_editor.md`             |
+| 4.18 | Line editing (left/right, backspace, del)  |   ✓    | Implemented via `limo` package; see `docs/plans/line_editor.md`             |
+| 4.19 | Input history (up/down arrow navigation)   |   ✓    | Implemented via `limo` package; see `docs/plans/line_editor.md`             |
 
 將所有的設定放在一行，這個靈感主要來自於 argmojo，其實就是把 CLI 的選項直接放到了 REPL 的表達式行中。這個想法我個人是很喜歡的，因為它簡潔明瞭，避免了多行設定的冗長。
 
@@ -405,6 +405,7 @@ decimo> exit
 | 5.2 | Full-width to half-width normalization      |   ✗    | Pre-tokenizer normalization step to convert full-width chars to ASCII equivalents |
 | 5.3 | Build and distribute as single binary       |   ✗    | Defer until REPL is stable; Homebrew, GitHub Releases, `curl \| sh` installer     |
 | 5.4 | Response files (`@expressions.txt`)         |   ✗    | Blocked on Mojo compiler bug; `cmd.response_file_prefix("@")` ready when fixed    |
+| 5.5 | Re-evaluate limo/argmojo FFI alignment      |   ✗    | Check if Mojo resolves `external_call` signature conflicts; see `line_editor.md`  |
 
 ## Design Decisions
 

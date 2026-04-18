@@ -1,5 +1,5 @@
-"""Tests for the settings parser (4.7), meta-command detection, and inline
-settings splitting (4.8)."""
+"""Tests for the settings parser, meta-command detection, and inline
+settings splitting."""
 
 from std import testing
 
@@ -437,7 +437,7 @@ def test_standalone_precision_after_flag() raises:
 
 
 # ===----------------------------------------------------------------------=== #
-# Tests: parse_settings — multi-token (4.7 one-liner)
+# Tests: parse_settings — multi-token (one-liner)
 # ===----------------------------------------------------------------------=== #
 
 
@@ -498,7 +498,7 @@ def test_parse_whitespace_only() raises:
 
 
 # ===----------------------------------------------------------------------=== #
-# Tests: split_inline_settings (4.8)
+# Tests: split_inline_settings
 # ===----------------------------------------------------------------------=== #
 
 
@@ -552,7 +552,7 @@ def test_inline_colon_inside_parens_ignored() raises:
 
 
 # ===----------------------------------------------------------------------=== #
-# Tests: to_lower (4.13)
+# Tests: to_lower
 # ===----------------------------------------------------------------------=== #
 
 

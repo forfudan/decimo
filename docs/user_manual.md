@@ -72,7 +72,7 @@ Then run `pixi install`.
 from decimo.prelude import *
 
 
-fn main() raises:
+def main() raises:
     # Arbitrary-precision integer
     var a = BInt("12345678901234567890")
     var b = BInt(42)
