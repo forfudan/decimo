@@ -44,6 +44,7 @@ run_bigint()      { run_mojo_suite bigint; }
 run_biguint()     { run_mojo_suite biguint; }
 run_bigint10()    { run_mojo_suite bigint10; }
 run_decimal128()  { run_mojo_suite decimal128; }
+run_rational()    { run_mojo_suite rational; }
 run_toml()        { run_mojo_suite toml; }
 
 run_bigfloat() {
@@ -289,6 +290,7 @@ run_decimo() {
     run_biguint
     run_bigint10
     run_decimal128
+    run_rational
 }
 
 run_all() {
@@ -308,6 +310,7 @@ resolve() {
         biguint|buint|uint)       echo "run_biguint" ;;
         bigint10|bint10|int10)    echo "run_bigint10" ;;
         decimal128|dec128|d128)   echo "run_decimal128" ;;
+        rational|rat|frac)        echo "run_rational" ;;
         bigfloat|bfloat|float)    echo "run_bigfloat" ;;
         toml)                     echo "run_toml" ;;
         cli)                      echo "run_cli" ;;
@@ -328,11 +331,12 @@ list_suites() {
     printf "  %-28s %s\n" "biguint, buint, uint"        "BigUint tests"
     printf "  %-28s %s\n" "bigint10, bint10, int10"     "BigInt10 tests"
     printf "  %-28s %s\n" "decimal128, dec128, d128"    "Decimal128 tests"
+    printf "  %-28s %s\n" "rational, rat, frac"         "Rational number tests"
     printf "  %-28s %s\n" "bigfloat, bfloat, float"     "BigFloat tests (requires MPFR)"
     printf "  %-28s %s\n" "toml"                        "TOML parser tests"
     printf "  %-28s %s\n" "cli"                         "CLI calculator tests"
     printf "  %-28s %s\n" "python, py"                  "Python binding tests"
-    printf "  %-28s %s\n" "decimo, core"                "All core suites (bdec+bint+buint+bint10+dec128)"
+    printf "  %-28s %s\n" "decimo, core"                "All core suites (bdec+bint+buint+bint10+dec128+rational)"
     printf "  %-28s %s\n" "all"                         "Everything (decimo + toml + cli)"
 }
 
