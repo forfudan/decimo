@@ -798,25 +798,9 @@ struct Decimal128(
             return Decimal128.from_uint128(coef, scale, mantissa_sign)
 
         else:
-            var ndigits_coef = decimo.decimal128.utility.number_of_digits(coef)
-            var ndigits_quot_int_part = UInt32(ndigits_coef) - scale
-
-            var truncated_coef = (
-                decimo.decimal128.utility.round_to_keep_first_n_digits(
-                    coef, False, Decimal128.MAX_NUM_DIGITS
-                )
-            )
-            var scale_of_truncated_coef = (
-                UInt32(Decimal128.MAX_NUM_DIGITS) - ndigits_quot_int_part
-            )
-
-            if truncated_coef > Decimal128.MAX_AS_UINT128:
-                truncated_coef = (
-                    decimo.decimal128.utility.round_to_keep_first_n_digits(
-                        coef, False, Decimal128.MAX_NUM_DIGITS - 1
-                    )
-                )
-                scale_of_truncated_coef -= 1
+            var fitted = decimo.decimal128.utility.fit_to_max_coefficient(coef)
+            var truncated_coef = fitted[0]
+            var scale_of_truncated_coef = scale - UInt32(fitted[1])
 
             if scale_of_truncated_coef > UInt32(Decimal128.MAX_SCALE):
                 var num_digits_truncated_coef = (

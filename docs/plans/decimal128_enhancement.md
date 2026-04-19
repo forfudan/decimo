@@ -399,26 +399,26 @@ Some test cases worth adding:
 
 ## 6. Priority Summary
 
-| #   | Issue                                   | Severity    | Effort                        | Priority |
-| --- | --------------------------------------- | ----------- | ----------------------------- | -------- |
-| 3.1 | NaN/Inf broken (fix or remove)          | Critical    | Small (remove) / Medium (fix) | P0       |
-| 3.2 | `from_words` uses `testing.assert_true` | Medium      | Small                         | P1       |
-| 4.2 | `power_of_10` not fully precomputed     | High        | Small                         | P1       |
-| 4.3 | `truncate_to_max` lacks .NET tricks     | High        | Medium                        | P1       |
-| 3.4 | `compare_absolute` overflow             | Medium      | Small                         | P2       |
-| 4.1 | `number_of_bits` loop                   | Medium      | Small                         | P2       |
-| 4.8 | Separate `//` and `%` in division       | Medium      | Small                         | P2       |
-| 4.7 | `from_string` digit-by-digit            | Medium      | Medium                        | P2       |
-| 4.4 | `ln()` range reduction loops            | Medium      | Medium                        | P2       |
-| 5.4 | `min/max/clamp`                         | Enhancement | Trivial                       | P3       |
-| 5.5 | `normalize()`                           | Enhancement | Small                         | P3       |
-| 5.1 | `__hash__`                              | Enhancement | Small                         | P3       |
-| 5.6 | Edge case tests                         | Enhancement | Medium                        | P3       |
-| 4.5 | `subtract` temporary                    | Low         | Trivial                       | P4       |
-| 4.6 | Series convergence tolerance            | Low         | Small                         | P4       |
-| 3.3 | Division rounding mode (configurable)   | Low         | Medium                        | P4       |
-| 5.3 | Better `from_float`                     | Enhancement | Medium                        | P4       |
-| 5.2 | `Stringable` conformance                | Enhancement | Trivial                       | P4       |
+| #   | Issue                                   | Severity    | Effort         | Priority | Status |
+| --- | --------------------------------------- | ----------- | -------------- | -------- | ------ |
+| 3.1 | NaN/Inf broken (fix or remove)          | Critical    | Small (remove) | P0       | Done   |
+| 3.2 | `from_words` uses `testing.assert_true` | Medium      | Small          | P1       | Done   |
+| 4.2 | `power_of_10` not fully precomputed     | High        | Small          | P1       | Done   |
+| 4.3 | `truncate_to_max` lacks .NET tricks     | High        | Medium         | P1       | -      |
+| 3.4 | `compare_absolute` overflow             | Medium      | Small          | P2       | -      |
+| 4.1 | `number_of_bits` loop                   | Medium      | Small          | P2       | -      |
+| 4.8 | Separate `//` and `%` in division       | Medium      | Small          | P2       | -      |
+| 4.7 | `from_string` digit-by-digit            | Medium      | Medium         | P2       | -      |
+| 4.4 | `ln()` range reduction loops            | Medium      | Medium         | P2       | -      |
+| 5.4 | `min/max/clamp`                         | Enhancement | Trivial        | P3       | -      |
+| 5.5 | `normalize()`                           | Enhancement | Small          | P3       | -      |
+| 5.1 | `__hash__`                              | Enhancement | Small          | P3       | -      |
+| 5.6 | Edge case tests                         | Enhancement | Medium         | P3       | -      |
+| 4.5 | `subtract` temporary                    | Low         | Trivial        | P4       | -      |
+| 4.6 | Series convergence tolerance            | Low         | Small          | P4       | -      |
+| 3.3 | Division rounding mode (configurable)   | Low         | Medium         | P4       | -      |
+| 5.3 | Better `from_float`                     | Enhancement | Medium         | P4       | -      |
+| 5.2 | `Stringable` conformance                | Enhancement | Trivial        | P4       | -      |
 
 ## 7. Execution Order
 

@@ -1,5 +1,5 @@
 """
-Tests for utility functions: number_of_digits, truncate_to_max,
+Tests for utility functions: number_of_digits, fit_to_max_coefficient,
 round_to_keep_first_n_digits, and bitcast.
 """
 
@@ -9,7 +9,7 @@ from std.testing import assert_equal, assert_true
 from decimo.decimal128.decimal128 import Decimal128
 from decimo.rounding_mode import RoundingMode
 from decimo.decimal128.utility import (
-    truncate_to_max,
+    fit_to_max_coefficient,
     number_of_digits,
     round_to_keep_first_n_digits,
     bitcast,
@@ -38,97 +38,162 @@ def test_number_of_digits() raises:
     )
 
 
-def test_truncate_to_max_below() raises:
-    """Truncate_to_max with values at or below MAX — should be unchanged."""
-    assert_equal(truncate_to_max(UInt128(123456)), UInt128(123456))
-    assert_equal(truncate_to_max(UInt256(7654321)), UInt256(7654321))
-    assert_equal(
-        truncate_to_max(UInt128(Decimal128.MAX_AS_UINT128)),
-        UInt128(Decimal128.MAX_AS_UINT128),
-    )
-    assert_equal(
-        truncate_to_max(UInt256(Decimal128.MAX_AS_UINT128)),
-        UInt256(Decimal128.MAX_AS_UINT128),
-    )
+def test_fit_to_max_below() raises:
+    """Fit_to_max_coefficient with values at or below MAX — no truncation."""
+    var r1 = fit_to_max_coefficient(UInt128(123456))
+    assert_equal(r1[0], UInt128(123456))
+    assert_equal(r1[1], 0)
+
+    var r2 = fit_to_max_coefficient(UInt256(7654321))
+    assert_equal(r2[0], UInt256(7654321))
+    assert_equal(r2[1], 0)
+
+    var r3 = fit_to_max_coefficient(UInt128(Decimal128.MAX_AS_UINT128))
+    assert_equal(r3[0], UInt128(Decimal128.MAX_AS_UINT128))
+    assert_equal(r3[1], 0)
+
+    var r4 = fit_to_max_coefficient(UInt256(Decimal128.MAX_AS_UINT128))
+    assert_equal(r4[0], UInt256(Decimal128.MAX_AS_UINT128))
+    assert_equal(r4[1], 0)
 
 
-def test_truncate_to_max_above() raises:
-    """Truncate_to_max with values above MAX — should be truncated."""
-    # MAX + 1
+def test_fit_to_max_above() raises:
+    """Fit_to_max_coefficient with values above MAX — should be truncated."""
+    # MAX + 1: 30 digits → needs 1 digit removed
     var max_plus_1 = UInt256(Decimal128.MAX_AS_UINT128) + UInt256(1)
-    assert_true(
-        truncate_to_max(max_plus_1) <= UInt256(Decimal128.MAX_AS_UINT128)
-    )
+    var r1 = fit_to_max_coefficient(max_plus_1)
+    assert_true(r1[0] <= UInt256(Decimal128.MAX_AS_UINT128))
+    assert_equal(r1[1], 1)
 
-    # Round down (last truncated digit < 5)
-    assert_equal(
-        truncate_to_max(UInt256(79228162514264337593543950354)),
-        UInt256(7922816251426433759354395035),
-    )
+    # Round down (last truncated digit < 5): digits_removed = 1
+    var r2 = fit_to_max_coefficient(UInt256(79228162514264337593543950354))
+    assert_equal(r2[0], UInt256(7922816251426433759354395035))
+    assert_equal(r2[1], 1)
 
-    # Round up (last truncated digit >= 6)
-    assert_equal(
-        truncate_to_max(UInt256(79228162514264337593543950356)),
-        UInt256(7922816251426433759354395036),
-    )
+    # Round up (last truncated digit >= 6): digits_removed = 1
+    var r3 = fit_to_max_coefficient(UInt256(79228162514264337593543950356))
+    assert_equal(r3[0], UInt256(7922816251426433759354395036))
+    assert_equal(r3[1], 1)
+
+    # Much larger value: truncate multiple digits, digits_removed = 4
+    var much_larger = UInt256(Decimal128.MAX_AS_UINT128) * UInt256(
+        1000
+    ) + UInt256(555)
+    var r4 = fit_to_max_coefficient(much_larger)
+    assert_true(r4[0] <= UInt256(Decimal128.MAX_AS_UINT128))
+    assert_equal(r4[1], 4)
 
     # Banker's rounding: MAX + 20 (trailing 5, preceding digit even → round up)
-    assert_equal(
-        truncate_to_max(UInt256(Decimal128.MAX_AS_UINT128) + UInt256(20)),
-        UInt256(7922816251426433759354395036),
+    var r5 = fit_to_max_coefficient(
+        UInt256(Decimal128.MAX_AS_UINT128) + UInt256(20)
     )
+    assert_equal(r5[0], UInt256(7922816251426433759354395036))
+    assert_equal(r5[1], 1)
 
     # Banker's rounding: constructed trailing 5 with preceding even
     var base = UInt256(79228162514264337593543950330)
     var banker = base * UInt256(10) + UInt256(5)
-    assert_equal(truncate_to_max(banker), base + UInt256(0))
-
-    # Much larger value (truncate multiple digits)
-    var much_larger = UInt256(Decimal128.MAX_AS_UINT128) * UInt256(
-        1000
-    ) + UInt256(555)
-    assert_true(
-        truncate_to_max(much_larger) <= UInt256(Decimal128.MAX_AS_UINT128)
-    )
+    var r6 = fit_to_max_coefficient(banker)
+    assert_equal(r6[0], base + UInt256(0))
+    assert_equal(r6[1], 1)
 
 
-def test_truncate_banker_rounding() raises:
-    """Banker's rounding edge cases in truncate_to_max."""
+def test_fit_to_max_banker_rounding() raises:
+    """Banker's rounding edge cases in fit_to_max_coefficient."""
     # Round down to even (5 as rounding digit, preceding even)
-    assert_equal(
-        truncate_to_max(UInt256(7922816251426433759354395033250)),
-        UInt256(79228162514264337593543950332),
-    )
+    var r1 = fit_to_max_coefficient(UInt256(7922816251426433759354395033250))
+    assert_equal(r1[0], UInt256(79228162514264337593543950332))
+    assert_equal(r1[1], 2)
 
     # Round up to even (5 as rounding digit, preceding odd)
-    assert_equal(
-        truncate_to_max(UInt256(7922816251426433759354395033150)),
-        UInt256(79228162514264337593543950332),
-    )
+    var r2 = fit_to_max_coefficient(UInt256(7922816251426433759354395033150))
+    assert_equal(r2[0], UInt256(79228162514264337593543950332))
+    assert_equal(r2[1], 2)
 
     # Round up: 5 followed by non-zero (preceding even)
-    assert_equal(
-        truncate_to_max(UInt256(79228162514264337593543950332501)),
-        UInt256(79228162514264337593543950333),
-    )
+    var r3 = fit_to_max_coefficient(UInt256(79228162514264337593543950332501))
+    assert_equal(r3[0], UInt256(79228162514264337593543950333))
+    assert_equal(r3[1], 3)
 
     # Round up: 5 followed by non-zero (preceding odd)
-    assert_equal(
-        truncate_to_max(UInt256(79228162514264337593543950331501)),
-        UInt256(79228162514264337593543950332),
-    )
+    var r4 = fit_to_max_coefficient(UInt256(79228162514264337593543950331501))
+    assert_equal(r4[0], UInt256(79228162514264337593543950332))
+    assert_equal(r4[1], 3)
 
     # Rounding digit > 5
-    assert_equal(
-        truncate_to_max(UInt256(7922816251426433759354395033207)),
-        UInt256(79228162514264337593543950332),
-    )
+    var r5 = fit_to_max_coefficient(UInt256(7922816251426433759354395033207))
+    assert_equal(r5[0], UInt256(79228162514264337593543950332))
+    assert_equal(r5[1], 2)
 
     # Rounding digit < 5
-    assert_equal(
-        truncate_to_max(UInt256(7922816251426433759354395033204)),
-        UInt256(79228162514264337593543950332),
+    var r6 = fit_to_max_coefficient(UInt256(7922816251426433759354395033204))
+    assert_equal(r6[0], UInt256(79228162514264337593543950332))
+    assert_equal(r6[1], 2)
+
+
+def test_fit_to_max_cascade_rounding() raises:
+    """Edge cases where rounding cascades (all-nines overflow both tries)."""
+
+    # 32 nines: try-29 rounds 29 nines up to 10^29 > MAX, retry-28 rounds
+    # 28 nines up to 10^28 ≤ MAX. digits_removed = 3 + 1 = 4.
+    var r1 = fit_to_max_coefficient(
+        UInt256(99999999999999999999999999999999)  # 32 nines
     )
+    assert_equal(r1[0], UInt256(10000000000000000000000000000))  # 10^28
+    assert_equal(r1[1], 4)
+    assert_true(r1[0] <= UInt256(Decimal128.MAX_AS_UINT128))
+
+    # 30 nines: try-29 rounds 29 nines up to 10^29 > MAX, retry-28 rounds
+    # 28 nines up to 10^28 ≤ MAX. digits_removed = 1 + 1 = 2.
+    var r2 = fit_to_max_coefficient(
+        UInt256(999999999999999999999999999999)  # 30 nines
+    )
+    assert_equal(r2[0], UInt256(10000000000000000000000000000))  # 10^28
+    assert_equal(r2[1], 2)
+
+    # 29 nines: exactly 29 digits of all nines. 29 nines > MAX (since
+    # MAX = 7922...335 < 9999...999). try-29 keeps all 29 digits unchanged
+    # (no rounding needed), but 29 nines > MAX → retry-28 rounds away 1 digit:
+    # 28 nines + round up → 10^28. digits_removed = 0 + 1 = 1.
+    var r3 = fit_to_max_coefficient(
+        UInt256(99999999999999999999999999999)  # 29 nines
+    )
+    assert_equal(r3[0], UInt256(10000000000000000000000000000))  # 10^28
+    assert_equal(r3[1], 1)
+
+    # 40 nines: very large, digits_removed = 40 - 29 + 1 = 12.
+    var r4 = fit_to_max_coefficient(
+        UInt256(9999999999999999999999999999999999999999)  # 40 nines
+    )
+    assert_equal(r4[0], UInt256(10000000000000000000000000000))  # 10^28
+    assert_equal(r4[1], 12)
+
+    # Exactly MAX + 1 with all-nines flavor: 79228162514264337593543950336
+    # try-29 → ndigits=29, digits_to_remove=0, keep 29 digits → unchanged →
+    # still > MAX → retry-28: remove 1 digit, truncated = 7922816251426433759354395034,
+    # remainder = 6, rounding digit 6 > 5 → round up → 7922816251426433759354395034.
+    # Wait, let me reconsider. value = MAX+1 = 79228162514264337593543950336.
+    # ndigits = 29, digits_to_remove = 0.
+    # try-29: round_to_keep_first_n_digits(value, 29) → ndigits_of_x=29, ndigits=29,
+    # so ndigits >= ndigits_of_x → return value unchanged = MAX+1.
+    # MAX+1 > MAX → retry.
+    # try-28: round_to_keep_first_n_digits(value, 28) → remove 1 digit.
+    # truncated = 7922816251426433759354395033, remainder = 6.
+    # 6 > 5 → round up → 7922816251426433759354395034.
+    # digits_to_remove = 0 + 1 = 1.
+    var r5 = fit_to_max_coefficient(
+        UInt256(79228162514264337593543950336)  # MAX + 1
+    )
+    assert_equal(r5[0], UInt256(7922816251426433759354395034))
+    assert_equal(r5[1], 1)
+    assert_true(r5[0] <= UInt256(Decimal128.MAX_AS_UINT128))
+
+    # UInt128 path: a value just barely above MAX
+    var r6 = fit_to_max_coefficient(
+        UInt128(79228162514264337593543950340)  # MAX + 5
+    )
+    assert_true(r6[0] <= UInt128(Decimal128.MAX_AS_UINT128))
+    assert_equal(r6[1], 1)
 
 
 def test_round_to_keep_first_n_digits() raises:

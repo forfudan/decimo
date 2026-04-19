@@ -59,135 +59,87 @@ def bitcast[dtype: DType](dec: Decimal128) -> Scalar[dtype]:
     return result
 
 
-def truncate_to_max[dtype: DType, //](value: Scalar[dtype]) -> Scalar[dtype]:
-    """
-    Truncates a UInt256 or UInt128 value to be as closer to the max value of
-    Decimal128 coefficient (`2^96 - 1`) as possible with rounding.
-    Uses banker's rounding (ROUND_HALF_EVEN) for any truncated digits.
-    `792281625142643375935439503356` will be truncated to
-    `7922816251426433759354395034`.
-    `792281625142643375935439503353` will be truncated to
-    `79228162514264337593543950345`.
+def fit_to_max_coefficient[
+    dtype: DType, //
+](
+    value: Scalar[dtype],
+    sign: Bool = False,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) -> Tuple[Scalar[dtype], Int] where (
+    dtype == DType.uint128 or dtype == DType.uint256
+):
+    """Rounds a coefficient to fit within Decimal128's 96-bit maximum (2^96 − 1).
+
+    Because 2^96 − 1 = 79_228_162_514_264_337_593_543_950_335 has 29 decimal
+    digits but not every 29-digit number fits (e.g. 9.9…9 × 10^28 > 2^96 − 1),
+    the function first tries keeping 29 digits. If the rounded result still
+    exceeds the maximum, it retries with 28 digits.
 
     Parameters:
-        dtype: Must be either uint128 or uint256.
+        dtype: Must be either `DType.uint128` or `DType.uint256`.
 
     Args:
-        value: The UInt256 value to truncate.
+        value: The coefficient to fit.
+        sign: The sign of the original number (needed for CEILING/FLOOR modes).
+        rounding_mode: The rounding strategy for discarded digits.
+            Defaults to banker's rounding (ROUND_HALF_EVEN).
 
     Constraints:
         `dtype` must be either `DType.uint128` or `DType.uint256`.
 
     Returns:
-        The truncated UInt256 value, guaranteed to fit within 96 bits.
+        A tuple of:
+        - The rounded coefficient, guaranteed ≤ `Decimal128.MAX_AS_UINT128`.
+        - The number of digits removed from the original value.
+
+        The caller can compute the new scale as:
+        `new_scale = original_scale - digits_removed`.
+
+    Examples:
+
+        If the value already fits (≤ 2^96 - 1), it is returned unchanged
+        with `digits_removed = 0`.
+
+        >>> fit_to_max_coefficient(UInt128(123456))
+        (123456, 0)
+
+        If the value is too large, it is rounded to fit:
+
+        >>> fit_to_max_coefficient(UInt256(792281625142643375935439503560))
+        (79228162514264337593543950356, 1)
+
+        If rounding 29 digits still overflows (because the 29-digit rounded
+        value > 2^96 - 1), the function automatically retries with 28 digits:
+
+        >>> fit_to_max_coefficient(UInt256(99999999999999999999999999999999))
+        (10000000000000000000000000000, 4).
+
+        The returned value is always ≤ 2^96 - 1.
     """
 
     comptime ValueType = Scalar[dtype]
 
-    comptime assert (
-        dtype == DType.uint128 or dtype == DType.uint256
-    ), "must be uint128 or uint256"
-
-    # If the value is already less than the maximum possible value, return it
+    # If the value already fits, no truncation needed.
     if value <= ValueType(Decimal128.MAX_AS_UINT128):
-        return value
+        return (value, 0)
 
-    else:
-        # Calculate how many digits we need to truncate
-        # Calculate how many digits to keep (MAX_NUM_DIGITS = 29)
-        var ndigits = number_of_digits(value)
-        var digits_to_remove = ndigits - Decimal128.MAX_NUM_DIGITS
+    var ndigits = number_of_digits(value)
+    var digits_to_remove = ndigits - Decimal128.MAX_NUM_DIGITS
 
-        # Collect digits for rounding decision
-        var divisor = power_of_10[dtype](digits_to_remove)
-        var truncated_value = value // divisor
+    # First attempt: keep MAX_NUM_DIGITS (29) digits.
+    var result = round_to_keep_first_n_digits(
+        value, sign, Decimal128.MAX_NUM_DIGITS, rounding_mode
+    )
 
-        if truncated_value == ValueType(Decimal128.MAX_AS_UINT128):
-            # Case 1:
-            # Truncated_value == MAX_AS_UINT128
-            # Rounding may not cause overflow depending on rounding digit
-            # If removed digits do not caue rounding up. Return truncated value.
-            # If removed digits cause rounding up, return MAX // 10 - 1
-            # 79228162514264337593543950335[removed part] -> 7922816251426433759354395034
+    # Because 2^96 − 1 is not at a clean decimal boundary, the 29-digit
+    # rounded result may still exceed the maximum. Retry with 28 digits.
+    if result > ValueType(Decimal128.MAX_AS_UINT128):
+        result = round_to_keep_first_n_digits(
+            value, sign, Decimal128.MAX_NUM_DIGITS - 1, rounding_mode
+        )
+        digits_to_remove += 1
 
-            var remainder = value % divisor
-
-            # Get the most significant digit of the remainder for rounding
-            var rounding_digit = remainder // power_of_10[dtype](
-                digits_to_remove - 1
-            )
-
-            # Check if we need to round up based on banker's rounding (ROUND_HALF_EVEN)
-            var round_up = False
-
-            # If rounding digit is > 5, round up
-            if rounding_digit > 5:
-                round_up = True
-            # If rounding digit is 5, check if there are any non-zero digits after it
-            elif rounding_digit == 5:
-                var has_nonzero_after = remainder > 5 * power_of_10[dtype](
-                    digits_to_remove - 1
-                )
-                # If there are non-zero digits after, round up
-                if has_nonzero_after:
-                    round_up = True
-                # Otherwise, round to even (round up if last kept digit is odd)
-                else:
-                    round_up = (truncated_value % 2) == 1
-
-            # Apply rounding if needed
-            if round_up:
-                truncated_value = (
-                    truncated_value // 10 + 1
-                )  # 7922816251426433759354395034
-
-            return truncated_value
-
-        else:
-            # Case 3:
-            # Truncated_value > MAX_AS_UINT128
-            # Always overflow, increase the digits_to_remove by 1
-
-            # Case 2:
-            # Trucated_value < MAX_AS_UINT128
-            # Rounding will not case overflow
-
-            if truncated_value > ValueType(Decimal128.MAX_AS_UINT128):
-                digits_to_remove += 1
-
-            # Collect digits for rounding decision
-            divisor = power_of_10[dtype](digits_to_remove)
-            truncated_value = value // divisor
-            var remainder = value % divisor
-
-            # Get the most significant digit of the remainder for rounding
-            var rounding_digit = remainder // power_of_10[dtype](
-                digits_to_remove - 1
-            )
-
-            # Check if we need to round up based on banker's rounding (ROUND_HALF_EVEN)
-            var round_up = False
-
-            # If rounding digit is > 5, round up
-            if rounding_digit > 5:
-                round_up = True
-            # If rounding digit is 5, check if there are any non-zero digits after it
-            elif rounding_digit == 5:
-                var has_nonzero_after = remainder > 5 * power_of_10[dtype](
-                    digits_to_remove - 1
-                )
-                # If there are non-zero digits after, round up
-                if has_nonzero_after:
-                    round_up = True
-                # Otherwise, round to even (round up if last kept digit is odd)
-                else:
-                    round_up = (truncated_value % 2) == 1
-
-            # Apply rounding if needed
-            if round_up:
-                truncated_value += 1
-
-            return truncated_value
+    return (result, digits_to_remove)
 
 
 def sqrt(x: UInt128) -> UInt128:
@@ -216,7 +168,6 @@ def sqrt(x: UInt128) -> UInt128:
     return r
 
 
-# TODO: Evaluate whether this can replace truncate_to_max in some cases.
 def round_to_keep_first_n_digits[
     dtype: DType, //
 ](
