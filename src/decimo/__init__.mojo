@@ -33,6 +33,7 @@ from .bigint.bigint import BigInt, BInt, Integer
 from .biguint.biguint import BigUInt, BUInt
 from .bigdecimal.bigdecimal import BigDecimal, BDec, Decimal
 from .bigfloat.bigfloat import BigFloat, BFlt, Float
+from .rational.rational import Rational
 from .rounding_mode import (
     RoundingMode,
     ROUND_DOWN,

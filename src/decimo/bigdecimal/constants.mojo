@@ -188,8 +188,13 @@ def pi(precision: Int) raises -> BigDecimal:
     return pi_chudnovsky_binary_split(precision)
 
 
-struct Rational:
-    """Represents a rational number p/q for exact arithmetic."""
+struct _RationalBigInt10:
+    """Internal rational number p/q using BigInt10 for Chudnovsky binary splitting.
+
+    Note: This is a legacy internal helper. The public Rational type lives in
+    `decimo.rational.rational` and uses BigInt instead. This struct will be
+    migrated in a future release.
+    """
 
     var p: BigInt10  # numerator
     """The numerator of the rational number."""
@@ -254,7 +259,9 @@ def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
     return result^
 
 
-def chudnovsky_split(a: Int, b: Int, precision: Int) raises -> Rational:
+def chudnovsky_split(
+    a: Int, b: Int, precision: Int
+) raises -> _RationalBigInt10:
     """Conducts binary splitting for Chudnovsky series from term a to b-1.
 
     Args:
@@ -263,7 +270,7 @@ def chudnovsky_split(a: Int, b: Int, precision: Int) raises -> Rational:
         precision: The working precision for intermediate calculations.
 
     Returns:
-        A `Rational` representing the partial sum of the Chudnovsky series.
+        A `_RationalBigInt10` representing the partial sum of the Chudnovsky series.
     """
 
     var bint_1 = BigInt10(1)
@@ -275,7 +282,7 @@ def chudnovsky_split(a: Int, b: Int, precision: Int) raises -> Rational:
         # Base case: compute single term as exact rational
         if a == 0:
             # Special case for k=0: M(0)=1, L(0)=13591409, X(0)=1
-            return Rational(bint_13591409, bint_1)
+            return _RationalBigInt10(bint_13591409, bint_1)
 
         # For k > 0: compute M(k), L(k), X(k)
         var m_k_rational = compute_m_k_rational(a)
@@ -294,7 +301,7 @@ def chudnovsky_split(a: Int, b: Int, precision: Int) raises -> Rational:
         var term_p = m_k_rational.p * l_k
         var term_q = m_k_rational.q * x_k
 
-        return Rational(term_p^, term_q^)
+        return _RationalBigInt10(term_p^, term_q^)
 
     # Recursive case: split range in half
     var mid = (a + b) // 2
@@ -305,23 +312,23 @@ def chudnovsky_split(a: Int, b: Int, precision: Int) raises -> Rational:
     var combined_p = left.p * right.q + right.p * left.q
     var combined_q = left.q * right.q
 
-    return Rational(combined_p^, combined_q^)
+    return _RationalBigInt10(combined_p^, combined_q^)
 
 
-def compute_m_k_rational(k: Int) raises -> Rational:
+def compute_m_k_rational(k: Int) raises -> _RationalBigInt10:
     """Computes M(k) = (6k)! / ((3k)! * (k!)³) as exact rational.
 
     Args:
         k: The term index in the Chudnovsky series.
 
     Returns:
-        A `Rational` with numerator (6k)!/(3k)! and denominator (k!)³.
+        A `_RationalBigInt10` with numerator (6k)!/(3k)! and denominator (k!)³.
     """
 
     var bint_1 = BigInt10(1)
 
     if k == 0:
-        return Rational(bint_1, bint_1)
+        return _RationalBigInt10(bint_1, bint_1)
 
     # Compute numerator: (6k)! / (3k)! = (3k+1) * (3k+2) * ... * (6k)
     var numerator = bint_1.copy()
@@ -335,7 +342,7 @@ def compute_m_k_rational(k: Int) raises -> Rational:
 
     var denominator = k_factorial * k_factorial * k_factorial
 
-    return Rational(numerator, denominator)
+    return _RationalBigInt10(numerator, denominator)
 
 
 def pi_machin(precision: Int) raises -> BigDecimal:
