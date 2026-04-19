@@ -65,7 +65,7 @@ struct Decimal128(
         - Bit 64 to 95 are stored in the high field: most significant bits.
     - 32 bits for the flags, which contain the sign and scale information.
         - Bits 0 to 15 are unused and must be zero.
-        - Bits 16 to 23 must contain an scale (exponent) between 0 and 28.
+        - Bits 16 to 23 must contain a scale (exponent) between 0 and 28.
         - Bits 24 to 30 are unused and must be zero.
         - Bit 31 contains the sign: 0 mean positive, and 1 means negative.
 
@@ -122,9 +122,9 @@ struct Decimal128(
     1 bit for sign (0 is positive and 1 is negative)."""
     comptime SCALE_MASK = UInt32(0x00FF0000)
     """Scale mask. `0b0000_0000_1111_1111_0000_0000_0000_0000`.
-    Bits 16 to 23 must contain an scale between 0 and 28."""
+    Bits 16 to 23 must contain a scale between 0 and 28."""
     comptime SCALE_SHIFT = UInt32(16)
-    """Bits 16 to 23 must contain an scale between 0 and 28."""
+    """Bits 16 to 23 must contain a scale between 0 and 28."""
     # TODO: Move these special values to top of the module
     # when Mojo support global variables in the future.
 

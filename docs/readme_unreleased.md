@@ -36,7 +36,7 @@ The core types are[^auxiliary]:
 - An arbitrary-precision decimal implementation (`Decimal`) allowing for calculations with unlimited digits and decimal places[^arbitrary], which is a Mojo-native equivalent of Python's `decimal.Decimal`.
 - A 128-bit fixed-point decimal implementation (`Dec128`) supporting up to 29 significant digits with a maximum of 28 decimal places[^fixed].
 - An arbitrary-precision floating-point implementation (`Float`) backed by the GNU MPFR library, supporting computations with configurable precision and a wide exponent range. Unlike `Decimal`, which uses base-10 arithmetic, `Float` uses binary floating-point internally. This type is optional and requires MPFR/GMP to be installed on the user's system.
-- An arbitray-precision exact rational number type (`Rational`) represented as a reduced fraction of two `BInt`s (numerator and denominator). It supports exact arithmetic and comparisons without any loss of precision, making it ideal for applications that require precise fractional calculations.
+- An arbitrary-precision exact rational number type (`Rational`) represented as a reduced fraction of two `BInt`s (numerator and denominator). It supports exact arithmetic and comparisons without any loss of precision, making it ideal for applications that require precise fractional calculations.
 
 | Type       | Alternative names    | Information                              | Internal representation |
 | ---------- | -------------------- | ---------------------------------------- | ----------------------- |

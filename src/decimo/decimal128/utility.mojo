@@ -678,8 +678,6 @@ def power_of_10[
 ):
     """
     Returns 10^n using cached values when available.
-    **WARNING**: The overflow is not checked in this function.
-    Make sure that the n is less than 29 for UInt128 and 77 for UInt256.
 
     Parameters:
         dtype: The Mojo scalar type to calculate the power of 10 for.
@@ -694,11 +692,30 @@ def power_of_10[
         The value of 10^n as a Mojo scalar.
 
     Notes:
+
+        **WARNING**: The overflow is only checked when debug mode is enabled.
+        Make sure that the n is less than 29 for UInt128 and 77 for UInt256.
+
         The powers of 10 are hardcoded up to 10^58. This covers all values
         needed for Decimal128 arithmetic (max scale 28 × 2 = 56 for products
         of two max-scale numbers, plus 2 for rounding headroom). For larger
         values, the function falls back to the `**` operator.
     """
+
+    comptime if dtype == DType.uint128:
+        debug_assert(
+            n <= 29,
+            "power_of_10() for uint128 only supports n up to 29, got {}".format(
+                n
+            ),
+        )
+    else:
+        debug_assert(
+            n <= 77,
+            "power_of_10() for uint256 only supports n up to 77, got {}".format(
+                n
+            ),
+        )
 
     comptime ValueType = Scalar[dtype]
 
