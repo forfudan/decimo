@@ -28,9 +28,7 @@ Invariants maintained by all constructors and operations:
 
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.number_theory import gcd
-from decimo.bigint.arithmetics import absolute, negative
-from decimo.bigint.comparison import compare_magnitudes
-from decimo.errors import ValueError, ZeroDivisionError
+from decimo.errors import ZeroDivisionError
 
 
 struct Rational(
@@ -61,7 +59,7 @@ struct Rational(
         Returns:
             A Rational representing zero.
         """
-        return Self(BigInt(), BigInt(UInt32(1)), raw=True)
+        return Self(BigInt.zero(), BigInt.one(), raw=True)
 
     @staticmethod
     def one() -> Self:
@@ -70,7 +68,7 @@ struct Rational(
         Returns:
             A Rational representing one.
         """
-        return Self(BigInt(UInt32(1)), BigInt(UInt32(1)), raw=True)
+        return Self(BigInt.one(), BigInt.one(), raw=True)
 
     @staticmethod
     def two() -> Self:
@@ -79,7 +77,7 @@ struct Rational(
         Returns:
             A Rational representing two.
         """
-        return Self(BigInt(UInt32(2)), BigInt(UInt32(1)), raw=True)
+        return Self(BigInt(UInt32(2)), BigInt.one(), raw=True)
 
     @staticmethod
     def minus_one() -> Self:
@@ -88,7 +86,7 @@ struct Rational(
         Returns:
             A Rational representing minus one.
         """
-        return Self(BigInt(UInt32(-1)), BigInt(UInt32(1)), raw=True)
+        return Self(BigInt.negative_one(), BigInt.one(), raw=True)
 
     @staticmethod
     def one_half() -> Self:
@@ -97,7 +95,7 @@ struct Rational(
         Returns:
             A Rational representing one half.
         """
-        return Self(BigInt(UInt32(1)), BigInt(UInt32(2)), raw=True)
+        return Self(BigInt.one(), BigInt(UInt32(2)), raw=True)
 
     @staticmethod
     def one_third() -> Self:
@@ -106,7 +104,7 @@ struct Rational(
         Returns:
             A Rational representing one third.
         """
-        return Self(BigInt(UInt32(1)), BigInt(UInt32(3)), raw=True)
+        return Self(BigInt.one(), BigInt(UInt32(3)), raw=True)
 
     # ===------------------------------------------------------------------=== #
     # Constructors
@@ -167,7 +165,7 @@ struct Rational(
         Args:
             numerator: The numerator (already in lowest terms).
             denominator: The denominator (already positive, coprime with numerator).
-            raw: This is a raw constructor wihtout normalization.
+            raw: This is a raw constructor without normalization.
                 Caller must ensure invariants.
 
         Returns:
@@ -178,7 +176,7 @@ struct Rational(
 
     # TODO:
     # Initializes a Rational from a integral scalar, from_scalar()
-    # Initialzies a Rational from a decimal string, from_decimal()
+    # Initializes a Rational from a decimal string, from_decimal()
     # Initializes a Rational from a string like "123/456", from_string()
     # Initializes a Rational from a float, from_float(). Do not make it `__init__`.
     #   Note that float can be converted to rational exactly by interpreting
@@ -416,8 +414,9 @@ struct Rational(
     def __mul__(self, other: Self) raises -> Self:
         """Returns self * other.
 
-        Uses the formula: (a/b) * (c/d) = (a*c) / (b*d),
-        then normalizes to lowest terms.
+        Uses cross-GCD pre-reduction to keep intermediates small:
+        gcd_ad = gcd(a, d), gcd_bc = gcd(b, c), then
+        (a/gcd_ad * c/gcd_bc) / (d/gcd_ad * b/gcd_bc).
 
         Args:
             other: The other rational.
@@ -425,14 +424,19 @@ struct Rational(
         Returns:
             The product.
         """
-        var num = self.numerator * other.numerator
-        var den = self.denominator * other.denominator
+        # (a/b) * (c/d) = (a*c) / (b*d) = (a/gcd_ad * c/gcd_bc) / (b/gcd_bc * d/gcd_ad)
+        var gcd_ad = gcd(self.numerator, other.denominator)
+        var gcd_bc = gcd(self.denominator, other.numerator)
+        var num = (self.numerator // gcd_ad) * (other.numerator // gcd_bc)
+        var den = (self.denominator // gcd_bc) * (other.denominator // gcd_ad)
         return Self(num, den)
 
     def __truediv__(self, other: Self) raises -> Self:
         """Returns self / other.
 
-        Uses the formula: (a/b) / (c/d) = (a*d) / (b*c).
+        Uses cross-GCD pre-reduction: reduce self.numerator with
+        other.numerator, and self.denominator with other.denominator,
+        then cross-multiply to keep intermediates small.
 
         Args:
             other: The other rational.
@@ -448,8 +452,11 @@ struct Rational(
                 message="Division by zero",
                 function="Rational.__truediv__()",
             )
-        var num = self.numerator * other.denominator
-        var den = self.denominator * other.numerator
+        # (a/b) / (c/d) = (a*d) / (b*c) = (a/gcd_ac * d/gcd_bd) / (b/gcd_bd * c/gcd_ac)
+        var gcd_ac = gcd(self.numerator, other.numerator)
+        var gcd_bd = gcd(self.denominator, other.denominator)
+        var num = (self.numerator // gcd_ac) * (other.denominator // gcd_bd)
+        var den = (self.denominator // gcd_bd) * (other.numerator // gcd_ac)
         return Self(num, den)
 
     # ===------------------------------------------------------------------=== #

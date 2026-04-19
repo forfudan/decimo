@@ -448,8 +448,18 @@ def test_constants() raises:
     var one = Rational.one()
     assert_true(String(one) == "1", "ONE should be '1'")
 
+    var two = Rational.two()
+    assert_true(String(two) == "2", "TWO should be '2'")
+
+    var minus_one = Rational.minus_one()
+    assert_true(String(minus_one) == "-1", "MINUS_ONE should be '-1'")
+    assert_true(minus_one.is_negative(), "MINUS_ONE should be negative")
+
     var half = Rational.one_half()
     assert_true(String(half) == "1/2", "ONE_HALF should be '1/2'")
+
+    var third = Rational.one_third()
+    assert_true(String(third) == "1/3", "ONE_THIRD should be '1/3'")
 
     print("  PASS: constants")
 

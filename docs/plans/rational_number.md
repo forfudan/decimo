@@ -41,14 +41,14 @@ A simple internal `Rational` struct already exists in `src/decimo/bigdecimal/con
 
 ### 3.1 Core Design
 
-| Feature            | Python `Fraction`          | Java `BigFraction`           | Rust `Ratio<T>`        | Boost `rational<I>`   | Proposed `Rational`       |
-| ------------------ | -------------------------- | ---------------------------- | ---------------------- | --------------------- | ------------------------- |
-| Underlying integer | Python `int` (arbitrary)   | Java `BigInteger`            | Generic `T: Integer`   | Template `I`          | `BigInt`                  |
-| Immutable          | ✓                          | ✓                            | ✓ (by convention)      | ✓ (mostly)            | Mutable (Mojo convention) |
-| Auto-normalizes    | ✓ (always lowest terms)    | ✓                            | ✓ (`new()` normalizes) | ✓ (always)            | ✓ (always lowest terms)   |
-| Denominator sign   | Always positive            | Always positive              | Always positive        | Always positive       | Always positive           |
-| Zero denominator   | Raises `ZeroDivisionError` | Raises `ArithmeticException` | Panics                 | Throws `bad_rational` | Raises `ValueError`       |
-| NaN / Infinity     | ✗                          | ✗                            | ✗                      | ✗                     | ✗                         |
+| Feature            | Python `Fraction`          | Java `BigFraction`           | Rust `Ratio<T>`        | Boost `rational<I>`   | Proposed `Rational`        |
+| ------------------ | -------------------------- | ---------------------------- | ---------------------- | --------------------- | -------------------------- |
+| Underlying integer | Python `int` (arbitrary)   | Java `BigInteger`            | Generic `T: Integer`   | Template `I`          | `BigInt`                   |
+| Immutable          | ✓                          | ✓                            | ✓ (by convention)      | ✓ (mostly)            | Mutable (Mojo convention)  |
+| Auto-normalizes    | ✓ (always lowest terms)    | ✓                            | ✓ (`new()` normalizes) | ✓ (always)            | ✓ (always lowest terms)    |
+| Denominator sign   | Always positive            | Always positive              | Always positive        | Always positive       | Always positive            |
+| Zero denominator   | Raises `ZeroDivisionError` | Raises `ArithmeticException` | Panics                 | Throws `bad_rational` | Raises `ZeroDivisionError` |
+| NaN / Infinity     | ✗                          | ✗                            | ✗                      | ✗                     | ✗                          |
 
 ### 3.2 Construction
 
@@ -286,15 +286,15 @@ A private `_normalize()` method computes `g = gcd(abs(numerator), denominator)` 
 
 ## 6. Key Design Decisions
 
-| Decision                        | Choice                      | Rationale                                                                                |
-| ------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------- |
-| Underlying integer              | `BigInt`                    | Has GCD, is faster, is the primary integer type                                          |
-| Mutability                      | Mutable struct              | Mojo convention; in-place ops avoid allocation                                           |
-| Auto-normalization              | Always                      | All four reference libraries do this; prevents unbounded growth                          |
-| Zero denominator                | Raise `ValueError`          | Consistent with decimo error handling; no NaN/Infinity (matches all reference libraries) |
-| Sign convention                 | Denominator always positive | Universal convention across all reference libraries                                      |
-| String format                   | `"3/7"` (no spaces)         | Matches Python and Rust; parseable round-trip                                            |
-| `__truediv__` vs `__floordiv__` | Both                        | `/` returns `Rational`; `//` returns `BigInt` (floor division)                           |
+| Decision                        | Choice                      | Rationale                                                                         |
+| ------------------------------- | --------------------------- | --------------------------------------------------------------------------------- |
+| Underlying integer              | `BigInt`                    | Has GCD, is faster, is the primary integer type                                   |
+| Mutability                      | Mutable struct              | Mojo convention; in-place ops avoid allocation                                    |
+| Auto-normalization              | Always                      | All four reference libraries do this; prevents unbounded growth                   |
+| Zero denominator                | Raise `ZeroDivisionError`   | Consistent with implementation; no NaN/Infinity (matches all reference libraries) |
+| Sign convention                 | Denominator always positive | Universal convention across all reference libraries                               |
+| String format                   | `"3/7"` (no spaces)         | Matches Python and Rust; parseable round-trip                                     |
+| `__truediv__` vs `__floordiv__` | Both                        | `/` returns `Rational`; `//` returns `BigInt` (floor division)                    |
 
 ## 7. Complexity Notes
 
