@@ -36,13 +36,15 @@ The core types are[^auxiliary]:
 - An arbitrary-precision decimal implementation (`Decimal`) allowing for calculations with unlimited digits and decimal places[^arbitrary], which is a Mojo-native equivalent of Python's `decimal.Decimal`.
 - A 128-bit fixed-point decimal implementation (`Dec128`) supporting up to 29 significant digits with a maximum of 28 decimal places[^fixed].
 - An arbitrary-precision floating-point implementation (`Float`) backed by the GNU MPFR library, supporting computations with configurable precision and a wide exponent range. Unlike `Decimal`, which uses base-10 arithmetic, `Float` uses binary floating-point internally. This type is optional and requires MPFR/GMP to be installed on the user's system.
+- An arbitray-precision exact rational number type (`Rational`) represented as a reduced fraction of two `BInt`s (numerator and denominator). It supports exact arithmetic and comparisons without any loss of precision, making it ideal for applications that require precise fractional calculations.
 
-| Type      | Alternative names    | Information                              | Internal representation |
-| --------- | -------------------- | ---------------------------------------- | ----------------------- |
-| `BInt`    | `BigInt`, `Integer`  | Equivalent to Python's `int`             | Base-2^32               |
-| `Decimal` | `BigDecimal`, `BDec` | Equivalent to Python's `decimal.Decimal` | Base-10^9               |
-| `Dec128`  | `Decimal128`         | 128-bit fixed-precision decimal type     | Triple 32-bit words     |
-| `Float`   | `BigFloat`           | Arbitrary-precision floating-point type  | MPFR/GMP                |
+| Type       | Alternative names    | Information                              | Internal representation |
+| ---------- | -------------------- | ---------------------------------------- | ----------------------- |
+| `BInt`     | `BigInt`, `Integer`  | Equivalent to Python's `int`             | Base-2^32               |
+| `Decimal`  | `BigDecimal`, `BDec` | Equivalent to Python's `decimal.Decimal` | Base-10^9               |
+| `Dec128`   | `Decimal128`         | 128-bit fixed-precision decimal type     | Triple 32-bit words     |
+| `Float`    | `BigFloat`           | Arbitrary-precision floating-point type  | MPFR/GMP                |
+| `Rational` | N/A                  | Exact rational number type               | Two `BInt`s             |
 
 **Decimo** combines "**Deci**mal" and "**Mo**jo" - reflecting its purpose and implementation language. "Decimo" is also a Latin word meaning "tenth" and is the root of the word "decimal".
 

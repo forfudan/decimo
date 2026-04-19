@@ -180,6 +180,9 @@ def format_about(use_color: Bool = True) -> String:
 
     Args:
         use_color: Whether to include ANSI colour codes.  Defaults to True.
+
+    Returns:
+        A formatted multi-line string containing information about Decimo.
     """
     var title_color = BOLD + ORANGE if use_color else ""
     var label_color = BOLD + MAGENTA if use_color else ""

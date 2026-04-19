@@ -24,7 +24,6 @@ mathematical methods that do not implement a trait.
 """
 
 from std.memory import UnsafePointer
-from std import testing
 
 import decimo.decimal128.arithmetics
 import decimo.decimal128.comparison
@@ -65,9 +64,7 @@ struct Decimal128(
         - Bit 32 to 63 are stored in the mid field: middle bits.
         - Bit 64 to 95 are stored in the high field: most significant bits.
     - 32 bits for the flags, which contain the sign and scale information.
-        - Bit 0 contains the infinity flag: 1 means infinity, 0 means finite.
-        - Bit 1 contains the NaN flag: 1 means NaN, 0 means not NaN.
-        - Bits 2 to 15 are unused and must be zero.
+        - Bits 0 to 15 are unused and must be zero.
         - Bits 16 to 23 must contain an scale (exponent) between 0 and 28.
         - Bits 24 to 30 are unused and must be zero.
         - Bit 31 contains the sign: 0 mean positive, and 1 means negative.
@@ -128,59 +125,10 @@ struct Decimal128(
     Bits 16 to 23 must contain an scale between 0 and 28."""
     comptime SCALE_SHIFT = UInt32(16)
     """Bits 16 to 23 must contain an scale between 0 and 28."""
-    comptime INFINITY_MASK = UInt32(0x00000001)
-    """Infinity mask. `0b0000_0000_0000_0000_0000_0000_0000_0001`."""
-    comptime NAN_MASK = UInt32(0x00000002)
-    """Not a Number mask. `0b0000_0000_0000_0000_0000_0000_0000_0010`."""
-
     # TODO: Move these special values to top of the module
     # when Mojo support global variables in the future.
 
     # Special values
-    @always_inline
-    @staticmethod
-    def INFINITY() -> Self:
-        """Returns a Decimal representing positive infinity.
-        Internal representation: `0b0000_0000_0000_0000_0000_0000_0001`.
-
-        Returns:
-            A `Decimal128` representing positive infinity.
-        """
-        return Self(0, 0, 0, 0x00000001)
-
-    @always_inline
-    @staticmethod
-    def NEGATIVE_INFINITY() -> Self:
-        """Returns a Decimal128 representing negative infinity.
-        Internal representation: `0b1000_0000_0000_0000_0000_0000_0001`.
-
-        Returns:
-            A `Decimal128` representing negative infinity.
-        """
-        return Self(0, 0, 0, 0x80000001)
-
-    @always_inline
-    @staticmethod
-    def NAN() -> Self:
-        """Returns a Decimal128 representing Not a Number (NaN).
-        Internal representation: `0b0000_0000_0000_0000_0000_0000_0010`.
-
-        Returns:
-            A `Decimal128` representing NaN.
-        """
-        return Self(0, 0, 0, 0x00000010)
-
-    @always_inline
-    @staticmethod
-    def NEGATIVE_NAN() -> Self:
-        """Returns a Decimal128 representing negative Not a Number.
-        Internal representation: `0b1000_0000_0000_0000_0000_0000_0010`.
-
-        Returns:
-            A `Decimal128` representing negative NaN.
-        """
-        return Self(0, 0, 0, 0x80000010)
-
     @always_inline
     @staticmethod
     def ZERO() -> Decimal128:
@@ -432,26 +380,28 @@ struct Decimal128(
             A Decimal128 instance with the given words.
 
         Raises:
-            Error: If the `flags` word is invalid.
-            Error: If the scale is greater than MAX_SCALE.
+            ValueError: If the `flags` word has invalid bits set.
+            ValueError: If the scale is greater than MAX_SCALE.
         """
 
         # Check whether the `flags` word is valid.
-        testing.assert_true(
-            (flags & 0b0111_1111_0000_0000_1111_1111_1111_1111) == 0,
-            String(
-                "Error in Decimal128 constructor with four words: Flags must"
-                " have bits 0-15 and 24-30 set to zero, but got {}"
-            ).format(flags),
-        )
-        testing.assert_true(
-            ((flags & 0x00FF0000) >> Self.SCALE_SHIFT)
-            <= UInt32(Self.MAX_SCALE),
-            String(
-                "Error in Decimal128 constructor with four words: Scale must"
-                " be between 0 and 28, but got {}"
-            ).format((flags & 0x00FF0000) >> Self.SCALE_SHIFT),
-        )
+        if (flags & 0b0111_1111_0000_0000_1111_1111_1111_1111) != 0:
+            raise ValueError(
+                message=String(
+                    "Flags must have bits 0-15 and 24-30 set to zero,"
+                    " but got {}"
+                ).format(flags),
+                function="Decimal128.from_words()",
+            )
+
+        var scale = (flags & 0x00FF0000) >> Self.SCALE_SHIFT
+        if scale > UInt32(Self.MAX_SCALE):
+            raise ValueError(
+                message=String(
+                    "Scale must be between 0 and 28, but got {}"
+                ).format(scale),
+                function="Decimal128.from_words()",
+            )
 
         return Self(low, mid, high, flags)
 
@@ -904,7 +854,7 @@ struct Decimal128(
 
         Raises:
             OverflowError: If the value is too large for Decimal128.
-            ValueError: If the value is infinity or NaN.
+            ValueError: If the value is infinity or NaN (IEEE 754 special values).
 
         Example:
         ```mojo
@@ -949,10 +899,12 @@ struct Decimal128(
         if biased_exponent == 0:
             return Self(0, 0, 0, UInt32(Decimal128.MAX_SCALE), is_negative)
 
-        # CASE: Infinity or NaN
+        # CASE: IEEE 754 Infinity or NaN — Decimal128 does not support these
         if biased_exponent == 0x7FF:
             raise ValueError(
-                message="Cannot convert infinity or NaN to Decimal128.",
+                message=(
+                    "Cannot convert IEEE 754 infinity or NaN to Decimal128."
+                ),
                 function="Decimal128.from_float()",
             )
 
@@ -2195,24 +2147,6 @@ struct Decimal128(
             `True` if this value is zero, `False` otherwise.
         """
         return self.low == 0 and self.mid == 0 and self.high == 0
-
-    @always_inline
-    def is_infinity(self) -> Bool:
-        """Returns True if this Decimal128 is positive or negative infinity.
-
-        Returns:
-            `True` if infinity, `False` otherwise.
-        """
-        return (self.flags & Self.INFINITY_MASK) != 0
-
-    @always_inline
-    def is_nan(self) -> Bool:
-        """Returns True if this Decimal128 is NaN (Not a Number).
-
-        Returns:
-            `True` if NaN, `False` otherwise.
-        """
-        return (self.flags & Self.NAN_MASK) != 0
 
     @always_inline
     def scale(self) -> Int:

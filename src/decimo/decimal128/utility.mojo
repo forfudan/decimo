@@ -671,7 +671,11 @@ def number_of_bits[dtype: DType, //](var value: Scalar[dtype]) -> Int:
 
 
 @always_inline
-def power_of_10[dtype: DType](n: Int) -> Scalar[dtype]:
+def power_of_10[
+    dtype: DType
+](n: Int) -> Scalar[dtype] where (
+    dtype == DType.uint128 or dtype == DType.uint256
+):
     """
     Returns 10^n using cached values when available.
     **WARNING**: The overflow is not checked in this function.
@@ -690,16 +694,13 @@ def power_of_10[dtype: DType](n: Int) -> Scalar[dtype]:
         The value of 10^n as a Mojo scalar.
 
     Notes:
-        The powers of 10 is hard-coded up to 10^56 since it is twice the maximum
-        scale of Decimal128 (28). For larger values, the function calculates the
-        power of 10 using the built-in `**` operator.
+        The powers of 10 are hardcoded up to 10^58. This covers all values
+        needed for Decimal128 arithmetic (max scale 28 × 2 = 56 for products
+        of two max-scale numbers, plus 2 for rounding headroom). For larger
+        values, the function falls back to the `**` operator.
     """
 
     comptime ValueType = Scalar[dtype]
-
-    comptime assert (
-        dtype == DType.uint128 or dtype == DType.uint256
-    ), "must be uint128 or uint256"
 
     if n == 0:
         return ValueType(1)
@@ -768,52 +769,66 @@ def power_of_10[dtype: DType](n: Int) -> Scalar[dtype]:
     if n == 32:
         return ValueType(100000000000000000000000000000000)
     if n == 33:
-        return ValueType(10) ** 33
+        return ValueType(1000000000000000000000000000000000)
     if n == 34:
-        return ValueType(10) ** 34
+        return ValueType(10000000000000000000000000000000000)
     if n == 35:
-        return ValueType(10) ** 35
+        return ValueType(100000000000000000000000000000000000)
     if n == 36:
-        return ValueType(10) ** 36
+        return ValueType(1000000000000000000000000000000000000)
     if n == 37:
-        return ValueType(10) ** 37
+        return ValueType(10000000000000000000000000000000000000)
     if n == 38:
-        return ValueType(10) ** 38
+        return ValueType(100000000000000000000000000000000000000)
     if n == 39:
-        return ValueType(10) ** 39
+        return ValueType(1000000000000000000000000000000000000000)
     if n == 40:
-        return ValueType(10) ** 40
+        return ValueType(10000000000000000000000000000000000000000)
     if n == 41:
-        return ValueType(10) ** 41
+        return ValueType(100000000000000000000000000000000000000000)
     if n == 42:
-        return ValueType(10) ** 42
+        return ValueType(1000000000000000000000000000000000000000000)
     if n == 43:
-        return ValueType(10) ** 43
+        return ValueType(10000000000000000000000000000000000000000000)
     if n == 44:
-        return ValueType(10) ** 44
+        return ValueType(100000000000000000000000000000000000000000000)
     if n == 45:
-        return ValueType(10) ** 45
+        return ValueType(1000000000000000000000000000000000000000000000)
     if n == 46:
-        return ValueType(10) ** 46
+        return ValueType(10000000000000000000000000000000000000000000000)
     if n == 47:
-        return ValueType(10) ** 47
+        return ValueType(100000000000000000000000000000000000000000000000)
     if n == 48:
-        return ValueType(10) ** 48
+        return ValueType(1000000000000000000000000000000000000000000000000)
     if n == 49:
-        return ValueType(10) ** 49
+        return ValueType(10000000000000000000000000000000000000000000000000)
     if n == 50:
-        return ValueType(10) ** 50
+        return ValueType(100000000000000000000000000000000000000000000000000)
     if n == 51:
-        return ValueType(10) ** 51
+        return ValueType(1000000000000000000000000000000000000000000000000000)
     if n == 52:
-        return ValueType(10) ** 52
+        return ValueType(10000000000000000000000000000000000000000000000000000)
     if n == 53:
-        return ValueType(10) ** 53
+        return ValueType(100000000000000000000000000000000000000000000000000000)
     if n == 54:
-        return ValueType(10) ** 54
+        return ValueType(
+            1000000000000000000000000000000000000000000000000000000
+        )
     if n == 55:
-        return ValueType(10) ** 55
+        return ValueType(
+            10000000000000000000000000000000000000000000000000000000
+        )
     if n == 56:
-        return ValueType(10) ** 56
+        return ValueType(
+            100000000000000000000000000000000000000000000000000000000
+        )
+    if n == 57:
+        return ValueType(
+            1000000000000000000000000000000000000000000000000000000000
+        )
+    if n == 58:
+        return ValueType(
+            10000000000000000000000000000000000000000000000000000000000
+        )
 
     return ValueType(10) ** n
