@@ -205,9 +205,11 @@ I should verify `is_one()` handles all representations of 1: `1` (coef=1, scale=
 
 ## 4. Performance Bottlenecks
 
-### 4.1 `number_of_bits()` Uses a Loop
+### 4.1 `number_of_bits()` Used a Loop (Fixed)
 
 File: `utility.mojo`
+
+The original implementation:
 
 ```mojo
 def number_of_bits(n: UInt128) -> Int:
@@ -219,9 +221,9 @@ def number_of_bits(n: UInt128) -> Int:
     return count
 ```
 
-O(n) in bit count — up to 96 iterations. C#'s [`ScaleResult`](https://github.com/dotnet/runtime/blob/main/src/libraries/System.Private.CoreLib/src/System/Decimal.DecCalc.cs) uses `LeadingZeroCount` which is a single instruction on modern CPUs.
+O(n) in bit count — up to 96 iterations for a UInt128. C#'s [`ScaleResult`](https://github.com/dotnet/runtime/blob/main/src/libraries/System.Private.CoreLib/src/System/Decimal.DecCalc.cs) uses `LeadingZeroCount`, which is a single hardware instruction on modern CPUs.
 
-Fix: split UInt128 into two UInt64s and use `count_leading_zeros` on the high word. If the high word is zero, use CLZ on the low word. This gives O(1) bit width. See §2.5 for more on using UInt128/UInt256 as acceleration.
+Fix (done): delegate to `std.bit.bit_width`, which lowers to LLVM's `count_leading_zeros` intrinsic (single-instruction for ≤ 64-bit operands and two CLZs for 128-bit operands). The function is now O(1) in bit width regardless of input. See §2.5 for the broader use of UInt128/UInt256 as an acceleration bridge.
 
 ### 4.2 `power_of_10` Is Not Using Precomputed Constants Efficiently
 
@@ -299,20 +301,22 @@ Fix: batch up to 9 digits into a UInt64, then multiply `coef` by the appropriate
 
 Consider using `str.parse_numeric_string()` for `Decimal128.from_string()`.
 
-### 4.8 Division Loop: Separate `//` and `%` Operations
+### 4.8 Division Loop: Separate `//` and `%` Operations (Fixed)
 
 File: `arithmetics.mojo`
+
+The long-division digit-extraction loop in `divide()` originally executed two 128-bit (or 256-bit) divisions on the same operands per iteration:
 
 ```mojo
 digit = rem // x2_coef
 rem = rem % x2_coef
 ```
 
-Two separate 128-bit divisions on the same operands. Most hardware produces both quotient and remainder in a single `div` instruction.
+Most hardware produces both quotient and remainder in a single `div` instruction, but Mojo currently has no `divmod` primitive that surfaces this.
 
-Note: the `round_coefficient` function (§4.3) already addresses this for the rounding path by computing `remainder = value - truncated * divisor` instead of a second division. This §4.8 issue remains only in the long-division digit-extraction loop inside `divide()`, which is a different code path.
+Fix (done): use the same trick already employed in `round_coefficient` (§4.3) — compute `rem = rem - digit * x2_coef` instead of issuing a second division. This applies to both the UInt128 fast path and the UInt256 fallback inside `divide()`. The UInt256 path additionally hoists `UInt256(x2_coef)` out of the loop into a single `x2_coef256` local. The pre-loop dividend/remainder computation was also converted (`rem = adjusted_x1_coef - quot * x2_coef`).
 
-Fix: use `divmod()` if available in Mojo.
+All 11 `test_decimal128_divide` tests still pass.
 
 ### 4.9 Decimal128 Unit Test Suite Is Surprisingly Slow
 
@@ -404,8 +408,8 @@ Some test cases worth adding:
 | 3.2 | `from_words` uses `testing.assert_true`          | Medium      | Small   | P1       | Done   |
 | 4.2 | `power_of_10` not fully precomputed              | High        | Small   | P1       | Done   |
 | 4.3 | `round_to_keep_first_n_digits` lacks .NET tricks | High        | Medium  | P1       | Done   |
-| 4.1 | `number_of_bits` loop                            | Medium      | Small   | P2       | -      |
-| 4.8 | Separate `//` and `%` in division loop           | Medium      | Small   | P2       | -      |
+| 4.1 | `number_of_bits` loop                            | Medium      | Small   | P2       | Done   |
+| 4.8 | Separate `//` and `%` in division loop           | Medium      | Small   | P2       | Done   |
 | 4.7 | `from_string` optimization                       | Medium      | Medium  | P2       | -      |
 | 4.4 | `ln()` range reduction loops                     | Medium      | Medium  | P2       | -      |
 | 4.9 | Test suite slow (flags + per-file JIT)           | Medium      | Medium  | P2       | -      |
@@ -431,12 +435,12 @@ Phase 2 — performance (coefficient bound): **(Mostly done)**
 
 1. ~~Extend `power_of_10` hardcoded constants up to n=58 (§4.2).~~ **Done.**
 2. ~~Add .NET-style tricks to rounding: new `round_coefficient` with single-division remainder, cheap half-comparison, and caller-supplied removal count (§4.3).~~ **Done** — all 10 production callers migrated.
-3. Replace `number_of_bits` with hardware CLZ via UInt64 split (§4.1).
+3. ~~Replace `number_of_bits` with hardware CLZ via UInt64 split (§4.1).~~ **Done** — now delegates to `std.bit.bit_width` (LLVM `count_leading_zeros`).
 
 Phase 3 — performance (general):
 
 1. Optimize `from_string` digit batching (§4.7).
-2. Use single divmod in division loop (§4.8).
+2. ~~Use single divmod in division loop (§4.8).~~ **Done** — replaced second `%` with `rem - digit * divisor`; covers both UInt128 and UInt256 paths.
 3. Improve `ln()` range reduction (§4.4).
 4. Address test-suite latency (§4.9): split dev/CI flag profiles, hoist `parse_file` calls, consolidate per-file JIT runs.
 

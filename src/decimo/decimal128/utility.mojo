@@ -22,6 +22,7 @@
 from std.memory import UnsafePointer
 from std import sys
 from std import time
+from std.bit import bit_width
 
 from decimo.decimal128.decimal128 import Decimal128
 from decimo.rounding_mode import RoundingMode
@@ -677,15 +678,14 @@ def number_of_bits[dtype: DType, //](var value: Scalar[dtype]) -> Int:
 
     comptime assert dtype.is_integral(), "must be intergral"
 
+    # Delegate to `std.bit.bit_width`, which lowers to a hardware
+    # `count_leading_zeros` (single-instruction for ≤ 64-bit, two CLZs
+    # for 128-bit). This replaces the previous O(n) shift-and-count loop
+    # that took up to 96 iterations on UInt128.
     if value < 0:
         value = -value
 
-    var count = 0
-    while value > 0:
-        value >>= 1
-        count += 1
-
-    return count
+    return Int(bit_width(value))
 
 
 # ===----------------------------------------------------------------------=== #
