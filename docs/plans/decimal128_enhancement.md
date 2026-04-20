@@ -243,7 +243,7 @@ The old `round_to_keep_first_n_digits` had two real inefficiencies compared to
 1. **Expensive half-comparison** — the cutoff `5 * power_of_10(n − 1)` required an extra power-of-10 lookup and a wide multiply. .NET instead compares `2 * remainder` against `divisor`, which is a single left-shift.
 2. **Redundant `number_of_digits` call** — the function always recomputed the digit count even though most callers already knew it.
 
-A third candidate ("two wide divisions: replace `value % divisor` with `value - truncated * divisor`") was also tried, but the microbenchmark in §4.8 showed it does not help — LLVM already fuses `// + %` into a single divmod call, and the mul+sub form is strictly more work. The current `round_coefficient` therefore uses the natural `// + %` form.
+A third candidate ("two wide divisions: replace `value % divisor` with `value - truncated * divisor`") was also tried, but the microbenchmark in §4.8 — plus a direct read of the generated ARM64 assembly — showed it does not help. LLVM canonicalizes `urem` to `sub(a, mul(udiv, b))` and CSE-deduplicates the shared `udiv`, so `// + %` and `// + (a - q*b)` lower to identical code (one `___udivti3` call + inline mul/sub). The current `round_coefficient` therefore uses the natural `// + %` form.
 
 Fix (done): introduced `round_coefficient(value, ndigits_to_remove, sign, rounding_mode)` which applies the half-comparison shortcut and takes `ndigits_to_remove` directly so callers that already know the digit count skip the redundant computation. All production call sites migrated; the old function is kept but deprecated.
 
@@ -317,13 +317,13 @@ It looks like two separate 128-bit (or 256-bit) divisions on the same operands, 
 
 **Empirical microbenchmark** (`temp/bench_divmod.mojo`, M-series Apple Silicon, `--debug-level=line-tables -D ASSERT=none`, 200_000 iters per call, best of 3):
 
-| Type    | `q = a // b; r = a % b` | `q = a // b; r = a - q*b` | Winner                      |
-| ------- | ----------------------- | ------------------------- | --------------------------- |
-| UInt64  | **0.105 ms**            | 0.207 ms                  | `// + %` is **2× faster**   |
-| UInt128 | 0.547 ms                | 0.519 ms                  | tied (within noise)         |
-| UInt256 | **0.660 ms**            | 0.690 ms                  | `// + %` is ~5% faster      |
+| Type    | `q = a // b; r = a % b` | `q = a // b; r = a - q*b` | Winner                    |
+| ------- | ----------------------- | ------------------------- | ------------------------- |
+| UInt64  | **0.105 ms**            | 0.207 ms                  | `// + %` is **2× faster** |
+| UInt128 | 0.547 ms                | 0.519 ms                  | tied (within noise)       |
+| UInt256 | **0.660 ms**            | 0.690 ms                  | `// + %` is ~5% faster    |
 
-Why: LLVM detects the `q = a/b; r = a%b` pattern when the operands are identical and fuses them into a single hardware `divmod` instruction (UInt64) or a single `__udivmodti4` library call (UInt128/UInt256). The mul+sub alternative does one division **plus** one wide multiply **plus** one wide subtract — strictly more work than a fused divmod. The earlier hypothesis that the second `%` triggered a second full division was wrong.
+Why: inspecting `mojo build --emit=asm -O3` output on aarch64 (Apple Silicon) shows that for **both** patterns the compiler emits exactly one division — a single `___udivti3` library call for UInt128 (or one `udiv` instruction for UInt64) — followed by an inline `mul + sub` for the remainder. The mechanism is LLVM's `DivRemPairs` / instruction-combining pass: `urem(a, b)` is canonicalized to `sub(a, mul(udiv(a, b), b))`, and the shared `udiv` is then CSE-deduplicated against the explicit `a // b`. So writing `a % b` does **not** issue a second division; the manual `a - q * b` rewrite gives the compiler nothing extra and is strictly more source code to maintain. (Reference asm: `temp/divmod_isolation.s`, generated from `temp/divmod_isolation.mojo`.)
 
 Note: the `// + %` pattern *is* the canonical way to access divmod in Mojo — there is no separate `divmod` primitive in `std`, and one is not needed.
 

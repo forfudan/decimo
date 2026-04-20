@@ -185,10 +185,12 @@ def fit_to_max_coefficient[
 #
 # (An earlier version also used `value - truncated * divisor` to derive
 # the remainder, on the assumption that `value % divisor` would issue a
-# second wide-integer division. A microbenchmark — see plan §4.8 —
-# disproved this: LLVM fuses `q = a // b; r = a % b` on identical operands
-# into a single divmod call, which is strictly cheaper than div + wide
-# mul + wide sub. The function now uses the natural `// + %` form.)
+# second wide-integer division. A microbenchmark plus direct inspection
+# of the generated ARM64 assembly — see plan §4.8 and
+# `temp/divmod_isolation.s` — disproved this: LLVM lowers `urem` to
+# `sub(a, mul(udiv, b))` and CSE-deduplicates the shared `udiv`, so
+# `// + %` and the manual rewrite produce identical code with exactly
+# one division. The function now uses the natural `// + %` form.)
 @always_inline
 def round_coefficient[
     dtype: DType, //
@@ -263,10 +265,11 @@ def round_coefficient[
             return ValueType(1)
         return ValueType(0)
 
-    # Single divmod: LLVM fuses `// + %` on the same operands into one
-    # divmod call (see plan §4.8 for the microbenchmark). Earlier code used
-    # `value - truncated * divisor`, which is strictly more work
-    # (one div + one wide mul + one wide sub) than a fused divmod.
+    # Single divmod: writing `// + %` lets LLVM compute one division and
+    # derive the remainder via `a - (a/b) * b`, then CSE-dedup the shared
+    # division (verified at the ARM64 asm level; see plan §4.8 and
+    # `temp/divmod_isolation.s`). An earlier `value - truncated * divisor`
+    # rewrite was strictly more source code for identical generated code.
     var divisor = power_of_10[dtype](ndigits_to_remove)
     var truncated = value // divisor
     var remainder = value % divisor

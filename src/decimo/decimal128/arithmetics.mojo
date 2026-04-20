@@ -1055,10 +1055,12 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             # Calculate next quotient digit
             digit = rem256 // x2_coef256
             quot256 = quot256 * 10 + digit
-            # Calculate new remainder. LLVM fuses `// + %` with the same
-            # operands into a single divmod call, so the natural form is
-            # already optimal for UInt256. Hoisting `UInt256(x2_coef)` into
-            # `x2_coef256` above the loop avoids the per-iteration lift.
+            # Calculate new remainder. Writing `// + %` is fine here:
+            # LLVM lowers `urem` to `sub(a, mul(udiv, b))` and CSE-dedups
+            # the shared `udiv`, so the loop performs exactly one
+            # division per iteration (verified at the ARM64 asm level).
+            # Hoisting `UInt256(x2_coef)` into `x2_coef256` above
+            # the loop avoids the per-iteration lift.
             rem256 = rem256 % x2_coef256
             # Increment step counter
             step_counter += 1
