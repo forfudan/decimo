@@ -149,6 +149,17 @@ def round(
         # Calculate the number of digits to remove
         var ndigits_to_remove = -scale_diff
 
+        # Also compute ndigits_to_keep for the zero-check below
+        var ndigits_to_keep = ndigits_of_x + scale_diff
+
+        # Fast path: when the requested rounding would discard every digit of
+        # the coefficient and `ndigits` is negative, the final result is 0.
+        # Returning early avoids invoking `round_coefficient` with an
+        # `ndigits_to_remove` that may be very large (e.g. for strongly
+        # negative `ndigits`).
+        if ndigits_to_keep < 0 and ndigits < 0:
+            return Decimal128.ZERO()
+
         # Round coefficient by removing trailing digits
         var res_coef = decimo.decimal128.utility.round_coefficient(
             x_coef,
@@ -156,9 +167,6 @@ def round(
             rounding_mode=rounding_mode,
             sign=number.is_negative(),
         )
-
-        # Also compute ndigits_to_keep for the zero-check below
-        var ndigits_to_keep = ndigits_of_x + scale_diff
 
         if ndigits >= 0:
             return Decimal128.from_uint128(

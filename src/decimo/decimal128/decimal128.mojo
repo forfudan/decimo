@@ -798,7 +798,19 @@ struct Decimal128(
         else:
             var fitted = decimo.decimal128.utility.fit_to_max_coefficient(coef)
             var truncated_coef = fitted[0]
-            var scale_of_truncated_coef = scale - UInt32(fitted[1])
+            var truncated_digits = UInt32(fitted[1])
+            # Guard against integral-digit overflow: if more digits were removed
+            # than the current scale provides, integral digits were lost and
+            # the value no longer fits Decimal128.
+            if truncated_digits > scale:
+                raise OverflowError(
+                    message=(
+                        "Cannot fit Decimal128 coefficient without removing"
+                        " integral digits."
+                    ),
+                    function="Decimal128.from_string()",
+                )
+            var scale_of_truncated_coef = scale - truncated_digits
 
             if scale_of_truncated_coef > UInt32(Decimal128.MAX_SCALE):
                 truncated_coef = decimo.decimal128.utility.round_coefficient(

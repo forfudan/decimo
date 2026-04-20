@@ -84,7 +84,7 @@ def test_fit_to_max_above() raises:
     assert_true(r4[0] <= UInt256(Decimal128.MAX_AS_UINT128))
     assert_equal(r4[1], 4)
 
-    # Banker's rounding: MAX + 20 (trailing 5, preceding digit even → round up)
+    # Banker's rounding: MAX + 20 (trailing 5, kept last digit odd → round up)
     var r5 = fit_to_max_coefficient(
         UInt256(Decimal128.MAX_AS_UINT128) + UInt256(20)
     )
@@ -169,19 +169,9 @@ def test_fit_to_max_cascade_rounding() raises:
     assert_equal(r4[0], UInt256(10000000000000000000000000000))  # 10^28
     assert_equal(r4[1], 12)
 
-    # Exactly MAX + 1 with all-nines flavor: 79228162514264337593543950336
-    # try-29 → ndigits=29, digits_to_remove=0, keep 29 digits → unchanged →
-    # still > MAX → retry-28: remove 1 digit, truncated = 7922816251426433759354395034,
-    # remainder = 6, rounding digit 6 > 5 → round up → 7922816251426433759354395034.
-    # Wait, let me reconsider. value = MAX+1 = 79228162514264337593543950336.
-    # ndigits = 29, digits_to_remove = 0.
-    # try-29: round_to_keep_first_n_digits(value, 29) → ndigits_of_x=29, ndigits=29,
-    # so ndigits >= ndigits_of_x → return value unchanged = MAX+1.
-    # MAX+1 > MAX → retry.
-    # try-28: round_to_keep_first_n_digits(value, 28) → remove 1 digit.
-    # truncated = 7922816251426433759354395033, remainder = 6.
-    # 6 > 5 → round up → 7922816251426433759354395034.
-    # digits_to_remove = 0 + 1 = 1.
+    # MAX + 1: keeping 29 digits leaves the value unchanged and still above MAX,
+    # so the helper retries with 28 digits, rounds once, and reports one digit
+    # removed.
     var r5 = fit_to_max_coefficient(
         UInt256(79228162514264337593543950336)  # MAX + 1
     )

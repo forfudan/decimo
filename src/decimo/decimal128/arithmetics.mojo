@@ -242,6 +242,14 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             var fitted = decimo.decimal128.utility.fit_to_max_coefficient(
                 summation
             )
+            # Guard against integral-digit overflow: if the coefficient-fitting
+            # had to remove more digits than the current scale provides, the
+            # result no longer fits Decimal128's range.
+            if UInt32(fitted[1]) > UInt32(x1_scale):
+                raise OverflowError(
+                    message="Addition result exceeds Decimal128 precision.",
+                    function="add()",
+                )
             var final_scale = UInt32(x1_scale) - UInt32(fitted[1])
 
             return Decimal128.from_uint128(fitted[0], final_scale, is_negative)
@@ -309,9 +317,16 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             var fitted = decimo.decimal128.utility.fit_to_max_coefficient(
                 summation
             )
-            var final_scale = UInt32(max(x1_scale, x2_scale)) - UInt32(
-                fitted[1]
-            )
+            var working_scale = UInt32(max(x1_scale, x2_scale))
+            # Guard against integral-digit overflow: if the coefficient-fitting
+            # had to remove more digits than the working scale provides, the
+            # result no longer fits Decimal128's range.
+            if UInt32(fitted[1]) > working_scale:
+                raise OverflowError(
+                    message="Addition result exceeds Decimal128 precision.",
+                    function="add()",
+                )
+            var final_scale = working_scale - UInt32(fitted[1])
 
             return Decimal128.from_uint128(
                 UInt128(fitted[0] & 0x00000000_FFFFFFFF_FFFFFFFF_FFFFFFFF),

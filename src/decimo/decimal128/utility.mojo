@@ -76,9 +76,6 @@ def sqrt(x: UInt128) -> UInt128:
         The square root of the UInt128 value.
     """
 
-    if x < 0:
-        return 0
-
     var r: UInt128 = 0
 
     for p in range(sys.bit_width_of[UInt128]() // 2 - 1, -1, -1):
@@ -135,16 +132,17 @@ def fit_to_max_coefficient[
         >>> fit_to_max_coefficient(UInt128(123456))
         (123456, 0)
 
-        If the value is too large, it is rounded to fit:
+        If the value is too large, it is rounded to fit. The 29-digit
+        rounded result may itself exceed `2^96 - 1`, in which case the
+        function automatically retries with 28 digits:
 
         >>> fit_to_max_coefficient(UInt256(792281625142643375935439503560))
-        (79228162514264337593543950356, 1)
+        (7922816251426433759354395036, 2)
 
-        If rounding 29 digits still overflows (because the 29-digit rounded
-        value > 2^96 - 1), the function automatically retries with 28 digits:
+        Another example where the all-nines case forces the retry:
 
         >>> fit_to_max_coefficient(UInt256(99999999999999999999999999999999))
-        (10000000000000000000000000000, 4).
+        (10000000000000000000000000000, 4)
 
         The returned value is always ≤ 2^96 - 1.
     """
@@ -238,6 +236,26 @@ def round_coefficient[
     # Nothing to remove.
     if ndigits_to_remove <= 0:
         return value
+
+    # Fast path: if more digits would be removed than the value has, the
+    # truncated quotient is 0 and the remainder is the whole value, which is
+    # strictly less than `divisor / 10`. Therefore `2 * remainder < divisor`,
+    # so every HALF_* and DOWN-equivalent mode rounds to 0, while UP-equivalent
+    # modes round to 1 (when the value is non-zero). Handling this here avoids
+    # invoking `power_of_10` with an exponent that may overflow `Scalar[dtype]`
+    # when the caller passes a very large `ndigits_to_remove` (e.g. via
+    # `Decimal128.round()` with a strongly negative `ndigits`).
+    if ndigits_to_remove > number_of_digits(value):
+        if value == 0:
+            return ValueType(0)
+        var fast_mode = rounding_mode
+        if rounding_mode == RoundingMode.ceiling():
+            fast_mode = RoundingMode.up() if not sign else RoundingMode.down()
+        elif rounding_mode == RoundingMode.floor():
+            fast_mode = RoundingMode.down() if not sign else RoundingMode.up()
+        if fast_mode == RoundingMode.up():
+            return ValueType(1)
+        return ValueType(0)
 
     # Divide once; derive remainder from a single multiply.
     var divisor = power_of_10[dtype](ndigits_to_remove)

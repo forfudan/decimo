@@ -253,19 +253,11 @@ File: `utility.mojo`
 The old `round_to_keep_first_n_digits` had three inefficiencies compared to
 .NET's [`ScaleResult`](https://github.com/dotnet/runtime/blob/main/src/libraries/System.Private.CoreLib/src/System/Decimal.DecCalc.cs):
 
-1. **Two wide divisions** — `value // divisor` and `value % divisor` performed
-   two separate UInt128/UInt256 divisions, when the remainder can be derived
-   from a single division plus one multiply: `remainder = value - truncated * divisor`.
-2. **Expensive half-comparison** — the cutoff `5 * power_of_10(n − 1)` required
-   an extra power-of-10 lookup and a wide multiply.  .NET instead compares
-   `2 * remainder` against `divisor`, which is a single left-shift.
-3. **Redundant `number_of_digits` call** — the function always recomputed the
-   digit count even though most callers already knew it.
+1. **Two wide divisions** — `value // divisor` and `value % divisor` performed two separate UInt128/UInt256 divisions, when the remainder can be derived from a single division plus one multiply: `remainder = value - truncated * divisor`.
+2. **Expensive half-comparison** — the cutoff `5 * power_of_10(n − 1)` required an extra power-of-10 lookup and a wide multiply.  .NET instead compares `2 * remainder` against `divisor`, which is a single left-shift.
+3. **Redundant `number_of_digits` call** — the function always recomputed the digit count even though most callers already knew it.
 
-Fix (done): introduced `round_coefficient(value, ndigits_to_remove, sign, rounding_mode)`
-which applies all three .NET-style tricks and takes `ndigits_to_remove` directly
-so callers that already know the digit count skip the redundant computation.
-All production call sites migrated; the old function is kept but deprecated.
+Fix (done): introduced `round_coefficient(value, ndigits_to_remove, sign, rounding_mode)` which applies all three .NET-style tricks and takes `ndigits_to_remove` directly so callers that already know the digit count skip the redundant computation. All production call sites migrated; the old function is kept but deprecated.
 
 ### 4.4 `ln()` Range Reduction Uses Loops
 
@@ -497,13 +489,9 @@ Not truly 128-bit — the struct is **160 bits (20 bytes)**. Layout:
 - `reserved: UInt16`
 - `mantissa: (UInt16, UInt16, UInt16, UInt16, UInt16, UInt16, UInt16, UInt16)` — 8×UInt16 = 128 bits
 
-The 128-bit mantissa can theoretically hold values up to 2^128 − 1, but the `_length` field
-(4 bits, max 15) indicates how many of the 8 UInt16 slots are used, and Apple documents the max as
-38 significant decimal digits (i.e., effectively capped at 10^38 − 1).
+The 128-bit mantissa can theoretically hold values up to 2^128 − 1, but the `_length` field (4 bits, max 15) indicates how many of the 8 UInt16 slots are used, and Apple documents the max as 38 significant decimal digits (i.e., effectively capped at 10^38 − 1).
 
-Unlike C# and Rust, Swift Decimal **supports NaN** (`isNaN` property). It does NOT support Infinity
-in practice — the `isInfinite` property exists (inherited from `FloatingPoint` protocol) but Apple's
-implementation does not produce or handle Infinity values meaningfully.
+Unlike C# and Rust, Swift Decimal **supports NaN** (`isNaN` property). It does NOT support Infinity in practice — the `isInfinite` property exists (inherited from `FloatingPoint` protocol) but Apple's implementation does not produce or handle Infinity values meaningfully.
 
 #### SQL Server decimal / numeric
 
@@ -524,25 +512,17 @@ No NaN, no Infinity. `decimal` and `numeric` are synonyms; both are fixed precis
 
 #### Go govalues/decimal
 
-A high-performance, zero-allocation decimal designed for financial systems. Internally uses a
-`uint64` coefficient (max 10^19 − 1 = 9,999,999,999,999,999,999) with 19-digit precision and
-scale 0–19. The struct fits in 128 bits total (bool sign + uint64 coefficient + int scale, though
-Go struct layout may pad slightly).
+A high-performance, zero-allocation decimal designed for financial systems. Internally uses a `uint64` coefficient (max 10^19 − 1 = 9,999,999,999,999,999,999) with 19-digit precision and scale 0–19. The struct fits in 128 bits total (bool sign + uint64 coefficient + int scale, though Go struct layout may pad slightly).
 
-No NaN, no Infinity, no negative zero, no subnormals. Immutable, panic-free (returns errors).
-Uses half-to-even rounding by default. Falls back to `big.Int` for intermediate calculations to
-maintain correctness, but final results are always rounded to 19 digits.
+No NaN, no Infinity, no negative zero, no subnormals. Immutable, panic-free (returns errors). Uses half-to-even rounding by default. Falls back to `big.Int` for intermediate calculations to maintain correctness, but final results are always rounded to 19 digits.
 
 #### Delphi Currency
 
-Only 64 bits, included for completeness. A 64-bit signed integer scaled by 10^4 (i.e., always
-exactly 4 decimal places). Max value: 922,337,203,685,477.5807. Not truly 128-bit, but it is a
-notable example of a fixed-point decimal type in the wild.
+Only 64 bits, included for completeness. A 64-bit signed integer scaled by 10^4 (i.e., always exactly 4 decimal places). Max value: 922,337,203,685,477.5807. Not truly 128-bit, but it is a notable example of a fixed-point decimal type in the wild.
 
 ### A.3 Eliminated Candidates
 
-The following were investigated but **excluded** because they are arbitrary-precision (not
-fixed-precision within 128 bits):
+The following were investigated but **excluded** because they are arbitrary-precision (not fixed-precision within 128 bits):
 
 | Name                   | Language   | Reason for Exclusion                                                                                                           |
 | ---------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -553,15 +533,13 @@ fixed-precision within 128 bits):
 
 ### A.4 Critical Analysis: Coefficient Upper Bound Approaches
 
-There are **two fundamentally different approaches** to bounding the coefficient in fixed-precision
-decimal types:
+There are **two fundamentally different approaches** to bounding the coefficient in fixed-precision decimal types:
 
 #### Approach 1: Binary Bound (2^N − 1)
 
 **Used by:** C# System.Decimal, Rust rust_decimal, Decimo Decimal128
 
-The coefficient is an N-bit unsigned integer, and the maximum value is the full binary range
-2^N − 1. For 96-bit coefficients:
+The coefficient is an N-bit unsigned integer, and the maximum value is the full binary range 2^N − 1. For 96-bit coefficients:
 
 - Max = 2^96 − 1 = **79,228,162,514,264,337,593,543,950,335**
 - This is a 29-digit number, but the leading digit can only be 0–7 (since 10^29 − 1 > 2^96 − 1)
@@ -576,18 +554,14 @@ The coefficient is an N-bit unsigned integer, and the maximum value is the full 
 
 **Cons:**
 
-- The "truncate-to-max" problem: when an operation produces a coefficient > 2^96 − 1, you must
-  either raise an error or round. The boundary is not at a clean decimal digit boundary, which
-  makes rounding semantics awkward. E.g., 80,000,000,000,000,000,000,000,000,000 (8×10^28) is
-  out of range, even though it only needs 2 significant digits.
+- The "truncate-to-max" problem: when an operation produces a coefficient > 2^96 − 1, you must either raise an error or round. The boundary is not at a clean decimal digit boundary, which makes rounding semantics awkward. E.g., 80,000,000,000,000,000,000,000,000,000 (8×10^28) is out of range, even though it only needs 2 significant digits.
 - Non-uniform digit range: the 29th digit has range 0–7, not 0–9. This is confusing for users.
 
 #### Approach 2: Decimal Bound (10^p − 1)
 
 **Used by:** Apache Arrow Decimal128, SQL Server decimal(38), Swift Decimal, govalues/decimal
 
-The coefficient is bounded by 10^p − 1, where p is the declared precision. Even if the underlying
-storage has more bits available, values above 10^p − 1 are not representable.
+The coefficient is bounded by 10^p − 1, where p is the declared precision. Even if the underlying storage has more bits available, values above 10^p − 1 are not representable.
 
 For Arrow/SQL precision 38:
 
@@ -616,19 +590,8 @@ For govalues/decimal precision 19:
 
 Decimo follows the C#/Rust approach (binary bound, 2^96 − 1). This means:
 
-1. **The coefficient-fitting logic IS a concern:** When multiplying two 29-digit
-   numbers, the intermediate product can have up to 58 digits. If the result after scale adjustment
-   still exceeds 2^96 − 1, we must handle it. The current behavior should be documented: do we
-   raise an error, or do we round to fit?
+1. **The coefficient-fitting logic IS a concern:** When multiplying two 29-digit numbers, the intermediate product can have up to 58 digits. If the result after scale adjustment still exceeds 2^96 − 1, we must handle it. The current behavior should be documented: do we raise an error, or do we round to fit?
 
-2. **The non-uniform 29th digit** should be documented. Users may expect that "29 digits of
-   precision" means they can represent any 29-digit number, but
-   `99,999,999,999,999,999,999,999,999,999` (29 nines) = ~10^29 is > 2^96 and therefore
-   out of range. The actual guarantee is "28 full digits plus a leading digit 0–7".
+2. **The non-uniform 29th digit** should be documented. Users may expect that "29 digits of precision" means they can represent any 29-digit number, but `99,999,999,999,999,999,999,999,999,999` (29 nines) = ~10^29 is > 2^96 and therefore out of range. The actual guarantee is "28 full digits plus a leading digit 0–7".
 
-3. **If we ever consider a Decimal256 or widen to full 128-bit coefficient:** We should evaluate
-   whether to switch to the decimal-bounded approach (10^38 − 1 with 128-bit storage, matching
-   Arrow/SQL) vs. staying with binary bound (2^128 − 1, giving ~38.5 digits with non-uniform
-   leading digit). The Arrow/SQL approach would give us exact compatibility with SQL Server
-   `decimal(38)` and Arrow `Decimal128` wire format, which is a significant interoperability
-   advantage.
+3. **If we ever consider a Decimal256 or widen to full 128-bit coefficient:** We should evaluate whether to switch to the decimal-bounded approach (10^38 − 1 with 128-bit storage, matching Arrow/SQL) vs. staying with binary bound (2^128 − 1, giving ~38.5 digits with non-uniform leading digit). The Arrow/SQL approach would give us exact compatibility with SQL Server `decimal(38)` and Arrow `Decimal128` wire format, which is a significant interoperability advantage.
