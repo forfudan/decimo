@@ -173,18 +173,22 @@ def fit_to_max_coefficient[
 
 
 # [Mojo Miji]
-# This function replaces `round_to_keep_first_n_digits` with three
+# This function replaces `round_to_keep_first_n_digits` with two
 # optimisations borrowed from .NET's `DecCalc.ScaleResult`:
-# 1. **Single division** — the remainder is computed as
-#   `value - truncated * divisor` (one multiply) instead of a second
-#   wide-integer division (`value % divisor`).
-# 2. **Cheap half-comparison** — for HALF_UP / HALF_DOWN / HALF_EVEN,
+# 1. **Cheap half-comparison** — for HALF_UP / HALF_DOWN / HALF_EVEN,
 #   `2 * remainder` is compared against `divisor` instead of computing
 #   the separate cutoff `5 * 10^(n-1)` (saves one power-of-10 lookup
 #   and one wide multiply).
-# 3. **Caller supplies digit-removal count** — avoids a redundant
+# 2. **Caller supplies digit-removal count** — avoids a redundant
 #   `number_of_digits` call when the caller already knows the value's
 #   digit count.
+#
+# (An earlier version also used `value - truncated * divisor` to derive
+# the remainder, on the assumption that `value % divisor` would issue a
+# second wide-integer division. A microbenchmark — see plan §4.8 —
+# disproved this: LLVM fuses `q = a // b; r = a % b` on identical operands
+# into a single divmod call, which is strictly cheaper than div + wide
+# mul + wide sub. The function now uses the natural `// + %` form.)
 @always_inline
 def round_coefficient[
     dtype: DType, //
@@ -259,10 +263,13 @@ def round_coefficient[
             return ValueType(1)
         return ValueType(0)
 
-    # Divide once; derive remainder from a single multiply.
+    # Single divmod: LLVM fuses `// + %` on the same operands into one
+    # divmod call (see plan §4.8 for the microbenchmark). Earlier code used
+    # `value - truncated * divisor`, which is strictly more work
+    # (one div + one wide mul + one wide sub) than a fused divmod.
     var divisor = power_of_10[dtype](ndigits_to_remove)
     var truncated = value // divisor
-    var remainder = value - truncated * divisor
+    var remainder = value % divisor
 
     # Translate directed modes into sign-independent UP / DOWN.
     var effective_mode = rounding_mode

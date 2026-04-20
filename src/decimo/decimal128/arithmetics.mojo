@@ -920,13 +920,11 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     if diff_digits < 0:
         var adjusted_x1_coef = x1_coef * UInt128(10) ** (-diff_digits)
         quot = adjusted_x1_coef // x2_coef
-        # Use mul + sub instead of a second 128-bit division: same trick as
-        # `round_coefficient` (§4.3). See §4.8 of the enhancement plan.
-        rem = adjusted_x1_coef - quot * x2_coef
+        rem = adjusted_x1_coef % x2_coef
         adjusted_scale = -diff_digits
     else:
         quot = x1_coef // x2_coef
-        rem = x1_coef - quot * x2_coef
+        rem = x1_coef % x2_coef
 
     if is_use_uint128:
         # Maximum number of steps is minimum of the following two values:
@@ -958,9 +956,8 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             # Calculate next quotient digit
             digit = rem // x2_coef
             quot = quot * 10 + digit
-            # Calculate new remainder via mul + sub (single 128-bit
-            # division per loop iteration).
-            rem = rem - digit * x2_coef
+            # Calculate new remainder
+            rem = rem % x2_coef
             # Increment step counter
             step_counter += 1
             # Check if division is exact
@@ -1058,10 +1055,11 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             # Calculate next quotient digit
             digit = rem256 // x2_coef256
             quot256 = quot256 * 10 + digit
-            # Calculate new remainder via mul + sub (single 256-bit
-            # division per loop iteration). Also caches
-            # `UInt256(x2_coef)` so the lift only happens once.
-            rem256 = rem256 - digit * x2_coef256
+            # Calculate new remainder. LLVM fuses `// + %` with the same
+            # operands into a single divmod call, so the natural form is
+            # already optimal for UInt256. Hoisting `UInt256(x2_coef)` into
+            # `x2_coef256` above the loop avoids the per-iteration lift.
+            rem256 = rem256 % x2_coef256
             # Increment step counter
             step_counter += 1
             # Check if division is exact
