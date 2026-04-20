@@ -787,51 +787,37 @@ struct Decimal128(
         # because it is used in many cases
         if coef <= Decimal128.MAX_AS_UINT128:
             if scale > UInt32(Decimal128.MAX_SCALE):
-                coef = decimo.decimal128.utility.round_to_keep_first_n_digits(
+                coef = decimo.decimal128.utility.round_coefficient(
                     coef,
-                    False,
-                    Int(num_mantissa_digits)
-                    - Int(scale - UInt32(Decimal128.MAX_SCALE)),
+                    ndigits_to_remove=Int(scale - UInt32(Decimal128.MAX_SCALE)),
                 )
                 scale = UInt32(Decimal128.MAX_SCALE)
 
             return Decimal128.from_uint128(coef, scale, mantissa_sign)
 
         else:
-            var ndigits_coef = decimo.decimal128.utility.number_of_digits(coef)
-            var ndigits_quot_int_part = UInt32(ndigits_coef) - scale
-
-            var truncated_coef = (
-                decimo.decimal128.utility.round_to_keep_first_n_digits(
-                    coef, False, Decimal128.MAX_NUM_DIGITS
+            var fitted = decimo.decimal128.utility.fit_to_max_coefficient(coef)
+            var truncated_coef = fitted[0]
+            var truncated_digits = UInt32(fitted[1])
+            # Guard against integral-digit overflow: if more digits were removed
+            # than the current scale provides, integral digits were lost and
+            # the value no longer fits Decimal128.
+            if truncated_digits > scale:
+                raise OverflowError(
+                    message=(
+                        "Cannot fit Decimal128 coefficient without removing"
+                        " integral digits."
+                    ),
+                    function="Decimal128.from_string()",
                 )
-            )
-            var scale_of_truncated_coef = (
-                UInt32(Decimal128.MAX_NUM_DIGITS) - ndigits_quot_int_part
-            )
-
-            if truncated_coef > Decimal128.MAX_AS_UINT128:
-                truncated_coef = (
-                    decimo.decimal128.utility.round_to_keep_first_n_digits(
-                        coef, False, Decimal128.MAX_NUM_DIGITS - 1
-                    )
-                )
-                scale_of_truncated_coef -= 1
+            var scale_of_truncated_coef = scale - truncated_digits
 
             if scale_of_truncated_coef > UInt32(Decimal128.MAX_SCALE):
-                var num_digits_truncated_coef = (
-                    decimo.decimal128.utility.number_of_digits(truncated_coef)
-                )
-                truncated_coef = (
-                    decimo.decimal128.utility.round_to_keep_first_n_digits(
-                        truncated_coef,
-                        False,
-                        num_digits_truncated_coef
-                        - Int(
-                            scale_of_truncated_coef
-                            - UInt32(Decimal128.MAX_SCALE)
-                        ),
-                    )
+                truncated_coef = decimo.decimal128.utility.round_coefficient(
+                    truncated_coef,
+                    ndigits_to_remove=Int(
+                        scale_of_truncated_coef - UInt32(Decimal128.MAX_SCALE)
+                    ),
                 )
                 scale_of_truncated_coef = UInt32(Decimal128.MAX_SCALE)
 
