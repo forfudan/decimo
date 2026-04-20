@@ -1,6 +1,6 @@
 """
 Tests for utility functions: number_of_digits, fit_to_max_coefficient,
-round_to_keep_first_n_digits, and bitcast.
+round_coefficient, round_to_keep_first_n_digits, and bitcast.
 """
 
 from std import testing
@@ -11,6 +11,7 @@ from decimo.rounding_mode import RoundingMode
 from decimo.decimal128.utility import (
     fit_to_max_coefficient,
     number_of_digits,
+    round_coefficient,
     round_to_keep_first_n_digits,
     bitcast,
 )
@@ -194,6 +195,154 @@ def test_fit_to_max_cascade_rounding() raises:
     )
     assert_true(r6[0] <= UInt128(Decimal128.MAX_AS_UINT128))
     assert_equal(r6[1], 1)
+
+
+def test_round_coefficient() raises:
+    """Tests for round_coefficient (the optimized replacement)."""
+
+    # Remove 0 digits → unchanged
+    assert_equal(
+        round_coefficient(UInt128(12345), ndigits_to_remove=0), UInt128(12345)
+    )
+
+    # Remove 1 digit, half-even: 12345 → remove 5, preceding 4 is even → 1234
+    assert_equal(
+        round_coefficient(UInt128(12345), ndigits_to_remove=1), UInt128(1234)
+    )
+
+    # Remove 1 digit, half-even: 12355 → remove 5, preceding 5 is odd → 1236
+    assert_equal(
+        round_coefficient(UInt128(12355), ndigits_to_remove=1), UInt128(1236)
+    )
+
+    # Remove 1 digit, round down (< 5): 12342 → 1234
+    assert_equal(
+        round_coefficient(UInt128(12342), ndigits_to_remove=1), UInt128(1234)
+    )
+
+    # Remove 1 digit, round up (> 5): 12347 → 1235
+    assert_equal(
+        round_coefficient(UInt128(12347), ndigits_to_remove=1), UInt128(1235)
+    )
+
+    # Remove 3 digits from 123456: 123|456, half is 500, 456 < 500 → 123
+    assert_equal(
+        round_coefficient(UInt128(123456), ndigits_to_remove=3), UInt128(123)
+    )
+
+    # Remove 3 digits from 123556: 123|556, 556 > 500 → 124
+    assert_equal(
+        round_coefficient(UInt128(123556), ndigits_to_remove=3), UInt128(124)
+    )
+
+    # Remove 3 digits from 123500: exactly half, 123 is odd → round up to 124
+    assert_equal(
+        round_coefficient(UInt128(123500), ndigits_to_remove=3), UInt128(124)
+    )
+
+    # Remove 3 digits from 124500: exactly half, 124 is even → 124
+    assert_equal(
+        round_coefficient(UInt128(124500), ndigits_to_remove=3), UInt128(124)
+    )
+
+    # Rounding mode: UP (non-negative)
+    assert_equal(
+        round_coefficient(
+            UInt128(12301), ndigits_to_remove=2, rounding_mode=RoundingMode.up()
+        ),
+        UInt128(124),
+    )
+
+    # Rounding mode: DOWN
+    assert_equal(
+        round_coefficient(
+            UInt128(12399),
+            ndigits_to_remove=2,
+            rounding_mode=RoundingMode.down(),
+        ),
+        UInt128(123),
+    )
+
+    # Rounding mode: HALF_UP (>= 0.5 rounds away from zero)
+    assert_equal(
+        round_coefficient(
+            UInt128(12350),
+            ndigits_to_remove=2,
+            rounding_mode=RoundingMode.half_up(),
+        ),
+        UInt128(124),
+    )
+
+    # Rounding mode: HALF_DOWN (> 0.5 rounds away from zero)
+    assert_equal(
+        round_coefficient(
+            UInt128(12350),
+            ndigits_to_remove=2,
+            rounding_mode=RoundingMode.half_down(),
+        ),
+        UInt128(123),
+    )
+
+    # Remove all digits from 997: 997 / 1000 = 0, remainder 997, 2*997=1994 > 1000 → 1
+    assert_equal(
+        round_coefficient(UInt128(997), ndigits_to_remove=3), UInt128(1)
+    )
+
+    # Zero input
+    assert_equal(round_coefficient(UInt128(0), ndigits_to_remove=5), UInt128(0))
+
+    # Single digit, remove 1: 7 / 10 = 0, remainder 7, 2*7=14 > 10 → 1
+    assert_equal(round_coefficient(UInt128(7), ndigits_to_remove=1), UInt128(1))
+
+    # UInt256 path
+    assert_equal(
+        round_coefficient(UInt256(9876543210987654321), ndigits_to_remove=1),
+        UInt256(987654321098765432),
+    )
+
+    # CEILING mode: positive → acts like UP
+    assert_equal(
+        round_coefficient(
+            UInt128(12301),
+            ndigits_to_remove=2,
+            sign=False,
+            rounding_mode=RoundingMode.ceiling(),
+        ),
+        UInt128(124),
+    )
+
+    # CEILING mode: negative → acts like DOWN
+    assert_equal(
+        round_coefficient(
+            UInt128(12399),
+            ndigits_to_remove=2,
+            sign=True,
+            rounding_mode=RoundingMode.ceiling(),
+        ),
+        UInt128(123),
+    )
+
+    # FLOOR mode: positive → acts like DOWN
+    assert_equal(
+        round_coefficient(
+            UInt128(12399),
+            ndigits_to_remove=2,
+            sign=False,
+            rounding_mode=RoundingMode.floor(),
+        ),
+        UInt128(123),
+    )
+
+    # FLOOR mode: negative → acts like UP
+    assert_equal(
+        round_coefficient(
+            UInt128(12301),
+            ndigits_to_remove=2,
+            sign=True,
+            rounding_mode=RoundingMode.floor(),
+        ),
+        UInt128(124),
+    )
 
 
 def test_round_to_keep_first_n_digits() raises:

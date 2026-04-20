@@ -26,6 +26,9 @@ from std import time
 from decimo.decimal128.decimal128 import Decimal128
 
 
+# ===----------------------------------------------------------------------=== #
+# System-level utilities for Decimal128
+# ===----------------------------------------------------------------------=== #
 # UNSAFE
 def bitcast[dtype: DType](dec: Decimal128) -> Scalar[dtype]:
     """
@@ -57,6 +60,35 @@ def bitcast[dtype: DType](dec: Decimal128) -> Scalar[dtype]:
     # Mask out the bits in flags
     result &= Scalar[dtype](0xFFFFFFFF_FFFFFFFF_FFFFFFFF)
     return result
+
+
+# TODO: At the time when this function was implemented, Mojo's built-in
+# sqrt() function only supports integral types up to 64 bits.
+# Once Mojo supports sqrt() for UInt128, this function can be removed.
+def sqrt(x: UInt128) -> UInt128:
+    """
+    Returns the square root of a UInt128 value.
+
+    Args:
+        x: The UInt128 value to calculate the square root for.
+
+    Returns:
+        The square root of the UInt128 value.
+    """
+
+    if x < 0:
+        return 0
+
+    var r: UInt128 = 0
+
+    for p in range(sys.bit_width_of[UInt128]() // 2 - 1, -1, -1):
+        var new_bit = UInt128(1) << UInt128(p)
+        var would_be = r | new_bit
+        var squared = would_be * would_be
+        if squared <= x:
+            r = would_be
+
+    return r
 
 
 def fit_to_max_coefficient[
@@ -127,47 +159,148 @@ def fit_to_max_coefficient[
     var digits_to_remove = ndigits - Decimal128.MAX_NUM_DIGITS
 
     # First attempt: keep MAX_NUM_DIGITS (29) digits.
-    var result = round_to_keep_first_n_digits(
-        value, sign, Decimal128.MAX_NUM_DIGITS, rounding_mode
-    )
+    var result = round_coefficient(value, digits_to_remove, sign, rounding_mode)
 
     # Because 2^96 − 1 is not at a clean decimal boundary, the 29-digit
     # rounded result may still exceed the maximum. Retry with 28 digits.
     if result > ValueType(Decimal128.MAX_AS_UINT128):
-        result = round_to_keep_first_n_digits(
-            value, sign, Decimal128.MAX_NUM_DIGITS - 1, rounding_mode
+        result = round_coefficient(
+            value, digits_to_remove + 1, sign, rounding_mode
         )
         digits_to_remove += 1
 
     return (result, digits_to_remove)
 
 
-def sqrt(x: UInt128) -> UInt128:
-    """
-    Returns the square root of a UInt128 value.
+# [Mojo Miji]
+# This function replaces `round_to_keep_first_n_digits` with three
+# optimisations borrowed from .NET's `DecCalc.ScaleResult`:
+# 1. **Single division** — the remainder is computed as
+#   `value - truncated * divisor` (one multiply) instead of a second
+#   wide-integer division (`value % divisor`).
+# 2. **Cheap half-comparison** — for HALF_UP / HALF_DOWN / HALF_EVEN,
+#   `2 * remainder` is compared against `divisor` instead of computing
+#   the separate cutoff `5 * 10^(n-1)` (saves one power-of-10 lookup
+#   and one wide multiply).
+# 3. **Caller supplies digit-removal count** — avoids a redundant
+#   `number_of_digits` call when the caller already knows the value's
+#   digit count.
+@always_inline
+def round_coefficient[
+    dtype: DType, //
+](
+    value: Scalar[dtype],
+    ndigits_to_remove: Int,
+    sign: Bool = False,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) -> Scalar[dtype] where (dtype == DType.uint128 or dtype == DType.uint256):
+    """Rounds an integer coefficient by removing its last `ndigits_to_remove`
+    decimal digits with the specified rounding mode.
+
+    Parameters:
+        dtype: Must be either `DType.uint128` or `DType.uint256`.
 
     Args:
-        x: The UInt128 value to calculate the square root for.
+        value: The coefficient to round.
+        ndigits_to_remove: How many trailing decimal digits to discard.
+            Must be ≥ 0.  If 0 the value is returned unchanged.
+        sign: The sign of the logical number (needed for CEILING / FLOOR
+            translation).
+        rounding_mode: The rounding strategy.  Defaults to banker's
+            rounding (`ROUND_HALF_EVEN`).
 
     Returns:
-        The square root of the UInt128 value.
+        The rounded coefficient with `ndigits_to_remove` fewer decimal
+        digits.
+
+    Examples:
+
+        Remove 3 digits from 123456 with half-even rounding:
+
+        >>> round_coefficient(UInt128(123456), ndigits_to_remove=3)
+        123
+
+        Remove 1 digit from 125 with half-even rounding (rounds to even):
+
+        >>> round_coefficient(UInt128(125), ndigits_to_remove=1)
+        12
+
+        Remove 1 digit from 135 with half-even rounding (rounds to even):
+
+        >>> round_coefficient(UInt128(135), ndigits_to_remove=1)
+        14
+
+        End of examples.
     """
 
-    if x < 0:
-        return 0
+    comptime ValueType = Scalar[dtype]
 
-    var r: UInt128 = 0
+    # Nothing to remove.
+    if ndigits_to_remove <= 0:
+        return value
 
-    for p in range(sys.bit_width_of[UInt128]() // 2 - 1, -1, -1):
-        var new_bit = UInt128(1) << UInt128(p)
-        var would_be = r | new_bit
-        var squared = would_be * would_be
-        if squared <= x:
-            r = would_be
+    # Divide once; derive remainder from a single multiply.
+    var divisor = power_of_10[dtype](ndigits_to_remove)
+    var truncated = value // divisor
+    var remainder = value - truncated * divisor
 
-    return r
+    # Translate directed modes into sign-independent UP / DOWN.
+    var effective_mode = rounding_mode
+    if rounding_mode == RoundingMode.ceiling():
+        effective_mode = RoundingMode.up() if not sign else RoundingMode.down()
+    elif rounding_mode == RoundingMode.floor():
+        effective_mode = RoundingMode.down() if not sign else RoundingMode.up()
+
+    # DOWN — just truncate.
+    if effective_mode == RoundingMode.down():
+        pass
+
+    # UP — round away from zero when anything was discarded.
+    elif effective_mode == RoundingMode.up():
+        if remainder > 0:
+            truncated += 1
+
+    # HALF_UP — round up when remainder ≥ half the divisor.
+    # Equivalent to the classic `remainder >= 5 * 10^(n-1)` but uses
+    # `2 * remainder >= divisor` (.NET trick #2) to avoid an extra
+    # power-of-10 lookup and wide multiply.
+    elif effective_mode == RoundingMode.half_up():
+        var double_remainder = remainder << 1  # 2 * remainder
+        if double_remainder >= divisor:
+            truncated += 1
+
+    # HALF_DOWN — round up only when remainder > half the divisor.
+    elif effective_mode == RoundingMode.half_down():
+        var double_remainder = remainder << 1
+        if double_remainder > divisor:
+            truncated += 1
+
+    # HALF_EVEN — banker's rounding: round to nearest; if exactly half,
+    # round to even.  `2 * remainder` vs `divisor` decides >, <, or ==.
+    elif effective_mode == RoundingMode.half_even():
+        var double_remainder = remainder << 1
+        if double_remainder > divisor:
+            truncated += 1
+        elif double_remainder == divisor:
+            # Exactly half — round to even.
+            truncated += truncated % 2
+
+    else:
+        debug_assert(
+            False,
+            "Unknown rounding mode in round_coefficient: "
+            + String(rounding_mode),
+        )
+
+    return truncated
 
 
+# DEPRECATED: Use `round_coefficient` instead.
+# This function is kept for backward compatibility but is no longer used
+# in production code.  `round_coefficient` is faster because it:
+#   (1) takes ndigits_to_remove (avoids redundant number_of_digits call),
+#   (2) computes remainder via multiply instead of a second division, and
+#   (3) uses 2*remainder vs divisor instead of 5*power_of_10(n-1) cutoff.
 def round_to_keep_first_n_digits[
     dtype: DType, //
 ](
