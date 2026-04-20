@@ -329,6 +329,50 @@ Note: the `round_coefficient` function (§4.3) already addresses this for the ro
 
 Fix: use `divmod()` if available in Mojo.
 
+### 4.9 Decimal128 Unit Test Suite Is Surprisingly Slow
+
+Empirical observation: running the Decimal128 suite via `pixi run test decimal128` takes several minutes — anecdotally slower than the heap-based BigDecimal suite. Wall-clock breakdown of representative files (M-series macOS, ASSERT=all + `--debug-level=full`, the flags used by `tests/test.sh`):
+
+| Test file                              | Real (s) | Reported per-test (s) | Cases |
+| -------------------------------------- | -------- | --------------------- | ----- |
+| `test_decimal128_arithmetics.mojo`     | ~7       | 35.9 (test runner)    | 53    |
+| `test_decimal128_quantize.mojo`        | ~5       | 30.9 (test runner)    | ~6    |
+| `test_decimal128_from_string.mojo`     | ~3       | 1.6                   | many  |
+| `test_decimal128_comparison.mojo`      | <1       | 0.018                 | 10    |
+| `test_decimal128_utility.mojo`         | <1       | 0.04                  | 8     |
+
+For comparison, `test_bigdecimal_arithmetics.mojo` runs in ~12 s real / 94 s reported under the same flags. So the per-test reported numbers from the mojo test runner are **inflated** vs. true wall-clock (likely include JIT/instrumentation overhead under `--debug-level=full`).
+
+Investigated bottlenecks (in priority order):
+
+1. **`-D ASSERT=all --debug-level=full` is 5–7× slower than release.**
+   Re-running `test_decimal128_arithmetics.mojo` with `-D ASSERT=none` and no debug flags drops wall-clock from 7.32 s to **1.06 s**. Most of the perceived slowness comes from these flags, which (a) emit full debug info, (b) compile every `debug_assert(...)` into a real branch (and `power_of_10` has many of them), and (c) prevent inlining of the UInt128/UInt256 operations that are everywhere on the hot path. UInt128/UInt256 are software-emulated on aarch64, so missed inlining is especially costly.
+   *Recommendation:* keep `-D ASSERT=all --debug-level=full` for CI, but add a fast inner-loop variant (`pixi run testfast` → `-D ASSERT=none` and `--debug-level=line-tables-only`) for development.
+
+2. **Per-file JIT compilation dominates short tests.**
+   `tests/test.sh` invokes `mojo run -I src ... <file>` once per test file. Each invocation re-parses the entire `decimo` package and JIT-compiles the test binary (≈ 0.5–1 s of fixed cost per file). With 17 Decimal128 files, that is 10–15 s of pure compile overhead before any test code runs.
+   *Recommendation:* either (a) build the test binaries with `mojo build` once and reuse them, or (b) consolidate small files into fewer test binaries. The `mojo test` discovery flow (single binary per package) would also fix this.
+
+3. **TOML parser walks the file char-by-char, allocating heavily.**
+   `parse_file` (`src/decimo/toml/parser.mojo:1033`) reads the entire file into a `String`, then `TOMLParser` scans it character-by-character. `expand_value` (`src/decimo/tests.mojo:213`) does additional `String += ch` concatenations inside `{C,N}` pattern expansion, each of which is an O(n) allocation. For TOML files in the hundreds of lines this is a measurable but secondary cost.
+   *Recommendation:* use a `StringBuilder`/byte buffer in `expand_value` instead of `+=` on `String`. Lower priority than (1) and (2).
+
+4. **TOML re-parsing within a file (lower priority once 1+2 are addressed).**
+   Inside `test_decimal128_from_string.mojo`, the suite is reasonably structured (one `parse_file` call shared via `_run_unary_section`), but other files (e.g. `test_decimal128_arithmetics.mojo`) call `parse_file` once at the top of each test function. With 5 test functions in arithmetics, that's 5 disk reads + 5 parses of the same TOML file per process.
+   *Recommendation:* hoist `parse_file(file_path)` into a module-level cache, or pass the parsed `TOMLDocument` into a helper that runs all sections.
+
+5. **`Python.import_module("decimal")` per test function.**
+   `test_decimal128_arithmetics` imports `decimal` once in its body, but several other files (and the failure-path `pydecimal.Decimal(...)` calls) repeatedly cross the FFI boundary. Each Python interop call has ~µs overhead and triggers GIL acquisition. Only relevant on failure paths today; impact is small.
+   *Recommendation:* keep Python comparisons strictly to failure-debug output; don't add them to hot loops.
+
+6. **`Dec128(string)` (i.e. `from_string`) is the inner-loop allocator.**
+   Every TOML test row constructs `Dec128(test_case.a)` + `Dec128(test_case.b)`. Each call walks the input byte-by-byte, doing one UInt128 multiply-add per character (see §4.7). For 53 arithmetic test cases × 2 operands × ~10 chars = ~1000 multiply-adds before any *actual* arithmetic happens. Fixing §4.7 (digit batching) would directly speed up the test suite.
+
+7. **Misleading internal timer.**
+   The `PASS [ NN.NNN ]` value emitted by Mojo's test runner does not match `/usr/bin/time` wall-clock — it appears to include compilation/instrumentation cost rather than pure execution time. This makes `test_decimal128_arithmetics` look pathologically slow (35 s reported) when the actual run is ~7 s. Worth keeping in mind when prioritising — the test code itself isn't as bad as the runner suggests; the test *infrastructure* (flags + per-file JIT) is.
+
+Combined fix priority for Phase 3: (1) split the inner-loop dev workflow from the CI flags, (2) consolidate/cached TOML parsing, (3) attack `from_string` (§4.7) since it has independent value beyond tests.
+
 ## 5. Improvement Opportunities
 
 ### 5.1 Add `__hash__` Support
@@ -376,11 +420,12 @@ Some test cases worth adding:
 | 3.2 | `from_words` uses `testing.assert_true`          | Medium      | Small   | P1       | Done   |
 | 4.2 | `power_of_10` not fully precomputed              | High        | Small   | P1       | Done   |
 | 4.3 | `round_to_keep_first_n_digits` lacks .NET tricks | High        | Medium  | P1       | Done   |
-| 3.4 | `compare_absolute` overflow                      | Medium      | Small   | P2       | -      |
+| 3.4 | `compare_absolute` overflow                      | Medium      | Small   | P2       | Done   |
 | 4.1 | `number_of_bits` loop                            | Medium      | Small   | P2       | -      |
 | 4.8 | Separate `//` and `%` in division loop           | Medium      | Small   | P2       | -      |
 | 4.7 | `from_string` optimization                       | Medium      | Medium  | P2       | -      |
 | 4.4 | `ln()` range reduction loops                     | Medium      | Medium  | P2       | -      |
+| 4.9 | Test suite slow (flags + per-file JIT)           | Medium      | Medium  | P2       | -      |
 | 5.4 | `min/max/clamp`                                  | Enhancement | Trivial | P3       | -      |
 | 5.5 | `normalize()`                                    | Enhancement | Small   | P3       | -      |
 | 5.1 | `__hash__`                                       | Enhancement | Small   | P3       | -      |
@@ -404,13 +449,14 @@ Phase 2 — performance (coefficient bound): **(Mostly done)**
 1. ~~Extend `power_of_10` hardcoded constants up to n=58 (§4.2).~~ **Done.**
 2. ~~Add .NET-style tricks to rounding: new `round_coefficient` with single-division remainder, cheap half-comparison, and caller-supplied removal count (§4.3).~~ **Done** — all 10 production callers migrated.
 3. Replace `number_of_bits` with hardware CLZ via UInt64 split (§4.1).
-4. Fix `compare_absolute` overflow with UInt256 (§3.4).
+4. ~~Fix `compare_absolute` overflow with UInt256 (§3.4).~~ **Done** — fractional comparison now widens to UInt256.
 
 Phase 3 — performance (general):
 
 1. Optimize `from_string` digit batching (§4.7).
 2. Use single divmod in division loop (§4.8).
 3. Improve `ln()` range reduction (§4.4).
+4. Address test-suite latency (§4.9): split dev/CI flag profiles, hoist `parse_file` calls, consolidate per-file JIT runs.
 
 Phase 4 — enhancements:
 
