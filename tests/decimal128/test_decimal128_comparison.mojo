@@ -140,6 +140,31 @@ def test_edge_cases() raises:
     testing.assert_true(greater(Dec128("-0.001"), Dec128(-1000)))
     testing.assert_true(greater(Dec128(1000), Dec128(-1000)))
 
+    # Max scale-difference boundary in the fractional branch.
+    # Equal integer parts (both 0), scales differing by 28: this exercises
+    # the worst-case `10**scale_diff` factor inside `compare_absolute`.
+    # 0.0000000000000000000000000001 (scale 28) vs 0.1 (scale 1)
+    testing.assert_true(
+        less(
+            Dec128("0." + "0" * 27 + "1"),
+            Dec128("0.1"),
+        )
+    )
+    # Same, equality with trailing-zero expansion across max scale_diff
+    testing.assert_true(
+        equal(
+            Dec128("0.1"),
+            Dec128("0.1" + "0" * 27),
+        )
+    )
+    # Differ only in the 28th fractional digit (max scale_diff path)
+    testing.assert_true(
+        greater(
+            Dec128("0.1" + "0" * 26 + "1"),
+            Dec128("0.1"),
+        )
+    )
+
 
 def test_exact_comparison() raises:
     """Test exact comparison with precision and trailing zeros."""
