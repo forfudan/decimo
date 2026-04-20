@@ -158,7 +158,7 @@ Since we follow the C#/Rust paradigm (binary bound, 2^96 − 1), the coefficient
 
 Mojo now has native `UInt128` and `UInt256` types (via `Scalar[DType.uint128]` and `Scalar[DType.uint256]`). The codebase already uses them — `coefficient()` bitcasts the three UInt32 words to UInt128, and `multiply()` uses UInt256 for intermediate products. But there are more opportunities:
 
-- In `round_coefficient` and `fit_to_max_coefficient`, the divmod operations on UInt128/UInt256 exploit the fact that Mojo compiles to LLVM IR, where UInt128 division on 64-bit targets translates to two hardware `div` instructions (high and low halves). The new `round_coefficient` already avoids the second division by computing `remainder = value - truncated * divisor`.
+- In `round_coefficient` and `fit_to_max_coefficient`, the divmod operations on UInt128/UInt256 exploit the fact that Mojo compiles to LLVM IR, where UInt128 division on 64-bit targets translates to two hardware `div` instructions (high and low halves). LLVM also fuses the `q = a // b; r = a % b` pattern on identical operands into a single `__udivmodti4` library call (see plan §4.8 for the empirical measurement), so writing `// + %` is already optimal — manual `value - truncated * divisor` rewrites do not help.
 - The `number_of_bits` loop (§4.1) could be replaced by casting UInt128 to two UInt64s and using `count_leading_zeros` on the high word — this gives O(1) bit width instead of a 96-iteration loop.
 - Arrow's approach of promoting to 256-bit for multiply is directly applicable since we already have UInt256. Instead of the current 3×UInt32 partial-product approach in some code paths, we could do: `UInt256(x_coef) * UInt256(y_coef)`, then scale/truncate the result. This is simpler and likely just as fast since LLVM will optimize the wide multiply.
 
@@ -205,9 +205,11 @@ I should verify `is_one()` handles all representations of 1: `1` (coef=1, scale=
 
 ## 4. Performance Bottlenecks
 
-### 4.1 `number_of_bits()` Uses a Loop
+### 4.1 `number_of_bits()` Used a Loop (Fixed)
 
 File: `utility.mojo`
+
+The original implementation:
 
 ```mojo
 def number_of_bits(n: UInt128) -> Int:
@@ -219,9 +221,9 @@ def number_of_bits(n: UInt128) -> Int:
     return count
 ```
 
-O(n) in bit count — up to 96 iterations. C#'s [`ScaleResult`](https://github.com/dotnet/runtime/blob/main/src/libraries/System.Private.CoreLib/src/System/Decimal.DecCalc.cs) uses `LeadingZeroCount` which is a single instruction on modern CPUs.
+O(n) in bit count — up to 128 iterations on a generic `UInt128` (96 in practice for Decimal128 coefficients, but the function is also called with arbitrary integral types). C#'s [`ScaleResult`](https://github.com/dotnet/runtime/blob/main/src/libraries/System.Private.CoreLib/src/System/Decimal.DecCalc.cs) uses `LeadingZeroCount`, which is a single hardware instruction on modern CPUs.
 
-Fix: split UInt128 into two UInt64s and use `count_leading_zeros` on the high word. If the high word is zero, use CLZ on the low word. This gives O(1) bit width. See §2.5 for more on using UInt128/UInt256 as acceleration.
+Fix (done): delegate to `std.bit.bit_width`, which lowers to LLVM's `count_leading_zeros` intrinsic (single-instruction for ≤ 64-bit operands and two CLZs for 128-bit operands). The function is now O(1) in bit width regardless of input. See §2.5 for the broader use of UInt128/UInt256 as an acceleration bridge.
 
 ### 4.2 `power_of_10` Is Not Using Precomputed Constants Efficiently
 
@@ -235,14 +237,15 @@ Fix (done): extended the hardcoded constants up to n=58 (the maximum needed for 
 
 File: `utility.mojo`
 
-The old `round_to_keep_first_n_digits` had three inefficiencies compared to
+The old `round_to_keep_first_n_digits` had two real inefficiencies compared to
 .NET's [`ScaleResult`](https://github.com/dotnet/runtime/blob/main/src/libraries/System.Private.CoreLib/src/System/Decimal.DecCalc.cs):
 
-1. **Two wide divisions** — `value // divisor` and `value % divisor` performed two separate UInt128/UInt256 divisions, when the remainder can be derived from a single division plus one multiply: `remainder = value - truncated * divisor`.
-2. **Expensive half-comparison** — the cutoff `5 * power_of_10(n − 1)` required an extra power-of-10 lookup and a wide multiply.  .NET instead compares `2 * remainder` against `divisor`, which is a single left-shift.
-3. **Redundant `number_of_digits` call** — the function always recomputed the digit count even though most callers already knew it.
+1. **Expensive half-comparison** — the cutoff `5 * power_of_10(n − 1)` required an extra power-of-10 lookup and a wide multiply. .NET instead compares `2 * remainder` against `divisor`, which is a single left-shift.
+2. **Redundant `number_of_digits` call** — the function always recomputed the digit count even though most callers already knew it.
 
-Fix (done): introduced `round_coefficient(value, ndigits_to_remove, sign, rounding_mode)` which applies all three .NET-style tricks and takes `ndigits_to_remove` directly so callers that already know the digit count skip the redundant computation. All production call sites migrated; the old function is kept but deprecated.
+A third candidate ("two wide divisions: replace `value % divisor` with `value - truncated * divisor`") was also tried, but the microbenchmark in §4.8 — plus a direct read of the generated ARM64 assembly — showed it does not help. LLVM canonicalizes `urem` to `sub(a, mul(udiv, b))` and CSE-deduplicates the shared `udiv`, so `// + %` and `// + (a - q*b)` lower to identical code (one `___udivti3` call + inline mul/sub). The current `round_coefficient` therefore uses the natural `// + %` form.
+
+Fix (done): introduced `round_coefficient(value, ndigits_to_remove, sign, rounding_mode)` which applies the half-comparison shortcut and takes `ndigits_to_remove` directly so callers that already know the digit count skip the redundant computation. All production call sites migrated; the old function is kept but deprecated.
 
 ### 4.4 `ln()` Range Reduction Uses Loops
 
@@ -299,20 +302,36 @@ Fix: batch up to 9 digits into a UInt64, then multiply `coef` by the appropriate
 
 Consider using `str.parse_numeric_string()` for `Decimal128.from_string()`.
 
-### 4.8 Division Loop: Separate `//` and `%` Operations
+### 4.8 Division Loop: Separate `//` and `%` Operations (Investigated, No Change)
 
 File: `arithmetics.mojo`
+
+The long-division digit-extraction loop in `divide()` executes:
 
 ```mojo
 digit = rem // x2_coef
 rem = rem % x2_coef
 ```
 
-Two separate 128-bit divisions on the same operands. Most hardware produces both quotient and remainder in a single `div` instruction.
+It looks like two separate 128-bit (or 256-bit) divisions on the same operands, so the natural "optimization" is the trick used in `round_coefficient` (§4.3): replace the second division with `rem - digit * x2_coef`.
 
-Note: the `round_coefficient` function (§4.3) already addresses this for the rounding path by computing `remainder = value - truncated * divisor` instead of a second division. This §4.8 issue remains only in the long-division digit-extraction loop inside `divide()`, which is a different code path.
+**Empirical microbenchmark** (`temp/bench_divmod.mojo`, M-series Apple Silicon, `--debug-level=line-tables -D ASSERT=none`, 200_000 iters per call, best of 3):
 
-Fix: use `divmod()` if available in Mojo.
+| Type    | `q = a // b; r = a % b` | `q = a // b; r = a - q*b` | Winner                    |
+| ------- | ----------------------- | ------------------------- | ------------------------- |
+| UInt64  | **0.105 ms**            | 0.207 ms                  | `// + %` is **2× faster** |
+| UInt128 | 0.547 ms                | 0.519 ms                  | tied (within noise)       |
+| UInt256 | **0.660 ms**            | 0.690 ms                  | `// + %` is ~5% faster    |
+
+Why: inspecting `mojo build --emit=asm -O3` output on aarch64 (Apple Silicon) shows that for **both** patterns the compiler emits exactly one division — a single `___udivti3` library call for UInt128 (or one `udiv` instruction for UInt64) — followed by an inline `mul + sub` for the remainder. The mechanism is LLVM's `DivRemPairs` / instruction-combining pass: `urem(a, b)` is canonicalized to `sub(a, mul(udiv(a, b), b))`, and the shared `udiv` is then CSE-deduplicated against the explicit `a // b`. So writing `a % b` does **not** issue a second division; the manual `a - q * b` rewrite gives the compiler nothing extra and is strictly more source code to maintain.
+
+Reproduction recipe: write each pattern as an `@export fn` taking runtime (non-constant) inputs, build with `pixi run mojo build --emit=asm -O3 <file>.mojo -o <file>.s`, then `grep` the output for the function symbols and count `bl ___udivti3` / `udiv` instructions per body — both should appear exactly once.
+
+Note: the `// + %` pattern *is* the canonical way to access divmod in Mojo — there is no separate `divmod` primitive in `std`, and one is not needed.
+
+**Action taken:** kept the `// + %` form unchanged. The only related change was hoisting `UInt256(x2_coef)` out of the UInt256 loop into a single `x2_coef256` local, so the `UInt256(...)` lift no longer runs every iteration.
+
+The `round_coefficient` rewrite (§4.3) used to use the same `value - truncated * divisor` form on the same assumption; it has now been switched back to the natural `// + %` for consistency.
 
 ### 4.9 Decimal128 Unit Test Suite Is Surprisingly Slow
 
@@ -404,8 +423,8 @@ Some test cases worth adding:
 | 3.2 | `from_words` uses `testing.assert_true`          | Medium      | Small   | P1       | Done   |
 | 4.2 | `power_of_10` not fully precomputed              | High        | Small   | P1       | Done   |
 | 4.3 | `round_to_keep_first_n_digits` lacks .NET tricks | High        | Medium  | P1       | Done   |
-| 4.1 | `number_of_bits` loop                            | Medium      | Small   | P2       | -      |
-| 4.8 | Separate `//` and `%` in division loop           | Medium      | Small   | P2       | -      |
+| 4.1 | `number_of_bits` loop                            | Medium      | Small   | P2       | Done   |
+| 4.8 | Separate `//` and `%` in division loop           | Medium      | Small   | P2       | N/A    |
 | 4.7 | `from_string` optimization                       | Medium      | Medium  | P2       | -      |
 | 4.4 | `ln()` range reduction loops                     | Medium      | Medium  | P2       | -      |
 | 4.9 | Test suite slow (flags + per-file JIT)           | Medium      | Medium  | P2       | -      |
@@ -431,12 +450,12 @@ Phase 2 — performance (coefficient bound): **(Mostly done)**
 
 1. ~~Extend `power_of_10` hardcoded constants up to n=58 (§4.2).~~ **Done.**
 2. ~~Add .NET-style tricks to rounding: new `round_coefficient` with single-division remainder, cheap half-comparison, and caller-supplied removal count (§4.3).~~ **Done** — all 10 production callers migrated.
-3. Replace `number_of_bits` with hardware CLZ via UInt64 split (§4.1).
+3. ~~Replace `number_of_bits` with hardware CLZ via UInt64 split (§4.1).~~ **Done** — now delegates to `std.bit.bit_width` (LLVM `count_leading_zeros`).
 
 Phase 3 — performance (general):
 
 1. Optimize `from_string` digit batching (§4.7).
-2. Use single divmod in division loop (§4.8).
+2. ~~Use single divmod in division loop (§4.8).~~ **Investigated, no change** — microbenchmark showed LLVM already fuses `// + %` into a single divmod; the mul+sub rewrite does not help (and hurts UInt64 by 2×). Only kept the `UInt256(x2_coef)` hoist out of the loop.
 3. Improve `ln()` range reduction (§4.4).
 4. Address test-suite latency (§4.9): split dev/CI flag profiles, hoist `parse_file` calls, consolidate per-file JIT runs.
 

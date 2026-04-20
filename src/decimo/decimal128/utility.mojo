@@ -22,6 +22,7 @@
 from std.memory import UnsafePointer
 from std import sys
 from std import time
+from std.bit import bit_width
 
 from decimo.decimal128.decimal128 import Decimal128
 from decimo.rounding_mode import RoundingMode
@@ -172,18 +173,24 @@ def fit_to_max_coefficient[
 
 
 # [Mojo Miji]
-# This function replaces `round_to_keep_first_n_digits` with three
+# This function replaces `round_to_keep_first_n_digits` with two
 # optimisations borrowed from .NET's `DecCalc.ScaleResult`:
-# 1. **Single division** — the remainder is computed as
-#   `value - truncated * divisor` (one multiply) instead of a second
-#   wide-integer division (`value % divisor`).
-# 2. **Cheap half-comparison** — for HALF_UP / HALF_DOWN / HALF_EVEN,
+# 1. **Cheap half-comparison** — for HALF_UP / HALF_DOWN / HALF_EVEN,
 #   `2 * remainder` is compared against `divisor` instead of computing
 #   the separate cutoff `5 * 10^(n-1)` (saves one power-of-10 lookup
 #   and one wide multiply).
-# 3. **Caller supplies digit-removal count** — avoids a redundant
+# 2. **Caller supplies digit-removal count** — avoids a redundant
 #   `number_of_digits` call when the caller already knows the value's
 #   digit count.
+#
+# (An earlier version also used `value - truncated * divisor` to derive
+# the remainder, on the assumption that `value % divisor` would issue a
+# second wide-integer division. A microbenchmark plus direct inspection
+# of the generated ARM64 assembly disproved this:
+# LLVM lowers `urem` to `sub(a, mul(udiv, b))` and CSE-deduplicates
+# the shared `udiv`, so `// + %` and the manual rewrite produce
+# identical code with exactly one division. The function now uses
+# the natural `// + %` form.)
 @always_inline
 def round_coefficient[
     dtype: DType, //
@@ -258,10 +265,14 @@ def round_coefficient[
             return ValueType(1)
         return ValueType(0)
 
-    # Divide once; derive remainder from a single multiply.
+    # Single divmod: writing `// + %` lets LLVM compute one division and
+    # derive the remainder via `a - (a/b) * b`, then CSE-dedup the shared
+    # division (verified at the ARM64 asm level).
+    # An earlier `value - truncated * divisor` rewrite was strictly more
+    # source code for identical generated code.
     var divisor = power_of_10[dtype](ndigits_to_remove)
     var truncated = value // divisor
-    var remainder = value - truncated * divisor
+    var remainder = value % divisor
 
     # Translate directed modes into sign-independent UP / DOWN.
     var effective_mode = rounding_mode
@@ -675,17 +686,17 @@ def number_of_bits[dtype: DType, //](var value: Scalar[dtype]) -> Int:
         The number of significant bits in the value.
     """
 
-    comptime assert dtype.is_integral(), "must be intergral"
+    comptime assert dtype.is_integral(), "must be integral"
 
+    # Delegate to `std.bit.bit_width`, which lowers to a hardware
+    # `count_leading_zeros` (single-instruction for ≤ 64-bit, two CLZs
+    # for 128-bit). This replaces the previous O(n) shift-and-count loop
+    # that took up to 128 iterations on a generic `UInt128` (96 in
+    # practice for Decimal128 coefficients).
     if value < 0:
         value = -value
 
-    var count = 0
-    while value > 0:
-        value >>= 1
-        count += 1
-
-    return count
+    return Int(bit_width(value))
 
 
 # ===----------------------------------------------------------------------=== #
