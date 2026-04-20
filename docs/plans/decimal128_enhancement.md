@@ -221,7 +221,7 @@ def number_of_bits(n: UInt128) -> Int:
     return count
 ```
 
-O(n) in bit count — up to 96 iterations for a UInt128. C#'s [`ScaleResult`](https://github.com/dotnet/runtime/blob/main/src/libraries/System.Private.CoreLib/src/System/Decimal.DecCalc.cs) uses `LeadingZeroCount`, which is a single hardware instruction on modern CPUs.
+O(n) in bit count — up to 128 iterations on a generic `UInt128` (96 in practice for Decimal128 coefficients, but the function is also called with arbitrary integral types). C#'s [`ScaleResult`](https://github.com/dotnet/runtime/blob/main/src/libraries/System.Private.CoreLib/src/System/Decimal.DecCalc.cs) uses `LeadingZeroCount`, which is a single hardware instruction on modern CPUs.
 
 Fix (done): delegate to `std.bit.bit_width`, which lowers to LLVM's `count_leading_zeros` intrinsic (single-instruction for ≤ 64-bit operands and two CLZs for 128-bit operands). The function is now O(1) in bit width regardless of input. See §2.5 for the broader use of UInt128/UInt256 as an acceleration bridge.
 
@@ -323,7 +323,9 @@ It looks like two separate 128-bit (or 256-bit) divisions on the same operands, 
 | UInt128 | 0.547 ms                | 0.519 ms                  | tied (within noise)       |
 | UInt256 | **0.660 ms**            | 0.690 ms                  | `// + %` is ~5% faster    |
 
-Why: inspecting `mojo build --emit=asm -O3` output on aarch64 (Apple Silicon) shows that for **both** patterns the compiler emits exactly one division — a single `___udivti3` library call for UInt128 (or one `udiv` instruction for UInt64) — followed by an inline `mul + sub` for the remainder. The mechanism is LLVM's `DivRemPairs` / instruction-combining pass: `urem(a, b)` is canonicalized to `sub(a, mul(udiv(a, b), b))`, and the shared `udiv` is then CSE-deduplicated against the explicit `a // b`. So writing `a % b` does **not** issue a second division; the manual `a - q * b` rewrite gives the compiler nothing extra and is strictly more source code to maintain. (Reference asm: `temp/divmod_isolation.s`, generated from `temp/divmod_isolation.mojo`.)
+Why: inspecting `mojo build --emit=asm -O3` output on aarch64 (Apple Silicon) shows that for **both** patterns the compiler emits exactly one division — a single `___udivti3` library call for UInt128 (or one `udiv` instruction for UInt64) — followed by an inline `mul + sub` for the remainder. The mechanism is LLVM's `DivRemPairs` / instruction-combining pass: `urem(a, b)` is canonicalized to `sub(a, mul(udiv(a, b), b))`, and the shared `udiv` is then CSE-deduplicated against the explicit `a // b`. So writing `a % b` does **not** issue a second division; the manual `a - q * b` rewrite gives the compiler nothing extra and is strictly more source code to maintain.
+
+Reproduction recipe: write each pattern as an `@export fn` taking runtime (non-constant) inputs, build with `pixi run mojo build --emit=asm -O3 <file>.mojo -o <file>.s`, then `grep` the output for the function symbols and count `bl ___udivti3` / `udiv` instructions per body — both should appear exactly once.
 
 Note: the `// + %` pattern *is* the canonical way to access divmod in Mojo — there is no separate `divmod` primitive in `std`, and one is not needed.
 

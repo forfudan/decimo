@@ -186,11 +186,11 @@ def fit_to_max_coefficient[
 # (An earlier version also used `value - truncated * divisor` to derive
 # the remainder, on the assumption that `value % divisor` would issue a
 # second wide-integer division. A microbenchmark plus direct inspection
-# of the generated ARM64 assembly — see plan §4.8 and
-# `temp/divmod_isolation.s` — disproved this: LLVM lowers `urem` to
-# `sub(a, mul(udiv, b))` and CSE-deduplicates the shared `udiv`, so
-# `// + %` and the manual rewrite produce identical code with exactly
-# one division. The function now uses the natural `// + %` form.)
+# of the generated ARM64 assembly disproved this:
+# LLVM lowers `urem` to `sub(a, mul(udiv, b))` and CSE-deduplicates
+# the shared `udiv`, so `// + %` and the manual rewrite produce
+# identical code with exactly one division. The function now uses
+# the natural `// + %` form.)
 @always_inline
 def round_coefficient[
     dtype: DType, //
@@ -267,9 +267,9 @@ def round_coefficient[
 
     # Single divmod: writing `// + %` lets LLVM compute one division and
     # derive the remainder via `a - (a/b) * b`, then CSE-dedup the shared
-    # division (verified at the ARM64 asm level; see plan §4.8 and
-    # `temp/divmod_isolation.s`). An earlier `value - truncated * divisor`
-    # rewrite was strictly more source code for identical generated code.
+    # division (verified at the ARM64 asm level).
+    # An earlier `value - truncated * divisor` rewrite was strictly more
+    # source code for identical generated code.
     var divisor = power_of_10[dtype](ndigits_to_remove)
     var truncated = value // divisor
     var remainder = value % divisor
@@ -686,12 +686,13 @@ def number_of_bits[dtype: DType, //](var value: Scalar[dtype]) -> Int:
         The number of significant bits in the value.
     """
 
-    comptime assert dtype.is_integral(), "must be intergral"
+    comptime assert dtype.is_integral(), "must be integral"
 
     # Delegate to `std.bit.bit_width`, which lowers to a hardware
     # `count_leading_zeros` (single-instruction for ≤ 64-bit, two CLZs
     # for 128-bit). This replaces the previous O(n) shift-and-count loop
-    # that took up to 96 iterations on UInt128.
+    # that took up to 128 iterations on a generic `UInt128` (96 in
+    # practice for Decimal128 coefficients).
     if value < 0:
         value = -value
 

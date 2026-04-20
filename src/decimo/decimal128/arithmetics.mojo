@@ -1032,9 +1032,9 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         var quot256: UInt256 = UInt256(quot)
         var rem256: UInt256 = UInt256(rem)
         var x2_coef256: UInt256 = UInt256(x2_coef)
-        # digit is the tempory quotient digit
+        # digit is the temporary quotient digit
         var digit = UInt256(0)
-        # The final step counter stands for the number of dicimal points
+        # The final step counter stands for the number of decimal points
         var step_counter = 0
         var ndigits_initial_quot = decimo.decimal128.utility.number_of_digits(
             quot256
