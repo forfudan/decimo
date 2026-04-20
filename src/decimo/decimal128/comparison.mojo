@@ -142,7 +142,12 @@ def compare_absolute(x: Decimal128, y: Decimal128) -> Int8:
             var x_frac = x_coef % x_scale_power
             var y_frac = y_coef % y_scale_power
 
-            # Adjust the fractional part to have the same scale
+            # Adjust the fractional part to have the same scale.
+            # Bounds: `x_frac < 10^x_scale` and `y_frac < 10^y_scale`, both
+            # ≤ 10^28. After scaling the smaller-scale fraction by
+            # `10^|scale_diff|` (≤ 10^28), the result is still
+            # < 10^max(x_scale, y_scale) ≤ 10^28, well within UInt128
+            # (max ≈ 3.4 × 10^38). No widening required.
             var scale_diff = x_scale - y_scale
             if scale_diff > 0:
                 y_frac *= UInt128(10) ** scale_diff
