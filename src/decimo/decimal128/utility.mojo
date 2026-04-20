@@ -24,6 +24,7 @@ from std import sys
 from std import time
 
 from decimo.decimal128.decimal128 import Decimal128
+from decimo.rounding_mode import RoundingMode
 
 
 # ===----------------------------------------------------------------------=== #

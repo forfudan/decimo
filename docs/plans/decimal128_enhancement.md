@@ -294,7 +294,9 @@ Both `exp_series` and `ln_series` loop up to 500 with convergence check `term.is
 
 Fix: break early if the term is smaller than 10^(−29) — it cannot change the result at our precision.
 
-### 4.7 `from_string` Processes Digits One at a Time
+### 4.7 `from_string` optimization
+
+`from_string` processes Digits One at a Time
 
 File: `decimal128.mojo`
 
@@ -305,6 +307,12 @@ coef = coef * 10 + digit
 Each iteration does a UInt128 multiply-by-10 and add.
 
 Fix: batch up to 9 digits into a UInt64, then multiply `coef` by the appropriate power of 10 and add the batch. Reduces 128-bit multiplications from ~29 to ~4 for a max-length number.
+
+---
+
+`Decimal128.from_string()` has its own parsing code, which seems to be highly overlapping with `str.parse_numeric_string()` that is currently used for `BigDecimal.from_string()`.
+
+Consider using `str.parse_numeric_string()` for `Decimal128.from_string()`.
 
 ### 4.8 Division Loop: Separate `//` and `%` Operations
 
@@ -371,7 +379,7 @@ Some test cases worth adding:
 | 3.4 | `compare_absolute` overflow                      | Medium      | Small   | P2       | -      |
 | 4.1 | `number_of_bits` loop                            | Medium      | Small   | P2       | -      |
 | 4.8 | Separate `//` and `%` in division loop           | Medium      | Small   | P2       | -      |
-| 4.7 | `from_string` digit-by-digit                     | Medium      | Medium  | P2       | -      |
+| 4.7 | `from_string` optimization                       | Medium      | Medium  | P2       | -      |
 | 4.4 | `ln()` range reduction loops                     | Medium      | Medium  | P2       | -      |
 | 5.4 | `min/max/clamp`                                  | Enhancement | Trivial | P3       | -      |
 | 5.5 | `normalize()`                                    | Enhancement | Small   | P3       | -      |
