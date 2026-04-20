@@ -1031,9 +1031,10 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
         var quot256: UInt256 = UInt256(quot)
         var rem256: UInt256 = UInt256(rem)
-        # digit is the tempory quotient digit
+        var x2_coef256: UInt256 = UInt256(x2_coef)
+        # digit is the temporary quotient digit
         var digit = UInt256(0)
-        # The final step counter stands for the number of dicimal points
+        # The final step counter stands for the number of decimal points
         var step_counter = 0
         var ndigits_initial_quot = decimo.decimal128.utility.number_of_digits(
             quot256
@@ -1052,10 +1053,15 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             # Multiply remainder by 10
             rem256 *= 10
             # Calculate next quotient digit
-            digit = rem256 // UInt256(x2_coef)
+            digit = rem256 // x2_coef256
             quot256 = quot256 * 10 + digit
-            # Calculate new remainder
-            rem256 = rem256 % UInt256(x2_coef)
+            # Calculate new remainder. Writing `// + %` is fine here:
+            # LLVM lowers `urem` to `sub(a, mul(udiv, b))` and CSE-dedups
+            # the shared `udiv`, so the loop performs exactly one
+            # division per iteration (verified at the ARM64 asm level).
+            # Hoisting `UInt256(x2_coef)` into `x2_coef256` above
+            # the loop avoids the per-iteration lift.
+            rem256 = rem256 % x2_coef256
             # Increment step counter
             step_counter += 1
             # Check if division is exact
