@@ -239,30 +239,20 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         # Otherwise, it is >= 29 digits
         # we need to truncate the summation to fit in 96 bits
         else:
-            var ndigits_summation = decimo.decimal128.utility.number_of_digits(
+            var fitted = decimo.decimal128.utility.fit_to_max_coefficient(
                 summation
             )
-            var ndigits_int_summation = UInt32(ndigits_summation) - UInt32(
-                x1_scale
-            )
-            var final_scale = Decimal128.MAX_NUM_DIGITS - ndigits_int_summation
-
-            var truncated_summation = (
-                decimo.decimal128.utility.round_to_keep_first_n_digits(
-                    summation, False, Decimal128.MAX_NUM_DIGITS
+            # Guard against integral-digit overflow: if the coefficient-fitting
+            # had to remove more digits than the current scale provides, the
+            # result no longer fits Decimal128's range.
+            if UInt32(fitted[1]) > UInt32(x1_scale):
+                raise OverflowError(
+                    message="Addition result exceeds Decimal128 precision.",
+                    function="add()",
                 )
-            )
-            if truncated_summation > Decimal128.MAX_AS_UINT128:
-                truncated_summation = (
-                    decimo.decimal128.utility.round_to_keep_first_n_digits(
-                        summation, False, Decimal128.MAX_NUM_DIGITS - 1
-                    )
-                )
-                final_scale -= 1
+            var final_scale = UInt32(x1_scale) - UInt32(fitted[1])
 
-            return Decimal128.from_uint128(
-                truncated_summation, final_scale, is_negative
-            )
+            return Decimal128.from_uint128(fitted[0], final_scale, is_negative)
 
     # CASE: Float addition which with different scales
     else:  # x1_scale != x2_scale
@@ -324,33 +314,22 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         # Otherwise, it is >= 29 digits
         # Otherwise, we need to truncate the summation to fit in 96 bits
         else:
-            var ndigits_summation = decimo.decimal128.utility.number_of_digits(
+            var fitted = decimo.decimal128.utility.fit_to_max_coefficient(
                 summation
             )
-            var ndigits_int_summation = UInt32(ndigits_summation) - UInt32(
-                max(x1_scale, x2_scale)
-            )
-            var final_scale = (
-                UInt32(Decimal128.MAX_NUM_DIGITS) - ndigits_int_summation
-            )
-
-            truncated_summation = (
-                decimo.decimal128.utility.round_to_keep_first_n_digits(
-                    summation, False, Decimal128.MAX_NUM_DIGITS
+            var working_scale = UInt32(max(x1_scale, x2_scale))
+            # Guard against integral-digit overflow: if the coefficient-fitting
+            # had to remove more digits than the working scale provides, the
+            # result no longer fits Decimal128's range.
+            if UInt32(fitted[1]) > working_scale:
+                raise OverflowError(
+                    message="Addition result exceeds Decimal128 precision.",
+                    function="add()",
                 )
-            )
-            if truncated_summation > Decimal128.MAX_AS_UINT256:
-                truncated_summation = (
-                    decimo.decimal128.utility.round_to_keep_first_n_digits(
-                        summation, False, Decimal128.MAX_NUM_DIGITS - 1
-                    )
-                )
-                final_scale -= 1
+            var final_scale = working_scale - UInt32(fitted[1])
 
             return Decimal128.from_uint128(
-                UInt128(
-                    truncated_summation & 0x00000000_FFFFFFFF_FFFFFFFF_FFFFFFFF
-                ),
+                UInt128(fitted[0] & 0x00000000_FFFFFFFF_FFFFFFFF_FFFFFFFF),
                 final_scale,
                 is_negative,
             )
@@ -500,16 +479,9 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         else:
             var prod = x2_coef
             # Rounding may be needed.
-            var num_digits_prod = decimo.decimal128.utility.number_of_digits(
-                prod
-            )
-            var num_digits_to_keep = num_digits_prod - (
-                combined_scale - Decimal128.MAX_SCALE
-            )
-            var truncated_prod = (
-                decimo.decimal128.utility.round_to_keep_first_n_digits(
-                    prod, False, num_digits_to_keep
-                )
+            var truncated_prod = decimo.decimal128.utility.round_coefficient(
+                prod,
+                ndigits_to_remove=combined_scale - Decimal128.MAX_SCALE,
             )
             var final_scale = UInt32(min(Decimal128.MAX_SCALE, combined_scale))
             return Decimal128.from_uint128(
@@ -528,16 +500,9 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         else:
             var prod = x1_coef
             # Rounding may be needed.
-            var num_digits_prod = decimo.decimal128.utility.number_of_digits(
-                prod
-            )
-            var num_digits_to_keep = num_digits_prod - (
-                combined_scale - Decimal128.MAX_SCALE
-            )
-            var truncated_prod = (
-                decimo.decimal128.utility.round_to_keep_first_n_digits(
-                    prod, False, num_digits_to_keep
-                )
+            var truncated_prod = decimo.decimal128.utility.round_coefficient(
+                prod,
+                ndigits_to_remove=combined_scale - Decimal128.MAX_SCALE,
             )
             var final_scale = UInt32(min(Decimal128.MAX_SCALE, combined_scale))
             return Decimal128.from_uint128(
@@ -643,23 +608,16 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
         # Combined scale no more than max precision, truncate with rounding
         else:
-            var num_digits = decimo.decimal128.utility.number_of_digits(prod)
-            var num_digits_to_keep = num_digits - (
-                combined_scale - Decimal128.MAX_SCALE
-            )
-            prod = decimo.decimal128.utility.round_to_keep_first_n_digits(
-                prod, False, num_digits_to_keep
+            prod = decimo.decimal128.utility.round_coefficient(
+                prod,
+                ndigits_to_remove=combined_scale - Decimal128.MAX_SCALE,
             )
             var final_scale = min(Decimal128.MAX_SCALE, combined_scale)
 
             if final_scale > Decimal128.MAX_SCALE:
-                var ndigits_prod = decimo.decimal128.utility.number_of_digits(
-                    prod
-                )
-                prod = decimo.decimal128.utility.round_to_keep_first_n_digits(
+                prod = decimo.decimal128.utility.round_coefficient(
                     prod,
-                    False,
-                    ndigits_prod - (final_scale - Decimal128.MAX_SCALE),
+                    ndigits_to_remove=final_scale - Decimal128.MAX_SCALE,
                 )
                 final_scale = Decimal128.MAX_SCALE
 
@@ -676,54 +634,27 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
     if combined_num_bits <= 128:
         var prod: UInt128 = x1_coef * x2_coef
-        # Truncated first 29 digits
-        var truncated_prod_at_max_length = (
-            decimo.decimal128.utility.round_to_keep_first_n_digits(
-                prod, False, Decimal128.MAX_NUM_DIGITS
-            )
-        )
 
-        # Check outflow
-        # The number of digits of the integral part
-        var num_digits_of_integral_part = (
-            decimo.decimal128.utility.number_of_digits(prod) - combined_scale
-        )
-        if (num_digits_of_integral_part >= Decimal128.MAX_NUM_DIGITS) & (
-            truncated_prod_at_max_length > Decimal128.MAX_AS_UINT128
-        ):
+        # Use fit_to_max_coefficient to handle the try-29/try-28 pattern.
+        # digits_removed tells us how many least-significant digits were
+        # rounded away. If digits_removed > combined_scale, we've lost
+        # integral digits → overflow.
+        var fitted = decimo.decimal128.utility.fit_to_max_coefficient(prod)
+        var digits_removed = fitted[1]
+
+        if digits_removed > combined_scale:
             raise OverflowError(
                 message="Decimal128 overflow in multiplication.",
                 function="multiply()",
             )
 
-        # Otherwise, the value will not overflow even after rounding
-        # Determine the final scale after rounding
-        # If the first 29 digits does not exceed the limit,
-        # the final coefficient can be of 29 digits.
-        # The final scale can be 29 - num_digits_of_integral_part.
-        var num_digits_of_decimal_part = (
-            Decimal128.MAX_NUM_DIGITS - num_digits_of_integral_part
-        )
-        # If the first 29 digits exceed the limit,
-        # we need to adjust the num_digits_of_decimal_part by -1
-        # so that the final coefficient will be of 28 digits.
-        if truncated_prod_at_max_length > Decimal128.MAX_AS_UINT128:
-            num_digits_of_decimal_part -= 1
-            prod = decimo.decimal128.utility.round_to_keep_first_n_digits(
-                prod, False, Decimal128.MAX_NUM_DIGITS - 1
-            )
-        else:
-            prod = truncated_prod_at_max_length
-
-        # Yuhao's notes: I think combined_scale should always be smaller
-        var final_scale = min(num_digits_of_decimal_part, combined_scale)
+        prod = fitted[0]
+        var final_scale = combined_scale - digits_removed
 
         if final_scale > Decimal128.MAX_SCALE:
-            var ndigits_prod = decimo.decimal128.utility.number_of_digits(prod)
-            prod = decimo.decimal128.utility.round_to_keep_first_n_digits(
+            prod = decimo.decimal128.utility.round_coefficient(
                 prod,
-                False,
-                ndigits_prod - (final_scale - Decimal128.MAX_SCALE),
+                ndigits_to_remove=final_scale - Decimal128.MAX_SCALE,
             )
             final_scale = Decimal128.MAX_SCALE
 
@@ -738,54 +669,23 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
     var prod: UInt256 = UInt256(x1_coef) * UInt256(x2_coef)
 
-    # Truncated first 29 digits
-    var truncated_prod_at_max_length = (
-        decimo.decimal128.utility.round_to_keep_first_n_digits(
-            prod, False, Decimal128.MAX_NUM_DIGITS
-        )
-    )
+    # Use fit_to_max_coefficient to handle the try-29/try-28 pattern.
+    var fitted = decimo.decimal128.utility.fit_to_max_coefficient(prod)
+    var digits_removed = fitted[1]
 
-    # Check outflow
-    # The number of digits of the integral part
-    var num_digits_of_integral_part = (
-        decimo.decimal128.utility.number_of_digits(prod) - combined_scale
-    )
-
-    # Check for overflow of the integral part after rounding
-    if (num_digits_of_integral_part >= Decimal128.MAX_NUM_DIGITS) & (
-        truncated_prod_at_max_length > Decimal128.MAX_AS_UINT256
-    ):
+    if digits_removed > combined_scale:
         raise OverflowError(
             message="Decimal128 overflow in multiplication.",
             function="multiply()",
         )
 
-    # Otherwise, the value will not overflow even after rounding
-    # Determine the final scale after rounding
-    # If the first 29 digits does not exceed the limit,
-    # the final coefficient can be of 29 digits.
-    # The final scale can be 29 - num_digits_of_integral_part.
-    var num_digits_of_decimal_part = (
-        Decimal128.MAX_NUM_DIGITS - num_digits_of_integral_part
-    )
-    # If the first 29 digits exceed the limit,
-    # we need to adjust the num_digits_of_decimal_part by -1
-    # so that the final coefficient will be of 28 digits.
-    if truncated_prod_at_max_length > Decimal128.MAX_AS_UINT256:
-        num_digits_of_decimal_part -= 1
-        prod = decimo.decimal128.utility.round_to_keep_first_n_digits(
-            prod, False, Decimal128.MAX_NUM_DIGITS - 1
-        )
-    else:
-        prod = truncated_prod_at_max_length
-
-    # I think combined_scale should always be smaller
-    var final_scale = min(num_digits_of_decimal_part, combined_scale)
+    prod = fitted[0]
+    var final_scale = combined_scale - digits_removed
 
     if final_scale > Decimal128.MAX_SCALE:
-        var ndigits_prod = decimo.decimal128.utility.number_of_digits(prod)
-        prod = decimo.decimal128.utility.round_to_keep_first_n_digits(
-            prod, False, ndigits_prod - (final_scale - Decimal128.MAX_SCALE)
+        prod = decimo.decimal128.utility.round_coefficient(
+            prod,
+            ndigits_to_remove=final_scale - Decimal128.MAX_SCALE,
         )
         final_scale = Decimal128.MAX_SCALE
 
@@ -1079,8 +979,6 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         if scale_of_quot < 0:
             quot = quot * UInt128(10) ** (-scale_of_quot)
             scale_of_quot = 0
-        var ndigits_quot = decimo.decimal128.utility.number_of_digits(quot)
-        var ndigits_quot_int_part = ndigits_quot - scale_of_quot
 
         # print(
         #     String(
@@ -1093,10 +991,9 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         # If quot is within MAX, return the result
         if quot <= Decimal128.MAX_AS_UINT128:
             if scale_of_quot > Decimal128.MAX_SCALE:
-                quot = decimo.decimal128.utility.round_to_keep_first_n_digits(
+                quot = decimo.decimal128.utility.round_coefficient(
                     quot,
-                    False,
-                    ndigits_quot - (scale_of_quot - Decimal128.MAX_SCALE),
+                    ndigits_to_remove=scale_of_quot - Decimal128.MAX_SCALE,
                 )
                 scale_of_quot = Decimal128.MAX_SCALE
 
@@ -1106,34 +1003,15 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
         # Otherwise, we need to truncate the first 29 or 28 digits
         else:
-            var truncated_quot = (
-                decimo.decimal128.utility.round_to_keep_first_n_digits(
-                    quot, False, Decimal128.MAX_NUM_DIGITS
-                )
-            )
-            var scale_of_truncated_quot = (
-                Decimal128.MAX_NUM_DIGITS - ndigits_quot_int_part
-            )
-
-            if truncated_quot > Decimal128.MAX_AS_UINT128:
-                truncated_quot = (
-                    decimo.decimal128.utility.round_to_keep_first_n_digits(
-                        quot, False, Decimal128.MAX_NUM_DIGITS - 1
-                    )
-                )
-                scale_of_truncated_quot -= 1
+            var fitted = decimo.decimal128.utility.fit_to_max_coefficient(quot)
+            var truncated_quot = fitted[0]
+            var scale_of_truncated_quot = scale_of_quot - fitted[1]
 
             if scale_of_truncated_quot > Decimal128.MAX_SCALE:
-                var num_digits_truncated_quot = (
-                    decimo.decimal128.utility.number_of_digits(truncated_quot)
-                )
-                truncated_quot = (
-                    decimo.decimal128.utility.round_to_keep_first_n_digits(
-                        truncated_quot,
-                        False,
-                        num_digits_truncated_quot
-                        - (scale_of_truncated_quot - Decimal128.MAX_SCALE),
-                    )
+                truncated_quot = decimo.decimal128.utility.round_coefficient(
+                    truncated_quot,
+                    ndigits_to_remove=scale_of_truncated_quot
+                    - Decimal128.MAX_SCALE,
                 )
                 scale_of_truncated_quot = Decimal128.MAX_SCALE
 
@@ -1193,18 +1071,13 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         if scale_of_quot < 0:
             quot256 = quot256 * UInt256(10) ** (-scale_of_quot)
             scale_of_quot = 0
-        var ndigits_quot = decimo.decimal128.utility.number_of_digits(quot256)
-        var ndigits_quot_int_part = ndigits_quot - scale_of_quot
 
         # If quot is within MAX, return the result
         if quot256 <= Decimal128.MAX_AS_UINT256:
             if scale_of_quot > Decimal128.MAX_SCALE:
-                quot256 = (
-                    decimo.decimal128.utility.round_to_keep_first_n_digits(
-                        quot256,
-                        False,
-                        ndigits_quot - (scale_of_quot - Decimal128.MAX_SCALE),
-                    )
+                quot256 = decimo.decimal128.utility.round_coefficient(
+                    quot256,
+                    ndigits_to_remove=scale_of_quot - Decimal128.MAX_SCALE,
                 )
                 scale_of_quot = Decimal128.MAX_SCALE
 
@@ -1218,45 +1091,26 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
         # Otherwise, we need to truncate the first 29 or 28 digits
         else:
-            var truncated_quot = (
-                decimo.decimal128.utility.round_to_keep_first_n_digits(
-                    quot256, False, Decimal128.MAX_NUM_DIGITS
-                )
+            var fitted = decimo.decimal128.utility.fit_to_max_coefficient(
+                quot256
             )
+            var truncated_quot = fitted[0]
+            var digits_removed = fitted[1]
 
-            # If integer part of quot is more than max, raise error
-            if (ndigits_quot_int_part > Decimal128.MAX_NUM_DIGITS) or (
-                (ndigits_quot_int_part == Decimal128.MAX_NUM_DIGITS)
-                and (truncated_quot > Decimal128.MAX_AS_UINT256)
-            ):
+            # If digits_removed > scale_of_quot, we've lost integral digits
+            if digits_removed > scale_of_quot:
                 raise OverflowError(
                     message="Decimal128 overflow in division.",
                     function="divide()",
                 )
 
-            var scale_of_truncated_quot = (
-                Decimal128.MAX_NUM_DIGITS - ndigits_quot_int_part
-            )
-
-            if truncated_quot > Decimal128.MAX_AS_UINT256:
-                truncated_quot = (
-                    decimo.decimal128.utility.round_to_keep_first_n_digits(
-                        quot256, False, Decimal128.MAX_NUM_DIGITS - 1
-                    )
-                )
-                scale_of_truncated_quot -= 1
+            var scale_of_truncated_quot = scale_of_quot - digits_removed
 
             if scale_of_truncated_quot > Decimal128.MAX_SCALE:
-                var num_digits_truncated_quot = (
-                    decimo.decimal128.utility.number_of_digits(truncated_quot)
-                )
-                truncated_quot = (
-                    decimo.decimal128.utility.round_to_keep_first_n_digits(
-                        truncated_quot,
-                        False,
-                        num_digits_truncated_quot
-                        - (scale_of_truncated_quot - Decimal128.MAX_SCALE),
-                    )
+                truncated_quot = decimo.decimal128.utility.round_coefficient(
+                    truncated_quot,
+                    ndigits_to_remove=scale_of_truncated_quot
+                    - Decimal128.MAX_SCALE,
                 )
                 scale_of_truncated_quot = Decimal128.MAX_SCALE
 

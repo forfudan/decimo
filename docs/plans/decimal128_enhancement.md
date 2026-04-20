@@ -32,15 +32,15 @@ Decimo, C#, and Rust share the same layout — a proven design. Arrow and govalu
 
 ### 1.2 Special Values
 
-| Feature       | Decimo                | C#         | Rust | Arrow | Go govalues |
-| ------------- | --------------------- | ---------- | ---- | ----- | ----------- |
-| +Infinity     | ✓ (broken — see §3.1) | ✗ (throws) | ✗    | ✗     | ✗           |
-| −Infinity     | ✓ (broken)            | ✗          | ✗    | ✗     | ✗           |
-| NaN           | ✓ (broken — see §3.1) | ✗          | ✗    | ✗     | ✗           |
-| Negative zero | ✗                     | ✗          | ✗    | ✗     | ✗           |
-| Subnormals    | ✗                     | ✗          | ✗    | ✗     | ✗           |
+| Feature       | Decimo             | C#         | Rust | Arrow | Go govalues |
+| ------------- | ------------------ | ---------- | ---- | ----- | ----------- |
+| +Infinity     | ✗ (removed — §3.1) | ✗ (throws) | ✗    | ✗     | ✗           |
+| −Infinity     | ✗ (removed)        | ✗          | ✗    | ✗     | ✗           |
+| NaN           | ✗ (removed — §3.1) | ✗          | ✗    | ✗     | ✗           |
+| Negative zero | ✗                  | ✗          | ✗    | ✗     | ✗           |
+| Subnormals    | ✗                  | ✗          | ✗    | ✗     | ✗           |
 
-None of the comparable 128-bit fixed-precision libraries support NaN or Infinity. We are the only one, and our implementation is broken (§3.1). Maybe consider removing NaN/Infinity support to match the established paradigm — all four comparable libraries simply throw or return an error for undefined operations. If we keep them, the bugs must be fixed and full arithmetic propagation must be added, which is a lot of effort for a feature no peer library provides.
+None of the comparable 128-bit fixed-precision libraries support NaN or Infinity. We removed our broken NaN/Infinity support (§3.1) to match the established paradigm — all four comparable libraries simply raise errors for undefined operations.
 
 ### 1.3 Rounding Modes
 
@@ -91,7 +91,7 @@ This is probably the biggest architectural concern I found. It affects performan
 
 Our max coefficient is 2^96 − 1 = 79,228,162,514,264,337,593,543,950,335. This is a 29-digit number, but the leading digit can only be 0–7. The number 80,000,000,000,000,000,000,000,000,000 (which has only 2 significant digits) is out of range. Meanwhile, all 28-digit numbers fit.
 
-This creates a messy boundary: after every arithmetic operation that might produce a wide result (multiplication, addition with carry, etc.), I need to check whether the coefficient exceeds 2^96 − 1 and, if so, round it down. The rounding itself is non-trivial because the boundary is not at a clean decimal digit — I cannot just drop the last digit. The `truncate_to_max` function in `utility.mojo` handles this, and it is one of the most complex functions in the codebase.
+This creates a messy boundary: after every arithmetic operation that might produce a wide result (multiplication, addition with carry, etc.), I need to check whether the coefficient exceeds 2^96 − 1 and, if so, round it down. The rounding itself is non-trivial because the boundary is not at a clean decimal digit — I cannot just drop the last digit. The `fit_to_max_coefficient` + `round_coefficient` pair in `utility.mojo` handles this (replacing the old `truncate_to_max` / `round_to_keep_first_n_digits`).
 
 ### 2.2 How Other Libraries Handle This
 
@@ -146,9 +146,9 @@ Since the bound IS a power of 10, the rounding is clean: just count digits, divi
 
 ### 2.4 Implications for Decimo
 
-Since we follow the C#/Rust paradigm (binary bound, 2^96 − 1), the `truncate_to_max` complexity is inherent. There are a few things I can do:
+Since we follow the C#/Rust paradigm (binary bound, 2^96 − 1), the coefficient-fitting complexity is inherent. What we have done so far:
 
-1. Adopt .NET's optimization tricks. Specifically: the `log10(2) ≈ 77/256` estimation for scale-down amount, precomputed `POWER_OVERFLOW_VALUES` table for safe scale-up, and the `Unscale()` trailing-zero removal with quick-reject bit checks. These would make our existing `truncate_to_max` and `round_to_keep_first_n_digits` much faster.
+1. (Done) Adopted three .NET `ScaleResult` optimisations in the new `round_coefficient()` function: single-division remainder, `2×remainder` vs `divisor` half-comparison, and caller-supplied digit-removal count. The old `truncate_to_max` and `round_to_keep_first_n_digits` are replaced by `fit_to_max_coefficient` + `round_coefficient`. Possible future work: CLZ-based digit estimation (`LeadingZeroCount × 77/256`), precomputed `POWER_OVERFLOW_VALUES` table for safe scale-up, and `Unscale()` trailing-zero removal with quick-reject bit checks.
 
 2. Consider decimal bound for a future Decimal256. If I ever widen to full 128-bit coefficient, using 10^38 − 1 as the max (matching Arrow and SQL Server) would eliminate this problem entirely and give us interoperability with Arrow wire format and SQL `decimal(38)`.
 
@@ -158,7 +158,7 @@ Since we follow the C#/Rust paradigm (binary bound, 2^96 − 1), the `truncate_t
 
 Mojo now has native `UInt128` and `UInt256` types (via `Scalar[DType.uint128]` and `Scalar[DType.uint256]`). The codebase already uses them — `coefficient()` bitcasts the three UInt32 words to UInt128, and `multiply()` uses UInt256 for intermediate products. But there are more opportunities:
 
-- In `truncate_to_max` and `round_to_keep_first_n_digits`, the divmod operations on UInt128/UInt256 could exploit the fact that Mojo compiles to LLVM IR, where UInt128 division on 64-bit targets translates to two hardware `div` instructions (high and low halves). This is much faster than manually managing three 32-bit limbs. We are already partially doing this, but some code paths still work with individual UInt32 words when they could just operate on the UInt128 directly.
+- In `round_coefficient` and `fit_to_max_coefficient`, the divmod operations on UInt128/UInt256 exploit the fact that Mojo compiles to LLVM IR, where UInt128 division on 64-bit targets translates to two hardware `div` instructions (high and low halves). The new `round_coefficient` already avoids the second division by computing `remainder = value - truncated * divisor`.
 - The `number_of_bits` loop (§4.1) could be replaced by casting UInt128 to two UInt64s and using `count_leading_zeros` on the high word — this gives O(1) bit width instead of a 96-iteration loop.
 - Arrow's approach of promoting to 256-bit for multiply is directly applicable since we already have UInt256. Instead of the current 3×UInt32 partial-product approach in some code paths, we could do: `UInt256(x_coef) * UInt256(y_coef)`, then scale/truncate the result. This is simpler and likely just as fast since LLVM will optimize the wide multiply.
 - For the `compare_absolute` overflow bug (§3.4), using UInt256 instead of UInt128 for the fractional scaling is a one-line fix thanks to the type already being available.
@@ -167,64 +167,26 @@ In short: we already depend on UInt128/UInt256 for the core paths. The opportuni
 
 ## 3. Correctness Bugs
 
-### 3.1 NaN/Infinity Implementation Is Broken
+### 3.1 NaN/Infinity Implementation Was Broken (Removed)
 
 File: `decimal128.mojo`
 
-There are multiple compounding bugs in the NaN/Infinity support:
+The NaN/Infinity support had multiple compounding bugs (mask mismatch, `is_zero()` returning True,
+no arithmetic propagation). Since no comparable 128-bit fixed-precision library supports NaN or
+Infinity (§1.2), we removed NaN/Infinity support entirely. Operations that would produce
+undefined results now raise errors, matching C#, Rust, Arrow, and govalues.
 
-Bug A — NaN mask mismatch:
+Status: **Done** (removed `NAN()`, `NEGATIVE_NAN()`, `INFINITY()`, `NEGATIVE_INFINITY()`,
+`NAN_MASK`, `INFINITY_MASK`, `is_nan()`, `is_infinity()` and their callers).
 
-```txt
-NAN_MASK = UInt32(0x00000002)    # bit 1
-```
-
-But the constructors set a different bit:
-
-```txt
-NAN()          → Self(0, 0, 0, 0x00000010)  # bit 4
-NEGATIVE_NAN() → Self(0, 0, 0, 0x80000010)  # bit 4
-```
-
-So `Decimal128.NAN().is_nan()` returns False.
-
-Bug B — `is_zero()` returns True for NaN and Infinity:
-
-```mojo
-def is_zero(self) -> Bool:
-    return self.low == 0 and self.mid == 0 and self.high == 0
-```
-
-NaN and Infinity have zero coefficients, so `INFINITY().is_zero()` → True.
-
-Bug C — No arithmetic propagation: none of the arithmetic operations check for NaN or Infinity inputs. Passing them into `add()`, `multiply()`, etc., produces garbage silently.
-
-Since no comparable 128-bit fixed-precision library supports NaN or Infinity (see §1.2), maybe the cleanest fix is to just remove NaN/Infinity support entirely and raise errors for undefined operations (matching C#, Rust, Arrow, and govalues). If I decide to keep them, all three bugs must be fixed:
-
-- Fix A: Change `NAN()` → `Self(0, 0, 0, 0x00000002)` and `NEGATIVE_NAN()` → `Self(0, 0, 0, 0x80000002)` to match the mask.
-- Fix B: Guard `is_zero()` with `if self.is_nan() or self.is_infinity(): return False`.
-- Fix C: Add early-return NaN/Inf checks to every arithmetic function (significant effort).
-
-### 3.2 `from_words` Uses `testing.assert_true` in Production Code
+### 3.2 `from_words` Uses `testing.assert_true` in Production Code (Fixed)
 
 File: `decimal128.mojo`, lines ~344, 351
 
-```mojo
-from testing import assert_true
-assert_true(scale <= Self.MAX_SCALE, ...)
-assert_true(coefficient <= Self.MAX_AS_UINT128, ...)
-```
+The function used `testing.assert_true` to validate arguments, which panics with a test failure
+message rather than raising a recoverable error.
 
-This imports the test framework into production code. `assert_true` panics with a test failure message rather than raising a recoverable error. Users expect `raise Error(...)`.
-
-Fix:
-
-```mojo
-if scale > Self.MAX_SCALE:
-    raise Error("Error in Decimal128.from_words(): Scale must be <= 28, got " + str(scale))
-if coefficient > Self.MAX_AS_UINT128:
-    raise Error("Error in Decimal128.from_words(): Coefficient exceeds 96-bit max")
-```
+Status: **Done** — replaced with `raise Error(...)` for both scale and coefficient validation.
 
 ### 3.3 Division Hardcodes Rounding Behavior
 
@@ -280,23 +242,22 @@ Fix: split UInt128 into two UInt64s and use `count_leading_zeros` on the high wo
 
 File: `utility.mojo`
 
-The function already has hardcoded return values for n=0 through n=32, but for n=33 through n=56+ it falls back to `ValueType(10) ** n` which computes via loop.
+The function had hardcoded return values for n=0 through n=32, but for n=33 through n=56+ it fell back to `ValueType(10) ** n` which computes via loop.
 
-Since `power_of_10` is called in nearly every arithmetic operation (scale adjustment, `number_of_digits`, comparison, division), the fallback path matters.
+Fix (done): extended the hardcoded constants up to n=58 (the maximum needed for UInt256 products of two 29-digit numbers). The cache layer remains for values beyond the hardcoded range, but in practice n ≤ 58 covers all Decimal128 arithmetic paths.
 
-Fix: extend the hardcoded constants up to n=58 (the maximum needed for UInt256 products of two 29-digit numbers). The pattern is already there for n ≤ 32 — just continue it. For UInt256 values too large for integer literals, use the `@always_inline` constant function pattern from `constants.mojo`.
-
-### 4.3 `truncate_to_max` Could Use .NET Tricks
+### 4.3 `round_to_keep_first_n_digits` Lacked .NET-style Optimisations
 
 File: `utility.mojo`
 
-Our `truncate_to_max` computes `number_of_digits`, then divides by `power_of_10`, then rounds. .NET's [`ScaleResult`](https://github.com/dotnet/runtime/blob/main/src/libraries/System.Private.CoreLib/src/System/Decimal.DecCalc.cs) uses:
+The old `round_to_keep_first_n_digits` had three inefficiencies compared to
+.NET's [`ScaleResult`](https://github.com/dotnet/runtime/blob/main/src/libraries/System.Private.CoreLib/src/System/Decimal.DecCalc.cs):
 
-- `LeadingZeroCount` × `77/256` to estimate digit count without a full `number_of_digits` call
-- Division by compile-time constants (10^1 through 10^9) using multiply-by-reciprocal
-- `Unscale()` trailing-zero removal with bit-check quick-rejects
+1. **Two wide divisions** — `value // divisor` and `value % divisor` performed two separate UInt128/UInt256 divisions, when the remainder can be derived from a single division plus one multiply: `remainder = value - truncated * divisor`.
+2. **Expensive half-comparison** — the cutoff `5 * power_of_10(n − 1)` required an extra power-of-10 lookup and a wide multiply.  .NET instead compares `2 * remainder` against `divisor`, which is a single left-shift.
+3. **Redundant `number_of_digits` call** — the function always recomputed the digit count even though most callers already knew it.
 
-These tricks could significantly speed up our overflow handling.
+Fix (done): introduced `round_coefficient(value, ndigits_to_remove, sign, rounding_mode)` which applies all three .NET-style tricks and takes `ndigits_to_remove` directly so callers that already know the digit count skip the redundant computation. All production call sites migrated; the old function is kept but deprecated.
 
 ### 4.4 `ln()` Range Reduction Uses Loops
 
@@ -333,7 +294,9 @@ Both `exp_series` and `ln_series` loop up to 500 with convergence check `term.is
 
 Fix: break early if the term is smaller than 10^(−29) — it cannot change the result at our precision.
 
-### 4.7 `from_string` Processes Digits One at a Time
+### 4.7 `from_string` optimization
+
+`from_string` processes Digits One at a Time
 
 File: `decimal128.mojo`
 
@@ -345,6 +308,12 @@ Each iteration does a UInt128 multiply-by-10 and add.
 
 Fix: batch up to 9 digits into a UInt64, then multiply `coef` by the appropriate power of 10 and add the batch. Reduces 128-bit multiplications from ~29 to ~4 for a max-length number.
 
+---
+
+`Decimal128.from_string()` has its own parsing code, which seems to be highly overlapping with `str.parse_numeric_string()` that is currently used for `BigDecimal.from_string()`.
+
+Consider using `str.parse_numeric_string()` for `Decimal128.from_string()`.
+
 ### 4.8 Division Loop: Separate `//` and `%` Operations
 
 File: `arithmetics.mojo`
@@ -355,6 +324,8 @@ rem = rem % x2_coef
 ```
 
 Two separate 128-bit divisions on the same operands. Most hardware produces both quotient and remainder in a single `div` instruction.
+
+Note: the `round_coefficient` function (§4.3) already addresses this for the rounding path by computing `remainder = value - truncated * divisor` instead of a second division. This §4.8 issue remains only in the long-division digit-extraction loop inside `divide()`, which is a different code path.
 
 Fix: use `divmod()` if available in Mojo.
 
@@ -399,39 +370,39 @@ Some test cases worth adding:
 
 ## 6. Priority Summary
 
-| #   | Issue                                   | Severity    | Effort                        | Priority |
-| --- | --------------------------------------- | ----------- | ----------------------------- | -------- |
-| 3.1 | NaN/Inf broken (fix or remove)          | Critical    | Small (remove) / Medium (fix) | P0       |
-| 3.2 | `from_words` uses `testing.assert_true` | Medium      | Small                         | P1       |
-| 4.2 | `power_of_10` not fully precomputed     | High        | Small                         | P1       |
-| 4.3 | `truncate_to_max` lacks .NET tricks     | High        | Medium                        | P1       |
-| 3.4 | `compare_absolute` overflow             | Medium      | Small                         | P2       |
-| 4.1 | `number_of_bits` loop                   | Medium      | Small                         | P2       |
-| 4.8 | Separate `//` and `%` in division       | Medium      | Small                         | P2       |
-| 4.7 | `from_string` digit-by-digit            | Medium      | Medium                        | P2       |
-| 4.4 | `ln()` range reduction loops            | Medium      | Medium                        | P2       |
-| 5.4 | `min/max/clamp`                         | Enhancement | Trivial                       | P3       |
-| 5.5 | `normalize()`                           | Enhancement | Small                         | P3       |
-| 5.1 | `__hash__`                              | Enhancement | Small                         | P3       |
-| 5.6 | Edge case tests                         | Enhancement | Medium                        | P3       |
-| 4.5 | `subtract` temporary                    | Low         | Trivial                       | P4       |
-| 4.6 | Series convergence tolerance            | Low         | Small                         | P4       |
-| 3.3 | Division rounding mode (configurable)   | Low         | Medium                        | P4       |
-| 5.3 | Better `from_float`                     | Enhancement | Medium                        | P4       |
-| 5.2 | `Stringable` conformance                | Enhancement | Trivial                       | P4       |
+| #   | Issue                                            | Severity    | Effort  | Priority | Status |
+| --- | ------------------------------------------------ | ----------- | ------- | -------- | ------ |
+| 3.1 | NaN/Inf removed                                  | Critical    | Small   | P0       | Done   |
+| 3.2 | `from_words` uses `testing.assert_true`          | Medium      | Small   | P1       | Done   |
+| 4.2 | `power_of_10` not fully precomputed              | High        | Small   | P1       | Done   |
+| 4.3 | `round_to_keep_first_n_digits` lacks .NET tricks | High        | Medium  | P1       | Done   |
+| 3.4 | `compare_absolute` overflow                      | Medium      | Small   | P2       | -      |
+| 4.1 | `number_of_bits` loop                            | Medium      | Small   | P2       | -      |
+| 4.8 | Separate `//` and `%` in division loop           | Medium      | Small   | P2       | -      |
+| 4.7 | `from_string` optimization                       | Medium      | Medium  | P2       | -      |
+| 4.4 | `ln()` range reduction loops                     | Medium      | Medium  | P2       | -      |
+| 5.4 | `min/max/clamp`                                  | Enhancement | Trivial | P3       | -      |
+| 5.5 | `normalize()`                                    | Enhancement | Small   | P3       | -      |
+| 5.1 | `__hash__`                                       | Enhancement | Small   | P3       | -      |
+| 5.6 | Edge case tests                                  | Enhancement | Medium  | P3       | -      |
+| 4.5 | `subtract` temporary                             | Low         | Trivial | P4       | -      |
+| 4.6 | Series convergence tolerance                     | Low         | Small   | P4       | -      |
+| 3.3 | Division rounding mode (configurable)            | Low         | Medium  | P4       | -      |
+| 5.3 | Better `from_float`                              | Enhancement | Medium  | P4       | -      |
+| 5.2 | `Stringable` conformance                         | Enhancement | Trivial | P4       | -      |
 
 ## 7. Execution Order
 
-Phase 1 — correctness:
+Phase 1 — correctness: **(Done)**
 
-1. Decide: remove NaN/Infinity or fix them (§3.1). If removing, delete `NAN()`, `NEGATIVE_NAN()`, `INFINITY()`, `NEGATIVE_INFINITY()`, `NAN_MASK`, `INFINITY_MASK`, `is_nan()`, `is_infinity()` and change callers to raise errors. If fixing, apply fixes A/B/C from §3.1.
-2. Fix `from_words` to use `raise Error` instead of `testing.assert_true` (§3.2).
-3. Add edge case tests (§5.6).
+1. ~~Decide: remove NaN/Infinity or fix them (§3.1).~~ **Done** — removed NaN/Infinity entirely.
+2. ~~Fix `from_words` to use `raise Error` instead of `testing.assert_true` (§3.2).~~ **Done.**
+3. Add edge case tests (§5.6). (Partially done — `test_round_coefficient` added 19 cases.)
 
-Phase 2 — performance (coefficient bound):
+Phase 2 — performance (coefficient bound): **(Mostly done)**
 
-1. Extend `power_of_10` hardcoded constants up to n=58 (§4.2).
-2. Add .NET-style tricks to `truncate_to_max`: CLZ-based digit estimation, divide-by-constant optimization, trailing-zero quick-reject (§4.3).
+1. ~~Extend `power_of_10` hardcoded constants up to n=58 (§4.2).~~ **Done.**
+2. ~~Add .NET-style tricks to rounding: new `round_coefficient` with single-division remainder, cheap half-comparison, and caller-supplied removal count (§4.3).~~ **Done** — all 10 production callers migrated.
 3. Replace `number_of_bits` with hardware CLZ via UInt64 split (§4.1).
 4. Fix `compare_absolute` overflow with UInt256 (§3.4).
 
@@ -526,13 +497,9 @@ Not truly 128-bit — the struct is **160 bits (20 bytes)**. Layout:
 - `reserved: UInt16`
 - `mantissa: (UInt16, UInt16, UInt16, UInt16, UInt16, UInt16, UInt16, UInt16)` — 8×UInt16 = 128 bits
 
-The 128-bit mantissa can theoretically hold values up to 2^128 − 1, but the `_length` field
-(4 bits, max 15) indicates how many of the 8 UInt16 slots are used, and Apple documents the max as
-38 significant decimal digits (i.e., effectively capped at 10^38 − 1).
+The 128-bit mantissa can theoretically hold values up to 2^128 − 1, but the `_length` field (4 bits, max 15) indicates how many of the 8 UInt16 slots are used, and Apple documents the max as 38 significant decimal digits (i.e., effectively capped at 10^38 − 1).
 
-Unlike C# and Rust, Swift Decimal **supports NaN** (`isNaN` property). It does NOT support Infinity
-in practice — the `isInfinite` property exists (inherited from `FloatingPoint` protocol) but Apple's
-implementation does not produce or handle Infinity values meaningfully.
+Unlike C# and Rust, Swift Decimal **supports NaN** (`isNaN` property). It does NOT support Infinity in practice — the `isInfinite` property exists (inherited from `FloatingPoint` protocol) but Apple's implementation does not produce or handle Infinity values meaningfully.
 
 #### SQL Server decimal / numeric
 
@@ -553,25 +520,17 @@ No NaN, no Infinity. `decimal` and `numeric` are synonyms; both are fixed precis
 
 #### Go govalues/decimal
 
-A high-performance, zero-allocation decimal designed for financial systems. Internally uses a
-`uint64` coefficient (max 10^19 − 1 = 9,999,999,999,999,999,999) with 19-digit precision and
-scale 0–19. The struct fits in 128 bits total (bool sign + uint64 coefficient + int scale, though
-Go struct layout may pad slightly).
+A high-performance, zero-allocation decimal designed for financial systems. Internally uses a `uint64` coefficient (max 10^19 − 1 = 9,999,999,999,999,999,999) with 19-digit precision and scale 0–19. The struct fits in 128 bits total (bool sign + uint64 coefficient + int scale, though Go struct layout may pad slightly).
 
-No NaN, no Infinity, no negative zero, no subnormals. Immutable, panic-free (returns errors).
-Uses half-to-even rounding by default. Falls back to `big.Int` for intermediate calculations to
-maintain correctness, but final results are always rounded to 19 digits.
+No NaN, no Infinity, no negative zero, no subnormals. Immutable, panic-free (returns errors). Uses half-to-even rounding by default. Falls back to `big.Int` for intermediate calculations to maintain correctness, but final results are always rounded to 19 digits.
 
 #### Delphi Currency
 
-Only 64 bits, included for completeness. A 64-bit signed integer scaled by 10^4 (i.e., always
-exactly 4 decimal places). Max value: 922,337,203,685,477.5807. Not truly 128-bit, but it is a
-notable example of a fixed-point decimal type in the wild.
+Only 64 bits, included for completeness. A 64-bit signed integer scaled by 10^4 (i.e., always exactly 4 decimal places). Max value: 922,337,203,685,477.5807. Not truly 128-bit, but it is a notable example of a fixed-point decimal type in the wild.
 
 ### A.3 Eliminated Candidates
 
-The following were investigated but **excluded** because they are arbitrary-precision (not
-fixed-precision within 128 bits):
+The following were investigated but **excluded** because they are arbitrary-precision (not fixed-precision within 128 bits):
 
 | Name                   | Language   | Reason for Exclusion                                                                                                           |
 | ---------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -582,15 +541,13 @@ fixed-precision within 128 bits):
 
 ### A.4 Critical Analysis: Coefficient Upper Bound Approaches
 
-There are **two fundamentally different approaches** to bounding the coefficient in fixed-precision
-decimal types:
+There are **two fundamentally different approaches** to bounding the coefficient in fixed-precision decimal types:
 
 #### Approach 1: Binary Bound (2^N − 1)
 
 **Used by:** C# System.Decimal, Rust rust_decimal, Decimo Decimal128
 
-The coefficient is an N-bit unsigned integer, and the maximum value is the full binary range
-2^N − 1. For 96-bit coefficients:
+The coefficient is an N-bit unsigned integer, and the maximum value is the full binary range 2^N − 1. For 96-bit coefficients:
 
 - Max = 2^96 − 1 = **79,228,162,514,264,337,593,543,950,335**
 - This is a 29-digit number, but the leading digit can only be 0–7 (since 10^29 − 1 > 2^96 − 1)
@@ -605,18 +562,14 @@ The coefficient is an N-bit unsigned integer, and the maximum value is the full 
 
 **Cons:**
 
-- The "truncate-to-max" problem: when an operation produces a coefficient > 2^96 − 1, you must
-  either raise an error or round. The boundary is not at a clean decimal digit boundary, which
-  makes rounding semantics awkward. E.g., 80,000,000,000,000,000,000,000,000,000 (8×10^28) is
-  out of range, even though it only needs 2 significant digits.
+- The "truncate-to-max" problem: when an operation produces a coefficient > 2^96 − 1, you must either raise an error or round. The boundary is not at a clean decimal digit boundary, which makes rounding semantics awkward. E.g., 80,000,000,000,000,000,000,000,000,000 (8×10^28) is out of range, even though it only needs 2 significant digits.
 - Non-uniform digit range: the 29th digit has range 0–7, not 0–9. This is confusing for users.
 
 #### Approach 2: Decimal Bound (10^p − 1)
 
 **Used by:** Apache Arrow Decimal128, SQL Server decimal(38), Swift Decimal, govalues/decimal
 
-The coefficient is bounded by 10^p − 1, where p is the declared precision. Even if the underlying
-storage has more bits available, values above 10^p − 1 are not representable.
+The coefficient is bounded by 10^p − 1, where p is the declared precision. Even if the underlying storage has more bits available, values above 10^p − 1 are not representable.
 
 For Arrow/SQL precision 38:
 
@@ -645,19 +598,8 @@ For govalues/decimal precision 19:
 
 Decimo follows the C#/Rust approach (binary bound, 2^96 − 1). This means:
 
-1. **The `truncate_to_max` style bound-checking IS a concern:** When multiplying two 29-digit
-   numbers, the intermediate product can have up to 58 digits. If the result after scale adjustment
-   still exceeds 2^96 − 1, we must handle it. The current behavior should be documented: do we
-   raise an error, or do we round to fit?
+1. **The coefficient-fitting logic IS a concern:** When multiplying two 29-digit numbers, the intermediate product can have up to 58 digits. If the result after scale adjustment still exceeds 2^96 − 1, we must handle it. The current behavior should be documented: do we raise an error, or do we round to fit?
 
-2. **The non-uniform 29th digit** should be documented. Users may expect that "29 digits of
-   precision" means they can represent any 29-digit number, but
-   `99,999,999,999,999,999,999,999,999,999` (29 nines) = ~10^29 is > 2^96 and therefore
-   out of range. The actual guarantee is "28 full digits plus a leading digit 0–7".
+2. **The non-uniform 29th digit** should be documented. Users may expect that "29 digits of precision" means they can represent any 29-digit number, but `99,999,999,999,999,999,999,999,999,999` (29 nines) = ~10^29 is > 2^96 and therefore out of range. The actual guarantee is "28 full digits plus a leading digit 0–7".
 
-3. **If we ever consider a Decimal256 or widen to full 128-bit coefficient:** We should evaluate
-   whether to switch to the decimal-bounded approach (10^38 − 1 with 128-bit storage, matching
-   Arrow/SQL) vs. staying with binary bound (2^128 − 1, giving ~38.5 digits with non-uniform
-   leading digit). The Arrow/SQL approach would give us exact compatibility with SQL Server
-   `decimal(38)` and Arrow `Decimal128` wire format, which is a significant interoperability
-   advantage.
+3. **If we ever consider a Decimal256 or widen to full 128-bit coefficient:** We should evaluate whether to switch to the decimal-bounded approach (10^38 − 1 with 128-bit storage, matching Arrow/SQL) vs. staying with binary bound (2^128 − 1, giving ~38.5 digits with non-uniform leading digit). The Arrow/SQL approach would give us exact compatibility with SQL Server `decimal(38)` and Arrow `Decimal128` wire format, which is a significant interoperability advantage.

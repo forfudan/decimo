@@ -24,8 +24,12 @@ from std import sys
 from std import time
 
 from decimo.decimal128.decimal128 import Decimal128
+from decimo.rounding_mode import RoundingMode
 
 
+# ===----------------------------------------------------------------------=== #
+# System-level utilities for Decimal128
+# ===----------------------------------------------------------------------=== #
 # UNSAFE
 def bitcast[dtype: DType](dec: Decimal128) -> Scalar[dtype]:
     """
@@ -59,137 +63,9 @@ def bitcast[dtype: DType](dec: Decimal128) -> Scalar[dtype]:
     return result
 
 
-def truncate_to_max[dtype: DType, //](value: Scalar[dtype]) -> Scalar[dtype]:
-    """
-    Truncates a UInt256 or UInt128 value to be as closer to the max value of
-    Decimal128 coefficient (`2^96 - 1`) as possible with rounding.
-    Uses banker's rounding (ROUND_HALF_EVEN) for any truncated digits.
-    `792281625142643375935439503356` will be truncated to
-    `7922816251426433759354395034`.
-    `792281625142643375935439503353` will be truncated to
-    `79228162514264337593543950345`.
-
-    Parameters:
-        dtype: Must be either uint128 or uint256.
-
-    Args:
-        value: The UInt256 value to truncate.
-
-    Constraints:
-        `dtype` must be either `DType.uint128` or `DType.uint256`.
-
-    Returns:
-        The truncated UInt256 value, guaranteed to fit within 96 bits.
-    """
-
-    comptime ValueType = Scalar[dtype]
-
-    comptime assert (
-        dtype == DType.uint128 or dtype == DType.uint256
-    ), "must be uint128 or uint256"
-
-    # If the value is already less than the maximum possible value, return it
-    if value <= ValueType(Decimal128.MAX_AS_UINT128):
-        return value
-
-    else:
-        # Calculate how many digits we need to truncate
-        # Calculate how many digits to keep (MAX_NUM_DIGITS = 29)
-        var ndigits = number_of_digits(value)
-        var digits_to_remove = ndigits - Decimal128.MAX_NUM_DIGITS
-
-        # Collect digits for rounding decision
-        var divisor = power_of_10[dtype](digits_to_remove)
-        var truncated_value = value // divisor
-
-        if truncated_value == ValueType(Decimal128.MAX_AS_UINT128):
-            # Case 1:
-            # Truncated_value == MAX_AS_UINT128
-            # Rounding may not cause overflow depending on rounding digit
-            # If removed digits do not caue rounding up. Return truncated value.
-            # If removed digits cause rounding up, return MAX // 10 - 1
-            # 79228162514264337593543950335[removed part] -> 7922816251426433759354395034
-
-            var remainder = value % divisor
-
-            # Get the most significant digit of the remainder for rounding
-            var rounding_digit = remainder // power_of_10[dtype](
-                digits_to_remove - 1
-            )
-
-            # Check if we need to round up based on banker's rounding (ROUND_HALF_EVEN)
-            var round_up = False
-
-            # If rounding digit is > 5, round up
-            if rounding_digit > 5:
-                round_up = True
-            # If rounding digit is 5, check if there are any non-zero digits after it
-            elif rounding_digit == 5:
-                var has_nonzero_after = remainder > 5 * power_of_10[dtype](
-                    digits_to_remove - 1
-                )
-                # If there are non-zero digits after, round up
-                if has_nonzero_after:
-                    round_up = True
-                # Otherwise, round to even (round up if last kept digit is odd)
-                else:
-                    round_up = (truncated_value % 2) == 1
-
-            # Apply rounding if needed
-            if round_up:
-                truncated_value = (
-                    truncated_value // 10 + 1
-                )  # 7922816251426433759354395034
-
-            return truncated_value
-
-        else:
-            # Case 3:
-            # Truncated_value > MAX_AS_UINT128
-            # Always overflow, increase the digits_to_remove by 1
-
-            # Case 2:
-            # Trucated_value < MAX_AS_UINT128
-            # Rounding will not case overflow
-
-            if truncated_value > ValueType(Decimal128.MAX_AS_UINT128):
-                digits_to_remove += 1
-
-            # Collect digits for rounding decision
-            divisor = power_of_10[dtype](digits_to_remove)
-            truncated_value = value // divisor
-            var remainder = value % divisor
-
-            # Get the most significant digit of the remainder for rounding
-            var rounding_digit = remainder // power_of_10[dtype](
-                digits_to_remove - 1
-            )
-
-            # Check if we need to round up based on banker's rounding (ROUND_HALF_EVEN)
-            var round_up = False
-
-            # If rounding digit is > 5, round up
-            if rounding_digit > 5:
-                round_up = True
-            # If rounding digit is 5, check if there are any non-zero digits after it
-            elif rounding_digit == 5:
-                var has_nonzero_after = remainder > 5 * power_of_10[dtype](
-                    digits_to_remove - 1
-                )
-                # If there are non-zero digits after, round up
-                if has_nonzero_after:
-                    round_up = True
-                # Otherwise, round to even (round up if last kept digit is odd)
-                else:
-                    round_up = (truncated_value % 2) == 1
-
-            # Apply rounding if needed
-            if round_up:
-                truncated_value += 1
-
-            return truncated_value
-
-
+# TODO: At the time when this function was implemented, Mojo's built-in
+# sqrt() function only supports integral types up to 64 bits.
+# Once Mojo supports sqrt() for UInt128, this function can be removed.
 def sqrt(x: UInt128) -> UInt128:
     """
     Returns the square root of a UInt128 value.
@@ -200,9 +76,6 @@ def sqrt(x: UInt128) -> UInt128:
     Returns:
         The square root of the UInt128 value.
     """
-
-    if x < 0:
-        return 0
 
     var r: UInt128 = 0
 
@@ -216,7 +89,237 @@ def sqrt(x: UInt128) -> UInt128:
     return r
 
 
-# TODO: Evaluate whether this can replace truncate_to_max in some cases.
+def fit_to_max_coefficient[
+    dtype: DType, //
+](
+    value: Scalar[dtype],
+    sign: Bool = False,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) -> Tuple[Scalar[dtype], Int] where (
+    dtype == DType.uint128 or dtype == DType.uint256
+):
+    """Rounds a coefficient to fit within Decimal128's 96-bit maximum (2^96 − 1).
+
+    Because 2^96 − 1 = 79_228_162_514_264_337_593_543_950_335 has 29 decimal
+    digits but not every 29-digit number fits (e.g. 9.9…9 × 10^28 > 2^96 − 1),
+    the function first tries keeping 29 digits. If the rounded result still
+    exceeds the maximum, it retries with 28 digits.
+
+    Parameters:
+        dtype: Must be either `DType.uint128` or `DType.uint256`.
+
+    Args:
+        value: The coefficient to fit.
+        sign: The sign of the original number (needed for CEILING/FLOOR modes).
+        rounding_mode: The rounding strategy for discarded digits.
+            Defaults to banker's rounding (ROUND_HALF_EVEN).
+
+    Constraints:
+        `dtype` must be either `DType.uint128` or `DType.uint256`.
+
+    Returns:
+        A tuple of:
+        - The rounded coefficient, guaranteed ≤ `Decimal128.MAX_AS_UINT128`.
+        - The number of digits removed from the original value.
+
+        The caller can compute the new scale as:
+        `new_scale = original_scale - digits_removed`.
+
+    Examples:
+
+        If the value already fits (≤ 2^96 - 1), it is returned unchanged
+        with `digits_removed = 0`.
+
+        >>> fit_to_max_coefficient(UInt128(123456))
+        (123456, 0)
+
+        If the value is too large, it is rounded to fit. The 29-digit
+        rounded result may itself exceed `2^96 - 1`, in which case the
+        function automatically retries with 28 digits:
+
+        >>> fit_to_max_coefficient(UInt256(792281625142643375935439503560))
+        (7922816251426433759354395036, 2)
+
+        Another example where the all-nines case forces the retry:
+
+        >>> fit_to_max_coefficient(UInt256(99999999999999999999999999999999))
+        (10000000000000000000000000000, 4)
+
+        The returned value is always ≤ 2^96 - 1.
+    """
+
+    comptime ValueType = Scalar[dtype]
+
+    # If the value already fits, no truncation needed.
+    if value <= ValueType(Decimal128.MAX_AS_UINT128):
+        return (value, 0)
+
+    var ndigits = number_of_digits(value)
+    var digits_to_remove = ndigits - Decimal128.MAX_NUM_DIGITS
+
+    # First attempt: keep MAX_NUM_DIGITS (29) digits.
+    var result = round_coefficient(value, digits_to_remove, sign, rounding_mode)
+
+    # Because 2^96 − 1 is not at a clean decimal boundary, the 29-digit
+    # rounded result may still exceed the maximum. Retry with 28 digits.
+    if result > ValueType(Decimal128.MAX_AS_UINT128):
+        result = round_coefficient(
+            value, digits_to_remove + 1, sign, rounding_mode
+        )
+        digits_to_remove += 1
+
+    return (result, digits_to_remove)
+
+
+# [Mojo Miji]
+# This function replaces `round_to_keep_first_n_digits` with three
+# optimisations borrowed from .NET's `DecCalc.ScaleResult`:
+# 1. **Single division** — the remainder is computed as
+#   `value - truncated * divisor` (one multiply) instead of a second
+#   wide-integer division (`value % divisor`).
+# 2. **Cheap half-comparison** — for HALF_UP / HALF_DOWN / HALF_EVEN,
+#   `2 * remainder` is compared against `divisor` instead of computing
+#   the separate cutoff `5 * 10^(n-1)` (saves one power-of-10 lookup
+#   and one wide multiply).
+# 3. **Caller supplies digit-removal count** — avoids a redundant
+#   `number_of_digits` call when the caller already knows the value's
+#   digit count.
+@always_inline
+def round_coefficient[
+    dtype: DType, //
+](
+    value: Scalar[dtype],
+    ndigits_to_remove: Int,
+    sign: Bool = False,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) -> Scalar[dtype] where (dtype == DType.uint128 or dtype == DType.uint256):
+    """Rounds an integer coefficient by removing its last `ndigits_to_remove`
+    decimal digits with the specified rounding mode.
+
+    Parameters:
+        dtype: Must be either `DType.uint128` or `DType.uint256`.
+
+    Args:
+        value: The coefficient to round.
+        ndigits_to_remove: How many trailing decimal digits to discard.
+            Must be ≥ 0.  If 0 the value is returned unchanged.
+        sign: The sign of the logical number (needed for CEILING / FLOOR
+            translation).
+        rounding_mode: The rounding strategy.  Defaults to banker's
+            rounding (`ROUND_HALF_EVEN`).
+
+    Returns:
+        The rounded coefficient with `ndigits_to_remove` fewer decimal
+        digits.
+
+    Examples:
+
+        Remove 3 digits from 123456 with half-even rounding:
+
+        >>> round_coefficient(UInt128(123456), ndigits_to_remove=3)
+        123
+
+        Remove 1 digit from 125 with half-even rounding (rounds to even):
+
+        >>> round_coefficient(UInt128(125), ndigits_to_remove=1)
+        12
+
+        Remove 1 digit from 135 with half-even rounding (rounds to even):
+
+        >>> round_coefficient(UInt128(135), ndigits_to_remove=1)
+        14
+
+        End of examples.
+    """
+
+    comptime ValueType = Scalar[dtype]
+
+    # Nothing to remove.
+    if ndigits_to_remove <= 0:
+        return value
+
+    # Fast path: if more digits would be removed than the value has, the
+    # truncated quotient is 0 and the remainder is the whole value, which is
+    # strictly less than `divisor / 10`. Therefore `2 * remainder < divisor`,
+    # so every HALF_* and DOWN-equivalent mode rounds to 0, while UP-equivalent
+    # modes round to 1 (when the value is non-zero). Handling this here avoids
+    # invoking `power_of_10` with an exponent that may overflow `Scalar[dtype]`
+    # when the caller passes a very large `ndigits_to_remove` (e.g. via
+    # `Decimal128.round()` with a strongly negative `ndigits`).
+    if ndigits_to_remove > number_of_digits(value):
+        if value == 0:
+            return ValueType(0)
+        var fast_mode = rounding_mode
+        if rounding_mode == RoundingMode.ceiling():
+            fast_mode = RoundingMode.up() if not sign else RoundingMode.down()
+        elif rounding_mode == RoundingMode.floor():
+            fast_mode = RoundingMode.down() if not sign else RoundingMode.up()
+        if fast_mode == RoundingMode.up():
+            return ValueType(1)
+        return ValueType(0)
+
+    # Divide once; derive remainder from a single multiply.
+    var divisor = power_of_10[dtype](ndigits_to_remove)
+    var truncated = value // divisor
+    var remainder = value - truncated * divisor
+
+    # Translate directed modes into sign-independent UP / DOWN.
+    var effective_mode = rounding_mode
+    if rounding_mode == RoundingMode.ceiling():
+        effective_mode = RoundingMode.up() if not sign else RoundingMode.down()
+    elif rounding_mode == RoundingMode.floor():
+        effective_mode = RoundingMode.down() if not sign else RoundingMode.up()
+
+    # DOWN — just truncate.
+    if effective_mode == RoundingMode.down():
+        pass
+
+    # UP — round away from zero when anything was discarded.
+    elif effective_mode == RoundingMode.up():
+        if remainder > 0:
+            truncated += 1
+
+    # HALF_UP — round up when remainder ≥ half the divisor.
+    # Equivalent to the classic `remainder >= 5 * 10^(n-1)` but uses
+    # `2 * remainder >= divisor` (.NET trick #2) to avoid an extra
+    # power-of-10 lookup and wide multiply.
+    elif effective_mode == RoundingMode.half_up():
+        var double_remainder = remainder << 1  # 2 * remainder
+        if double_remainder >= divisor:
+            truncated += 1
+
+    # HALF_DOWN — round up only when remainder > half the divisor.
+    elif effective_mode == RoundingMode.half_down():
+        var double_remainder = remainder << 1
+        if double_remainder > divisor:
+            truncated += 1
+
+    # HALF_EVEN — banker's rounding: round to nearest; if exactly half,
+    # round to even.  `2 * remainder` vs `divisor` decides >, <, or ==.
+    elif effective_mode == RoundingMode.half_even():
+        var double_remainder = remainder << 1
+        if double_remainder > divisor:
+            truncated += 1
+        elif double_remainder == divisor:
+            # Exactly half — round to even.
+            truncated += truncated % 2
+
+    else:
+        debug_assert(
+            False,
+            "Unknown rounding mode in round_coefficient: "
+            + String(rounding_mode),
+        )
+
+    return truncated
+
+
+# DEPRECATED: Use `round_coefficient` instead.
+# This function is kept for backward compatibility but is no longer used
+# in production code.  `round_coefficient` is faster because it:
+#   (1) takes ndigits_to_remove (avoids redundant number_of_digits call),
+#   (2) computes remainder via multiply instead of a second division, and
+#   (3) uses 2*remainder vs divisor instead of 5*power_of_10(n-1) cutoff.
 def round_to_keep_first_n_digits[
     dtype: DType, //
 ](
