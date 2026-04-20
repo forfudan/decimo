@@ -161,7 +161,6 @@ Mojo now has native `UInt128` and `UInt256` types (via `Scalar[DType.uint128]` a
 - In `round_coefficient` and `fit_to_max_coefficient`, the divmod operations on UInt128/UInt256 exploit the fact that Mojo compiles to LLVM IR, where UInt128 division on 64-bit targets translates to two hardware `div` instructions (high and low halves). The new `round_coefficient` already avoids the second division by computing `remainder = value - truncated * divisor`.
 - The `number_of_bits` loop (§4.1) could be replaced by casting UInt128 to two UInt64s and using `count_leading_zeros` on the high word — this gives O(1) bit width instead of a 96-iteration loop.
 - Arrow's approach of promoting to 256-bit for multiply is directly applicable since we already have UInt256. Instead of the current 3×UInt32 partial-product approach in some code paths, we could do: `UInt256(x_coef) * UInt256(y_coef)`, then scale/truncate the result. This is simpler and likely just as fast since LLVM will optimize the wide multiply.
-- For the `compare_absolute` overflow bug (§3.4), using UInt256 instead of UInt128 for the fractional scaling is a one-line fix thanks to the type already being available.
 
 In short: we already depend on UInt128/UInt256 for the core paths. The opportunity is to use them more consistently and eliminate the remaining manual multi-word arithmetic.
 
@@ -198,21 +197,7 @@ This matches C# and Rust behavior — both hardcode banker's rounding for the `/
 
 If I ever want configurable rounding in division, I would add a `divide(x, y, rounding_mode)` overload. Low priority.
 
-### 3.4 `compare_absolute` Potential Overflow (Fixed)
-
-File: `comparison.mojo`
-
-When comparing fractional parts, the code computed:
-
-```mojo
-fractional_1 = UInt128(x1_frac_part) * UInt128(10) ** scale_diff
-```
-
-Since `scale_diff` can be up to 28 and `x1_frac_part` can be up to 2^96 − 1, the product can be as large as (2^96 − 1) × 10^28 ≈ 7.9 × 10^57. UInt128 max is ~3.4 × 10^38. This overflowed.
-
-Fix: the fractional comparison now widens both operands to UInt256 before scaling, which comfortably accommodates the worst-case ≈ 10^56 product (UInt256 max ≈ 1.16 × 10^77). See §2.5 for the rationale of using UInt256 as an acceleration bridge.
-
-### 3.5 `is_one()` Might Be Incomplete
+### 3.4 `is_one()` Might Be Incomplete
 
 File: used in `exponential.mojo` (e.g., `log()` calls `x.is_one()`)
 
@@ -333,13 +318,13 @@ Fix: use `divmod()` if available in Mojo.
 
 Empirical observation: running the Decimal128 suite via `pixi run test decimal128` takes several minutes — anecdotally slower than the heap-based BigDecimal suite. Wall-clock breakdown of representative files (M-series macOS, ASSERT=all + `--debug-level=full`, the flags used by `tests/test.sh`):
 
-| Test file                              | Real (s) | Reported per-test (s) | Cases |
-| -------------------------------------- | -------- | --------------------- | ----- |
-| `test_decimal128_arithmetics.mojo`     | ~7       | 35.9 (test runner)    | 53    |
-| `test_decimal128_quantize.mojo`        | ~5       | 30.9 (test runner)    | ~6    |
-| `test_decimal128_from_string.mojo`     | ~3       | 1.6                   | many  |
-| `test_decimal128_comparison.mojo`      | <1       | 0.018                 | 10    |
-| `test_decimal128_utility.mojo`         | <1       | 0.04                  | 8     |
+| Test file                          | Real (s) | Reported per-test (s) | Cases |
+| ---------------------------------- | -------- | --------------------- | ----- |
+| `test_decimal128_arithmetics.mojo` | ~7       | 35.9 (test runner)    | 53    |
+| `test_decimal128_quantize.mojo`    | ~5       | 30.9 (test runner)    | ~6    |
+| `test_decimal128_from_string.mojo` | ~3       | 1.6                   | many  |
+| `test_decimal128_comparison.mojo`  | <1       | 0.018                 | 10    |
+| `test_decimal128_utility.mojo`     | <1       | 0.04                  | 8     |
 
 For comparison, `test_bigdecimal_arithmetics.mojo` runs in ~12 s real / 94 s reported under the same flags. So the per-test reported numbers from the mojo test runner are **inflated** vs. true wall-clock (likely include JIT/instrumentation overhead under `--debug-level=full`).
 
@@ -403,14 +388,13 @@ Strip trailing zeros: `1.200` (coef=1200, scale=3) → `1.2` (coef=12, scale=1).
 
 Some test cases worth adding:
 
-| Test Case                                    | Expected Behavior            |
-| -------------------------------------------- | ---------------------------- |
-| `from_words` with scale > 28                 | Error (not assertion panic)  |
-| `from_words` with coefficient > 2^96 − 1     | Error (not assertion panic)  |
-| `compare_absolute` with max scale difference | Correct result (no overflow) |
-| `is_one()` with 1.0, 1.00, 1.000             | True                         |
-| Max coefficient after multiply               | Correct rounding             |
-| 29-digit numbers near 2^96 − 1 boundary      | Correct truncate/round       |
+| Test Case                                | Expected Behavior           |
+| ---------------------------------------- | --------------------------- |
+| `from_words` with scale > 28             | Error (not assertion panic) |
+| `from_words` with coefficient > 2^96 − 1 | Error (not assertion panic) |
+| `is_one()` with 1.0, 1.00, 1.000         | True                        |
+| Max coefficient after multiply           | Correct rounding            |
+| 29-digit numbers near 2^96 − 1 boundary  | Correct truncate/round      |
 
 ## 6. Priority Summary
 
@@ -420,7 +404,6 @@ Some test cases worth adding:
 | 3.2 | `from_words` uses `testing.assert_true`          | Medium      | Small   | P1       | Done   |
 | 4.2 | `power_of_10` not fully precomputed              | High        | Small   | P1       | Done   |
 | 4.3 | `round_to_keep_first_n_digits` lacks .NET tricks | High        | Medium  | P1       | Done   |
-| 3.4 | `compare_absolute` overflow                      | Medium      | Small   | P2       | Done   |
 | 4.1 | `number_of_bits` loop                            | Medium      | Small   | P2       | -      |
 | 4.8 | Separate `//` and `%` in division loop           | Medium      | Small   | P2       | -      |
 | 4.7 | `from_string` optimization                       | Medium      | Medium  | P2       | -      |
@@ -449,7 +432,6 @@ Phase 2 — performance (coefficient bound): **(Mostly done)**
 1. ~~Extend `power_of_10` hardcoded constants up to n=58 (§4.2).~~ **Done.**
 2. ~~Add .NET-style tricks to rounding: new `round_coefficient` with single-division remainder, cheap half-comparison, and caller-supplied removal count (§4.3).~~ **Done** — all 10 production callers migrated.
 3. Replace `number_of_bits` with hardware CLZ via UInt64 split (§4.1).
-4. ~~Fix `compare_absolute` overflow with UInt256 (§3.4).~~ **Done** — fractional comparison now widens to UInt256.
 
 Phase 3 — performance (general):
 
