@@ -142,16 +142,21 @@ def compare_absolute(x: Decimal128, y: Decimal128) -> Int8:
             var x_frac = x_coef % x_scale_power
             var y_frac = y_coef % y_scale_power
 
-            # Adjust the fractional part to have the same scale
+            # Adjust the fractional part to have the same scale.
+            # Use UInt256 because `x_frac < 10^x_scale` (≤ 10^28) multiplied
+            # by `10^scale_diff` (≤ 10^28) can reach ≈ 10^56, which
+            # overflows UInt128 (max ≈ 3.4 × 10^38).
+            var x_frac_wide: UInt256 = UInt256(x_frac)
+            var y_frac_wide: UInt256 = UInt256(y_frac)
             var scale_diff = x_scale - y_scale
             if scale_diff > 0:
-                y_frac *= UInt128(10) ** scale_diff
+                y_frac_wide *= UInt256(10) ** scale_diff
             else:
-                x_frac *= UInt128(10) ** (-scale_diff)
+                x_frac_wide *= UInt256(10) ** (-scale_diff)
 
-            if x_frac > y_frac:
+            if x_frac_wide > y_frac_wide:
                 return 1
-            elif x_frac < y_frac:
+            elif x_frac_wide < y_frac_wide:
                 return -1
             else:
                 return 0

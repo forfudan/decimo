@@ -198,19 +198,19 @@ This matches C# and Rust behavior — both hardcode banker's rounding for the `/
 
 If I ever want configurable rounding in division, I would add a `divide(x, y, rounding_mode)` overload. Low priority.
 
-### 3.4 `compare_absolute` Potential Overflow
+### 3.4 `compare_absolute` Potential Overflow (Fixed)
 
 File: `comparison.mojo`
 
-When comparing fractional parts, the code computes:
+When comparing fractional parts, the code computed:
 
 ```mojo
 fractional_1 = UInt128(x1_frac_part) * UInt128(10) ** scale_diff
 ```
 
-Since `scale_diff` can be up to 28 and `x1_frac_part` can be up to 2^96 − 1, the product can be as large as (2^96 − 1) × 10^28 ≈ 7.9 × 10^57. UInt128 max is ~3.4 × 10^38. This overflows.
+Since `scale_diff` can be up to 28 and `x1_frac_part` can be up to 2^96 − 1, the product can be as large as (2^96 − 1) × 10^28 ≈ 7.9 × 10^57. UInt128 max is ~3.4 × 10^38. This overflowed.
 
-Fix: use UInt256 for this computation (see §2.5), or normalize both values to the same scale before extracting integer and fractional parts.
+Fix: the fractional comparison now widens both operands to UInt256 before scaling, which comfortably accommodates the worst-case ≈ 10^56 product (UInt256 max ≈ 1.16 × 10^77). See §2.5 for the rationale of using UInt256 as an acceleration bridge.
 
 ### 3.5 `is_one()` Might Be Incomplete
 
