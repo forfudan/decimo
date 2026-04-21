@@ -4,12 +4,12 @@ Compares **decimo.Decimal128** (Mojo) against alternative 128-bit decimal
 implementations on the *same* test cases, for both **result equivalence** and
 **performance**.
 
-| Folder    | Implementation        | Status          |
-| --------- | --------------------- | --------------- |
-| `mojo/`   | `decimo.Decimal128`   | enabled         |
-| `rust/`   | `rust_decimal` 1.x    | enabled         |
-| `csharp/` | .NET `System.Decimal` | TODO (.NET SDK) |
-| `vbnet/`  | VB.NET `Decimal`      | TODO (.NET SDK) |
+| Folder    | Implementation                | Status  |
+| --------- | ----------------------------- | ------- |
+| `mojo/`   | `decimo.Decimal128`           | enabled |
+| `rust/`   | `rust_decimal` 1.x            | enabled |
+| `csharp/` | .NET 10 `System.Decimal` (C#) | enabled |
+| `vbnet/`  | .NET 10 `System.Decimal` (VB) | enabled |
 
 The previous suite compared `decimo.Decimal128` to Python's `decimal.Decimal`,
 which is architecturally different (arbitrary-precision BigDecimal under the
@@ -33,7 +33,14 @@ benches/decimal128/
 ├── rust/
 │   ├── Cargo.toml
 │   └── src/main.rs             # single dispatcher: --op {...}
-├── logs/                       # CSV records + aggregate markdown reports
+├── csharp/
+│   ├── bench.csproj
+│   └── Program.cs              # single dispatcher: --op {...}
+├── vbnet/
+│   ├── bench.vbproj
+│   └── Program.vb              # single dispatcher: --op {...}
+├── logs/                       # per-(lang,op,timestamp) CSV records
+├── reports/                    # aggregated markdown reports
 ├── aggregate.py                # joins per-lang CSVs into a comparison table
 ├── run_all.sh                  # build + run all langs + aggregate
 └── README.md
@@ -81,16 +88,20 @@ The aggregator joins on `(op, case_name)` to produce the comparison report.
                 --cases-dir ../cases --logs-dir ../logs)
 
 # Re-run aggregator only (uses latest log per (lang, op))
-python3 ./aggregate.py --logs-dir logs --ops add multiply divide
+python3 ./aggregate.py --logs-dir logs --reports-dir reports \
+    --ops add subtract multiply divide comparison from_string to_string
 ```
 
-The aggregator emits `logs/summary_<timestamp>.md` with one section per op:
+The aggregator emits `reports/dec128_report_<timestamp>.md` with a system &
+toolchain header, a cross-op overview table, per-op detail tables (split into
+*results* and *timings*), and a result-equivalence summary across all
+languages. Sample (multiply op):
 
-| case      | match | mojo result      | mojo ns/iter | rust result         | rust ns/iter | decimo/rust |
-| --------- | ----- | ---------------- | ------------ | ------------------- | ------------ | ----------- |
-| Mid-scale | ✓     | 111111.111011... | 691.30       | 111111.11101111111… | 22.42        | 30.8×       |
+| case      | match | decimo | rust | csharp | vbnet | dm/rs | dm/cs | dm/vb |
+| --------- | ----- | ------ | ---- | ------ | ----- | ----- | ----- | ----- |
+| Mid-scale | OK    | 4.00   | 2.54 | 1.38   | 0.92  | 1.6x  | 2.9x  | 4.3x  |
 
-A `⚠️` in the **match** column means the implementations produced different
+A `DIFF` in the **match** column means the implementations produced different
 result strings — investigate before trusting any perf delta on that case.
 
 ## Adding a new language
@@ -100,7 +111,8 @@ result strings — investigate before trusting any perf delta on that case.
 3. Read `cases/X.toml`, expand `{C,N}` patterns, run `iterations` reps per
    case (best-of-5), and append CSV rows matching the schema above.
 4. Add the build + run lines to `run_all.sh`.
-5. Pass `--langs mojo rust <lang>` to `aggregate.py`.
+5. Pass `--langs mojo rust csharp vbnet <lang>` to `aggregate.py` (or update
+   the default list at the top of `aggregate.py`).
 
 ## Caveats / known divergences
 
