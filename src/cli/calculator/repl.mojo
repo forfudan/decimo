@@ -37,7 +37,7 @@ from std.collections import Dict
 from decimo import Decimal
 from decimo.rounding_mode import RoundingMode
 from limo import LineEditor
-from decimo import DECIMO_VERSION
+from decimo import DECIMO_VERSION_TAG
 from .display import BOLD, RESET, YELLOW, CYAN, GREEN, MAGENTA
 from .display import print_error, format_about
 from .engine import evaluate_and_return
@@ -150,7 +150,7 @@ def run_repl(
 
             # `:version` / `:v` — show version
             if _is_version_command(cmd_str):
-                print("decimo " + DECIMO_VERSION, file=stderr)
+                print("decimo " + DECIMO_VERSION_TAG, file=stderr)
                 continue
 
             # `:vars`

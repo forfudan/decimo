@@ -15,6 +15,7 @@
 
 from decimo import Decimal128
 from decimo.tests import BenchCase, load_bench_cases, load_bench_iterations
+from std.benchmark import black_box, keep
 from std.python import Python, PythonObject
 from std.sys import argv as sys_argv
 from std.time import perf_counter_ns
@@ -49,21 +50,32 @@ fn _csv_quote(s: String) -> String:
 fn _bench_one[
     Body: fn(a: Decimal128, b: Decimal128) raises capturing[_] -> UInt64,
 ](a: Decimal128, b: Decimal128, iters: Int) raises -> Float64:
-    """Run `Body(a, b)` once per inner iter (replace-not-accumulate); best-of-5; returns ns/op.
+    """Run `Body(a, b)` once per inner iter; best-of-5; returns ns/op.
+
+    Defeats compiler precomputation of cheap kernels (notably `comparison`,
+    whose result on fixed `(a, b)` is loop-invariant and would otherwise be
+    constant-folded to a near-zero timing) by:
+
+    1. Wrapping the operands with `black_box` so the optimiser cannot
+       hoist `Body(a, b)` out of the loop -- each iteration must reload.
+    2. Passing the result through `keep` so the call cannot be deleted as
+       dead code.
+    3. XOR-folding the result into a sink that also incorporates the loop
+       index, ensuring an observable side-effect that depends on `i`.
     """
     comptime REPS = 5
     var best: Int = 0x7FFF_FFFF_FFFF_FFFF
     var sink: UInt64 = 0
     for _ in range(REPS):
         var t0 = perf_counter_ns()
-        var local: UInt64 = 0
-        for _ in range(iters):
-            local = Body(a, b)
-        sink += local
+        for i in range(iters):
+            var r = Body(black_box(a), black_box(b))
+            keep(r)
+            sink = sink ^ r ^ UInt64(i)
         var dt = Int(perf_counter_ns() - t0)
         if dt < best:
             best = dt
-    _ = sink  # keep result alive
+    keep(sink)
     return Float64(best) / Float64(iters)
 
 
