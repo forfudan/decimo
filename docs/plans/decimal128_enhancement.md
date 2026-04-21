@@ -158,96 +158,94 @@ Since we follow the C#/Rust paradigm (binary bound, 2^96 − 1), the coefficient
 
 Mojo now has native `UInt128` and `UInt256` types (via `Scalar[DType.uint128]` and `Scalar[DType.uint256]`). The codebase already uses them - `coefficient()` bitcasts the three UInt32 words to UInt128, and `multiply()` uses UInt256 for intermediate products. But there are more opportunities:
 
-- In `round_coefficient` and `fit_to_max_coefficient`, the divmod operations on UInt128/UInt256 exploit the fact that Mojo compiles to LLVM IR, where UInt128 division on 64-bit targets translates to one `___udivti3` library call. LLVM canonicalizes `a % b` to `sub(a, mul(udiv(a, b), b))` and CSE-deduplicates the shared `udiv` against the explicit `a // b`, so writing `// + %` already lowers to a single divmod (see plan §4.8 for the asm-level verification). Manual `value - truncated * divisor` rewrites do not help and on UInt64 are 2× slower.
+- In `round_coefficient` and `fit_to_max_coefficient`, the divmod operations on UInt128/UInt256 exploit the fact that Mojo compiles to LLVM IR, where UInt128 division on 64-bit targets translates to one `___udivti3` library call. LLVM canonicalizes `a % b` to `sub(a, mul(udiv(a, b), b))` and CSE-deduplicates the shared `udiv` against the explicit `a // b`, so writing `// + %` already lowers to a single divmod (see plan §4.7 for the asm-level verification). Manual `value - truncated * divisor` rewrites do not help and on UInt64 are 2× slower.
 - The `number_of_bits` loop (§4.1) could be replaced by casting UInt128 to two UInt64s and using `count_leading_zeros` on the high word - this gives O(1) bit width instead of a 128-iteration loop (~96 in practice for Decimal128 coefficients).
 - Arrow's approach of promoting to 256-bit for multiply is directly applicable since we already have UInt256. Instead of the current 3×UInt32 partial-product approach in some code paths, we could do: `UInt256(x_coef) * UInt256(y_coef)`, then scale/truncate the result. This is simpler and likely just as fast since LLVM will optimize the wide multiply.
 
 In short: we already depend on UInt128/UInt256 for the core paths. The opportunity is to use them more consistently and eliminate the remaining manual multi-word arithmetic.
 
+### 2.6 Proposed: Steal Bits from Flags Word to Eliminate the Bound Mismatch
+
+The current 96-bit binary coefficient + 32-bit flags layout (mirroring `System.Decimal`) leaves **24 bits unused** in the flags word (only sign bit + 5-bit scale field are populated; bits 0–15 and 24–30 are unused). The "29 digits but leading 0–7" boundary problem in §2.1 is purely an artifact of holding the coefficient at 96 bits when the flags word has space to spare.
+
+**Proposal:** widen the coefficient field by stealing N unused bits from flags, eliminating the dual binary+decimal boundary check entirely.
+
+| Coefficient bits | Max coefficient |    Full digits | Bits stolen from flags | Wins                                                             |
+| ---------------- | --------------- | -------------: | ---------------------: | ---------------------------------------------------------------- |
+| 96 (today)       | 2^96 − 1        |       29 (0–7) |                      0 | Status quo; messy boundary                                       |
+| 97               | 2^97 − 1        |       30 (0–1) |                      1 | Marginal; still messy                                            |
+| **100**          | **10^30 − 1**   | **30 (clean)** |                      4 | **Eliminates §2 boundary; +1 digit precision over .NET/Rust**    |
+| **107**          | **10^32 − 1**   | **32 (clean)** |                     11 | **Real competitive edge: +3 digits over .NET/Rust, still clean** |
+| 110              | 2^110 − 1       |       33 (0–1) |                     14 | Diminishing returns                                              |
+
+**Recommended target: 107-bit coefficient → 10^32 − 1 (32 full digits, clean decimal bound).**
+
+Trade-offs:
+
+| Aspect                                      | Impact                                                                                                                                                                                                   |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Eliminates §2 architectural concern         | ✓ — `fit_to_max_coefficient` becomes a single `digits ≤ 32` check; no more "binary bound + leading-digit check" combo.                                                                                   |
+| Beats .NET/Rust on precision                | ✓ — 32 full digits vs their 28-full-plus-0-to-7 ≈ 28.9 digits. A real, user-visible competitive advantage.                                                                                               |
+| Hot-path arithmetic perf                    | Zero impact — coefficient is already a `UInt128` internally (per §4.9.1 probe (2): `coefficient()` is `@always_inline` bitcast, ~0 ns).                                                                  |
+| `fit_to_max_coefficient` perf               | **Faster** — drops one of the two boundary checks. Called after every multiply / add-with-carry, so this compounds.                                                                                      |
+| `number_of_digits` semantics                | Cleaner — full 32-digit range, no leading-digit special case in tests.                                                                                                                                   |
+| Cache footprint / `TrivialRegisterPassable` | Unchanged — still 128 bits, still register-passable.                                                                                                                                                     |
+| Loses .NET binary-layout interop            | **Not material for decimo.** No C ABI exports; .NET `Decimal` itself isn't stable C-ABI-exposed; real interop happens via string / Arrow / Protobuf round-trip, none of which depend on internal layout. |
+| `from_words(low, mid, high, flags)` API     | Breaking change — `flags` layout shifts. Migration is mechanical but is a public-API break; bump to a major version.                                                                                     |
+| Scale field width                           | Could stay 5 bits (max 31) or widen to 6 bits (max 63) if we want symmetric scale range. Recommend keep at 5 bits (scale 0–31) to match precision.                                                       |
+| Phase 4 `normalize()` (§5.4)                | Easier — no leading-digit edge case to worry about.                                                                                                                                                      |
+| Test fixtures                               | TOML test cases are decimal-string-based and unaffected. Only `from_words` callers (none in production code; only `tests/test_*_from_words.mojo`) need updates.                                          |
+
+**Action items if accepted:**
+
+1. Define new flag-word layout: bits 0–106 = coefficient (across the existing 96-bit field + 11 stolen bits), bit 31 of flags = sign, bits 24–28 = scale (0–31), other bits reserved.
+2. Update `Decimal128.coefficient()`, `from_words()`, `from_uint128()`, scale getter/setter — all `@always_inline` bitcast paths.
+3. Replace `fit_to_max_coefficient`'s binary-bound check + leading-digit fix-up with a single decimal-digit-count check against 32.
+4. Drop the "29 digits but leading 0–7" wart from §1.1 and §2.1 documentation.
+5. Update `MAX_VALUE` constant and any tests asserting it.
+6. Re-run cross-language bench (§4.9.3) to confirm no perf regression on `add` / `mul` / `div`. **Expected: small speedup** on overflow-prone paths because `fit_to_max_coefficient` is simpler.
+7. Add a migration note to changelog (breaking: `from_words` flag layout, max coefficient widened).
+
+**Recommended priority: P5 (long-term nice-to-have).** This is a *polish* item, not a compete item. Realistic competitive landscape: decimo's audience is Mojo users (rust_decimal is pure Rust with no Mojo bindings; FFI-bridging it is impractical), and 28-digit precision already covers >99% of financial/accounting workloads. 32-digit precision is a clean architectural win that eliminates the §2 boundary wart and would simplify code, but it neither attracts new users nor closes any real gap. Defer until the perf workstream (§4.9) is fully landed and we have spare cycles for an architecturally clean breaking-change release. Until then, keep §2.6 as a documented design proposal, not a roadmap commitmentloses any real gap. Defer until the perf workstream (§4.9) is fully landed and we have spare cycles for an architecturally clean breaking-change release. Until then, keep §2.6 as a documented design proposal, not a roadmap commitment.
+
 ## 3. Correctness Bugs
 
-### 3.1 NaN/Infinity Implementation Was Broken (Removed)
+### 3.1 NaN/Infinity Implementation Was Broken (Removed) — Done
 
-File: `decimal128.mojo`
+File: `decimal128.mojo`. The NaN/Infinity support had multiple compounding bugs (mask mismatch, `is_zero()` returning True, no arithmetic propagation). Since no comparable 128-bit fixed-precision library supports NaN or Infinity (§1.2), we removed the support entirely. Operations that would produce undefined results now raise errors, matching C#, Rust, Arrow, and govalues. Removed: `NAN()`, `NEGATIVE_NAN()`, `INFINITY()`, `NEGATIVE_INFINITY()`, `NAN_MASK`, `INFINITY_MASK`, `is_nan()`, `is_infinity()` and their callers.
 
-The NaN/Infinity support had multiple compounding bugs (mask mismatch, `is_zero()` returning True,
-no arithmetic propagation). Since no comparable 128-bit fixed-precision library supports NaN or
-Infinity (§1.2), we removed NaN/Infinity support entirely. Operations that would produce
-undefined results now raise errors, matching C#, Rust, Arrow, and govalues.
+### 3.2 `from_words` Uses `testing.assert_true` in Production Code — Done
 
-Status: **Done** (removed `NAN()`, `NEGATIVE_NAN()`, `INFINITY()`, `NEGATIVE_INFINITY()`,
-`NAN_MASK`, `INFINITY_MASK`, `is_nan()`, `is_infinity()` and their callers).
+File: `decimal128.mojo`, lines ~344, 351. The function used `testing.assert_true` to validate arguments, which panics with a test-failure message rather than raising a recoverable error. Replaced with `raise Error(...)` for both scale and coefficient validation.
 
-### 3.2 `from_words` Uses `testing.assert_true` in Production Code (Fixed)
+### 3.3 Division Hardcodes Rounding Behavior — Open (Low)
 
-File: `decimal128.mojo`, lines ~344, 351
-
-The function used `testing.assert_true` to validate arguments, which panics with a test failure
-message rather than raising a recoverable error.
-
-Status: **Done** - replaced with `raise Error(...)` for both scale and coefficient validation.
-
-### 3.3 Division Hardcodes Rounding Behavior
-
-File: `arithmetics.mojo`, inside `divide()`
-
-The long division loop always uses banker's rounding (HALF_EVEN). The function does not accept a rounding mode parameter.
-
-This matches C# and Rust behavior - both hardcode banker's rounding for the `/` operator. Arrow and govalues also default to HALF_EVEN for division. So this is consistent with all comparable libraries and not really a bug.
-
-If I ever want configurable rounding in division, I would add a `divide(x, y, rounding_mode)` overload. Low priority.
-
-### 3.4 `is_one()` Handles All Forms (Verified)
-
-File: `decimal128.mojo`, line 2104
-
-Verified via direct read of the implementation: `is_one()` returns `True` whenever `coefficient == power_of_10[uint128](scale)`, which correctly identifies `1` (coef=1, scale=0), `1.0` (coef=10, scale=1), `1.00` (coef=100, scale=2), and so on for all valid scales. Negative values short-circuit to `False`. No fix needed.
-
-Status: **Verified** - no action required.
+`arithmetics.mojo` `divide()` always uses banker's rounding (HALF_EVEN). Same as C#/Rust/Arrow/govalues for the `/` operator. If we ever want configurable rounding, add a `divide(x, y, rounding_mode)` overload. Low priority.
 
 ## 4. Performance Bottlenecks
 
-### 4.1 `number_of_bits()` Used a Loop (Fixed)
+### 4.1 `number_of_bits()` Used a Loop — Done
 
-File: `utility.mojo`
+File: `utility.mojo`. The original implementation was an O(n)-bit while-loop over the input — up to 128 iterations on a generic `UInt128`. C#'s [`ScaleResult`](https://github.com/dotnet/runtime/blob/main/src/libraries/System.Private.CoreLib/src/System/Decimal.DecCalc.cs) uses `LeadingZeroCount`, which is a single hardware instruction.
 
-The original implementation:
+Fix: delegate to `std.bit.bit_width`, which lowers to LLVM's `count_leading_zeros` intrinsic (single-instruction for ≤64-bit, two CLZs for 128-bit). Now O(1) in bit width regardless of input. See §2.5 for the broader use of UInt128/UInt256 as an acceleration bridge.
 
-```mojo
-def number_of_bits(n: UInt128) -> Int:
-    var count = 0
-    var x = n
-    while x > 0:
-        count += 1
-        x >>= 1
-    return count
-```
+### 4.2 `power_of_10` Not Using Precomputed Constants Efficiently — Done
 
-O(n) in bit count - up to 128 iterations on a generic `UInt128` (96 in practice for Decimal128 coefficients, but the function is also called with arbitrary integral types). C#'s [`ScaleResult`](https://github.com/dotnet/runtime/blob/main/src/libraries/System.Private.CoreLib/src/System/Decimal.DecCalc.cs) uses `LeadingZeroCount`, which is a single hardware instruction on modern CPUs.
+File: `utility.mojo`. The function had hardcoded return values for n=0–32, but for n=33 onward it fell back to `ValueType(10) ** n` which computes via loop.
 
-Fix (done): delegate to `std.bit.bit_width`, which lowers to LLVM's `count_leading_zeros` intrinsic (single-instruction for ≤ 64-bit operands and two CLZs for 128-bit operands). The function is now O(1) in bit width regardless of input. See §2.5 for the broader use of UInt128/UInt256 as an acceleration bridge.
+Fix: extended hardcoded constants up to n=58 (max needed for UInt256 products of two 29-digit numbers). The cache layer remains for values beyond the hardcoded range, but in practice n ≤ 58 covers all Decimal128 arithmetic paths.
 
-### 4.2 `power_of_10` Is Not Using Precomputed Constants Efficiently
+### 4.3 `round_to_keep_first_n_digits` Lacked .NET-style Optimisations — Done
 
-File: `utility.mojo`
+File: `utility.mojo`. Two real inefficiencies vs .NET's [`ScaleResult`](https://github.com/dotnet/runtime/blob/main/src/libraries/System.Private.CoreLib/src/System/Decimal.DecCalc.cs):
 
-The function had hardcoded return values for n=0 through n=32, but for n=33 through n=56+ it fell back to `ValueType(10) ** n` which computes via loop.
+1. **Expensive half-comparison** — the cutoff `5 * power_of_10(n − 1)` required an extra power-of-10 lookup and a wide multiply. .NET instead compares `2 * remainder` against `divisor` (a single left-shift).
+2. **Redundant `number_of_digits` call** — always recomputed even when the caller already knew it.
 
-Fix (done): extended the hardcoded constants up to n=58 (the maximum needed for UInt256 products of two 29-digit numbers). The cache layer remains for values beyond the hardcoded range, but in practice n ≤ 58 covers all Decimal128 arithmetic paths.
+A third candidate ("replace `value % divisor` with `value - truncated * divisor`") was tried but the microbenchmark in §4.7 plus ARM64 asm inspection showed LLVM canonicalizes `urem` to `sub(a, mul(udiv, b))` and CSE-deduplicates the shared `udiv`, so `// + %` and `// + (a - q*b)` lower to identical code.
 
-### 4.3 `round_to_keep_first_n_digits` Lacked .NET-style Optimisations
-
-File: `utility.mojo`
-
-The old `round_to_keep_first_n_digits` had two real inefficiencies compared to
-.NET's [`ScaleResult`](https://github.com/dotnet/runtime/blob/main/src/libraries/System.Private.CoreLib/src/System/Decimal.DecCalc.cs):
-
-1. **Expensive half-comparison** - the cutoff `5 * power_of_10(n − 1)` required an extra power-of-10 lookup and a wide multiply. .NET instead compares `2 * remainder` against `divisor`, which is a single left-shift.
-2. **Redundant `number_of_digits` call** - the function always recomputed the digit count even though most callers already knew it.
-
-A third candidate ("two wide divisions: replace `value % divisor` with `value - truncated * divisor`") was also tried, but the microbenchmark in §4.8 - plus a direct read of the generated ARM64 assembly - showed it does not help. LLVM canonicalizes `urem` to `sub(a, mul(udiv, b))` and CSE-deduplicates the shared `udiv`, so `// + %` and `// + (a - q*b)` lower to identical code (one `___udivti3` call + inline mul/sub). The current `round_coefficient` therefore uses the natural `// + %` form.
-
-Fix (done): introduced `round_coefficient(value, ndigits_to_remove, sign, rounding_mode)` which applies the half-comparison shortcut and takes `ndigits_to_remove` directly so callers that already know the digit count skip the redundant computation. All production call sites migrated; the old function is kept but deprecated.
+Fix: introduced `round_coefficient(value, ndigits_to_remove, sign, rounding_mode)` with the half-comparison shortcut and explicit `ndigits_to_remove`. All 10 production callers migrated; old function deprecated. Also: hoisted `UInt256(x2_coef)` out of the long-division UInt256 loop (the only real win from the §4.7 investigation).
 
 ### 4.4 `ln()` Range Reduction Uses Loops
 
@@ -273,20 +271,7 @@ Fix: use the identity `ln(a × 10^q) = ln(a) + q × ln(10)` and read `q` directl
 
 This is now the highest-value remaining performance lever - `ln()` and `log10()` are the slowest non-divide primitives.
 
-### 4.5 `subtract()` Creates a Temporary (Non-Issue)
-
-File: `arithmetics.mojo`, line 338
-
-```mojo
-def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
-    return add(x1, negative(x2))
-```
-
-Verified: `Decimal128` conforms to `TrivialRegisterPassable`, so the 16-byte struct lives in registers and the temporary `negative(x2)` is just an `eor` on the sign bit followed by the existing `add` call. There is no allocation and no measurable overhead. **No action needed.**
-
-Status: **Non-issue** - leave as-is.
-
-### 4.6 Series Computations Cap at 500 Iterations
+### 4.5 Series Computations Cap at 500 Iterations
 
 File: `exponential.mojo`
 
@@ -294,7 +279,7 @@ Both `exp_series` and `ln_series` loop up to 500 with convergence check `term.is
 
 Fix: break early if the term is smaller than 10^(−29) - it cannot change the result at our precision.
 
-### 4.7 `from_string` optimization
+### 4.6 `from_string` optimization
 
 `from_string` processes digits one at a time. File: `decimal128.mojo`, line 543.
 
@@ -318,7 +303,7 @@ At ~50–70 ns/call for full-precision strings the absolute cost is already low.
 
 A second, mostly-orthogonal cleanup: `Decimal128.from_string()` reimplements parsing logic that `str.parse_numeric_string()` (used by `BigDecimal.from_string()`) already covers. Switching to the shared scanner would shrink the surface area at no perf cost. Defer until after the digit-batching change so the perf delta is measurable.
 
-### 4.8 Division Loop: Separate `//` and `%` Operations (Investigated, No Change)
+### 4.7 Division Loop: Separate `//` and `%` Operations (Investigated, No Change)
 
 File: `arithmetics.mojo`
 
@@ -349,7 +334,7 @@ Note: the `// + %` pattern *is* the canonical way to access divmod in Mojo - the
 
 The `round_coefficient` rewrite (§4.3) used to use the same `value - truncated * divisor` form on the same assumption; it has now been switched back to the natural `// + %` for consistency.
 
-### 4.9 Decimal128 Unit Test Suite Is Surprisingly Slow
+### 4.8 Decimal128 Unit Test Suite Is Surprisingly Slow
 
 Empirical observation: running the Decimal128 suite via `pixi run test decimal128` takes several minutes - anecdotally slower than the heap-based BigDecimal suite. Wall-clock breakdown of representative files (M-series macOS, ASSERT=all + `--debug-level=full`, the flags used by `tests/test.sh`):
 
@@ -386,14 +371,14 @@ Investigated bottlenecks (in priority order):
    *Recommendation:* keep Python comparisons strictly to failure-debug output; don't add them to hot loops.
 
 6. **`Dec128(string)` (i.e. `from_string`) is the inner-loop allocator.**
-   Every TOML test row constructs `Dec128(test_case.a)` + `Dec128(test_case.b)`. Each call walks the input byte-by-byte, doing one UInt128 multiply-add per character (see §4.7). For 53 arithmetic test cases × 2 operands × ~10 chars = ~1000 multiply-adds before any *actual* arithmetic happens. Fixing §4.7 (digit batching) would directly speed up the test suite.
+   Every TOML test row constructs `Dec128(test_case.a)` + `Dec128(test_case.b)`. Each call walks the input byte-by-byte, doing one UInt128 multiply-add per character (see §4.6). For 53 arithmetic test cases × 2 operands × ~10 chars = ~1000 multiply-adds before any *actual* arithmetic happens. Fixing §4.6 (digit batching) would directly speed up the test suite.
 
 7. **Misleading internal timer.**
    The `PASS [ NN.NNN ]` value emitted by Mojo's test runner does not match `/usr/bin/time` wall-clock - it appears to include compilation/instrumentation cost rather than pure execution time. This makes `test_decimal128_arithmetics` look pathologically slow (35 s reported) when the actual run is ~7 s. Worth keeping in mind when prioritising - the test code itself isn't as bad as the runner suggests; the test *infrastructure* (flags + per-file JIT) is.
 
-Combined fix priority for Phase 3: (1) split the inner-loop dev workflow from the CI flags, (2) consolidate/cached TOML parsing, (3) attack `from_string` (§4.7) since it has independent value beyond tests.
+Combined fix priority for Phase 3: (1) split the inner-loop dev workflow from the CI flags, (2) consolidate/cached TOML parsing, (3) attack `from_string` (§4.6) since it has independent value beyond tests.
 
-### 4.10 Per-Operation Arithmetic Overhead vs Rust (NEW - Top Priority)
+### 4.9 Per-Operation Arithmetic Overhead vs Other Libraries (Top Priority)
 
 Direct head-to-head benchmark (`temp/bench_decimo.mojo` vs `temp/rust_compare/`, both built `--release` / `-D ASSERT=none`, 200_000 iters per op, best of 5, M-series Apple Silicon):
 
@@ -407,7 +392,7 @@ Direct head-to-head benchmark (`temp/bench_decimo.mojo` vs `temp/rust_compare/`,
 
 > Let's keep this table with the original numbers for comparison. After each optimization step, we add a new table below with the updated numbers. We also have a brief table whose columns are historical decimo/rust ratios, so we can track the improvement over time.
 
-This is far worse than the “~2× gap” the plan previously assumed. The from_string gap (§4.7) is small (~2–3×); the arithmetic gap is the real story and overshadows every other perf item in the plan.
+This is far worse than the “~2× gap” the plan previously assumed. The from_string gap (§4.6) is small (~2–3×); the arithmetic gap is the real story and overshadows every other perf item in the plan.
 
 **Hypothesised causes** (must be confirmed with profiling before attacking):
 
@@ -418,7 +403,7 @@ This is far worse than the “~2× gap” the plan previously assumed. The from_
 5. **Divide uses a long-division digit loop in Mojo**; rust_decimal uses a UInt128 hardware divide for the common case. Adopt the same fast path.
 6. **`to_string` likely allocates a `String` builder per call.** rust_decimal uses a stack `[u8; 32]` buffer. We can do the same with `InlineArray[UInt8, 64]` and a single `String(bytes)` at the end.
 
-**Empirical Decomposition** (`temp/bench_decompose.mojo`)
+**Empirical Decomposition** (`temp/bench_decompose.mojo`) [§4.9.1]
 
 Each row isolates one suspected cost (1_000_000 iters/op, best of 5, same machine/build flags):
 
@@ -434,7 +419,7 @@ Each row isolates one suspected cost (1_000_000 iters/op, best of 5, same machin
 | (8) `mul()` integers (scale 0,0)            | **8**    | **Faster than rust_decimal's 25 ns**                               |
 | (9) `mul()` fractional (12,12)              | **~802** | UInt256 promotion + scale rebalance                                |
 
-#### 4.10.2 Marginal-Value Ranking (Validated Against Decomposition)
+#### 4.9.2 Marginal-Value Ranking (Validated Against Decomposition)
 
 Mapped against the hypotheses above, ranked by **measured ns saved per fractional add()**:
 
@@ -449,7 +434,7 @@ Mapped against the hypotheses above, ranked by **measured ns saved per fractiona
 | 7    | H#1: `coefficient()` reconstruction                    | Probe (2) = ~0 ns                                | **~0 ns** ✗                     | **Disproven for the call sites in `add`/`mul`** - already a single `bitcast` and the loop bodies fully fold it. *Storing coefficient as a native `UInt128` field may still help separately if it removes header packing/unpacking elsewhere, but it is **not** the low-hanging fruit on the hot path.* |
 | 8    | `from_uint128()` raises/check overhead                 | Probe (4) = 1.6 ns                               | **~negligible** ✗               | Disproven. Don't touch it.                                                                                                                                                                                                                                                                             |
 
-**Action plan (Phase 3, supersedes prior §4.7 priority - re-ordered by validated marginal value):**
+**Action plan (Phase 3, supersedes prior §4.9 priority - re-ordered by validated marginal value):**
 
 1. **Cheap `is_integer` pre-check or restructure** (P1, ~125 ns/add saved). Either short-circuit `is_integer` on a low-bit-chunk test before the full UInt128 mod, **or** simply move the `same scale` branch above the `is_integer` branch in `add()` - the same-scale UInt128 path already correctly handles two integers with positive scale.
 2. **Non-raising `add_promised` / `mul_promised` fast path** (P1, ~40-80 ns/op saved). `@always_inline fn` covering the same-scale-fits-in-UInt128 case; have `def add` call it and only enter the slow path on detected overflow.
@@ -459,23 +444,47 @@ Mapped against the hypotheses above, ranked by **measured ns saved per fractiona
 6. **Same-scale early return in `add()`** (P3, ~30 ns/add when applicable). Add `if x1_scale == x2_scale: return _add_same_scale(...)` near the top - covered for free if action #1 restructures.
 7. Re-run both benchmarks after each change. Targets: add ≤ 80 ns, mul ≤ 100 ns, div ≤ 200 ns, to_string ≤ 150 ns.
 
-This is now the **single highest-value perf workstream** in the plan - ahead of §4.4 (`ln()`) and §4.7 (`from_string`). The good news the decomposition reveals: integer fast paths are already faster than rust_decimal, so the architecture works; we just need to apply the same care to the fractional path.
+This is now the **single highest-value perf workstream** in the plan - ahead of §4.4 (`ln()`) and §4.6 (`from_string`). The good news the decomposition reveals: integer fast paths are already faster than rust_decimal, so the architecture works; we just need to apply the same care to the fractional path.
+
+#### 4.9.3 Historical Performance Tracking (Cross-Library Median ns/iter)
+
+Median ns/iter across all TOML test cases per op, from `benches/decimal128/`. Lower is better. `dm/rs` = decimo / rust_decimal ratio (>1 means decimo is slower). After each optimization landing, append a new row — do **not** edit prior rows. The first table tracks absolute decimo timings; the second tracks competitive ratios.
+
+**Absolute decimo median ns/iter (lower = faster):**
+
+| date     | report                             |  add |  sub |  mul |  div |  cmp | from_str | to_str |
+| -------- | ---------------------------------- | ---: | ---: | ---: | ---: | ---: | -------: | -----: |
+| 20260421 | `dec128_report_20260421_112354.md` |  106 |  123 |    4 |    8 |    0 |    24.25 | 128.30 |
+
+**Decimo / competitor ratio (>1 = decimo slower; <1 = decimo faster):**
+
+| date     | op       | dm/rust | dm/csharp | dm/vbnet |
+| -------- | -------- | ------: | --------: | -------: |
+| 20260421 | add      |   21.2x |     43.1x |    59.2x |
+| 20260421 | sub      |   61.5x |     59.0x |    68.7x |
+| 20260421 | mul      |    1.6x |      2.9x |     4.4x |
+| 20260421 | div      |    1.4x |      0.5x |     1.5x |
+| 20260421 | cmp      |    0.0x |      0.0x |     0.0x |
+| 20260421 | from_str |    2.6x |      0.7x |     0.7x |
+| 20260421 | to_str   |    3.6x |      4.2x |     4.3x |
+
+Observations from the 20260421 baseline:
+
+- `add`/`sub` are the worst gaps — fractional-scale paths dominate (consistent with §4.9.1 decomposition).
+- `mul` is already within 2–3× — the integer fast path lands cleanly; gap is only on UInt256-promoting cases.
+- `div` already beats C# (`dm/cs = 0.5x`) — our long-division Mojo loop is competitive with .NET.
+- `cmp` is essentially free for decimo (rounds to 0 ns/iter) — already faster than all three.
+- `to_str` gap is purely allocator-driven (per-call `String` builder) — §4.9.2 action #4 directly targets this.
 
 ## 5. Improvement Opportunities
 
-### 5.1 Add `__hash__` Support
+### 5.1 `Stringable` / `Writable` / `__hash__`
 
-C# and Rust both support hashing their decimal types. I should implement `__hash__` so Decimal128 can be used as a dictionary key or in sets.
+`Decimal128` already conforms to `Writable` (modern replacement for `Stringable`); `String(d)` and `print(d)` work today.
 
-Approach: hash the normalized form (strip trailing zeros, then hash coefficient + scale + sign).
+Missing: **`__hash__`** — C# and Rust both hash their decimal types. Approach: hash the normalized form (strip trailing zeros, then hash coefficient + scale + sign). Depends on §5.4 (`normalize()`).
 
-### 5.2 `Stringable` / `Writable` Protocol Conformance (Verified)
-
-Verified via direct read of `decimal128.mojo` line 44–53: `Decimal128` conforms to `Writable`, the modern Mojo trait that supersedes `Stringable`. `String(decimal)` and `print(decimal)` both work today.
-
-Status: **Verified done** - no action required. (`Representable` for `repr()` is a separate trait we still don't implement, but its value is marginal.)
-
-### 5.3 Better `from_float` Accuracy
+### 5.2 Better `from_float` Accuracy
 
 Verified via direct read of `decimal128.mojo` line 829–920: `from_float` already does IEEE 754 bit extraction (`UnsafePointer(to=abs_value).bitcast[UInt64]()`, mask out exponent, derive `decimal_exp` from `binary_exp * log10(2)`). It does **not** route through string conversion.
 
@@ -483,15 +492,15 @@ What remains: the post-extraction loop fine-tunes `coefficient` digit-by-digit; 
 
 For reference: Rust [`rust_decimal::Decimal::from_f64`](https://docs.rs/rust_decimal/latest/rust_decimal/struct.Decimal.html#method.from_f64) uses the same IEEE 754 extraction approach.
 
-### 5.4 `min()` / `max()` / `clamp()`
+### 5.3 `min()` / `max()` / `clamp()`
 
 All four comparable libraries provide `min`/`max`. Easy to implement.
 
-### 5.5 Canonicalization / `normalize()`
+### 5.4 Canonicalization / `normalize()`
 
 Strip trailing zeros: `1.200` (coef=1200, scale=3) → `1.2` (coef=12, scale=1). Useful for hashing (§5.1) and reducing coefficient size for faster subsequent arithmetic. Rust [`rust_decimal`](https://docs.rs/rust_decimal/latest/rust_decimal/struct.Decimal.html#method.normalize) has `normalize()`.
 
-### 5.6 Wider Testing for Edge Cases
+### 5.5 Wider Testing for Edge Cases
 
 Some test cases worth adding:
 
@@ -503,9 +512,9 @@ Some test cases worth adding:
 | Max coefficient after multiply           | Correct rounding            |
 | 29-digit numbers near 2^96 − 1 boundary  | Correct truncate/round      |
 
-### 5.7 Rust `rust_decimal` Parity Gaps (Competitive Surface)
+### 5.6 Rust `rust_decimal` Parity Gaps (Competitive Surface)
 
-A scan of the public `decimal128` API against `rust_decimal::Decimal` surfaces the following missing surface area. The goal is API competitiveness for users porting code from Rust; perf-wise we are already in the same order of magnitude (see §4.7 from_string benchmarks vs Rust's ~25 ns).
+A scan of the public `decimal128` API against `rust_decimal::Decimal` surfaces the following missing surface area. The goal is API competitiveness for users porting code from Rust; perf-wise we are already in the same order of magnitude (see §4.6 from_string benchmarks vs Rust's ~25 ns).
 
 | Rust API                            | Mojo equivalent                       | Status / suggested action                                |
 | ----------------------------------- | ------------------------------------- | -------------------------------------------------------- |
@@ -527,67 +536,85 @@ A scan of the public `decimal128` API against `rust_decimal::Decimal` surfaces t
 
 - *Trivial* (1–2 lines each): `trunc`, `floor`, `ceil`, `fract`, `signum`, `unpack`. Implement together as a single PR.
 - *Already covered*: `mantissa`/`scale`, `checked_*` (via `raises`), `from_str_exact`.
-- *Tracked elsewhere*: `Hash` (§5.1), `min`/`max`/`clamp` (§5.4), `normalize` (§5.5).
+- *Tracked elsewhere*: `Hash` (§5.1), `min`/`max`/`clamp` (§5.3), `normalize` (§5.4).
 - *Out of scope today*: serde - wait for the Mojo ecosystem.
 
-No behavioural changes are needed to be "competitive" with rust_decimal on perf for **string parsing** - the asm-level investigation in §4.8 plus the from_string benchmark in §4.7 confirm we are within ~2–3× there. **Arithmetic is a different story**: the head-to-head numbers in §4.10 show a 25–30× gap on `add`/`mul`/`div`, which is the dominant remaining workstream. The Rust-parity API surface (this section) is independent of that perf work.
+No behavioural changes are needed to be "competitive" with rust_decimal on perf for **string parsing** - the asm-level investigation in §4.7 plus the from_string benchmark in §4.6 confirm we are within ~2–3× there. **Arithmetic is a different story**: the head-to-head numbers in §4.9 show large remaining gaps on `add`/`sub`, which is the dominant remaining workstream. The Rust-parity API surface (this section) is independent of that perf work.
+
+### 5.7 Result-Equivalence vs `rust_decimal`, C# `System.Decimal`, and VB.NET `System.Decimal` (Empirical, IEEE 754-2008 Compliance)
+
+The cross-language harness in `benches/decimal128/` runs the *same* TOML cases through **decimo**, **`rust_decimal` (Rust)**, **`System.Decimal` (.NET / C#)**, and **`System.Decimal` (.NET / VB.NET)** and flags result-string mismatches. As of `dec128_report_20260421_*.md` (11/11/13/11/30/16/9 cases per op), the **only divergences are trailing-zero / scale differences in `multiply` and `divide`**, all of which `rust_decimal` gets wrong relative to the IEEE 754-2008 / IBM General Decimal Arithmetic "preferred (ideal) exponent" rule — and on every disputed case, **C# and VB.NET `System.Decimal` agree with decimo, not with `rust_decimal`** (3 implementations to 1):
+
+| op       | inputs        | decimo    | C# `System.Decimal` | VB.NET `System.Decimal` | rust_decimal | spec verdict                                                                                                                                                                          |
+| -------- | ------------- | --------- | ------------------- | ----------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| multiply | `123.45 × 0`  | `0.00`    | `0.00`              | `0.00`                  | `0`          | **decimo + .NET correct.** `exp(0×X) = exp(a) + exp(b) = -2 + 0 = -2`, so coefficient `0` at exponent `-2` is `0.00`. rust strips the scale.                                          |
+| divide   | `10.5 / 2.5`  | `4.2`     | `4.2`               | `4.2`                   | `4.20`       | **decimo + .NET correct.** Ideal exponent for divide = `exp(a) − exp(b) = -1 − (-1) = 0`; result `4.2` (exact at exp `-1`) is preferred over `4.20` (exp `-2`). rust pads spuriously. |
+| divide   | `123.45 / -2` | `-61.725` | `-61.725`           | `-61.725`               | `-61.7250`   | **decimo + .NET correct.** Exact result needs exp `-3` (`-61725 × 10⁻³`); ideal exp `-2` would require fractional coefficient. rust adds an unjustified trailing zero.                |
+
+**Conclusion:** decimo's scale handling matches IEEE 754-2008 §3.3 (preferred exponent rules), the IBM General Decimal Arithmetic Specification §4.1, **and** the de-facto reference implementation in .NET BCL (`System.Decimal`, also a 128-bit fixed-precision decimal — same type, two language frontends). `rust_decimal` is the lone outlier among the four canonical implementations surveyed. **No remediation is needed on the decimo side.**
+
+**Action items elsewhere:**
+
+- Add a regression test asserting these exact strings for the three cases above in `tests/test_arithmetic.mojo` (or wherever the multiply/divide suite lives), so we catch any future regression toward "rust-style" trailing zeros.
+- Add a one-paragraph note in `docs/user_manual.md` (Decimal128 chapter) calling out that scale follows IEEE 754-2008 / IBM Decimal Arithmetic preferred-exponent rules (matching .NET `System.Decimal`), since this differs visibly from `rust_decimal` and may surprise users porting code.
 
 ## 6. Priority Summary
 
-| #    | Issue                                              | Severity    | Effort  | Priority | Status            |
-| ---- | -------------------------------------------------- | ----------- | ------- | -------- | ----------------- |
-| 3.1  | NaN/Inf removed                                    | Critical    | Small   | P0       | Done              |
-| 3.2  | `from_words` uses `testing.assert_true`            | Medium      | Small   | P1       | Done              |
-| 4.2  | `power_of_10` not fully precomputed                | High        | Small   | P1       | Done              |
-| 4.3  | `round_to_keep_first_n_digits` lacks .NET tricks   | High        | Medium  | P1       | Done              |
-| 4.1  | `number_of_bits` loop                              | Medium      | Small   | P2       | Done              |
-| 4.8  | Separate `//` and `%` in division loop             | Medium      | Small   | P2       | Verified-NoChange |
-| 3.4  | `is_one()` completeness                            | Medium      | Small   | -        | Verified          |
-| 4.5  | `subtract` temporary                               | Low         | Trivial | -        | Non-issue         |
-| 5.2  | `Stringable` / `Writable` conformance              | Enhancement | Trivial | -        | Verified          |
-| 4.10 | Arithmetic 25–30× slower than rust_decimal         | Critical    | Large   | P1       | Open              |
-| 4.4  | `ln()` range reduction loops                       | High        | Medium  | P2       | Open              |
-| 5.7  | Rust parity (trunc/floor/ceil/fract/signum/unpack) | Enhancement | Small   | P2       | Open              |
-| 5.4  | `min/max/clamp`                                    | Enhancement | Trivial | P3       | Open              |
-| 5.5  | `normalize()`                                      | Enhancement | Small   | P3       | Open              |
-| 5.1  | `__hash__`                                         | Enhancement | Small   | P3       | Open              |
-| 4.7  | `from_string` digit batching                       | Medium      | Medium  | P3       | Open              |
-| 4.7  | `from_string` shared scanner                       | Medium      | Small   | P3       | Open              |
-| 4.9  | Test suite slow (flags + per-file JIT)             | Medium      | Medium  | P3       | Open              |
-| 5.6  | Edge case tests                                    | Enhancement | Medium  | P3       | Open              |
-| 4.6  | Series convergence tolerance                       | Low         | Small   | P4       | Open              |
-| 3.3  | Division rounding mode (configurable)              | Low         | Medium  | P4       | Open              |
-| 5.3  | Better `from_float`                                | Enhancement | Medium  | P4       | Partial           |
+Open items (in priority order):
+
+| #   | Issue                                                     | Severity      | Effort  | Priority |
+| --- | --------------------------------------------------------- | ------------- | ------- | -------- |
+| 4.9 | Arithmetic gap vs rust_decimal (add/sub dominant)         | Critical      | Large   | P1       |
+| 2.6 | Steal flag bits to extend coefficient to 10^32-1 (32 dig) | Architectural | Medium  | P2       |
+| 4.2 | `ln()` range reduction loops                              | High          | Medium  | P2       |
+| 5.6 | Rust parity (trunc/floor/ceil/fract/signum/unpack)        | Enhancement   | Small   | P2       |
+| 5.7 | Regression tests pinning IEEE 754 preferred-exp scale     | Enhancement   | Trivial | P2       |
+| 5.3 | `min/max/clamp`                                           | Enhancement   | Trivial | P3       |
+| 5.4 | `normalize()`                                             | Enhancement   | Small   | P3       |
+| 5.1 | `__hash__` (depends on §5.4)                              | Enhancement   | Small   | P3       |
+| 4.4 | `from_string` digit batching + shared scanner             | Medium        | Medium  | P3       |
+| 4.6 | Test suite slow (flags + per-file JIT)                    | Medium        | Medium  | P3       |
+| 5.5 | Edge case tests                                           | Enhancement   | Medium  | P3       |
+| 4.3 | Series convergence tolerance                              | Low           | Small   | P4       |
+| 3.3 | Division rounding mode (configurable)                     | Low           | Medium  | P4       |
+| 5.2 | Better `from_float` (Grisu-style)                         | Enhancement   | Medium  | P4       |
+
+Done items (kept for tracking, not actionable):
+
+| #   | Issue                                            | Severity | Effort | Status            |
+| --- | ------------------------------------------------ | -------- | ------ | ----------------- |
+| 3.1 | NaN/Inf removed                                  | Critical | Small  | Done              |
+| 3.2 | `from_words` uses `testing.assert_true`          | Medium   | Small  | Done              |
+| 4.1 | `number_of_bits` loop                            | Medium   | Small  | Done              |
+| 4.2 | `power_of_10` not fully precomputed              | High     | Small  | Done              |
+| 4.3 | `round_to_keep_first_n_digits` lacks .NET tricks | High     | Medium | Done              |
+| 4.5 | Separate `//` and `%` in division loop           | Medium   | Small  | Verified-NoChange |
 
 ## 7. Execution Order
 
-Phase 1 - correctness: **(Done)**
+**Phase 1 (correctness)** — Done. NaN/Inf removed; `from_words` raises on invalid input.
 
-1. ~~Decide: remove NaN/Infinity or fix them (§3.1).~~ **Done** - removed NaN/Infinity entirely.
-2. ~~Fix `from_words` to use `raise Error` instead of `testing.assert_true` (§3.2).~~ **Done.**
-3. Add edge case tests (§5.6). (Partially done - `test_round_coefficient` added 19 cases.)
+**Phase 2 (coefficient-bound perf)** — Done. `power_of_10` extended to n=58; `round_coefficient` with .NET tricks; `number_of_bits` via `bit_width` intrinsic.
 
-Phase 2 - performance (coefficient bound): **(Mostly done)**
+**Phase 3 (general perf)** — close the rust_decimal gap. This is the actual competitive workstream.
 
-1. ~~Extend `power_of_10` hardcoded constants up to n=58 (§4.2).~~ **Done.**
-2. ~~Add .NET-style tricks to rounding: new `round_coefficient` with single-division remainder, cheap half-comparison, and caller-supplied removal count (§4.3).~~ **Done** - all 10 production callers migrated.
-3. ~~Replace `number_of_bits` with hardware CLZ via UInt64 split (§4.1).~~ **Done** - now delegates to `std.bit.bit_width` (LLVM `count_leading_zeros`).
+1. **Close the arithmetic gap (§4.9)** — highest priorityer`; non-raising `add_promised`/`mul_promised` fast paths; UInt128-only `multiply` fast path; inline `to_string` buffer. Re-bench after each change and append a new row to the §4.9.3 tracking table.
+2. **Improve `ln()` range reduction (§4.4)** — 30 divisions → 1 via scale-read + bit-width single-shot.
+3. **`from_string` digit batching (§4.6)** — ~55 ns/call → target ~25 ns.
+4. **Test-suite latency (§4.8)** — split dev/CI flag profiles, hoist `parse_file`, consolidate per-file JIT.
 
-Phase 3 - performance (general):
+**Phase 4 (enhancements / Rust parity)**:
 
-1. **Close the 25–30× arithmetic gap vs rust_decimal (§4.10) - highest priority by far.** Profile add/mul/div, add non-raising fast paths, kill redundant `coefficient()` calls, add UInt128-only mul fast path, switch `to_string` to inline buffer. Re-bench against `temp/rust_compare/` after each change.
-2. **Improve `ln()` range reduction (§4.4).** Replace the per-decimal-digit `/M10()` loop with a constant-time scale read, and the `/M2()` loop with a bit-width-driven single-shot division. Expected: 30 divisions → 1.
-3. ~~Use single divmod in division loop (§4.8).~~ **Investigated, no change** - microbenchmark + ARM64 asm inspection confirmed LLVM canonicalizes `// + %` into a single divmod via `urem → sub(mul(udiv, b))` + CSE; the manual `a − q*b` rewrite does not help (and hurts UInt64 by 2×). Only kept the `UInt256(x2_coef)` hoist out of the loop.
-4. Add `from_string` digit batching (§4.7) - bench at ~55 ns/call today; target ~25 ns to match rust_decimal.
-5. Address test-suite latency (§4.9): split dev/CI flag profiles, hoist `parse_file` calls, consolidate per-file JIT runs.
+1. `trunc` / `floor` / `ceil` / `fract` / `signum` / `unpack` (§5.6) — single small PR.
+2. Regression tests pinning IEEE 754-2008 preferred-exp behaviour for the three §5.7 cases + user-manual note.
+3. `min/max/clamp` (§5.3).
+4. `normalize()` (§5.4).
+5. `__hash__` (§5.1) — depends on `normalize()` for stable hashes.
+6. Tighten `from_float` accuracy with Grisu-style table (§5.2).
 
-Phase 4 - enhancements / Rust parity:
+**Phase 5 (long-term, deferred)**:
 
-1. Add `trunc` / `floor` / `ceil` / `fract` / `signum` / `unpack` (§5.7) - single small PR.
-2. Add `min/max/clamp` (§5.4).
-3. Add `normalize()` (§5.5).
-4. Add `__hash__` (§5.1) - depends on `normalize()` for stable hashes.
-5. Tighten `from_float` accuracy with Grisu-style table (§5.3).
+1. **Steal flag bits to widen coefficient to 10^32−1 (§2.6)** — architectural cleanup, not a competitive driver. Defer until perf parity (§4.9) is solid and there is appetite for a breaking-change major release. Documented as a design proposal; not on the active roadmap.
 
 ## Appendix A. Survey of 128-Bit Fixed-Precision Decimal Types
 

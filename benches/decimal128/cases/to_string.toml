@@ -1,0 +1,38 @@
+[config]
+iterations = 10000
+
+[[cases]]
+a = "0"
+name = "Zero"
+
+[[cases]]
+a = "1"
+name = "Tiny integer"
+
+[[cases]]
+a = "12345"
+name = "Short integer"
+
+[[cases]]
+a = "123.456"
+name = "Short decimal"
+
+[[cases]]
+a = "1234567890.123456789012345"
+name = "Mid-scale 25-digit"
+
+[[cases]]
+a = "0.0000000000000000000000001234"
+name = "Very small fraction"
+
+[[cases]]
+a = "-9999999999999999999999999999"
+name = "Negative max"
+
+[[cases]]
+a = "79228162514264337593543950335"
+name = "Maximum positive"
+
+[[cases]]
+a = "1234567.89"
+name = "Typical currency value"

@@ -50,7 +50,7 @@ a = "0.{0,20}1"
 name = "Very small value"
 
 [[cases]]
-a = "123.45"
+a = "+123.45"
 name = "Plus sign"
 
 [[cases]]
@@ -60,3 +60,7 @@ name = "Precision at boundary"
 [[cases]]
 a = "1.23e+10"
 name = "Exponent with sign"
+
+[[cases]]
+a = "79228162514264337593543950335"
+name = "Maximum coefficient (29 digits)"

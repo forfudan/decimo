@@ -50,3 +50,8 @@ name = "Subtraction resulting in zero"
 a = "79228162514264337593543950334"
 b = "79228162514264337593543950333"
 name = "Very large numbers"
+
+[[cases]]
+a = "1.000000000000000000000000001"
+b = "1.000000000000000000000000000"
+name = "Catastrophic cancellation (tiny diff at high precision)"
