@@ -14,7 +14,7 @@
 from std.sys import exit
 
 from argmojo import Parsable, Option, Flag, Positional, Command
-from decimo import DECIMO_VERSION
+from decimo import DECIMO_VERSION_TAG
 from decimo.rounding_mode import RoundingMode
 from calculator.display import print_error, format_about
 from calculator.engine import evaluate_and_print
@@ -109,7 +109,7 @@ struct DecimoArgs(Parsable):
 
     @staticmethod
     def version() -> String:
-        return DECIMO_VERSION
+        return DECIMO_VERSION_TAG
 
     @staticmethod
     def name() -> String:

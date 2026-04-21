@@ -24,8 +24,18 @@ from decimo import Decimal, BInt, RoundingMode
 ```
 """
 
-comptime DECIMO_VERSION = "v0.10.0"
-"""Version of the Decimo library."""
+comptime DECIMO_VERSION = "0.10.0"
+"""Canonical semantic version of the Decimo library (no leading `v`).
+
+Keep in sync with `pixi.toml`'s `[project].version`.  This is the single
+source of truth used by the CLI's `--version` flag and any future build
+artefacts; consumers wanting the display form (with the leading `v`)
+should use `DECIMO_VERSION_TAG`.
+"""
+
+comptime DECIMO_VERSION_TAG = "v" + DECIMO_VERSION
+"""Display version of the Decimo library, prefixed with `v` (e.g. `v0.10.0`).
+"""
 
 # Core types
 from .decimal128.decimal128 import Decimal128, Dec128

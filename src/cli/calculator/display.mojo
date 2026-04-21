@@ -31,7 +31,7 @@ in an expression.  Modelled after ArgMojo's colour system.
 
 from std.sys import stderr
 from std.sys.defines import MOJO_VERSION
-from decimo import DECIMO_VERSION
+from decimo import DECIMO_VERSION_TAG
 
 # == ANSI colour codes ========================================================
 
@@ -195,7 +195,7 @@ def format_about(use_color: Bool = True) -> String:
         + label_color
         + "  Version       "
         + reset
-        + DECIMO_VERSION
+        + DECIMO_VERSION_TAG
         + "\n"
         + label_color
         + "  Author        "

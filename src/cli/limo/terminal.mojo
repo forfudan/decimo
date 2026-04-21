@@ -23,9 +23,21 @@ for single-line editing:
 - enable_raw_mode / disable_raw_mode (with manual cleanup)
 - read_byte (blocking single-byte read from stdin)
 - ANSI cursor helpers for single-line use
+
+Platform support:
+
+The `TermIOS` layout (size, field offsets, c_cc length, baud-rate placement)
+is hard-coded for the **macOS arm64** ABI.  On other platforms — Linux
+(x86_64 / aarch64), macOS x86_64, or any BSD — the C `struct termios`
+layout differs, and using these primitives there will silently corrupt
+terminal settings.  `enable_raw_mode()` therefore performs a runtime
+check and raises on unsupported platforms; once a platform-specific
+layout is added, the guard can be relaxed.  See:
+https://github.com/forfudan/decimo/issues for tracking.
 """
 
 from std.ffi import external_call
+from std.sys.info import CompilationTarget
 
 
 # === File descriptors ========================================================
@@ -124,14 +136,37 @@ struct TermIOS(Copyable, Movable):
         return Self(copy=self)
 
     # == Read/write helpers ===========================================
+    # NOTE: We deliberately read/write the UInt64 fields one byte at a time
+    # rather than via a `bitcast[UInt64]()` on a UInt8 pointer.  The backing
+    # buffer is a `List[UInt8]` whose storage is byte-aligned, so a bitcast
+    # would produce an unaligned UInt64 access — undefined behaviour on
+    # platforms that require natural alignment for 64-bit loads/stores
+    # (e.g. some ARM configurations).  Byte-shift assembly is well-defined
+    # everywhere and the codegen is essentially identical on x86_64/arm64.
 
     @always_inline
     def _read_u64(mut self, offset: Int) -> UInt64:
-        return (self._buf.unsafe_ptr() + offset).bitcast[UInt64]()[]
+        return (
+            UInt64(self._buf[offset + 0])
+            | (UInt64(self._buf[offset + 1]) << 8)
+            | (UInt64(self._buf[offset + 2]) << 16)
+            | (UInt64(self._buf[offset + 3]) << 24)
+            | (UInt64(self._buf[offset + 4]) << 32)
+            | (UInt64(self._buf[offset + 5]) << 40)
+            | (UInt64(self._buf[offset + 6]) << 48)
+            | (UInt64(self._buf[offset + 7]) << 56)
+        )
 
     @always_inline
     def _write_u64(mut self, offset: Int, value: UInt64):
-        (self._buf.unsafe_ptr() + offset).bitcast[UInt64]()[] = value
+        self._buf[offset + 0] = UInt8(value & 0xFF)
+        self._buf[offset + 1] = UInt8((value >> 8) & 0xFF)
+        self._buf[offset + 2] = UInt8((value >> 16) & 0xFF)
+        self._buf[offset + 3] = UInt8((value >> 24) & 0xFF)
+        self._buf[offset + 4] = UInt8((value >> 32) & 0xFF)
+        self._buf[offset + 5] = UInt8((value >> 40) & 0xFF)
+        self._buf[offset + 6] = UInt8((value >> 48) & 0xFF)
+        self._buf[offset + 7] = UInt8((value >> 56) & 0xFF)
 
     # == Flag accessors ===============================================
 
@@ -202,12 +237,19 @@ struct TermIOS(Copyable, Movable):
 
 
 # === FFI wrappers ==========================================================
-# Signature convention: all integer parameters use Mojo's `Int` type so that
+# Signature convention: integer parameters use Mojo's `Int` type so that
 # the LLVM IR declarations match those in argmojo (forfudan/argmojo).  When
 # two Mojo packages call `external_call["func", ...]` with the same function
 # name, LLVM merges them into a single declaration — so the type lists MUST
 # be identical.  Using `Int` everywhere (= i64 on 64-bit platforms) is the
 # common convention adopted by argmojo; limo follows suit.
+#
+# Exemptions: `isatty` and `write` are already declared inside the Mojo
+# stdlib with their own signatures (`Int32 -> Int32` for `isatty`, a
+# variadic-ish form for `write`); using `Int` for those names produces an
+# "existing function with conflicting signature" lowering error.  We keep
+# the stdlib's declared types for those two symbols and use the `Int`
+# convention for every other libc function we call directly.
 #
 # Reference: https://github.com/forfudan/argmojo — see src/argmojo/utils.mojo
 # for the canonical FFI signatures.
@@ -243,7 +285,14 @@ def _tcsetattr(
 
 
 def _isatty(file_descriptor: Int32) -> Bool:
-    """Checks if the given file descriptor refers to a terminal."""
+    """Checks if the given file descriptor refers to a terminal.
+
+    NOTE: Uses the `Int32 -> Int32` signature rather than the project's
+    usual `Int`-based FFI convention because the Mojo stdlib already
+    declares `isatty` with the `Int32` signature; using `Int` here would
+    produce an "existing function with conflicting signature" LLVM IR
+    lowering error.  See the FFI convention comment above for details.
+    """
     return external_call["isatty", Int32](file_descriptor) != 0
 
 
@@ -255,7 +304,17 @@ def enable_raw_mode() raises -> TermIOS:
 
     The caller must pass the returned TermIOS to `disable_raw_mode()`
     or `disable_raw_mode_nothrow()` when done to restore the terminal.
+
+    Raises on non-macOS-arm64 platforms because the hard-coded `termios`
+    layout would not match the kernel's `struct termios`.
     """
+    comptime if not (
+        CompilationTarget.is_macos() and CompilationTarget.has_neon()
+    ):
+        raise Error(
+            "limo raw mode is currently only supported on macOS arm64; "
+            "the TermIOS layout in this file is hard-coded for that ABI."
+        )
     if not _isatty(STDIN_FILENO):
         raise Error("stdin is not a terminal")
 
