@@ -230,7 +230,7 @@ fn main() {
 }
 
 fn csv_quote(s: &str) -> String {
-    if s.contains(',') || s.contains('"') {
+    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
         format!("\"{}\"", s.replace('"', "\"\""))
     } else {
         s.to_string()

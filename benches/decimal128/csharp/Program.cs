@@ -89,7 +89,12 @@ internal static class Program
         var doc = Toml.Parse(text);
         var model = doc.ToModel();
         int iters = 1000;
-        if (model.TryGetValue("iterations", out var itObj))
+        // Shared TOML cases put iteration count under [config].iterations;
+        // fall back to the root key for backward compatibility.
+        if (model.TryGetValue("config", out var cfgObj) && cfgObj is TomlTable cfg
+            && cfg.TryGetValue("iterations", out var cfgIt))
+            iters = Convert.ToInt32(cfgIt, CultureInfo.InvariantCulture);
+        else if (model.TryGetValue("iterations", out var itObj))
             iters = Convert.ToInt32(itObj, CultureInfo.InvariantCulture);
 
         var list = new List<Case>();
@@ -265,7 +270,7 @@ internal static class Program
     private static string CsvQuote(string s)
     {
         bool need = false;
-        foreach (var c in s) { if (c == ',' || c == '"' || c == '\n') { need = true; break; } }
+        foreach (var c in s) { if (c == ',' || c == '"' || c == '\n' || c == '\r') { need = true; break; } }
         if (!need) return s;
         var sb = new StringBuilder(s.Length + 2);
         sb.Append('"');

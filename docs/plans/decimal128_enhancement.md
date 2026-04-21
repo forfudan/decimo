@@ -26,7 +26,7 @@ Scope: only 128-bit (or near-128-bit) fixed-precision, non-floating-point decima
 | Sign storage           | Bit 31 of flags      | Bit 31 of flags      | Bit 31 of flags      | Two's complement           | Bool field                      |
 | Endianness             | Little-endian        | Little-endian        | Little-endian        | Platform-native            | N/A                             |
 
-\* 29 digits, but the leading digit can only be 0–7 (since 10^29 − 1 > 2^96 − 1). This is pretty dirty and difficult to handle. I think the current implmention is not the most optimized. Need to check and refine.
+\* 29 digits, but the leading digit can only be 0–7 (since 10^29 − 1 > 2^96 − 1). This is pretty dirty and difficult to handle. I think the current implementation is not the most optimized. Need to check and refine.
 
 Decimo, C#, and Rust share the same layout - a proven design. Arrow and govalues use a fundamentally different approach with decimal-bounded coefficients (10^p − 1 instead of 2^N − 1), which gives them cleaner digit semantics at the cost of unused bit range.
 
@@ -206,7 +206,7 @@ Trade-offs:
 6. Re-run cross-language bench (§4.9.3) to confirm no perf regression on `add` / `mul` / `div`. **Expected: small speedup** on overflow-prone paths because `fit_to_max_coefficient` is simpler.
 7. Add a migration note to changelog (breaking: `from_words` flag layout, max coefficient widened).
 
-**Recommended priority: P5 (long-term nice-to-have).** This is a *polish* item, not a compete item. Realistic competitive landscape: decimo's audience is Mojo users (rust_decimal is pure Rust with no Mojo bindings; FFI-bridging it is impractical), and 28-digit precision already covers >99% of financial/accounting workloads. 32-digit precision is a clean architectural win that eliminates the §2 boundary wart and would simplify code, but it neither attracts new users nor closes any real gap. Defer until the perf workstream (§4.9) is fully landed and we have spare cycles for an architecturally clean breaking-change release. Until then, keep §2.6 as a documented design proposal, not a roadmap commitmentloses any real gap. Defer until the perf workstream (§4.9) is fully landed and we have spare cycles for an architecturally clean breaking-change release. Until then, keep §2.6 as a documented design proposal, not a roadmap commitment.
+**Recommended priority: P5 (long-term nice-to-have).** This is a *polish* item, not a *competitive* item. Realistic landscape: decimo's audience is Mojo users (rust_decimal is pure Rust with no Mojo bindings; FFI-bridging it is impractical), and 28-digit precision already covers >99% of financial/accounting workloads. 32-digit precision is a clean architectural win that eliminates the §2 boundary wart and would simplify code, but it neither attracts new users nor closes any real gap. Defer until the perf workstream (§4.9) is fully landed and we have spare cycles for an architecturally clean breaking-change release. Until then, keep §2.6 as a documented design proposal, not a roadmap commitment.
 
 ## 3. Correctness Bugs
 
@@ -598,7 +598,7 @@ Done items (kept for tracking, not actionable):
 
 **Phase 3 (general perf)** — close the rust_decimal gap. This is the actual competitive workstream.
 
-1. **Close the arithmetic gap (§4.9)** — highest priorityer`; non-raising `add_promised`/`mul_promised` fast paths; UInt128-only `multiply` fast path; inline `to_string` buffer. Re-bench after each change and append a new row to the §4.9.3 tracking table.
+1. **Close the arithmetic gap (§4.9)** — highest priority. Restructure `add()` to short-circuit before `is_integer`; non-raising `add_promised`/`mul_promised` fast paths; UInt128-only `multiply` fast path; inline `to_string` buffer. Re-bench after each change and append a new row to the §4.9.3 tracking table.
 2. **Improve `ln()` range reduction (§4.4)** — 30 divisions → 1 via scale-read + bit-width single-shot.
 3. **`from_string` digit batching (§4.6)** — ~55 ns/call → target ~25 ns.
 4. **Test-suite latency (§4.8)** — split dev/CI flag profiles, hoist `parse_file`, consolidate per-file JIT.

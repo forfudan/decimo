@@ -94,9 +94,23 @@ Namespace DecimoBench
             Dim doc = Toml.Parse(text)
             Dim model As TomlTable = doc.ToModel()
             Dim iters As Integer = 1000
-            Dim itObj As Object = Nothing
-            If model.TryGetValue("iterations", itObj) Then
-                iters = Convert.ToInt32(itObj, CultureInfo.InvariantCulture)
+            ' Shared TOML cases put iteration count under [config].iterations;
+            ' fall back to the root key for backward compatibility.
+            Dim found As Boolean = False
+            Dim cfgObj As Object = Nothing
+            Dim cfgIt As Object = Nothing
+            If model.TryGetValue("config", cfgObj) Then
+                Dim cfg As TomlTable = TryCast(cfgObj, TomlTable)
+                If cfg IsNot Nothing AndAlso cfg.TryGetValue("iterations", cfgIt) Then
+                    iters = Convert.ToInt32(cfgIt, CultureInfo.InvariantCulture)
+                    found = True
+                End If
+            End If
+            If Not found Then
+                Dim itObj As Object = Nothing
+                If model.TryGetValue("iterations", itObj) Then
+                    iters = Convert.ToInt32(itObj, CultureInfo.InvariantCulture)
+                End If
             End If
 
             Dim list As New List(Of BenchCase)
@@ -322,7 +336,7 @@ Namespace DecimoBench
         Private Function CsvQuote(s As String) As String
             Dim need As Boolean = False
             For Each c In s
-                If c = ","c OrElse c = """"c OrElse c = vbLf Then
+                If c = ","c OrElse c = """"c OrElse c = vbLf OrElse c = vbCr Then
                     need = True
                     Exit For
                 End If

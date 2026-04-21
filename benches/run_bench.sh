@@ -59,9 +59,11 @@ if [[ ! -d "$DIR" ]]; then
     exit 1
 fi
 
-# --- decimal128: cross-language pipeline (rust + decimo) -----------------
+# --- decimal128: cross-language pipeline (decimo + rust + csharp + vbnet) ---
 # When OP is empty, run the full suite via run_all.sh and produce a
-# timestamped report under benches/decimal128/reports/.
+# timestamped report under benches/decimal128/reports/. The .NET (csharp,
+# vbnet) harnesses are built and run only if the `dotnet` SDK is on PATH;
+# otherwise the pipeline silently runs with the available languages.
 # When OP is given, dispatch to the single-op cross-lang run_all.sh too.
 if [[ "$TYPE" == "decimal128" ]]; then
     if [[ -z "$OP" ]]; then

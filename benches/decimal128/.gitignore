@@ -8,7 +8,7 @@ reports/
 
 # Rust build output.
 rust/target/
-cargo.lock
+rust/Cargo.lock
 
 # C# build output.
 csharp/bin/

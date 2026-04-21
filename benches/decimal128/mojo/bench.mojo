@@ -7,8 +7,8 @@
 #
 #     timestamp,language,op,case_name,result,ns_per_iter
 #
-# Usage:  pixi run mojo run -I ../../src --debug-level=line-tables \
-#             -D ASSERT=none ./bench.mojo -- --op add
+# Usage:  pixi run mojo run -I ../../../src --debug-level=line-tables \
+#             -D ASSERT=none ./bench.mojo --op add
 #
 # Available ops: add, subtract, multiply, divide, comparison, from_string,
 #                to_string.
@@ -22,14 +22,16 @@ from std.time import perf_counter_ns
 
 fn _now_stamp() raises -> String:
     var dt = Python.import_module("datetime")
-    var now = dt.datetime.now()
+    # Use UTC to match the rust/csharp/vbnet harnesses, so log filenames are
+    # comparable across machines/timezones and "latest log" selection is stable.
+    var now = dt.datetime.now(dt.timezone.utc)
     return String(now.strftime("%Y%m%d_%H%M%S"))
 
 
 fn _csv_quote(s: String) -> String:
     var needs_quote = False
     for ch in s.codepoint_slices():
-        if ch == "," or ch == '"':
+        if ch == "," or ch == '"' or ch == "\n" or ch == "\r":
             needs_quote = True
             break
     if not needs_quote:

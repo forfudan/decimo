@@ -204,7 +204,20 @@ def main() -> int:
     args = ap.parse_args()
 
     os.makedirs(args.reports_dir, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # Filename uses compact UTC timestamp (matches the per-lang CSV log naming
+    # convention used by all four harnesses); header shows a human-readable
+    # local time with explicit UTC offset, e.g. "2026-04-21 14:26:06 (UTC+0100)".
+    from datetime import timezone
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    now_local = datetime.now().astimezone()
+    offset = now_local.strftime("%z")  # e.g. "+0100" or "-0500"
+    # Convert to ISO 8601 extended form: "+0100" -> "UTC+01:00".
+    if len(offset) == 5:
+        offset_str = f"UTC{offset[:3]}:{offset[3:]}"
+    else:
+        offset_str = "UTC"
+    header_ts = f"{now_local.strftime('%Y-%m-%d %H:%M:%S')} ({offset_str})"
     out_path = args.out or os.path.join(args.reports_dir, f"dec128_report_{ts}.md")
 
     lang_label = {
@@ -217,7 +230,7 @@ def main() -> int:
     lines: list[str] = [
         "# Decimal128 cross-language benchmark report",
         "",
-        f"- Generated: `{ts}`",
+        f"- Generated: {header_ts}",
         f"- Languages: {', '.join(lang_label.get(lang, lang) for lang in args.langs)}",
         f"- Ops: {', '.join(args.ops)}",
         "",
