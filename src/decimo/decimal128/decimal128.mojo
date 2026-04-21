@@ -2083,9 +2083,24 @@ struct Decimal128(
         if scale == 0:
             return True
 
-        # For a value to be an integer, it must be divisible by 10^scale
-        # If coefficient % 10^scale == 0, then all decimal128 places are zeros
-        # If it divides evenly, it's an integer
+        # Cheap pre-check (fast reject):
+        # 10^scale == 2^scale * 5^scale, so a necessary condition for the
+        # coefficient to be divisible by 10^scale is that its low `scale`
+        # bits are all zero (i.e. divisible by 2^scale). The maximum scale
+        # for Decimal128 is 28 (< 32), so we only need to inspect `self.low`
+        # (the low 32 bits of the 96-bit coefficient) -- no UInt128 modulus
+        # is required for the negative answer.
+        #
+        # `1 << scale` is a UInt32 literal; the compiler folds it to a
+        # constant when `scale` is known, otherwise it remains a single
+        # variable shift + AND. This dispatches the common "fractional
+        # coefficient" case in O(1) integer ops with no division.
+        if (self.low & ((UInt32(1) << UInt32(scale)) - 1)) != 0:
+            return False
+
+        # Slow path: low bits are clear, so the coefficient is divisible by
+        # 2^scale. We still need to check divisibility by 5^scale via the
+        # full UInt128 modulus.
         return (
             self.coefficient()
             % decimo.decimal128.utility.power_of_10[DType.uint128](scale)

@@ -55,3 +55,18 @@ name = "Addition resulting in zero"
 a = "1000000000000000"
 b = "0.000000001"
 name = "Mixed magnitudes (small + large)"
+
+[[cases]]
+a = "100"
+b = "50.0"
+name = "Both integer, different scale (small)"
+
+[[cases]]
+a = "1000000"
+b = "500.00"
+name = "Both integer, different scale (medium)"
+
+[[cases]]
+a = "12345678901234"
+b = "67.000000000"
+name = "Both integer, different scale (wide gap)"

@@ -55,3 +55,18 @@ name = "Very large numbers"
 a = "1.000000000000000000000000001"
 b = "1.000000000000000000000000000"
 name = "Catastrophic cancellation (tiny diff at high precision)"
+
+[[cases]]
+a = "1000.00"
+b = "500"
+name = "Both integer, different scale (small)"
+
+[[cases]]
+a = "1000000.000"
+b = "500"
+name = "Both integer, different scale (medium)"
+
+[[cases]]
+a = "12345678901234"
+b = "67.000000000"
+name = "Both integer, different scale (wide gap)"

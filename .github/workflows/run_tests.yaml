@@ -2,7 +2,7 @@ name: Decimo Unit Tests
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
