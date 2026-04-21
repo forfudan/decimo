@@ -1,0 +1,19 @@
+# Artifacts for Decimal128 benchmarks.
+
+# Raw per-language CSV results (one per run).
+logs/
+
+# Aggregated markdown reports (one per run).
+reports/
+
+# Rust build output.
+rust/target/
+rust/Cargo.lock
+
+# C# build output.
+csharp/bin/
+csharp/obj/
+
+# VB.NET build output.
+vbnet/bin/
+vbnet/obj/

@@ -50,3 +50,8 @@ name = "Division resulting in power of 10"
 a = "{9,20}"
 b = "{9,10}"
 name = "Division of very large numbers"
+
+[[cases]]
+a = "12345678901234567890"
+b = "9876543210"
+name = "Large coprime quotient (forces full-precision result)"
