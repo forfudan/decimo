@@ -423,16 +423,16 @@ Each row isolates one suspected cost (1_000_000 iters/op, best of 5, same machin
 
 Mapped against the hypotheses above, ranked by **measured ns saved per fractional add()**:
 
-| Rank | Hypothesis                                             | Empirical evidence                               | Marginal value                  | Verdict                                                                                                                                                                                                                                                                                                |
-| ---- | ------------------------------------------------------ | ------------------------------------------------ | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1    | H#3-related: `is_integer()` × 2 wastes a UInt128 mod   | Probe (3) = 250 ns; absent in probe (7)          | **~125 ns / add**               | **Confirmed.** Either short-circuit on a cheap test, or restructure `add()` so the same-scale branch sits **above** `is_integer` (it handles the integer case correctly via the `summation < MAX_AS_UINT128` path).                                                                                    |
-| 2    | H#2: `def raises` operators not inlined                | (5) − (3) − rest ≈ 80 ns of unaccounted overhead | **~40-80 ns / add**             | **Likely confirmed.** Add `@always_inline fn add_unchecked` (`add_promised` per user note), route `__add__` through it; only fall back when overflow detected.                                                                                                                                         |
-| 3    | H#4: UInt256 promotion in `mul` even when fits UInt128 | Probe (9) 802 ns; product ≈ 10^25 < 2^96         | **~200 ns / mul**               | **Confirmed by structure.** Use `__umulh`-style high-half check; promote only on overflow.                                                                                                                                                                                                             |
-| 4    | H#3: UInt256 promotion in `add` (different scale)      | (6) ≈ (5) - promotion ~free vs same-scale        | **~30-50 ns (diff-scale only)** | Marginal; do after #1-#3.                                                                                                                                                                                                                                                                              |
-| 5    | H#5: divide long-division loop                         | Not isolated this run; div = 809 ns total        | **TBD (~200-400 ns?)**          | Probe with a divide-only decomposition before changing.                                                                                                                                                                                                                                                |
-| 6    | H#6: `to_string` per-call allocation                   | Total 515 ns vs rust 69 ns                       | **~300 ns / call**              | **Confirmed by total.** Stack `InlineArray[UInt8, 64]` buffer + single `String(StringSlice(buf))`.                                                                                                                                                                                                     |
-| 7    | H#1: `coefficient()` reconstruction                    | Probe (2) = ~0 ns                                | **~0 ns** ✗                     | **Disproven for the call sites in `add`/`mul`** - already a single `bitcast` and the loop bodies fully fold it. *Storing coefficient as a native `UInt128` field may still help separately if it removes header packing/unpacking elsewhere, but it is **not** the low-hanging fruit on the hot path.* |
-| 8    | `from_uint128()` raises/check overhead                 | Probe (4) = 1.6 ns                               | **~negligible** ✗               | Disproven. Don't touch it.                                                                                                                                                                                                                                                                             |
+| Rank | Hypothesis                                             | Empirical evidence                               | Marginal value                  | Verdict                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---- | ------------------------------------------------------ | ------------------------------------------------ | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | H#3.1: `is_integer()` × 2 wastes a UInt128 mod         | Probe (3) = 250 ns; absent in probe (7)          | **~125 ns / add**               | ✓ **DONE 20260421** — `arithmetics.mojo` `add()` reordered: same-scale branch now sits above `is_integer` (a NOTE comment documents the correctness argument: `x1.coefficient + x2.coefficient < MAX_AS_UINT128` keeps the result representable, and `x1.scale` is preserved). `subtract()` benefits transitively via shared core. Measured: add median 106 → 5 ns/iter (~21×); sub median 123 → 6 ns/iter (~20×). See report `dec128_report_20260421_203452.md`. |
+| 2    | H#2: `def raises` operators not inlined                | (5) − (3) − rest ≈ 80 ns of unaccounted overhead | **~40-80 ns / add**             | **Likely confirmed.** Add `@always_inline fn add_unchecked` (`add_promised` per user note), route `__add__` through it; only fall back when overflow detected.                                                                                                                                                                                                                                                                                                    |
+| 3    | H#4: UInt256 promotion in `mul` even when fits UInt128 | Probe (9) 802 ns; product ≈ 10^25 < 2^96         | **~200 ns / mul**               | **Confirmed by structure.** Use `__umulh`-style high-half check; promote only on overflow.                                                                                                                                                                                                                                                                                                                                                                        |
+| 4    | H#3: UInt256 promotion in `add` (different scale)      | (6) ≈ (5) - promotion ~free vs same-scale        | **~30-50 ns (diff-scale only)** | Marginal; do after #1-#3.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 5    | H#5: divide long-division loop                         | Not isolated this run; div = 809 ns total        | **TBD (~200-400 ns?)**          | Probe with a divide-only decomposition before changing.                                                                                                                                                                                                                                                                                                                                                                                                           |
+| 6    | H#6: `to_string` per-call allocation                   | Total 515 ns vs rust 69 ns                       | **~300 ns / call**              | **Confirmed by total.** Stack `InlineArray[UInt8, 64]` buffer + single `String(StringSlice(buf))`.                                                                                                                                                                                                                                                                                                                                                                |
+| 7    | H#1: `coefficient()` reconstruction                    | Probe (2) = ~0 ns                                | **~0 ns** ✗                     | **Disproven for the call sites in `add`/`mul`** - already a single `bitcast` and the loop bodies fully fold it. *Storing coefficient as a native `UInt128` field may still help separately if it removes header packing/unpacking elsewhere, but it is **not** the low-hanging fruit on the hot path.*                                                                                                                                                            |
+| 8    | `from_uint128()` raises/check overhead                 | Probe (4) = 1.6 ns                               | **~negligible** ✗               | Disproven. Don't touch it.                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 **Action plan (Phase 3, supersedes prior §4.9 priority - re-ordered by validated marginal value):**
 
@@ -455,18 +455,26 @@ Median ns/iter across all TOML test cases per op, from `benches/decimal128/`. Lo
 | date     | report                             |  add |  sub |  mul |  div |  cmp | from_str | to_str |
 | -------- | ---------------------------------- | ---: | ---: | ---: | ---: | ---: | -------: | -----: |
 | 20260421 | `dec128_report_20260421_112354.md` |  106 |  123 |    4 |    8 |    0 |    24.25 | 128.30 |
+| 20260421 | `dec128_report_20260421_203452.md` |    5 |    6 |    4 |    8 | 2.10 |    24.15 | 127.00 |
 
 **Decimo / competitor ratio (>1 = decimo slower; <1 = decimo faster):**
 
-| date     | op       | dm/rust | dm/csharp | dm/vbnet |
-| -------- | -------- | ------: | --------: | -------: |
-| 20260421 | add      |   21.2x |     43.1x |    59.2x |
-| 20260421 | sub      |   61.5x |     59.0x |    68.7x |
-| 20260421 | mul      |    1.6x |      2.9x |     4.4x |
-| 20260421 | div      |    1.4x |      0.5x |     1.5x |
-| 20260421 | cmp      |    0.0x |      0.0x |     0.0x |
-| 20260421 | from_str |    2.6x |      0.7x |     0.7x |
-| 20260421 | to_str   |    3.6x |      4.2x |     4.3x |
+| date     | op       | dm/rust | dm/csharp | dm/vbnet | notes                       |
+| -------- | -------- | ------: | --------: | -------: | --------------------------- |
+| 20260421 | add      |   21.2x |     43.1x |    59.2x | Before any optimizations    |
+| 20260421 | sub      |   61.5x |     59.0x |    68.7x | Before any optimizations    |
+| 20260421 | mul      |    1.6x |      2.9x |     4.4x | Before any optimizations    |
+| 20260421 | div      |    1.4x |      0.5x |     1.5x | Before any optimizations    |
+| 20260421 | cmp      |    0.0x |      0.0x |     0.0x | Before any optimizations    |
+| 20260421 | from_str |    2.6x |      0.7x |     0.7x | Before any optimizations    |
+| 20260421 | to_str   |    3.6x |      4.2x |     4.3x | Before any optimizations    |
+| 20260421 | add      |    2.2x |      2.0x |     2.7x | After H#3.1 `add()` reorder |
+| 20260421 | sub      |    2.1x |      3.1x |     3.1x | After H#3.1 `add()` reorder |
+| 20260421 | mul      |    1.8x |      2.6x |     3.6x | After H#3.1 `add()` reorder |
+| 20260421 | div      |    1.4x |      0.6x |     1.4x | After H#3.1 `add()` reorder |
+| 20260421 | cmp      |    0.8x |      1.4x |     1.1x | After H#3.1 `add()` reorder |
+| 20260421 | from_str |    2.4x |      0.7x |     0.7x | After H#3.1 `add()` reorder |
+| 20260421 | to_str   |    3.5x |      4.3x |     4.1x | After H#3.1 `add()` reorder |
 
 Observations from the 20260421 baseline:
 
@@ -475,6 +483,14 @@ Observations from the 20260421 baseline:
 - `div` already beats C# (`dm/cs = 0.5x`) — our long-division Mojo loop is competitive with .NET.
 - `cmp` is essentially free for decimo (rounds to 0 ns/iter) — already faster than all three.
 - `to_str` gap is purely allocator-driven (per-call `String` builder) — §4.9.2 action #4 directly targets this.
+
+Observations from the `203452` run (after H#3.1 `add()` reorder — `same-scale` branch hoisted above `is_integer()` to avoid two UInt128 modulus operations on the common path; `subtract()` benefits transitively because it shares the `add()` core):
+
+- **`add` median: 106 → 5 ns/iter (~21× faster)**, decimo ratio vs rust collapses from 21.2× to 2.2× — now within striking distance of native implementations on the same-scale path.
+- **`sub` median: 123 → 6 ns/iter (~20× faster)**, ratio vs rust 61.5× → 2.1× (largest single relative improvement in the table).
+- **`cmp` reported as 2.10 ns/iter** instead of the previous 0.0 — the prior 0.0 was a measurement artefact (constant folding); the optimiser-barrier work in `_bench_one` now produces honest numbers, and decimo is still competitive (`dm/rs = 0.8x`).
+- `mul`, `div`, `from_str`, `to_str` are unchanged because no code change touched their hot paths; the next priorities are §4.9.2 actions #2 (non-raising fast path) and #3 (UInt128-only `multiply`).
+- The remaining add/sub gap is dominated by **different-scale cases** (`Different scales`: 115 ns; `Mixed magnitudes`: 121 ns) — these still take the UInt256 path and are §4.9.2 action #6 (a separate same-scale-is-cheaper-than-different optimisation).
 
 ## 5. Improvement Opportunities
 
