@@ -55,3 +55,13 @@ name = "Powers of 10"
 a = "2.7182818284590452353602874714"
 b = "1.6487212707001281468486507878"
 name = "e * e^0.5"
+
+[[cases]]
+a = "0.1234567890123456789"
+b = "0.9876543210987654321"
+name = "Product overflows precision (must round to 28 frac digits)"
+
+[[cases]]
+a = "79228162514264337593543950335"
+b = "0.0000000000000000000000000001"
+name = "Maximum coefficient * tiny (1e-28)"

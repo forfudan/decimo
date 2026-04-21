@@ -2,35 +2,46 @@
 # pixi environments
 .pixi
 *.egg-info
+
 # ruff environments
 .ruff_cache
+
 # magic environments
 .magic
 magic.lock
+
 # mojopkg files
 *.mojopkg
+
 # Editor environments
 .vscode
 .helix
+
 # Temporary files
 tempCodeRunnerFile.mojo
 temp.md
 temp*.mojo
 temp/
 kgen.trace.json*
+
 # macOS environments
 .DS_Store
+
 # log files
 *.log
+
 # local files
 /test*.mojo
 /test*.py
 local
+
 # CLI binary
 /decimo
+
 # Compiled GMP/MPFR wrapper (built from source)
 *.dylib
 *.so
+
 # Python build artifacts
 *.so
 __pycache__/

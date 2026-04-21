@@ -50,3 +50,8 @@ name = "Negative numbers"
 a = "123.45"
 b = "-123.45"
 name = "Addition resulting in zero"
+
+[[cases]]
+a = "1000000000000000"
+b = "0.000000001"
+name = "Mixed magnitudes (small + large)"

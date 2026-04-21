@@ -1,0 +1,15 @@
+[package]
+edition = "2021"
+name = "bench"
+version = "0.1.0"
+
+[dependencies]
+rust_decimal = "1"
+serde = {version = "1", features = ["derive"]}
+toml = "0.8"
+
+[profile.release]
+codegen-units = 1
+debug = 1
+lto = "fat"
+opt-level = 3
