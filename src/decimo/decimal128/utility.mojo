@@ -158,13 +158,21 @@ def fit_to_max_coefficient[
     var ndigits = number_of_digits(value)
     var digits_to_remove = ndigits - Decimal128.MAX_NUM_DIGITS
 
-    # First attempt: keep MAX_NUM_DIGITS (29) digits.
-    var result = round_coefficient(value, digits_to_remove, sign, rounding_mode)
+    # First attempt: keep MAX_NUM_DIGITS (29) digits. We just verified
+    # `digits_to_remove < ndigits == number_of_digits(value)`, so the
+    # `ndigits_to_remove > number_of_digits(value)` guard inside
+    # `round_coefficient` would always be false here — instantiate with
+    # `skip_digit_check=True` to drop the redundant `number_of_digits` call.
+    var result = round_coefficient[skip_digit_check=True](
+        value, digits_to_remove, sign, rounding_mode
+    )
 
     # Because 2^96 − 1 is not at a clean decimal boundary, the 29-digit
     # rounded result may still exceed the maximum. Retry with 28 digits.
+    # `digits_to_remove + 1 <= ndigits` (since `ndigits >= 30` here), so
+    # the digit-check guard is still vacuous and we keep `skip_digit_check`.
     if result > ValueType(Decimal128.MAX_AS_UINT128):
-        result = round_coefficient(
+        result = round_coefficient[skip_digit_check=True](
             value, digits_to_remove + 1, sign, rounding_mode
         )
         digits_to_remove += 1
@@ -193,7 +201,9 @@ def fit_to_max_coefficient[
 # the natural `// + %` form.)
 @always_inline
 def round_coefficient[
-    dtype: DType, //
+    dtype: DType,
+    //,
+    skip_digit_check: Bool = False,
 ](
     value: Scalar[dtype],
     ndigits_to_remove: Int,
@@ -253,17 +263,29 @@ def round_coefficient[
     # invoking `power_of_10` with an exponent that may overflow `Scalar[dtype]`
     # when the caller passes a very large `ndigits_to_remove` (e.g. via
     # `Decimal128.round()` with a strongly negative `ndigits`).
-    if ndigits_to_remove > number_of_digits(value):
-        if value == 0:
+    #
+    # Hot-path callers that have already validated `ndigits_to_remove` against
+    # `number_of_digits(value)` (e.g. `fit_to_max_coefficient`) instantiate
+    # this with `skip_digit_check=True` to elide the redundant
+    # `number_of_digits` call (~50 ns on UInt256). The branch below is then
+    # constant-folded away by the compiler.
+    @parameter
+    if not skip_digit_check:
+        if ndigits_to_remove > number_of_digits(value):
+            if value == 0:
+                return ValueType(0)
+            var fast_mode = rounding_mode
+            if rounding_mode == RoundingMode.ceiling():
+                fast_mode = (
+                    RoundingMode.up() if not sign else RoundingMode.down()
+                )
+            elif rounding_mode == RoundingMode.floor():
+                fast_mode = (
+                    RoundingMode.down() if not sign else RoundingMode.up()
+                )
+            if fast_mode == RoundingMode.up():
+                return ValueType(1)
             return ValueType(0)
-        var fast_mode = rounding_mode
-        if rounding_mode == RoundingMode.ceiling():
-            fast_mode = RoundingMode.up() if not sign else RoundingMode.down()
-        elif rounding_mode == RoundingMode.floor():
-            fast_mode = RoundingMode.down() if not sign else RoundingMode.up()
-        if fast_mode == RoundingMode.up():
-            return ValueType(1)
-        return ValueType(0)
 
     # Single divmod: writing `// + %` lets LLVM compute one division and
     # derive the remainder via `a - (a/b) * b`, then CSE-dedup the shared

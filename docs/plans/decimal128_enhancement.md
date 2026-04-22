@@ -423,28 +423,36 @@ Each row isolates one suspected cost (1_000_000 iters/op, best of 5, same machin
 
 Mapped against the hypotheses above, ranked by **measured ns saved per fractional add()**:
 
-| Rank | Hypothesis (H#x.y from §4.9.1)               | Evidence              | Marginal value | Verdict / next action                                                 |
-| ---- | -------------------------------------------- | --------------------- | -------------- | --------------------------------------------------------------------- |
-| 1    | H#3.1 `is_integer()` × 2 wastes UInt128 mod  | (3)=250ns, ¬(7)       | ~125 ns / add  | ✓ **DONE 20260421** — three-step landing; see notes below             |
-| 2    | H#2 `def raises` operators not inlined       | (5)−(3)−rest ≈ 80 ns  | 40-80 ns / add | **Likely.** Add `@always_inline fn add_promised`; `__add__` calls it  |
-| 3    | H#4 UInt256 promotion in `mul` when fits 128 | (9)=802ns, prod<2^96  | ~200 ns / mul  | **Confirmed.** `__umulh` high-half check; promote only on overflow    |
-| 4    | H#3 UInt256 promotion in `add` (diff scale)  | (6)≈(5)               | ~30-50 ns      | Marginal; after #1–#3                                                 |
-| 5    | H#5 divide long-division loop                | div=809ns total       | TBD ~200-400ns | Probe divide-only decomposition first                                 |
-| 6    | H#6 `to_string` per-call allocation          | 515 ns vs rust 69     | ~300 ns / call | **Confirmed.** Stack `InlineArray[UInt8,64]` + single `String` build  |
-| 7    | H#1 `coefficient()` reconstruction           | (2)≈0 ns              | ~0 ns ✗        | **Disproven** for `add`/`mul` hot path; native UInt128 field separate |
-| 8    | `from_uint128()` raises/check overhead       | (4)=1.6 ns            | ~0 ns ✗        | **Disproven.** Don't touch                                            |
-| 9    | H#4.1 `is_integer()` branch in `multiply()`  | By analogy with #1(c) | TBD ~?? ns/mul | **Investigate** — add `Both int, diff scale` cases to `multiply.toml` |
+| Rank | Hypothesis (H#x.y from §4.9.1)               | Evidence                | Marginal value         | Verdict / next action                                                 |
+| ---- | -------------------------------------------- | ----------------------- | ---------------------- | --------------------------------------------------------------------- |
+| 1    | H#3.1 `is_integer()` × 2 wastes UInt128 mod  | (3)=250ns, ¬(7)         | ~125 ns / add          | ✓ **DONE 20260421** — three-step landing; see notes below             |
+| 2    | H#2 `def raises` operators not inlined       | (5)−(3)−rest ≈ 80 ns    | 40-80 ns / add         | **Likely.** Add `@always_inline def add_promised`; `__add__` calls it |
+| 3    | H#4 UInt256 promotion in `mul` when fits 128 | (9)=802ns, prod<2^96    | ~200 ns / mul          | **Confirmed.** `__umulh` high-half check; promote only on overflow    |
+| 4    | H#3 UInt256 promotion in `add` (diff scale)  | (6)≈(5)                 | ~30-50 ns              | Marginal; after #1–#3                                                 |
+| 5    | H#5 divide long-division loop                | div=809ns total         | TBD ~200-400ns         | Probe divide-only decomposition first                                 |
+| 6    | H#6 `to_string` per-call allocation          | 515 ns vs rust 69       | ~300 ns / call         | **Confirmed.** Stack `InlineArray[UInt8,64]` + single `String` build  |
+| 7    | H#1 `coefficient()` reconstruction           | (2)≈0 ns                | ~0 ns ✗                | **Disproven** for `add`/`mul` hot path; native UInt128 field separate |
+| 8    | `from_uint128()` raises/check overhead       | (4)=1.6 ns              | ~0 ns ✗                | **Disproven.** Don't touch                                            |
+| 9    | H#4.1 `is_integer()` branch in `multiply()`  | bench: 548-759 → 5-6 ns | ~550-750 ns/mul on hit | ✓ **DONE (this PR)** — branch removed; see notes below                |
 
 **Notes for #1 (three-step landing):**
 
 - **(a) Hoist the same-scale branch above the `is_integer` branch in `add()`** (`arithmetics.mojo`, commit `ee1c0db`). Correctness preserved (`coefficient + coefficient < MAX_AS_UINT128`, `x1.scale == x2.scale`); `subtract()` benefits transitively via `x1 + (-x2)`. Add median 106 → 5 ns/iter (~21×); sub median 123 → 6 ns/iter (~20×). Report: `dec128_report_20260421_203452.md`.
 - **(b) Cheap pre-check in `is_integer()`** (`decimal128.mojo`, commit `63c0445`). Test `(self.low & ((1 << scale) - 1)) != 0` fast-rejects on divisibility-by-`2^scale` before the full UInt128 `% 10^scale` (max scale 28 fits in the low UInt32). Initially measured against `add()` (`Mixed magnitudes` 121 → 14 ns), but step (c) below later removed all `is_integer()` calls from `add()`. The pre-check is still useful for **`multiply()`** (which still has an `is_integer` branch) and for any external caller of the public `is_integer()` API, so it stays. Report: `dec128_report_20260421_205835.md`.
-- **(c) Remove the `is_integer` branch from `add()` entirely** (`arithmetics.mojo`, uncommitted). Branch dispatch costs ~250 ns even with the (b) pre-check, while the UInt256 fall-through costs only ~110 ns — the branch was a net loss even when triggered. Three new `Both integer, different scale` cases added to `add.toml` and `subtract.toml`. Those cases drop 121-136 → 6-14 ns (~10-20×); the existing `Different scales` case drops 109 → 7 ns (~15×) because `is_integer()` is no longer dispatched on the no-integer path either. Report: `dec128_report_20260421_211510.md`.
+- **(c) Remove the `is_integer` branch from `add()` entirely** (`arithmetics.mojo`, implemented in this PR). Branch dispatch costs ~250 ns even with the (b) pre-check, while the UInt256 fall-through costs only ~110 ns — the branch was a net loss even when triggered. Three new `Both integer, different scale` cases added to `add.toml` and `subtract.toml`. Those cases drop 121-136 → 6-14 ns (~10-20×); the existing `Different scales` case drops 109 → 7 ns (~15×) because `is_integer()` is no longer dispatched on the no-integer path either. Report: `dec128_report_20260421_211510.md`.
+
+**Notes for #9 (H#4.1 — `is_integer()` branch in `multiply()`):**
+
+- **Removed in this PR** (`arithmetics.mojo`). The branch was symmetric to #1(c) but worse: dispatch needed two `is_integer()` calls (~125 ns each even with the cheap pre-check), then promoted the integral parts into UInt256 and did a UInt256 multiply + UInt256 power-of-10 rescale. Total cost on the "Both integer, different scale" cases was 548-759 ns/iter. Removing it lets the same inputs fall through to the existing `combined_num_bits <= 96` UInt128 fast path: the integral parts already share all the trailing zeros that disappear during rounding, so no precision is lost. Three new cases added to `multiply.toml`; measured 548-759 → 5-6 ns/iter (~100×). No regression on the other 13 multiply cases. Tests: `tests/decimal128/test_decimal128_multiply.mojo` (4/4 PASS) plus full per-file regression sweep on the other dec128 tests.
+- **Companion cleanup in `multiply()`:** the `combined_num_bits <= 96 / combined_scale > MAX_SCALE` arm contained dead code: after `min(MAX_SCALE, combined_scale)` clamps, the subsequent `if final_scale > MAX_SCALE` second-pass-rounding branch was unreachable. Removed. (The same pattern in the `<= 128` and `> 128` arms is *not* dead because `final_scale = combined_scale - digits_removed` can still exceed `MAX_SCALE` there.)
+- **Companion micro-opt in `round_coefficient` / `fit_to_max_coefficient`:** added a comptime `skip_digit_check: Bool = False` parameter to `round_coefficient`; `fit_to_max_coefficient` instantiates with `True` because it has just computed `ndigits = number_of_digits(value)` and `digits_to_remove = ndigits - 29 < ndigits`, making the inner `ndigits_to_remove > number_of_digits(value)` guard provably false. The `@parameter if not skip_digit_check` branch is constant-folded away. Saves one `number_of_digits` call (~50 ns on UInt256) on every multiply that hits `combined_num_bits > 96`. Measured: `High precision multiplication` 256 → ~232 ns/iter (~10% on this hot case). The `e * e^0.5` and `Product overflows precision` cases were within run-to-run noise; treated as neutral. All hot callers from `decimal128.mojo`, `rounding.mojo`, and the divide/exp_ln paths still default to `skip_digit_check=False` (the safe behaviour), so no other call site is affected.
+- **Investigated but not landed:** an `InlineArray`-based LUT for `power_of_10[uint128|uint256]` (currently an if/elif tree of literals). A standalone probe with an opaque runtime `n` showed the if-tree at ~120 ns/call vs LUT at ~0 ns. However in the actual multiply hot path the LUT version slightly *regressed* the heavy cases (`High precision` 256 → 273 ns, `e * e^0.5` 346 → 413 ns, `Product overflows` 231 → 270 ns). Root cause as already documented in `utility.mojo`: Mojo currently lacks module-level mutable variables, so the comptime `alias TABLE = _build_power_of_10_table[dtype]()` is materialised per inlined call site as a 79 × 32-byte global; with `power_of_10` invoked from many sites in `round_coefficient` / `fit_to_max_coefficient`, this bloats the icache and the runtime-`n` indexed load can't be hoisted, whereas the if-tree's literal returns let LLVM keep results in registers across multiple invocations on the same `n`. **Verdict: not worth landing today**; revisit when Mojo gains module-level cached variables (one shared LUT per `dtype`). Tracked here so the next pass starts from this measurement.
+- **Investigated but not landed (H#4 itself):** the original H#4 hypothesis was "skip UInt256 promotion when the actual product fits in UInt128" via a `__umulh`-style high-half check. After analysing the real bench distribution, the slow cases (`High precision multiplication`, `e * e^0.5`, `Product overflows`) all have `combined_num_bits` ≥ 186, so the actual product is genuinely 180+ bits and *cannot* fit in UInt128 — the UInt256 promotion is mandatory there. The only inputs that would benefit are those with `combined_num_bits ∈ [129, 130]` where the bit-count upper-bound is loose by one; none of the bench cases land in that window, so the saving would be invisible. **Verdict: deprioritised** — the productive multiply optimisations are in `round_coefficient` (number-of-digits / power-of-10), not in the multiply itself.
 
 **Action plan (Phase 3, supersedes prior §4.9 priority - re-ordered by validated marginal value):**
 
 1. **Cheap `is_integer` pre-check or restructure** (P1, ~125 ns/add saved). Either short-circuit `is_integer` on a low-bit-chunk test before the full UInt128 mod, **or** simply move the `same scale` branch above the `is_integer` branch in `add()` - the same-scale UInt128 path already correctly handles two integers with positive scale.
-2. **Non-raising `add_promised` / `mul_promised` fast path** (P1, ~40-80 ns/op saved). `@always_inline fn` covering the same-scale-fits-in-UInt128 case; have `def add` call it and only enter the slow path on detected overflow.
+2. **Non-raising `add_promised` / `mul_promised` fast path** (P1, ~40-80 ns/op saved). `@always_inline def` covering the same-scale-fits-in-UInt128 case; have `def add` call it and only enter the slow path on detected overflow.
 3. **UInt128-only `multiply` fast path** (P1, ~200 ns/mul saved). Use `__umulh`-style intrinsic; if high-64 of the 128×128→256 product is zero, the result fits and we skip UInt256 entirely.
 4. **`to_string` inline buffer** (P2, ~300 ns/call saved). Replace per-call `String` builder with a 64-byte stack buffer, single final `String(StringSlice(buf))`.
 5. **Probe `divide`** (P2). Add probes (10)-(11) to `bench_decompose.mojo` to isolate the long-division-loop cost before refactoring.
@@ -455,49 +463,71 @@ This is now the **single highest-value perf workstream** in the plan - ahead of 
 
 #### 4.9.3 Historical Performance Tracking (Cross-Library Median ns/iter)
 
-Median ns/iter across all TOML test cases per op, from `benches/decimal128/`. Lower is better. `dm/rs` = decimo / rust_decimal ratio (>1 means decimo is slower). After each optimization landing, append a new row — do **not** edit prior rows. The first table tracks absolute decimo timings; the second tracks competitive ratios.
+Numbers come from `benches/decimal128/run_all.sh`. The bench harness times each case as **best-of-5** runs (each run = `iters` back-to-back ops in a tight
+loop with `black_box`/optimiser barriers). The two columns reported per op are then computed across all TOML cases for that op:
+
+- **median** ns/iter = median of the per-case best-of-5 numbers (typical case).
+- **max** ns/iter = slowest per-case best-of-5 number (worst case — useful because the long tail is what the next round of optimisation should attack).
+
+`dm/rs` = decimo / rust_decimal ratio (>1 means decimo is slower). After each optimisation landing, append a new row — do **not** edit prior rows. The **absolute** table tracks decimo timings; the **worst-case** table mirrors it with maxima; the **ratio** table tracks the competitive position.
 
 **Absolute decimo median ns/iter (lower = faster):**
 
-| date     | report                             |  add |  sub |  mul |  div |  cmp | from_str | to_str |
-| -------- | ---------------------------------- | ---: | ---: | ---: | ---: | ---: | -------: | -----: |
-| 20260421 | `dec128_report_20260421_112354.md` |  106 |  123 |    4 |    8 |    0 |    24.25 | 128.30 |
-| 20260421 | `dec128_report_20260421_203452.md` |    5 |    6 |    4 |    8 | 2.10 |    24.15 | 127.00 |
-| 20260421 | `dec128_report_20260421_205835.md` |    5 |    6 |    5 |    8 | 2.10 |    22.45 | 126.60 |
-| 20260421 | `dec128_report_20260421_211510.md` |    5 |  6.5 |    6 |    9 | 2.10 |    21.80 | 129.60 |
+| date     | report                             |  add |  sub |  mul |  div |  cmp | from_str | to_str | note                                               |
+| -------- | ---------------------------------- | ---: | ---: | ---: | ---: | ---: | -------: | -----: | -------------------------------------------------- |
+| 20260421 | `dec128_report_20260421_112354.md` |  106 |  123 |    4 |    8 |    0 |    24.25 | 128.30 | Before any optimisations                           |
+| 20260421 | `dec128_report_20260421_203452.md` |    5 |    6 |    4 |    8 | 2.10 |    24.15 | 127.00 | After H#3.1 `add()` reorder                        |
+| 20260421 | `dec128_report_20260421_205835.md` |    5 |    6 |    5 |    8 | 2.10 |    22.45 | 126.60 | After H#3.1 `is_integer()` cheap pre-check         |
+| 20260421 | `dec128_report_20260421_211510.md` |    5 |  6.5 |    6 |    9 | 2.10 |    21.80 | 129.60 | After H#3.1 `is_integer` branch removed from `add` |
+| 20260422 | `dec128_report_20260422_071048.md` |    5 |    7 |    5 |    8 | 2.10 |    23.10 | 124.30 | After H#4.1 `is_integer` branch removed from `mul` |
+
+**Worst-case (max across cases) decimo ns/iter (lower = faster):**
+
+| date     | report                             |  add |  sub |  mul |  div |   cmp | from_str | to_str | note                                               |
+| -------- | ---------------------------------- | ---: | ---: | ---: | ---: | ----: | -------: | -----: | -------------------------------------------------- |
+| 20260421 | `dec128_report_20260421_203452.md` |  121 |  121 |  500 |  359 | 18.10 |   177.60 | 586.70 | After H#3.1 `add()` reorder                        |
+| 20260421 | `dec128_report_20260421_205835.md` |  109 |  111 |  359 |  371 | 18.30 |   182.30 | 596.80 | After H#3.1 `is_integer()` cheap pre-check         |
+| 20260421 | `dec128_report_20260421_211510.md` |   14 |   15 |  339 |  361 | 18.20 |   185.80 | 587.30 | After H#3.1 `is_integer` branch removed from `add` |
+| 20260422 | `dec128_report_20260422_071048.md` |   16 |   16 |  335 |  356 | 19.10 |   175.60 | 578.30 | After H#4.1 `is_integer` branch removed from `mul` |
+
+The mul max barely moves (339 → 335 ns) because the worst case is now
+`High precision multiplication` / `e * e^0.5` / `Product overflows`, all of
+which have `combined_num_bits ≥ 186` and so genuinely need the UInt256
+`round_coefficient` pipeline (~120 ns of which is the runtime-`n`
+`power_of_10[uint256]` if-tree). The H#4.1 branch removal helped the
+*previously slow* "Both integer, different scale" cases: they collapsed from
+548–759 ns to 5–6 ns and now sit at the median, not the max — so the max
+column reveals what the median hides.
 
 **Decimo / competitor ratio (>1 = decimo slower; <1 = decimo faster):**
 
-| date     | op       | dm/rust | dm/csharp | dm/vbnet | notes                                                                 |
-| -------- | -------- | ------: | --------: | -------: | --------------------------------------------------------------------- |
-| 20260421 | add      |   21.2x |     43.1x |    59.2x | Before any optimizations                                              |
-| 20260421 | sub      |   61.5x |     59.0x |    68.7x | Before any optimizations                                              |
-| 20260421 | mul      |    1.6x |      2.9x |     4.4x | Before any optimizations                                              |
-| 20260421 | div      |    1.4x |      0.5x |     1.5x | Before any optimizations                                              |
-| 20260421 | cmp      |    0.0x |      0.0x |     0.0x | Before any optimizations                                              |
-| 20260421 | from_str |    2.6x |      0.7x |     0.7x | Before any optimizations                                              |
-| 20260421 | to_str   |    3.6x |      4.2x |     4.3x | Before any optimizations                                              |
-| 20260421 | add      |    2.2x |      2.0x |     2.7x | After H#3.1 `add()` reorder                                           |
-| 20260421 | sub      |    2.1x |      3.1x |     3.1x | After H#3.1 `add()` reorder                                           |
-| 20260421 | mul      |    1.8x |      2.6x |     3.6x | After H#3.1 `add()` reorder                                           |
-| 20260421 | div      |    1.4x |      0.6x |     1.4x | After H#3.1 `add()` reorder                                           |
-| 20260421 | cmp      |    0.8x |      1.4x |     1.1x | After H#3.1 `add()` reorder                                           |
-| 20260421 | from_str |    2.4x |      0.7x |     0.7x | After H#3.1 `add()` reorder                                           |
-| 20260421 | to_str   |    3.5x |      4.3x |     4.1x | After H#3.1 `add()` reorder                                           |
-| 20260421 | add      |    2.2x |      2.0x |     2.8x | After H#3.1 `is_integer()` pre-check                                  |
-| 20260421 | sub      |    2.9x |      2.8x |     2.7x | After H#3.1 `is_integer()` pre-check                                  |
-| 20260421 | mul      |    1.9x |      3.0x |     4.6x | After H#3.1 `is_integer()` pre-check                                  |
-| 20260421 | div      |    1.5x |      0.6x |     1.3x | After H#3.1 `is_integer()` pre-check                                  |
-| 20260421 | cmp      |    0.8x |      1.4x |     1.1x | After H#3.1 `is_integer()` pre-check                                  |
-| 20260421 | from_str |    2.4x |      0.6x |     0.6x | After H#3.1 `is_integer()` pre-check                                  |
-| 20260421 | to_str   |    3.5x |      4.4x |     4.3x | After H#3.1 `is_integer()` pre-check                                  |
-| 20260421 | add      |    1.5x |      2.2x |     1.9x | After H#3.1 `is_integer` branch removed from `add()`                  |
-| 20260421 | sub      |    3.3x |      3.6x |     2.9x | After H#3.1 `is_integer` branch removed from `add()`                  |
-| 20260421 | mul      |    3.0x |      5.6x |     5.6x | After H#3.1 `is_integer` branch removed (untouched code; bench noise) |
-| 20260421 | div      |    1.8x |      0.6x |     1.6x | After H#3.1 `is_integer` branch removed (untouched code)              |
-| 20260421 | cmp      |    0.8x |      1.4x |     1.2x | After H#3.1 `is_integer` branch removed (untouched code)              |
-| 20260421 | from_str |    2.1x |      0.6x |     0.6x | After H#3.1 `is_integer` branch removed (untouched code)              |
-| 20260421 | to_str   |    3.9x |      4.4x |     4.6x | After H#3.1 `is_integer` branch removed (untouched code)              |
+| date     | op       | dm/rust | dm/csharp | dm/vbnet | notes                                                |
+| -------- | -------- | ------: | --------: | -------: | ---------------------------------------------------- |
+| 20260421 | add      |   21.2x |     43.1x |    59.2x | Before any optimizations                             |
+| 20260421 | sub      |   61.5x |     59.0x |    68.7x | Before any optimizations                             |
+| 20260421 | mul      |    1.6x |      2.9x |     4.4x | Before any optimizations                             |
+| 20260421 | div      |    1.4x |      0.5x |     1.5x | Before any optimizations                             |
+| 20260421 | cmp      |    0.0x |      0.0x |     0.0x | Before any optimizations                             |
+| 20260421 | from_str |    2.6x |      0.7x |     0.7x | Before any optimizations                             |
+| 20260421 | to_str   |    3.6x |      4.2x |     4.3x | Before any optimizations                             |
+| 20260421 | add      |    2.2x |      2.0x |     2.7x | After H#3.1 `add()` reorder                          |
+| 20260421 | sub      |    2.1x |      3.1x |     3.1x | After H#3.1 `add()` reorder                          |
+| 20260421 | mul      |    1.8x |      2.6x |     3.6x | After H#3.1 `add()` reorder                          |
+| 20260421 | div      |    1.4x |      0.6x |     1.4x | After H#3.1 `add()` reorder                          |
+| 20260421 | cmp      |    0.8x |      1.4x |     1.1x | After H#3.1 `add()` reorder                          |
+| 20260421 | from_str |    2.4x |      0.7x |     0.7x | After H#3.1 `add()` reorder                          |
+| 20260421 | to_str   |    3.5x |      4.3x |     4.1x | After H#3.1 `add()` reorder                          |
+| 20260421 | add      |    2.2x |      2.0x |     2.8x | After H#3.1 `is_integer()` pre-check                 |
+| 20260421 | sub      |    2.9x |      2.8x |     2.7x | After H#3.1 `is_integer()` pre-check                 |
+| 20260421 | mul      |    1.9x |      3.0x |     4.6x | After H#3.1 `is_integer()` pre-check                 |
+| 20260421 | div      |    1.5x |      0.6x |     1.3x | After H#3.1 `is_integer()` pre-check                 |
+| 20260421 | cmp      |    0.8x |      1.4x |     1.1x | After H#3.1 `is_integer()` pre-check                 |
+| 20260421 | from_str |    2.4x |      0.6x |     0.6x | After H#3.1 `is_integer()` pre-check                 |
+| 20260421 | to_str   |    3.5x |      4.4x |     4.3x | After H#3.1 `is_integer()` pre-check                 |
+| 20260421 | add      |    1.5x |      2.2x |     1.9x | After H#3.1 `is_integer` branch removed from `add()` |
+| 20260421 | sub      |    3.3x |      3.6x |     2.9x | After H#3.1 `is_integer` branch removed from `add()` |
+| 20260422 | mul      |    2.3x |      3.7x |     4.4x | After H#4.1 `is_integer` branch removed from `mul()` |
+| 20260422 | div      |    1.6x |      0.6x |     1.5x | After H#4.1 `is_integer` branch removed from `mul()` |
 
 Observations from the 20260421 baseline:
 
