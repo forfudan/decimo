@@ -59,7 +59,7 @@ name = "e * e^0.5"
 [[cases]]
 a = "0.1234567890123456789"
 b = "0.9876543210987654321"
-name = "Product overflows precision (must round to 28 frac digits)"
+name = "Product overflows precision"
 
 [[cases]]
 a = "79228162514264337593543950335"
