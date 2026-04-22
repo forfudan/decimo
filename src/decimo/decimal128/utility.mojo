@@ -1439,7 +1439,10 @@ fn udiv_u256_by_pow10_gm(value: UInt256, k: Int) -> UInt256:
 
     Args:
         value: The UInt256 dividend.
-        k: The exponent. **Must satisfy `1 ≤ k ≤ 29`.**
+        k: The exponent. Must satisfy `1 ≤ k ≤ 29`.
+
+    Returns:
+        The quotient `floor(value / 10^k)`.
 
     Notes:
         Caller must guarantee `1 ≤ k ≤ 29`. No bounds check (not even
