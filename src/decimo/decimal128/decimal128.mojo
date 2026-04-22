@@ -2103,7 +2103,7 @@ struct Decimal128(
         # full UInt128 modulus.
         return (
             self.coefficient()
-            % decimo.decimal128.utility.power_of_10[DType.uint128](scale)
+            % decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](scale)
         ) == 0
 
     @always_inline
@@ -2133,7 +2133,9 @@ struct Decimal128(
         if scale == 0 and coef == 1:
             return True
 
-        if coef == decimo.decimal128.utility.power_of_10[DType.uint128](scale):
+        if coef == decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
+            scale
+        ):
             return True
 
         return False

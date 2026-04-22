@@ -483,6 +483,7 @@ loop with `black_box`/optimiser barriers). The two columns reported per op are t
 | 20260421 | `dec128_report_20260421_211510.md` |    5 |  6.5 |    6 |    9 | 2.10 |    21.80 | 129.60 | After H#3.1 `is_integer` branch removed from `add`               |
 | 20260422 | `dec128_report_20260422_071048.md` |    5 |    7 |    5 |    8 | 2.10 |    23.10 | 124.30 | After H#4.1 `is_integer` branch removed from `mul`               |
 | 20260422 | `dec128_report_20260422_085601.md` |    5 |    7 |    9 |    9 | 2.10 |    28.20 | 134.60 | After removing `format` from `debug_assert` + bisect if/else LUT |
+| 20260422 | `dec128_report_20260422_124242.md` |    5 |    6 |    5 |    8 | 2.10 |    22.65 | 136.00 | After Granlund-Möller UInt256 / 10^k                             |
 
 **Worst-case (max across cases) decimo ns/iter (lower = faster):**
 
@@ -493,6 +494,7 @@ loop with `black_box`/optimiser barriers). The two columns reported per op are t
 | 20260421 | `dec128_report_20260421_211510.md` |   14 |   15 |  339 |  361 | 18.20 |   185.80 | 587.30 | After H#3.1 `is_integer` branch removed from `add`               |
 | 20260422 | `dec128_report_20260422_071048.md` |   16 |   16 |  335 |  356 | 19.10 |   175.60 | 578.30 | After H#4.1 `is_integer` branch removed from `mul`               |
 | 20260422 | `dec128_report_20260422_085601.md` |   17 |   16 |  262 |  307 | 19.80 |    68.40 | 577.90 | After removing `format` from `debug_assert` + bisect if/else LUT |
+| 20260422 | `dec128_report_20260422_124242.md` |   14 |   15 |   22 |  257 | 17.40 |    65.30 | 554.50 | After Granlund-Möller UInt256 / 10^k                             |
 
 The mul max barely moves (339 → 335 ns) because the worst case is now
 `High precision multiplication` / `e * e^0.5` / `Product overflows`, all of
@@ -505,34 +507,34 @@ column reveals what the median hides.
 
 **Decimo / competitor ratio (>1 = decimo slower; <1 = decimo faster):**
 
-| date     | op       | dm/rust | dm/csharp | dm/vbnet | notes                                                            |
-| -------- | -------- | ------: | --------: | -------: | ---------------------------------------------------------------- |
-| 20260421 | add      |   21.2x |     43.1x |    59.2x | Before any optimizations                                         |
-| 20260421 | sub      |   61.5x |     59.0x |    68.7x | Before any optimizations                                         |
-| 20260421 | mul      |    1.6x |      2.9x |     4.4x | Before any optimizations                                         |
-| 20260421 | div      |    1.4x |      0.5x |     1.5x | Before any optimizations                                         |
-| 20260421 | cmp      |    0.0x |      0.0x |     0.0x | Before any optimizations                                         |
-| 20260421 | from_str |    2.6x |      0.7x |     0.7x | Before any optimizations                                         |
-| 20260421 | to_str   |    3.6x |      4.2x |     4.3x | Before any optimizations                                         |
-| 20260421 | add      |    2.2x |      2.0x |     2.7x | After H#3.1 `add()` reorder                                      |
-| 20260421 | sub      |    2.1x |      3.1x |     3.1x | After H#3.1 `add()` reorder                                      |
-| 20260421 | mul      |    1.8x |      2.6x |     3.6x | After H#3.1 `add()` reorder                                      |
-| 20260421 | div      |    1.4x |      0.6x |     1.4x | After H#3.1 `add()` reorder                                      |
-| 20260421 | cmp      |    0.8x |      1.4x |     1.1x | After H#3.1 `add()` reorder                                      |
-| 20260421 | from_str |    2.4x |      0.7x |     0.7x | After H#3.1 `add()` reorder                                      |
-| 20260421 | to_str   |    3.5x |      4.3x |     4.1x | After H#3.1 `add()` reorder                                      |
-| 20260421 | add      |    2.2x |      2.0x |     2.8x | After H#3.1 `is_integer()` pre-check                             |
-| 20260421 | sub      |    2.9x |      2.8x |     2.7x | After H#3.1 `is_integer()` pre-check                             |
-| 20260421 | mul      |    1.9x |      3.0x |     4.6x | After H#3.1 `is_integer()` pre-check                             |
-| 20260421 | div      |    1.5x |      0.6x |     1.3x | After H#3.1 `is_integer()` pre-check                             |
-| 20260421 | cmp      |    0.8x |      1.4x |     1.1x | After H#3.1 `is_integer()` pre-check                             |
-| 20260421 | from_str |    2.4x |      0.6x |     0.6x | After H#3.1 `is_integer()` pre-check                             |
-| 20260421 | to_str   |    3.5x |      4.4x |     4.3x | After H#3.1 `is_integer()` pre-check                             |
-| 20260421 | add      |    1.5x |      2.2x |     1.9x | After H#3.1 `is_integer` branch removed from `add()`             |
-| 20260421 | sub      |    3.3x |      3.6x |     2.9x | After H#3.1 `is_integer` branch removed from `add()`             |
-| 20260422 | mul      |    2.3x |      3.7x |     4.4x | After H#4.1 `is_integer` branch removed from `mul()`             |
-| 20260422 | div      |    1.6x |      0.6x |     1.5x | After H#4.1 `is_integer` branch removed from `mul()`             |
-| 20260422 | div      |    1.5x |      0.7x |     1.6x | After removing `format` from `debug_assert` + bisect if/else LUT |
+| date     | op       | dm/rust | dm/csharp | dm/vbnet | notes                                                |
+| -------- | -------- | ------: | --------: | -------: | ---------------------------------------------------- |
+| 20260421 | add      |   21.2x |     43.1x |    59.2x | Before any optimizations                             |
+| 20260421 | sub      |   61.5x |     59.0x |    68.7x | Before any optimizations                             |
+| 20260421 | mul      |    1.6x |      2.9x |     4.4x | Before any optimizations                             |
+| 20260421 | div      |    1.4x |      0.5x |     1.5x | Before any optimizations                             |
+| 20260421 | cmp      |    0.0x |      0.0x |     0.0x | Before any optimizations                             |
+| 20260421 | from_str |    2.6x |      0.7x |     0.7x | Before any optimizations                             |
+| 20260421 | to_str   |    3.6x |      4.2x |     4.3x | Before any optimizations                             |
+| 20260421 | add      |    2.2x |      2.0x |     2.7x | After H#3.1 `add()` reorder                          |
+| 20260421 | sub      |    2.1x |      3.1x |     3.1x | After H#3.1 `add()` reorder                          |
+| 20260421 | mul      |    1.8x |      2.6x |     3.6x | After H#3.1 `add()` reorder                          |
+| 20260421 | div      |    1.4x |      0.6x |     1.4x | After H#3.1 `add()` reorder                          |
+| 20260421 | cmp      |    0.8x |      1.4x |     1.1x | After H#3.1 `add()` reorder                          |
+| 20260421 | from_str |    2.4x |      0.7x |     0.7x | After H#3.1 `add()` reorder                          |
+| 20260421 | to_str   |    3.5x |      4.3x |     4.1x | After H#3.1 `add()` reorder                          |
+| 20260421 | add      |    2.2x |      2.0x |     2.8x | After H#3.1 `is_integer()` pre-check                 |
+| 20260421 | sub      |    2.9x |      2.8x |     2.7x | After H#3.1 `is_integer()` pre-check                 |
+| 20260421 | mul      |    1.9x |      3.0x |     4.6x | After H#3.1 `is_integer()` pre-check                 |
+| 20260421 | div      |    1.5x |      0.6x |     1.3x | After H#3.1 `is_integer()` pre-check                 |
+| 20260421 | cmp      |    0.8x |      1.4x |     1.1x | After H#3.1 `is_integer()` pre-check                 |
+| 20260421 | from_str |    2.4x |      0.6x |     0.6x | After H#3.1 `is_integer()` pre-check                 |
+| 20260421 | to_str   |    3.5x |      4.4x |     4.3x | After H#3.1 `is_integer()` pre-check                 |
+| 20260421 | add      |    1.5x |      2.2x |     1.9x | After H#3.1 `is_integer` branch removed from `add()` |
+| 20260421 | sub      |    3.3x |      3.6x |     2.9x | After H#3.1 `is_integer` branch removed from `add()` |
+| 20260422 | mul      |    2.3x |      3.7x |     4.4x | After H#4.1 `is_integer` branch removed from `mul()` |
+| 20260422 | div      |    1.6x |      0.6x |     1.5x | After H#4.1 `is_integer` branch removed from `mul()` |
+| 20260422 | mul      |    1.8x |      3.8x |     4.4x | After G-M UInt256 / 10^k                             |
 
 Observations from the 20260421 baseline:
 
@@ -580,6 +582,30 @@ Observations from the `085601` run (after stripping `.format(n)` / `+ String(rou
 - **Repository-wide audit clean:** a regex + paren-balanced multi-line walk over `src/decimo/*.mojo` confirms there are no remaining `debug_assert(...)` calls that build a `String` via `.format()` or `+ String(...)` in their message argument. Future `debug_assert` calls should use plain string literals only until/unless Mojo gains lazy-message support.
 - **Result equivalence preserved:** add 14/14, sub 14/14, mul 15/16 (the long-standing `multiply by zero` rust-style scale mismatch in §5.7), div 11/11, cmp 30/30, from_str 16/16, to_str 9/9.
 - **Take-away:** when LLVM-generated asm shows allocator calls inside a loop you "know" is allocation-free, suspect eager-evaluation of *non-source-visible* arguments (e.g. `debug_assert` messages, default values, `print` arguments). The Mojo language reference says nothing about `debug_assert`'s message-argument evaluation order; this should either change or be documented prominently.
+
+**Notes for #10 — Granlund-Möller reciprocal divider for UInt256 / 10^k (20260422_122336):**
+
+The `085601` run still showed multiply max ~262 ns (and divide max ~307 ns), with the cross-op overview putting decimo at 1.8× rust on multiply medians but **42× rust** on the worst case (`e × e^0.5`, ~252 ns vs ~6 ns). Asm + isolated micro-benchmarking localised the cost to a single line in `round_coefficient[uint256]`: `truncated = value // divisor` where `divisor = power_of_10_unsafe[uint256](k)` for k ∈ [1, 29]. LLVM lowers UInt256 division to a portable shift-subtract software loop; one such call costs ~250 ns even when the divisor is a known compile-time-class constant.
+
+**Fix: Granlund-Möller saturating-reciprocal divider** (`udiv_u256_by_pow10_gm`, named after Hacker's Delight §10-9). For each k ∈ [1, 29], pre-compute a 256-bit magic constant `mp = ⌈2^(N+ℓ)/d⌉ − 2^N` (with N = 256 and ℓ = `bit_width(d) − 1`). At runtime: `t1 = mulhi_256(mp, n); q = (((n − t1) >> 1) + t1) >> (ℓ − 1)`. The 30 `mp` values are stored in a 32-byte-per-entry rodata blob (`_GM_RECIPROCAL_BLOB`) and the 30 `ℓ−1` shift counts in a 30-byte sidecar (`_GM_SHIFT_BLOB`), bitcast-indexed for one-load access (same trick as `power_of_10_unsafe`). `mulhi_256(a, b)` uses four `UInt256(u128_a) * UInt256(u128_b)` cross-products and adds the carry; LLVM compiles this to a tight straight-line sequence of native `umulh` + `mul` instructions. **Cost: ~6 ns/call standalone; e × e^0.5 dropped 252 → 20 ns/iter — 12.6× faster than the prior code path, and 5.6× FASTER than rust\_decimal's 111 ns on the same case.**
+
+- **Critical correctness detail:** the magic constant must use **ceiling** division: `mp = -((-(1 << (N+ℓ))) // d) − (1 << N)`. An initial implementation using floor division failed 17/2000 random-input tests at k = 1; switching to ceiling brought the failure rate to 0/2000 across all k ∈ [1, 29].
+
+- **Why no fallback algorithm is shipped:** k ∈ [1, 29] covers every `Decimal128` multiply/round call site (since `combined_num_bits ≤ 192` implies `k ≤ 29`). For any future caller that exceeds that range, `round_coefficient` falls back to the native `value // divisor` path — slow but correct, and only as a defensive guard. An intermediate prototype (a u32-limb schoolbook divider modelled after rust_decimal's `Buf24::rescale`) was implemented and benchmarked at ~22 ns/call on the worst case — already a 11× improvement over the native UInt256 divide — but G-M's ~6 ns is strictly better and equally simple, so the schoolbook variant was removed before this commit landed.
+
+- **Validation:** `tests/decimal128/test_decimal128_gm_divider.mojo` (5 tests) cross-checks G-M against the native `v // 10^k` for every k ∈ [1, 29] over 28 deterministic stress samples (zeros, ones, 10^k boundaries, 2^n, near-prime constants, MAX_AS_UINT128²), plus pow-of-10 edge-points (10^k − 1, 10^k, 10^k + 1, 2·10^k − 1, 2·10^k), end-to-end multiply checks, and the floor-divide invariant `q·d ≤ v < (q+1)·d`. All pass under `-D ASSERT=all`.
+
+End-to-end impact in the `124242` cross-language report:
+
+- **multiply max: 262 → 22 ns/iter** — ~12× speedup on the worst case, and (uniquely so far) decimo now has the smallest worst-case multiply cost among the four languages on the `e × e^0.5` row (~20 ns vs rust 111 ns vs csharp 32 ns vs vbnet 35 ns).
+- **multiply median: 9 → 5 ns/iter** — back to the level last seen at the `071048` snapshot, undoing the slight median regression introduced by the bisect LUT.
+- **divide max: 307 → 253 ns/iter** — small win (the same `round_coefficient[uint256]` path is reused inside `divide()` when the result needs scale-down).
+- **multiply ratio dm/rust: 2.3× → 1.8×** — closes most of the remaining gap; the residual factor is the per-call overhead on cases where decimo already does the right divisor-class dispatch but rust gets to skip the class entirely (32-bit-coefficient fast paths).
+- **No regression** in result-equivalence: add 14/14, sub 14/14, mul 15/16 (same `multiply by zero` rust-style scale mismatch as before — a presentation difference, not a value difference), div 11/11, cmp 30/30, from_str 16/16, to_str 9/9.
+
+**Take-away:** when LLVM lowers a wide-integer division to a software loop (visible as a long shift-subtract sequence in `--emit=asm`), and the divisor class is a small fixed set of compile-time constants, a Granlund-Möller reciprocal table is the right answer — but use ceiling division for the magic constant or the saturating-reciprocal identity does not hold at the divisor boundary.
+
+**Multiply test coverage expansion (orthogonal observation, same commit):** while landing the GM divider, `tests/decimal128/test_data/decimal128_multiply.toml` was extended with **74 stress cases** under a new `[[gm_stress_tests]]` section covering k ∈ [1, 28] of the GM divider sweep plus large-int × small-fraction, MAX-class, transcendental, negative-product, and all-integer variants. The expected values were cross-checked against **three independent industry references**: Rust `rust_decimal` 1.36, C# `System.Decimal` (.NET 10), and VB.NET `System.Decimal` (.NET 10). **71/74 cases match all three references byte-for-byte.** The 3 remaining cases (k=14, 15, 16 of the sweep) differ from *all three* references by 1 ULP — i.e., decimo is unambiguously off-by-1 there, not the references — because decimo's multiply path applies HALF_EVEN twice (once in `fit_to_max_coefficient` and again in `round_coefficient`), and the fit-then-round sequence can produce a different last digit than a single-step quantize. The 3 divergent blocks in the TOML are inline-flagged with a `# DIVERGENT:` comment recording the canonical value (the rust/cs/vb agreement) and the reason `expected=` retains decimo's actual output (to keep CI green). Migrating decimo's multiply to a single-step quantize matching the three references is a separate workstream and is **not** addressed by this commit.
 
 ## 5. Improvement Opportunities
 

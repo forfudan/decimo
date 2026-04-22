@@ -326,7 +326,7 @@ def root(x: Decimal128, n: Int) raises -> Decimal128:
             if (
                 guess_coef_powered
                 == x_coef
-                * decimo.decimal128.utility.power_of_10[DType.uint128](n)
+                * decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](n)
             ):
                 return Decimal128.from_uint128(
                     guess_coef // 10,
@@ -1035,7 +1035,7 @@ def log10(x: Decimal128) raises -> Decimal128:
         else:
             return Decimal128(UInt32(x_scale), 0, 0, 0x8000_0000)
 
-    var ten_to_power_of_scale = decimo.decimal128.utility.power_of_10[
+    var ten_to_power_of_scale = decimo.decimal128.utility.power_of_10_unsafe[
         DType.uint128
     ](x_scale)
 

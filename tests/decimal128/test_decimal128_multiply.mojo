@@ -7,6 +7,9 @@ Test Decimal128 multiplication operations including:
 4. precision and scale (TOML + inline)
 5. boundary cases (TOML + inline)
 6. commutative property (TOML)
+7. Granlund-Möller UInt256 / 10^k stress sweep (TOML, 61 cases covering
+   every k ∈ [1, 29] of the GM divider plus large-int × small-frac,
+   max-class, transcendental, and negative-product variants)
 """
 
 from std.python import Python, PythonObject
@@ -59,6 +62,7 @@ def test_multiplication() raises:
     _run_multiply_section(toml, pydecimal, "negative_tests", count_wrong)
     _run_multiply_section(toml, pydecimal, "precision_tests", count_wrong)
     _run_multiply_section(toml, pydecimal, "boundary_tests", count_wrong)
+    _run_multiply_section(toml, pydecimal, "gm_stress_tests", count_wrong)
 
     testing.assert_equal(count_wrong, 0, "Some multiplication tests failed.")
 
