@@ -54,7 +54,7 @@ name = "Very large numbers"
 [[cases]]
 a = "1.000000000000000000000000001"
 b = "1.000000000000000000000000000"
-name = "Catastrophic cancellation (tiny diff at high precision)"
+name = "Tiny diff at high precision"
 
 [[cases]]
 a = "1000.00"

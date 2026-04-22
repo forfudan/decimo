@@ -158,13 +158,21 @@ def fit_to_max_coefficient[
     var ndigits = number_of_digits(value)
     var digits_to_remove = ndigits - Decimal128.MAX_NUM_DIGITS
 
-    # First attempt: keep MAX_NUM_DIGITS (29) digits.
-    var result = round_coefficient(value, digits_to_remove, sign, rounding_mode)
+    # First attempt: keep MAX_NUM_DIGITS (29) digits. We just verified
+    # `digits_to_remove < ndigits == number_of_digits(value)`, so the
+    # `ndigits_to_remove > number_of_digits(value)` guard inside
+    # `round_coefficient` would always be false here — instantiate with
+    # `skip_digit_check=True` to drop the redundant `number_of_digits` call.
+    var result = round_coefficient[skip_digit_check=True](
+        value, digits_to_remove, sign, rounding_mode
+    )
 
     # Because 2^96 − 1 is not at a clean decimal boundary, the 29-digit
     # rounded result may still exceed the maximum. Retry with 28 digits.
+    # `digits_to_remove + 1 <= ndigits` (since `ndigits >= 30` here), so
+    # the digit-check guard is still vacuous and we keep `skip_digit_check`.
     if result > ValueType(Decimal128.MAX_AS_UINT128):
-        result = round_coefficient(
+        result = round_coefficient[skip_digit_check=True](
             value, digits_to_remove + 1, sign, rounding_mode
         )
         digits_to_remove += 1
@@ -193,7 +201,9 @@ def fit_to_max_coefficient[
 # the natural `// + %` form.)
 @always_inline
 def round_coefficient[
-    dtype: DType, //
+    dtype: DType,
+    //,
+    skip_digit_check: Bool = False,
 ](
     value: Scalar[dtype],
     ndigits_to_remove: Int,
@@ -205,6 +215,11 @@ def round_coefficient[
 
     Parameters:
         dtype: Must be either `DType.uint128` or `DType.uint256`.
+        skip_digit_check: If true, the function assumes `ndigits_to_remove` is
+            valid (i.e. ≤ the number of digits in `value`) and skips the
+            check that would otherwise return early for large `ndigits_to_remove`.
+            This is an optimization for hot paths that have already validated
+            `ndigits_to_remove` against `number_of_digits(value)`.
 
     Args:
         value: The coefficient to round.
@@ -253,26 +268,57 @@ def round_coefficient[
     # invoking `power_of_10` with an exponent that may overflow `Scalar[dtype]`
     # when the caller passes a very large `ndigits_to_remove` (e.g. via
     # `Decimal128.round()` with a strongly negative `ndigits`).
-    if ndigits_to_remove > number_of_digits(value):
-        if value == 0:
+    #
+    # Hot-path callers that have already validated `ndigits_to_remove` against
+    # `number_of_digits(value)` (e.g. `fit_to_max_coefficient`) instantiate
+    # this with `skip_digit_check=True` to elide the redundant
+    # `number_of_digits` call (~50 ns on UInt256). The branch below is then
+    # constant-folded away by the compiler.
+    comptime if not skip_digit_check:
+        if ndigits_to_remove > number_of_digits(value):
+            if value == 0:
+                return ValueType(0)
+            var fast_mode = rounding_mode
+            if rounding_mode == RoundingMode.ceiling():
+                fast_mode = (
+                    RoundingMode.up() if not sign else RoundingMode.down()
+                )
+            elif rounding_mode == RoundingMode.floor():
+                fast_mode = (
+                    RoundingMode.down() if not sign else RoundingMode.up()
+                )
+            if fast_mode == RoundingMode.up():
+                return ValueType(1)
             return ValueType(0)
-        var fast_mode = rounding_mode
-        if rounding_mode == RoundingMode.ceiling():
-            fast_mode = RoundingMode.up() if not sign else RoundingMode.down()
-        elif rounding_mode == RoundingMode.floor():
-            fast_mode = RoundingMode.down() if not sign else RoundingMode.up()
-        if fast_mode == RoundingMode.up():
-            return ValueType(1)
-        return ValueType(0)
 
     # Single divmod: writing `// + %` lets LLVM compute one division and
     # derive the remainder via `a - (a/b) * b`, then CSE-dedup the shared
     # division (verified at the ARM64 asm level).
     # An earlier `value - truncated * divisor` rewrite was strictly more
     # source code for identical generated code.
-    var divisor = power_of_10[dtype](ndigits_to_remove)
-    var truncated = value // divisor
-    var remainder = value % divisor
+    var divisor = power_of_10_unsafe[dtype](ndigits_to_remove)
+    # UInt256 // UInt256 lowers to a generic shift-subtract software loop
+    # (~250 ns on aarch64). For UInt256, redirect to the Granlund-Möller
+    # reciprocal multiplier (`udiv_u256_by_pow10_gm`, ~5 ns) for the
+    # `1 ≤ k ≤ 29` range that covers every Decimal128 multiply/round
+    # call site (since `combined_num_bits ≤ 192` implies `k ≤ 29`).
+    # The `else` arm is a defensive fallback for any future caller that
+    # might exceed that range; it pays the slow native u256 divide.
+    # UInt128 // UInt128 already maps to compiler-rt's hardware-fast
+    # `__udivti3`, so leave that path alone.
+    var truncated: ValueType
+    comptime if dtype == DType.uint256:
+        if ndigits_to_remove >= 1 and ndigits_to_remove <= 29:
+            truncated = rebind[ValueType](
+                udiv_u256_by_pow10_gm(rebind[UInt256](value), ndigits_to_remove)
+            )
+        else:
+            truncated = value // divisor
+    else:
+        truncated = value // divisor
+    # Derive the remainder from the (already known) truncated quotient and
+    # divisor — one wide multiply + one wide subtract, no second division.
+    var remainder = value - truncated * divisor
 
     # Translate directed modes into sign-independent UP / DOWN.
     var effective_mode = rounding_mode
@@ -318,8 +364,7 @@ def round_coefficient[
     else:
         debug_assert(
             False,
-            "Unknown rounding mode in round_coefficient: "
-            + String(rounding_mode),
+            "Unknown rounding mode in round_coefficient",
         )
 
     return truncated
@@ -440,7 +485,10 @@ def round_to_keep_first_n_digits[
         # Calculate how many digits to keep (MAX_NUM_DIGITS = 29)
         var ndigits_to_remove = ndigits_of_x - ndigits
 
-        # Collect digits for rounding decision
+        # Collect digits for rounding decision.
+        # Use the safe `power_of_10` here (not `_unsafe`): this function
+        # is DEPRECATED and not on the hot path, so prefer the variant
+        # with a `debug_assert`ed bound over the trust-the-caller fast path.
         var divisor = power_of_10[dtype](ndigits_to_remove)
         var truncated_value = value // divisor
         var remainder = value % divisor
@@ -496,8 +544,7 @@ def round_to_keep_first_n_digits[
         else:
             debug_assert(
                 False,
-                "Unknown rounding mode in round_to_keep_first_n_digits: "
-                + String(rounding_mode),
+                "Unknown rounding mode in round_to_keep_first_n_digits",
             )
 
         return truncated_value
@@ -709,6 +756,10 @@ def number_of_bits[dtype: DType, //](var value: Scalar[dtype]) -> Int:
 # When a new power of 10 is requested, it is calculated and added to the cache.
 # This cache is used to avoid recalculating the same powers of 10 multiple times.
 #
+# Or, simply create a module-level inline array with hard-coded powers of 10
+# up to 58, which is the maximum number of digits we need to handle for
+# Dec128 coefficients.
+#
 # TODO: Currently, this won't work when you create a mojopkg to use.
 # When Mojo supports module-level variables, this part can be used.
 # ===----------------------------------------------------------------------=== #
@@ -791,7 +842,7 @@ def power_of_10[
     dtype == DType.uint128 or dtype == DType.uint256
 ):
     """
-    Returns 10^n using cached values when available.
+    Returns 10^n via a balanced bisect if/else search.
 
     Parameters:
         dtype: The Mojo scalar type to calculate the power of 10 for.
@@ -807,159 +858,664 @@ def power_of_10[
 
     Notes:
 
-        **WARNING**: The overflow is only checked when debug mode is enabled.
-        Make sure that the n is less than 29 for UInt128 and 77 for UInt256.
+        **WARNING**: The bound on `n` is only checked when `debug_assert`
+        is enabled. Callers must guarantee `n <= 38` for `uint128` and
+        `n <= 58` for `uint256`.
 
-        The powers of 10 are hardcoded up to 10^58. This covers all values
-        needed for Decimal128 arithmetic (max scale 28 × 2 = 56 for products
-        of two max-scale numbers, plus 2 for rounding headroom). For larger
-        values, the function falls back to the `**` operator.
+        Implementation is a balanced binary-search if/else tree (depth
+        ~5 for uint128, ~6 for uint256). Each leaf returns a comptime
+        literal which the compiler materialises with `mov`/`movk`
+        immediates. No memory traffic. Does not depend on the
+        `comptime InlineArray` -> stack-rebuild path.
     """
 
     comptime if dtype == DType.uint128:
-        debug_assert(
-            n <= 29,
-            "power_of_10() for uint128 only supports n up to 29, got {}".format(
-                n
-            ),
+        # 10^38 ~= 1e38 < 2^128 ~= 3.4e38, so 10^38 is the largest power
+        # of 10 representable in UInt128.
+        debug_assert(n <= 38, "power_of_10[uint128]: n must be <= 38")
+        if n < 14:
+            if n < 7:
+                if n < 3:
+                    if n < 1:
+                        return 1
+                    else:
+                        if n == 1:
+                            return 10
+                        else:
+                            return 100
+                else:
+                    if n < 5:
+                        if n == 3:
+                            return 1000
+                        else:
+                            return 10000
+                    else:
+                        if n == 5:
+                            return 100000
+                        else:
+                            return 1000000
+            else:
+                if n < 10:
+                    if n < 8:
+                        return 10000000
+                    else:
+                        if n == 8:
+                            return 100000000
+                        else:
+                            return 1000000000
+                else:
+                    if n < 12:
+                        if n == 10:
+                            return 10000000000
+                        else:
+                            return 100000000000
+                    else:
+                        if n == 12:
+                            return 1000000000000
+                        else:
+                            return 10000000000000
+        else:
+            if n < 21:
+                if n < 17:
+                    if n < 15:
+                        return 100000000000000
+                    else:
+                        if n == 15:
+                            return 1000000000000000
+                        else:
+                            return 10000000000000000
+                else:
+                    if n < 19:
+                        if n == 17:
+                            return 100000000000000000
+                        else:
+                            return 1000000000000000000
+                    else:
+                        if n == 19:
+                            return 10000000000000000000
+                        else:
+                            return 100000000000000000000
+            else:
+                if n < 29:
+                    if n < 25:
+                        if n < 23:
+                            if n == 21:
+                                return 1000000000000000000000
+                            else:
+                                return 10000000000000000000000
+                        else:
+                            if n == 23:
+                                return 100000000000000000000000
+                            else:
+                                return 1000000000000000000000000
+                    else:
+                        if n < 27:
+                            if n == 25:
+                                return 10000000000000000000000000
+                            else:
+                                return 100000000000000000000000000
+                        else:
+                            if n == 27:
+                                return 1000000000000000000000000000
+                            else:
+                                return 10000000000000000000000000000
+                else:
+                    # n in 29..38
+                    if n < 33:
+                        if n < 31:
+                            if n == 29:
+                                return 100000000000000000000000000000
+                            else:
+                                return 1000000000000000000000000000000
+                        else:
+                            if n == 31:
+                                return 10000000000000000000000000000000
+                            else:
+                                return 100000000000000000000000000000000
+                    else:
+                        if n < 36:
+                            if n < 34:
+                                return 1000000000000000000000000000000000
+                            else:
+                                if n == 34:
+                                    return 10000000000000000000000000000000000
+                                else:
+                                    return 100000000000000000000000000000000000
+                        else:
+                            if n < 38:
+                                if n == 36:
+                                    return 1000000000000000000000000000000000000
+                                else:
+                                    return (
+                                        10000000000000000000000000000000000000
+                                    )
+                            else:
+                                return 100000000000000000000000000000000000000
+    else:
+        debug_assert(n <= 58, "power_of_10[uint256]: n must be <= 58")
+        if n < 29:
+            if n < 14:
+                if n < 7:
+                    if n < 3:
+                        if n < 1:
+                            return 1
+                        else:
+                            if n == 1:
+                                return 10
+                            else:
+                                return 100
+                    else:
+                        if n < 5:
+                            if n == 3:
+                                return 1000
+                            else:
+                                return 10000
+                        else:
+                            if n == 5:
+                                return 100000
+                            else:
+                                return 1000000
+                else:
+                    if n < 10:
+                        if n < 8:
+                            return 10000000
+                        else:
+                            if n == 8:
+                                return 100000000
+                            else:
+                                return 1000000000
+                    else:
+                        if n < 12:
+                            if n == 10:
+                                return 10000000000
+                            else:
+                                return 100000000000
+                        else:
+                            if n == 12:
+                                return 1000000000000
+                            else:
+                                return 10000000000000
+            else:
+                if n < 21:
+                    if n < 17:
+                        if n < 15:
+                            return 100000000000000
+                        else:
+                            if n == 15:
+                                return 1000000000000000
+                            else:
+                                return 10000000000000000
+                    else:
+                        if n < 19:
+                            if n == 17:
+                                return 100000000000000000
+                            else:
+                                return 1000000000000000000
+                        else:
+                            if n == 19:
+                                return 10000000000000000000
+                            else:
+                                return 100000000000000000000
+                else:
+                    if n < 25:
+                        if n < 23:
+                            if n == 21:
+                                return 1000000000000000000000
+                            else:
+                                return 10000000000000000000000
+                        else:
+                            if n == 23:
+                                return 100000000000000000000000
+                            else:
+                                return 1000000000000000000000000
+                    else:
+                        if n < 27:
+                            if n == 25:
+                                return 10000000000000000000000000
+                            else:
+                                return 100000000000000000000000000
+                        else:
+                            if n == 27:
+                                return 1000000000000000000000000000
+                            else:
+                                return 10000000000000000000000000000
+        else:
+            if n < 44:
+                if n < 36:
+                    if n < 32:
+                        if n < 30:
+                            return 100000000000000000000000000000
+                        else:
+                            if n == 30:
+                                return 1000000000000000000000000000000
+                            else:
+                                return 10000000000000000000000000000000
+                    else:
+                        if n < 34:
+                            if n == 32:
+                                return 100000000000000000000000000000000
+                            else:
+                                return 1000000000000000000000000000000000
+                        else:
+                            if n == 34:
+                                return 10000000000000000000000000000000000
+                            else:
+                                return 100000000000000000000000000000000000
+                else:
+                    if n < 40:
+                        if n < 38:
+                            if n == 36:
+                                return 1000000000000000000000000000000000000
+                            else:
+                                return 10000000000000000000000000000000000000
+                        else:
+                            if n == 38:
+                                return 100000000000000000000000000000000000000
+                            else:
+                                return 1000000000000000000000000000000000000000
+                    else:
+                        if n < 42:
+                            if n == 40:
+                                return 10000000000000000000000000000000000000000
+                            else:
+                                return (
+                                    100000000000000000000000000000000000000000
+                                )
+                        else:
+                            if n == 42:
+                                return (
+                                    1000000000000000000000000000000000000000000
+                                )
+                            else:
+                                return (
+                                    10000000000000000000000000000000000000000000
+                                )
+            else:
+                if n < 51:
+                    if n < 47:
+                        if n < 45:
+                            return 100000000000000000000000000000000000000000000
+                        else:
+                            if n == 45:
+                                return 1000000000000000000000000000000000000000000000
+                            else:
+                                return 10000000000000000000000000000000000000000000000
+                    else:
+                        if n < 49:
+                            if n == 47:
+                                return 100000000000000000000000000000000000000000000000
+                            else:
+                                return 1000000000000000000000000000000000000000000000000
+                        else:
+                            if n == 49:
+                                return 10000000000000000000000000000000000000000000000000
+                            else:
+                                return 100000000000000000000000000000000000000000000000000
+                else:
+                    if n < 55:
+                        if n < 53:
+                            if n == 51:
+                                return 1000000000000000000000000000000000000000000000000000
+                            else:
+                                return 10000000000000000000000000000000000000000000000000000
+                        else:
+                            if n == 53:
+                                return 100000000000000000000000000000000000000000000000000000
+                            else:
+                                return 1000000000000000000000000000000000000000000000000000000
+                    else:
+                        if n < 57:
+                            if n == 55:
+                                return 10000000000000000000000000000000000000000000000000000000
+                            else:
+                                return 100000000000000000000000000000000000000000000000000000000
+                        else:
+                            if n == 57:
+                                return 1000000000000000000000000000000000000000000000000000000000
+                            else:
+                                return 10000000000000000000000000000000000000000000000000000000000
+
+
+# ===----------------------------------------------------------------------=== #
+# `power_of_10_unsafe` - high-performance variant using string-literal rodata
+#
+# Yuhao's notes:
+# Each entry is laid out as a contiguous little-endian byte sequence inside a
+# `StringLiteral`. `StringLiteral.unsafe_ptr().bitcast[Scalar[dtype]]()[n]`
+# yields the n-th power of 10 with a single indexed load - no stack
+# materialisation, no per-call-site `comptime InlineArray` rebuild.
+#
+# Why not just use this in `power_of_10`? Because the bitcast trick is a
+# workaround for Mojo's lack of module-level cached variables; it is not
+# elegant Mojo. When Mojo grows real module-level variables, this entire
+# section can be replaced with a single shared `var POWER_OF_10_U128 =
+# InlineArray[UInt128, 29](...)` and `power_of_10` can call into it
+# directly. Until then, hot paths that need every nanosecond use
+# `power_of_10_unsafe`; the public `power_of_10` keeps the elegant
+# bisect implementation.
+#
+# Total rodata cost: 30 * 16 + 59 * 32 = 2 368 bytes.
+# ===----------------------------------------------------------------------=== #
+
+
+comptime _POWER_OF_10_U128_BLOB = (
+    "\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x0a\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x64\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\xe8\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x10\x27\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\xa0\x86\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x40\x42\x0f\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x80\x96\x98\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\xe1\xf5\x05\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\xca\x9a\x3b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\xe4\x0b\x54\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\xe8\x76\x48\x17\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x10\xa5\xd4\xe8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\xa0\x72\x4e\x18\x09\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x40\x7a\x10\xf3\x5a\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x80\xc6\xa4\x7e\x8d\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\xc1\x6f\xf2\x86\x23\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x8a\x5d\x78\x45\x63\x01\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x64\xa7\xb3\xb6\xe0\x0d\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\xe8\x89\x04\x23\xc7\x8a\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x10\x63\x2d\x5e\xc7\x6b\x05\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\xa0\xde\xc5\xad\xc9\x35\x36\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x40\xb2\xba\xc9\xe0\x19\x1e\x02\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x80\xf6\x4a\xe1\xc7\x02\x2d\x15\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\xa1\xed\xcc\xce\x1b\xc2\xd3\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x4a\x48\x01\x14\x16\x95\x45\x08\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\xe4\xd2\x0c\xc8\xdc\xd2\xb7\x52\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\xe8\x3c\x80\xd0\x9f\x3c\x2e\x3b\x03\x00\x00\x00\x00"
+    + "\x00\x00\x00\x10\x61\x02\x25\x3e\x5e\xce\x4f\x20\x00\x00\x00\x00"
+    + "\x00\x00\x00\xa0\xca\x17\x72\x6d\xae\x0f\x1e\x43\x01\x00\x00\x00"
+)
+
+
+comptime _POWER_OF_10_U256_BLOB = (
+    "\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x0a\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x64\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\xe8\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x10\x27\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\xa0\x86\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x40\x42\x0f\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x80\x96\x98\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\xe1\xf5\x05\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\xca\x9a\x3b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\xe4\x0b\x54\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\xe8\x76\x48\x17\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x10\xa5\xd4\xe8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\xa0\x72\x4e\x18\x09\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x40\x7a\x10\xf3\x5a\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x80\xc6\xa4\x7e\x8d\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\xc1\x6f\xf2\x86\x23\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x8a\x5d\x78\x45\x63\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x64\xa7\xb3\xb6\xe0\x0d\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\xe8\x89\x04\x23\xc7\x8a\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x10\x63\x2d\x5e\xc7\x6b\x05\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\xa0\xde\xc5\xad\xc9\x35\x36\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x40\xb2\xba\xc9\xe0\x19\x1e\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x80\xf6\x4a\xe1\xc7\x02\x2d\x15\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\xa1\xed\xcc\xce\x1b\xc2\xd3\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x4a\x48\x01\x14\x16\x95\x45\x08\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\xe4\xd2\x0c\xc8\xdc\xd2\xb7\x52\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\xe8\x3c\x80\xd0\x9f\x3c\x2e\x3b\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x10\x61\x02\x25\x3e\x5e\xce\x4f\x20\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\xa0\xca\x17\x72\x6d\xae\x0f\x1e\x43\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x40\xea\xed\x74\x46\xd0\x9c\x2c\x9f\x0c\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x80\x26\x4b\x91\xc0\x22\x20\xbe\x37\x7e\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x81\xef\xac\x85\x5b\x41\x6d\x2d\xee\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x0a\x5b\xc1\x38\x93\x8d\x44\xc6\x4d\x31\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x64\x8e\x8d\x37\xc0\x87\xad\xbe\x09\xed\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\xe8\x8f\x87\x2b\x82\x4d\xc7\x72\x61\x42\x13\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x10\x9f\x4b\xb3\x15\x07\xc9\x7b\xce\x97\xc0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\xa0\x36\xf4\x00\xd9\x46\xda\xd5\x10\xee\x85\x07\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x40\x22\x8a\x09\x7a\xc4\x86\x5a\xa8\x4c\x3b\x4b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x80\x56\x65\x5f\xc4\xac\x43\x89\x93\xfe\x50\xf0\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x00\x61\xf5\xb9\xab\xbf\xa4\x5c\xc3\xf1\x29\x63\x1d\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x00\xca\x95\x43\xb5\x7c\x6f\x9e\xa1\x71\xa3\xdf\x25\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x00\xe4\xd9\xa3\x14\xdf\x5a\x30\x50\x70\x62\xbc\x7a\x0b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x00\xe8\x82\x66\xce\xb6\x8c\xe3\x21\x63\xd8\x5b\xcb\x72\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x00\x10\x1d\x01\x10\x24\x7f\xe3\x52\xdf\x73\x96\xf1\x7b\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x00\xa0\x22\x0b\xa0\x68\xf7\xe2\x3c\xb9\x86\xe0\x6f\xd7\x2c\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x00\x40\x5a\x6f\x40\x16\xaa\xdd\x60\x3c\x43\xc5\x5e\x6a\xc0\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x00\x80\x86\x59\x84\xde\xa4\xa8\xc8\x5b\xa0\xb4\xb3\x27\x84\x11\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x00\x00\x41\x7f\x2b\xb1\x70\x96\xd6\x95\x43\x0e\x05\x8d\x29\xaf\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x00\x00\x8a\xf8\xb2\xeb\x66\xe0\x61\xda\xa3\x8e\x32\x82\x9f\xd7\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x00\x00\x64\xb5\xfd\x34\x05\xc4\xd2\x87\x66\x92\xf9\x15\x3b\x6c\x44\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x00\x00\xe8\x15\xe9\x11\x34\xa8\x3b\x4e\x01\xb8\xbf\xdb\x4e\x3a\xac\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x00\x00\x10\xdb\x1a\xb3\x08\x92\x54\x0e\x0d\x30\x7d\x95\x14\x47\xba\x1a\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x00\x00\xa0\x8e\x0c\xff\x56\xb4\x4d\x8f\x82\xe0\xe3\xd6\xcd\xc6\x46\x0b\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x00\x00\x40\x92\x7d\xf6\x65\x0b\x09\x99\x19\xc5\xe6\x64\x0a\xc4\xc3\x70\x0a\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x00\x00\x80\xb6\xe7\xa0\xfb\x71\x5a\xfa\xff\xb2\x03\xf1\x67\xa8\xa5\x67\x68\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x00\x00\x00\x21\x0d\x49\xd4\x73\x88\xc7\xff\xfd\x24\x6a\x0f\x94\x78\x0c\x14\x04\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x00\x00\x00\x4a\x83\xda\x4a\x86\x54\xcb\xfd\xeb\x71\x25\x9a\xc8\xb5\x7c\xc8\x28\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x00\x00\x00\x00\x00\x00\x00\xe4\x20\x89\xec\x3e\x4d\xf1\xe9\x37\x73\x76\x05\xd6\x19\xdf\xd4\x97\x01\x00\x00\x00\x00\x00\x00\x00"
+)
+
+
+@always_inline
+def power_of_10_unsafe[
+    dtype: DType
+](n: Int) -> Scalar[dtype] where (
+    dtype == DType.uint128 or dtype == DType.uint256
+):
+    """
+    Returns 10^n via a single indexed load from a string-literal rodata blob.
+
+    Parameters:
+        dtype: The Mojo scalar type to calculate the power of 10 for. Must be
+            either `DType.uint128` or `DType.uint256`.
+
+    Args:
+        n: The exponent to raise 10 to.
+
+    Constraints:
+        `dtype` must be either `DType.uint128` or `DType.uint256`.
+
+    Returns:
+        The value of 10^n as a Mojo scalar.
+
+    Notes:
+
+        **WARNING**: This function performs **no bounds check** at all - not
+        even via `debug_assert`. Out-of-range `n` will read past the end of
+        the rodata blob and return arbitrary bits. Callers must guarantee
+        `0 <= n <= 29` for `uint128` and `0 <= n <= 58` for `uint256`.
+
+        Use the safe `power_of_10` (which has the same dispatch tree but
+        with an asserted bound) when you cannot prove `n` is in range.
+
+        Implementation: each entry is a 16-byte (uint128) or 32-byte
+        (uint256) little-endian raw value packed contiguously in a
+        `StringLiteral` blob. `unsafe_ptr().bitcast[Scalar[dtype]]()[n]`
+        yields the n-th value with a single indexed load. The
+        `StringLiteral` lives in rodata for the lifetime of the program;
+        no stack materialisation, no allocation, no per-call-site
+        `InlineArray` rebuild.
+
+        TODO: Drop this function once Mojo grows module-level variables
+        and the elegant `var POWER_OF_10_U128 = InlineArray[UInt128, 29]`
+        approach becomes possible. See the comment block above for the
+        full migration plan.
+    """
+
+    comptime if dtype == DType.uint128:
+        # `alignment=1`: `StringLiteral` rodata is only byte-aligned, but a
+        # bare `bitcast[Scalar[uint128]]()[n]` would tell LLVM the load is
+        # 16-byte aligned (the natural alignment of `UInt128`). On strict
+        # platforms (e.g. some ARM cores) that can fault if the compiler
+        # emits an aligned-only instruction. The explicit `alignment=1`
+        # forces an unaligned load (same machine code on x86_64 / Apple
+        # Silicon, but portably correct).
+        return (
+            _POWER_OF_10_U128_BLOB.unsafe_ptr()
+            .bitcast[Scalar[dtype]]()
+            .load[alignment=1](n)
         )
     else:
-        debug_assert(
-            n <= 77,
-            "power_of_10() for uint256 only supports n up to 77, got {}".format(
-                n
-            ),
+        return (
+            _POWER_OF_10_U256_BLOB.unsafe_ptr()
+            .bitcast[Scalar[dtype]]()
+            .load[alignment=1](n)
         )
 
-    comptime ValueType = Scalar[dtype]
 
-    if n == 0:
-        return ValueType(1)
-    if n == 1:
-        return ValueType(10)
-    if n == 2:
-        return ValueType(100)
-    if n == 3:
-        return ValueType(1000)
-    if n == 4:
-        return ValueType(10000)
-    if n == 5:
-        return ValueType(100000)
-    if n == 6:
-        return ValueType(1000000)
-    if n == 7:
-        return ValueType(10000000)
-    if n == 8:
-        return ValueType(100000000)
-    if n == 9:
-        return ValueType(1000000000)
-    if n == 10:
-        return ValueType(10000000000)
-    if n == 11:
-        return ValueType(100000000000)
-    if n == 12:
-        return ValueType(1000000000000)
-    if n == 13:
-        return ValueType(10000000000000)
-    if n == 14:
-        return ValueType(100000000000000)
-    if n == 15:
-        return ValueType(1000000000000000)
-    if n == 16:
-        return ValueType(10000000000000000)
-    if n == 17:
-        return ValueType(100000000000000000)
-    if n == 18:
-        return ValueType(1000000000000000000)
-    if n == 19:
-        return ValueType(10000000000000000000)
-    if n == 20:
-        return ValueType(100000000000000000000)
-    if n == 21:
-        return ValueType(1000000000000000000000)
-    if n == 22:
-        return ValueType(10000000000000000000000)
-    if n == 23:
-        return ValueType(100000000000000000000000)
-    if n == 24:
-        return ValueType(1000000000000000000000000)
-    if n == 25:
-        return ValueType(10000000000000000000000000)
-    if n == 26:
-        return ValueType(100000000000000000000000000)
-    if n == 27:
-        return ValueType(1000000000000000000000000000)
-    if n == 28:
-        return ValueType(10000000000000000000000000000)
-    if n == 29:
-        return ValueType(100000000000000000000000000000)
-    if n == 30:
-        return ValueType(1000000000000000000000000000000)
-    if n == 31:
-        return ValueType(10000000000000000000000000000000)
-    if n == 32:
-        return ValueType(100000000000000000000000000000000)
-    if n == 33:
-        return ValueType(1000000000000000000000000000000000)
-    if n == 34:
-        return ValueType(10000000000000000000000000000000000)
-    if n == 35:
-        return ValueType(100000000000000000000000000000000000)
-    if n == 36:
-        return ValueType(1000000000000000000000000000000000000)
-    if n == 37:
-        return ValueType(10000000000000000000000000000000000000)
-    if n == 38:
-        return ValueType(100000000000000000000000000000000000000)
-    if n == 39:
-        return ValueType(1000000000000000000000000000000000000000)
-    if n == 40:
-        return ValueType(10000000000000000000000000000000000000000)
-    if n == 41:
-        return ValueType(100000000000000000000000000000000000000000)
-    if n == 42:
-        return ValueType(1000000000000000000000000000000000000000000)
-    if n == 43:
-        return ValueType(10000000000000000000000000000000000000000000)
-    if n == 44:
-        return ValueType(100000000000000000000000000000000000000000000)
-    if n == 45:
-        return ValueType(1000000000000000000000000000000000000000000000)
-    if n == 46:
-        return ValueType(10000000000000000000000000000000000000000000000)
-    if n == 47:
-        return ValueType(100000000000000000000000000000000000000000000000)
-    if n == 48:
-        return ValueType(1000000000000000000000000000000000000000000000000)
-    if n == 49:
-        return ValueType(10000000000000000000000000000000000000000000000000)
-    if n == 50:
-        return ValueType(100000000000000000000000000000000000000000000000000)
-    if n == 51:
-        return ValueType(1000000000000000000000000000000000000000000000000000)
-    if n == 52:
-        return ValueType(10000000000000000000000000000000000000000000000000000)
-    if n == 53:
-        return ValueType(100000000000000000000000000000000000000000000000000000)
-    if n == 54:
-        return ValueType(
-            1000000000000000000000000000000000000000000000000000000
-        )
-    if n == 55:
-        return ValueType(
-            10000000000000000000000000000000000000000000000000000000
-        )
-    if n == 56:
-        return ValueType(
-            100000000000000000000000000000000000000000000000000000000
-        )
-    if n == 57:
-        return ValueType(
-            1000000000000000000000000000000000000000000000000000000000
-        )
-    if n == 58:
-        return ValueType(
-            10000000000000000000000000000000000000000000000000000000000
-        )
+# ===----------------------------------------------------------------------=== #
+# Granlund-Möller reciprocal-multiplication divider for `value // 10^k`.
+#
+# Strategy
+# For a fixed divisor `d`, the unsigned quotient `floor(n/d)` can be
+# computed with one wide multiply + one shift, using the well-known
+# Granlund-Möller algorithm (Hacker's Delight §10-9):
+#
+#     ell    = ceil(log2(d))
+#     m_full = ceil(2^(N+ell) / d)        (fits in N+1 bits)
+#     m'     = m_full - 2^N               (fits in N bits)
+#
+#     t1 = mulhi_N(m', n)                 (high N bits of m' * n)
+#     q  = (((n - t1) >> 1) + t1) >> (ell - 1)
+#
+# For `d = 10^k` with `1 ≤ k ≤ 29`, the resulting `m'` is always 256-bit
+# and we precompute the table at the bottom of this file. Replacing the
+# 32-step schoolbook divide with a single 256×256→high-256 multiply plus
+# two shifts brings the divide down to roughly the cost of the multiply
+# itself (~5 ns on aarch64), versus ~250 ns for the generic UInt256 //
+# UInt256 software loop that LLVM falls back to.
+#
+# Coverage
+# `1 ≤ k ≤ 29` covers every `Decimal128` multiply/round call site
+# (since `combined_num_bits ≤ 192` implies `k ≤ 29`). For any future
+# caller that exceeds that range, `round_coefficient` falls back to
+# the native `value // divisor` path.
+# ===----------------------------------------------------------------------=== #
 
-    return ValueType(10) ** n
+
+comptime _U256_MASK_LO128 = UInt256(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)
+
+
+@always_inline
+fn _mulhi_u256(a: UInt256, b: UInt256) -> UInt256:
+    """Returns the high 256 bits of `a * b` (both unsigned 256-bit).
+
+    Splits each operand into two u128 halves and uses the schoolbook
+    formula:
+
+        a * b  =  (ah*bh) << 256
+               +  (ah*bl + al*bh) << 128
+               +   al*bl
+
+    The high 256 bits = `ah*bh` + (top 128 of each cross term)
+    + (carry from summing the middle 128 bits).
+
+    Each `UInt256(u128_a) * UInt256(u128_b)` cross-product is exact
+    (both factors fit in 128 bits, so the 256-bit product never
+    overflows the low 256 bits returned by Mojo's `*`).
+    """
+    var ah = UInt128(a >> 128)
+    var al = UInt128(a & _U256_MASK_LO128)
+    var bh = UInt128(b >> 128)
+    var bl = UInt128(b & _U256_MASK_LO128)
+
+    var ll = UInt256(al) * UInt256(bl)  # bits [  0..256)
+    var lh = UInt256(al) * UInt256(bh)  # bits [128..384)
+    var hl = UInt256(ah) * UInt256(bl)  # bits [128..384)
+    var hh = UInt256(ah) * UInt256(bh)  # bits [256..512)
+
+    var mid = (ll >> 128) + (lh & _U256_MASK_LO128) + (hl & _U256_MASK_LO128)
+    return hh + (lh >> 128) + (hl >> 128) + (mid >> 128)
+
+
+# Precomputed Granlund-Möller reciprocals for `d = 10^k`, `k ∈ [0, 29]`.
+# Index 0 is unused (zero-padded so callers can use `k` as the index).
+# Each entry is the 256-bit `m' = ceil(2^(256+ell)/d) - 2^256`
+# stored little-endian, 32 bytes per slot.
+#
+# Generated offline (Python, verified against random 2k inputs per `k`):
+#   N = 256
+#   for k in range(1, 30):
+#       d   = 10**k
+#       ell = (d-1).bit_length()
+#       m   = -((-(1 << (N+ell))) // d)        # ceil
+#       mp  = m - (1 << N)
+#       blob.extend(mp.to_bytes(32, "little"))
+comptime _GM_RECIPROCAL_BLOB = (
+    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + "\x9a\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99\x99"
+    + "\xaf\x47\xe1\x7a\x14\xae\x47\xe1\x7a\x14\xae\x47\xe1\x7a\x14\xae\x47\xe1\x7a\x14\xae\x47\xe1\x7a\x14\xae\x47\xe1\x7a\x14\xae\x47"
+    + "\xbf\x9f\x1a\x2f\xdd\x24\x06\x81\x95\x43\x8b\x6c\xe7\xfb\xa9\xf1\xd2\x4d\x62\x10\x58\x39\xb4\xc8\x76\xbe\x9f\x1a\x2f\xdd\x24\x06"
+    + "\x98\xff\x90\x7e\xfb\x3a\x70\xce\x88\xd2\xde\xe0\x0b\x93\xa9\x82\x51\x49\x9d\x80\x26\xc2\x86\xa7\x57\xca\x32\xc4\xb1\x2e\x6e\xa3"
+    + "\x79\xcc\x40\x65\xfc\xfb\x8c\x0b\x07\x42\xb2\x80\x09\xdc\xba\x9b\xa7\x3a\xe4\x66\xb8\x01\x9f\x1f\x46\x08\x8f\x36\x8e\x58\x8b\x4f"
+    + "\x2e\x3d\x9a\xea\xc9\xfc\xa3\x6f\xd2\x34\x28\x9a\x07\xb0\xc8\xaf\x1f\x62\x83\x85\x93\x34\x7f\x4c\x6b\xd3\xd8\x5e\x0b\x7a\x6f\x0c"
+    + "\x49\xc8\xf6\x10\x43\x61\x06\x19\xb7\x87\x73\xc3\xa5\x19\x41\x19\x99\x36\xd2\x08\xec\x20\x65\x7a\x78\x85\xf4\xca\xab\x29\x7f\xad"
+    + "\xa1\x06\x5f\xda\x68\xe7\xd1\xe0\xf8\xd2\xc2\x02\xeb\x7a\x9a\x7a\x7a\xf8\x74\x6d\x56\x1a\x84\xfb\xf9\x9d\xc3\x08\x23\xee\x98\x57"
+    + "\x4e\x05\x4c\x48\xba\x52\x0e\xe7\x93\x75\x35\x02\xbc\xc8\xae\xfb\x61\x60\x2a\xf1\x11\x15\xd0\x62\x2e\x4b\x69\x6d\x82\xbe\xe0\x12"
+    + "\x16\xa2\x79\x40\x5d\x84\xb0\x71\xb9\x55\x22\x9d\xf9\x0d\x7e\x5f\x36\x9a\x10\xb5\x1c\x88\xe6\x6a\x7d\xab\xdb\x7b\x9d\xfd\xcd\xb7"
+    + "\xab\x81\x94\x33\xe4\x69\xc0\x27\x61\x11\xb5\x7d\x94\x71\xfe\xe5\x91\xae\x73\x2a\x4a\xd3\x1e\xef\xfd\x55\x49\x96\x17\xfe\xd7\x5f"
+    + "\x89\x34\xdd\xc2\xe9\x87\x33\x86\x1a\x41\xf7\xca\x76\xf4\x31\xeb\xa7\x8b\x5c\x88\x6e\x0f\x7f\xf2\x97\x11\xa1\xde\x12\x98\x79\x19"
+    + "\x0e\x54\xc8\x37\xa9\x0c\xec\x09\xc4\x01\xf2\x77\x24\x87\xe9\x11\x73\xdf\x60\x0d\xe4\x4b\xcb\x50\x26\x1c\x68\x97\x84\x26\x5c\xc2"
+    + "\x0b\x10\x6d\xf9\x20\x0a\xf0\x07\xd0\x67\x8e\xf9\xe9\x38\x21\xdb\x28\x19\xe7\x3d\x83\x09\x09\xa7\x1e\xb0\xb9\x12\x6a\xb8\x49\x68"
+    + "\xd6\x0c\x24\x61\x1a\x08\xc0\x6c\xa6\xec\x71\x94\x21\xc7\x4d\xaf\x20\x14\xec\x97\x02\x6e\x3a\x1f\xb2\x59\x61\x75\xee\xf9\x3a\x20"
+    + "\x56\xe1\x6c\x9b\x90\xa6\x99\x47\x0a\xe1\x4f\xba\x35\xd8\xe2\x7e\x67\x53\x13\xf3\xd0\x7c\x5d\x98\xb6\xc2\x9b\x88\x7d\x29\x2b\xcd"
+    + "\x45\xb4\xf0\x15\xda\x1e\xae\x9f\x6e\x1a\x73\xfb\x2a\xe0\x1b\xff\x85\x0f\xa9\xf5\x73\xfd\x7d\x13\x92\x68\x49\x6d\x64\x54\xef\x70"
+    + "\x6b\xc3\xf3\x77\xae\x18\x58\x19\xf2\xe1\x28\xc9\x88\xe6\xaf\x65\x9e\x3f\x87\xc4\x5c\x64\xfe\x75\x0e\xba\x3a\x24\x1d\xdd\x25\x27"
+    + "\x11\x9f\x1f\xf3\xe3\x8d\x26\xc2\xe9\xcf\xa7\x0e\x0e\xa4\x4c\x3c\xca\x65\xd8\xa0\xc7\xd3\x63\x56\x4a\xc3\x2a\x6d\xfb\x94\x3c\xd8"
+    + "\x74\xb2\x7f\xc2\x1c\x0b\x52\x9b\x54\xa6\xec\x3e\x0b\x50\x3d\x30\x08\xeb\x79\x4d\x39\x76\xe9\x11\xd5\x35\x22\x24\xc9\x10\xca\x79"
+    + "\x29\xf5\x32\x35\x4a\x6f\x0e\x49\xdd\x51\xbd\x98\xa2\xd9\xfd\x8c\x06\xbc\x94\xd7\x2d\xf8\xed\xa7\xdd\xf7\xb4\xe9\xa0\x40\x3b\x2e"
+    + "\x42\x88\x51\x88\x43\xe5\xe3\x74\xc8\x4f\x95\x27\x04\x29\x96\xe1\x70\xc6\xba\x25\x16\x8d\x49\xa6\x62\x59\xee\x75\x01\x01\x92\xe3"
+    + "\xcf\x39\x41\xa0\xcf\x1d\x83\x5d\xa0\x0c\x11\x86\x36\x87\xde\x1a\x27\x05\x2f\x1e\x78\x0a\x6e\xeb\x4e\x14\x25\x2b\x01\x34\xdb\x82"
+    + "\xd9\xc7\xcd\x19\xa6\xe4\x68\xe4\x19\x0a\x74\x9e\x2b\x6c\x18\xaf\x85\x6a\xf2\xe4\x2c\xd5\x24\x89\xa5\x76\xea\x88\x9a\x29\x7c\x35"
+    + "\xc1\x3f\x49\x29\x70\x07\xdb\xd3\x8f\x76\x86\xfd\x78\x13\x27\x18\x09\x44\xea\x07\x7b\xbb\x07\x75\xa2\x8a\xdd\xa7\x5d\x0f\x2d\xef"
+    + "\xcd\xff\xa0\xba\x59\x6c\xe2\x0f\x73\xf8\xd1\xca\x60\xdc\xb8\x79\x3a\x03\x55\x06\xfc\x95\x6c\x2a\xb5\x3b\xb1\xec\x4a\x0c\x24\x8c"
+    + "\x0b\x33\xe7\x2e\xae\x56\xe8\x3f\x8f\x93\x41\xa2\x80\xe3\x93\x94\xfb\x68\xaa\x9e\xc9\x44\xbd\xee\x90\xfc\xc0\x23\x6f\xa3\xe9\x3c"
+    + "\x11\xb8\x3e\x7e\xe3\xbd\x73\x99\x4b\x1f\x9c\x03\x01\x6c\xb9\xed\xf8\xa7\x10\x31\xdc\x3a\x95\x17\x1b\x94\x01\x06\xe5\x6b\x0f\xfb"
+    + "\xa7\xf9\xfe\x64\x1c\xcb\x8f\x47\x09\x19\xb0\xcf\x00\xf0\x2d\xbe\x60\x86\x40\x27\xb0\xc8\xdd\x12\x7c\x76\x34\x6b\xea\xef\xa5\x95"
+)
+
+
+# Per-`k` shift amount (`ell - 1`), 30 entries (index 0 unused).
+# Same offline generation; max value is 96 (k=29), comfortably ≤ 255.
+comptime _GM_SHIFT_BLOB = (
+    "\x00\x03\x06\x09\x0d\x10\x13\x17\x1a\x1d"
+    + "\x21\x24\x27\x2b\x2e\x31\x35\x38\x3b\x3f"
+    + "\x42\x45\x49\x4c\x4f\x53\x56\x59\x5d\x60"
+)
+
+
+@always_inline
+fn udiv_u256_by_pow10_gm(value: UInt256, k: Int) -> UInt256:
+    """Returns `floor(value / 10^k)` using one mulhi-256 plus a shift.
+
+    Args:
+        value: The UInt256 dividend.
+        k: The exponent. Must satisfy `1 ≤ k ≤ 29`.
+
+    Returns:
+        The quotient `floor(value / 10^k)`.
+
+    Notes:
+        Caller must guarantee `1 ≤ k ≤ 29`. No bounds check (not even
+        via `debug_assert`) is performed — out-of-range `k` will read
+        past the precomputed reciprocal table and return garbage.
+
+        For `k = 0` or `k > 29`, use `udiv_u256_by_pow10` instead.
+
+        Cost: ~5 ns on aarch64 (single 256×256→high-256 multiply +
+        two shifts), versus ~22 ns for `udiv_u256_by_pow10`.
+
+        Algorithm: Granlund-Möller saturating reciprocal (Hacker's
+        Delight §10-9). The 256-bit reciprocal `m'` and shift amount
+        `ell - 1` for each `d = 10^k` are precomputed in the
+        `_GM_RECIPROCAL_BLOB` and `_GM_SHIFT_BLOB` rodata blobs.
+    """
+    # `alignment=1`: see the corresponding note in `power_of_10_unsafe`.
+    # `StringLiteral.unsafe_ptr()` only guarantees byte alignment, so we
+    # must request an explicitly unaligned 32-byte load to remain portable.
+    var mp = (
+        _GM_RECIPROCAL_BLOB.unsafe_ptr().bitcast[UInt256]().load[alignment=1](k)
+    )
+    var shift = Int(_GM_SHIFT_BLOB.unsafe_ptr()[k])
+    var t1 = _mulhi_u256(mp, value)
+    var t = ((value - t1) >> 1) + t1
+    return t >> UInt256(shift)

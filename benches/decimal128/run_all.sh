@@ -39,6 +39,11 @@ else
   echo ">>> dotnet not found; skipping C# and VB.NET harnesses."
 fi
 
+# ---- Build Mojo harness once (release: -O3, no debug info, asserts off) ----
+echo ">>> Building Mojo harness (release: -O3, no debug, no asserts)..."
+(cd mojo && pixi run --manifest-path ../../../pixi.toml mojo build \
+     -I ../../../src -O3 -g0 -D ASSERT=none ./bench.mojo -o ./bench)
+
 for op in "${OPS[@]}"; do
   echo
   echo "===== $op ====="
@@ -56,10 +61,8 @@ for op in "${OPS[@]}"; do
   fi
 
   echo "--- decimo.Decimal128 ---"
-  (cd mojo && pixi run --manifest-path ../../../pixi.toml mojo run \
-       -I ../../../src --debug-level=line-tables -D ASSERT=none \
-       ./bench.mojo --op "$op" \
-       --cases-dir ../cases --logs-dir ../logs)
+  (cd mojo && pixi run --manifest-path ../../../pixi.toml \
+       ./bench --op "$op" --cases-dir ../cases --logs-dir ../logs)
 done
 
 echo

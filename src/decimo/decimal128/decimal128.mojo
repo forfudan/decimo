@@ -207,7 +207,7 @@ struct Decimal128(
         out self, low: UInt32, mid: UInt32, high: UInt32, flags: UInt32
     ):
         """Initializes a Decimal128 with four raw words of internal representation.
-        ***WARNING***: This method does not check the flags.
+        ***WARNING***: This method does not check the flags at runtime.
         If you are not sure about the flags, use `Decimal128.from_words()` instead.
 
         Args:
@@ -216,6 +216,16 @@ struct Decimal128(
             high: The most significant 32 bits of the coefficient.
             flags: The raw flags word containing scale and sign.
         """
+
+        # Developer-only sanity check: catches invalid scale at construction
+        # time so downstream hot paths (e.g. `is_integer()`, `is_one()`) can
+        # safely use `power_of_10_unsafe` without a fallback. Compiled out
+        # in release builds (`-D ASSERT=none`).
+        debug_assert(
+            ((flags & Self.SCALE_MASK) >> Self.SCALE_SHIFT)
+            <= UInt32(Self.MAX_SCALE),
+            "Decimal128(low, mid, high, flags): scale must be <= MAX_SCALE",
+        )
 
         self.low = low
         self.mid = mid
@@ -2101,9 +2111,14 @@ struct Decimal128(
         # Slow path: low bits are clear, so the coefficient is divisible by
         # 2^scale. We still need to check divisibility by 5^scale via the
         # full UInt128 modulus.
+        # Safe to use `_unsafe` here: the raw `Decimal128(low, mid, high,
+        # flags)` constructor `debug_assert`s that the scale bits stay in
+        # `0..MAX_SCALE`, and every other constructor path validates scale
+        # explicitly, so `scale` is guaranteed to be within the unsafe
+        # blob's `0..29` range.
         return (
             self.coefficient()
-            % decimo.decimal128.utility.power_of_10[DType.uint128](scale)
+            % decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](scale)
         ) == 0
 
     @always_inline
@@ -2133,7 +2148,9 @@ struct Decimal128(
         if scale == 0 and coef == 1:
             return True
 
-        if coef == decimo.decimal128.utility.power_of_10[DType.uint128](scale):
+        if coef == decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
+            scale
+        ):
             return True
 
         return False

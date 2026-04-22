@@ -17,3 +17,6 @@ csharp/obj/
 # VB.NET build output.
 vbnet/bin/
 vbnet/obj/
+
+# Binary executables.
+mojo/bench
