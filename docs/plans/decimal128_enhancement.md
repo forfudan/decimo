@@ -246,6 +246,7 @@ at least don't read past the `power_of_10[uint128]` bisect tree. The
 multiplication overflow is **not** addressed.
 
 Suggested fix (out of scope for PR-221):
+
 - Compute the comparison in `UInt256` (using `power_of_10[uint256]`), which
   has plenty of headroom (`2^256 ~= 1.16e77` vs. worst-case product
   `~7.92e28 * 1e38 = 7.92e66`).
@@ -429,7 +430,7 @@ This is far worse than the “~2× gap” the plan previously assumed. The from_
 **Hypothesised causes** (must be confirmed with profiling before attacking):
 
 1. ~~**`coefficient()` reconstructs UInt128 from 3×UInt32 on every call.** `add`/`subtract`/`multiply`/`compare` all start with at least two `coefficient()` calls. Rust stores the coefficient as a single 96-bit field that bitcasts directly. We should add an `@always_inline` direct-load fast path~~or store the coefficient as `UInt128` natively (with the flags packed elsewhere)~~. Bitcast the 4 UInt32 words to a single UInt128 and mask off the sign/scale bits in one shot, then use that UInt128 directly in the operators instead of working on the three UInt32s and reconstructing UInt128 repeatedly. I think this is the single biggest low-hanging fruit on the hot path.~~
-2. **`raises` overhead on every operator.** `__add__`, `__mul__`, `__truediv__` are all `raises` even when overflow is impossible. Rust’s `+`/`*`/`/` are infallible (panicking) by default and `checked_*` is opt-in. Each `raises` call adds an error-pointer setup + branch. Consider an `@always_inline` non-raising fast path that asserts in debug builds and panics on overflow (matching Rust default). For example, `add_promised` (think about other names recently) that assumes no overflow and is `@always_inline`, then `add` that calls `add_promised` and checks for overflow in debug but not in release.
+2. **`raises` overhead on every operator.** `__add__`, `__mul__`, `__truediv__` are all `raises` even when overflow is impossible. Rust’s `+`/`*`/`/` are infallible (panicking) by default and `checked_*` is opt-in. Each `raises` call adds an error-pointer setup + branch. Add a non-raising fast path that assumes no overflow and panics if the assumption is violated (matching Rust default). For example, `add_unchecked` that assumes no overflow, then `add` that calls `add_unchecked` and checks for overflow in debug but not in release. The primary win is removing `raises`; `@always_inline` is an optional secondary win to ensure call overhead doesn’t eat the savings on the integer fast path — measure first and add only if the inliner doesn’t pick it up.
 3. **Scale alignment uses `power_of_10(diff)` lookups + a wide multiply** even when scales already match. Add a `if scale_a == scale_b` short-circuit at the top of `add`.
 4. **Multiply always promotes to UInt256** even when `coef_a * coef_b` provably fits in UInt128 (which is most cases for 14-digit-ish inputs). Add a UInt128 fast path with overflow check.
 5. **Divide uses a long-division digit loop in Mojo**; rust_decimal uses a UInt128 hardware divide for the common case. Adopt the same fast path.
@@ -455,17 +456,17 @@ Each row isolates one suspected cost (1_000_000 iters/op, best of 5, same machin
 
 Mapped against the hypotheses above, ranked by **measured ns saved per fractional add()**:
 
-| Rank | Hypothesis (H#x.y from §4.9.1)               | Evidence                | Marginal value         | Verdict / next action                                                 |
-| ---- | -------------------------------------------- | ----------------------- | ---------------------- | --------------------------------------------------------------------- |
-| 1    | H#3.1 `is_integer()` × 2 wastes UInt128 mod  | (3)=250ns, ¬(7)         | ~125 ns / add          | ✓ **DONE 20260421** — three-step landing; see notes below             |
-| 2    | H#2 `def raises` operators not inlined       | (5)−(3)−rest ≈ 80 ns    | 40-80 ns / add         | **Likely.** Add `@always_inline def add_promised`; `__add__` calls it |
-| 3    | H#4 UInt256 promotion in `mul` when fits 128 | (9)=802ns, prod<2^96    | ~200 ns / mul          | **Confirmed.** `__umulh` high-half check; promote only on overflow    |
-| 4    | H#3 UInt256 promotion in `add` (diff scale)  | (6)≈(5)                 | ~30-50 ns              | Marginal; after #1–#3                                                 |
-| 5    | H#5 divide long-division loop                | div=809ns total         | TBD ~200-400ns         | Probe divide-only decomposition first                                 |
-| 6    | H#6 `to_string` per-call allocation          | 515 ns vs rust 69       | ~300 ns / call         | **Confirmed.** Stack `InlineArray[UInt8,64]` + single `String` build  |
-| 7    | H#1 `coefficient()` reconstruction           | (2)≈0 ns                | ~0 ns ✗                | **Disproven** for `add`/`mul` hot path; native UInt128 field separate |
-| 8    | `from_uint128()` raises/check overhead       | (4)=1.6 ns              | ~0 ns ✗                | **Disproven.** Don't touch                                            |
-| 9    | H#4.1 `is_integer()` branch in `multiply()`  | bench: 548-759 → 5-6 ns | ~550-750 ns/mul on hit | ✓ **DONE (this PR)** — branch removed; see notes below                |
+| Rank | Hypothesis (H#x.y from §4.9.1)               | Evidence                | Marginal value         | Verdict / next action                                                                                                         |
+| ---- | -------------------------------------------- | ----------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| 1    | H#3.1 `is_integer()` × 2 wastes UInt128 mod  | (3)=250ns, ¬(7)         | ~125 ns / add          | ✓ **DONE 20260421** — three-step landing; see notes below                                                                     |
+| 2    | H#2 `def raises` operators not inlined       | (5)−(3)−rest ≈ 80 ns    | 40-80 ns / add         | **Likely.** Add non-raising `add_unchecked`; `__add__` calls it (consider `@always_inline` if the inliner doesn’t pick it up) |
+| 3    | H#4 UInt256 promotion in `mul` when fits 128 | (9)=802ns, prod<2^96    | ~200 ns / mul          | **Confirmed.** `__umulh` high-half check; promote only on overflow                                                            |
+| 4    | H#3 UInt256 promotion in `add` (diff scale)  | (6)≈(5)                 | ~30-50 ns              | Marginal; after #1–#3                                                                                                         |
+| 5    | H#5 divide long-division loop                | div=809ns total         | TBD ~200-400ns         | Probe divide-only decomposition first                                                                                         |
+| 6    | H#6 `to_string` per-call allocation          | 515 ns vs rust 69       | ~300 ns / call         | **Confirmed.** Stack `InlineArray[UInt8,64]` + single `String` build                                                          |
+| 7    | H#1 `coefficient()` reconstruction           | (2)≈0 ns                | ~0 ns ✗                | **Disproven** for `add`/`mul` hot path; native UInt128 field separate                                                         |
+| 8    | `from_uint128()` raises/check overhead       | (4)=1.6 ns              | ~0 ns ✗                | **Disproven.** Don't touch                                                                                                    |
+| 9    | H#4.1 `is_integer()` branch in `multiply()`  | bench: 548-759 → 5-6 ns | ~550-750 ns/mul on hit | ✓ **DONE (this PR)** — branch removed; see notes below                                                                        |
 
 **Notes for #1 (three-step landing):**
 
@@ -486,7 +487,7 @@ Mapped against the hypotheses above, ranked by **measured ns saved per fractiona
 **Action plan (Phase 3, supersedes prior §4.9 priority - re-ordered by validated marginal value):**
 
 1. **Cheap `is_integer` pre-check or restructure** (P1, ~125 ns/add saved). Either short-circuit `is_integer` on a low-bit-chunk test before the full UInt128 mod, **or** simply move the `same scale` branch above the `is_integer` branch in `add()` - the same-scale UInt128 path already correctly handles two integers with positive scale.
-2. **Non-raising `add_promised` / `mul_promised` fast path** (P1, ~40-80 ns/op saved). `@always_inline def` covering the same-scale-fits-in-UInt128 case; have `def add` call it and only enter the slow path on detected overflow.
+2. **Non-raising `add_unchecked` / `mul_unchecked` fast path** (P1, ~40-80 ns/op saved). Non-raising `fn` covering the same-scale-fits-in-UInt128 case; have `def add` call it and only enter the slow path on detected overflow. `@always_inline` optional — add only if benchmarks show the call overhead is not eliminated by the default inliner.
 3. **UInt128-only `multiply` fast path** (P1, ~200 ns/mul saved). Use `__umulh`-style intrinsic; if high-64 of the 128×128→256 product is zero, the result fits and we skip UInt256 entirely.
 4. **`to_string` inline buffer** (P2, ~300 ns/call saved). Replace per-call `String` builder with a 64-byte stack buffer, single final `String(StringSlice(buf))`.
 5. **Probe `divide`** (P2). Add probes (10)-(11) to `bench_decompose.mojo` to isolate the long-division-loop cost before refactoring.
@@ -516,6 +517,7 @@ loop with `black_box`/optimiser barriers). The two columns reported per op are t
 | 20260422 | `dec128_report_20260422_071048.md` |    5 |    7 |    5 |    8 | 2.10 |    23.10 | 124.30 | After H#4.1 `is_integer` branch removed from `mul`               |
 | 20260422 | `dec128_report_20260422_085601.md` |    5 |    7 |    9 |    9 | 2.10 |    28.20 | 134.60 | After removing `format` from `debug_assert` + bisect if/else LUT |
 | 20260422 | `dec128_report_20260422_124242.md` |    5 |    6 |    5 |    8 | 2.10 |    22.65 | 136.00 | After Granlund-Möller UInt256 / 10^k                             |
+| 20260422 | `dec128_report_20260422_200239.md` |    4 |    4 |    — |    — |    — |        — |      — | After H#11 hot-path-first single-function `add`/`sub`            |
 
 **Worst-case (max across cases) decimo ns/iter (lower = faster):**
 
@@ -527,6 +529,7 @@ loop with `black_box`/optimiser barriers). The two columns reported per op are t
 | 20260422 | `dec128_report_20260422_071048.md` |   16 |   16 |  335 |  356 | 19.10 |   175.60 | 578.30 | After H#4.1 `is_integer` branch removed from `mul`               |
 | 20260422 | `dec128_report_20260422_085601.md` |   17 |   16 |  262 |  307 | 19.80 |    68.40 | 577.90 | After removing `format` from `debug_assert` + bisect if/else LUT |
 | 20260422 | `dec128_report_20260422_124242.md` |   14 |   15 |   22 |  257 | 17.40 |    65.30 | 554.50 | After Granlund-Möller UInt256 / 10^k                             |
+| 20260422 | `dec128_report_20260422_200239.md` |   14 |   14 |    — |    — |     — |        — |      — | After H#11 hot-path-first `add`/`sub`                            |
 
 The mul max barely moves (339 → 335 ns) because the worst case is now
 `High precision multiplication` / `e * e^0.5` / `Product overflows`, all of
@@ -567,6 +570,8 @@ column reveals what the median hides.
 | 20260422 | mul      |    2.3x |      3.7x |     4.4x | After H#4.1 `is_integer` branch removed from `mul()` |
 | 20260422 | div      |    1.6x |      0.6x |     1.5x | After H#4.1 `is_integer` branch removed from `mul()` |
 | 20260422 | mul      |    1.8x |      3.8x |     4.4x | After G-M UInt256 / 10^k                             |
+| 20260422 | add      |    1.3x |      1.7x |     1.5x | After H#11 hot-path-first `add`/`sub`                |
+| 20260422 | sub      |    2.0x |      1.9x |     1.7x | After H#11 hot-path-first `add`/`sub`                |
 
 Observations from the 20260421 baseline:
 
@@ -640,6 +645,57 @@ End-to-end impact in the `124242` cross-language report:
 **Multiply test coverage expansion (orthogonal observation, same commit):** while landing the GM divider, `tests/decimal128/test_data/decimal128_multiply.toml` was extended with **74 stress cases** under a new `[[gm_stress_tests]]` section covering k ∈ [1, 28] of the GM divider sweep plus large-int × small-fraction, MAX-class, transcendental, negative-product, and all-integer variants. The expected values were cross-checked against **three independent industry references**: Rust `rust_decimal` 1.36, C# `System.Decimal` (.NET 10), and VB.NET `System.Decimal` (.NET 10) — all three agree byte-for-byte on every case. The first sweep flagged 3 divergences (k=14, 15, 16) where decimo was 1 ULP off from the three-way consensus; root-cause analysis showed decimo's `multiply` was applying HALF_EVEN **twice** (once inside `fit_to_max_coefficient`, again inside the final `round_coefficient` when `final_scale > MAX_SCALE`), and the fit-then-round sequence can disagree with a single-step quantize on a half-ulp tie.
 
 **Multiply rounding fix (single-step round from full-precision product):** rather than annotate the divergences as expected, the underlying bug was patched at the root in both `combined_num_bits ≤ 128` (UInt128) and `combined_num_bits ≤ 192` (UInt256) branches of `multiply()` in `arithmetics.mojo`. The fast `combined_num_bits ≤ 96` branch already round-trips in a single step and is unchanged. The fix preserves the full-precision product as `prod_orig` before the first `fit_to_max_coefficient` pass; if `final_scale > MAX_SCALE` after that pass, instead of rounding the already-fitted coefficient again, it re-rounds `prod_orig` once with `total_drop = digits_removed + (final_scale − MAX_SCALE)` so HALF_EVEN sees the true full-precision tie/non-tie bits exactly once. A rare retry (`total_drop + 1`, dropping `final_scale` to `MAX_SCALE − 1`) handles the boundary case where the single-step rounded coefficient still exceeds `MAX_AS_UINT128` / `MAX_AS_UINT256`. The first attempt (replacing fit+round with round-then-fit using only `combined_scale − MAX_SCALE` as the drop count) regressed `exp_ln` catastrophically — `e^20` returned ~54 instead of ~485M — because dropping only the trailing-scale digits leaves a multi-MAX_COEF residue that `fit_to_max`'s try-29/try-28 retry cannot rescue; keeping `fit_to_max` as the first MAX_COEF reducer and redirecting only the second rounding step is what actually works. **All 74 stress cases now match the rust/cs/vb consensus** and all 18 decimal128 test files pass with zero regressions (incl. multiply 4/4, exp_ln 7/7, divide 11/11, sqrt 8/8, root_power 9/9). Two TOML cases that produce zero with `final_scale > MAX_SCALE` still carry an inline note that rust trims the trailing zero string to `"0"` while decimo preserves the full-scale `"0.0000…"` form — that is a presentation difference, not a value difference.
+
+**Notes for #11 — Hot-path-first single-function `add()` / `subtract()` (20260422_200239):**
+
+After §4.9.2 #1 collapsed the legacy `add()` from ~106 ns to ~5 ns by hoisting the same-scale branch above `is_integer()`, the remaining 5 ns/op gap to rust_decimal (rust ~2.4 ns) was small enough that micro-architectural costs started to dominate. An empirical decomposition (`temp/bench_unchecked_overhead.mojo` + `temp/bench_add_candidates.mojo`, deleted after analysis) split the cost two ways:
+
+- **`def raises` calling-convention overhead: ~1.5 ns/op** (a non-raising `fn` doing the same work measured at ~1.3 ns; the same body wrapped in `def raises` measured at ~4.0 ns standalone — the gap shrinks inside a real call site to ~1.5 ns once the inliner can see the error-pointer).
+- **Top-of-function branch dispatch (six `if/elif` arms in the legacy body): ~1.7 ns/op**, even when the *first* arm hits — each arm's predicate computation (e.g. `x1.coefficient() == 0`, `x1.is_integer()`, `x1.scale() == x2.scale()`) sits in the linear scan before the `same_scale` arm.
+
+§4.9.2 action #2 had originally proposed a non-raising `add_unchecked` fast path. A six-candidate sweep (A=re-order branches; B=drop both zero-special arms entirely; C=combined zero pre-test; D=split with `@always_inline`; E=push the zero-special into the slow tail; F=E + `@always_inline` on the public wrapper) measured against 17 input shapes (same/diff scale, both/one/neither integer, both/one/neither zero, sign combinations, near-MAX coefficients) found that the bulk of the win came from two micro-changes:
+
+- **Re-ordering the body so the same-scale UInt128 path is checked first** (the predicate `x1.scale() == x2.scale()` is one cheap UInt32 compare, and dominant in real workloads).
+- **Routing the zero-with-different-scale special into the slow tail** instead of letting it sit at the top — the slow tail's body is long enough that an extra coefficient-equality test is dwarfed by the UInt256 work it gates.
+
+An exploratory revision split these into `_add_same_scale_uint128` / `_add_diff_scale_uint256` / `_add_zero_special` / `_add_slow` helpers with `@always_inline` on the public wrapper, and bench-measured at add 3 ns / sub 4 ns. On code-style review the helper split was rejected in favour of keeping the historic single-function shape used for every other op in `arithmetics.mojo`; the two micro-changes above were folded back into a single-function form. The `@always_inline` on the public `def raises` is retained because dropping it costs ~1 ns/op on the hot path (5 vs 4 ns/iter measured) and is the only `@always_inline` that survives — the legacy four-helper layout has been deleted.
+
+The architecture is **one function each for `add` and `subtract`, public API contract preserved**:
+
+```mojo
+@always_inline
+def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
+    # CASE: Same scale (UInt128 fast path)            <- placed first
+    # CASE: One operand is zero (different scales)    <- promotes to max scale
+    # CASE: Different scales, both non-zero (UInt256 path)
+
+@always_inline
+def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
+    # CASE: Same scale (UInt128 fast path)            <- inlined directly
+    # CASE: Different scales -> return add(x1, negative(x2))
+```
+
+`subtract()`'s same-scale path is inlined directly (mirroring `add()`'s but with `is_negative()` *in*equality as the "same effective sign" branch since `x1 - x2 = x1 + (-x2)`). The different-scale path delegates to `add(x1, negative(x2))` rather than re-implementing the rare branch — `negative()` on `Decimal128` is a sign-bit flip, single-cycle, so the negate-then-add detour is negligible relative to the UInt256 promotion that dominates that arm.
+
+End-to-end impact in the `dec128_report_20260422_200239.md` cross-language report (rebenched twice for stability):
+
+- **`add` median: 5 → 4 ns/iter (~20% faster)**, dm/rs **2.1× → 1.3×** — decimo is now within ~30% of `rust_decimal` on the hot path; the remaining gap is essentially the `def raises` calling-convention overhead, which cannot be eliminated without also removing the overflow-detection contract that the public API documents.
+- **`subtract` median: 6 → 4 ns/iter (~33% faster)**, dm/rs **2.6× → 2.0×**. Subtract is now on par with add; the previous 1 ns gap closed once the same-scale fast path was inlined directly into `subtract()` rather than reaching it through `add(x1, negative(x2))`.
+- **`add` worst case (Mixed magnitudes / wide-gap UInt256): 15 → 14 ns** (run-to-run noise; the UInt256 path itself is unchanged).
+- **No change** to `multiply`, `divide`, `comparison`, `from_string`, or `to_string` — the change is strictly on `add`/`sub`.
+- **Result equivalence preserved:** add 14/14, sub 14/14 (no new mismatches across rust / csharp / vbnet).
+- **Test suite:** `tests/decimal128/test_decimal128_arithmetics.mojo` (5/5 PASS in 77.7 s under `-D ASSERT=all`); inline subtract smoke test on 11 representative shapes (positive/negative, same/diff scale, with/without zero) all match the prior `add(x1, negative(x2))` results byte-for-byte.
+
+**Code-base footprint:** the experimental `add_v_a` … `add_v_f` candidate functions, `add_unchecked` / `add_unchecked_full` exploratory wrappers, the four-helper split (`_add_same_scale_uint128`, `_add_diff_scale_uint256`, `_add_zero_special`, `_add_slow`, `_sub_same_scale_uint128`, `_sub_slow`), the `_add_legacy` body, and the `temp/bench_add_candidates.mojo` / `temp/bench_unchecked_overhead.mojo` / `temp/check_candidates.mojo` probe files were all removed before commit. The final `arithmetics.mojo` keeps the historic single-function shape — one `def add` and one `def subtract` — with `# CASE:` markers separating the dispatch arms inside each.
+
+**Take-aways:**
+
+- *§4.9.2 action #2 ("non-raising `add_unchecked` fast path") is closed without shipping a public `unchecked` variant.* Hot-path-first branch ordering captures most of the same win (~1 ns/op on the median) without doubling the API surface. The original §4.9 §4.9.2 estimate of "~40-80 ns/op saved" from the non-raising route was off by ~30-50× — a useful reminder that performance hypotheses derived from "what other libraries do" must be empirically decomposed before they drive an architecture change.
+- *Keep the public `def raises` API.* The `def raises` overhead is real (~1.5 ns) but is also the contract decimo documents (`__add__` raises `OverflowError` on UInt128 overflow at scale 0). Removing it would change the contract; closing the gap from 1.3× to 1.0× isn't worth that.
+- *When a hot path is small, the *count of branches* before the fast arm matters more than the body of the fast arm.* The legacy `add()` had a 6-arm linear scan; even the cheapest arm pays for the predicate of every prior arm. Putting the most-common branch first and routing rare cases into the cold tail of the same function captures most of the dispatch win without forcing the function to be split into helpers.
+- *Helper-function decomposition costs ~1 ns over a well-ordered monolith.* An exploratory four-helper split measured 3/4 ns vs the monolith's 4/4 ns, but the readability penalty (six new private symbols for arms that are each called from exactly one place) wasn't worth the 1 ns. Helpers should be reserved for genuinely shared code paths, not for rhetorical "decomposition".
+
+**Files touched:** [src/decimo/decimal128/arithmetics.mojo](../../src/decimo/decimal128/arithmetics.mojo) (the entire `add` / `subtract` neighbourhood, lines ~46–340).
 
 ## 5. Improvement Opportunities
 
@@ -763,7 +819,7 @@ Done items (kept for tracking, not actionable):
 
 **Phase 3 (general perf)** — close the rust_decimal gap. This is the actual competitive workstream.
 
-1. **Close the arithmetic gap (§4.9)** — highest priority. Restructure `add()` to short-circuit before `is_integer`; non-raising `add_promised`/`mul_promised` fast paths; UInt128-only `multiply` fast path; inline `to_string` buffer. Re-bench after each change and append a new row to the §4.9.3 tracking table.
+1. **Close the arithmetic gap (§4.9)** — highest priority. Restructure `add()` to short-circuit before `is_integer`; non-raising `add_unchecked`/`mul_unchecked` fast paths; UInt128-only `multiply` fast path; inline `to_string` buffer. Re-bench after each change and append a new row to the §4.9.3 tracking table.
 2. **Improve `ln()` range reduction (§4.4)** — 30 divisions → 1 via scale-read + bit-width single-shot.
 3. **`from_string` digit batching (§4.6)** — ~55 ns/call → target ~25 ns.
 4. **Test-suite latency (§4.8)** — split dev/CI flag profiles, hoist `parse_file`, consolidate per-file JIT.

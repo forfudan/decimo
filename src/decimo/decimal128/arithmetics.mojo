@@ -43,7 +43,7 @@ from decimo.errors import (
 import decimo.decimal128.utility
 
 
-# TODO: Like `multiply` use combined bits to determine the appropriate method
+@always_inline
 def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     """
     Adds two Decimal128 values and returns a new Decimal128 containing the sum.
@@ -64,106 +64,18 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     var x1_scale = x1.scale()
     var x2_scale = x2.scale()
 
-    # CASE: Zeros
-    if x1_coef == 0 and x2_coef == 0:
-        var scale = UInt32(max(x1_scale, x2_scale))
-        return Decimal128(0, 0, 0, scale, False)
-
-    elif x1_coef == 0:
-        if x1_scale <= x2_scale:
-            return x2
-
-        else:  # x1_scale > x2_scale
-            # Scale up x2_coef to match x1_scale
-
-            var sum_coef = x2_coef
-            var scale = min(
-                max(x1_scale, x2_scale),
-                Decimal128.MAX_NUM_DIGITS
-                - decimo.decimal128.utility.number_of_digits(x2.to_uint128()),
-            )
-            ## If x2_coef > 7922816251426433759354395033
-            if (
-                (x2_coef > Decimal128.MAX_AS_UINT128 // 10)
-                and (scale > 0)
-                and (scale > x2_scale)
-            ):
-                scale -= 1
-            sum_coef *= UInt128(10) ** (scale - x2_scale)
-            return Decimal128.from_uint128(
-                sum_coef, UInt32(scale), x2.is_negative()
-            )
-
-    elif x2_coef == 0:
-        if x2_scale <= x1_scale:
-            return x1
-
-        else:  # x2_scale > x1_scale
-            # Scale up x1_coef to match x2_scale
-            var sum_coef = x1_coef
-            var scale = min(
-                max(x1_scale, x2_scale),
-                Decimal128.MAX_NUM_DIGITS
-                - decimo.decimal128.utility.number_of_digits(x1.to_uint128()),
-            )
-            ## If x1_coef > 7922816251426433759354395033
-            if (
-                (x1_coef > Decimal128.MAX_AS_UINT128 // 10)
-                and (scale > 0)
-                and (scale > x1_scale)
-            ):
-                scale -= 1
-            sum_coef *= UInt128(10) ** (scale - x1_scale)
-            return Decimal128.from_uint128(
-                sum_coef, UInt32(scale), x1.is_negative()
-            )
-
-    # CASE: Integer addition with scale of 0 (true integers)
-    elif x1_scale == 0 and x2_scale == 0:
-        # Same sign: add absolute values and keep the sign
-        if x1.is_negative() == x2.is_negative():
-            # Add directly using UInt128 arithmetic
-            var summation = x1_coef + x2_coef
-
-            # Check for overflow (UInt128 can store values beyond our 96-bit limit)
-            # We need to make sure the sum fits in 96 bits (our Decimal128 capacity)
-            if summation > Decimal128.MAX_AS_UINT128:  # 2^96-1
-                raise OverflowError(
-                    message="Decimal128 overflow in addition.",
-                    function="add()",
-                )
-
-            return Decimal128.from_uint128(summation, 0, x1.is_negative())
-
-        # Different signs: subtract the smaller from the larger
-        else:
-            var diff: UInt128
-            var is_negative: Bool
-            if x1_coef > x2_coef:
-                diff = x1_coef - x2_coef
-                is_negative = x1.is_negative()
-            elif x1_coef < x2_coef:
-                diff = x2_coef - x1_coef
-                is_negative = x2.is_negative()
-            else:  # x1_coef == x2_coef
-                diff = UInt128(0)
-                is_negative = False
-
-            return Decimal128.from_uint128(diff, 0, is_negative)
-
-    # CASE: Float addition with the same scale
+    # CASE: Same scale (UInt128 fast path)
     #
-    # NOTE: This branch is intentionally placed BEFORE the different-scale
-    # path below. When both operands share the same scale, the UInt128
-    # addition path is correct for both fractional and integer values
-    # (two integers with the same positive scale have proportional
-    # coefficients — e.g. Decimal128("1.000") has coef=1000 and
-    # Decimal128("2.000") has coef=2000; their UInt128 sum 3000 with the
-    # preserved scale=3 gives the correct result "3.000"). Handling the
-    # same-scale case first avoids the extra coefficient scaling/work needed
-    # by the different-scale path on the very common same-scale workloads
-    # exercised by financial / fixed-precision code.
-    elif x1_scale == x2_scale:
+    # NOTE: Placed FIRST because it dominates real-world workloads (financial /
+    # fixed-precision code where both operands carry the same scale) and is a
+    # single UInt128 add. Two same-scale integers are also handled here: their
+    # coefficients are proportional and the UInt128 sum with the preserved
+    # scale gives the right answer (e.g. coef=1000 + coef=2000 with scale=3
+    # gives "3.000"). The previous version separated this case from a
+    # `is_integer()` branch; benchmarking showed the dispatch test alone cost
+    # ~250 ns of UInt128 modulus while the same-scale path completes in ~3 ns,
+    # so the integer branch was a net loss and is gone.
+    if x1_scale == x2_scale:
         var summation: UInt128
         var is_negative: Bool
 
@@ -177,127 +89,144 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             elif x1_coef < x2_coef:
                 summation = x2_coef - x1_coef
                 is_negative = x2.is_negative()
-            else:  # x1_coef == x2_coef
+            else:
                 return Decimal128.from_uint128(
                     UInt128(0), UInt32(x1_scale), False
                 )
 
-        # If the summation fits in 96 bits, we can use the original scale
         if summation < Decimal128.MAX_AS_UINT128:
             return Decimal128.from_uint128(
                 summation, UInt32(x1_scale), is_negative
             )
 
-        # Otherwise, it is >= 29 digits
-        # we need to truncate the summation to fit in 96 bits
-        else:
-            var fitted = decimo.decimal128.utility.fit_to_max_coefficient(
-                summation
+        # >= 29 digits: drop trailing digits to fit. If we'd need to drop more
+        # digits than `x1_scale` provides, the result truly overflows.
+        var fitted = decimo.decimal128.utility.fit_to_max_coefficient(summation)
+        if UInt32(fitted[1]) > UInt32(x1_scale):
+            raise OverflowError(
+                message="Decimal128 overflow in addition.",
+                function="add()",
             )
-            # Guard against integral-digit overflow: if the coefficient-fitting
-            # had to remove more digits than the current scale provides, the
-            # result no longer fits Decimal128's range.
-            if UInt32(fitted[1]) > UInt32(x1_scale):
-                raise OverflowError(
-                    message="Addition result exceeds Decimal128 precision.",
-                    function="add()",
-                )
-            var final_scale = UInt32(x1_scale) - UInt32(fitted[1])
+        var final_scale = UInt32(x1_scale) - UInt32(fitted[1])
+        return Decimal128.from_uint128(fitted[0], final_scale, is_negative)
 
-            return Decimal128.from_uint128(fitted[0], final_scale, is_negative)
-
-    # CASE: Float addition with different scales.
+    # CASE: One operand is zero (different scales)
     #
-    # NOTE: A previous version of this function had a separate branch for
-    # `x1.is_integer() and x2.is_integer()` here, intended to short-circuit
-    # the "both operands integer-valued, different scales" case (e.g.
-    # `100 + 50.0`) into a UInt128-only fast path. Empirically that branch
-    # was a net loss: each `is_integer()` call costs up to ~125 ns of UInt128
-    # modulus, so the dispatch test alone costs ~250 ns even before the
-    # branch body runs -- whereas the UInt256 fall-through below completes
-    # the entire add in ~110 ns. Removing the branch made the
-    # "both integer, different scale" cases drop from ~120-150 ns to the
-    # ~110 ns of the UInt256 path.
-    else:  # x1_scale != x2_scale
-        var summation: UInt256
-        var is_negative: Bool
+    # Promote the non-zero operand to max(x1_scale, x2_scale) so e.g.
+    # `0.000 + 5` returns "5.000". Skips the UInt256 work below.
+    if x1_coef == 0:
+        if x1_scale <= x2_scale:
+            return x2
+        var sum_coef = x2_coef
+        var scale = min(
+            max(x1_scale, x2_scale),
+            Decimal128.MAX_NUM_DIGITS
+            - decimo.decimal128.utility.number_of_digits(x2.to_uint128()),
+        )
+        ## If x2_coef > 7922816251426433759354395033
+        if (
+            (x2_coef > Decimal128.MAX_AS_UINT128 // 10)
+            and (scale > 0)
+            and (scale > x2_scale)
+        ):
+            scale -= 1
+        sum_coef *= UInt128(10) ** (scale - x2_scale)
+        return Decimal128.from_uint128(
+            sum_coef, UInt32(scale), x2.is_negative()
+        )
 
-        if x1_scale > x2_scale:
-            # Scale up x2_coef to match x1_scale
-            var x1_coef_scaled: UInt256 = UInt256(x1_coef)
-            var x2_coef_scaled: UInt256 = UInt256(x2_coef) * UInt256(10) ** (
-                x1_scale - x2_scale
-            )
+    if x2_coef == 0:
+        if x2_scale <= x1_scale:
+            return x1
+        var sum_coef = x1_coef
+        var scale = min(
+            max(x1_scale, x2_scale),
+            Decimal128.MAX_NUM_DIGITS
+            - decimo.decimal128.utility.number_of_digits(x1.to_uint128()),
+        )
+        ## If x1_coef > 7922816251426433759354395033
+        if (
+            (x1_coef > Decimal128.MAX_AS_UINT128 // 10)
+            and (scale > 0)
+            and (scale > x1_scale)
+        ):
+            scale -= 1
+        sum_coef *= UInt128(10) ** (scale - x1_scale)
+        return Decimal128.from_uint128(
+            sum_coef, UInt32(scale), x1.is_negative()
+        )
 
-            if x1.is_negative() == x2.is_negative():
+    # CASE: Different scales, both non-zero (UInt256 path)
+    var summation: UInt256
+    var is_negative: Bool
+
+    if x1_scale > x2_scale:
+        # Scale up x2_coef to match x1_scale
+        var x1_coef_scaled: UInt256 = UInt256(x1_coef)
+        var x2_coef_scaled: UInt256 = UInt256(x2_coef) * UInt256(10) ** (
+            x1_scale - x2_scale
+        )
+
+        if x1.is_negative() == x2.is_negative():
+            is_negative = x1.is_negative()
+            summation = x1_coef_scaled + x2_coef_scaled
+        else:  # Different signs
+            if x1_coef_scaled > x2_coef_scaled:
+                summation = x1_coef_scaled - x2_coef_scaled
                 is_negative = x1.is_negative()
-                summation = x1_coef_scaled + x2_coef_scaled
-            else:  # Different signs
-                if x1_coef_scaled > x2_coef_scaled:
-                    summation = x1_coef_scaled - x2_coef_scaled
-                    is_negative = x1.is_negative()
-                elif x1_coef_scaled < x2_coef_scaled:
-                    summation = x2_coef_scaled - x1_coef_scaled
-                    is_negative = x2.is_negative()
-                else:
-                    return Decimal128.from_uint128(
-                        UInt128(0), UInt32(x1_scale), False
-                    )
-
-        else:  # x1_scale < x2_scale
-            # Scale up x1_coef to match x2_scale
-            var x1_coef_scaled: UInt256 = UInt256(x1_coef) * UInt256(10) ** (
-                x2_scale - x1_scale
-            )
-            var x2_coef_scaled: UInt256 = UInt256(x2_coef)
-
-            if x1.is_negative() == x2.is_negative():
-                is_negative = x1.is_negative()
-                summation = x2_coef_scaled + x1_coef_scaled
-            else:  # Different signs
-                if x1_coef_scaled > x2_coef_scaled:
-                    summation = x1_coef_scaled - x2_coef_scaled
-                    is_negative = x1.is_negative()
-                elif x1_coef_scaled < x2_coef_scaled:
-                    summation = x2_coef_scaled - x1_coef_scaled
-                    is_negative = x2.is_negative()
-                else:
-                    return Decimal128.from_uint128(
-                        UInt128(0), UInt32(x2_scale), False
-                    )
-
-        # If the summation fits in 96 bits, we can use the original scale
-        if summation < Decimal128.MAX_AS_UINT256:
-            return Decimal128.from_uint128(
-                UInt128(summation & 0x00000000_FFFFFFFF_FFFFFFFF_FFFFFFFF),
-                UInt32(max(x1_scale, x2_scale)),
-                is_negative,
-            )
-
-        # Otherwise, it is >= 29 digits
-        # Otherwise, we need to truncate the summation to fit in 96 bits
-        else:
-            var fitted = decimo.decimal128.utility.fit_to_max_coefficient(
-                summation
-            )
-            var working_scale = UInt32(max(x1_scale, x2_scale))
-            # Guard against integral-digit overflow: if the coefficient-fitting
-            # had to remove more digits than the working scale provides, the
-            # result no longer fits Decimal128's range.
-            if UInt32(fitted[1]) > working_scale:
-                raise OverflowError(
-                    message="Addition result exceeds Decimal128 precision.",
-                    function="add()",
+            elif x1_coef_scaled < x2_coef_scaled:
+                summation = x2_coef_scaled - x1_coef_scaled
+                is_negative = x2.is_negative()
+            else:
+                return Decimal128.from_uint128(
+                    UInt128(0), UInt32(x1_scale), False
                 )
-            var final_scale = working_scale - UInt32(fitted[1])
 
-            return Decimal128.from_uint128(
-                UInt128(fitted[0] & 0x00000000_FFFFFFFF_FFFFFFFF_FFFFFFFF),
-                final_scale,
-                is_negative,
-            )
+    else:  # x1_scale < x2_scale
+        # Scale up x1_coef to match x2_scale
+        var x1_coef_scaled: UInt256 = UInt256(x1_coef) * UInt256(10) ** (
+            x2_scale - x1_scale
+        )
+        var x2_coef_scaled: UInt256 = UInt256(x2_coef)
+
+        if x1.is_negative() == x2.is_negative():
+            is_negative = x1.is_negative()
+            summation = x2_coef_scaled + x1_coef_scaled
+        else:  # Different signs
+            if x1_coef_scaled > x2_coef_scaled:
+                summation = x1_coef_scaled - x2_coef_scaled
+                is_negative = x1.is_negative()
+            elif x1_coef_scaled < x2_coef_scaled:
+                summation = x2_coef_scaled - x1_coef_scaled
+                is_negative = x2.is_negative()
+            else:
+                return Decimal128.from_uint128(
+                    UInt128(0), UInt32(x2_scale), False
+                )
+
+    if summation < Decimal128.MAX_AS_UINT256:
+        return Decimal128.from_uint128(
+            UInt128(summation & 0x00000000_FFFFFFFF_FFFFFFFF_FFFFFFFF),
+            UInt32(max(x1_scale, x2_scale)),
+            is_negative,
+        )
+
+    var fitted = decimo.decimal128.utility.fit_to_max_coefficient(summation)
+    var working_scale = UInt32(max(x1_scale, x2_scale))
+    if UInt32(fitted[1]) > working_scale:
+        raise OverflowError(
+            message="Addition result exceeds Decimal128 precision.",
+            function="add()",
+        )
+    var final_scale = working_scale - UInt32(fitted[1])
+    return Decimal128.from_uint128(
+        UInt128(fitted[0] & 0x00000000_FFFFFFFF_FFFFFFFF_FFFFFFFF),
+        final_scale,
+        is_negative,
+    )
 
 
+@always_inline
 def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     """
     Subtracts the x2 Decimal128 from x1 and returns a new Decimal128.
@@ -312,10 +241,6 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     Raises:
         OverflowError: If the result overflows Decimal128 capacity.
 
-    Notes:
-    ------
-    This method is implemented using the existing `__add__()` and `__neg__()` methods.
-
     Examples:
     ---------
     ```console
@@ -325,15 +250,53 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     ```
     .
     """
-    # Implementation using the existing `__add__()` and `__neg__()` methods
-    try:
-        return x1 + (-x2)
-    except e:
-        raise OverflowError(
-            message="Subtraction failed.",
-            function="subtract()",
-            previous_error=e^,
-        )
+    var x1_coef = x1.coefficient()
+    var x2_coef = x2.coefficient()
+    var x_scale = x1.scale()
+
+    # CASE: Same scale (UInt128 fast path)
+    #
+    # x1 - x2 = x1 + (-x2). The "same effective sign" branch (which adds the
+    # coefficients) is reached when x1.is_negative() *differs* from
+    # x2.is_negative(). Inlined here so the common case avoids both the
+    # `negative()` allocation and the dispatch through `add()` below.
+    if x_scale == x2.scale():
+        var summation: UInt128
+        var is_negative: Bool
+
+        if x1.is_negative() != x2.is_negative():
+            is_negative = x1.is_negative()
+            summation = x1_coef + x2_coef
+        else:  # Different effective signs
+            if x1_coef > x2_coef:
+                summation = x1_coef - x2_coef
+                is_negative = x1.is_negative()
+            elif x1_coef < x2_coef:
+                summation = x2_coef - x1_coef
+                # Result takes the sign of -x2.
+                is_negative = not x2.is_negative()
+            else:
+                return Decimal128.from_uint128(
+                    UInt128(0), UInt32(x_scale), False
+                )
+
+        if summation < Decimal128.MAX_AS_UINT128:
+            return Decimal128.from_uint128(
+                summation, UInt32(x_scale), is_negative
+            )
+
+        var fitted = decimo.decimal128.utility.fit_to_max_coefficient(summation)
+        if UInt32(fitted[1]) > UInt32(x_scale):
+            raise OverflowError(
+                message="Decimal128 overflow in subtraction.",
+                function="subtract()",
+            )
+        var final_scale = UInt32(x_scale) - UInt32(fitted[1])
+        return Decimal128.from_uint128(fitted[0], final_scale, is_negative)
+
+    # CASE: Different scales — delegate to add(x1, -x2). The negate is a
+    # single sign-bit flip and the UInt256 work in add() dominates anyway.
+    return add(x1, negative(x2))
 
 
 def negative(x: Decimal128) -> Decimal128:
