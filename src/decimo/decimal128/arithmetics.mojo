@@ -95,8 +95,11 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
                 )
 
         if summation < Decimal128.MAX_AS_UINT128:
+            # Canonicalize -0 + -0 (or any all-zero result) to +0.
             return Decimal128.from_uint128(
-                summation, UInt32(x1_scale), is_negative
+                summation,
+                UInt32(x1_scale),
+                False if summation == 0 else is_negative,
             )
 
         # >= 29 digits: drop trailing digits to fit. If we'd need to drop more
@@ -285,8 +288,11 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
                 )
 
         if summation < Decimal128.MAX_AS_UINT128:
+            # Canonicalize -0 - +0 (or any all-zero result) to +0.
             return Decimal128.from_uint128(
-                summation, UInt32(x_scale), is_negative
+                summation,
+                UInt32(x_scale),
+                False if summation == 0 else is_negative,
             )
 
         var fitted = decimo.decimal128.utility.fit_to_max_coefficient(summation)
@@ -300,7 +306,15 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
     # CASE: Different scales — delegate to add(x1, -x2). The negate is a
     # single sign-bit flip and the UInt256 work in add() dominates anyway.
-    return add(x1, negative(x2))
+    # Catch and rethrow so callers see `subtract()` as the failing function.
+    try:
+        return add(x1, negative(x2))
+    except e:
+        raise OverflowError(
+            message="Decimal128 overflow in subtraction.",
+            function="subtract()",
+            previous_error=e^,
+        )
 
 
 def negative(x: Decimal128) -> Decimal128:
