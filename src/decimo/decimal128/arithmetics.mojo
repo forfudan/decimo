@@ -259,7 +259,7 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     """
     var x1_coef = x1.coefficient()
     var x2_coef = x2.coefficient()
-    var x_scale = x1.scale()
+    var x1_scale = x1.scale()
 
     # CASE: Same scale (UInt128 fast path)
     #
@@ -267,7 +267,7 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     # coefficients) is reached when x1.is_negative() *differs* from
     # x2.is_negative(). Inlined here so the common case avoids both the
     # `negative()` allocation and the dispatch through `add()` below.
-    if x_scale == x2.scale():
+    if x1_scale == x2.scale():
         var summation: UInt128
         var is_negative: Bool
 
@@ -284,37 +284,150 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
                 is_negative = not x2.is_negative()
             else:
                 return Decimal128.from_uint128(
-                    UInt128(0), UInt32(x_scale), False
+                    UInt128(0), UInt32(x1_scale), False
                 )
 
         if summation < Decimal128.MAX_AS_UINT128:
             # Canonicalize -0 - +0 (or any all-zero result) to +0.
             return Decimal128.from_uint128(
                 summation,
-                UInt32(x_scale),
+                UInt32(x1_scale),
                 False if summation == 0 else is_negative,
             )
 
         var fitted = decimo.decimal128.utility.fit_to_max_coefficient(summation)
-        if UInt32(fitted[1]) > UInt32(x_scale):
+        if UInt32(fitted[1]) > UInt32(x1_scale):
             raise OverflowError(
                 message="Decimal128 overflow in subtraction.",
                 function="subtract()",
             )
-        var final_scale = UInt32(x_scale) - UInt32(fitted[1])
+        var final_scale = UInt32(x1_scale) - UInt32(fitted[1])
         return Decimal128.from_uint128(fitted[0], final_scale, is_negative)
 
-    # CASE: Different scales — delegate to add(x1, -x2). The negate is a
-    # single sign-bit flip and the UInt256 work in add() dominates anyway.
-    # Catch and rethrow so callers see `subtract()` as the failing function.
-    try:
-        return add(x1, negative(x2))
-    except e:
-        raise OverflowError(
-            message="Decimal128 overflow in subtraction.",
-            function="subtract()",
-            previous_error=e^,
+    # CASE: One operand is zero (different scales)
+    #
+    # Same as the corresponding case in add() but with x2's sign flipped
+    # since x1 - x2 = x1 + (-x2). Both-zero returns positive zero at the
+    # higher scale (so `0.0 - -0.00 == 0.00`).
+    if x1_coef == 0 and x2_coef == 0:
+        return Decimal128(0, 0, 0, UInt32(max(x1_scale, x2.scale())), False)
+
+    var x2_scale = x2.scale()
+
+    if x1_coef == 0:
+        if x1_scale <= x2_scale:
+            return negative(x2)
+        var sum_coef = x2_coef
+        var scale = min(
+            max(x1_scale, x2_scale),
+            Decimal128.MAX_NUM_DIGITS
+            - decimo.decimal128.utility.number_of_digits(x2.to_uint128()),
         )
+        ## If x2_coef > 7922816251426433759354395033
+        if (
+            (x2_coef > Decimal128.MAX_AS_UINT128 // 10)
+            and (scale > 0)
+            and (scale > x2_scale)
+        ):
+            scale -= 1
+        sum_coef *= UInt128(10) ** (scale - x2_scale)
+        # Sign of result is sign of -x2.
+        return Decimal128.from_uint128(
+            sum_coef, UInt32(scale), not x2.is_negative()
+        )
+
+    if x2_coef == 0:
+        if x2_scale <= x1_scale:
+            return x1
+        var sum_coef = x1_coef
+        var scale = min(
+            max(x1_scale, x2_scale),
+            Decimal128.MAX_NUM_DIGITS
+            - decimo.decimal128.utility.number_of_digits(x1.to_uint128()),
+        )
+        ## If x1_coef > 7922816251426433759354395033
+        if (
+            (x1_coef > Decimal128.MAX_AS_UINT128 // 10)
+            and (scale > 0)
+            and (scale > x1_scale)
+        ):
+            scale -= 1
+        sum_coef *= UInt128(10) ** (scale - x1_scale)
+        return Decimal128.from_uint128(
+            sum_coef, UInt32(scale), x1.is_negative()
+        )
+
+    # CASE: Different scales, both non-zero (UInt256 path)
+    #
+    # Same as add() with x2's effective sign flipped: the "same effective
+    # sign" branch (which adds the coefficients) fires when x1 and x2 have
+    # *different* original signs (because then x1 and -x2 agree).
+    var diff: UInt256
+    var is_negative: Bool
+
+    if x1_scale > x2_scale:
+        var x1_coef_scaled: UInt256 = UInt256(x1_coef)
+        var x2_coef_scaled: UInt256 = UInt256(x2_coef) * UInt256(10) ** (
+            x1_scale - x2_scale
+        )
+
+        if x1.is_negative() != x2.is_negative():
+            is_negative = x1.is_negative()
+            diff = x1_coef_scaled + x2_coef_scaled
+        else:  # Same original signs -> different effective signs
+            if x1_coef_scaled > x2_coef_scaled:
+                diff = x1_coef_scaled - x2_coef_scaled
+                is_negative = x1.is_negative()
+            elif x1_coef_scaled < x2_coef_scaled:
+                diff = x2_coef_scaled - x1_coef_scaled
+                # Sign of -x2.
+                is_negative = not x2.is_negative()
+            else:
+                return Decimal128.from_uint128(
+                    UInt128(0), UInt32(x1_scale), False
+                )
+
+    else:  # x1_scale < x2_scale
+        var x1_coef_scaled: UInt256 = UInt256(x1_coef) * UInt256(10) ** (
+            x2_scale - x1_scale
+        )
+        var x2_coef_scaled: UInt256 = UInt256(x2_coef)
+
+        if x1.is_negative() != x2.is_negative():
+            is_negative = x1.is_negative()
+            diff = x2_coef_scaled + x1_coef_scaled
+        else:
+            if x1_coef_scaled > x2_coef_scaled:
+                diff = x1_coef_scaled - x2_coef_scaled
+                is_negative = x1.is_negative()
+            elif x1_coef_scaled < x2_coef_scaled:
+                diff = x2_coef_scaled - x1_coef_scaled
+                is_negative = not x2.is_negative()
+            else:
+                return Decimal128.from_uint128(
+                    UInt128(0), UInt32(x2_scale), False
+                )
+
+    if diff < Decimal128.MAX_AS_UINT256:
+        return Decimal128.from_uint128(
+            UInt128(diff & 0x00000000_FFFFFFFF_FFFFFFFF_FFFFFFFF),
+            UInt32(max(x1_scale, x2_scale)),
+            is_negative,
+        )
+
+    var fitted = decimo.decimal128.utility.fit_to_max_coefficient(diff)
+    var working_scale = UInt32(max(x1_scale, x2_scale))
+    if UInt32(fitted[1]) > working_scale:
+        raise OverflowError(
+            message="Subtraction result exceeds Decimal128 precision.",
+            function="subtract()",
+        )
+    var final_scale = working_scale - UInt32(fitted[1])
+    return Decimal128.from_uint128(
+        UInt128(fitted[0] & 0x00000000_FFFFFFFF_FFFFFFFF_FFFFFFFF),
+        final_scale,
+        is_negative,
+    )
 
 
 def negative(x: Decimal128) -> Decimal128:
@@ -355,6 +468,7 @@ def absolute(x: Decimal128) -> Decimal128:
     return x
 
 
+@always_inline
 def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     """
     Multiplies two Decimal128 values and returns a new Decimal128 containing the product.
@@ -877,27 +991,103 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         var ndigits_initial_quot = decimo.decimal128.utility.number_of_digits(
             quot
         )
+        # Two-phase long division.
+        #
+        # Phase 1: a short probe loop (up to PROBE_STEPS digits) catches
+        # fast-terminating cases like `10.5 / 2.5 = 4.2` or `123.45 / -2
+        # = -61.725` in 1-3 cheap UInt128 div-mod iterations.
+        #
+        # Phase 2: if the remainder is still non-zero after the probe, we
+        # know the result either does not terminate or terminates only
+        # after many more digits. Scale the remaining work up by a single
+        # `10^k` factor and finish with one big `UInt256 / UInt128`
+        # divide (~12 ns for u64 divisors via schoolbook, ~236 ns for
+        # full UInt256/UInt256 software fallback). This collapses ~25
+        # iterations of the per-digit loop into one division.
+        comptime PROBE_STEPS = 2
+        var max_steps = min(
+            Decimal128.MAX_NUM_DIGITS - ndigits_initial_quot + 1,
+            Decimal128.MAX_SCALE - diff_scale - adjusted_scale + 1,
+        )
         while (
             (rem != 0)
-            and (
-                step_counter
-                < (Decimal128.MAX_NUM_DIGITS - ndigits_initial_quot + 1)
-            )
-            and (
-                step_counter
-                < Decimal128.MAX_SCALE - diff_scale - adjusted_scale + 1
-            )
+            and (step_counter < PROBE_STEPS)
+            and (step_counter < max_steps)
         ):
-            # Multiply remainder by 10
             rem *= 10
-            # Calculate next quotient digit
             digit = rem // x2_coef
             quot = quot * 10 + digit
-            # Calculate new remainder
             rem = rem % x2_coef
-            # Increment step counter
             step_counter += 1
-            # Check if division is exact
+
+        if (rem != 0) and (step_counter < max_steps):
+            var bulk_steps = max_steps - step_counter
+            var scale_factor = decimo.decimal128.utility.power_of_10[
+                DType.uint128
+            ](bulk_steps)
+            var scale_factor_256 = UInt256(scale_factor)
+            # `rem * 10^bulk_steps` always fits in UInt256: rem < x2_coef
+            # ≤ 2^96, and bulk_steps ≤ 29 so 10^bulk_steps < 2^97.
+            var rem_scaled: UInt256 = UInt256(rem) * scale_factor_256
+            var x2_256 = UInt256(x2_coef)
+
+            var quot_added: UInt256
+            var rem_after: UInt256
+            if x2_coef <= UInt128(0xFFFF_FFFF_FFFF_FFFF):
+                # Fast path: 4-step schoolbook over u64 limbs.
+                var pair = decimo.decimal128.utility.udiv_u256_by_u64(
+                    rem_scaled, UInt64(x2_coef)
+                )
+                quot_added = pair[0]
+                rem_after = UInt256(pair[1])
+            else:
+                # Rare 96-bit-divisor fallback: software UInt256 divide.
+                quot_added = rem_scaled // x2_256
+                rem_after = rem_scaled - quot_added * x2_256
+
+            var combined: UInt256 = (
+                UInt256(quot) * scale_factor_256
+            ) + quot_added
+            # `combined` fits in UInt128: total decimal digits is at
+            # most `ndigits_initial_quot + step_counter + bulk_steps =
+            # ndigits_initial_quot + max_steps ≤ MAX_NUM_DIGITS + 1 = 30`.
+            quot = UInt128(
+                combined & UInt256(0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF)
+            )
+            step_counter = max_steps
+
+            if rem_after == 0:
+                # Exact division. The per-digit loop would have stopped
+                # at the first zero remainder, so its `quot` carries no
+                # trailing zeros from beyond that point. Bisect-strip
+                # the equivalent zeros so the final scale matches.
+                digit = 0
+                rem = 0
+                var pow16 = UInt128(10000000000000000)
+                while (step_counter >= 16) and (quot % pow16 == 0):
+                    quot = quot // pow16
+                    step_counter -= 16
+                var pow8 = UInt128(100000000)
+                while (step_counter >= 8) and (quot % pow8 == 0):
+                    quot = quot // pow8
+                    step_counter -= 8
+                var pow4 = UInt128(10000)
+                while (step_counter >= 4) and (quot % pow4 == 0):
+                    quot = quot // pow4
+                    step_counter -= 4
+                var pow2 = UInt128(100)
+                while (step_counter >= 2) and (quot % pow2 == 0):
+                    quot = quot // pow2
+                    step_counter -= 2
+                while (step_counter >= 1) and (quot % 10 == 0):
+                    quot = quot // 10
+                    step_counter -= 1
+            else:
+                # Inexact: the bottom digit of `quot` is the +1 extra
+                # rounding digit (`max_steps` includes it by construction).
+                # The `digit == 5 and rem != 0` patch below uses it.
+                digit = quot % 10
+                rem = UInt128(1)
 
         # Yuhao's notes: When the remainder is non-zero at the end and the the digit to round is 5
         # we always round up, even if the rounding mode is round half to even

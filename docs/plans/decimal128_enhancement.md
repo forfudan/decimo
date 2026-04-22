@@ -518,6 +518,8 @@ loop with `black_box`/optimiser barriers). The two columns reported per op are t
 | 20260422 | `dec128_report_20260422_085601.md` |    5 |    7 |    9 |    9 | 2.10 |    28.20 | 134.60 | After removing `format` from `debug_assert` + bisect if/else LUT |
 | 20260422 | `dec128_report_20260422_124242.md` |    5 |    6 |    5 |    8 | 2.10 |    22.65 | 136.00 | After Granlund-Möller UInt256 / 10^k                             |
 | 20260422 | `dec128_report_20260422_200239.md` |    4 |    4 |    — |    — |    — |        — |      — | After H#11 hot-path-first single-function `add`/`sub`            |
+| 20260422 | `dec128_report_20260422_210555.md` |    4 |    4 |    5 |    9 | 2.10 |    25.20 | 119.20 | After H#3 sub diff-scale fully inlined + mul `@always_inline`    |
+| 20260422 | `dec128_report_20260422_212851.md` |    4 |    4 |    4 |    8 | 2.10 |    26.00 |  82.70 | After H#5 divide two-phase: probe + UInt256/u64 schoolbook       |
 
 **Worst-case (max across cases) decimo ns/iter (lower = faster):**
 
@@ -530,6 +532,8 @@ loop with `black_box`/optimiser barriers). The two columns reported per op are t
 | 20260422 | `dec128_report_20260422_085601.md` |   17 |   16 |  262 |  307 | 19.80 |    68.40 | 577.90 | After removing `format` from `debug_assert` + bisect if/else LUT |
 | 20260422 | `dec128_report_20260422_124242.md` |   14 |   15 |   22 |  257 | 17.40 |    65.30 | 554.50 | After Granlund-Möller UInt256 / 10^k                             |
 | 20260422 | `dec128_report_20260422_200239.md` |   14 |   14 |    — |    — |     — |        — |      — | After H#11 hot-path-first `add`/`sub`                            |
+| 20260422 | `dec128_report_20260422_210555.md` |   14 |   15 |   22 |  287 |  20.1 |     70.2 |  591.2 | After H#3 sub diff-scale fully inlined + mul `@always_inline`    |
+| 20260422 | `dec128_report_20260422_212851.md` |   16 |   17 |   27 |   56 |  19.2 |     74.7 |  608.3 | After H#5 divide two-phase: probe + UInt256/u64 schoolbook       |
 
 The mul max barely moves (339 → 335 ns) because the worst case is now
 `High precision multiplication` / `e * e^0.5` / `Product overflows`, all of
@@ -542,36 +546,44 @@ column reveals what the median hides.
 
 **Decimo / competitor ratio (>1 = decimo slower; <1 = decimo faster):**
 
-| date     | op       | dm/rust | dm/csharp | dm/vbnet | notes                                                |
-| -------- | -------- | ------: | --------: | -------: | ---------------------------------------------------- |
-| 20260421 | add      |   21.2x |     43.1x |    59.2x | Before any optimizations                             |
-| 20260421 | sub      |   61.5x |     59.0x |    68.7x | Before any optimizations                             |
-| 20260421 | mul      |    1.6x |      2.9x |     4.4x | Before any optimizations                             |
-| 20260421 | div      |    1.4x |      0.5x |     1.5x | Before any optimizations                             |
-| 20260421 | cmp      |    0.0x |      0.0x |     0.0x | Before any optimizations                             |
-| 20260421 | from_str |    2.6x |      0.7x |     0.7x | Before any optimizations                             |
-| 20260421 | to_str   |    3.6x |      4.2x |     4.3x | Before any optimizations                             |
-| 20260421 | add      |    2.2x |      2.0x |     2.7x | After H#3.1 `add()` reorder                          |
-| 20260421 | sub      |    2.1x |      3.1x |     3.1x | After H#3.1 `add()` reorder                          |
-| 20260421 | mul      |    1.8x |      2.6x |     3.6x | After H#3.1 `add()` reorder                          |
-| 20260421 | div      |    1.4x |      0.6x |     1.4x | After H#3.1 `add()` reorder                          |
-| 20260421 | cmp      |    0.8x |      1.4x |     1.1x | After H#3.1 `add()` reorder                          |
-| 20260421 | from_str |    2.4x |      0.7x |     0.7x | After H#3.1 `add()` reorder                          |
-| 20260421 | to_str   |    3.5x |      4.3x |     4.1x | After H#3.1 `add()` reorder                          |
-| 20260421 | add      |    2.2x |      2.0x |     2.8x | After H#3.1 `is_integer()` pre-check                 |
-| 20260421 | sub      |    2.9x |      2.8x |     2.7x | After H#3.1 `is_integer()` pre-check                 |
-| 20260421 | mul      |    1.9x |      3.0x |     4.6x | After H#3.1 `is_integer()` pre-check                 |
-| 20260421 | div      |    1.5x |      0.6x |     1.3x | After H#3.1 `is_integer()` pre-check                 |
-| 20260421 | cmp      |    0.8x |      1.4x |     1.1x | After H#3.1 `is_integer()` pre-check                 |
-| 20260421 | from_str |    2.4x |      0.6x |     0.6x | After H#3.1 `is_integer()` pre-check                 |
-| 20260421 | to_str   |    3.5x |      4.4x |     4.3x | After H#3.1 `is_integer()` pre-check                 |
-| 20260421 | add      |    1.5x |      2.2x |     1.9x | After H#3.1 `is_integer` branch removed from `add()` |
-| 20260421 | sub      |    3.3x |      3.6x |     2.9x | After H#3.1 `is_integer` branch removed from `add()` |
-| 20260422 | mul      |    2.3x |      3.7x |     4.4x | After H#4.1 `is_integer` branch removed from `mul()` |
-| 20260422 | div      |    1.6x |      0.6x |     1.5x | After H#4.1 `is_integer` branch removed from `mul()` |
-| 20260422 | mul      |    1.8x |      3.8x |     4.4x | After G-M UInt256 / 10^k                             |
-| 20260422 | add      |    1.3x |      1.7x |     1.5x | After H#11 hot-path-first `add`/`sub`                |
-| 20260422 | sub      |    2.0x |      1.9x |     1.7x | After H#11 hot-path-first `add`/`sub`                |
+| date     | op       | dm/rust | dm/csharp | dm/vbnet | notes                                                         |
+| -------- | -------- | ------: | --------: | -------: | ------------------------------------------------------------- |
+| 20260421 | add      |   21.2x |     43.1x |    59.2x | Before any optimizations                                      |
+| 20260421 | sub      |   61.5x |     59.0x |    68.7x | Before any optimizations                                      |
+| 20260421 | mul      |    1.6x |      2.9x |     4.4x | Before any optimizations                                      |
+| 20260421 | div      |    1.4x |      0.5x |     1.5x | Before any optimizations                                      |
+| 20260421 | cmp      |    0.0x |      0.0x |     0.0x | Before any optimizations                                      |
+| 20260421 | from_str |    2.6x |      0.7x |     0.7x | Before any optimizations                                      |
+| 20260421 | to_str   |    3.6x |      4.2x |     4.3x | Before any optimizations                                      |
+| 20260421 | add      |    2.2x |      2.0x |     2.7x | After H#3.1 `add()` reorder                                   |
+| 20260421 | sub      |    2.1x |      3.1x |     3.1x | After H#3.1 `add()` reorder                                   |
+| 20260421 | mul      |    1.8x |      2.6x |     3.6x | After H#3.1 `add()` reorder                                   |
+| 20260421 | div      |    1.4x |      0.6x |     1.4x | After H#3.1 `add()` reorder                                   |
+| 20260421 | cmp      |    0.8x |      1.4x |     1.1x | After H#3.1 `add()` reorder                                   |
+| 20260421 | from_str |    2.4x |      0.7x |     0.7x | After H#3.1 `add()` reorder                                   |
+| 20260421 | to_str   |    3.5x |      4.3x |     4.1x | After H#3.1 `add()` reorder                                   |
+| 20260421 | add      |    2.2x |      2.0x |     2.8x | After H#3.1 `is_integer()` pre-check                          |
+| 20260421 | sub      |    2.9x |      2.8x |     2.7x | After H#3.1 `is_integer()` pre-check                          |
+| 20260421 | mul      |    1.9x |      3.0x |     4.6x | After H#3.1 `is_integer()` pre-check                          |
+| 20260421 | div      |    1.5x |      0.6x |     1.3x | After H#3.1 `is_integer()` pre-check                          |
+| 20260421 | cmp      |    0.8x |      1.4x |     1.1x | After H#3.1 `is_integer()` pre-check                          |
+| 20260421 | from_str |    2.4x |      0.6x |     0.6x | After H#3.1 `is_integer()` pre-check                          |
+| 20260421 | to_str   |    3.5x |      4.4x |     4.3x | After H#3.1 `is_integer()` pre-check                          |
+| 20260421 | add      |    1.5x |      2.2x |     1.9x | After H#3.1 `is_integer` branch removed from `add()`          |
+| 20260421 | sub      |    3.3x |      3.6x |     2.9x | After H#3.1 `is_integer` branch removed from `add()`          |
+| 20260422 | mul      |    2.3x |      3.7x |     4.4x | After H#4.1 `is_integer` branch removed from `mul()`          |
+| 20260422 | div      |    1.6x |      0.6x |     1.5x | After H#4.1 `is_integer` branch removed from `mul()`          |
+| 20260422 | mul      |    1.8x |      3.8x |     4.4x | After G-M UInt256 / 10^k                                      |
+| 20260422 | add      |    1.3x |      1.7x |     1.5x | After H#11 hot-path-first `add`/`sub`                         |
+| 20260422 | sub      |    2.0x |      1.9x |     1.7x | After H#11 hot-path-first `add`/`sub`                         |
+| 20260422 | add      |    1.1x |      1.5x |     1.3x | After H#3 sub diff-scale fully inlined + mul `@always_inline` |
+| 20260422 | sub      |    1.7x |      1.6x |     1.5x | After H#3 sub diff-scale fully inlined + mul `@always_inline` |
+| 20260422 | mul      |    1.9x |      4.6x |     4.2x | After H#3 sub diff-scale fully inlined + mul `@always_inline` |
+| 20260422 | div      |    1.6x |      0.7x |     1.7x | After H#3 sub diff-scale fully inlined + mul `@always_inline` |
+| 20260422 | add      |    1.2x |      2.0x |     2.0x | After H#5 divide two-phase: probe + UInt256/u64 schoolbook    |
+| 20260422 | sub      |    1.7x |      2.2x |     2.0x | After H#5 divide two-phase: probe + UInt256/u64 schoolbook    |
+| 20260422 | mul      |    1.7x |      3.0x |     3.5x | After H#5 divide two-phase: probe + UInt256/u64 schoolbook    |
+| 20260422 | div      |    2.2x |      1.3x |     1.3x | After H#5 divide two-phase: probe + UInt256/u64 schoolbook    |
 
 Observations from the 20260421 baseline:
 
@@ -696,6 +708,65 @@ End-to-end impact in the `dec128_report_20260422_200239.md` cross-language repor
 - *Helper-function decomposition costs ~1 ns over a well-ordered monolith.* An exploratory four-helper split measured 3/4 ns vs the monolith's 4/4 ns, but the readability penalty (six new private symbols for arms that are each called from exactly one place) wasn't worth the 1 ns. Helpers should be reserved for genuinely shared code paths, not for rhetorical "decomposition".
 
 **Files touched:** [src/decimo/decimal128/arithmetics.mojo](../../src/decimo/decimal128/arithmetics.mojo) (the entire `add` / `subtract` neighbourhood, lines ~46–340).
+
+**Notes for #12 — Subtract diff-scale fully inlined + multiply `@always_inline` (20260422_210555):**
+
+H#11 left `subtract()`'s diff-scale arm calling `add(x1, negative(x2))` on the assumption that the negate was free and UInt256 work dominated. The `200239` report showed otherwise: subtract `Decimals with different scales` ran 12 ns vs rust 2.33 (5.1×), and the three `Both integer, different scale` cases sat at 9–19 ns (3.9–4.3×). The detour cost ~3 ns — a `def raises` call into `add()`, a non-inlined `negative()`, and the `try/except` rethrow that fixed up the error message. Against ~5 ns of UInt256 promotion that's a 50% tax.
+
+Fix: inline the whole diff-scale block into `subtract()`. It mirrors `add()` line-for-line with two algebraic substitutions for `x1 − x2 = x1 + (−x2)`:
+
+- The "same effective sign" branch (which adds magnitudes) tests `is_negative() != is_negative()` instead of `==`.
+- Sign assignments that would read `x2.is_negative()` read `not x2.is_negative()`.
+
+The one-operand-zero case is also inlined; `0.0 - -0.00 == 0.00` still holds. The overflow message reads `"Subtraction result exceeds Decimal128 precision."` directly, no rethrow.
+
+Companion: `@always_inline` on `multiply()`. The body had no annotation; adding it lets the integer fast path (`combined_num_bits ≤ 96`) lose its call frame.
+
+Numbers from `dec128_report_20260422_210555.md`:
+
+- `subtract` median 4 ns (flat), dm/rs 2.0× → 1.7×.
+- `subtract` `Decimals with different scales` 12 → 10 ns; `Both integer, different scale (small/medium/wide gap)` 9/12/19 → 6/5/15 ns. The wide-gap case stays at 3.4× rust because rust uses a 32-bit fast path that decimo's unconditional 96→256 promotion can't replicate.
+- `multiply` median 5 ns (flat); the 22-24 ns worst case is unchanged because it's bound by the GM-divider, not the call site.
+- `add` dm/rs 1.3× → 1.1× (re-measurement; body untouched).
+- Result equivalence: add 14/14, sub 14/14, mul 15/16 (unchanged), div 9/11 (unchanged), cmp 30/30, from_str 16/16, to_str 9/9.
+- Tests: `test_decimal128_arithmetics.mojo` 5/5 PASS in 41.7 s under `-D ASSERT=all`.
+
+Still open and out of scope here:
+
+- `multiply` `High precision` 24 ns vs rust 6.6 (3.6×) and `Product overflows` 22 vs 8.75 (2.5×) — both on the UInt256 + GM path. Closing the gap needs either a 128-bit fast path that detects when the product fits in `UInt128` despite `combined_num_bits > 96`, or a different rounding strategy.
+- `divide` `Repeating decimal` 287 vs rust 12.5 (22.9×), `High precision` 248 vs 24.3 (10.2×), `Coprime` 175 vs 21 (8.2×) — the single-digit-per-step long-division loop. The fix is to multiply numerator by `10^k` once and hardware-divide once, but that's a major refactor of `divide()` and is left for a follow-up.
+
+**Files touched:** [src/decimo/decimal128/arithmetics.mojo](../../src/decimo/decimal128/arithmetics.mojo) (`subtract()` diff-scale arm rewritten ~lines 289–410; `@always_inline` on `multiply()` at ~line 472).
+
+**Notes for #13 — Divide two-phase: probe loop + UInt256/u64 schoolbook (20260422_212851):**
+
+H#12 left the divide tail open: `Repeating decimal` 287 ns vs rust 12.5 (22.9×), `High precision` 248 vs 24.3 (10.2×), `Coprime` 175 vs 21 (8.2×). All three sat on the same per-digit long-division loop — `rem *= 10; digit = rem // x2_coef; rem %= x2_coef` — running 25-28 iterations. Each iteration is one UInt128 div + one UInt128 mod + a multiply, ~10 ns apiece on M4 (UInt128 division goes through `__udivti3`).
+
+The first instinct — "do it in one big divide" — does not work. A single `UInt256 / UInt256` divide costs ~236 ns through the software fallback, only marginally better than the 280 ns loop. What does work is splitting the dividend into u64 limbs:
+
+- Add `udiv_u256_by_u64(n: UInt256, d: UInt64)` to [utility.mojo](../../src/decimo/decimal128/utility.mojo). Four-step schoolbook over the 64-bit limbs of `n`, each step one `UInt128 / UInt128` divide where the divisor is `< 2^64`. Hardware-fast: ~12 ns end-to-end vs 236 ns for the symmetric divide. Tested 0/2000 mismatches against `n // d` over random UInt256/UInt64 pairs.
+- Every `Decimal128` divisor fits in `UInt128 ≤ 2^96`, and the bench cases all happen to fit in `UInt64`, so the u64-divisor path covers them. The 96-bit-divisor fallback (rare) keeps the original `UInt256 // UInt256`.
+
+Naive replacement (rip the loop out, scale by `10^max_steps` once, divide once) regressed `Simple decimal division` 19 → 154 ns. Two reasons: (1) we always padded out to `max_steps = 29` digits even when the result terminated in 1, then needed a 28-iteration trim loop to strip trailing zeros; (2) the trim itself was per-digit `quot %= 10; quot //= 10`, which is two UInt128 ops × 28 iterations.
+
+Two-phase fix:
+
+- *Phase 1: probe.* Run the original per-digit loop, but cap it at `PROBE_STEPS = 2`. Catches the common "terminates in ≤ 2 digits" cases (`10.5 / 2.5`, `123.45 / -2`) for ~10 ns total. The probe constant is a sweet spot — 1 missed `1/8`-shaped cases, 4 added 20 ns to the bulk-finish path.
+- *Phase 2: bulk finish.* If the remainder is still non-zero, scale the *remaining* `bulk_steps = max_steps - 2` digits with one `power_of_10[uint128]` lookup, run `udiv_u256_by_u64`, fold the result back into `quot`. Trim trailing zeros bisect-style (16/8/4/2/1 chunks of `pow_of_10`) so the worst case is ~5 UInt128 div-mods instead of 28.
+
+Numbers from `dec128_report_20260422_212851.md`:
+
+- `divide` median 9 → 8 ns, dm/rs 1.6× → 2.2× (median rises because the cheap cases got cheaper relative to the slow cases — see worst-case column).
+- `divide` worst-case max **287 → 56 ns**, the headline win. Per-case: `Repeating decimal` 287 → 57 (22.9× → 3.6×), `High precision` 248 → 59 (10.2× → 2.4×), `Coprime` 175 → 52 (8.2× → 2.4×). All three sit at ~3× rust now — still above the 2× target, bound by the `udiv_u256_by_u64` itself plus the 2-step probe overhead.
+- `divide` `Simple decimal` 19 → 26 ns and `Negative` 21 → 26 ns — small regression versus the pure per-digit loop. The `PROBE_STEPS = 2` cap means these terminate in phase 1 (1 digit needed) but pay a couple of extra branch evals before exiting. Acceptable trade for 3.6× → 2.4× on the slow cases.
+- Result equivalence and tests: `test_decimal128_divide.mojo` 11/11 PASS in 24.0 s under `-D ASSERT=all`; `test_decimal128_arithmetics.mojo` 5/5 PASS in 76.0 s.
+
+Still open:
+
+- The 96-bit-divisor fallback is untouched (no bench case exercises it). If a workload appears with a 7-digit-plus divisor, `udiv_u256_by_u96` would slot in next to `udiv_u256_by_u64`.
+- Closing slow-case dm/rs from 2.4× to ≤ 2× would need either eliminating the `power_of_10[uint128]` lookup (~2 ns) or removing the probe loop entirely and accepting the trim-loop tax — both regress the simple cases. The current shape feels Pareto-optimal at the case level.
+
+**Files touched:** [src/decimo/decimal128/arithmetics.mojo](../../src/decimo/decimal128/arithmetics.mojo) (`divide()` UInt128 path rewritten ~lines 996-1100), [src/decimo/decimal128/utility.mojo](../../src/decimo/decimal128/utility.mojo) (`udiv_u256_by_u64` appended at line 1521+).
 
 ## 5. Improvement Opportunities
 
