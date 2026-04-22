@@ -716,6 +716,7 @@ def number_of_digits[dtype: DType, //](value: Scalar[dtype]) -> Int:
     return 59
 
 
+@always_inline
 def number_of_bits[dtype: DType, //](var value: Scalar[dtype]) -> Int:
     """
     Returns the number of significant bits in an integer value.
@@ -1550,6 +1551,7 @@ fn udiv_u256_by_u64(n: UInt256, d: UInt64) -> Tuple[UInt256, UInt64]:
         coefficient fits in 64 bits (which covers all currently-tracked
         bench cases — `Decimal128` divisors above 2^64 are rare).
     """
+    debug_assert(d != UInt64(0), "udiv_u256_by_u64: divisor must be non-zero")
     var l3 = UInt128((n >> 192) & UInt256(0xFFFF_FFFF_FFFF_FFFF))
     var l2 = UInt128((n >> 128) & UInt256(0xFFFF_FFFF_FFFF_FFFF))
     var l1 = UInt128((n >> 64) & UInt256(0xFFFF_FFFF_FFFF_FFFF))

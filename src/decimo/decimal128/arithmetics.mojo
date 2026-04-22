@@ -137,7 +137,9 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             and (scale > x2_scale)
         ):
             scale -= 1
-        sum_coef *= UInt128(10) ** (scale - x2_scale)
+        sum_coef *= decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
+            Int(scale - x2_scale)
+        )
         return Decimal128.from_uint128(
             sum_coef, UInt32(scale), x2.is_negative()
         )
@@ -158,7 +160,9 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             and (scale > x1_scale)
         ):
             scale -= 1
-        sum_coef *= UInt128(10) ** (scale - x1_scale)
+        sum_coef *= decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
+            Int(scale - x1_scale)
+        )
         return Decimal128.from_uint128(
             sum_coef, UInt32(scale), x1.is_negative()
         )
@@ -170,8 +174,10 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     if x1_scale > x2_scale:
         # Scale up x2_coef to match x1_scale
         var x1_coef_scaled: UInt256 = UInt256(x1_coef)
-        var x2_coef_scaled: UInt256 = UInt256(x2_coef) * UInt256(10) ** (
-            x1_scale - x2_scale
+        var x2_coef_scaled: UInt256 = UInt256(
+            x2_coef
+        ) * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](
+            Int(x1_scale - x2_scale)
         )
 
         if x1.is_negative() == x2.is_negative():
@@ -191,8 +197,10 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
     else:  # x1_scale < x2_scale
         # Scale up x1_coef to match x2_scale
-        var x1_coef_scaled: UInt256 = UInt256(x1_coef) * UInt256(10) ** (
-            x2_scale - x1_scale
+        var x1_coef_scaled: UInt256 = UInt256(
+            x1_coef
+        ) * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](
+            Int(x2_scale - x1_scale)
         )
         var x2_coef_scaled: UInt256 = UInt256(x2_coef)
 
@@ -330,7 +338,9 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             and (scale > x2_scale)
         ):
             scale -= 1
-        sum_coef *= UInt128(10) ** (scale - x2_scale)
+        sum_coef *= decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
+            Int(scale - x2_scale)
+        )
         # Sign of result is sign of -x2.
         return Decimal128.from_uint128(
             sum_coef, UInt32(scale), not x2.is_negative()
@@ -352,7 +362,9 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             and (scale > x1_scale)
         ):
             scale -= 1
-        sum_coef *= UInt128(10) ** (scale - x1_scale)
+        sum_coef *= decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
+            Int(scale - x1_scale)
+        )
         return Decimal128.from_uint128(
             sum_coef, UInt32(scale), x1.is_negative()
         )
@@ -367,8 +379,10 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
     if x1_scale > x2_scale:
         var x1_coef_scaled: UInt256 = UInt256(x1_coef)
-        var x2_coef_scaled: UInt256 = UInt256(x2_coef) * UInt256(10) ** (
-            x1_scale - x2_scale
+        var x2_coef_scaled: UInt256 = UInt256(
+            x2_coef
+        ) * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](
+            Int(x1_scale - x2_scale)
         )
 
         if x1.is_negative() != x2.is_negative():
@@ -388,8 +402,10 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
                 )
 
     else:  # x1_scale < x2_scale
-        var x1_coef_scaled: UInt256 = UInt256(x1_coef) * UInt256(10) ** (
-            x2_scale - x1_scale
+        var x1_coef_scaled: UInt256 = UInt256(
+            x1_coef
+        ) * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](
+            Int(x2_scale - x1_scale)
         )
         var x2_coef_scaled: UInt256 = UInt256(x2_coef)
 
@@ -825,12 +841,21 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
                 decimo.decimal128.utility.number_of_digits(x1_coef) - diff_scale
                 < Decimal128.MAX_NUM_DIGITS
             ):
-                var quot = x1_coef * UInt128(10) ** (-diff_scale)
+                var quot = (
+                    x1_coef
+                    * decimo.decimal128.utility.power_of_10_unsafe[
+                        DType.uint128
+                    ](Int(-diff_scale))
+                )
                 return Decimal128.from_uint128(quot, 0, is_negative)
 
             # If the result should be stored in UInt256
             else:
-                var quot = UInt256(x1_coef) * UInt256(10) ** (-diff_scale)
+                var quot = UInt256(
+                    x1_coef
+                ) * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](
+                    Int(-diff_scale)
+                )
                 if quot > Decimal128.MAX_AS_UINT256:
                     raise OverflowError(
                         message="Decimal128 overflow in division.",
@@ -861,7 +886,11 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         # For example, 1234 / 0.1234 = 10000
         # Since -diff_scale is less than 28, the result would not overflow
         else:
-            var quot = UInt128(1) * UInt128(10) ** (-diff_scale)
+            var quot = UInt128(
+                1
+            ) * decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
+                Int(-diff_scale)
+            )
             return Decimal128.from_uint128(quot, 0, is_negative)
 
     # SPECIAL CASE: Modulus of coefficients is zero (exact division)
@@ -893,12 +922,18 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
                 decimo.decimal128.utility.number_of_digits(quot) - diff_scale
                 < Decimal128.MAX_NUM_DIGITS
             ):
-                var quot = quot * UInt128(10) ** (-diff_scale)
+                var quot = quot * decimo.decimal128.utility.power_of_10_unsafe[
+                    DType.uint128
+                ](Int(-diff_scale))
                 return Decimal128.from_uint128(quot, 0, is_negative)
 
             # If the result should be stored in UInt256
             else:
-                var quot = UInt256(quot) * UInt256(10) ** (-diff_scale)
+                var quot = UInt256(
+                    quot
+                ) * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](
+                    Int(-diff_scale)
+                )
                 if quot > Decimal128.MAX_AS_UINT256:
                     raise OverflowError(
                         message="Decimal128 overflow in division.",
@@ -969,7 +1004,12 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
     # The adjusted dividend coefficient will not exceed 2^96 - 1
     if diff_digits < 0:
-        var adjusted_x1_coef = x1_coef * UInt128(10) ** (-diff_digits)
+        var adjusted_x1_coef = (
+            x1_coef
+            * decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
+                Int(-diff_digits)
+            )
+        )
         quot = adjusted_x1_coef // x2_coef
         rem = adjusted_x1_coef % x2_coef
         adjusted_scale = -diff_digits
@@ -1022,12 +1062,22 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
         if (rem != 0) and (step_counter < max_steps):
             var bulk_steps = max_steps - step_counter
-            var scale_factor = decimo.decimal128.utility.power_of_10[
+            # bulk_steps bound: max_steps ≤ MAX_NUM_DIGITS + 1 = 30 (the
+            # `+1` is the rounding digit; reached when
+            # `ndigits_initial_quot == 0`, which happens when the initial
+            # `x1_coef // x2_coef == 0`, e.g. 1/3). Entry to this arm
+            # requires the probe loop to have exited via
+            # `step_counter >= PROBE_STEPS = 2`, so in practice
+            # `bulk_steps ≤ 30 - 2 = 28`, comfortably within
+            # `power_of_10_unsafe`'s `0 ≤ n ≤ 29` range for `uint128`.
+            var scale_factor = decimo.decimal128.utility.power_of_10_unsafe[
                 DType.uint128
             ](bulk_steps)
             var scale_factor_256 = UInt256(scale_factor)
             # `rem * 10^bulk_steps` always fits in UInt256: rem < x2_coef
-            # ≤ 2^96, and bulk_steps ≤ 29 so 10^bulk_steps < 2^97.
+            # ≤ 2^96 and bulk_steps ≤ 28 so 10^bulk_steps < 2^94, giving
+            # rem * 10^bulk_steps < 2^190.
+
             var rem_scaled: UInt256 = UInt256(rem) * scale_factor_256
             var x2_256 = UInt256(x2_coef)
 
@@ -1104,7 +1154,9 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
         # If the scale is negative, we need to scale up the quotient
         if scale_of_quot < 0:
-            quot = quot * UInt128(10) ** (-scale_of_quot)
+            quot = quot * decimo.decimal128.utility.power_of_10_unsafe[
+                DType.uint128
+            ](Int(-scale_of_quot))
             scale_of_quot = 0
 
         # print(
@@ -1202,7 +1254,9 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
         # If the scale is negative, we need to scale up the quotient
         if scale_of_quot < 0:
-            quot256 = quot256 * UInt256(10) ** (-scale_of_quot)
+            quot256 = quot256 * decimo.decimal128.utility.power_of_10_unsafe[
+                DType.uint256
+            ](Int(-scale_of_quot))
             scale_of_quot = 0
 
         # If quot is within MAX, return the result

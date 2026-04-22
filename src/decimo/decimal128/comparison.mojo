@@ -129,8 +129,12 @@ def compare_absolute(x: Decimal128, y: Decimal128) -> Int8:
             return -1
 
         # If interger parts have the same length, compare the integer parts
-        var x_scale_power = UInt128(10) ** (x_scale)
-        var y_scale_power = UInt128(10) ** (y_scale)
+        var x_scale_power = decimo.decimal128.utility.power_of_10_unsafe[
+            DType.uint128
+        ](Int(x_scale))
+        var y_scale_power = decimo.decimal128.utility.power_of_10_unsafe[
+            DType.uint128
+        ](Int(y_scale))
         var x_int = x_coef // x_scale_power
         var y_int = y_coef // y_scale_power
 
@@ -150,9 +154,13 @@ def compare_absolute(x: Decimal128, y: Decimal128) -> Int8:
             # (max ≈ 3.4 × 10^38). No widening required.
             var scale_diff = x_scale - y_scale
             if scale_diff > 0:
-                y_frac *= UInt128(10) ** scale_diff
+                y_frac *= decimo.decimal128.utility.power_of_10_unsafe[
+                    DType.uint128
+                ](Int(scale_diff))
             else:
-                x_frac *= UInt128(10) ** (-scale_diff)
+                x_frac *= decimo.decimal128.utility.power_of_10_unsafe[
+                    DType.uint128
+                ](Int(-scale_diff))
 
             if x_frac > y_frac:
                 return 1

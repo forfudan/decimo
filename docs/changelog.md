@@ -21,6 +21,12 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 
 ### 🦋 Changed in v0.10.0
 
+**Decimal128:**
+
+1. Sweep all hot-path `UInt(128|256)(10) ** k` calls (in `arithmetics`, `comparison`, `rounding`, `decimal128`) to `power_of_10_unsafe`, replacing runtime exponentiation (~4–12 ns) with a single rodata indexed load (~0.8 ns).
+1. Mark `Decimal128.from_uint128()` as `@always_inline` and split its two cold `raise ValueError` blocks into separate `@no_inline` helpers (`_raise_from_uint128_value_too_large`, `_raise_from_uint128_scale_too_large`), so the inline body stays small (two checks + bitcast + flag-or) without dragging `String.format` into every caller. Brings `add` to **0.9× rust**, `subtract` to **0.9–1.3× rust**, and `divide` to **1.0× rust** on the median bench.
+1. Mark `number_of_bits()` as `@always_inline` to remove the call frame on `multiply()`'s critical path.
+
 ## 20260323 (v0.9.0)
 
 Decimo v0.9.0 updates the codebase to **Mojo v0.26.2** and marks the **"make it useful"** phase. This release introduces three major additions:
