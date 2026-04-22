@@ -447,6 +447,8 @@ Mapped against the hypotheses above, ranked by **measured ns saved per fractiona
 - **Companion cleanup in `multiply()`:** the `combined_num_bits <= 96 / combined_scale > MAX_SCALE` arm contained dead code: after `min(MAX_SCALE, combined_scale)` clamps, the subsequent `if final_scale > MAX_SCALE` second-pass-rounding branch was unreachable. Removed. (The same pattern in the `<= 128` and `> 128` arms is *not* dead because `final_scale = combined_scale - digits_removed` can still exceed `MAX_SCALE` there.)
 - **Companion micro-opt in `round_coefficient` / `fit_to_max_coefficient`:** added a comptime `skip_digit_check: Bool = False` parameter to `round_coefficient`; `fit_to_max_coefficient` instantiates with `True` because it has just computed `ndigits = number_of_digits(value)` and `digits_to_remove = ndigits - 29 < ndigits`, making the inner `ndigits_to_remove > number_of_digits(value)` guard provably false. The `@parameter if not skip_digit_check` branch is constant-folded away. Saves one `number_of_digits` call (~50 ns on UInt256) on every multiply that hits `combined_num_bits > 96`. Measured: `High precision multiplication` 256 → ~232 ns/iter (~10% on this hot case). The `e * e^0.5` and `Product overflows precision` cases were within run-to-run noise; treated as neutral. All hot callers from `decimal128.mojo`, `rounding.mojo`, and the divide/exp_ln paths still default to `skip_digit_check=False` (the safe behaviour), so no other call site is affected.
 - **Investigated but not landed:** an `InlineArray`-based LUT for `power_of_10[uint128|uint256]` (currently an if/elif tree of literals). A standalone probe with an opaque runtime `n` showed the if-tree at ~120 ns/call vs LUT at ~0 ns. However in the actual multiply hot path the LUT version slightly *regressed* the heavy cases (`High precision` 256 → 273 ns, `e * e^0.5` 346 → 413 ns, `Product overflows` 231 → 270 ns). Root cause as already documented in `utility.mojo`: Mojo currently lacks module-level mutable variables, so the comptime `alias TABLE = _build_power_of_10_table[dtype]()` is materialised per inlined call site as a 79 × 32-byte global; with `power_of_10` invoked from many sites in `round_coefficient` / `fit_to_max_coefficient`, this bloats the icache and the runtime-`n` indexed load can't be hoisted, whereas the if-tree's literal returns let LLVM keep results in registers across multiple invocations on the same `n`. **Verdict: not worth landing today**; revisit when Mojo gains module-level cached variables (one shared LUT per `dtype`). Tracked here so the next pass starts from this measurement.
+
+- **Real culprit found 20260422 — `String.format()` inside `debug_assert(...)` is eagerly evaluated even with `-D ASSERT=none`.** Re-investigating the LUT regression above with `--emit=asm`, the supposedly-empty `debug_assert(False, "msg {}".format(n))` lines in `power_of_10[uint128]` / `power_of_10[uint256]` were emitting `KGEN_CompilerRT_AlignedAlloc` + `String.write` + `String._iadd` calls into the hot loop — ~115 ns/call of pure allocation overhead, dwarfing the ~5 ns LUT/if-tree decision. Fix: drop `.format(n)` from the bound-check messages (the bound is a compile-time-known constant per `@parameter` branch, so the message has no runtime info to encode). Microbench: power_of_10 standalone cost 115 → 1.3 ns/call (~88×). Cross-op multiply max collapsed from 339 → 262 ns/iter; divide max 361 → 307 ns/iter — both because `power_of_10` sits on those hot paths through `round_coefficient` / `fit_to_max_coefficient`. The same audit found two more `debug_assert(... + String(rounding_mode))` sites in `utility.mojo` (`round_coefficient` / `round_to_keep_first_n_digits` unreachable `else` branches); fixed identically. **LUT representation re-evaluated after the fix:** with the `.format()` overhead removed, both the if-tree and a string-literal-rodata bitcast LUT (~1.3 ns/call) deliver near-equal end-to-end multiply numbers, so the codebase keeps the more elegant balanced **bisect if/else tree** (depth ~5/6, ~85/175 lines for u128/u256) instead of the ugly bitcast trick. **Reproducer for the Mojo team:** `/tmp/repro_debug_assert_format.mojo` shows the `.format()` form is 56× slower than a bare string literal under `-D ASSERT=none`. Worth filing upstream — `debug_assert` should treat its message argument as lazy (e.g. wrap in a closure or `@parameter` lambda).
 - **Investigated but not landed (H#4 itself):** the original H#4 hypothesis was "skip UInt256 promotion when the actual product fits in UInt128" via a `__umulh`-style high-half check. After analysing the real bench distribution, the slow cases (`High precision multiplication`, `e * e^0.5`, `Product overflows`) all have `combined_num_bits` ≥ 186, so the actual product is genuinely 180+ bits and *cannot* fit in UInt128 — the UInt256 promotion is mandatory there. The only inputs that would benefit are those with `combined_num_bits ∈ [129, 130]` where the bit-count upper-bound is loose by one; none of the bench cases land in that window, so the saving would be invisible. **Verdict: deprioritised** — the productive multiply optimisations are in `round_coefficient` (number-of-digits / power-of-10), not in the multiply itself.
 
 **Action plan (Phase 3, supersedes prior §4.9 priority - re-ordered by validated marginal value):**
@@ -473,22 +475,24 @@ loop with `black_box`/optimiser barriers). The two columns reported per op are t
 
 **Absolute decimo median ns/iter (lower = faster):**
 
-| date     | report                             |  add |  sub |  mul |  div |  cmp | from_str | to_str | note                                               |
-| -------- | ---------------------------------- | ---: | ---: | ---: | ---: | ---: | -------: | -----: | -------------------------------------------------- |
-| 20260421 | `dec128_report_20260421_112354.md` |  106 |  123 |    4 |    8 |    0 |    24.25 | 128.30 | Before any optimisations                           |
-| 20260421 | `dec128_report_20260421_203452.md` |    5 |    6 |    4 |    8 | 2.10 |    24.15 | 127.00 | After H#3.1 `add()` reorder                        |
-| 20260421 | `dec128_report_20260421_205835.md` |    5 |    6 |    5 |    8 | 2.10 |    22.45 | 126.60 | After H#3.1 `is_integer()` cheap pre-check         |
-| 20260421 | `dec128_report_20260421_211510.md` |    5 |  6.5 |    6 |    9 | 2.10 |    21.80 | 129.60 | After H#3.1 `is_integer` branch removed from `add` |
-| 20260422 | `dec128_report_20260422_071048.md` |    5 |    7 |    5 |    8 | 2.10 |    23.10 | 124.30 | After H#4.1 `is_integer` branch removed from `mul` |
+| date     | report                             |  add |  sub |  mul |  div |  cmp | from_str | to_str | note                                                             |
+| -------- | ---------------------------------- | ---: | ---: | ---: | ---: | ---: | -------: | -----: | ---------------------------------------------------------------- |
+| 20260421 | `dec128_report_20260421_112354.md` |  106 |  123 |    4 |    8 |    0 |    24.25 | 128.30 | Before any optimisations                                         |
+| 20260421 | `dec128_report_20260421_203452.md` |    5 |    6 |    4 |    8 | 2.10 |    24.15 | 127.00 | After H#3.1 `add()` reorder                                      |
+| 20260421 | `dec128_report_20260421_205835.md` |    5 |    6 |    5 |    8 | 2.10 |    22.45 | 126.60 | After H#3.1 `is_integer()` cheap pre-check                       |
+| 20260421 | `dec128_report_20260421_211510.md` |    5 |  6.5 |    6 |    9 | 2.10 |    21.80 | 129.60 | After H#3.1 `is_integer` branch removed from `add`               |
+| 20260422 | `dec128_report_20260422_071048.md` |    5 |    7 |    5 |    8 | 2.10 |    23.10 | 124.30 | After H#4.1 `is_integer` branch removed from `mul`               |
+| 20260422 | `dec128_report_20260422_085601.md` |    5 |    7 |    9 |    9 | 2.10 |    28.20 | 134.60 | After removing `format` from `debug_assert` + bisect if/else LUT |
 
 **Worst-case (max across cases) decimo ns/iter (lower = faster):**
 
-| date     | report                             |  add |  sub |  mul |  div |   cmp | from_str | to_str | note                                               |
-| -------- | ---------------------------------- | ---: | ---: | ---: | ---: | ----: | -------: | -----: | -------------------------------------------------- |
-| 20260421 | `dec128_report_20260421_203452.md` |  121 |  121 |  500 |  359 | 18.10 |   177.60 | 586.70 | After H#3.1 `add()` reorder                        |
-| 20260421 | `dec128_report_20260421_205835.md` |  109 |  111 |  359 |  371 | 18.30 |   182.30 | 596.80 | After H#3.1 `is_integer()` cheap pre-check         |
-| 20260421 | `dec128_report_20260421_211510.md` |   14 |   15 |  339 |  361 | 18.20 |   185.80 | 587.30 | After H#3.1 `is_integer` branch removed from `add` |
-| 20260422 | `dec128_report_20260422_071048.md` |   16 |   16 |  335 |  356 | 19.10 |   175.60 | 578.30 | After H#4.1 `is_integer` branch removed from `mul` |
+| date     | report                             |  add |  sub |  mul |  div |   cmp | from_str | to_str | note                                                             |
+| -------- | ---------------------------------- | ---: | ---: | ---: | ---: | ----: | -------: | -----: | ---------------------------------------------------------------- |
+| 20260421 | `dec128_report_20260421_203452.md` |  121 |  121 |  500 |  359 | 18.10 |   177.60 | 586.70 | After H#3.1 `add()` reorder                                      |
+| 20260421 | `dec128_report_20260421_205835.md` |  109 |  111 |  359 |  371 | 18.30 |   182.30 | 596.80 | After H#3.1 `is_integer()` cheap pre-check                       |
+| 20260421 | `dec128_report_20260421_211510.md` |   14 |   15 |  339 |  361 | 18.20 |   185.80 | 587.30 | After H#3.1 `is_integer` branch removed from `add`               |
+| 20260422 | `dec128_report_20260422_071048.md` |   16 |   16 |  335 |  356 | 19.10 |   175.60 | 578.30 | After H#4.1 `is_integer` branch removed from `mul`               |
+| 20260422 | `dec128_report_20260422_085601.md` |   17 |   16 |  262 |  307 | 19.80 |    68.40 | 577.90 | After removing `format` from `debug_assert` + bisect if/else LUT |
 
 The mul max barely moves (339 → 335 ns) because the worst case is now
 `High precision multiplication` / `e * e^0.5` / `Product overflows`, all of
@@ -501,33 +505,34 @@ column reveals what the median hides.
 
 **Decimo / competitor ratio (>1 = decimo slower; <1 = decimo faster):**
 
-| date     | op       | dm/rust | dm/csharp | dm/vbnet | notes                                                |
-| -------- | -------- | ------: | --------: | -------: | ---------------------------------------------------- |
-| 20260421 | add      |   21.2x |     43.1x |    59.2x | Before any optimizations                             |
-| 20260421 | sub      |   61.5x |     59.0x |    68.7x | Before any optimizations                             |
-| 20260421 | mul      |    1.6x |      2.9x |     4.4x | Before any optimizations                             |
-| 20260421 | div      |    1.4x |      0.5x |     1.5x | Before any optimizations                             |
-| 20260421 | cmp      |    0.0x |      0.0x |     0.0x | Before any optimizations                             |
-| 20260421 | from_str |    2.6x |      0.7x |     0.7x | Before any optimizations                             |
-| 20260421 | to_str   |    3.6x |      4.2x |     4.3x | Before any optimizations                             |
-| 20260421 | add      |    2.2x |      2.0x |     2.7x | After H#3.1 `add()` reorder                          |
-| 20260421 | sub      |    2.1x |      3.1x |     3.1x | After H#3.1 `add()` reorder                          |
-| 20260421 | mul      |    1.8x |      2.6x |     3.6x | After H#3.1 `add()` reorder                          |
-| 20260421 | div      |    1.4x |      0.6x |     1.4x | After H#3.1 `add()` reorder                          |
-| 20260421 | cmp      |    0.8x |      1.4x |     1.1x | After H#3.1 `add()` reorder                          |
-| 20260421 | from_str |    2.4x |      0.7x |     0.7x | After H#3.1 `add()` reorder                          |
-| 20260421 | to_str   |    3.5x |      4.3x |     4.1x | After H#3.1 `add()` reorder                          |
-| 20260421 | add      |    2.2x |      2.0x |     2.8x | After H#3.1 `is_integer()` pre-check                 |
-| 20260421 | sub      |    2.9x |      2.8x |     2.7x | After H#3.1 `is_integer()` pre-check                 |
-| 20260421 | mul      |    1.9x |      3.0x |     4.6x | After H#3.1 `is_integer()` pre-check                 |
-| 20260421 | div      |    1.5x |      0.6x |     1.3x | After H#3.1 `is_integer()` pre-check                 |
-| 20260421 | cmp      |    0.8x |      1.4x |     1.1x | After H#3.1 `is_integer()` pre-check                 |
-| 20260421 | from_str |    2.4x |      0.6x |     0.6x | After H#3.1 `is_integer()` pre-check                 |
-| 20260421 | to_str   |    3.5x |      4.4x |     4.3x | After H#3.1 `is_integer()` pre-check                 |
-| 20260421 | add      |    1.5x |      2.2x |     1.9x | After H#3.1 `is_integer` branch removed from `add()` |
-| 20260421 | sub      |    3.3x |      3.6x |     2.9x | After H#3.1 `is_integer` branch removed from `add()` |
-| 20260422 | mul      |    2.3x |      3.7x |     4.4x | After H#4.1 `is_integer` branch removed from `mul()` |
-| 20260422 | div      |    1.6x |      0.6x |     1.5x | After H#4.1 `is_integer` branch removed from `mul()` |
+| date     | op       | dm/rust | dm/csharp | dm/vbnet | notes                                                            |
+| -------- | -------- | ------: | --------: | -------: | ---------------------------------------------------------------- |
+| 20260421 | add      |   21.2x |     43.1x |    59.2x | Before any optimizations                                         |
+| 20260421 | sub      |   61.5x |     59.0x |    68.7x | Before any optimizations                                         |
+| 20260421 | mul      |    1.6x |      2.9x |     4.4x | Before any optimizations                                         |
+| 20260421 | div      |    1.4x |      0.5x |     1.5x | Before any optimizations                                         |
+| 20260421 | cmp      |    0.0x |      0.0x |     0.0x | Before any optimizations                                         |
+| 20260421 | from_str |    2.6x |      0.7x |     0.7x | Before any optimizations                                         |
+| 20260421 | to_str   |    3.6x |      4.2x |     4.3x | Before any optimizations                                         |
+| 20260421 | add      |    2.2x |      2.0x |     2.7x | After H#3.1 `add()` reorder                                      |
+| 20260421 | sub      |    2.1x |      3.1x |     3.1x | After H#3.1 `add()` reorder                                      |
+| 20260421 | mul      |    1.8x |      2.6x |     3.6x | After H#3.1 `add()` reorder                                      |
+| 20260421 | div      |    1.4x |      0.6x |     1.4x | After H#3.1 `add()` reorder                                      |
+| 20260421 | cmp      |    0.8x |      1.4x |     1.1x | After H#3.1 `add()` reorder                                      |
+| 20260421 | from_str |    2.4x |      0.7x |     0.7x | After H#3.1 `add()` reorder                                      |
+| 20260421 | to_str   |    3.5x |      4.3x |     4.1x | After H#3.1 `add()` reorder                                      |
+| 20260421 | add      |    2.2x |      2.0x |     2.8x | After H#3.1 `is_integer()` pre-check                             |
+| 20260421 | sub      |    2.9x |      2.8x |     2.7x | After H#3.1 `is_integer()` pre-check                             |
+| 20260421 | mul      |    1.9x |      3.0x |     4.6x | After H#3.1 `is_integer()` pre-check                             |
+| 20260421 | div      |    1.5x |      0.6x |     1.3x | After H#3.1 `is_integer()` pre-check                             |
+| 20260421 | cmp      |    0.8x |      1.4x |     1.1x | After H#3.1 `is_integer()` pre-check                             |
+| 20260421 | from_str |    2.4x |      0.6x |     0.6x | After H#3.1 `is_integer()` pre-check                             |
+| 20260421 | to_str   |    3.5x |      4.4x |     4.3x | After H#3.1 `is_integer()` pre-check                             |
+| 20260421 | add      |    1.5x |      2.2x |     1.9x | After H#3.1 `is_integer` branch removed from `add()`             |
+| 20260421 | sub      |    3.3x |      3.6x |     2.9x | After H#3.1 `is_integer` branch removed from `add()`             |
+| 20260422 | mul      |    2.3x |      3.7x |     4.4x | After H#4.1 `is_integer` branch removed from `mul()`             |
+| 20260422 | div      |    1.6x |      0.6x |     1.5x | After H#4.1 `is_integer` branch removed from `mul()`             |
+| 20260422 | div      |    1.5x |      0.7x |     1.6x | After removing `format` from `debug_assert` + bisect if/else LUT |
 
 Observations from the 20260421 baseline:
 
@@ -561,6 +566,20 @@ Observations from the `211510` run (after the third sub-step — the `elif x1.is
 - **Mixed magnitudes** stays at 14 ns (the pre-check still wins for it, and it always took the UInt256 path after the branch failed). Same-scale fast path (~5 ns) is untouched.
 - **Result equivalence preserved**: add 14/14, sub 14/14, no new mismatches across all four languages.
 - **Take-away:** branches that test a non-trivial predicate to skip a moderately-priced fall-through are often anti-optimisations; always measure the dispatch cost separately from the body cost.
+
+Observations from the `085601` run (after stripping `.format(n)` / `+ String(rounding_mode)` from three `debug_assert(...)` sites in `utility.mojo` and switching `power_of_10[uint128|uint256]` from a long if/elif chain to a balanced bisect if/else tree):
+
+- **`debug_assert` does NOT lazy-evaluate its message argument under `-D ASSERT=none`.** Asm inspection of `power_of_10` (`--emit=asm -O3 -D ASSERT=none`) showed `KGEN_CompilerRT_AlignedAlloc` + `String._iadd` + `String.write` calls in the supposedly-empty hot loop, all from the `debug_assert(False, "...{}".format(n))` bound-check messages. Standalone microbench: power_of_10 cost 115 → 1.3 ns/call (~88×). Single-file reproducer: `/tmp/repro_debug_assert_format.mojo` shows a 56× slowdown of `debug_assert(True, "msg {}".format(x))` vs `debug_assert(True, "msg")` even with `-D ASSERT=none`. Filed for the Mojo compiler team.
+- **Cross-op end-to-end impact (where `power_of_10` lives on the hot path through `round_coefficient` / `fit_to_max_coefficient`):**
+  - `multiply` max: **335 → 262 ns/iter (~22% off the worst case)**. The slow tail (`High precision`, `e * e^0.5`, `Product overflows`) was largely paying for the eager `.format()` allocations inside `power_of_10`.
+  - `divide` max: **356 → 307 ns/iter (~14% off the worst case)** — same root cause via the rounding helpers.
+  - `from_string` max: **175.6 → 68.4 ns/iter (~61% off the worst case)** — `from_string` exercises `power_of_10` heavily on every parse.
+  - `to_string` max: 578.3 → 577.9 (flat — `to_string` doesn't go through `power_of_10`; this is now the dominant remaining tail item, addressed by §4.9.2 action #4).
+- **Median timings shifted slightly** (`mul` median 5 → 9, `from_str` median 23 → 28). Two contributing factors: (a) the bisect if/else tree costs ~2 ns/call vs the prior linear if-tree's ~1.3 ns when the LUT actually lands in registers, and (b) run-to-run variance on cases that already sit at single-digit nanoseconds. The trade-off was deliberate: the bisect tree is much more elegant than the rejected bitcast-string-literal LUT, and the median regression is tiny next to the 22-61% wins on the worst-case tails. Previous LUT investigations (§4.9.2 #9 fourth bullet) had wrongly concluded "LUT regresses heavy cases by 17-67 ns" — that finding is now retracted: the regression was entirely the eager `.format()` overhead inside the per-call-site materialised LUT, not the LUT itself.
+- **Companion fix in two `debug_assert(False, "..." + String(rounding_mode))` unreachable `else` branches** in `utility.mojo` (`round_coefficient` / `round_to_keep_first_n_digits`). Same eager-evaluation hazard as `.format()`. Removed the dynamic `String(...)` concat — kept a plain string literal — since the message has no runtime info to encode (the branch is unreachable when assertions are off, and a constant identifier is enough when they are on).
+- **Repository-wide audit clean:** a regex + paren-balanced multi-line walk over `src/decimo/*.mojo` confirms there are no remaining `debug_assert(...)` calls that build a `String` via `.format()` or `+ String(...)` in their message argument. Future `debug_assert` calls should use plain string literals only until/unless Mojo gains lazy-message support.
+- **Result equivalence preserved:** add 14/14, sub 14/14, mul 15/16 (the long-standing `multiply by zero` rust-style scale mismatch in §5.7), div 11/11, cmp 30/30, from_str 16/16, to_str 9/9.
+- **Take-away:** when LLVM-generated asm shows allocator calls inside a loop you "know" is allocation-free, suspect eager-evaluation of *non-source-visible* arguments (e.g. `debug_assert` messages, default values, `print` arguments). The Mojo language reference says nothing about `debug_assert`'s message-argument evaluation order; this should either change or be documented prominently.
 
 ## 5. Improvement Opportunities
 

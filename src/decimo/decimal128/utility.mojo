@@ -344,8 +344,7 @@ def round_coefficient[
     else:
         debug_assert(
             False,
-            "Unknown rounding mode in round_coefficient: "
-            + String(rounding_mode),
+            "Unknown rounding mode in round_coefficient",
         )
 
     return truncated
@@ -522,8 +521,7 @@ def round_to_keep_first_n_digits[
         else:
             debug_assert(
                 False,
-                "Unknown rounding mode in round_to_keep_first_n_digits: "
-                + String(rounding_mode),
+                "Unknown rounding mode in round_to_keep_first_n_digits",
             )
 
         return truncated_value
@@ -735,6 +733,10 @@ def number_of_bits[dtype: DType, //](var value: Scalar[dtype]) -> Int:
 # When a new power of 10 is requested, it is calculated and added to the cache.
 # This cache is used to avoid recalculating the same powers of 10 multiple times.
 #
+# Or, simply create a module-level inline array with hard-coded powers of 10
+# up to 58, which is the maximum number of digits we need to handle for
+# Dec128 coefficients.
+#
 # TODO: Currently, this won't work when you create a mojopkg to use.
 # When Mojo supports module-level variables, this part can be used.
 # ===----------------------------------------------------------------------=== #
@@ -810,13 +812,14 @@ def number_of_bits[dtype: DType, //](var value: Scalar[dtype]) -> Int:
 #     return _power_of_10_as_uint256_cache[n]
 
 
+@always_inline
 def power_of_10[
     dtype: DType
 ](n: Int) -> Scalar[dtype] where (
     dtype == DType.uint128 or dtype == DType.uint256
 ):
     """
-    Returns 10^n using cached values for n <= 58.
+    Returns 10^n via a balanced bisect if/else search.
 
     Parameters:
         dtype: The Mojo scalar type to calculate the power of 10 for.
@@ -832,91 +835,284 @@ def power_of_10[
 
     Notes:
 
-        **WARNING**: The overflow is only checked when debug mode is enabled.
-        Make sure that the n is less than 29 for UInt128 and 77 for UInt256.
+        **WARNING**: The bound on `n` is only checked when `debug_assert`
+        is enabled. Callers must guarantee `n <= 28` for `uint128` and
+        `n <= 58` for `uint256`.
 
-        The powers of 10 are hardcoded up to 10^58. This covers all values
-        needed for Decimal128 arithmetic (max scale 28 × 2 = 56 for products
-        of two max-scale numbers, plus 2 for rounding headroom). For larger
-        values, the function falls back to the `**` operator.
+        Implementation is a balanced binary-search if/else tree (depth
+        ~5 for uint128, ~6 for uint256). Each leaf returns a comptime
+        literal which the compiler materialises with `mov`/`movk`
+        immediates. No memory traffic. Does not depend on the
+        `comptime InlineArray` -> stack-rebuild path.
     """
 
     comptime if dtype == DType.uint128:
-        debug_assert(
-            n <= 29,
-            "power_of_10() for uint128 only supports n up to 29, got {}".format(
-                n
-            ),
-        )
+        debug_assert(n <= 28, "power_of_10[uint128]: n must be <= 28")
+        if n < 14:
+            if n < 7:
+                if n < 3:
+                    if n < 1:
+                        return 1
+                    else:
+                        if n == 1:
+                            return 10
+                        else:
+                            return 100
+                else:
+                    if n < 5:
+                        if n == 3:
+                            return 1000
+                        else:
+                            return 10000
+                    else:
+                        if n == 5:
+                            return 100000
+                        else:
+                            return 1000000
+            else:
+                if n < 10:
+                    if n < 8:
+                        return 10000000
+                    else:
+                        if n == 8:
+                            return 100000000
+                        else:
+                            return 1000000000
+                else:
+                    if n < 12:
+                        if n == 10:
+                            return 10000000000
+                        else:
+                            return 100000000000
+                    else:
+                        if n == 12:
+                            return 1000000000000
+                        else:
+                            return 10000000000000
+        else:
+            if n < 21:
+                if n < 17:
+                    if n < 15:
+                        return 100000000000000
+                    else:
+                        if n == 15:
+                            return 1000000000000000
+                        else:
+                            return 10000000000000000
+                else:
+                    if n < 19:
+                        if n == 17:
+                            return 100000000000000000
+                        else:
+                            return 1000000000000000000
+                    else:
+                        if n == 19:
+                            return 10000000000000000000
+                        else:
+                            return 100000000000000000000
+            else:
+                if n < 25:
+                    if n < 23:
+                        if n == 21:
+                            return 1000000000000000000000
+                        else:
+                            return 10000000000000000000000
+                    else:
+                        if n == 23:
+                            return 100000000000000000000000
+                        else:
+                            return 1000000000000000000000000
+                else:
+                    if n < 27:
+                        if n == 25:
+                            return 10000000000000000000000000
+                        else:
+                            return 100000000000000000000000000
+                    else:
+                        if n == 27:
+                            return 1000000000000000000000000000
+                        else:
+                            return 10000000000000000000000000000
     else:
-        debug_assert(
-            n <= 58,
-            "power_of_10() for uint256 only supports n up to 58, got {}".format(
-                n
-            ),
-        )
-
-    comptime ValueType = Scalar[dtype]
-    comptime powers_of_10: InlineArray[ValueType, 29] = [
-        1,  # 0
-        10,
-        100,
-        1_000,  # 3
-        10_000,
-        100_000,
-        1_000_000,  # 6
-        10_000_000,
-        100_000_000,
-        1_000_000_000,  # 9
-        10_000_000_000,
-        100_000_000_000,
-        1_000_000_000_000,  # 12
-        10_000_000_000_000,
-        100_000_000_000_000,
-        1_000_000_000_000_000,  # 15
-        10_000_000_000_000_000,
-        100_000_000_000_000_000,
-        1_000_000_000_000_000_000,  # 18
-        10_000_000_000_000_000_000,
-        100_000_000_000_000_000_000,
-        1_000_000_000_000_000_000_000,  # 21
-        10_000_000_000_000_000_000_000,
-        100_000_000_000_000_000_000_000,
-        1_000_000_000_000_000_000_000_000,  # 24
-        10_000_000_000_000_000_000_000_000,
-        100_000_000_000_000_000_000_000_000,
-        1_000_000_000_000_000_000_000_000_000,  # 27
-        10_000_000_000_000_000_000_000_000_000,
-        100_000_000_000_000_000_000_000_000_000,
-        1_000_000_000_000_000_000_000_000_000_000,  # 30
-        10_000_000_000_000_000_000_000_000_000_000,
-        100_000_000_000_000_000_000_000_000_000_000,
-        1_000_000_000_000_000_000_000_000_000_000_000,  # 33
-        10_000_000_000_000_000_000_000_000_000_000_000,
-        100_000_000_000_000_000_000_000_000_000_000_000,
-        1_000_000_000_000_000_000_000_000_000_000_000_000,  # 36
-        10_000_000_000_000_000_000_000_000_000_000_000_000,
-        100_000_000_000_000_000_000_000_000_000_000_000_000,
-        1_000_000_000_000_000_000_000_000_000_000_000_000_000,  # 39
-        10_000_000_000_000_000_000_000_000_000_000_000_000_000,
-        100_000_000_000_000_000_000_000_000_000_000_000_000_000,
-        1_000_000_000_000_000_000_000_000_000_000_000_000_000_000,  # 42
-        10_000_000_000_000_000_000_000_000_000_000_000_000_000_000,
-        100_000_000_000_000_000_000_000_000_000_000_000_000_000_000,
-        1_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000,  # 45
-        10_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000,
-        100_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000,
-        1_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000,  # 48
-        10_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000,
-        100_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000,
-        1_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000,  # 51
-        10_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000,
-        100_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000,
-        1_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000,  # 54
-        10_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000,
-        100_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000,
-        1_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000,  # 57
-        10_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000_000,  # 58
-    ]
-
-    return powers_of_10[n]
+        debug_assert(n <= 58, "power_of_10[uint256]: n must be <= 58")
+        if n < 29:
+            if n < 14:
+                if n < 7:
+                    if n < 3:
+                        if n < 1:
+                            return 1
+                        else:
+                            if n == 1:
+                                return 10
+                            else:
+                                return 100
+                    else:
+                        if n < 5:
+                            if n == 3:
+                                return 1000
+                            else:
+                                return 10000
+                        else:
+                            if n == 5:
+                                return 100000
+                            else:
+                                return 1000000
+                else:
+                    if n < 10:
+                        if n < 8:
+                            return 10000000
+                        else:
+                            if n == 8:
+                                return 100000000
+                            else:
+                                return 1000000000
+                    else:
+                        if n < 12:
+                            if n == 10:
+                                return 10000000000
+                            else:
+                                return 100000000000
+                        else:
+                            if n == 12:
+                                return 1000000000000
+                            else:
+                                return 10000000000000
+            else:
+                if n < 21:
+                    if n < 17:
+                        if n < 15:
+                            return 100000000000000
+                        else:
+                            if n == 15:
+                                return 1000000000000000
+                            else:
+                                return 10000000000000000
+                    else:
+                        if n < 19:
+                            if n == 17:
+                                return 100000000000000000
+                            else:
+                                return 1000000000000000000
+                        else:
+                            if n == 19:
+                                return 10000000000000000000
+                            else:
+                                return 100000000000000000000
+                else:
+                    if n < 25:
+                        if n < 23:
+                            if n == 21:
+                                return 1000000000000000000000
+                            else:
+                                return 10000000000000000000000
+                        else:
+                            if n == 23:
+                                return 100000000000000000000000
+                            else:
+                                return 1000000000000000000000000
+                    else:
+                        if n < 27:
+                            if n == 25:
+                                return 10000000000000000000000000
+                            else:
+                                return 100000000000000000000000000
+                        else:
+                            if n == 27:
+                                return 1000000000000000000000000000
+                            else:
+                                return 10000000000000000000000000000
+        else:
+            if n < 44:
+                if n < 36:
+                    if n < 32:
+                        if n < 30:
+                            return 100000000000000000000000000000
+                        else:
+                            if n == 30:
+                                return 1000000000000000000000000000000
+                            else:
+                                return 10000000000000000000000000000000
+                    else:
+                        if n < 34:
+                            if n == 32:
+                                return 100000000000000000000000000000000
+                            else:
+                                return 1000000000000000000000000000000000
+                        else:
+                            if n == 34:
+                                return 10000000000000000000000000000000000
+                            else:
+                                return 100000000000000000000000000000000000
+                else:
+                    if n < 40:
+                        if n < 38:
+                            if n == 36:
+                                return 1000000000000000000000000000000000000
+                            else:
+                                return 10000000000000000000000000000000000000
+                        else:
+                            if n == 38:
+                                return 100000000000000000000000000000000000000
+                            else:
+                                return 1000000000000000000000000000000000000000
+                    else:
+                        if n < 42:
+                            if n == 40:
+                                return 10000000000000000000000000000000000000000
+                            else:
+                                return (
+                                    100000000000000000000000000000000000000000
+                                )
+                        else:
+                            if n == 42:
+                                return (
+                                    1000000000000000000000000000000000000000000
+                                )
+                            else:
+                                return (
+                                    10000000000000000000000000000000000000000000
+                                )
+            else:
+                if n < 51:
+                    if n < 47:
+                        if n < 45:
+                            return 100000000000000000000000000000000000000000000
+                        else:
+                            if n == 45:
+                                return 1000000000000000000000000000000000000000000000
+                            else:
+                                return 10000000000000000000000000000000000000000000000
+                    else:
+                        if n < 49:
+                            if n == 47:
+                                return 100000000000000000000000000000000000000000000000
+                            else:
+                                return 1000000000000000000000000000000000000000000000000
+                        else:
+                            if n == 49:
+                                return 10000000000000000000000000000000000000000000000000
+                            else:
+                                return 100000000000000000000000000000000000000000000000000
+                else:
+                    if n < 55:
+                        if n < 53:
+                            if n == 51:
+                                return 1000000000000000000000000000000000000000000000000000
+                            else:
+                                return 10000000000000000000000000000000000000000000000000000
+                        else:
+                            if n == 53:
+                                return 100000000000000000000000000000000000000000000000000000
+                            else:
+                                return 1000000000000000000000000000000000000000000000000000000
+                    else:
+                        if n < 57:
+                            if n == 55:
+                                return 10000000000000000000000000000000000000000000000000000000
+                            else:
+                                return 100000000000000000000000000000000000000000000000000000000
+                        else:
+                            if n == 57:
+                                return 1000000000000000000000000000000000000000000000000000000000
+                            else:
+                                return 10000000000000000000000000000000000000000000000000000000000
