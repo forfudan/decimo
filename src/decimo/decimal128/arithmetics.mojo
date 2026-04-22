@@ -113,7 +113,11 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     # CASE: One operand is zero (different scales)
     #
     # Promote the non-zero operand to max(x1_scale, x2_scale) so e.g.
-    # `0.000 + 5` returns "5.000". Skips the UInt256 work below.
+    # `0.000 + 5` returns "5.000". Skips the UInt256 work below. Both-zero
+    # returns positive zero at the higher scale (so `0.0 + -0.00 == 0.00`).
+    if x1_coef == 0 and x2_coef == 0:
+        return Decimal128(0, 0, 0, UInt32(max(x1_scale, x2_scale)), False)
+
     if x1_coef == 0:
         if x1_scale <= x2_scale:
             return x2
