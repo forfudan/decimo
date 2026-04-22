@@ -860,7 +860,7 @@ def power_of_10[
     Notes:
 
         **WARNING**: The bound on `n` is only checked when `debug_assert`
-        is enabled. Callers must guarantee `n <= 28` for `uint128` and
+        is enabled. Callers must guarantee `n <= 38` for `uint128` and
         `n <= 58` for `uint256`.
 
         Implementation is a balanced binary-search if/else tree (depth
@@ -871,7 +871,9 @@ def power_of_10[
     """
 
     comptime if dtype == DType.uint128:
-        debug_assert(n <= 28, "power_of_10[uint128]: n must be <= 28")
+        # 10^38 ~= 1e38 < 2^128 ~= 3.4e38, so 10^38 is the largest power
+        # of 10 representable in UInt128.
+        debug_assert(n <= 38, "power_of_10[uint128]: n must be <= 38")
         if n < 14:
             if n < 7:
                 if n < 3:
@@ -935,28 +937,61 @@ def power_of_10[
                         else:
                             return 100000000000000000000
             else:
-                if n < 25:
-                    if n < 23:
-                        if n == 21:
-                            return 1000000000000000000000
+                if n < 29:
+                    if n < 25:
+                        if n < 23:
+                            if n == 21:
+                                return 1000000000000000000000
+                            else:
+                                return 10000000000000000000000
                         else:
-                            return 10000000000000000000000
+                            if n == 23:
+                                return 100000000000000000000000
+                            else:
+                                return 1000000000000000000000000
                     else:
-                        if n == 23:
-                            return 100000000000000000000000
+                        if n < 27:
+                            if n == 25:
+                                return 10000000000000000000000000
+                            else:
+                                return 100000000000000000000000000
                         else:
-                            return 1000000000000000000000000
+                            if n == 27:
+                                return 1000000000000000000000000000
+                            else:
+                                return 10000000000000000000000000000
                 else:
-                    if n < 27:
-                        if n == 25:
-                            return 10000000000000000000000000
+                    # n in 29..38
+                    if n < 33:
+                        if n < 31:
+                            if n == 29:
+                                return 100000000000000000000000000000
+                            else:
+                                return 1000000000000000000000000000000
                         else:
-                            return 100000000000000000000000000
+                            if n == 31:
+                                return 10000000000000000000000000000000
+                            else:
+                                return 100000000000000000000000000000000
                     else:
-                        if n == 27:
-                            return 1000000000000000000000000000
+                        if n < 36:
+                            if n < 34:
+                                return 1000000000000000000000000000000000
+                            else:
+                                if n == 34:
+                                    return 10000000000000000000000000000000000
+                                else:
+                                    return 100000000000000000000000000000000000
                         else:
-                            return 10000000000000000000000000000
+                            if n < 38:
+                                if n == 36:
+                                    return 1000000000000000000000000000000000000
+                                else:
+                                    return (
+                                        10000000000000000000000000000000000000
+                                    )
+                            else:
+                                return 100000000000000000000000000000000000000
     else:
         debug_assert(n <= 58, "power_of_10[uint256]: n must be <= 58")
         if n < 29:

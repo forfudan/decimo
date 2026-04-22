@@ -222,6 +222,38 @@ File: `decimal128.mojo`, lines ~344, 351. The function used `testing.assert_true
 
 `arithmetics.mojo` `divide()` always uses banker's rounding (HALF_EVEN). Same as C#/Rust/Arrow/govalues for the `/` operator. If we ever want configurable rounding, add a `divide(x, y, rounding_mode)` overload. Low priority.
 
+### 3.4 `root()` Trailing-Zero Recovery Can Overflow `UInt128` — Open (Medium)
+
+File: `exponential.mojo`, in the exact-root recovery branch of `root(x, n)`.
+The branch evaluates `x_coef * power_of_10[uint128](n)` and compares it to
+`guess_coef ** n` to detect whether the n-th root is exact and trim a single
+trailing zero from `guess_coef`. Two problems:
+
+1. **`UInt128` overflow in `x_coef * 10^n`.** `Decimal128`'s coefficient is
+   96-bit (max `~7.92e28`), so the multiplication only stays within
+   `UInt128` (`< 2^128 ~= 3.4e38`) when `10^n < 2^128 / x_coef`. In the
+   worst case this allows only `n <= 9`. For `n in [10, 38]` the
+   multiplication can silently wrap, causing the equality check to either
+   accept a wrong "exact root" (false positive) or miss a real one (false
+   negative).
+2. **`guess_coef ** n` already uses unchecked exponentiation.** The same
+   branch raises `guess_coef` to the n-th power without overflow detection;
+   for large `n` and non-trivial `guess_coef` the result also wraps in
+   `UInt128`.
+
+Current PR-221 mitigation: the call site is guarded with `if n <= 38` so we
+at least don't read past the `power_of_10[uint128]` bisect tree. The
+multiplication overflow is **not** addressed.
+
+Suggested fix (out of scope for PR-221):
+- Compute the comparison in `UInt256` (using `power_of_10[uint256]`), which
+  has plenty of headroom (`2^256 ~= 1.16e77` vs. worst-case product
+  `~7.92e28 * 1e38 = 7.92e66`).
+- Or compute `guess_coef ** n` and `x_coef * 10^n` lazily and short-circuit
+  on detected overflow, falling through to the `return guess` path.
+- A broader audit of `root()` and `sqrt()` exact-recovery branches is
+  warranted; both rely on similar implicit-no-overflow assumptions.
+
 ## 4. Performance Bottlenecks
 
 ### 4.1 `number_of_bits()` Used a Loop — Done
@@ -398,7 +430,7 @@ This is far worse than the “~2× gap” the plan previously assumed. The from_
 
 1. ~~**`coefficient()` reconstructs UInt128 from 3×UInt32 on every call.** `add`/`subtract`/`multiply`/`compare` all start with at least two `coefficient()` calls. Rust stores the coefficient as a single 96-bit field that bitcasts directly. We should add an `@always_inline` direct-load fast path~~or store the coefficient as `UInt128` natively (with the flags packed elsewhere)~~. Bitcast the 4 UInt32 words to a single UInt128 and mask off the sign/scale bits in one shot, then use that UInt128 directly in the operators instead of working on the three UInt32s and reconstructing UInt128 repeatedly. I think this is the single biggest low-hanging fruit on the hot path.~~
 2. **`raises` overhead on every operator.** `__add__`, `__mul__`, `__truediv__` are all `raises` even when overflow is impossible. Rust’s `+`/`*`/`/` are infallible (panicking) by default and `checked_*` is opt-in. Each `raises` call adds an error-pointer setup + branch. Consider an `@always_inline` non-raising fast path that asserts in debug builds and panics on overflow (matching Rust default). For example, `add_promised` (think about other names recently) that assumes no overflow and is `@always_inline`, then `add` that calls `add_promised` and checks for overflow in debug but not in release.
-3. **Scale alignment uses `power_of_10(diff)` lookups + a wide multiyply** even when scales already match. Add a `if scale_a == scale_b` short-circuit at the top of `add`.
+3. **Scale alignment uses `power_of_10(diff)` lookups + a wide multiply** even when scales already match. Add a `if scale_a == scale_b` short-circuit at the top of `add`.
 4. **Multiply always promotes to UInt256** even when `coef_a * coef_b` provably fits in UInt128 (which is most cases for 14-digit-ish inputs). Add a UInt128 fast path with overflow check.
 5. **Divide uses a long-division digit loop in Mojo**; rust_decimal uses a UInt128 hardware divide for the common case. Adopt the same fast path.
 6. **`to_string` likely allocates a `String` builder per call.** rust_decimal uses a stack `[u8; 32]` buffer. We can do the same with `InlineArray[UInt8, 64]` and a single `String(bytes)` at the end.

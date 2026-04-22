@@ -324,10 +324,13 @@ def root(x: Decimal128, n: Int) raises -> Decimal128:
                     sign=False,
                 )
             # `n` can be up to 50 here (the `n > 50` early-return path
-            # delegates to `exp(ln(x) / n)` instead). The `_unsafe` blob
-            # only stores 0..28 for `uint128`, so use the safe bisect
-            # variant which holds for the full range we actually call.
-            if (
+            # delegates to `exp(ln(x) / n)` instead). UInt128 can only
+            # represent 10^n for `n <= 38` (2^128 ~= 3.4e38), so we skip
+            # this trailing-zero recovery branch for `n in 39..50` --
+            # `x_coef * 10^n` would overflow UInt128 anyway, and the
+            # Newton-Raphson result above is already returned correctly
+            # below.
+            if n <= 38 and (
                 guess_coef_powered
                 == x_coef
                 * decimo.decimal128.utility.power_of_10[DType.uint128](n)
