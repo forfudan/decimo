@@ -41,7 +41,6 @@ fi
 
 # ---- Build Mojo harness once (release: -O3, no debug info, asserts off) ----
 echo ">>> Building Mojo harness (release: -O3, no debug, no asserts)..."
-MOJO_BIN="$(pwd)/mojo/bench"
 (cd mojo && pixi run --manifest-path ../../../pixi.toml mojo build \
      -I ../../../src -O3 -g0 -D ASSERT=none ./bench.mojo -o ./bench)
 

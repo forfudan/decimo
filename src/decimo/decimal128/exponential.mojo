@@ -323,10 +323,14 @@ def root(x: Decimal128, n: Int) raises -> Decimal128:
                     scale=UInt32(guess.scale() - num_digits_to_decrease),
                     sign=False,
                 )
+            # `n` can be up to 50 here (the `n > 50` early-return path
+            # delegates to `exp(ln(x) / n)` instead). The `_unsafe` blob
+            # only stores 0..28 for `uint128`, so use the safe bisect
+            # variant which holds for the full range we actually call.
             if (
                 guess_coef_powered
                 == x_coef
-                * decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](n)
+                * decimo.decimal128.utility.power_of_10[DType.uint128](n)
             ):
                 return Decimal128.from_uint128(
                     guess_coef // 10,

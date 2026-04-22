@@ -1160,7 +1160,7 @@ def power_of_10[
 # `power_of_10_unsafe`; the public `power_of_10` keeps the elegant
 # bisect implementation.
 #
-# Total rodata cost: 29 * 16 + 59 * 32 = 2 352 bytes.
+# Total rodata cost: 30 * 16 + 59 * 32 = 2 368 bytes.
 # ===----------------------------------------------------------------------=== #
 
 
@@ -1194,6 +1194,7 @@ comptime _POWER_OF_10_U128_BLOB = (
     + "\x00\x00\x00\xe4\xd2\x0c\xc8\xdc\xd2\xb7\x52\x00\x00\x00\x00\x00"
     + "\x00\x00\x00\xe8\x3c\x80\xd0\x9f\x3c\x2e\x3b\x03\x00\x00\x00\x00"
     + "\x00\x00\x00\x10\x61\x02\x25\x3e\x5e\xce\x4f\x20\x00\x00\x00\x00"
+    + "\x00\x00\x00\xa0\xca\x17\x72\x6d\xae\x0f\x1e\x43\x01\x00\x00\x00"
 )
 
 
@@ -1287,7 +1288,7 @@ def power_of_10_unsafe[
         **WARNING**: This function performs **no bounds check** at all - not
         even via `debug_assert`. Out-of-range `n` will read past the end of
         the rodata blob and return arbitrary bits. Callers must guarantee
-        `0 <= n <= 28` for `uint128` and `0 <= n <= 58` for `uint256`.
+        `0 <= n <= 29` for `uint128` and `0 <= n <= 58` for `uint256`.
 
         Use the safe `power_of_10` (which has the same dispatch tree but
         with an asserted bound) when you cannot prove `n` is in range.
