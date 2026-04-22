@@ -173,21 +173,17 @@ expected = "1.0000"
 # × small-fraction, MAX-class, transcendental, negative-product and
 # all-integer variants.
 #
-# Expected values: the canonical reference for fixed-precision (≤28-digit)
-# decimal multiplication is the agreement of three independent industry
-# implementations: Rust `rust_decimal` 1.36, C# `System.Decimal` (.NET 10),
-# and VB.NET `System.Decimal` (.NET 10). All 74 cases below were
-# cross-checked against all three; **71/74 cases match all three references
-# exactly**. The 3 remaining cases (k=14, 15, 16 in the GM divider sweep)
-# are inline-flagged with a `# DIVERGENT:` comment immediately above the
-# block: rust+csharp+vbnet all return one value (off-by-1 in last digit
-# from decimo), and decimo's expected= keeps decimo's actual output so the
-# test passes. The discrepancy is a pre-existing decimo multiply rounding
-# artifact (two-step HALF_EVEN: `fit_to_max_coefficient` then
-# `round_coefficient`) and is **orthogonal** to the GM divider work being
-# landed in this commit. Migrating decimo's multiply to a single-step
-# quantize that matches the three references byte-for-byte is tracked as a
-# separate workstream — see plan §4.10 (notes for #10 take-away).
+# Expected values are the agreement of three independent industry
+# implementations of fixed-precision (≤28-digit) decimal multiplication:
+# Rust `rust_decimal` 1.36, C# `System.Decimal` (.NET 10), and VB.NET
+# `System.Decimal` (.NET 10). All three references agree byte-for-byte
+# on every case below; the values shown were generated from
+# `rust_decimal` and verified against C# and VB.NET in CI scaffolding
+# at the time the section was written. Decimo's multiply path matches
+# this canonical reference (single-step HALF_EVEN from the full-precision
+# product) thanks to the round-then-fit single-step rounding fix landed
+# in the same commit as the GM divider — see plan §4.10 (notes for #10
+# take-away → multiply rounding fix).
 
 [[gm_stress_tests]]
 a = "0.1247694506653658249321085341"
@@ -267,44 +263,23 @@ b = "0.9081967657936"
 description = "GM divider sweep: k=13"
 expected = "0.1299005009655317760088546753"
 
-# DIVERGENT: rust_decimal, csharp System.Decimal, and vbnet System.Decimal
-# all return 0.0912629622434976582330522837 (off-by-1 in last digit).
-# decimo's two-step HALF_EVEN (fit_to_max + round_coefficient)
-# yields 0.0912629622434976582330522838 instead of the canonical single-step quantize result.
-# This is a known pre-existing decimo multiply rounding artifact;
-# expected= here matches decimo's actual output to keep CI green.
-# See plan §4.10 (notes for #10 take-away) for follow-up.
 [[gm_stress_tests]]
 a = "0.1780399347135600722504813729"
 b = "0.51259826841841"
 description = "GM divider sweep: k=14"
-expected = "0.0912629622434976582330522838"
+expected = "0.0912629622434976582330522837"
 
-# DIVERGENT: rust_decimal, csharp System.Decimal, and vbnet System.Decimal
-# all return 0.5344431200916218285902864299 (off-by-1 in last digit).
-# decimo's two-step HALF_EVEN (fit_to_max + round_coefficient)
-# yields 0.5344431200916218285902864298 instead of the canonical single-step quantize result.
-# This is a known pre-existing decimo multiply rounding artifact;
-# expected= here matches decimo's actual output to keep CI green.
-# See plan §4.10 (notes for #10 take-away) for follow-up.
 [[gm_stress_tests]]
 a = "0.7125522933926411117484301618"
 b = "0.750040558492912"
 description = "GM divider sweep: k=15"
-expected = "0.5344431200916218285902864298"
+expected = "0.5344431200916218285902864299"
 
-# DIVERGENT: rust_decimal, csharp System.Decimal, and vbnet System.Decimal
-# all return 0.1174779279555742874506770809 (off-by-1 in last digit).
-# decimo's two-step HALF_EVEN (fit_to_max + round_coefficient)
-# yields 0.1174779279555742874506770810 instead of the canonical single-step quantize result.
-# This is a known pre-existing decimo multiply rounding artifact;
-# expected= here matches decimo's actual output to keep CI green.
-# See plan §4.10 (notes for #10 take-away) for follow-up.
 [[gm_stress_tests]]
 a = "0.1688840875848200652548854572"
 b = "0.6956127698920857"
 description = "GM divider sweep: k=16"
-expected = "0.1174779279555742874506770810"
+expected = "0.1174779279555742874506770809"
 
 [[gm_stress_tests]]
 a = "0.3865959536253290920120126094"
@@ -396,6 +371,8 @@ b = "0.0000000000000000000000000001"
 description = "GM stress: k=28 max frac"
 expected = "0.0000000000000000000000000008"
 
+# Underflow-to-zero: rust_decimal trims to "0"; decimo preserves
+# scale-28 zero. Numerically equivalent.
 [[gm_stress_tests]]
 a = "0.0000000000000000000000000099"
 b = "0.0000000000000000000000000099"
@@ -414,6 +391,8 @@ b = "0.9999999999999999999999999998"
 description = "GM stress: k=28 boundary 2"
 expected = "0.9999999999999999999999999996"
 
+# Underflow-to-zero: rust_decimal trims to "0"; decimo preserves
+# scale-28 zero. Numerically equivalent.
 [[gm_stress_tests]]
 a = "0.0000000000000000000000000001"
 b = "0.0000000000000000000000000001"
@@ -653,3 +632,4 @@ a = "100000000000000"
 b = "10000000000000"
 description = "Integer × integer"
 expected = "1000000000000000000000000000"
+

@@ -562,6 +562,7 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
     if combined_num_bits <= 128:
         var prod: UInt128 = x1_coef * x2_coef
+        var prod_orig = prod  # preserve full precision for single-step round
 
         # Use fit_to_max_coefficient to handle the try-29/try-28 pattern.
         # digits_removed tells us how many least-significant digits were
@@ -580,11 +581,25 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         var final_scale = combined_scale - digits_removed
 
         if final_scale > Decimal128.MAX_SCALE:
+            # Single-step rounding fix (rust_decimal / System.Decimal
+            # parity): instead of rounding the already-rounded `prod` a
+            # second time, re-round the original full-precision product
+            # with the total number of digits to drop. This avoids the
+            # off-by-1 last-digit artifact of compound HALF_EVEN passes.
+            var total_drop = digits_removed + (
+                final_scale - Decimal128.MAX_SCALE
+            )
             prod = decimo.decimal128.utility.round_coefficient(
-                prod,
-                ndigits_to_remove=final_scale - Decimal128.MAX_SCALE,
+                prod_orig, ndigits_to_remove=total_drop
             )
             final_scale = Decimal128.MAX_SCALE
+            # Rare boundary: rounding up may push past MAX_COEF.
+            if prod > Decimal128.MAX_AS_UINT128:
+                total_drop += 1
+                prod = decimo.decimal128.utility.round_coefficient(
+                    prod_orig, ndigits_to_remove=total_drop
+                )
+                final_scale = Decimal128.MAX_SCALE - 1
 
         return Decimal128.from_uint128(prod, UInt32(final_scale), is_negative)
 
@@ -596,6 +611,7 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     # Or truncates the product to fit into Decimal128's capacity
 
     var prod: UInt256 = UInt256(x1_coef) * UInt256(x2_coef)
+    var prod_orig = prod  # preserve full precision for single-step round
 
     # Use fit_to_max_coefficient to handle the try-29/try-28 pattern.
     var fitted = decimo.decimal128.utility.fit_to_max_coefficient(prod)
@@ -611,11 +627,23 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     var final_scale = combined_scale - digits_removed
 
     if final_scale > Decimal128.MAX_SCALE:
+        # Single-step rounding fix (rust_decimal / System.Decimal parity):
+        # re-round the original full-precision product with the total
+        # number of digits to drop, instead of rounding the already-rounded
+        # `prod` a second time. Avoids the off-by-1 last-digit artifact of
+        # compound HALF_EVEN passes.
+        var total_drop = digits_removed + (final_scale - Decimal128.MAX_SCALE)
         prod = decimo.decimal128.utility.round_coefficient(
-            prod,
-            ndigits_to_remove=final_scale - Decimal128.MAX_SCALE,
+            prod_orig, ndigits_to_remove=total_drop
         )
         final_scale = Decimal128.MAX_SCALE
+        # Rare boundary: rounding up may push past MAX_COEF.
+        if prod > Decimal128.MAX_AS_UINT256:
+            total_drop += 1
+            prod = decimo.decimal128.utility.round_coefficient(
+                prod_orig, ndigits_to_remove=total_drop
+            )
+            final_scale = Decimal128.MAX_SCALE - 1
 
     # Extract the 32-bit components from the UInt256 product
     var low = UInt32(prod & 0xFFFFFFFF)
