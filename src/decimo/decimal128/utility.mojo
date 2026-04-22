@@ -485,8 +485,11 @@ def round_to_keep_first_n_digits[
         # Calculate how many digits to keep (MAX_NUM_DIGITS = 29)
         var ndigits_to_remove = ndigits_of_x - ndigits
 
-        # Collect digits for rounding decision
-        var divisor = power_of_10_unsafe[dtype](ndigits_to_remove)
+        # Collect digits for rounding decision.
+        # Use the safe `power_of_10` here (not `_unsafe`): this function
+        # is DEPRECATED and not on the hot path, so prefer the variant
+        # with a `debug_assert`ed bound over the trust-the-caller fast path.
+        var divisor = power_of_10[dtype](ndigits_to_remove)
         var truncated_value = value // divisor
         var remainder = value % divisor
 
@@ -514,23 +517,19 @@ def round_to_keep_first_n_digits[
 
         # If RoundingMode is half_up(), round up the value if remainder is >= 0.5
         elif effective_mode == RoundingMode.half_up():
-            var cutoff_value = 5 * power_of_10_unsafe[dtype](
-                ndigits_to_remove - 1
-            )
+            var cutoff_value = 5 * power_of_10[dtype](ndigits_to_remove - 1)
             if remainder >= cutoff_value:
                 truncated_value += 1
 
         # If RoundingMode is half_down(), round up only if remainder is > 0.5
         elif effective_mode == RoundingMode.half_down():
-            var cutoff_value = 5 * power_of_10_unsafe[dtype](
-                ndigits_to_remove - 1
-            )
+            var cutoff_value = 5 * power_of_10[dtype](ndigits_to_remove - 1)
             if remainder > cutoff_value:
                 truncated_value += 1
 
         # If RoundingMode is ROUND_HALF_EVEN, round to nearest even digit if equidistant
         elif effective_mode == RoundingMode.half_even():
-            var cutoff_value: ValueType = 5 * power_of_10_unsafe[dtype](
+            var cutoff_value: ValueType = 5 * power_of_10[dtype](
                 ndigits_to_remove - 1
             )
             if remainder > cutoff_value:
@@ -1343,9 +1342,24 @@ def power_of_10_unsafe[
     """
 
     comptime if dtype == DType.uint128:
-        return _POWER_OF_10_U128_BLOB.unsafe_ptr().bitcast[Scalar[dtype]]()[n]
+        # `alignment=1`: `StringLiteral` rodata is only byte-aligned, but a
+        # bare `bitcast[Scalar[uint128]]()[n]` would tell LLVM the load is
+        # 16-byte aligned (the natural alignment of `UInt128`). On strict
+        # platforms (e.g. some ARM cores) that can fault if the compiler
+        # emits an aligned-only instruction. The explicit `alignment=1`
+        # forces an unaligned load (same machine code on x86_64 / Apple
+        # Silicon, but portably correct).
+        return (
+            _POWER_OF_10_U128_BLOB.unsafe_ptr()
+            .bitcast[Scalar[dtype]]()
+            .load[alignment=1](n)
+        )
     else:
-        return _POWER_OF_10_U256_BLOB.unsafe_ptr().bitcast[Scalar[dtype]]()[n]
+        return (
+            _POWER_OF_10_U256_BLOB.unsafe_ptr()
+            .bitcast[Scalar[dtype]]()
+            .load[alignment=1](n)
+        )
 
 
 # ===----------------------------------------------------------------------=== #
@@ -1495,7 +1509,12 @@ fn udiv_u256_by_pow10_gm(value: UInt256, k: Int) -> UInt256:
         `ell - 1` for each `d = 10^k` are precomputed in the
         `_GM_RECIPROCAL_BLOB` and `_GM_SHIFT_BLOB` rodata blobs.
     """
-    var mp = _GM_RECIPROCAL_BLOB.unsafe_ptr().bitcast[UInt256]()[k]
+    # `alignment=1`: see the corresponding note in `power_of_10_unsafe`.
+    # `StringLiteral.unsafe_ptr()` only guarantees byte alignment, so we
+    # must request an explicitly unaligned 32-byte load to remain portable.
+    var mp = (
+        _GM_RECIPROCAL_BLOB.unsafe_ptr().bitcast[UInt256]().load[alignment=1](k)
+    )
     var shift = Int(_GM_SHIFT_BLOB.unsafe_ptr()[k])
     var t1 = _mulhi_u256(mp, value)
     var t = ((value - t1) >> 1) + t1
