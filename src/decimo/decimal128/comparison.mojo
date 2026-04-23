@@ -104,70 +104,60 @@ def compare_absolute(x: Decimal128, y: Decimal128) -> Int8:
     var x_scale: Int = x.scale()
     var y_scale: Int = y.scale()
 
-    # CASE: The scales are the same
-    # Compare the coefficients directly
-    if x_scale == y_scale and x_coef == y_coef:
-        return 0
+    # CASE: same scale -> direct UInt128 compare.
     if x_scale == y_scale:
-        return Int8((Int(x_coef > y_coef)) - (Int(x_coef < y_coef)))
+        if x_coef == y_coef:
+            return 0
+        return Int8(1) if x_coef > y_coef else Int8(-1)
 
-    # CASE: The scales are different
-    # Compare the integral part first
-    # If the integral part is the same, compare the fractional part
-    else:
-        # Early return if integer parts have different lengths
-        # Get number of integer digits
-        var x_int_digits = (
-            decimo.decimal128.utility.number_of_digits(x_coef) - x_scale
-        )
-        var y_int_digits = (
-            decimo.decimal128.utility.number_of_digits(y_coef) - y_scale
-        )
-        if x_int_digits > y_int_digits:
-            return 1
-        if x_int_digits < y_int_digits:
-            return -1
-
-        # If interger parts have the same length, compare the integer parts
-        var x_scale_power = decimo.decimal128.utility.power_of_10_unsafe[
-            DType.uint128
-        ](Int(x_scale))
-        var y_scale_power = decimo.decimal128.utility.power_of_10_unsafe[
-            DType.uint128
-        ](Int(y_scale))
-        var x_int = x_coef // x_scale_power
-        var y_int = y_coef // y_scale_power
-
-        if x_int > y_int:
-            return 1
-        elif x_int < y_int:
-            return -1
-        else:
-            var x_frac = x_coef % x_scale_power
-            var y_frac = y_coef % y_scale_power
-
-            # Adjust the fractional part to have the same scale.
-            # Bounds: `x_frac < 10^x_scale` and `y_frac < 10^y_scale`, both
-            # ≤ 10^28. After scaling the smaller-scale fraction by
-            # `10^|scale_diff|` (≤ 10^28), the result is still
-            # < 10^max(x_scale, y_scale) ≤ 10^28, well within UInt128
-            # (max ≈ 3.4 × 10^38). No widening required.
-            var scale_diff = x_scale - y_scale
-            if scale_diff > 0:
-                y_frac *= decimo.decimal128.utility.power_of_10_unsafe[
-                    DType.uint128
-                ](Int(scale_diff))
-            else:
-                x_frac *= decimo.decimal128.utility.power_of_10_unsafe[
-                    DType.uint128
-                ](Int(-scale_diff))
-
-            if x_frac > y_frac:
-                return 1
-            elif x_frac < y_frac:
-                return -1
-            else:
+    # CASE: different scales -> scale up the smaller-scale side and
+    # compare. One multiply + one compare beats the previous
+    # number_of_digits / integer-and-fraction split (which spent 2
+    # `number_of_digits`, 4 `power_of_10_unsafe`, 2 wide divisions and
+    # 2 wide modulos before any compare).
+    #
+    # Fast path (scale_diff <= 9): 10^9 < 2^30; coefficient < 2^96, so
+    # the product fits in UInt128.
+    # Wider path: 10^28 < 2^94, max coefficient < 2^96, so the product
+    # is at most ~2^190 and we widen to UInt256.
+    if x_scale > y_scale:
+        var scale_diff = x_scale - y_scale
+        if scale_diff <= 9:
+            var y_scaled = (
+                y_coef
+                * decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
+                    scale_diff
+                )
+            )
+            if x_coef == y_scaled:
                 return 0
+            return Int8(1) if x_coef > y_scaled else Int8(-1)
+        var y_scaled_w = UInt256(
+            y_coef
+        ) * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](
+            scale_diff
+        )
+        var x_wide = UInt256(x_coef)
+        if x_wide == y_scaled_w:
+            return 0
+        return Int8(1) if x_wide > y_scaled_w else Int8(-1)
+
+    # x_scale < y_scale: scale up x.
+    var scale_diff = y_scale - x_scale
+    if scale_diff <= 9:
+        var x_scaled = x_coef * decimo.decimal128.utility.power_of_10_unsafe[
+            DType.uint128
+        ](scale_diff)
+        if x_scaled == y_coef:
+            return 0
+        return Int8(1) if x_scaled > y_coef else Int8(-1)
+    var x_scaled_w = UInt256(
+        x_coef
+    ) * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](scale_diff)
+    var y_wide = UInt256(y_coef)
+    if x_scaled_w == y_wide:
+        return 0
+    return Int8(1) if x_scaled_w > y_wide else Int8(-1)
 
 
 def greater(a: Decimal128, b: Decimal128) -> Bool:

@@ -673,46 +673,60 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
     if combined_num_bits <= 128:
         var prod: UInt128 = x1_coef * x2_coef
-        var prod_orig = prod  # preserve full precision for single-step round
 
-        # Use fit_to_max_coefficient to handle the try-29/try-28 pattern.
-        # digits_removed tells us how many least-significant digits were
-        # rounded away. If digits_removed > combined_scale, we've lost
-        # integral digits → overflow.
-        var fitted = decimo.decimal128.utility.fit_to_max_coefficient(prod)
-        var digits_removed = fitted[1]
+        # Fast path: product already fits Decimal128 capacity and the
+        # combined scale is in range — return without any rounding work.
+        if (
+            prod <= Decimal128.MAX_AS_UINT128
+            and combined_scale <= Decimal128.MAX_SCALE
+        ):
+            return Decimal128.from_uint128(
+                prod, UInt32(combined_scale), is_negative
+            )
 
-        if digits_removed > combined_scale:
+        # Single-pass rounding: compute the total digits to drop so that
+        # both the coefficient (≤ MAX_AS_UINT128) and the scale (≤
+        # MAX_SCALE) constraints are satisfied in one `round_coefficient`
+        # call. Saves the extra `number_of_digits` + wide divide that the
+        # old `fit_to_max_coefficient` + re-round pattern incurred.
+        var ndigits = decimo.decimal128.utility.number_of_digits(prod)
+        var drop_for_scale = Int(combined_scale) - Decimal128.MAX_SCALE
+        var drop_for_fit: Int
+        if prod > Decimal128.MAX_AS_UINT128:
+            # 29-digit values that still exceed MAX_AS_UINT128 need one
+            # explicit digit removed (`max(1, ndigits - 29)` handles both
+            # the boundary and any larger overflow uniformly).
+            drop_for_fit = max(1, ndigits - Decimal128.MAX_NUM_DIGITS)
+        else:
+            drop_for_fit = 0
+
+        var drop = max(drop_for_scale, drop_for_fit)
+        if drop > Int(combined_scale):
             raise OverflowError(
                 message="Decimal128 overflow in multiplication.",
                 function="multiply()",
             )
 
-        prod = fitted[0]
-        var final_scale = combined_scale - digits_removed
-
-        if final_scale > Decimal128.MAX_SCALE:
-            # Single-step rounding fix (rust_decimal / System.Decimal
-            # parity): instead of rounding the already-rounded `prod` a
-            # second time, re-round the original full-precision product
-            # with the total number of digits to drop. This avoids the
-            # off-by-1 last-digit artifact of compound HALF_EVEN passes.
-            var total_drop = digits_removed + (
-                final_scale - Decimal128.MAX_SCALE
-            )
-            prod = decimo.decimal128.utility.round_coefficient(
-                prod_orig, ndigits_to_remove=total_drop
-            )
-            final_scale = Decimal128.MAX_SCALE
-            # Rare boundary: rounding up may push past MAX_COEF.
-            if prod > Decimal128.MAX_AS_UINT128:
-                total_drop += 1
-                prod = decimo.decimal128.utility.round_coefficient(
-                    prod_orig, ndigits_to_remove=total_drop
+        var rounded = decimo.decimal128.utility.round_coefficient[
+            skip_digit_check=True
+        ](prod, ndigits_to_remove=drop)
+        # Rounding-up may carry into a new most-significant digit, pushing
+        # the result past MAX_AS_UINT128. Drop one more digit if so.
+        if rounded > Decimal128.MAX_AS_UINT128:
+            drop += 1
+            if drop > Int(combined_scale):
+                raise OverflowError(
+                    message="Decimal128 overflow in multiplication.",
+                    function="multiply()",
                 )
-                final_scale = Decimal128.MAX_SCALE - 1
+            rounded = decimo.decimal128.utility.round_coefficient[
+                skip_digit_check=True
+            ](prod, ndigits_to_remove=drop)
 
-        return Decimal128.from_uint128(prod, UInt32(final_scale), is_negative)
+        var final_scale = Int(combined_scale) - drop
+        return Decimal128.from_uint128(
+            rounded, UInt32(final_scale), is_negative
+        )
 
     # REMAINING CASES: Both operands are big
     # The bits of the product will not exceed 192 bits
@@ -722,44 +736,51 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     # Or truncates the product to fit into Decimal128's capacity
 
     var prod: UInt256 = UInt256(x1_coef) * UInt256(x2_coef)
-    var prod_orig = prod  # preserve full precision for single-step round
 
-    # Use fit_to_max_coefficient to handle the try-29/try-28 pattern.
-    var fitted = decimo.decimal128.utility.fit_to_max_coefficient(prod)
-    var digits_removed = fitted[1]
+    # Single-pass rounding: compute the total digits to drop so that
+    # both the coefficient (≤ MAX_AS_UINT128) and the scale (≤ MAX_SCALE)
+    # constraints are satisfied in one `round_coefficient` call. Saves
+    # the extra UInt256 division that the old `fit_to_max_coefficient`
+    # + re-round pattern incurred.
+    var ndigits = decimo.decimal128.utility.number_of_digits(prod)
+    var drop_for_scale = Int(combined_scale) - Decimal128.MAX_SCALE
+    var drop_for_fit: Int
+    if prod > UInt256(Decimal128.MAX_AS_UINT128):
+        drop_for_fit = max(1, ndigits - Decimal128.MAX_NUM_DIGITS)
+    else:
+        drop_for_fit = 0
 
-    if digits_removed > combined_scale:
+    var drop = max(drop_for_scale, drop_for_fit)
+    if drop > Int(combined_scale):
         raise OverflowError(
             message="Decimal128 overflow in multiplication.",
             function="multiply()",
         )
 
-    prod = fitted[0]
-    var final_scale = combined_scale - digits_removed
-
-    if final_scale > Decimal128.MAX_SCALE:
-        # Single-step rounding fix (rust_decimal / System.Decimal parity):
-        # re-round the original full-precision product with the total
-        # number of digits to drop, instead of rounding the already-rounded
-        # `prod` a second time. Avoids the off-by-1 last-digit artifact of
-        # compound HALF_EVEN passes.
-        var total_drop = digits_removed + (final_scale - Decimal128.MAX_SCALE)
-        prod = decimo.decimal128.utility.round_coefficient(
-            prod_orig, ndigits_to_remove=total_drop
-        )
-        final_scale = Decimal128.MAX_SCALE
-        # Rare boundary: rounding up may push past MAX_COEF.
-        if prod > Decimal128.MAX_AS_UINT256:
-            total_drop += 1
-            prod = decimo.decimal128.utility.round_coefficient(
-                prod_orig, ndigits_to_remove=total_drop
+    var rounded = decimo.decimal128.utility.round_coefficient[
+        skip_digit_check=True
+    ](prod, ndigits_to_remove=drop)
+    # Rounding-up may carry into a new most-significant digit, pushing
+    # the result past MAX_AS_UINT128. Re-round the ORIGINAL `prod` (not
+    # the already-rounded value) with one more digit dropped to avoid
+    # double-rounding artifacts.
+    if rounded > UInt256(Decimal128.MAX_AS_UINT128):
+        drop += 1
+        if drop > Int(combined_scale):
+            raise OverflowError(
+                message="Decimal128 overflow in multiplication.",
+                function="multiply()",
             )
-            final_scale = Decimal128.MAX_SCALE - 1
+        rounded = decimo.decimal128.utility.round_coefficient[
+            skip_digit_check=True
+        ](prod, ndigits_to_remove=drop)
+
+    var final_scale = Int(combined_scale) - drop
 
     # Extract the 32-bit components from the UInt256 product
-    var low = UInt32(prod & 0xFFFFFFFF)
-    var mid = UInt32((prod >> 32) & 0xFFFFFFFF)
-    var high = UInt32((prod >> 64) & 0xFFFFFFFF)
+    var low = UInt32(rounded & 0xFFFFFFFF)
+    var mid = UInt32((rounded >> 32) & 0xFFFFFFFF)
+    var high = UInt32((rounded >> 64) & 0xFFFFFFFF)
 
     return Decimal128(low, mid, high, UInt32(final_scale), is_negative)
 
