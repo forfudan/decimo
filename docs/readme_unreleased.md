@@ -28,23 +28,23 @@ A CLI calculator tool, built on top of Decimo and powered by [ArgMojo](https://g
 
 Decimo provides an arbitrary-precision integer and decimal library for Mojo. It delivers exact calculations for financial modeling, scientific computing, and applications where floating-point approximation errors are unacceptable. Beyond basic arithmetic, the library includes advanced mathematical functions with guaranteed precision.
 
-For Pythonistas, `decimo.BInt` to Mojo is like `int` to Python, and `decimo.Decimal` to Mojo is like `decimal.Decimal` to Python.
+For Pythonistas, `decimo.Integer` to Mojo is like `int` to Python, and `decimo.Decimal` to Mojo is like `decimal.Decimal` to Python.
 
 The core types are[^auxiliary]:
 
-- An arbitrary-precision signed integer type `BInt`[^bigint], which is a Mojo-native equivalent of Python's `int`.
+- An arbitrary-precision signed integer type `Integer`[^bigint], which is a Mojo-native equivalent of Python's `int`.
 - An arbitrary-precision decimal implementation (`Decimal`) allowing for calculations with unlimited digits and decimal places[^arbitrary], which is a Mojo-native equivalent of Python's `decimal.Decimal`.
 - A 128-bit fixed-point decimal implementation (`Dec128`) supporting up to 29 significant digits with a maximum of 28 decimal places[^fixed].
 - An arbitrary-precision floating-point implementation (`Float`) backed by the GNU MPFR library, supporting computations with configurable precision and a wide exponent range. Unlike `Decimal`, which uses base-10 arithmetic, `Float` uses binary floating-point internally. This type is optional and requires MPFR/GMP to be installed on the user's system.
-- An arbitrary-precision exact rational number type (`Rational`) represented as a reduced fraction of two `BInt`s (numerator and denominator). It supports exact arithmetic and comparisons without any loss of precision, making it ideal for applications that require precise fractional calculations.
+- An arbitrary-precision exact rational number type (`Rational`) represented as a reduced fraction of two `Integer`s (numerator and denominator). It supports exact arithmetic and comparisons without any loss of precision, making it ideal for applications that require precise fractional calculations.
 
 | Type       | Alternative names    | Information                              | Internal representation |
 | ---------- | -------------------- | ---------------------------------------- | ----------------------- |
-| `BInt`     | `BigInt`, `Integer`  | Equivalent to Python's `int`             | Base-2^32               |
-| `Decimal`  | `BigDecimal`, `BDec` | Equivalent to Python's `decimal.Decimal` | Base-10^9               |
+| `Integer`  | `BInt`, `BigInt`     | Equivalent to Python's `int`             | Base-2^32               |
+| `Decimal`  | `BDec`, `BigDecimal` | Equivalent to Python's `decimal.Decimal` | Base-10^9               |
 | `Dec128`   | `Decimal128`         | 128-bit fixed-precision decimal type     | Triple 32-bit words     |
 | `Float`    | `BigFloat`           | Arbitrary-precision floating-point type  | MPFR/GMP                |
-| `Rational` | N/A                  | Exact rational number type               | Two `BInt`s             |
+| `Rational` | N/A                  | Exact rational number type               | Two `Integer`s          |
 
 **Decimo** combines "**Deci**mal" and "**Mo**jo" - reflecting its purpose and implementation language. "Decimo" is also a Latin word meaning "tenth" and is the root of the word "decimal".
 
@@ -100,8 +100,8 @@ from decimo import *
 
 This will import the following types or aliases into your namespace:
 
-- `BInt` (and its aliases `BigInt`, `Integer`): An arbitrary-precision signed integer type, equivalent to Python's `int`.
-- `Decimal` (and its aliases `BigDecimal`, `BDec`): An arbitrary-precision decimal type, equivalent to Python's `decimal.Decimal`.
+- `Integer` (and its aliases `BInt`, `BigInt`): An arbitrary-precision signed integer type, equivalent to Python's `int`.
+- `Decimal` (and its aliases `BDec`, `BigDecimal`): An arbitrary-precision decimal type, equivalent to Python's `decimal.Decimal`.
 - `Dec128` (and its alias `Decimal128`): A 128-bit fixed-precision decimal type.
 - `RoundingMode`: An enumeration for rounding modes.
 - `ROUND_DOWN`, `ROUND_HALF_UP`, `ROUND_HALF_EVEN`, `ROUND_UP`: Constants for common rounding modes.
@@ -185,7 +185,7 @@ def main() raises:
 
 ---
 
-Here is a comprehensive quick-start guide showcasing each major function of the `BInt` type.
+Here is a comprehensive quick-start guide showcasing each major function of the `Integer` (`BInt`) type.
 
 ```mojo
 from decimo.prelude import *
@@ -193,9 +193,9 @@ from decimo.prelude import *
 
 def main() raises:
     # === Construction ===
-    var a = BInt("12345678901234567890")  # From string
-    var b = BInt(12345)  # From integer
-    var c = BInt("1991_10,18")  # From string with separators and spaces
+    var a = Integer("12345678901234567890")  # From string
+    var b = Integer(12345)  # From integer
+    var c = Integer("1991_10,18")  # From string with separators and spaces
     print(a, b, c)
 
     # === Basic Arithmetic ===
@@ -209,12 +209,12 @@ def main() raises:
     print(a % b)  # Modulo: 9615
 
     # === Power Operation ===
-    print(BInt(2).power(10))  # Power: 1024
-    print(BInt(2) ** 10)  # Power (using ** operator): 1024
+    print(Integer(2).power(10))  # Power: 1024
+    print(Integer(2) ** 10)  # Power (using ** operator): 1024
 
     # === Comparison ===
     print(a > b)  # Greater than: True
-    print(a == BInt("12345678901234567890"))  # Equality: True
+    print(a == Integer("12345678901234567890"))  # Equality: True
     print(a.is_zero())  # Check for zero: False
 
     # === Type Conversions ===
@@ -223,13 +223,13 @@ def main() raises:
     # === Sign Handling ===
     print(-a)  # Negation: -12345678901234567890
     print(
-        abs(BInt("-12345678901234567890"))
+        abs(Integer("-12345678901234567890"))
     )  # Absolute value: 12345678901234567890
     print(a.is_negative())  # Check if negative: False
 
     # === Extremely large numbers ===
     # 3600 digits // 1800 digits
-    print(BInt("123456789" * 400) // BInt("987654321" * 200))
+    print(Integer("123456789" * 400) // Integer("987654321" * 200))
 
     # === Greatest common divisor ===
     print(a.gcd(b))  # Greatest common divisor: 15
@@ -313,7 +313,7 @@ This project draws inspiration from several established decimal implementations 
 
 Rome wasn't built in a day. Decimo is currently under active development. It has successfully progressed through the **"make it work"** phase and the **"make it right"**, and is now well into the **"make it fast"** phase.
 
-The `BInt` type is fully implemented and optimized. It has been benchmarked against Python's `int` and demonstrates superior performance in most cases.
+The `Integer` type is fully implemented and optimized. It has been benchmarked against Python's `int` and demonstrates superior performance in most cases.
 
 Bug reports and feature requests are welcome! If you encounter issues, please [file them here](https://github.com/forfudan/decimo/issues).
 
@@ -324,7 +324,7 @@ decimo/
 ├── src/                          # All source code
 │   ├── decimo/                   # Core library (mojo package)
 │   │   ├── bigdecimal/           #   Arbitrary-precision decimal (Decimal)
-│   │   ├── bigint/               #   Arbitrary-precision signed integer (BInt)
+│   │   ├── bigint/               #   Arbitrary-precision signed integer (Integer)
 │   │   ├── bigint10/             #   Base-10 signed integer (BigInt10)
 │   │   ├── biguint/              #   Base-10 unsigned integer (BigUInt)
 │   │   ├── decimal128/           #   128-bit fixed-precision decimal (Dec128)

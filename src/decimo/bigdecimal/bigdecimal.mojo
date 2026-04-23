@@ -551,9 +551,16 @@ struct BigDecimal(
             # digits are individual base-10 digits (0-9)
             var num_digits = len(digits_tuple)
 
-            # Handle special case: zero
+            # Handle special case: zero.
+            # Per IEEE 754-2008 / IBM General Decimal Arithmetic, the sign of
+            # zero and the scale (quantum) of zero are both significant and
+            # must be preserved by `to-string`. Python's `decimal` follows the
+            # spec: `Decimal("-0.00").as_tuple()` is `(sign=1, digits=(0,),
+            # exponent=-2)`. Mirror that here instead of collapsing to +0/scale=0.
             if num_digits == 1 and Int(py=digits_tuple[0]) == 0:
-                return Self(coefficient=BigUInt.zero(), scale=0, sign=False)
+                return Self(
+                    coefficient=BigUInt.zero(), scale=-exponent, sign=sign
+                )
 
             # Build coefficient from digits
             var number_of_words = num_digits // 9
