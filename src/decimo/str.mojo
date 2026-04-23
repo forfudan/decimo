@@ -55,6 +55,43 @@ def ljust(s: String, width: Int, fillchar: String = " ") -> String:
     return s + fillchar * (width - n)
 
 
+# ============================================================================
+# Numeric string parser for BigDecimal: parse_numeric_string()
+# Cold raise helpers for parse_numeric_string()
+#
+# Each helper carries the `String.format(...)` allocation that would otherwise
+# bloat the parser body. Marked `@no_inline` so they never participate in
+# inlining decisions for the hot scan loop -- this is the same pattern used
+# for `Decimal128.from_uint128`'s raise helpers (see decimal128_enhancement
+# Lesson #4: extracting `.format()` raises lets the parent stay small enough
+# to be inlined into its callers).
+#
+# Plain string-literal raises stay inline -- they are zero-cost on the cold
+# path and would only add call overhead if extracted.
+# ============================================================================
+
+
+@no_inline
+fn _raise_invalid_char(c: UInt8, value: String) raises -> None:
+    # Non-ASCII bytes (>127) are typically a stray UTF-8 lead/continuation
+    # byte; surfacing them via `chr()` produces garbled output that is not
+    # actionable. Include the raw byte value (hex) AND the original input so
+    # users can diagnose encoding issues. Mirrors Decimal128.from_string.
+    if c > 127:
+        raise ValueError(
+            message=String(
+                "Invalid non-ASCII byte {} in numeric string: {}"
+            ).format(hex(Int(c)), value),
+            function="parse_numeric_string()",
+        )
+    raise ValueError(
+        message=String(
+            "Invalid character in the string of the number: {}"
+        ).format(chr(Int(c))),
+        function="parse_numeric_string()",
+    )
+
+
 def parse_numeric_string(
     value: String,
 ) raises -> Tuple[List[UInt8], Int, Bool]:
@@ -273,12 +310,7 @@ def parse_numeric_string(
                 sign_read = True
 
         else:
-            raise ValueError(
-                message=String(
-                    "Invalid character in the string of the number: {}"
-                ).format(chr(Int(c))),
-                function="parse_numeric_string()",
-            )
+            _raise_invalid_char(c, value)
 
     if last_was_separator:
         raise ValueError(
