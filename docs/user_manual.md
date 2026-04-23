@@ -920,6 +920,31 @@ Many methods mirror Python's `decimal.Decimal` API:
 | `d.adjusted()`          | `x.adjusted()`          |
 | `d.same_quantum(other)` | `x.same_quantum(other)` |
 
+### A note on result exponents (`Decimal` and `Dec128`)
+
+decimo follows the **preferred-exponent** rules from IEEE 754-2008 §3.3
+and the IBM General Decimal Arithmetic specification §4.1. Concretely:
+
+- For `add`/`subtract`, the result exponent is `min(exp(a), exp(b))`.
+- For `multiply`, the result exponent is `exp(a) + exp(b)` — even when the
+  numerical value is zero. So `Decimal("123.45") * Decimal("0") == "0.00"`,
+  not `"0"`, because both operands' scales are preserved in the product's
+  scale (`-2 + 0 = -2`).
+- For `divide`, the **ideal** exponent is `exp(a) - exp(b)`. The result
+  exponent is the ideal one when the quotient is exact at that scale
+  (`Decimal("10.5") / Decimal("2.5") == "4.2"`, not `"4.20"`), and
+  otherwise the smallest exponent that still represents the exact value
+  (`Decimal("123.45") / Decimal("-2") == "-61.725"`).
+- The sign of zero is preserved (`Decimal("-0.00")` round-trips to
+  `"-0.00"`).
+
+This matches Python's `decimal.Decimal`, `System.Decimal` (.NET BCL,
+both C# and VB.NET), and the GDA reference. It differs from
+`rust_decimal`, which always pads multiplication-by-zero to the maximum
+scale of the operands and pads exact divide quotients with trailing
+zeros to the operand-scale difference. If you need rust_decimal-style
+output, call `.quantize(...)` or `.normalize()` explicitly.
+
 ### Appendix A — Import Paths
 
 ```mojo
