@@ -62,7 +62,7 @@ corresponds to one landed PR / one bench snapshot. Rows are *append-only*.
 | 20260422 | **Granlund-Möller reciprocal divider** for UInt256 / 10^k (k ∈ [1,29]). 250→6 ns/call.   |
 |          | **Critical:** magic constant must use **ceiling** division. Floor failed 17/2000 at k=1. |
 | 20260422 | `udiv_u256_by_u64` schoolbook over u64 limbs (~12 ns vs 236 ns native UInt256/UInt256)   |
-| 20260422 | `power_of_10_unsafe` swept across 22 hot sites (was `UInt(128                            | 256)(10) ** k`) |
+| 20260422 | `power_of_10_unsafe` swept across 22 hot sites (was `UInt(128 or 256)(10) ** k`)         |
 
 ### 2.3 Performance — arithmetic ops
 
@@ -181,6 +181,7 @@ context. All P1/P2 items have landed; P3 items are tracked in §5.
 | 15  | `compare_absolute` rewrite                                 | DONE (this PR) — worst case 13.6→3.8 ns                                                    |
 | 16  | `multiply` single-pass rounding (saves second wide divide) | DONE (this PR) — High-precision 19→13 ns                                                   |
 | 17  | `from_string` per-byte switch reorder + branch merge       | DONE (this PR) — Long integer 41→22 ns                                                     |
+| 18  | `Decimal128.from_string` call `str.parse_numeric_string`   | Consolidate these two functions as one unified parsing function in `str` module            |
 
 ---
 

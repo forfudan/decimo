@@ -597,10 +597,11 @@ struct Decimal128(
             return Decimal128.ZERO()
 
         # NOTE: A previous version did a separate full-input pass to reject
-        # non-ASCII bytes. That pre-scan is now folded into the main loop
-        # (any byte that doesn't match a recognized ASCII char ends up in
-        # the catch-all `else` branch, which raises ValueError). Saves a
-        # full ~N-byte loop on every parse.
+        # non-ASCII bytes. That pre-scan is now folded into the main loop:
+        # any unrecognised byte ends up in the catch-all `else` branch,
+        # which raises ValueError. Non-ASCII bytes (`code > 127`) are
+        # special-cased there to include the offending byte value and the
+        # original input string in the error message.
 
         # Yuhao's notes:
         # We scan each char in the string input.
@@ -738,6 +739,18 @@ struct Decimal128(
                 else:
                     exponent_notation_read = True
             else:
+                # Non-ASCII bytes (>127) are typically a stray UTF-8 lead/
+                # continuation byte; surfacing the raw byte via `chr()` is
+                # garbled and not actionable. Include the offending byte
+                # value AND the original input so users can diagnose
+                # encoding issues without us reintroducing a full pre-scan.
+                if code > 127:
+                    raise ValueError(
+                        message=String(
+                            "Invalid non-ASCII byte {} in decimal128 string: {}"
+                        ).format(hex(Int(code)), value),
+                        function="Decimal128.from_string()",
+                    )
                 raise ValueError(
                     message=String(
                         "Invalid character in decimal128 string: {}"
@@ -1012,7 +1025,11 @@ struct Decimal128(
         Args:
             writer: The writer instance.
         """
-        writer.write('Decimal128("', String(self), '")')
+        # Stream the value directly through `write_to` to avoid materialising
+        # an intermediate `String(self)` allocation.
+        writer.write('Decimal128("')
+        self.write_to(writer)
+        writer.write('")')
 
     # ===------------------------------------------------------------------=== #
     # Type-transfer or output methods that are not dunders
