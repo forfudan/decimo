@@ -488,35 +488,25 @@ def test_divide_special_and_precision() raises:
 def test_divide_error_handling() raises:
     """Division by zero, overflow, and boundary conditions.
 
-    Uses `with testing.assert_raises():` for the must-raise cases so the
-    test fails loudly if the operation unexpectedly succeeds. The two
-    overflow probes (MAX / 0.5 and MAX / 0.00001) are inherently dual:
-    they may either raise on overflow or return a valid > MAX result;
-    they are split into a try-once / assert-after pattern so any
-    assertion failure on the success branch propagates out of the try.
+    All probes use `with testing.assert_raises():` because they are
+    must-raise cases:
+    - Division by zero is mathematically undefined.
+    - Decimal128's representable maximum magnitude is `MAX()` at scale
+      0; dividing `MAX()` by a value with magnitude < 1 (e.g. 0.5, 0.1,
+      0.00001) yields a mathematical result strictly greater than
+      `MAX()`, which cannot be represented and must therefore raise.
     """
     # Must raise: real division by zero.
     with testing.assert_raises():
         var _r = Decimal128(123) / Decimal128(0)
 
-    # MAX / 0.5: either raises (overflow) or yields a value > MAX.
-    var saw_overflow_a = False
-    var result92 = Decimal128(0)
-    try:
-        result92 = Decimal128.MAX() / Decimal128("0.5")
-    except:
-        saw_overflow_a = True
-    if not saw_overflow_a:
-        testing.assert_true(
-            result92 > Decimal128.MAX(),
-            "MAX / 0.5 succeeded but did not exceed MAX",
-        )
+    # Must raise: MAX / 0.5 = 2 * MAX, which exceeds MAX.
+    with testing.assert_raises():
+        var _r92 = Decimal128.MAX() / Decimal128("0.5")
 
-    # MAX / 0.1: only documents that the operation may raise without crashing.
-    try:
-        var _r = Decimal128.MAX() / Decimal128("0.1")
-    except:
-        pass
+    # Must raise: MAX / 0.1 = 10 * MAX, which exceeds MAX.
+    with testing.assert_raises():
+        var _r93 = Decimal128.MAX() / Decimal128("0.1")
 
     var result94 = Decimal128.MIN() / Decimal128("10.12345")
     testing.assert_equal(
@@ -528,18 +518,9 @@ def test_divide_error_handling() raises:
 
     testing.assert_equal(String(Decimal128.MAX() / Decimal128.MIN()), "-1")
 
-    # MAX / 0.00001: same dual behaviour as MAX / 0.5.
-    var saw_overflow_b = False
-    var result_b = Decimal128(0)
-    try:
-        result_b = Decimal128.MAX() / Decimal128("0.00001")
-    except:
-        saw_overflow_b = True
-    if not saw_overflow_b:
-        testing.assert_true(
-            result_b >= Decimal128.MAX(),
-            "MAX / 0.00001 succeeded but result was below MAX",
-        )
+    # Must raise: MAX / 0.00001 = 100000 * MAX, which exceeds MAX.
+    with testing.assert_raises():
+        var _r96 = Decimal128.MAX() / Decimal128("0.00001")
 
     var calc = (Decimal128(1) / Decimal128(3)) * Decimal128(3)
     testing.assert_equal(String(calc), "0.9999999999999999999999999999")
