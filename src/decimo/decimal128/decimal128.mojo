@@ -731,9 +731,15 @@ struct Decimal128(
 
                 # Exponent part
                 if exponent_notation_read:
-                    # Raise an error if the exponent part is too large
+                    # Raise an error if the exponent part is too large.
+                    # Use `>=` (not `>`) so that we catch the digit *before*
+                    # the multiply pushes `raw_exponent` past the cap. With
+                    # `>` and a current cap of 58, a string like "1e589"
+                    # would slip through (58 > 58 is False) and let
+                    # `raw_exponent` grow to 589, ultimately reaching
+                    # `power_of_10_unsafe` with an out-of-range index.
                     if (not exponent_sign) and (
-                        raw_exponent > Decimal128.MAX_NUM_DIGITS * 2
+                        raw_exponent >= Decimal128.MAX_NUM_DIGITS * 2
                     ):
                         raise OverflowError(
                             message=String(
@@ -744,7 +750,7 @@ struct Decimal128(
 
                     # Skip the digit if exponent is negatively too large
                     elif (exponent_sign) and (
-                        raw_exponent > Decimal128.MAX_NUM_DIGITS * 2
+                        raw_exponent >= Decimal128.MAX_NUM_DIGITS * 2
                     ):
                         continue
 
@@ -798,9 +804,22 @@ struct Decimal128(
                 if scale >= raw_exponent:
                     scale = scale - raw_exponent
                 else:
+                    var exponent_delta = Int(raw_exponent) - Int(scale)
+                    # `power_of_10_unsafe[uint128]` is only defined for
+                    # `0 <= n <= 29`. Anything past that would read garbage
+                    # from the rodata blob (and may even silently parse to
+                    # a wrong value if the garbage happens to fit in 96
+                    # bits). Bail out with a clean OverflowError instead.
+                    if exponent_delta > Decimal128.MAX_NUM_DIGITS:
+                        raise OverflowError(
+                            message=String(
+                                "Exponent is too large to fit in Decimal128: {}"
+                            ).format(raw_exponent),
+                            function="Decimal128.from_string()",
+                        )
                     coef = coef * decimo.decimal128.utility.power_of_10_unsafe[
                         DType.uint128
-                    ](Int(raw_exponent) - Int(scale))
+                    ](exponent_delta)
                     scale = 0
 
         # print("DEBUG: coef = ", coef)
