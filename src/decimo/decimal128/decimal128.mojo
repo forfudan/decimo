@@ -509,6 +509,27 @@ struct Decimal128(
         return Self(low, mid, 0, flags)
 
     @staticmethod
+    @no_inline
+    def _raise_from_uint128_value_too_large(value: UInt128) raises -> None:
+        raise ValueError(
+            message=String("Value must fit in 96 bits, but got {}").format(
+                value
+            ),
+            function="Decimal128.from_uint128()",
+        )
+
+    @staticmethod
+    @no_inline
+    def _raise_from_uint128_scale_too_large(scale: UInt32) raises -> None:
+        raise ValueError(
+            message=String("Scale must be between 0 and 28, but got {}").format(
+                scale
+            ),
+            function="Decimal128.from_uint128()",
+        )
+
+    @staticmethod
+    @always_inline
     def from_uint128(
         value: UInt128, scale: UInt32 = 0, sign: Bool = False
     ) raises -> Decimal128:
@@ -528,20 +549,10 @@ struct Decimal128(
         """
 
         if value >> 96 != 0:
-            raise ValueError(
-                message=String("Value must fit in 96 bits, but got {}").format(
-                    value
-                ),
-                function="Decimal128.from_uint128()",
-            )
+            Self._raise_from_uint128_value_too_large(value)
 
         if scale > UInt32(Self.MAX_SCALE):
-            raise ValueError(
-                message=String(
-                    "Scale must be between 0 and 28, but got {}"
-                ).format(scale),
-                function="Decimal128.from_uint128()",
-            )
+            Self._raise_from_uint128_scale_too_large(scale)
 
         var result = UnsafePointer(to=value).bitcast[Decimal128]()[]
         result.flags |= (scale << Self.SCALE_SHIFT) & Self.SCALE_MASK
@@ -720,9 +731,15 @@ struct Decimal128(
 
                 # Exponent part
                 if exponent_notation_read:
-                    # Raise an error if the exponent part is too large
+                    # Raise an error if the exponent part is too large.
+                    # Use `>=` (not `>`) so that we catch the digit *before*
+                    # the multiply pushes `raw_exponent` past the cap. With
+                    # `>` and a current cap of 58, a string like "1e589"
+                    # would slip through (58 > 58 is False) and let
+                    # `raw_exponent` grow to 589, ultimately reaching
+                    # `power_of_10_unsafe` with an out-of-range index.
                     if (not exponent_sign) and (
-                        raw_exponent > Decimal128.MAX_NUM_DIGITS * 2
+                        raw_exponent >= Decimal128.MAX_NUM_DIGITS * 2
                     ):
                         raise OverflowError(
                             message=String(
@@ -733,7 +750,7 @@ struct Decimal128(
 
                     # Skip the digit if exponent is negatively too large
                     elif (exponent_sign) and (
-                        raw_exponent > Decimal128.MAX_NUM_DIGITS * 2
+                        raw_exponent >= Decimal128.MAX_NUM_DIGITS * 2
                     ):
                         continue
 
@@ -787,7 +804,22 @@ struct Decimal128(
                 if scale >= raw_exponent:
                     scale = scale - raw_exponent
                 else:
-                    coef = coef * (UInt128(10) ** UInt128(raw_exponent - scale))
+                    var exponent_delta = Int(raw_exponent) - Int(scale)
+                    # `power_of_10_unsafe[uint128]` is only defined for
+                    # `0 <= n <= 29`. Anything past that would read garbage
+                    # from the rodata blob (and may even silently parse to
+                    # a wrong value if the garbage happens to fit in 96
+                    # bits). Bail out with a clean OverflowError instead.
+                    if exponent_delta > Decimal128.MAX_NUM_DIGITS:
+                        raise OverflowError(
+                            message=String(
+                                "Exponent is too large to fit in Decimal128: {}"
+                            ).format(raw_exponent),
+                            function="Decimal128.from_string()",
+                        )
+                    coef = coef * decimo.decimal128.utility.power_of_10_unsafe[
+                        DType.uint128
+                    ](exponent_delta)
                     scale = 0
 
         # print("DEBUG: coef = ", coef)
@@ -947,7 +979,12 @@ struct Decimal128(
             # print("DEBUG: scale = ", scale)
             # print("DEBUG: remainder = ", remainder)
 
-        coefficient = coefficient // UInt128(10) ** num_trailing_zeros
+        coefficient = (
+            coefficient
+            // decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
+                Int(num_trailing_zeros)
+            )
+        )
         scale -= num_trailing_zeros
 
         var low = UInt32(coefficient & 0xFFFFFFFF)
@@ -1151,7 +1188,12 @@ struct Decimal128(
 
         # Otherwise, get the integer part by dividing by 10^scale
         else:
-            res = self.coefficient() // UInt128(10) ** UInt128(self.scale())
+            res = (
+                self.coefficient()
+                // decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
+                    self.scale()
+                )
+            )
 
         return res
 
@@ -1998,7 +2040,11 @@ struct Decimal128(
 
         # TODO: Check if multiplication by 10^level would cause overflow
         # If yes, then raise an error
-        var max_coefficient = ~UInt128(0) / UInt128(10) ** precision_diff
+        var max_coefficient = ~UInt128(
+            0
+        ) / decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
+            Int(precision_diff)
+        )
         if coefficient > max_coefficient:
             # Handle overflow case - limit to maximum value or raise error
             coefficient = ~UInt128(0)

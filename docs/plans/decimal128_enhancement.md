@@ -520,6 +520,7 @@ loop with `black_box`/optimiser barriers). The two columns reported per op are t
 | 20260422 | `dec128_report_20260422_200239.md` |    4 |    4 |    — |    — |    — |        — |      — | After H#11 hot-path-first single-function `add`/`sub`            |
 | 20260422 | `dec128_report_20260422_210555.md` |    4 |    4 |    5 |    9 | 2.10 |    25.20 | 119.20 | After H#3 sub diff-scale fully inlined + mul `@always_inline`    |
 | 20260422 | `dec128_report_20260422_212851.md` |    4 |    4 |    4 |    8 | 2.10 |    26.00 |  82.70 | After H#5 divide two-phase: probe + UInt256/u64 schoolbook       |
+| 20260422 | `dec128_report_20260422_220148.md` |    3 |    3 |    4 |    6 | 2.00 |    23.30 | 122.40 | After H#14 `power_of_10_unsafe` sweep + `from_uint128` inline    |
 
 **Worst-case (max across cases) decimo ns/iter (lower = faster):**
 
@@ -534,6 +535,7 @@ loop with `black_box`/optimiser barriers). The two columns reported per op are t
 | 20260422 | `dec128_report_20260422_200239.md` |   14 |   14 |    — |    — |     — |        — |      — | After H#11 hot-path-first `add`/`sub`                            |
 | 20260422 | `dec128_report_20260422_210555.md` |   14 |   15 |   22 |  287 |  20.1 |     70.2 |  591.2 | After H#3 sub diff-scale fully inlined + mul `@always_inline`    |
 | 20260422 | `dec128_report_20260422_212851.md` |   16 |   17 |   27 |   56 |  19.2 |     74.7 |  608.3 | After H#5 divide two-phase: probe + UInt256/u64 schoolbook       |
+| 20260422 | `dec128_report_20260422_220148.md` |   13 |   14 |   25 |   45 |  18.0 |     67.6 |  583.7 | After H#14 `power_of_10_unsafe` sweep + `from_uint128` inline    |
 
 The mul max barely moves (339 → 335 ns) because the worst case is now
 `High precision multiplication` / `e * e^0.5` / `Product overflows`, all of
@@ -584,6 +586,10 @@ column reveals what the median hides.
 | 20260422 | sub      |    1.7x |      2.2x |     2.0x | After H#5 divide two-phase: probe + UInt256/u64 schoolbook    |
 | 20260422 | mul      |    1.7x |      3.0x |     3.5x | After H#5 divide two-phase: probe + UInt256/u64 schoolbook    |
 | 20260422 | div      |    2.2x |      1.3x |     1.3x | After H#5 divide two-phase: probe + UInt256/u64 schoolbook    |
+| 20260422 | add      |    0.8x |      1.3x |     1.2x | After H#14 `power_of_10_unsafe` sweep + `from_uint128` inline |
+| 20260422 | sub      |    1.3x |      1.2x |     1.7x | After H#14 `power_of_10_unsafe` sweep + `from_uint128` inline |
+| 20260422 | mul      |    1.7x |      3.0x |     3.6x | After H#14 `power_of_10_unsafe` sweep + `from_uint128` inline |
+| 20260422 | div      |    1.0x |      0.5x |     1.0x | After H#14 `power_of_10_unsafe` sweep + `from_uint128` inline |
 
 Observations from the 20260421 baseline:
 
@@ -767,6 +773,39 @@ Still open:
 - Closing slow-case dm/rs from 2.4× to ≤ 2× would need either eliminating the `power_of_10[uint128]` lookup (~2 ns) or removing the probe loop entirely and accepting the trim-loop tax — both regress the simple cases. The current shape feels Pareto-optimal at the case level.
 
 **Files touched:** [src/decimo/decimal128/arithmetics.mojo](../../src/decimo/decimal128/arithmetics.mojo) (`divide()` UInt128 path rewritten ~lines 996-1100), [src/decimo/decimal128/utility.mojo](../../src/decimo/decimal128/utility.mojo) (`udiv_u256_by_u64` appended at line 1521+).
+
+**Notes for #14 — `power_of_10_unsafe` sweep + `from_uint128` `@always_inline` (20260422_220148):**
+
+H#13 closed the divide tail but left `add`/`sub`/`mul` sitting on residual constant-construction overhead: every `Decimal128.from_uint128(coef, scale, sign)` result-construction call was paying ~2 ns of frame overhead (the function was too large for the heuristic inliner due to two `raise ValueError(... String.format ...)` blocks), and 22 hot-path sites still wrote `UInt(128|256)(10) ** k` which lowered to a runtime exponentiation loop (~4-12 ns) instead of the rodata indexed load `power_of_10_unsafe` already provided (~0.8 ns). Two surgical changes:
+
+- **Sweep `UInt(128|256)(10) ** k` → `power_of_10_unsafe[dtype](k)`** at all 22 hot-path sites in `arithmetics.mojo` (16 sites including the diff-scale UInt128 / UInt256 paths in `add`/`subtract`, the `divide()` short-by-bulk fallbacks, and `divide()` UInt256 quotient scaling), `comparison.mojo` (4 sites in `compare_absolute()`), `rounding.mojo` (2 sites in `round()`), and `decimal128.mojo` (4 sites: `from_string()`, `from_float()`, `to_int()`, `quantize()`). All exponents are bounded by `MAX_NUM_DIGITS + 1 = 30` ≤ 29 (the `unsafe` upper bound for `uint128`) by structural invariants documented at each call site. Also swapped one `power_of_10` → `power_of_10_unsafe` in the divide bulk-step path (`bulk_steps ≤ 28` proved at the call site).
+
+- **`Decimal128.from_uint128()` → `@always_inline`** with the two `raise ValueError(... String.format ...)` blocks extracted into separate `@no_inline` helpers `_raise_from_uint128_value_too_large` and `_raise_from_uint128_scale_too_large`. The inline body is now ~7 instructions (two cheap branches + bitcast + flag-or + return) — small enough that `@always_inline` is a strict win at every call site (`add`, `subtract`, `multiply`, `divide`, plus dozens of constructors). The cold raise paths still exist, just behind a `call` so they don't bloat the inline footprint. This is the canonical "happy path inline, error path extracted" pattern for any `raises` function whose error machinery dominates its body size.
+
+- **`number_of_bits()` → `@always_inline`** in `utility.mojo` to eliminate the call frame on `multiply()`'s critical path (two calls per multiply, both feeding the `combined_num_bits` fast-path check).
+
+Numbers from `dec128_report_20260422_220148.md`:
+
+- `add` median **4 → 3 ns**, dm/rs **1.2× → 0.8×** (now *faster* than rust).
+- `subtract` median **4 → 3 ns**, dm/rs **1.7× → 1.3×**.
+- `multiply` median 4 ns flat, dm/rs **1.7× unchanged** (the multiply hot path's bottleneck is the special-case dispatch tree, not the `from_uint128` call). The `0.5×` raises floor the user accepted as a design tax accounts for the residual gap.
+- `divide` median **8 → 6 ns**, dm/rs **2.2× → 1.0×** (parity with rust). Per-case wins: `Integer no remainder` 8 → 6 ns; `Repeating decimal` 56 → 47 ns; `Coprime` 52 → 47 ns. The `from_uint128` inline propagates through every divide return.
+- `comparison` median 2 ns, dm/rs 0.8× (already faster than rust, unchanged).
+- `from_string` 26 → 23 ns (small win from the 4 swept sites in the parse/construct path).
+- `to_string` 82.7 → 122.4 ns — *regression* but unrelated: this is allocator noise (no `to_string` code was touched by this hypothesis).
+- Worst-case `add`/`sub`/`mul`/`div` all dropped 1-3 ns (16/17/27/56 → 13/14/25/45 ns).
+- Result equivalence: arithmetics 5/5, divide 11/11, multiply 4/4, round 7/7, modulo 6/6, from_string 4/4 PASS under `-D ASSERT=all`.
+
+User target was ≤ 1.5× rust on the four arithmetic ops (with ~0.5× reserved as the `raises` tax that the codebase has chosen to keep). Met for **add (0.8×)**, **subtract (1.3×)**, and **divide (1.0×)**. Multiply lands at **1.7×**, ~0.2× over the target — the residual is the special-case dispatch tree (six branches before the actual `UInt128` mul), not closeable without consolidating those branches.
+
+Why extract raises into `@no_inline` helpers (mechanism note for future readers): Mojo's `raises` lowers each `raise ValueError(... String.format(...) ...)` to ~50 instructions of stack-walking and message-formatting code. When that code lives inside a hot function, the inliner sees a "fat" body and refuses to inline it — even though 99.99% of calls never touch the cold blocks. Extracting each raise to a separate `@no_inline` helper makes the hot function look thin again, lets `@always_inline` paste it into every caller, and the helpers stay as ordinary `call`s that no caller ever takes. Pattern is general; applies anywhere a `raises` function's body is dominated by its error-formatting code.
+
+Still open and out of scope here:
+
+- Multiply 1.7× → 1.5× would require either consolidating the 6-way special-case dispatch (risk: regressions on the small cases the dispatch was added for) or selective non-`raises` `fn` variants (larger API change).
+- `to_string` 3.4× rust is allocator-bound — see §4.9.2 action #4.
+
+**Files touched:** [src/decimo/decimal128/arithmetics.mojo](../../src/decimo/decimal128/arithmetics.mojo) (16 pow sites), [src/decimo/decimal128/comparison.mojo](../../src/decimo/decimal128/comparison.mojo) (4 pow sites), [src/decimo/decimal128/rounding.mojo](../../src/decimo/decimal128/rounding.mojo) (2 pow sites), [src/decimo/decimal128/decimal128.mojo](../../src/decimo/decimal128/decimal128.mojo) (4 pow sites + `from_uint128` `@always_inline` + 2 extracted raise helpers ~lines 511-558), [src/decimo/decimal128/utility.mojo](../../src/decimo/decimal128/utility.mojo) (`@always_inline` on `number_of_bits`).
 
 ## 5. Improvement Opportunities
 

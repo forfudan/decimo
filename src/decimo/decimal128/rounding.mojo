@@ -112,7 +112,12 @@ def round(
 
         # If the digits of result <= 29, calculate the result by scaling up
         else:
-            var res_coef = x_coef * UInt128(10) ** scale_diff
+            var res_coef = (
+                x_coef
+                * decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
+                    Int(scale_diff)
+                )
+            )
 
             # If the digits of result == 29, but the result >= 2^96, raise an error
             if (ndigits_of_x + scale_diff == Decimal128.MAX_NUM_DIGITS) and (
@@ -175,7 +180,9 @@ def round(
 
         # if `ndigits` is negative and `ndigits_to_keep` >= 0, scale up the result
         elif ndigits_to_keep >= 0:
-            res_coef *= UInt128(10) ** (-ndigits)
+            res_coef *= decimo.decimal128.utility.power_of_10_unsafe[
+                DType.uint128
+            ](Int(-ndigits))
             return Decimal128.from_uint128(
                 res_coef, scale=UInt32(0), sign=number.is_negative()
             )

@@ -149,5 +149,67 @@ def test_invalid_inputs() raises:
     testing.assert_true(caught)
 
 
+# ===----------------------------------------------------------------------=== #
+# Regression tests for PR #224: exponent-overflow handling in from_string.
+#
+# `power_of_10_unsafe[uint128]` was being called with `n > 29`, reading past
+# the rodata blob and producing arbitrary bits. Some inputs (e.g. "1e52",
+# "1e56") returned silently wrong values; some slipped past the parser bound
+# entirely (e.g. "1e589") because of an off-by-one in the `>` check.
+# ===----------------------------------------------------------------------=== #
+
+
+def test_from_string_e29_overflows() raises:
+    """1e29 > MAX_AS_UINT128 (~7.9e28) should raise."""
+    with testing.assert_raises():
+        _ = Dec128.from_string("1e29")
+
+
+def test_from_string_e30_to_e57_overflow() raises:
+    """All exponents in [30, 57] must raise (used to silently pass for some)."""
+    for e in range(30, 58):
+        var s = "1e" + String(e)
+        with testing.assert_raises():
+            _ = Dec128.from_string(s)
+
+
+def test_from_string_parser_off_by_one_e58_e589() raises:
+    """Parser must reject huge exponents cleanly (no OOB into power_of_10)."""
+    # `1e58` reaches the call site with raw_exponent=58 -> OverflowError.
+    with testing.assert_raises():
+        _ = Dec128.from_string("1e58")
+    # Used to slip through and call `power_of_10_unsafe[uint128](589)`.
+    with testing.assert_raises():
+        _ = Dec128.from_string("1e589")
+    # Defensive: very long exponent strings.
+    with testing.assert_raises():
+        _ = Dec128.from_string("1e1000000")
+
+
+def test_from_string_neg_exponent_off_by_one() raises:
+    """Negative oversized exponents are absorbed (skipped), but small ones work.
+    """
+    # Tiny number with extreme negative exponent: parser caps at 58, then
+    # the loop adds it to `scale` and the rounding logic clamps to MAX_SCALE.
+    var d = Dec128.from_string("1e-58")
+    testing.assert_true(d == Dec128(0), "1e-58 should round to 0 at MAX_SCALE")
+
+
+def test_from_string_scale_compensates_exponent() raises:
+    """Mantissa scale that absorbs the exponent must take the safe branch."""
+    # mantissa "1" has scale=30 (from 30 zeros after decimal point),
+    # raw_exponent=29. scale (30) >= raw_exponent (29) -> no _unsafe call.
+    var d = Dec128.from_string("0.000000000000000000000000000001e29")
+    testing.assert_true(d == Dec128.from_string("0.1"), "should equal 0.1")
+
+
+def test_from_string_valid_e28_boundary() raises:
+    """Largest exponent that still fits when coef=1: 1e28."""
+    var d = Dec128.from_string("1e28")
+    testing.assert_true(
+        d == Dec128.from_string("10000000000000000000000000000")
+    )
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()
