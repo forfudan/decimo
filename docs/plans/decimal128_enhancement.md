@@ -121,12 +121,15 @@ value before the fact and §2.4 / §2.5 for end-to-end snapshots.
 |          | alongside the existing `_raise_from_uint128_*` helpers. Kept local to Decimal128 to  |
 |          | preserve `function="Decimal128.from_string()"` attribution without paying a string-  |
 |          | parameter overhead.                                                                  |
-| 20260423 | **BigDecimal `from_string` test coverage.** Added `bigdecimal_from_string.toml` (38  |
+| 20260423 | **BigDecimal `from_string` test coverage.** Added `bigdecimal_from_string.toml` (47  |
 |          | cases across 8 sections: integers, decimals, negatives, zeros, scientific, format    |
 |          | variants, separators/slow-path, boundary) + a TOML-driven runner and a dedicated     |
-|          | `test_bigdecimal_from_string_invalid_inputs` covering every reject arm. Documents    |
-|          | one observed behavioural difference: `from_string("-0")` preserves the sign bit      |
-|          | whereas `from_python_decimal` normalises to +0.                                      |
+|          | `test_bigdecimal_from_string_invalid_inputs` covering every reject arm.              |
+| 20260423 | **`BigDecimal.from_python_decimal` signed/scaled-zero fix.** The zero short-circuit  |
+|          | hardcoded `sign=False, scale=0`, dropping both pieces of significant information per |
+|          | IEEE 754-2008 / IBM GDA. Now propagates `sign` and `-exponent` from Python's         |
+|          | `as_tuple()`, so `Decimal("-0")` round-trips to `"-0"` and `Decimal("-0.00")` to     |
+|          | `"-0.00"`, matching `BigDecimal.from_string` and Python's own behaviour.             |
 
 ### 2.5 Performance tracking — absolute decimo median ns/iter
 

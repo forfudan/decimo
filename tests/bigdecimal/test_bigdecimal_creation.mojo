@@ -61,106 +61,56 @@ def test_bigdecimal_from_string_toml() raises:
 def test_bigdecimal_from_string_invalid_inputs() raises:
     """Negative tests: `parse_numeric_string` must reject malformed input.
     These exercise the validation arms of the per-byte switch and the
-    post-loop `last_was_separator` / `total_mantissa_digits == 0` checks."""
+    post-loop `last_was_separator` / `total_mantissa_digits == 0` checks.
+
+    Uses `with testing.assert_raises():` so that an unexpected non-raising
+    success is reported as a real assertion failure (rather than being
+    silently swallowed by a bare `except:`).
+    """
 
     # Empty string
-    var caught = False
-    try:
-        var _empty = BigDecimal("")
-        testing.assert_true(False, "Empty string should raise")
-    except:
-        caught = True
-    testing.assert_true(caught)
+    with testing.assert_raises():
+        _ = BigDecimal("")
 
     # Non-numeric
-    caught = False
-    try:
-        var _bad = BigDecimal("abc")
-        testing.assert_true(False, "Non-numeric should raise")
-    except:
-        caught = True
-    testing.assert_true(caught)
+    with testing.assert_raises():
+        _ = BigDecimal("abc")
 
     # Multiple decimal points
-    caught = False
-    try:
-        var _md = BigDecimal("1.2.3")
-        testing.assert_true(False, "Multiple '.' should raise")
-    except:
-        caught = True
-    testing.assert_true(caught)
+    with testing.assert_raises():
+        _ = BigDecimal("1.2.3")
 
     # Decimal point inside exponent
-    caught = False
-    try:
-        var _de = BigDecimal("1e1.5")
-        testing.assert_true(False, "'.' inside exponent should raise")
-    except:
-        caught = True
-    testing.assert_true(caught)
+    with testing.assert_raises():
+        _ = BigDecimal("1e1.5")
 
     # Exponent with no mantissa digit
-    caught = False
-    try:
-        var _em = BigDecimal("e10")
-        testing.assert_true(False, "Exponent without mantissa should raise")
-    except:
-        caught = True
-    testing.assert_true(caught)
+    with testing.assert_raises():
+        _ = BigDecimal("e10")
 
     # Two exponent markers
-    caught = False
-    try:
-        var _2e = BigDecimal("1e2e3")
-        testing.assert_true(False, "Two 'e' markers should raise")
-    except:
-        caught = True
-    testing.assert_true(caught)
+    with testing.assert_raises():
+        _ = BigDecimal("1e2e3")
 
     # Sign in middle
-    caught = False
-    try:
-        var _mid = BigDecimal("12-34")
-        testing.assert_true(False, "Mid-string '-' should raise")
-    except:
-        caught = True
-    testing.assert_true(caught)
+    with testing.assert_raises():
+        _ = BigDecimal("12-34")
 
     # Two signs in mantissa
-    caught = False
-    try:
-        var _2s = BigDecimal("--1")
-        testing.assert_true(False, "Double sign should raise")
-    except:
-        caught = True
-    testing.assert_true(caught)
+    with testing.assert_raises():
+        _ = BigDecimal("--1")
 
     # Two signs in exponent
-    caught = False
-    try:
-        var _2es = BigDecimal("1e--3")
-        testing.assert_true(False, "Double exponent sign should raise")
-    except:
-        caught = True
-    testing.assert_true(caught)
+    with testing.assert_raises():
+        _ = BigDecimal("1e--3")
 
     # Trailing separator
-    caught = False
-    try:
-        var _ts = BigDecimal("123_")
-        testing.assert_true(False, "Trailing separator should raise")
-    except:
-        caught = True
-    testing.assert_true(caught)
+    with testing.assert_raises():
+        _ = BigDecimal("123_")
 
     # Only sign (no digits)
-    caught = False
-    try:
-        var _os = BigDecimal("-")
-        testing.assert_true(False, "Sign without digits should raise")
-    except:
-        caught = True
-    testing.assert_true(caught)
+    with testing.assert_raises():
+        _ = BigDecimal("-")
 
 
 def test_from_python_decimal_basic() raises:

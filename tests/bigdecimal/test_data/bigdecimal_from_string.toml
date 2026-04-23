@@ -113,7 +113,7 @@ expected = "-123.456"
 [[negative_tests]]
 a = "-0"
 b = ""
-description = "Negative zero preserves sign in BigDecimal.from_string (differs from from_python_decimal)"
+description = "Negative zero preserves sign (IEEE 754-2008 / IBM GDA)"
 expected = "-0"
 
 [[negative_tests]]
