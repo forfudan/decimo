@@ -529,6 +529,30 @@ struct Decimal128(
         )
 
     @staticmethod
+    @no_inline
+    def _raise_from_string_invalid_char(
+        code: UInt8, value: String
+    ) raises -> None:
+        # Non-ASCII bytes (>127) carry the raw byte hex + original input so
+        # users can diagnose UTF-8 encoding issues. ASCII fall-through uses
+        # `chr()`. Both branches allocate via `String.format(...)` -- kept
+        # `@no_inline` so the allocation does not bloat the hot scan loop in
+        # `from_string` (Lesson #4 from decimal128_enhancement).
+        if code > 127:
+            raise ValueError(
+                message=String(
+                    "Invalid non-ASCII byte {} in decimal128 string: {}"
+                ).format(hex(Int(code)), value),
+                function="Decimal128.from_string()",
+            )
+        raise ValueError(
+            message=String("Invalid character in decimal128 string: {}").format(
+                chr(Int(code))
+            ),
+            function="Decimal128.from_string()",
+        )
+
+    @staticmethod
     @always_inline
     def from_uint128(
         value: UInt128, scale: UInt32 = 0, sign: Bool = False
@@ -741,22 +765,12 @@ struct Decimal128(
             else:
                 # Non-ASCII bytes (>127) are typically a stray UTF-8 lead/
                 # continuation byte; surfacing the raw byte via `chr()` is
-                # garbled and not actionable. Include the offending byte
-                # value AND the original input so users can diagnose
-                # encoding issues without us reintroducing a full pre-scan.
-                if code > 127:
-                    raise ValueError(
-                        message=String(
-                            "Invalid non-ASCII byte {} in decimal128 string: {}"
-                        ).format(hex(Int(code)), value),
-                        function="Decimal128.from_string()",
-                    )
-                raise ValueError(
-                    message=String(
-                        "Invalid character in decimal128 string: {}"
-                    ).format(chr(Int(code))),
-                    function="Decimal128.from_string()",
-                )
+                # garbled and not actionable. Defer the message build to a
+                # `@no_inline` helper -- the `String.format(...)` allocation
+                # would otherwise inline into the hot scan loop body and
+                # bloat it (Lesson #4: keep `.format`-bearing raises out of
+                # `@always_inline`-eligible parents).
+                Self._raise_from_string_invalid_char(code, value)
 
         if unexpected_end_char:
             raise ValueError(

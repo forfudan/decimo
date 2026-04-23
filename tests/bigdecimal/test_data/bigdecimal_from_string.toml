@@ -1,0 +1,329 @@
+# Test cases for BigDecimal.from_string() — exercises decimo.str.parse_numeric_string().
+#
+# `expected` is the canonical Python decimal.Decimal(value) form; tests verify
+# that BigDecimal(value) == decimal.Decimal(value) (compared via stringification
+# of the BigDecimal against the Python Decimal). Edge cases focus on every
+# branch of `parse_numeric_string`:
+#
+#   - SIMD fast path:   contiguous pure digits (no '.' in extraction range)
+#   - SIMD medium path: two contiguous digit runs around '.'
+#   - Slow path:        separators (commas / underscores / spaces) present
+#   - Special: leading zeros, trailing zeros, all-zeros, sign-only-with-zero
+#   - Scientific notation: e/E, +/- exponent, exponent absorbs scale
+#   - Sign normalisation: '+', '-', '-0'
+#
+# `b` is unused (TestCase requires it); set to "" everywhere.
+
+# ---------------------------------------------------------------------------
+# Basic integers — exercise SIMD fast path (no decimal point, no separators)
+# ---------------------------------------------------------------------------
+
+[[basic_integer_tests]]
+a = "0"
+b = ""
+description = "Single zero"
+expected = "0"
+
+[[basic_integer_tests]]
+a = "1"
+b = ""
+description = "Single digit"
+expected = "1"
+
+[[basic_integer_tests]]
+a = "123"
+b = ""
+description = "Three digits"
+expected = "123"
+
+[[basic_integer_tests]]
+a = "12345678901234567890"
+b = ""
+description = "20-digit integer (crosses UInt64 boundary)"
+expected = "12345678901234567890"
+
+[[basic_integer_tests]]
+a = "123456789012345678901234567890123456789012345678901234567890"
+b = ""
+description = "60-digit integer (multiple SIMD chunks)"
+expected = "123456789012345678901234567890123456789012345678901234567890"
+
+# ---------------------------------------------------------------------------
+# Decimals — exercise SIMD medium path (two digit runs around '.')
+# ---------------------------------------------------------------------------
+
+[[basic_decimal_tests]]
+a = "1.5"
+b = ""
+description = "Single fractional digit"
+expected = "1.5"
+
+[[basic_decimal_tests]]
+a = "123.456"
+b = ""
+description = "Three integer + three fractional"
+expected = "123.456"
+
+[[basic_decimal_tests]]
+a = "0.5"
+b = ""
+description = "Leading zero before '.'"
+expected = "0.5"
+
+[[basic_decimal_tests]]
+a = ".5"
+b = ""
+description = "No integer part (just '.5')"
+expected = "0.5"
+
+[[basic_decimal_tests]]
+a = "5."
+b = ""
+description = "No fractional part (just '5.')"
+expected = "5"
+
+[[basic_decimal_tests]]
+a = "123456789.987654321"
+b = ""
+description = "9 + 9 digits"
+expected = "123456789.987654321"
+
+[[basic_decimal_tests]]
+a = "12345678901234567890.12345678901234567890"
+b = ""
+description = "20 + 20 digits (crosses SIMD chunk in both runs)"
+expected = "12345678901234567890.12345678901234567890"
+
+# ---------------------------------------------------------------------------
+# Negative numbers — sign extraction
+# ---------------------------------------------------------------------------
+
+[[negative_tests]]
+a = "-1"
+b = ""
+description = "Negative integer"
+expected = "-1"
+
+[[negative_tests]]
+a = "-123.456"
+b = ""
+description = "Negative decimal"
+expected = "-123.456"
+
+[[negative_tests]]
+a = "-0"
+b = ""
+description = "Negative zero preserves sign (IEEE 754-2008 / IBM GDA)"
+expected = "-0"
+
+[[negative_tests]]
+a = "-0.000"
+b = ""
+description = "Negative-signed zero with trailing fractional zeros preserves sign"
+expected = "-0.000"
+
+# ---------------------------------------------------------------------------
+# Zero variants — all-zeros short-circuit (first_nonzero_byte_pos == -1)
+# ---------------------------------------------------------------------------
+
+[[zero_variant_tests]]
+a = "0"
+b = ""
+description = "Plain zero"
+expected = "0"
+
+[[zero_variant_tests]]
+a = "00"
+b = ""
+description = "Multi-digit all-zeros integer"
+expected = "0"
+
+[[zero_variant_tests]]
+a = "0000000000"
+b = ""
+description = "Long all-zeros integer"
+expected = "0"
+
+[[zero_variant_tests]]
+a = "0.0"
+b = ""
+description = "Zero with one fractional zero (scale=1)"
+expected = "0.0"
+
+[[zero_variant_tests]]
+a = "0.00000000000000000000"
+b = ""
+description = "Zero with 20 fractional zeros (scale=20)"
+expected = "0E-20"
+
+[[zero_variant_tests]]
+a = "+0"
+b = ""
+description = "Explicit positive sign on zero"
+expected = "0"
+
+# ---------------------------------------------------------------------------
+# Scientific notation — exponent parsed by the post-loop tail
+# ---------------------------------------------------------------------------
+
+[[scientific_notation_tests]]
+a = "1e0"
+b = ""
+description = "Exponent zero is identity"
+expected = "1"
+
+[[scientific_notation_tests]]
+a = "1e10"
+b = ""
+description = "Positive exponent (lowercase e)"
+expected = "1E+10"
+
+[[scientific_notation_tests]]
+a = "1E10"
+b = ""
+description = "Positive exponent (uppercase E)"
+expected = "1E+10"
+
+[[scientific_notation_tests]]
+a = "1.23e5"
+b = ""
+description = "Decimal mantissa with positive exponent"
+expected = "1.23E+5"
+
+[[scientific_notation_tests]]
+a = "1.23e-5"
+b = ""
+description = "Negative exponent expands scale"
+expected = "0.0000123"
+
+[[scientific_notation_tests]]
+a = "1.23e+5"
+b = ""
+description = "Explicit '+' on positive exponent"
+expected = "1.23E+5"
+
+[[scientific_notation_tests]]
+a = "1.234e8"
+b = ""
+description = "Mantissa scale partially absorbed by exponent"
+expected = "1.234E+8"
+
+[[scientific_notation_tests]]
+a = "0.00000001e8"
+b = ""
+description = "Scale fully cancels positive exponent"
+expected = "1"
+
+[[scientific_notation_tests]]
+a = "1e-100"
+b = ""
+description = "Very small exponent"
+expected = "1E-100"
+
+[[scientific_notation_tests]]
+a = "1e100"
+b = ""
+description = "Very large exponent"
+expected = "1E+100"
+
+# ---------------------------------------------------------------------------
+# Formatting variants — leading/trailing zeros (extraction-range bookkeeping)
+# ---------------------------------------------------------------------------
+
+[[formatting_variant_tests]]
+a = "00123"
+b = ""
+description = "Leading zeros on integer (stripped via leading_zeros count)"
+expected = "123"
+
+[[formatting_variant_tests]]
+a = "000123.456"
+b = ""
+description = "Leading zeros before integer with fractional"
+expected = "123.456"
+
+[[formatting_variant_tests]]
+a = "123.45000"
+b = ""
+description = "Trailing zeros on fractional (preserved as scale digits)"
+expected = "123.45000"
+
+[[formatting_variant_tests]]
+a = "000123.45000"
+b = ""
+description = "Both leading and trailing zeros"
+expected = "123.45000"
+
+[[formatting_variant_tests]]
+a = "+123.45"
+b = ""
+description = "Explicit positive sign"
+expected = "123.45"
+
+# ---------------------------------------------------------------------------
+# Special characters — separators (slow path: triggers byte-by-byte extraction)
+# ---------------------------------------------------------------------------
+
+[[special_character_tests]]
+a = "1,000,000"
+b = ""
+description = "Comma separators (slow path)"
+expected = "1000000"
+
+[[special_character_tests]]
+a = "1_000_000"
+b = ""
+description = "Underscore separators (slow path)"
+expected = "1000000"
+
+[[special_character_tests]]
+a = "1 000 000"
+b = ""
+description = "Space separators (slow path)"
+expected = "1000000"
+
+[[special_character_tests]]
+a = "1,234,567.890_123"
+b = ""
+description = "Mixed separators across decimal point"
+expected = "1234567.890123"
+
+[[special_character_tests]]
+a = " 123 "
+b = ""
+description = "Leading/trailing spaces"
+expected = "123"
+
+[[special_character_tests]]
+a = "-1_234.567_8e+2"
+b = ""
+description = "Negative + separators + decimal + exponent (slow path full)"
+expected = "-123456.78"
+
+# ---------------------------------------------------------------------------
+# Boundary / regression — exponent cancellation, very long fractions
+# ---------------------------------------------------------------------------
+
+[[boundary_tests]]
+a = "0.000000000000000000000000000001e29"
+b = ""
+description = "Mantissa scale 30 absorbs +29 exponent"
+expected = "0.1"
+
+[[boundary_tests]]
+a = "1e-58"
+b = ""
+description = "Far past Decimal128 scale cap (BigDecimal handles freely)"
+expected = "1E-58"
+
+[[boundary_tests]]
+a = "9999999999999999999999999999.5"
+b = ""
+description = "28-digit integer + fraction (no truncation in BigDecimal)"
+expected = "9999999999999999999999999999.5"
+
+[[boundary_tests]]
+a = "0.11111111111111111111111111111111111"
+b = ""
+description = "35 fractional 1s (no truncation in BigDecimal)"
+expected = "0.11111111111111111111111111111111111"

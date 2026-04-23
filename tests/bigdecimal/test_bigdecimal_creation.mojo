@@ -1,11 +1,116 @@
 """
-Test BigDecimal.from_python_decimal() method.
-Tests conversion from Python Decimal to Mojo BigDecimal.
+Test BigDecimal creation: `from_string` (TOML-driven, exercises
+`decimo.str.parse_numeric_string`) and `from_python_decimal`.
 """
 
 from std import testing
 from std.python import Python
 from decimo.bigdecimal.bigdecimal import BigDecimal
+from decimo.tests import TestCase, parse_file, load_test_cases
+from decimo.toml.parser import TOMLDocument
+
+comptime from_string_file_path = "tests/bigdecimal/test_data/bigdecimal_from_string.toml"
+
+
+def _run_from_string_section(
+    toml: TOMLDocument, section: String, mut count_wrong: Int
+) raises:
+    """Run one TOML section through `BigDecimal.from_string` and compare each
+    result to the embedded `expected` field. The `expected` field is the
+    canonical Python `decimal.Decimal(value)` stringification — i.e. the same
+    parser used as the oracle for every other BigDecimal test suite.
+    """
+    var test_cases = load_test_cases(toml, section)
+    for test_case in test_cases:
+        var actual = String(BigDecimal(test_case.a))
+        if actual != test_case.expected:
+            print(
+                test_case.description,
+                "\n  Mojo:    ",
+                actual,
+                "\n  Expected:",
+                test_case.expected,
+                "\n",
+            )
+            count_wrong += 1
+
+
+def test_bigdecimal_from_string_toml() raises:
+    """Test BigDecimal.from_string against TOML data covering every branch
+    of `decimo.str.parse_numeric_string` (SIMD fast/medium/slow paths,
+    sign normalisation, scientific notation, separators, edge cases)."""
+    var toml = parse_file(from_string_file_path)
+    var count_wrong = 0
+
+    _run_from_string_section(toml, "basic_integer_tests", count_wrong)
+    _run_from_string_section(toml, "basic_decimal_tests", count_wrong)
+    _run_from_string_section(toml, "negative_tests", count_wrong)
+    _run_from_string_section(toml, "zero_variant_tests", count_wrong)
+    _run_from_string_section(toml, "scientific_notation_tests", count_wrong)
+    _run_from_string_section(toml, "formatting_variant_tests", count_wrong)
+    _run_from_string_section(toml, "special_character_tests", count_wrong)
+    _run_from_string_section(toml, "boundary_tests", count_wrong)
+
+    testing.assert_equal(
+        count_wrong,
+        0,
+        "Some BigDecimal.from_string test cases failed. See above for details.",
+    )
+
+
+def test_bigdecimal_from_string_invalid_inputs() raises:
+    """Negative tests: `parse_numeric_string` must reject malformed input.
+    These exercise the validation arms of the per-byte switch and the
+    post-loop `last_was_separator` / `total_mantissa_digits == 0` checks.
+
+    Uses `with testing.assert_raises():` so that an unexpected non-raising
+    success is reported as a real assertion failure (rather than being
+    silently swallowed by a bare `except:`).
+    """
+
+    # Empty string
+    with testing.assert_raises():
+        _ = BigDecimal("")
+
+    # Non-numeric
+    with testing.assert_raises():
+        _ = BigDecimal("abc")
+
+    # Multiple decimal points
+    with testing.assert_raises():
+        _ = BigDecimal("1.2.3")
+
+    # Decimal point inside exponent
+    with testing.assert_raises():
+        _ = BigDecimal("1e1.5")
+
+    # Exponent with no mantissa digit
+    with testing.assert_raises():
+        _ = BigDecimal("e10")
+
+    # Two exponent markers
+    with testing.assert_raises():
+        _ = BigDecimal("1e2e3")
+
+    # Sign in middle
+    with testing.assert_raises():
+        _ = BigDecimal("12-34")
+
+    # Two signs in mantissa
+    with testing.assert_raises():
+        _ = BigDecimal("--1")
+
+    # Two signs in exponent
+    with testing.assert_raises():
+        _ = BigDecimal("1e--3")
+
+    # Trailing separator
+    with testing.assert_raises():
+        _ = BigDecimal("123_")
+
+    # Only sign (no digits)
+    with testing.assert_raises():
+        _ = BigDecimal("-")
 
 
 def test_from_python_decimal_basic() raises:
@@ -172,13 +277,45 @@ def test_from_python_decimal_sign() raises:
     var mojo_zero = BigDecimal.from_python_decimal(py_zero)
     testing.assert_false(mojo_zero.sign, "Zero has sign=False")
 
-    # Test negative zero (special case)
+    # Test negative zero (special case).
+    # Per IEEE 754-2008 / IBM General Decimal Arithmetic, the sign of zero is
+    # significant in the to-string representation. Python's `decimal` follows
+    # the spec (`Decimal("-0")` has sign=1 and prints as "-0"); so does
+    # `BigDecimal.from_string("-0")`. The Python bridge must round-trip the
+    # sign rather than collapsing it to +0.
     var py_neg_zero = decimal.Decimal("-0")
     var mojo_neg_zero = BigDecimal.from_python_decimal(py_neg_zero)
-    # Python Decimal("-0") has sign=1, but represents zero
-    # BigDecimal normalizes zero to sign=False
+    testing.assert_true(mojo_neg_zero.sign, "Negative zero preserves sign")
     testing.assert_equal(
-        String(mojo_neg_zero), "0", "Negative zero becomes zero"
+        String(mojo_neg_zero), "-0", "Negative zero round-trips as '-0'"
+    )
+
+    # And the scale (quantum) of zero is also significant.
+    var py_neg_zero_scaled = decimal.Decimal("-0.00")
+    var mojo_neg_zero_scaled = BigDecimal.from_python_decimal(
+        py_neg_zero_scaled
+    )
+    testing.assert_true(
+        mojo_neg_zero_scaled.sign, "Negative zero with scale preserves sign"
+    )
+    testing.assert_equal(
+        String(mojo_neg_zero_scaled),
+        "-0.00",
+        "Negative zero round-trips with its scale",
+    )
+
+    # Positive zero with a non-zero scale must round-trip as well.
+    var py_pos_zero_scaled = decimal.Decimal("0.000")
+    var mojo_pos_zero_scaled = BigDecimal.from_python_decimal(
+        py_pos_zero_scaled
+    )
+    testing.assert_false(
+        mojo_pos_zero_scaled.sign, "Positive zero stays positive"
+    )
+    testing.assert_equal(
+        String(mojo_pos_zero_scaled),
+        "0.000",
+        "Positive zero round-trips with its scale",
     )
 
 
