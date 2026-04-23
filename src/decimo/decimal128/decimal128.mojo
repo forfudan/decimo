@@ -2000,8 +2000,11 @@ struct Decimal128(
     @always_inline
     def fract(self) raises -> Self:
         """Returns the fractional part of this Decimal128, defined as
-        `self - self.trunc()`. The result has the same sign as `self`
-        and preserves the original scale.
+        `self - self.trunc()`. Nonzero results have the same sign as
+        `self` and preserve the original scale. Exact-zero results are
+        canonicalized to positive zero by `subtract`, so e.g.
+        `Decimal128("-3.000").fract()` returns `0.000` (positive), not
+        `-0.000`.
 
         Returns:
             A new `Decimal128` containing the fractional part.
@@ -2050,12 +2053,12 @@ struct Decimal128(
     @always_inline
     def unpack(self) -> Tuple[UInt32, UInt32, UInt32, UInt32, Bool]:
         """Returns the raw internal components of this Decimal128 as a tuple
-        `(low, mid, high, scale, sign)`. Mirrors `rust_decimal::Decimal::
-        unpack` and `System.Decimal.GetBits` so that the coefficient (96-bit
-        little-endian, in `low`/`mid`/`high`), the scale (number of decimal
-        places, 0..=28), and the sign (`True` for negative) can be inspected
-        without going through `coefficient()` / `scale()` / `is_negative()`
-        individually.
+        `(low, mid, high, scale, sign)`.
+
+        The coefficient (96-bit little-endian, in `low`/`mid`/`high`),
+        the scale (number of decimal places, 0..=28),
+        and the sign (`True` for negative) can be inspected without going
+        through `coefficient()` / `scale()` / `is_negative()` individually.
 
         Returns:
             A tuple `(low, mid, high, scale, sign)`:

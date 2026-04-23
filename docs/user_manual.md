@@ -40,6 +40,7 @@ from decimo.prelude import *
   - [Decimal Conversion and Output](#decimal-conversion-and-output)
   - [Decimal Query Methods](#decimal-query-methods)
   - [Python Interoperability](#python-interoperability)
+  - [A note on result exponents (`Decimal` and `Dec128`)](#a-note-on-result-exponents-decimal-and-dec128)
   - [Appendix A — Import Paths](#appendix-a--import-paths)
   - [Appendix B — Traits Implemented](#appendix-b--traits-implemented)
   - [Appendix C — Complete API Tables](#appendix-c--complete-api-tables)
@@ -927,14 +928,14 @@ and the IBM General Decimal Arithmetic specification §4.1. Concretely:
 
 - For `add`/`subtract`, the result exponent is `min(exp(a), exp(b))`.
 - For `multiply`, the result exponent is `exp(a) + exp(b)` — even when the
-  numerical value is zero. So `Decimal("123.45") * Decimal("0") == "0.00"`,
-  not `"0"`, because both operands' scales are preserved in the product's
-  scale (`-2 + 0 = -2`).
+  numerical value is zero. So `Decimal("123.45") * Decimal("0")` prints as
+  `"0.00"`, not `"0"`, because both operands' scales are preserved in the
+  product's scale (`-2 + 0 = -2`).
 - For `divide`, the **ideal** exponent is `exp(a) - exp(b)`. The result
   exponent is the ideal one when the quotient is exact at that scale
-  (`Decimal("10.5") / Decimal("2.5") == "4.2"`, not `"4.20"`), and
+  (`Decimal("10.5") / Decimal("2.5")` prints as `"4.2"`, not `"4.20"`), and
   otherwise the smallest exponent that still represents the exact value
-  (`Decimal("123.45") / Decimal("-2") == "-61.725"`).
+  (`Decimal("123.45") / Decimal("-2")` prints as `"-61.725"`).
 - The sign of zero is preserved (`Decimal("-0.00")` round-trips to
   `"-0.00"`).
 

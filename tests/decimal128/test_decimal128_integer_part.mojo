@@ -1,14 +1,11 @@
 """
 Tests for Decimal128 integer-part / fractional-part / sign helpers:
 trunc(), floor(), ceil(), fract(), signum(), unpack().
-
-These methods mirror `rust_decimal::Decimal` and `System.Decimal` so that
-Decimal128 can be used as a near drop-in replacement on the same API.
 """
 
 from std import testing
 
-from decimo import Dec128, Decimal128
+from decimo import Dec128
 
 
 # ===----------------------------------------------------------------------=== #
@@ -252,6 +249,25 @@ def test_unpack_high_word_used() raises:
     testing.assert_equal(Int(parts[2]), 1, "high (= 2^64 / 2^64 = 1)")
     testing.assert_equal(Int(parts[3]), 0, "scale")
     testing.assert_equal(parts[4], False, "sign")
+
+
+def test_unpack_negative_zero_preserves_sign() raises:
+    """`Dec128("-0")` and `Dec128("-0.000")` retain `sign == True` and
+    preserve scale through `unpack()`. Regression test for IEEE 754 /
+    IBM GDA signed-zero semantics (PR #227 review)."""
+    var parts = Dec128("-0").unpack()
+    testing.assert_equal(Int(parts[0]), 0, "low")
+    testing.assert_equal(Int(parts[1]), 0, "mid")
+    testing.assert_equal(Int(parts[2]), 0, "high")
+    testing.assert_equal(Int(parts[3]), 0, "scale of -0 is 0")
+    testing.assert_equal(parts[4], True, "sign of -0 is negative")
+
+    var parts2 = Dec128("-0.000").unpack()
+    testing.assert_equal(Int(parts2[0]), 0, "low")
+    testing.assert_equal(Int(parts2[1]), 0, "mid")
+    testing.assert_equal(Int(parts2[2]), 0, "high")
+    testing.assert_equal(Int(parts2[3]), 3, "scale of -0.000 is preserved")
+    testing.assert_equal(parts2[4], True, "sign of -0.000 is negative")
 
 
 def main() raises:
