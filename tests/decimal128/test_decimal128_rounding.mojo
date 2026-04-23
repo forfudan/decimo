@@ -287,24 +287,50 @@ def _check_quantize_case(
     py_mode: PythonObject,
     pydecimal: PythonObject,
 ) raises:
-    """Cross-check a single quantize case."""
+    """Cross-check a single quantize case.
+
+    Computes the Mojo and Python results independently and only catches
+    errors raised by the operations themselves (not assertion failures).
+    Behaviour matrix:
+      * both succeed -> string results must match
+      * both raise   -> acceptable parity (Python and Mojo agree it's invalid)
+      * only one raises -> test fails
+    """
+    var mr_str: String
+    var mojo_raised = False
     try:
-        var mr = Decimal128(value_str).quantize(
-            Decimal128(quant_str), mojo_mode
+        mr_str = String(
+            Decimal128(value_str).quantize(Decimal128(quant_str), mojo_mode)
         )
-        var pr = pydecimal.Decimal(value_str).quantize(
-            pydecimal.Decimal(quant_str), rounding=py_mode
-        )
-        testing.assert_equal(
-            String(mr),
-            String(pr),
-            String("Quantize {} to {}").format(value_str, quant_str),
-        )
-    except e:
-        print(
-            String("Quantize exception (acceptable parity): {} to {}").format(
-                value_str, quant_str
+    except:
+        mr_str = String("")
+        mojo_raised = True
+
+    var pr_str: String
+    var py_raised = False
+    try:
+        pr_str = String(
+            pydecimal.Decimal(value_str).quantize(
+                pydecimal.Decimal(quant_str), rounding=py_mode
             )
+        )
+    except:
+        pr_str = String("")
+        py_raised = True
+
+    # Assertions live outside the try blocks so failures propagate.
+    testing.assert_equal(
+        mojo_raised,
+        py_raised,
+        String("Quantize exception parity for {} to {}").format(
+            value_str, quant_str
+        ),
+    )
+    if not mojo_raised:
+        testing.assert_equal(
+            mr_str,
+            pr_str,
+            String("Quantize {} to {}").format(value_str, quant_str),
         )
 
 

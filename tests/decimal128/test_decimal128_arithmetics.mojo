@@ -155,13 +155,13 @@ def test_double_and_triple_negation() raises:
 
 
 def test_addition_overflow() raises:
-    try:
-        var a = Dec128("79228162514264337593543950335")  # MAX
-        var b = Dec128("1")
+    # Use `with testing.assert_raises():` so the test fails loudly if the
+    # operation does NOT raise; a bare try/except would silently swallow
+    # an `assert_true(False, ...)` placed inside it.
+    var a = Dec128("79228162514264337593543950335")  # MAX
+    var b = Dec128("1")
+    with testing.assert_raises():
         var _result = a + b
-        testing.assert_true(False, "Addition beyond MAX should raise an error")
-    except:
-        pass
 
 
 def test_subtraction_commutativity() raises:
@@ -486,19 +486,33 @@ def test_divide_special_and_precision() raises:
 
 
 def test_divide_error_handling() raises:
-    """Division by zero, overflow, and boundary conditions."""
-    try:
+    """Division by zero, overflow, and boundary conditions.
+
+    Uses `with testing.assert_raises():` for the must-raise cases so the
+    test fails loudly if the operation unexpectedly succeeds. The two
+    overflow probes (MAX / 0.5 and MAX / 0.00001) are inherently dual:
+    they may either raise on overflow or return a valid > MAX result;
+    they are split into a try-once / assert-after pattern so any
+    assertion failure on the success branch propagates out of the try.
+    """
+    # Must raise: real division by zero.
+    with testing.assert_raises():
         var _r = Decimal128(123) / Decimal128(0)
-        testing.assert_true(False, "Expected division by zero to raise")
-    except:
-        pass
 
+    # MAX / 0.5: either raises (overflow) or yields a value > MAX.
+    var saw_overflow_a = False
+    var result92 = Decimal128(0)
     try:
-        var result92 = Decimal128.MAX() / Decimal128("0.5")
-        testing.assert_true(result92 > Decimal128.MAX())
+        result92 = Decimal128.MAX() / Decimal128("0.5")
     except:
-        pass
+        saw_overflow_a = True
+    if not saw_overflow_a:
+        testing.assert_true(
+            result92 > Decimal128.MAX(),
+            "MAX / 0.5 succeeded but did not exceed MAX",
+        )
 
+    # MAX / 0.1: only documents that the operation may raise without crashing.
     try:
         var _r = Decimal128.MAX() / Decimal128("0.1")
     except:
@@ -514,20 +528,25 @@ def test_divide_error_handling() raises:
 
     testing.assert_equal(String(Decimal128.MAX() / Decimal128.MIN()), "-1")
 
+    # MAX / 0.00001: same dual behaviour as MAX / 0.5.
+    var saw_overflow_b = False
+    var result_b = Decimal128(0)
     try:
-        var result = Decimal128.MAX() / Decimal128("0.00001")
-        testing.assert_true(result >= Decimal128.MAX())
+        result_b = Decimal128.MAX() / Decimal128("0.00001")
     except:
-        pass
+        saw_overflow_b = True
+    if not saw_overflow_b:
+        testing.assert_true(
+            result_b >= Decimal128.MAX(),
+            "MAX / 0.00001 succeeded but result was below MAX",
+        )
 
     var calc = (Decimal128(1) / Decimal128(3)) * Decimal128(3)
     testing.assert_equal(String(calc), "0.9999999999999999999999999999")
 
-    try:
-        var _r = Decimal128(10) // Decimal128(0)
-        testing.assert_true(False, "Truncate divide by zero should raise")
-    except:
-        pass
+    # Must raise: truncate divide by zero.
+    with testing.assert_raises():
+        var _r2 = Decimal128(10) // Decimal128(0)
 
 
 def test_truncate_math_relationships() raises:
@@ -597,14 +616,15 @@ def test_decimal128_modulo() raises:
 
 
 def test_modulo_exception() raises:
-    """Modulo by zero must raise."""
-    var caught = False
-    try:
+    """Modulo by zero must raise.
+
+    Uses `with testing.assert_raises():` so the test fails if the
+    operation unexpectedly succeeds; a bare try/except with
+    `assert_true(False, ...)` inside would silently swallow that
+    assertion failure.
+    """
+    with testing.assert_raises():
         var _r = Decimal128(10) % Decimal128(0)
-        testing.assert_true(False, "Modulo by zero should raise error")
-    except:
-        caught = True
-    testing.assert_true(caught)
 
 
 def test_modulo_mathematical_relationships() raises:

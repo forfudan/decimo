@@ -27,7 +27,7 @@ comptime factorial_path = "tests/decimal128/test_data/decimal128_factorial.toml"
 
 
 def test_exp_values() raises:
-    """Testse^x for basic, negative, fractional, and high-precision inputs."""
+    """Tests e^x for basic, negative, fractional, and high-precision inputs."""
     testing.assert_equal(String(exp(Decimal128("0"))), "1", "e^0 should be 1")
     testing.assert_true(
         String(exp(Decimal128("1"))).startswith("2.71828182845904523536028"),
