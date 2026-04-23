@@ -1912,6 +1912,178 @@ struct Decimal128(
         """
         return decimo.decimal128.rounding.quantize(self, exp, rounding_mode)
 
+    # ===------------------------------------------------------------------=== #
+    # Integer-part / fractional-part / sign helpers
+    # trunc, floor, ceil, fract, signum, unpack
+    # ===------------------------------------------------------------------=== #
+
+    @always_inline
+    def trunc(self) raises -> Self:
+        """Returns the integer part of this Decimal128, discarding any
+        fractional digits (rounding toward zero). The result has scale 0.
+
+        Returns:
+            A new `Decimal128` with the fractional part removed.
+
+        Raises:
+            Error: Should not occur in practice — truncation toward zero can
+                only shrink the magnitude. Propagated for signature parity
+                with `round()`.
+
+        Example:
+
+        ```mojo
+        from decimo import Decimal128
+        print(Decimal128("3.7").trunc())   # 3
+        print(Decimal128("-3.7").trunc())  # -3
+        print(Decimal128("3.0").trunc())   # 3
+        ```
+        End of example.
+        """
+        return decimo.decimal128.rounding.round(
+            self, ndigits=0, rounding_mode=RoundingMode.ROUND_DOWN
+        )
+
+    @always_inline
+    def floor(self) raises -> Self:
+        """Returns the largest integer less than or equal to this Decimal128
+        (rounding toward negative infinity). The result has scale 0.
+
+        Returns:
+            A new `Decimal128` rounded toward negative infinity.
+
+        Raises:
+            Error: If rounding causes overflow (only possible at the negative
+                extreme of the representable range).
+
+        Example:
+
+        ```mojo
+        from decimo import Decimal128
+        print(Decimal128("3.7").floor())   # 3
+        print(Decimal128("-3.2").floor())  # -4
+        print(Decimal128("3.0").floor())   # 3
+        ```
+        End of example.
+        """
+        return decimo.decimal128.rounding.round(
+            self, ndigits=0, rounding_mode=RoundingMode.ROUND_FLOOR
+        )
+
+    @always_inline
+    def ceil(self) raises -> Self:
+        """Returns the smallest integer greater than or equal to this
+        Decimal128 (rounding toward positive infinity). The result has
+        scale 0.
+
+        Returns:
+            A new `Decimal128` rounded toward positive infinity.
+
+        Raises:
+            Error: If rounding causes overflow (only possible at the positive
+                extreme of the representable range).
+
+        Example:
+
+        ```mojo
+        from decimo import Decimal128
+        print(Decimal128("3.2").ceil())   # 4
+        print(Decimal128("-3.7").ceil())  # -3
+        print(Decimal128("3.0").ceil())   # 3
+        ```
+        End of example.
+        """
+        return decimo.decimal128.rounding.round(
+            self, ndigits=0, rounding_mode=RoundingMode.ROUND_CEILING
+        )
+
+    @always_inline
+    def fract(self) raises -> Self:
+        """Returns the fractional part of this Decimal128, defined as
+        `self - self.trunc()`. The result has the same sign as `self`
+        and preserves the original scale.
+
+        Returns:
+            A new `Decimal128` containing the fractional part.
+
+        Raises:
+            Error: Propagated from the underlying subtraction. Should not
+                occur in practice since the magnitude is bounded by `self`.
+
+        Example:
+
+        ```mojo
+        from decimo import Decimal128
+        print(Decimal128("3.75").fract())   # 0.75
+        print(Decimal128("-3.75").fract())  # -0.75
+        print(Decimal128("3").fract())      # 0
+        ```
+        End of example.
+        """
+        return self - self.trunc()
+
+    @always_inline
+    def signum(self) -> Self:
+        """Returns the sign of this Decimal128 as a Decimal128:
+        `1` if positive, `-1` if negative, `0` if zero.
+
+        Returns:
+            A new `Decimal128` with value -1, 0, or 1.
+
+        Example:
+
+        ```mojo
+        from decimo import Decimal128
+        print(Decimal128("3.7").signum())    # 1
+        print(Decimal128("-3.7").signum())   # -1
+        print(Decimal128("0").signum())      # 0
+        print(Decimal128("0.000").signum())  # 0
+        ```
+        End of example.
+        """
+        if self.is_zero():
+            return Decimal128.ZERO()
+        if self.is_negative():
+            return Decimal128(-1)
+        return Decimal128.ONE()
+
+    @always_inline
+    def unpack(self) -> Tuple[UInt32, UInt32, UInt32, UInt32, Bool]:
+        """Returns the raw internal components of this Decimal128 as a tuple
+        `(low, mid, high, scale, sign)`. Mirrors `rust_decimal::Decimal::
+        unpack` and `System.Decimal.GetBits` so that the coefficient (96-bit
+        little-endian, in `low`/`mid`/`high`), the scale (number of decimal
+        places, 0..=28), and the sign (`True` for negative) can be inspected
+        without going through `coefficient()` / `scale()` / `is_negative()`
+        individually.
+
+        Returns:
+            A tuple `(low, mid, high, scale, sign)`:
+
+            - `low`: The low 32 bits of the coefficient.
+            - `mid`: The middle 32 bits of the coefficient.
+            - `high`: The high 32 bits of the coefficient.
+            - `scale`: The scale (0..=28).
+            - `sign`: `True` if negative, `False` otherwise.
+
+        Example:
+
+        ```mojo
+        from decimo import Decimal128
+        var parts = Decimal128("-123.45").unpack()
+        # parts[0] == 12345, parts[1] == 0, parts[2] == 0,
+        # parts[3] == 2, parts[4] == True
+        ```
+        End of example.
+        """
+        return Tuple[UInt32, UInt32, UInt32, UInt32, Bool](
+            self.low,
+            self.mid,
+            self.high,
+            UInt32(self.scale()),
+            self.is_negative(),
+        )
+
     @always_inline
     def exp(self) raises -> Self:
         """Calculates the exponential of this Decimal128.
