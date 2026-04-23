@@ -596,15 +596,12 @@ struct Decimal128(
         if value_bytes_len == 0:
             return Decimal128.ZERO()
 
-        # Check for non-ASCII characters (each non-ASCII char is multi-byte)
-        for byte in value_bytes:
-            if byte > 127:
-                raise ValueError(
-                    message=String(
-                        "Invalid characters in decimal128 string: {}"
-                    ).format(value),
-                    function="Decimal128.from_string()",
-                )
+        # NOTE: A previous version did a separate full-input pass to reject
+        # non-ASCII bytes. That pre-scan is now folded into the main loop:
+        # any unrecognised byte ends up in the catch-all `else` branch,
+        # which raises ValueError. Non-ASCII bytes (`code > 127`) are
+        # special-cased there to include the offending byte value and the
+        # original input string in the error message.
 
         # Yuhao's notes:
         # We scan each char in the string input.
@@ -625,12 +622,67 @@ struct Decimal128(
         var num_mantissa_digits: UInt32 = 0
 
         for code in value_bytes:
+            # HOT PATH: digit '0'-'9' (ASCII 48-57). Checked first so the
+            # common case takes one branch.
+            if code >= 48 and code <= 57:
+                unexpected_end_char = False
+                var d = Int(code) - 48
+
+                # Exponent part
+                if exponent_notation_read:
+                    # Raise / skip if exponent overflows. Use `>=` (not
+                    # `>`) so that we catch the digit *before* the
+                    # multiply pushes `raw_exponent` past the cap.
+                    if raw_exponent >= UInt32(Decimal128.MAX_NUM_DIGITS * 2):
+                        if not exponent_sign:
+                            raise OverflowError(
+                                message=String(
+                                    "Exponent part is too large: {}"
+                                ).format(raw_exponent),
+                                function="Decimal128.from_string()",
+                            )
+                        # Negative exponent past the cap → safely ignored.
+                        continue
+                    raw_exponent = raw_exponent * 10 + UInt32(d)
+                    exponent_sign_read = True
+                    continue
+
+                # Mantissa part
+                # Skip the digit if mantissa is too long.
+                if num_mantissa_digits > Decimal128.MAX_NUM_DIGITS + 8:  # 37
+                    continue
+
+                mantissa_sign_read = True
+                mantissa_start = True
+
+                # Leading zeros before the first significant digit do not
+                # contribute to `coef` / `num_mantissa_digits` (mirrors the
+                # previous separate '0' branch). Trailing zeros after a
+                # significant digit do (e.g. "123.45000").
+                if d != 0 or mantissa_significant_start:
+                    num_mantissa_digits += 1
+                    coef = coef * 10 + UInt128(d)
+                    mantissa_significant_start = True
+
+                if decimal_point_read:
+                    scale += 1
             # If the char is " ", skip it
-            if code == 32:
+            elif code == 32:
                 pass
             # If the char is "," or "_", skip it
             elif code == 44 or code == 95:
                 unexpected_end_char = True
+            # If the char is "."
+            elif code == 46:
+                unexpected_end_char = False
+                if decimal_point_read:
+                    raise ValueError(
+                        message="Decimal point can only appear once.",
+                        function="Decimal128.from_string()",
+                    )
+                else:
+                    decimal_point_read = True
+                    mantissa_sign_read = True
             # If the char is "-"
             elif code == 45:
                 unexpected_end_char = True
@@ -671,17 +723,6 @@ struct Decimal128(
                     )
                 else:
                     mantissa_sign_read = True
-            # If the char is "."
-            elif code == 46:
-                unexpected_end_char = False
-                if decimal_point_read:
-                    raise ValueError(
-                        message="Decimal point can only appear once.",
-                        function="Decimal128.from_string()",
-                    )
-                else:
-                    decimal_point_read = True
-                    mantissa_sign_read = True
             # If the char is "e" or "E"
             elif code == 101 or code == 69:
                 unexpected_end_char = True
@@ -697,85 +738,19 @@ struct Decimal128(
                     )
                 else:
                     exponent_notation_read = True
-            # If the char is a digit 0
-            elif code == 48:
-                unexpected_end_char = False
-
-                # Exponent part
-                if exponent_notation_read:
-                    exponent_sign_read = True
-                    # exponent_start = True
-                    raw_exponent = raw_exponent * 10
-
-                # Mantissa part
-                else:
-                    # Skip the digit if mantissa is too long
-                    if (
-                        num_mantissa_digits > Decimal128.MAX_NUM_DIGITS + 8
-                    ):  # 37
-                        continue
-
-                    mantissa_sign_read = True
-                    mantissa_start = True
-
-                    if mantissa_significant_start:
-                        num_mantissa_digits += 1
-                        coef = coef * 10
-
-                    if decimal_point_read:
-                        scale += 1
-
-            # If the char is a digit 1 - 9
-            elif code >= 49 and code <= 57:
-                unexpected_end_char = False
-
-                # Exponent part
-                if exponent_notation_read:
-                    # Raise an error if the exponent part is too large.
-                    # Use `>=` (not `>`) so that we catch the digit *before*
-                    # the multiply pushes `raw_exponent` past the cap. With
-                    # `>` and a current cap of 58, a string like "1e589"
-                    # would slip through (58 > 58 is False) and let
-                    # `raw_exponent` grow to 589, ultimately reaching
-                    # `power_of_10_unsafe` with an out-of-range index.
-                    if (not exponent_sign) and (
-                        raw_exponent >= Decimal128.MAX_NUM_DIGITS * 2
-                    ):
-                        raise OverflowError(
-                            message=String(
-                                "Exponent part is too large: {}"
-                            ).format(raw_exponent),
-                            function="Decimal128.from_string()",
-                        )
-
-                    # Skip the digit if exponent is negatively too large
-                    elif (exponent_sign) and (
-                        raw_exponent >= Decimal128.MAX_NUM_DIGITS * 2
-                    ):
-                        continue
-
-                    else:
-                        # exponent_start = True
-                        raw_exponent = raw_exponent * 10 + UInt32(code - 48)
-
-                # Mantissa part
-                else:
-                    # Skip the digit if mantissa is too long
-                    if (
-                        num_mantissa_digits > Decimal128.MAX_NUM_DIGITS + 8
-                    ):  # 37
-                        continue
-
-                    mantissa_significant_start = True
-                    mantissa_start = True
-
-                    num_mantissa_digits += 1
-                    coef = coef * 10 + UInt128(code - 48)
-
-                    if decimal_point_read:
-                        scale += 1
-
             else:
+                # Non-ASCII bytes (>127) are typically a stray UTF-8 lead/
+                # continuation byte; surfacing the raw byte via `chr()` is
+                # garbled and not actionable. Include the offending byte
+                # value AND the original input so users can diagnose
+                # encoding issues without us reintroducing a full pre-scan.
+                if code > 127:
+                    raise ValueError(
+                        message=String(
+                            "Invalid non-ASCII byte {} in decimal128 string: {}"
+                        ).format(hex(Int(code)), value),
+                        function="Decimal128.from_string()",
+                    )
                 raise ValueError(
                     message=String(
                         "Invalid character in decimal128 string: {}"
@@ -1050,7 +1025,11 @@ struct Decimal128(
         Args:
             writer: The writer instance.
         """
-        writer.write('Decimal128("', self.to_str(), '")')
+        # Stream the value directly through `write_to` to avoid materialising
+        # an intermediate `String(self)` allocation.
+        writer.write('Decimal128("')
+        self.write_to(writer)
+        writer.write('")')
 
     # ===------------------------------------------------------------------=== #
     # Type-transfer or output methods that are not dunders
@@ -1066,7 +1045,97 @@ struct Decimal128(
         Args:
             writer: The writer instance.
         """
-        writer.write(self.to_str())
+        var coef = self.coefficient()
+        var scale = self.scale()
+        var is_neg = self.is_negative()
+
+        # Special-case zero (preserves trailing zero digits per scale).
+        if coef == 0:
+            if is_neg:
+                writer.write("-")
+            if scale == 0:
+                writer.write("0")
+            else:
+                writer.write("0.")
+                for _ in range(scale):
+                    writer.write("0")
+            return
+
+        # Extract decimal digits into a right-aligned stack buffer. The
+        # Decimal128 coefficient is at most 96 bits (~7.92e28), i.e. at
+        # most 29 digits, so 32 bytes is plenty.
+        #
+        # Speed trick: split off 9-digit chunks at a time via a single
+        # UInt128 division by 10^9 (a 30-bit divisor), then format the
+        # 9-digit chunk with cheap UInt32 divisions. A 28-digit
+        # coefficient costs only ~3 wide divisions instead of 28.
+        comptime BUF_SIZE = 32
+        comptime ZERO_ASCII = UInt8(48)
+        comptime TEN9: UInt128 = 1_000_000_000
+        var buf = InlineArray[UInt8, BUF_SIZE](uninitialized=True)
+        var pos = BUF_SIZE
+
+        while coef >= TEN9:
+            var q = coef // TEN9
+            var r32 = UInt32(coef - q * TEN9)
+            coef = q
+            # Always emit 9 digits because there are more above.
+            for _ in range(9):
+                pos -= 1
+                buf.unsafe_ptr()[pos] = UInt8(r32 % UInt32(10)) + ZERO_ASCII
+                r32 //= UInt32(10)
+
+        var top = UInt32(coef)
+        while top > 0:
+            pos -= 1
+            buf.unsafe_ptr()[pos] = UInt8(top % UInt32(10)) + ZERO_ASCII
+            top //= UInt32(10)
+
+        var n_digits = BUF_SIZE - pos
+
+        if is_neg:
+            writer.write("-")
+
+        if scale == 0:
+            writer.write(
+                StringSlice(
+                    ptr=buf.unsafe_ptr() + pos,
+                    length=n_digits,
+                )
+            )
+        elif scale >= n_digits:
+            # Pre-fill the (scale - n_digits) leading zeros directly into
+            # the buffer, just before the existing digits, so we can
+            # write the entire fractional component in a single
+            # StringSlice instead of a per-byte loop. (scale ≤ 28 and
+            # BUF_SIZE = 32, so the prefix always fits.)
+            var zeros_count = scale - n_digits
+            var frac_start = pos - zeros_count
+            var p = buf.unsafe_ptr() + frac_start
+            for i in range(zeros_count):
+                p[i] = ZERO_ASCII
+            writer.write("0.")
+            writer.write(
+                StringSlice(
+                    ptr=buf.unsafe_ptr() + frac_start,
+                    length=scale,
+                )
+            )
+        else:
+            var int_len = n_digits - scale
+            writer.write(
+                StringSlice(
+                    ptr=buf.unsafe_ptr() + pos,
+                    length=int_len,
+                )
+            )
+            writer.write(".")
+            writer.write(
+                StringSlice(
+                    ptr=buf.unsafe_ptr() + pos + int_len,
+                    length=scale,
+                )
+            )
 
     def repr_words(self) -> String:
         """Returns a string representation of the Decimal128's internal words.
@@ -1197,52 +1266,18 @@ struct Decimal128(
 
         return res
 
-    def to_str(self) -> String:
+    def to_string(self) -> String:
         """Returns string representation of the Decimal128.
         Preserves trailing zeros after decimal128 point to match the scale.
 
         Returns:
             The string representation of this `Decimal128`.
         """
-        # Get the coefficient as a string (absolute value)
-        var coef = String(self.coefficient())
-        var scale = self.scale()
-        var result: String
+        var out = String()
+        self.write_to(out)
+        return out^
 
-        # Handle zero as a special case
-        if coef == "0":
-            if scale == 0:
-                result = "0"
-            else:
-                result = "0." + "0" * scale
-
-        # For non-zero values, format according to scale
-        elif scale == 0:
-            # No decimal128 places needed
-            result = coef
-        elif scale >= len(coef):
-            # Need leading zeros after decimal128 point
-            result = "0." + "0" * (scale - len(coef)) + coef
-        else:
-            # Insert decimal128 point at appropriate position
-            var insert_pos = len(coef) - scale
-            result = coef[byte=:insert_pos] + "." + coef[byte=insert_pos:]
-
-            # Ensure we have exactly 'scale' digits after decimal128 point
-            var decimal_point_pos = result.find(".")
-            var current_decimals = len(result) - decimal_point_pos - 1
-
-            if current_decimals < scale:
-                # Add trailing zeros if needed
-                result += "0" * (scale - current_decimals)
-
-        # Add negative sign if needed
-        if self.is_negative():
-            result = "-" + result
-
-        return result
-
-    def to_str_scientific(self) raises -> String:
+    def to_string_scientific(self) raises -> String:
         """Returns a string representation of this Decimal128 in scientific notation.
 
         Returns:
@@ -2100,7 +2135,7 @@ struct Decimal128(
 
         var result = String("\nInternal Representation Details of Decimal128\n")
         result += sep_line + "\n"
-        result += pad("Decimal128:") + self.to_str() + "\n"
+        result += pad("Decimal128:") + String(self) + "\n"
         result += pad("coefficient:") + String(self.coefficient()) + "\n"
         result += pad("scale:") + String(self.scale()) + "\n"
         result += pad("is negative:") + String(self.is_negative()) + "\n"
