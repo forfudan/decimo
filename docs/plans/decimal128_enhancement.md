@@ -335,22 +335,35 @@ that's ~30 full Decimal128 divisions. Use `ln(a × 10^q) = ln(a) + q × ln(10)`
 to read `q` directly from the input scale. Bit-width can collapse the second
 loop similarly. Expected: ~30 divs → 1 scale-fix + 1 div.
 
+Before working on this, we should first create benchmarking tests for `ln()`,
+`ln10()`, `exp()`, etc against other implementations to verify the current 
+behavior and track improvements.
+
 ### 5.4 Test-suite latency
 
 Two factors dominate. `-D ASSERT=all --debug-level=full` is 5–7× slower
 than release; per-file JIT adds ~0.5–1 s of fixed cost × 17 files.
-Recommendation: a `pixi run testfast` profile (no debug info,
-`-D ASSERT=none`); long-term, switch to `mojo test` single-binary
-discovery when available.
+
+No need to change anything. Safety is over speed.
 
 ### 5.5 Architectural: 96-bit coefficient → 32-digit decimal-bounded
 
 The `2^96 − 1` upper bound has a non-clean decimal boundary (29 digits
 but leading digit only 0–7). A future major release could repurpose 5
 unused bits in the flags word to extend the coefficient to `10^32 − 1`,
-unifying the digit semantics. Documented as a long-term proposal; not
-on the active roadmap. See git history (pre-2026-04-23) for the full
-analysis.
+unifying the digit semantics.
+
+Pros: cleaner API (32 digits, no weird leading-digit constraint), less mental
+burden on users to judge when they're hitting the coefficient limit,
+no complex rounding logic to handle the 29-digit edge case, wider range.
+
+Cons: completely different API shape (four raw words instead of three + flags),
+imcompatible with .NET and rust_decimal, more complex implementation (101-bit
+coefficient arithmetic instead of 96-bit).
+
+It is a long-term proposal; not on the active roadmap.
+
+See git history (pre-2026-04-23) for the full analysis.
 
 ---
 
@@ -390,5 +403,4 @@ Open items, in priority order:
 | 5.2 | `min`/`max`/`clamp`                               | Trivial | P3       |
 | 5.2 | `normalize()`                                     | Small   | P3       |
 | 5.2 | `__hash__` (depends on `normalize()`)             | Small   | P3       |
-| 5.4 | Test-suite latency                                | Medium  | P3       |
 | 5.5 | Steal flag bits → 32-digit coefficient            | Large   | P4       |
