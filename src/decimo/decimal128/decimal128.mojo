@@ -1291,6 +1291,9 @@ struct Decimal128(
         self.write_to(out)
         return out^
 
+    # TODO:
+    # Consolidate this method with `to_string()` and make `scientific` an
+    # optional comptime parameter to `to_string()`.
     def to_string_scientific(self) raises -> String:
         """Returns a string representation of this Decimal128 in scientific notation.
 

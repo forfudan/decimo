@@ -328,16 +328,44 @@ Landed 2026-04-23: `trunc`, `floor`, `ceil`, `fract`, `signum`, `unpack`
 - `normalize()` (strip trailing zeros)
 - `__hash__` (depends on `normalize`)
 
-### 5.3 `ln()` / `log10()` range reduction
+### 5.3 `ln()` / `log10()` / `exp()` range reduction — DONE (2026-04-25)
 
-`ln()` reduces input to `[0.5, 2.0)` via two while-loops; for `ln(1e28)`
-that's ~30 full Decimal128 divisions. Use `ln(a × 10^q) = ln(a) + q × ln(10)`
-to read `q` directly from the input scale. Bit-width can collapse the second
-loop similarly. Expected: ~30 divs → 1 scale-fix + 1 div.
+**Status:** complete. All `ln`/`log10`/`exp` worst-case ratios are now
+**≤ 1.0× vs `rust_decimal`** across the full bench corpus.
 
-Before working on this, we should first create benchmarking tests for `ln()`,
-`ln10()`, `exp()`, etc against other implementations to verify the current 
-behavior and track improvements.
+Changes landed:
+
+1. `ln()` (`exponential.mojo`): replaced the two while-loops that scaled
+   `x` into `[0.5, 2.0)` with a direct scale-based extraction
+   `q = num_digits(coef) - 1 - x_scale`, so `ln(x) = ln(coef × 10^-q) +
+   q·ln(10)`. Gated on `x ∉ [0.1, 10)` to preserve 1-ulp accuracy for
+   the direct-bucket cases (otherwise `ln(0.5)` would chain through
+   `q·ln(10)` and lose 1 ulp).
+2. `exp_series()`: replaced per-iteration `term * x / Decimal128(i)`
+   (one full `Decimal128` divide per term) with
+   `x_power *= x; term = x_power * factorial_reciprocal(i)` (two
+   multiplies). Drops `exp(0.1)` from 1050 → 295 ns, ~3.6× faster.
+3. `log10()`: replaced the per-digit `% 10 / //= 10` integer-power-of-10
+   probe loop with O(1) `number_of_digits` + `power_of_10_unsafe`
+   equality check. Drops `log10(1e28)` from 100 → 10 ns.
+
+**Cross-language ratios (mojo / rust, worst case shown):**
+
+| op      | worst case              | mojo (ns) | rust (ns) | ratio |
+| ------- | ----------------------- | --------: | --------: | ----: |
+| `ln`    | `ln(0.95)` close-to-1   |       945 |       989 | 0.96× |
+| `log10` | `log10(0.99999999)`     |       255 |       375 | 0.68× |
+| `exp`   | `exp(π)` high precision |      1225 |      1533 | 0.80× |
+
+Bench cases live in `benches/decimal128/cases/{ln,log10,exp}.toml`
+(12–16 cases each); `run_all.sh` now includes these ops by default so
+they appear in the aggregated markdown report.
+
+**Follow-up (not blocking):** `exp(π)` cost is dominated by ~17 Taylor
+iterations on a 28-digit-scale remainder where each multiply triggers
+wide-divide truncation. Further speedup would require precomputed
+sub-unit `e^k` constants (`E0D1`, `E0D01`, ...) to chunk the remainder,
+or a multiply path that defers truncation — left as a future task.
 
 ### 5.4 Test-suite latency
 
@@ -399,8 +427,8 @@ Open items, in priority order:
 | --- | ------------------------------------------------- | ------- | -------- |
 | 5.1 | divide repeating-decimal long tail (47 → ≤ 19 ns) | Large   | P1       |
 | 5.1 | from_string digit batching                        | Medium  | P2       |
-| 5.3 | `ln()` range reduction loops                      | Medium  | P2       |
 | 5.2 | `min`/`max`/`clamp`                               | Trivial | P3       |
 | 5.2 | `normalize()`                                     | Small   | P3       |
 | 5.2 | `__hash__` (depends on `normalize()`)             | Small   | P3       |
+| 5.3 | `exp()` sub-unit chunk constants (`exp(π)`)       | Medium  | P4       |
 | 5.5 | Steal flag bits → 32-digit coefficient            | Large   | P4       |

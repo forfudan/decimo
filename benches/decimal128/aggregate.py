@@ -225,6 +225,7 @@ def main() -> int:
         "rust": "rust",
         "csharp": "csharp",
         "vbnet": "vbnet",
+        "bigdec": "bigdec(d128)",
     }
 
     lines: list[str] = [
@@ -269,8 +270,14 @@ def main() -> int:
     overview_header = ["op", "cases"]
     for lang in args.langs:
         overview_header.append(f"{lang_label.get(lang, lang)} median")
+    # `bigdec` is the high-precision oracle for ln/log10/exp; it has no
+    # ns/iter timings (correctness-only), so it is excluded from the
+    # ratio columns and from any timing-median column when its value is
+    # blank.
     ratio_pairs = (
-        [lang for lang in args.langs if lang != "mojo"] if "mojo" in args.langs else []
+        [lang for lang in args.langs if lang not in ("mojo", "bigdec")]
+        if "mojo" in args.langs
+        else []
     )
     ratio_short = {"rust": "rs", "csharp": "cs", "vbnet": "vb"}
     for lang in ratio_pairs:
@@ -334,7 +341,7 @@ def main() -> int:
                 if is_match:
                     row.append("-")
                 else:
-                    row.append(res if len(res) <= 32 else res[:29] + "...")
+                    row.append(res if len(res) <= 56 else res[:53] + "...")
             res_body.append(row)
         lines.extend(render_aligned_table(res_header, res_body))
         lines.append("")

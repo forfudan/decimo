@@ -4,7 +4,7 @@ name = "bench"
 version = "0.1.0"
 
 [dependencies]
-rust_decimal = "1"
+rust_decimal = {version = "1", features = ["maths"]}
 serde = {version = "1", features = ["derive"]}
 toml = "0.8"
 

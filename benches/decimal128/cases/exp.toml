@@ -1,0 +1,60 @@
+[config]
+iterations = 200
+
+# Single-operand op: only `a` is read; `b` is unused.
+
+[[cases]]
+a = "0"
+name = "exp(0) trivial"
+
+[[cases]]
+a = "1"
+name = "exp(1) returns e"
+
+[[cases]]
+a = "0.5"
+name = "exp(0.5) sub-1 series-only"
+
+[[cases]]
+a = "0.1"
+name = "exp(0.1) small positive"
+
+[[cases]]
+a = "-0.5"
+name = "exp(-0.5) negative"
+
+[[cases]]
+a = "2"
+name = "exp(2) integer"
+
+[[cases]]
+a = "5"
+name = "exp(5) medium"
+
+[[cases]]
+a = "10"
+name = "exp(10) larger"
+
+[[cases]]
+a = "20"
+name = "exp(20) wide"
+
+[[cases]]
+a = "50"
+name = "exp(50) large chunk path"
+
+[[cases]]
+a = "66"
+name = "exp(66) near max"
+
+[[cases]]
+a = "3.14159265358979323846"
+name = "exp(pi) high precision"
+
+[[cases]]
+a = "1.23456789012345678901234567"
+name = "exp(typical) high precision"
+
+[[cases]]
+a = "-20"
+name = "exp(-20) negative wide"

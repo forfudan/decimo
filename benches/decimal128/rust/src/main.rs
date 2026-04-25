@@ -13,6 +13,7 @@
 //                to_string.
 
 use rust_decimal::Decimal;
+use rust_decimal::MathematicalOps;
 use serde::Deserialize;
 use std::env;
 use std::fs;
@@ -97,6 +98,9 @@ fn run_op(op: &str, a: &str, b: &str, iters: u64) -> (String, f64) {
         },
         "from_string" => parse_d(a).to_string(),
         "to_string" => da.to_string(),
+        "ln" => da.ln().to_string(),
+        "log10" => da.log10().to_string(),
+        "exp" => da.exp().to_string(),
         other => panic!("unknown op {other}"),
     };
 
@@ -155,6 +159,27 @@ fn run_op(op: &str, a: &str, b: &str, iters: u64) -> (String, f64) {
                     total += black_box(da).to_string().len();
                 }
                 black_box(total);
+            }
+            "ln" => {
+                let mut acc = Decimal::ZERO;
+                for _ in 0..iters {
+                    acc = black_box(black_box(da).ln());
+                }
+                black_box(acc);
+            }
+            "log10" => {
+                let mut acc = Decimal::ZERO;
+                for _ in 0..iters {
+                    acc = black_box(black_box(da).log10());
+                }
+                black_box(acc);
+            }
+            "exp" => {
+                let mut acc = Decimal::ZERO;
+                for _ in 0..iters {
+                    acc = black_box(black_box(da).exp());
+                }
+                black_box(acc);
             }
             _ => unreachable!(),
         }
