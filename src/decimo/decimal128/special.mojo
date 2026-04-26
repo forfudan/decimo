@@ -133,7 +133,6 @@ def factorial(n: Int) raises -> Decimal128:
         )  # 10888869450418352160768000000
 
 
-# TODO: Use binary splitting method to speed up the search.
 def factorial_reciprocal(n: Int) raises -> Decimal128:
     """Calculates the reciprocal of factorial of a non-negative integer (1/n!).
 

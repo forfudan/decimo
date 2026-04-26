@@ -1061,14 +1061,12 @@ def log10(x: Decimal128) raises -> Decimal128:
     # x is a power of 10 iff its integer part equals 10^(ndigits-1).
     # Use `number_of_digits()` instead of a per-digit divide-by-10 loop.
     if x_coef % ten_to_power_of_scale == 0:
-        var integeral_part = x_coef // ten_to_power_of_scale
-        var n_digits = decimo.decimal128.utility.number_of_digits(
-            integeral_part
-        )
+        var integral_part = x_coef // ten_to_power_of_scale
+        var n_digits = decimo.decimal128.utility.number_of_digits(integral_part)
         var pow10_check = decimo.decimal128.utility.power_of_10_unsafe[
             DType.uint128
         ](n_digits - 1)
-        if integeral_part == pow10_check:
+        if integral_part == pow10_check:
             return Decimal128(UInt32(n_digits - 1), 0, 0, 0)
 
     # Use the identity: log10(x) = ln(x) / ln(10)

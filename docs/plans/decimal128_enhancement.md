@@ -386,7 +386,7 @@ burden on users to judge when they're hitting the coefficient limit,
 no complex rounding logic to handle the 29-digit edge case, wider range.
 
 Cons: completely different API shape (four raw words instead of three + flags),
-imcompatible with .NET and rust_decimal, more complex implementation (101-bit
+incompatible with .NET and rust_decimal, more complex implementation (101-bit
 coefficient arithmetic instead of 96-bit).
 
 It is a long-term proposal; not on the active roadmap.
