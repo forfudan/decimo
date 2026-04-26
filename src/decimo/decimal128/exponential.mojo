@@ -729,7 +729,8 @@ def ln(x: Decimal128) raises -> Decimal128:
     var q: Int
     var p: Int = 0
 
-    # Step 1: extract a power of 10. For inputs already in [0.1, 10) skip this
+    # STEP 1:
+    # Extract a power of 10. For inputs already in [0.1, 10) skip this
     # (the old code's direct path keeps precision since ln(m) is then read
     # from a single LN constant; chaining ln + q*ln(10) introduces 1 ulp).
     # For magnitudes outside [0.1, 10), read q directly from the scale instead
@@ -748,7 +749,8 @@ def ln(x: Decimal128) raises -> Decimal128:
         m = x
         q = 0
 
-    # Step 2: normalize m to [0.5, 2) using powers of 2.
+    # STEP 2:
+    # normalize m to [0.5, 2) using powers of 2.
     # After step 1, m is in [0.1, 10); at most 4 halvings or 1 doubling.
     if m >= decimo.decimal128.constants.M2():
         while m >= decimo.decimal128.constants.M2():
@@ -1057,7 +1059,7 @@ def log10(x: Decimal128) raises -> Decimal128:
 
     # Special case: x = 10^n (exact integer power of 10)
     # x is a power of 10 iff its integer part equals 10^(ndigits-1).
-    # Use O(1) digit count instead of a per-digit divide-by-10 loop.
+    # Use `number_of_digits()` instead of a per-digit divide-by-10 loop.
     if x_coef % ten_to_power_of_scale == 0:
         var integeral_part = x_coef // ten_to_power_of_scale
         var n_digits = decimo.decimal128.utility.number_of_digits(
