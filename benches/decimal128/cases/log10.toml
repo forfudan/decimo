@@ -1,0 +1,52 @@
+[config]
+iterations = 200
+
+# Single-operand op: only `a` is read; `b` is unused.
+
+[[cases]]
+a = "1"
+name = "log10(1) trivial"
+
+[[cases]]
+a = "10"
+name = "log10(10) exact"
+
+[[cases]]
+a = "100"
+name = "log10(100) exact"
+
+[[cases]]
+a = "0.001"
+name = "log10(0.001) exact-negative"
+
+[[cases]]
+a = "2"
+name = "log10(2) common"
+
+[[cases]]
+a = "3.14159265358979323846"
+name = "log10(pi) high-precision"
+
+[[cases]]
+a = "1234.5678"
+name = "log10(1234.5678) typical"
+
+[[cases]]
+a = "10000000000000000000000000000"
+name = "log10(1e28) max magnitude"
+
+[[cases]]
+a = "0.000000000000000000000000001"
+name = "log10(1e-27) min magnitude"
+
+[[cases]]
+a = "79228162514264337593543950335"
+name = "log10(MAX_DEC128) extreme"
+
+[[cases]]
+a = "0.99999999"
+name = "log10(0.99999999) close-to-1"
+
+[[cases]]
+a = "9.999999999"
+name = "log10(9.999999999) just under 10"

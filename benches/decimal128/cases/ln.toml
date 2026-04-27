@@ -1,0 +1,68 @@
+[config]
+iterations = 200
+
+# Single-operand op: only `a` is read; `b` is unused.
+
+[[cases]]
+a = "1"
+name = "ln(1) trivial"
+
+[[cases]]
+a = "2"
+name = "ln(2) integer"
+
+[[cases]]
+a = "10"
+name = "ln(10) integer"
+
+[[cases]]
+a = "0.5"
+name = "ln(0.5) close-to-1"
+
+[[cases]]
+a = "1.0001"
+name = "ln(1.0001) very close to 1"
+
+[[cases]]
+a = "0.95"
+name = "ln(0.95) close-to-1 lower"
+
+[[cases]]
+a = "1.05"
+name = "ln(1.05) close-to-1 upper"
+
+[[cases]]
+a = "3.14159265358979323846"
+name = "ln(pi) high-precision irrational"
+
+[[cases]]
+a = "2.7182818284590452353602874714"
+name = "ln(e) returns 1 fast path"
+
+[[cases]]
+a = "100"
+name = "ln(100) small integer"
+
+[[cases]]
+a = "1000000"
+name = "ln(1e6) medium magnitude"
+
+[[cases]]
+a = "10000000000000000000000000000"
+name = "ln(1e28) max magnitude"
+
+[[cases]]
+a = "0.000000000000000000000000001"
+name = "ln(1e-27) min magnitude"
+
+[[cases]]
+a = "79228162514264337593543950335"
+name = "ln(MAX_DEC128) extreme"
+
+[[cases]]
+a = "0.0000000000001"
+name = "ln(1e-13) negative-scale region"
+
+[[cases]]
+a = "12345.6789"
+name = "ln(12345.6789) typical"

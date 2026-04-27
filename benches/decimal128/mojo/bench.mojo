@@ -130,6 +130,12 @@ fn _result_for(op: String, a: Decimal128, b: Decimal128) raises -> String:
         return String(a)
     elif op == "to_string":
         return String(a)
+    elif op == "ln":
+        return String(a.ln())
+    elif op == "log10":
+        return String(a.log10())
+    elif op == "exp":
+        return String(a.exp())
     raise Error("unknown op: " + op)
 
 
@@ -182,6 +188,27 @@ fn _run_case(
         per = _bench_str(bc.a, iters)
     elif op == "to_string":
         per = _bench_to_str(a, iters)
+    elif op == "ln":
+
+        @parameter
+        fn _f_ln(x: Decimal128, y: Decimal128) raises -> UInt64:
+            return UInt64(x.ln().coefficient() & 0xFFFF_FFFF_FFFF_FFFF)
+
+        per = _bench_one[_f_ln](a, b, iters)
+    elif op == "log10":
+
+        @parameter
+        fn _f_log10(x: Decimal128, y: Decimal128) raises -> UInt64:
+            return UInt64(x.log10().coefficient() & 0xFFFF_FFFF_FFFF_FFFF)
+
+        per = _bench_one[_f_log10](a, b, iters)
+    elif op == "exp":
+
+        @parameter
+        fn _f_exp(x: Decimal128, y: Decimal128) raises -> UInt64:
+            return UInt64(x.exp().coefficient() & 0xFFFF_FFFF_FFFF_FFFF)
+
+        per = _bench_one[_f_exp](a, b, iters)
     else:
         raise Error("unknown op: " + op)
 
