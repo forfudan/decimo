@@ -146,6 +146,13 @@ value before the fact and §2.4 / §2.5 for end-to-end snapshots.
 |          | three disputed cases vs rust_decimal: `123.45 × 0 → "0.00"`, `10.5 / 2.5 → "4.2"`,   |
 |          | `123.45 / -2 → "-61.725"`, plus zero-with-various-scales and ideal-exponent          |
 |          | rules per IEEE 754-2008 §3.3 / IBM GDA §4.1.                                         |
+| 20260427 | **`Decimal128.min` / `max` / `clamp`** (P3 of §5.2). Added free functions in         |
+|          | `comparison.mojo` and `@always_inline` methods on `Decimal128`. `max(a,b)` /         |
+|          | `min(a,b)` return the first argument on tie (preserving its scale, matching          |
+|          | rust_decimal `Ord::max` / `min`). `clamp(x, lower, upper)` raises if                 |
+|          | `lower > upper`. 8 new tests in `test_decimal128_comparison.mojo` cover              |
+|          | positives/negatives, tie-preserves-scale, signed zeros, in-range / below /           |
+|          | above / boundary clamps, and invalid-bounds raise.                                   |
 
 ### 2.5 Performance tracking — absolute decimo median ns/iter
 
@@ -294,18 +301,18 @@ context. All P1/P2 items have landed; P3 items are tracked in §5.
 These are the residual gaps after this PR. Each requires algorithmic
 work, not micro-optimisation.
 
-| Op       | Worst case                      | decimo |  rust | dm/rs | Likely root cause                                                                                            |
-| -------- | ------------------------------- | -----: | ----: | ----: | ------------------------------------------------------------------------------------------------------------ |
-| multiply | High precision multiplication   |   13.0 |  6.50 |  2.0× | UInt128 path: 17×17-digit prod, mandatory `round_coefficient` work                                           |
-| multiply | Multiplication by zero          |    4.0 |  1.38 |  2.9× | Per-call dispatch overhead (raises + special-case tree)                                                      |
-| multiply | Negative numbers                |    4.0 |  1.08 |  3.7× | Same                                                                                                         |
-| multiply | e * e^0.5                       |   23.0 | 27.79 |  0.8× | UInt256 path; *faster* than rust                                                                             |
-| divide   | Division with repeating decimal |   47.0 | 12.12 |  3.9× | Rust uses a `div_internal` magic-multiply trick; decimo's two-phase loop still pays 28 digits' worth of bulk |
-| divide   | High precision division         |   48.0 | 19.21 |  2.5× | Same                                                                                                         |
-| divide   | Large coprime quotient          |   43.0 | 16.88 |  2.5× | Same                                                                                                         |
-| from_str | Long integer part (20 digits)   |   24.7 | 11.52 |  2.1× | UInt128 multiply-by-10 per digit; could batch into u64 chunks                                                |
-| from_str | Long fractional (28 digits)     |   46.2 | 27.12 |  1.7× | Same                                                                                                         |
-| from_str | Zero value                      |    4.3 |  1.79 |  2.4× | Per-call dispatch; rust has a 2-byte fast path                                                               |
+| Op          | Worst case                      | decimo |  rust | dm/rs | Likely root cause                                                                                            |
+| ----------- | ------------------------------- | -----: | ----: | ----: | ------------------------------------------------------------------------------------------------------------ |
+| multiply    | High precision multiplication   |   13.0 |  6.50 |  2.0× | UInt128 path: 17×17-digit prod, mandatory `round_coefficient` work                                           |
+| multiply    | Multiplication by zero          |    4.0 |  1.38 |  2.9× | Per-call dispatch overhead (raises + special-case tree)                                                      |
+| multiply    | Negative numbers                |    4.0 |  1.08 |  3.7× | Same                                                                                                         |
+| multiply    | e * e^0.5                       |   23.0 | 27.79 |  0.8× | UInt256 path; *faster* than rust                                                                             |
+| divide      | Division with repeating decimal |   47.0 | 12.12 |  3.9× | Rust uses a `div_internal` magic-multiply trick; decimo's two-phase loop still pays 28 digits' worth of bulk |
+| divide      | High precision division         |   48.0 | 19.21 |  2.5× | Same                                                                                                         |
+| divide      | Large coprime quotient          |   43.0 | 16.88 |  2.5× | Same                                                                                                         |
+| from_string | Long integer part (20 digits)   |   24.7 | 11.52 |  2.1× | UInt128 multiply-by-10 per digit; could batch into u64 chunks                                                |
+| from_string | Long fractional (28 digits)     |   46.2 | 27.12 |  1.7× | Same                                                                                                         |
+| from_string | Zero value                      |    4.3 |  1.79 |  2.4× | Per-call dispatch; rust has a 2-byte fast path                                                               |
 
 **Possible follow-ups** (none committed):
 
@@ -322,9 +329,8 @@ work, not micro-optimisation.
 ### 5.2 API gaps vs `rust_decimal`
 
 Landed 2026-04-23: `trunc`, `floor`, `ceil`, `fract`, `signum`, `unpack`
-(see §2.4). Still tracked:
+(see §2.4). Landed 2026-04-27: `min`, `max`, `clamp`. Still tracked:
 
-- `min` / `max` / `clamp`
 - `normalize()` (strip trailing zeros)
 - `__hash__` (depends on `normalize`)
 
@@ -423,12 +429,11 @@ Part II → "A note on result exponents (`Decimal` and `Dec128`)".
 
 Open items, in priority order:
 
-| #   | Issue                                             | Effort  | Priority |
-| --- | ------------------------------------------------- | ------- | -------- |
-| 5.1 | divide repeating-decimal long tail (47 → ≤ 19 ns) | Large   | P1       |
-| 5.1 | from_string digit batching                        | Medium  | P2       |
-| 5.2 | `min`/`max`/`clamp`                               | Trivial | P3       |
-| 5.2 | `normalize()`                                     | Small   | P3       |
-| 5.2 | `__hash__` (depends on `normalize()`)             | Small   | P3       |
-| 5.3 | `exp()` sub-unit chunk constants (`exp(π)`)       | Medium  | P4       |
-| 5.5 | Steal flag bits → 32-digit coefficient            | Large   | P4       |
+| #   | Issue                                             | Effort | Priority |
+| --- | ------------------------------------------------- | ------ | -------- |
+| 5.1 | divide repeating-decimal long tail (47 → ≤ 19 ns) | Large  | P1       |
+| 5.1 | from_string digit batching                        | Medium | P2       |
+| 5.2 | `normalize()`                                     | Small  | P3       |
+| 5.2 | `__hash__` (depends on `normalize()`)             | Small  | P3       |
+| 5.3 | `exp()` sub-unit chunk constants (`exp(π)`)       | Medium | P4       |
+| 5.5 | Steal flag bits → 32-digit coefficient            | Large  | P4       |
