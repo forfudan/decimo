@@ -38,6 +38,9 @@ local
 # CLI binary
 /decimo
 
+# CLI release tarball staging directory (used by release_cli workflow)
+/dist/
+
 # Compiled GMP/MPFR wrapper (built from source)
 *.dylib
 *.so

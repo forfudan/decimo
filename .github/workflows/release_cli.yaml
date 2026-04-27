@@ -1,0 +1,204 @@
+name: Build CLI release tarball
+
+# Manually-triggered build of the `decimo` CLI binary, packaged as a
+# release tarball that the Homebrew formula in
+# https://github.com/forfudan/homebrew-decimo can download.
+#
+# Trigger from the Actions tab → "Build CLI release tarball" → Run
+# workflow → enter the version (e.g. 0.10.0-alpha.1).
+#
+# Two artifacts are produced (one per target platform):
+#   - decimo-<version>-linux-x86_64.tar.gz
+#   - decimo-<version>-darwin-arm64.tar.gz
+#
+# Download each artifact, verify its SHA-256 against the value printed
+# in the corresponding job log, and attach both to the GitHub Release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (without the leading v), e.g. 0.10.0-alpha.1"
+        required: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }} tarball
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: linux-x86_64
+          - os: macos-14          # Apple Silicon (arm64)
+            target: darwin-arm64
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pixi
+        run: curl -fsSL https://pixi.sh/install.sh | sh
+
+      - name: Add pixi to PATH
+        run: |
+          echo "PIXI_HOME=$HOME/.pixi" >> $GITHUB_ENV
+          echo "$HOME/.pixi/bin" >> $GITHUB_PATH
+
+      - name: pixi install
+        run: pixi install
+
+      - name: Build CLI binary (with retry for Mojo intermittent crashes)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== build attempt $attempt ==="
+            if pixi run buildcli; then
+              echo "=== build succeeded on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== build failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== build crashed, retrying in 5s... ==="
+            sleep 5
+          done
+
+      - name: Sanity check binary
+        run: |
+          file decimo
+          # Note: cannot run ./decimo --version here on Linux because the
+          # binary's hard-coded rpath points into the build env. The "Bundle
+          # runtime" step below makes the binary relocatable; we re-test
+          # after that.
+
+      - name: Bundle Mojo runtime + patch rpath
+        # The Mojo binary depends on a handful of runtime shared libraries
+        # that live in the Pixi env (libKGENCompilerRTShared, libAsync*,
+        # libMSupport*, ...). The build embeds an absolute @rpath that
+        # points at the build runner's filesystem, so the binary is not
+        # relocatable as-shipped.
+        #
+        # We:
+        #   1. Discover every @rpath/... dependency (recursively) of the
+        #      binary inside the Pixi env.
+        #   2. Copy each one into dist/<pkg>/lib/ alongside the binary.
+        #   3. Rewrite the binary + each bundled lib's rpath so they look
+        #      for siblings via $ORIGIN/.. (Linux) or
+        #      @executable_path/../lib (macOS).
+        #   4. On macOS, re-sign with an ad-hoc signature (required after
+        #      install_name_tool surgery on Apple Silicon).
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.version }}"
+          PKG="decimo-${VERSION}-${{ matrix.target }}"
+          STAGE="dist/${PKG}"
+          mkdir -p "${STAGE}/bin" "${STAGE}/lib"
+          cp decimo "${STAGE}/bin/"
+          cp LICENSE NOTICE README.md "${STAGE}/"
+
+          PIXI_LIB="$(pwd)/.pixi/envs/default/lib"
+          echo "Pixi lib dir: ${PIXI_LIB}"
+
+          # macOS runners ship bash 3.2 (no associative arrays). Track
+          # already-bundled libs by checking whether the file exists in
+          # ${STAGE}/lib instead of using a `declare -A` map.
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            # Recursively collect @rpath/<name> deps of the binary and any
+            # bundled lib until the closure is stable.
+            QUEUE=("${STAGE}/bin/decimo")
+            while [ ${#QUEUE[@]} -gt 0 ]; do
+              CURRENT="${QUEUE[0]}"
+              if [ ${#QUEUE[@]} -gt 1 ]; then
+                QUEUE=("${QUEUE[@]:1}")
+              else
+                QUEUE=()
+              fi
+              while IFS= read -r dep; do
+                name="${dep#@rpath/}"
+                if [[ ! -f "${STAGE}/lib/${name}" && -f "${PIXI_LIB}/${name}" ]]; then
+                  echo "Bundling ${name}"
+                  cp "${PIXI_LIB}/${name}" "${STAGE}/lib/${name}"
+                  QUEUE+=("${STAGE}/lib/${name}")
+                fi
+              done < <(otool -L "$CURRENT" 2>/dev/null \
+                       | awk '/@rpath\//{print $1}')
+            done
+
+            # Strip the build-time absolute rpath and add a relocatable one.
+            for f in "${STAGE}/bin/decimo" "${STAGE}/lib/"*.dylib; do
+              [[ -f "$f" ]] || continue
+              while IFS= read -r r; do
+                install_name_tool -delete_rpath "$r" "$f" 2>/dev/null || true
+              done < <(otool -l "$f" \
+                       | awk '/LC_RPATH/{flag=1;next} flag && /path /{print $2;flag=0}')
+              if [[ "$f" == *"/bin/"* ]]; then
+                install_name_tool -add_rpath "@executable_path/../lib" "$f"
+              else
+                install_name_tool -add_rpath "@loader_path" "$f"
+              fi
+              codesign --force --sign - "$f"
+            done
+          else
+            # Linux: same approach but with patchelf and ldd.
+            sudo apt-get update -qq
+            sudo apt-get install -y patchelf
+            QUEUE=("${STAGE}/bin/decimo")
+            while [ ${#QUEUE[@]} -gt 0 ]; do
+              CURRENT="${QUEUE[0]}"
+              if [ ${#QUEUE[@]} -gt 1 ]; then
+                QUEUE=("${QUEUE[@]:1}")
+              else
+                QUEUE=()
+              fi
+              # Look at DT_NEEDED entries; bundle any that resolve inside
+              # the Pixi env (system libs are left to the loader).
+              while IFS= read -r name; do
+                [[ -z "$name" ]] && continue
+                if [[ ! -f "${STAGE}/lib/${name}" && -f "${PIXI_LIB}/${name}" ]]; then
+                  echo "Bundling ${name}"
+                  cp "${PIXI_LIB}/${name}" "${STAGE}/lib/${name}"
+                  QUEUE+=("${STAGE}/lib/${name}")
+                fi
+              done < <(patchelf --print-needed "$CURRENT" 2>/dev/null)
+            done
+
+            for f in "${STAGE}/bin/decimo" "${STAGE}/lib/"*.so*; do
+              [[ -f "$f" ]] || continue
+              if [[ "$f" == *"/bin/"* ]]; then
+                patchelf --set-rpath '$ORIGIN/../lib' "$f"
+              else
+                patchelf --set-rpath '$ORIGIN' "$f"
+              fi
+            done
+          fi
+
+          echo "--- staged tree ---"
+          ls -la "${STAGE}" "${STAGE}/bin" "${STAGE}/lib"
+
+      - name: Smoke-test bundled binary
+        # Run from a directory unrelated to the build path to confirm the
+        # binary really is relocatable.
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.version }}"
+          PKG="decimo-${VERSION}-${{ matrix.target }}"
+          mkdir -p "$RUNNER_TEMP/relocation_test"
+          cp -R "dist/${PKG}" "$RUNNER_TEMP/relocation_test/"
+          "$RUNNER_TEMP/relocation_test/${PKG}/bin/decimo" --version
+
+      - name: Package tarball
+        run: |
+          VERSION="${{ inputs.version }}"
+          PKG="decimo-${VERSION}-${{ matrix.target }}"
+          ( cd dist && tar -czf "${PKG}.tar.gz" "${PKG}" )
+          echo "--- SHA-256 ---"
+          shasum -a 256 "dist/${PKG}.tar.gz" | tee "dist/${PKG}.tar.gz.sha256"
+
+      - name: Upload tarball artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: decimo-${{ inputs.version }}-${{ matrix.target }}
+          path: dist/decimo-${{ inputs.version }}-${{ matrix.target }}.tar.gz*
+          if-no-files-found: error
+          retention-days: 14
