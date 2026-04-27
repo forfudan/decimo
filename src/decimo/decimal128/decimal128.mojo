@@ -1827,6 +1827,53 @@ struct Decimal128(
         return decimo.decimal128.comparison.not_equal(self, other)
 
     # ===------------------------------------------------------------------=== #
+    # min / max / clamp
+    # ===------------------------------------------------------------------=== #
+
+    @always_inline
+    def max(self, other: Decimal128) -> Decimal128:
+        """Returns the larger of `self` and `other`.
+        See `max()` for more information.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `self` if `self >= other`, otherwise `other`.
+        """
+        return decimo.decimal128.comparison.max(self, other)
+
+    @always_inline
+    def min(self, other: Decimal128) -> Decimal128:
+        """Returns the smaller of `self` and `other`.
+        See `min()` for more information.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            `self` if `self <= other`, otherwise `other`.
+        """
+        return decimo.decimal128.comparison.min(self, other)
+
+    @always_inline
+    def clamp(self, lower: Decimal128, upper: Decimal128) raises -> Decimal128:
+        """Clamps `self` into the closed interval `[lower, upper]`.
+        See `clamp()` for more information.
+
+        Args:
+            lower: The inclusive lower bound.
+            upper: The inclusive upper bound.
+
+        Returns:
+            `lower` if `self < lower`, `upper` if `self > upper`, otherwise `self`.
+
+        Raises:
+            ValueError: If `lower > upper`.
+        """
+        return decimo.decimal128.comparison.clamp(self, lower, upper)
+
+    # ===------------------------------------------------------------------=== #
     # Other dunders that implements traits
     # round
     # ===------------------------------------------------------------------=== #

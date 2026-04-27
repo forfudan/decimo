@@ -28,6 +28,9 @@
 # less_equal(a: Decimal128, b: Decimal128) -> Bool: Returns True if a <= b
 # equal(a: Decimal128, b: Decimal128) -> Bool: Returns True if a == b
 # not_equal(a: Decimal128, b: Decimal128) -> Bool: Returns True if a != b
+# max(a: Decimal128, b: Decimal128) -> Decimal128: Returns the larger of two Decimals
+# min(a: Decimal128, b: Decimal128) -> Decimal128: Returns the smaller of two Decimals
+# clamp(x: Decimal128, lower: Decimal128, upper: Decimal128) -> Decimal128: Clamps x into [lower, upper]
 #
 # List of internal functions in this module:
 #
@@ -43,11 +46,11 @@ from std import testing
 
 from decimo.decimal128.decimal128 import Decimal128
 import decimo.decimal128.utility
+from decimo.errors import ValueError
 
 
 def compare(x: Decimal128, y: Decimal128) -> Int8:
-    """
-    Compares the values of two Decimal128 numbers and returns the result.
+    """Compares the values of two Decimal128 numbers and returns the result.
 
     Args:
         x: First Decimal128 value.
@@ -85,8 +88,7 @@ def compare(x: Decimal128, y: Decimal128) -> Int8:
 
 
 def compare_absolute(x: Decimal128, y: Decimal128) -> Int8:
-    """
-    Compares the absolute values of two Decimal128 numbers and returns the result.
+    """Compares the absolute values of two Decimal128 numbers and returns the result.
 
     Args:
         x: First Decimal128 value.
@@ -161,8 +163,7 @@ def compare_absolute(x: Decimal128, y: Decimal128) -> Int8:
 
 
 def greater(a: Decimal128, b: Decimal128) -> Bool:
-    """
-    Returns True if a > b.
+    """Returns True if a > b.
 
     Args:
         a: First Decimal128 value.
@@ -176,8 +177,7 @@ def greater(a: Decimal128, b: Decimal128) -> Bool:
 
 
 def less(a: Decimal128, b: Decimal128) -> Bool:
-    """
-    Returns True if a < b.
+    """Returns True if a < b.
 
     Args:
         a: First Decimal128 value.
@@ -191,8 +191,7 @@ def less(a: Decimal128, b: Decimal128) -> Bool:
 
 
 def greater_equal(a: Decimal128, b: Decimal128) -> Bool:
-    """
-    Returns True if a >= b.
+    """Returns True if a >= b.
 
     Args:
         a: First Decimal128 value.
@@ -206,8 +205,7 @@ def greater_equal(a: Decimal128, b: Decimal128) -> Bool:
 
 
 def less_equal(a: Decimal128, b: Decimal128) -> Bool:
-    """
-    Returns True if a <= b.
+    """Returns True if a <= b.
 
     Args:
         a: First Decimal128 value.
@@ -221,8 +219,7 @@ def less_equal(a: Decimal128, b: Decimal128) -> Bool:
 
 
 def equal(a: Decimal128, b: Decimal128) -> Bool:
-    """
-    Returns True if a == b.
+    """Returns True if a == b.
 
     Args:
         a: First Decimal128 value.
@@ -236,8 +233,7 @@ def equal(a: Decimal128, b: Decimal128) -> Bool:
 
 
 def not_equal(a: Decimal128, b: Decimal128) -> Bool:
-    """
-    Returns True if a != b.
+    """Returns True if a != b.
 
     Args:
         a: First Decimal128 value.
@@ -248,3 +244,66 @@ def not_equal(a: Decimal128, b: Decimal128) -> Bool:
     """
 
     return compare(a, b) != 0
+
+
+def max(a: Decimal128, b: Decimal128) -> Decimal128:
+    """Returns the larger of two Decimal128 values.
+
+    When the two values compare equal, `a` is returned. Sign and
+    scale follow the operand that is returned (e.g. `max(0, 0.00) == 0`).
+
+    Args:
+        a: First Decimal128 value.
+        b: Second Decimal128 value.
+
+    Returns:
+        `a` if `a >= b`, otherwise `b`.
+    """
+
+    return a if compare(a, b) >= 0 else b
+
+
+def min(a: Decimal128, b: Decimal128) -> Decimal128:
+    """Returns the smaller of two Decimal128 values.
+
+    When the two values compare equal, `a` is returned. Sign and
+    scale follow the operand that is returned.
+
+    Args:
+        a: First Decimal128 value.
+        b: Second Decimal128 value.
+
+    Returns:
+        `a` if `a <= b`, otherwise `b`.
+    """
+
+    return a if compare(a, b) <= 0 else b
+
+
+def clamp(
+    x: Decimal128, lower: Decimal128, upper: Decimal128
+) raises -> Decimal128:
+    """Clamps `x` into the closed interval `[lower, upper]`.
+
+    Args:
+        x:     The value to clamp.
+        lower: The inclusive lower bound.
+        upper: The inclusive upper bound.
+
+    Returns:
+        `lower` if `x < lower`, `upper` if `x > upper`, otherwise `x`.
+
+    Raises:
+        ValueError: If `lower > upper`.
+    """
+
+    if compare(lower, upper) > 0:
+        raise ValueError(
+            message="`lower` must be less than or equal to `upper`.",
+            function="clamp()",
+        )
+    if compare(x, lower) < 0:
+        return lower
+    if compare(x, upper) > 0:
+        return upper
+    return x
