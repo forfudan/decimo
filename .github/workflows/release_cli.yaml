@@ -99,48 +99,34 @@ jobs:
 
           # Ship the license texts of the bundled third-party runtime
           # libraries alongside the binary, as required by §3 of the
-          # Modular Community License (text of the License must be
-          # conspicuously displayed in each copy of the SDK) and as a
-          # courtesy for the GCC Runtime Library Exception on Linux.
-          MOD_LIC="${STAGE}/THIRD_PARTY_LICENSES/MODULAR_COMMUNITY_LICENSE.txt"
-          {
-            echo "Modular Community License"
-            echo "========================="
-            echo "Source: https://www.modular.com/legal/community"
-            echo "Retrieved during the Decimo CLI release build (CI)."
-            echo
-            curl -fsSL https://www.modular.com/legal/community \
-              | sed -e 's/<[^>]*>//g' -e 's/&nbsp;/ /g' -e 's/&amp;/\&/g' \
-                    -e 's/&lt;/</g'   -e 's/&gt;/>/g'    -e 's/&quot;/"/g' \
-              | awk 'BEGIN{p=0} /Modular Community License/{p=1} p' \
-              | sed '/^$/N;/^\n$/D'
-          } > "${MOD_LIC}"
-          if ! grep -q "REDISTRIBUTABLE" "${MOD_LIC}"; then
-            # Fallback: keep a stub pointing at the canonical URL if the
-            # scrape didn't produce something sensible.
-            cat > "${MOD_LIC}" <<'EOF'
-          Modular Community License
-          =========================
+          # Modular Community License (the text of the Agreement must
+          # be conspicuously displayed in each copy of the SDK) and as
+          # required by the GCC Runtime Library Exception on Linux.
+          #
+          # The texts are vendored in the repo under THIRD_PARTY_LICENSES/
+          # so release artifacts are deterministic and reproducible — we
+          # do not scrape upstream HTML at build time. If a vendored file
+          # is missing the build fails here, on purpose, so we never ship
+          # a tarball without the full license text.
+          if [[ ! -f THIRD_PARTY_LICENSES/MODULAR_COMMUNITY_LICENSE.txt ]]; then
+            echo "Missing vendored Modular Community License text at THIRD_PARTY_LICENSES/MODULAR_COMMUNITY_LICENSE.txt" >&2
+            exit 1
+          fi
+          cp THIRD_PARTY_LICENSES/MODULAR_COMMUNITY_LICENSE.txt \
+             "${STAGE}/THIRD_PARTY_LICENSES/MODULAR_COMMUNITY_LICENSE.txt"
 
-          The Mojo SDK runtime libraries bundled in this distribution
-          (libKGENCompilerRTShared, libAsyncRTMojoBindings,
-          libAsyncRTRuntimeGlobals, libMSupportGlobals, libNVPTX) are
-          provided by Modular Inc. under the Modular Community License.
-
-          The full and authoritative text of the License is published at:
-
-              https://www.modular.com/legal/community
-
-          The CI build that produced this tarball was unable to embed an
-          inline copy of the License text; please refer to the URL above.
-          EOF
+          if [[ -f THIRD_PARTY_LICENSES/README.md ]]; then
+            cp THIRD_PARTY_LICENSES/README.md \
+               "${STAGE}/THIRD_PARTY_LICENSES/README.md"
           fi
 
           if [[ "$RUNNER_OS" == "Linux" ]]; then
-            curl -fsSL https://www.gnu.org/licenses/gcc-exception-3.1.txt \
-              -o "${STAGE}/THIRD_PARTY_LICENSES/GCC_RUNTIME_LIBRARY_EXCEPTION.txt" \
-              || echo "GCC Runtime Library Exception 3.1 — see https://www.gnu.org/licenses/gcc-exception-3.1.html" \
-                 > "${STAGE}/THIRD_PARTY_LICENSES/GCC_RUNTIME_LIBRARY_EXCEPTION.txt"
+            if [[ ! -f THIRD_PARTY_LICENSES/GCC_RUNTIME_LIBRARY_EXCEPTION.txt ]]; then
+              echo "Missing vendored GCC Runtime Library Exception text at THIRD_PARTY_LICENSES/GCC_RUNTIME_LIBRARY_EXCEPTION.txt" >&2
+              exit 1
+            fi
+            cp THIRD_PARTY_LICENSES/GCC_RUNTIME_LIBRARY_EXCEPTION.txt \
+               "${STAGE}/THIRD_PARTY_LICENSES/GCC_RUNTIME_LIBRARY_EXCEPTION.txt"
           fi
 
           PIXI_LIB="$(pwd)/.pixi/envs/default/lib"
