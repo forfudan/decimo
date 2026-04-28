@@ -24,3 +24,46 @@ MPFR and GMP are loaded at runtime via dlopen/dlsym when the user has
 independently installed them (e.g. `brew install mpfr` on macOS or
 `apt install libmpfr-dev` on Linux). The BigFloat type requires MPFR;
 all other Decimo types work without any external dependencies.
+
+
+Bundled Components in the Pre-Built CLI Distribution
+====================================================
+
+The pre-built `decimo` CLI binary distributed via the `forfudan/tap`
+Homebrew tap (and equivalent release tarballs on GitHub) bundles a
+small set of runtime shared libraries under `lib/` so that the binary
+is self-contained and does not require the end user to install the
+Mojo SDK. The Decimo source code, and any installation built from
+source, do not include these libraries.
+
+Mojo SDK runtime libraries (Modular Inc., https://www.modular.com/)
+  - libKGENCompilerRTShared
+  - libAsyncRTMojoBindings
+  - libAsyncRTRuntimeGlobals
+  - libMSupportGlobals
+  - libNVPTX (Linux distribution only)
+
+  Copyright (C) Modular Inc. All rights reserved.
+  Redistributed under the Modular Community License, as Redistributable
+  Components inside the Decimo CLI Application, in accordance with
+  Section 3 ("Redistributable Components & Limitations") of the License.
+  The full text of the Modular Community License is included in the
+  release tarball under `THIRD_PARTY_LICENSES/MODULAR_COMMUNITY_LICENSE.txt`
+  and is also available at https://www.modular.com/legal/community.
+
+  Built with Mojo 🔥 (https://www.modular.com/mojo).
+
+GCC runtime libraries (Free Software Foundation, https://gcc.gnu.org/)
+  Bundled in the Linux x86_64 distribution only:
+  - libstdc++.so.6
+  - libgcc_s.so.1
+
+  Copyright (C) Free Software Foundation, Inc.
+  Licensed under the GNU General Public License v3.0 with the
+  GCC Runtime Library Exception (version 3.1), which expressly
+  permits redistribution as part of binary distributions of programs
+  compiled with GCC. The full text of the exception is included in
+  the Linux release tarball under
+  `THIRD_PARTY_LICENSES/GCC_RUNTIME_LIBRARY_EXCEPTION.txt` and is
+  also available at https://www.gnu.org/licenses/gcc-exception-3.1.html.
+

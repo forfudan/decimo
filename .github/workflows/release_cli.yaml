@@ -93,9 +93,55 @@ jobs:
           VERSION="${{ inputs.version }}"
           PKG="decimo-${VERSION}-${{ matrix.target }}"
           STAGE="dist/${PKG}"
-          mkdir -p "${STAGE}/bin" "${STAGE}/lib"
+          mkdir -p "${STAGE}/bin" "${STAGE}/lib" "${STAGE}/THIRD_PARTY_LICENSES"
           cp decimo "${STAGE}/bin/"
           cp LICENSE NOTICE README.md "${STAGE}/"
+
+          # Ship the license texts of the bundled third-party runtime
+          # libraries alongside the binary, as required by §3 of the
+          # Modular Community License (text of the License must be
+          # conspicuously displayed in each copy of the SDK) and as a
+          # courtesy for the GCC Runtime Library Exception on Linux.
+          MOD_LIC="${STAGE}/THIRD_PARTY_LICENSES/MODULAR_COMMUNITY_LICENSE.txt"
+          {
+            echo "Modular Community License"
+            echo "========================="
+            echo "Source: https://www.modular.com/legal/community"
+            echo "Retrieved during the Decimo CLI release build (CI)."
+            echo
+            curl -fsSL https://www.modular.com/legal/community \
+              | sed -e 's/<[^>]*>//g' -e 's/&nbsp;/ /g' -e 's/&amp;/\&/g' \
+                    -e 's/&lt;/</g'   -e 's/&gt;/>/g'    -e 's/&quot;/"/g' \
+              | awk 'BEGIN{p=0} /Modular Community License/{p=1} p' \
+              | sed '/^$/N;/^\n$/D'
+          } > "${MOD_LIC}"
+          if ! grep -q "REDISTRIBUTABLE" "${MOD_LIC}"; then
+            # Fallback: keep a stub pointing at the canonical URL if the
+            # scrape didn't produce something sensible.
+            cat > "${MOD_LIC}" <<'EOF'
+          Modular Community License
+          =========================
+
+          The Mojo SDK runtime libraries bundled in this distribution
+          (libKGENCompilerRTShared, libAsyncRTMojoBindings,
+          libAsyncRTRuntimeGlobals, libMSupportGlobals, libNVPTX) are
+          provided by Modular Inc. under the Modular Community License.
+
+          The full and authoritative text of the License is published at:
+
+              https://www.modular.com/legal/community
+
+          The CI build that produced this tarball was unable to embed an
+          inline copy of the License text; please refer to the URL above.
+          EOF
+          fi
+
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            curl -fsSL https://www.gnu.org/licenses/gcc-exception-3.1.txt \
+              -o "${STAGE}/THIRD_PARTY_LICENSES/GCC_RUNTIME_LIBRARY_EXCEPTION.txt" \
+              || echo "GCC Runtime Library Exception 3.1 — see https://www.gnu.org/licenses/gcc-exception-3.1.html" \
+                 > "${STAGE}/THIRD_PARTY_LICENSES/GCC_RUNTIME_LIBRARY_EXCEPTION.txt"
+          fi
 
           PIXI_LIB="$(pwd)/.pixi/envs/default/lib"
           echo "Pixi lib dir: ${PIXI_LIB}"
