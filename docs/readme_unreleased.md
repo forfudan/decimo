@@ -2,7 +2,7 @@
 
 An arbitrary-precision integer and decimal library for [Mojo](https://www.modular.com/mojo), inspired by Python's `int` and `Decimal`.
 
-A CLI calculator tool, built on top of Decimo and powered by [ArgMojo](https://github.com/forfudan/argmojo) (a feature-rich command-line argument parser library for Mojo).
+Comes with `decimo`, an interactive arbitrary-precision calculator (REPL + one-shot mode) powered by [ArgMojo](https://github.com/forfudan/argmojo). Install it in one line with Homebrew: `brew install forfudan/tap/decimo`.
 
 [![Version](https://img.shields.io/github/v/tag/forfudan/decimo?label=version&color=blue)](https://github.com/forfudan/decimo/releases)
 [![Mojo](https://img.shields.io/badge/mojo-0.26.2-orange)](https://docs.modular.com/mojo/manual/)
@@ -26,6 +26,8 @@ A CLI calculator tool, built on top of Decimo and powered by [ArgMojo](https://g
 
 ## Overview
 
+### Decimo library
+
 Decimo provides an arbitrary-precision integer and decimal library for Mojo. It delivers exact calculations for financial modeling, scientific computing, and applications where floating-point approximation errors are unacceptable. Beyond basic arithmetic, the library includes advanced mathematical functions with guaranteed precision.
 
 For Pythonistas, `decimo.Integer` to Mojo is like `int` to Python, and `decimo.Decimal` to Mojo is like `decimal.Decimal` to Python.
@@ -48,11 +50,17 @@ The core types are[^auxiliary]:
 
 **Decimo** combines "**Deci**mal" and "**Mo**jo" - reflecting its purpose and implementation language. "Decimo" is also a Latin word meaning "tenth" and is the root of the word "decimal".
 
-A CLI calculator tool, built on top of the Decimo library and powered by [ArgMojo](https://github.com/forfudan/argmojo) (a feature-rich command-line argument parser library for Mojo, with both builder and struct-based declarative APIs), is also available in this repository. It provides a convenient way to perform high-precision calculations directly from the command line.
+### CLI calculator
+
+`decimo` is a command-line calculator built on the Decimo library and powered by [ArgMojo](https://github.com/forfudan/argmojo). Run it with no arguments for an interactive REPL, or pass an expression / file / piped stdin for one-shot evaluation. The binary is self-contained — no Mojo or Pixi needed on the user's machine. See the [user manual](./docs/user_manual_cli.md) for the full reference, and the [Quick start](#cli-quick-start) below for a taste.
+
+### TOML parser
 
 This repository includes a built-in [TOML parser](./docs/readme_toml.md) (`decimo.toml`), a lightweight pure-Mojo implementation supporting TOML v1.0. It parses configuration files and test data, supporting basic types, arrays, and nested tables. While created for Decimo's testing framework, it offers general-purpose structured data parsing with a clean, simple API.
 
 ## Installation
+
+### Install Decimo library for Mojo projects
 
 Decimo is available in the modular-community `https://repo.prefix.dev/modular-community` package repository. To access this repository, add it to your `channels` list in your `pixi.toml` file:
 
@@ -90,7 +98,72 @@ The following table summarizes the package versions and their corresponding Mojo
 | `decimo`   | v0.9.0  | ==0.26.2      | pixi            |
 | `decimo`   | v0.10.0 | ==0.26.2      | pixi            |
 
+### Install CLI calculator
+
+The `decimo` CLI is distributed via the [`forfudan/tap`](https://github.com/forfudan/homebrew-tap) Homebrew tap. Pre-built binaries are available for **macOS arm64** (Apple Silicon) and **Linux x86_64**, and ship with the Mojo runtime libraries bundled — you do not need Mojo or Pixi installed.
+
+```bash
+brew install forfudan/tap/decimo
+decimo --version
+```
+
+Or tap once and use the bare formula name:
+
+```bash
+brew tap forfudan/tap
+brew install decimo
+```
+
+To upgrade to a later release:
+
+```bash
+brew update && brew upgrade decimo
+```
+
 ## Quick start
+
+### CLI quick start
+
+For an interactive session, just type `decimo`:
+
+```sh
+$ decimo
+Decimo — arbitrary-precision calculator 🔥
+Type ? for help, : for settings, :q to quit.
+Precision: 50. Rounding: ROUND_HALF_EVEN.
+decimo> x = sqrt(2)
+1.4142135623730950488016887242096980785696718753769
+decimo> x ^ 2
+2
+decimo> ans + 1
+3
+decimo> :100
+decimo> pi
+3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117068
+decimo> sqrt(e) / ln(10) + sin(-1.23) :200 e he delimiter _
+-226.458_251_870_114_348_807_514_569_584_297_293_353_150_959_525_480_515_507_901_779_719_167_225_208_528_825_475_488_261_072_148_336_432_171_617_635_953_314_758_797_226_777_458_915_435_649_950_836_584_843_137_886_028_274_720_793_979_517_570_004_978_334_405_953_342_64E-3
+decimo> :q
+```
+
+The REPL keeps the last result in `ans`, lets you define variables (`name = expr`), and exposes settings via `:`-prefixed commands (e.g. `:100` for precision, `:s` for scientific, `:d` for ROUND_DOWN). Input is case-insensitive. Quit with `:q`, `exit`, or Ctrl-D.
+
+As an innovative feature, Decimo supports multiple settings in a single line. They can either be global (persist across calculations) or local (apply only to the current expression). In the example above, `:200 e he delimiter _` means "evaluate the expression with precision 200 (`200`), scientific notation with engineering exponent (`e`), round half to even (`he`), and use `_` as the digit delimiter in the output (`delimiter _`)". The settings apply only to the current expression and do not affect subsequent calculations.
+
+For one-shot evaluation, pass an expression on the command line, pipe it via stdin, or read from a file:
+
+```bash
+$ decimo "sqrt(2)" -P 30
+1.41421356237309504880168872421
+
+$ echo "1/3" | decimo -P 50
+0.33333333333333333333333333333333333333333333333333
+
+$ decimo -F expressions.dm -P 80
+```
+
+Useful flags: `-P N` (precision), `-R MODE` (rounding), `-S` / `-E` (scientific / engineering), `--pad`, `--delimiter`, `--completions {bash,zsh,fish}`. Run `decimo --help` for the full list.
+
+### Library quick start
 
 You can start using Decimo by importing the `decimo` module. An easy way to do this is to import everything from the `prelude` module, which provides the most commonly used types.
 
