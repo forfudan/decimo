@@ -4,7 +4,7 @@ An arbitrary-precision integer and decimal library for [Mojo](https://www.modula
 
 Comes with `decimo`, an interactive arbitrary-precision calculator (REPL + one-shot mode) powered by [ArgMojo](https://github.com/forfudan/argmojo). Install it in one line with Homebrew: `brew install forfudan/tap/decimo`.
 
-[![Version](https://img.shields.io/github/v/tag/forfudan/decimo?label=version&color=blue)](https://github.com/forfudan/decimo/releases)
+[![Version](https://img.shields.io/badge/version-v0.10.0-blue)](https://github.com/forfudan/decimo/releases/tag/v0.10.0)
 [![Mojo](https://img.shields.io/badge/mojo-0.26.2-orange)](https://docs.modular.com/mojo/manual/)
 [![pixi](https://img.shields.io/badge/pixi%20add-decimo-purple)](https://prefix.dev/channels/modular-community/packages/decimo)
 [![CI](https://img.shields.io/github/actions/workflow/status/forfudan/decimo/run_tests.yaml?branch=main&label=tests)](https://github.com/forfudan/decimo/actions/workflows/run_tests.yaml)
