@@ -337,7 +337,7 @@ When invoked with no expression and stdin is a TTY, `decimo` launches an interac
 
 ```sh
 $ decimo
-Decimo — arbitrary-precision calculator 🔥
+Decimo — an arbitrary-precision calculator 🔥
 Type ? for help, : for settings, :q to quit.
 Precision: 50. Rounding: ROUND_HALF_EVEN.
 decimo> 100 * 12 - 23/17

@@ -128,7 +128,7 @@ For an interactive session, just type `decimo`:
 
 ```sh
 $ decimo
-Decimo — arbitrary-precision calculator 🔥
+Decimo — an arbitrary-precision calculator 🔥
 Type ? for help, : for settings, :q to quit.
 Precision: 50. Rounding: ROUND_HALF_EVEN.
 decimo> x = sqrt(2)

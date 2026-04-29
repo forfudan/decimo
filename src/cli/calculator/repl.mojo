@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright 2025 Yuhao Zhu
+# Copyright 2025-2026 Yuhao Zhu
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -361,7 +361,7 @@ def _validate_variable_name(name: String) -> Optional[String]:
 def _print_banner(settings: Settings):
     """Prints the REPL welcome banner to stderr."""
     comptime title = (
-        BOLD + YELLOW + "Decimo — arbitrary-precision calculator 🔥\n" + RESET
+        BOLD + YELLOW + "Decimo — an arbitrary-precision calculator 🔥\n" + RESET
     )
     comptime hints = "Type ? for help, : for settings, :q to quit."
     print(title + hints, file=stderr)
