@@ -93,9 +93,41 @@ jobs:
           VERSION="${{ inputs.version }}"
           PKG="decimo-${VERSION}-${{ matrix.target }}"
           STAGE="dist/${PKG}"
-          mkdir -p "${STAGE}/bin" "${STAGE}/lib"
+          mkdir -p "${STAGE}/bin" "${STAGE}/lib" "${STAGE}/THIRD_PARTY_LICENSES"
           cp decimo "${STAGE}/bin/"
           cp LICENSE NOTICE README.md "${STAGE}/"
+
+          # Ship the license texts of the bundled third-party runtime
+          # libraries alongside the binary, as required by §3 of the
+          # Modular Community License (the text of the Agreement must
+          # be conspicuously displayed in each copy of the SDK) and as
+          # required by the GCC Runtime Library Exception on Linux.
+          #
+          # The texts are vendored in the repo under THIRD_PARTY_LICENSES/
+          # so release artifacts are deterministic and reproducible — we
+          # do not scrape upstream HTML at build time. If a vendored file
+          # is missing the build fails here, on purpose, so we never ship
+          # a tarball without the full license text.
+          if [[ ! -f THIRD_PARTY_LICENSES/MODULAR_COMMUNITY_LICENSE.txt ]]; then
+            echo "Missing vendored Modular Community License text at THIRD_PARTY_LICENSES/MODULAR_COMMUNITY_LICENSE.txt" >&2
+            exit 1
+          fi
+          cp THIRD_PARTY_LICENSES/MODULAR_COMMUNITY_LICENSE.txt \
+             "${STAGE}/THIRD_PARTY_LICENSES/MODULAR_COMMUNITY_LICENSE.txt"
+
+          if [[ -f THIRD_PARTY_LICENSES/README.md ]]; then
+            cp THIRD_PARTY_LICENSES/README.md \
+               "${STAGE}/THIRD_PARTY_LICENSES/README.md"
+          fi
+
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            if [[ ! -f THIRD_PARTY_LICENSES/GCC_RUNTIME_LIBRARY_EXCEPTION.txt ]]; then
+              echo "Missing vendored GCC Runtime Library Exception text at THIRD_PARTY_LICENSES/GCC_RUNTIME_LIBRARY_EXCEPTION.txt" >&2
+              exit 1
+            fi
+            cp THIRD_PARTY_LICENSES/GCC_RUNTIME_LIBRARY_EXCEPTION.txt \
+               "${STAGE}/THIRD_PARTY_LICENSES/GCC_RUNTIME_LIBRARY_EXCEPTION.txt"
+          fi
 
           PIXI_LIB="$(pwd)/.pixi/envs/default/lib"
           echo "Pixi lib dir: ${PIXI_LIB}"

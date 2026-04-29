@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright 2025 Yuhao Zhu
+# Copyright 2025-2026 Yuhao Zhu
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -189,7 +189,7 @@ def format_about(use_color: Bool = True) -> String:
     var reset = RESET if use_color else ""
     return (
         title_color
-        + "Decimo — arbitrary-precision calculator 🔥"
+        + "Decimo — an arbitrary-precision calculator 🔥"
         + reset
         + "\n"
         + label_color

@@ -1,5 +1,5 @@
 # ===----------------------------------------------------------------------=== #
-# Copyright 2025 Yuhao Zhu
+# Copyright 2025-2026 Yuhao Zhu
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -997,6 +997,10 @@ def _rational_root_decomposition(
 # ===----------------------------------------------------------------------=== #
 
 
+# TODO:
+# When global config for pad_zeros_to_precision is implemented,
+# Pass the config to sqrt() and use it to control whether to
+# call `sqrt_exact()` (pad zeros) or `sqrt_reciprocal()` (no padding)
 def sqrt(x: BigDecimal, precision: Int) raises -> BigDecimal:
     """Calculate the square root of a BigDecimal number.
 
