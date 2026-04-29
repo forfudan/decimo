@@ -24,9 +24,9 @@ Rows are sorted by implementation priority for `decimo` (top = implement first).
 | 5   | Built-in math functions    | ✓      | ✓   | ✗   | ✓    | ✓             | ✓          | ✗    | ✓          | 2     |
 | 6   | Interactive REPL           | ✓      | ✓   | ✓   | ✓    | ✓             | ✗          | ✗    | ✓          | 4     |
 | 7   | Variables/State            | ✓      | ✓   | ✓   | ✓    | ✓             | ✓          | ✗    | ✓          | 4     |
-| 8   | Unit conversion            | ✗      | ✗   | ✗   | ✓    | ✗             | ✗          | ✗    | ✗          | 5     |
-| 9   | Matrix/Linear algebra      | ✗      | ✗   | ✗   | ✗    | ✓             | ✗          | ✗    | ✓          | 5     |
-| 10  | Symbolic computation       | ✗      | ✗   | ✗   | △    | ✗             | ✗          | ✗    | ✗          | 5     |
+| 8   | Unit conversion            | ✗      | ✗   | ✗   | ✓    | ✗             | ✗          | ✗    | ✗          | 6     |
+| 9   | Matrix/Linear algebra      | ✗      | ✗   | ✗   | ✗    | ✓             | ✗          | ✗    | ✓          | 6     |
+| 10  | Symbolic computation       | ✗      | ✗   | ✗   | △    | ✗             | ✗          | ✗    | ✗          | 6     |
 
 **Priority rationale:**
 
@@ -34,7 +34,8 @@ Rows are sorted by implementation priority for `decimo` (top = implement first).
 2. **Built-in math functions** (Phase 2) — `sqrt`, `ln`, `exp`, `sin`, `cos`, `tan`, `root` already exist in the Decimo API. Adding them mostly means extending the tokenizer/parser to recognize function names.
 3. **Polish & ArgMojo integration** (Phase 3) — Error diagnostics, edge-case handling, and exploiting ArgMojo v0.5.0 features (shell completions, argument groups, numeric range validation, etc.). Mostly CLI UX refinement.
 4. **Interactive REPL** (Phase 4) — Requires a read-eval-print loop, `ans` tracking, named variable storage, session-level precision management. No subcommands — mode is determined by invocation context (same as `bc`, `python3`, `calc`).
-5. **Future enhancements** (Phase 5) — Binary distribution, CJK full-width detection, response files, unit conversion, matrix, symbolic. Out of scope for now.
+5. **User-defined functions & mini-interpreter** (Phase 5) — Reusable named functions (`f(x) = expr`), library files (`-L`), interactive-after-load (`-I`), `~/.decimorc`. Statement-grammar features (block bodies, loops, arrays) gated on demand to avoid scope creep into a Python competitor.
+6. **Future enhancements** (Phase 6) — Binary distribution, CJK full-width detection, response files, unit conversion, matrix, symbolic. Out of scope for now.
 
 ## Usage Design
 
@@ -393,7 +394,71 @@ decimo> exit
 
 將所有的設定放在一行，這個靈感主要來自於 argmojo，其實就是把 CLI 的選項直接放到了 REPL 的表達式行中。這個想法我個人是很喜歡的，因為它簡潔明瞭，避免了多行設定的冗長。
 
-### Phase 5: Future Enhancements
+### Phase 5: User-Defined Functions & Mini-Interpreter
+
+Reuse a stored expression as a named function — `bc`'s killer feature for
+ratios, statistical formulas, and personal libraries (`~/.bcrc` workflows).
+Today's parser is purely *expression-oriented* (shunting-yard → RPN). User
+functions promote the language one rung up the ladder toward a mini
+interpreter, so each rung is gated on demand to avoid scope creep.
+
+```bash
+# Define inline in the REPL
+decimo> tax(x) = x * 0.05
+decimo> total(p, q) = p + tax(p) + q
+decimo> total(100, 20)
+125
+
+# Or load a library file and drop into REPL
+$ decimo -L ~/myfuncs.decimo -I
+decimo> :funcs
+tax(x), total(p, q), bmi(w, h)
+```
+
+**File format** (`.dm` or `.decimo`): one definition per line, `#` comments,
+blank lines skipped — same conventions as the existing `-F` script format.
+
+**Trade-offs:**
+
+1. **Single-line `f(x) = expr` vs block `def f(x) { ... }`** — single-line
+   keeps the existing expression grammar. Block bodies fork it into a
+   *statement* grammar (locals, `return`, `;`/newline separators) and double
+   the parser/evaluator surface. Start single-line; promote to blocks only
+   if real demand appears.
+2. **Disambiguation with variables** — REPL already has `x = expr`. Function
+   defs `f(x) = expr` are unambiguous because the LHS contains parens; reuse
+   `=` rather than introducing `def` / `fn`.
+3. **`-F` vs `-L`** — `-F file.dm` already executes and prints each line.
+   Library files (definitions only, silent load) need different semantics →
+   add `-L/--load`. Both must compose with `-I/--interactive`.
+4. **File extension** — `.dm` already in use. Add `.decimo` as an explicit
+   alias for clarity. Avoid `.txt` (too generic, no editor support).
+5. **Recursion depth** — cap at e.g. 1000 frames with a friendly error to
+   prevent native stack overflow.
+6. **Scope** — function parameters shadow globals; assignments inside a
+   function are local by default (bc rule). No closures.
+7. **Case-insensitivity** — REPL is case-insensitive; function names follow
+   suit. Guard against shadowing built-ins (`sin`, `pi`, …).
+8. **Loops/arrays gate** — only ship if recursion + functions + ternary
+   prove insufficient for actual user requests. Otherwise users should reach
+   for `python3`, whose unique value (full scripting) `decimo` is not trying
+   to compete with. `decimo`'s niche is *fast startup + arbitrary precision*.
+
+| #    | Task                                                  | Status | Notes                                                                                   |
+| ---- | ----------------------------------------------------- | :----: | --------------------------------------------------------------------------------------- |
+| 5.1  | Single-line user functions `f(x) = expr`              |   ✗    | Tokenizer + statement-vs-expression dispatcher; LHS-paren disambiguates from `x = expr` |
+| 5.2  | Multi-arg + recursion `g(x, y) = …`                   |   ✗    | Recursion-depth cap (≈1000) with friendly error                                         |
+| 5.3  | Local parameter scope, no closures                    |   ✗    | Params shadow globals; assignments inside a fn are local by default (bc rule)           |
+| 5.4  | `-L/--load <file>` to load a library (silent eval)    |   ✗    | Accepts `.dm` and `.decimo`; only definitions printed silently                          |
+| 5.5  | `-I/--interactive` enters REPL after `-F`/`-L`        |   ✗    | `decimo -L lib.dm -I`; composes with existing `-F`                                      |
+| 5.6  | Auto-load `~/.decimorc`                               |   ✗    | Skippable via `--no-rc`; load order: rc → `-L` → `-F` → REPL                            |
+| 5.7  | `:funcs` / `:f` — list user-defined functions in REPL |   ✗    | Mirrors `:vars` / `$`                                                                   |
+| 5.8  | `if(cond, then, else)` ternary expression             |   ✗    | Small grammar addition, no statement layer; enables piecewise functions                 |
+| 5.9  | (Research) Block bodies `def f(x) { … }` + `return`   |   ✗    | Statement grammar; decide after 5.1–5.8 land based on real demand                       |
+| 5.10 | (Research) `while` / `for` loops                      |   ✗    | Significant grammar/runtime jump; gate on demand recursion can't satisfy                |
+| 5.11 | (Research) Arrays `a[0]`, `len(a)`                    |   ✗    | Largest change (mutable storage, indexing grammar); defer until 5.9–5.10 settled        |
+
+### Phase 6: Future Enhancements
 
 1. Build and distribute as a single binary (Homebrew, GitHub Releases, etc.) — defer until REPL is stable so first-run experience is complete.
 2. Detect full-width digits/operators for CJK users while parsing.
@@ -401,11 +466,11 @@ decimo> exit
 
 | #   | Task                                        | Status | Notes                                                                             |
 | --- | ------------------------------------------- | :----: | --------------------------------------------------------------------------------- |
-| 5.1 | Full-width digit/operator detection for CJK |   ✗    | Tokenizer-level handling for CJK users                                            |
-| 5.2 | Full-width to half-width normalization      |   ✗    | Pre-tokenizer normalization step to convert full-width chars to ASCII equivalents |
-| 5.3 | Build and distribute as single binary       |   ✗    | Defer until REPL is stable; Homebrew, GitHub Releases, `curl \| sh` installer     |
-| 5.4 | Response files (`@expressions.txt`)         |   ✗    | Blocked on Mojo compiler bug; `cmd.response_file_prefix("@")` ready when fixed    |
-| 5.5 | Re-evaluate limo/argmojo FFI alignment      |   ✗    | Check if Mojo resolves `external_call` signature conflicts; see `line_editor.md`  |
+| 6.1 | Full-width digit/operator detection for CJK |   ✗    | Tokenizer-level handling for CJK users                                            |
+| 6.2 | Full-width to half-width normalization      |   ✗    | Pre-tokenizer normalization step to convert full-width chars to ASCII equivalents |
+| 6.3 | Build and distribute as single binary       |   ✗    | Defer until REPL is stable; Homebrew, GitHub Releases, `curl \| sh` installer     |
+| 6.4 | Response files (`@expressions.txt`)         |   ✗    | Blocked on Mojo compiler bug; `cmd.response_file_prefix("@")` ready when fixed    |
+| 6.5 | Re-evaluate limo/argmojo FFI alignment      |   ✗    | Check if Mojo resolves `external_call` signature conflicts; see `line_editor.md`  |
 
 ## Design Decisions
 
