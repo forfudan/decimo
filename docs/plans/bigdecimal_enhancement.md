@@ -11,8 +11,6 @@ started on 2026-02-21. It is the single source of truth for the
 arbitrary-precision decimal hot-path optimisation effort. The earlier
 verbose form (1439 lines) is preserved at `bigdecimal_enhancement.md.bak`.
 
----
-
 ## 1. Cross-Language Snapshot
 
 Scope: **arbitrary-precision** decimal types. Out of scope: 128-bit
@@ -34,8 +32,6 @@ fixed-precision (covered by `decimal128_enhancement.md`).
 `to_string`. The Rust crate lacks `exp`/`ln`/`root`/`round`. JS
 `decimal.js` covers all but is single-language. Java covers all but
 loses I/O speed to binary internal storage.
-
----
 
 ## 2. Change History — Done
 
@@ -128,8 +124,6 @@ because the crate's naive long division is unusably slow at p≥1000.
 | 20260224 | frmstr |  2.4× |   2.1× |    2.3× |        — |
 | 20260224 | tostr  |  1.2× |   1.5× |    1.4× |        — |
 
----
-
 ## 3. Hypothesis Ledger
 
 | H#  | Hypothesis                                                       | Outcome                                                             |
@@ -161,8 +155,6 @@ because the crate's naive long division is unusably slow at p≥1000.
 | 17  | Add/sub `multiply_by_power_of_ten` allocates oversized           | OPEN — root cause of 4.7× py on small-precision add                 |
 | 18  | Small-coefficient mul fast path (bypass Karatsuba dispatch)      | OPEN — borrowed from decimal128 H#4 dispatch-overhead lesson        |
 | 19  | `precision` arg on `add`/`sub`/`multiply` (truncate ops upfront) | OPEN — structural; foundation for T-A2/T-M1 (see T-API1)            |
-
----
 
 ## 4. Lessons Learnt (the reusable bits)
 
@@ -246,8 +238,6 @@ because the lesson generalises to the variable-length case unchanged.
 16. **For multi-pass rounding, compute the total drop count in one shot
     when both constraints are independent.** Re-round must use the
     **original** value, not the already-rounded one.
-
----
 
 ## 5. Open Items / Future Improvements
 
@@ -438,8 +428,6 @@ P7 — `round` (2× py → target ≤1.0×)
 | 7b  | Reciprocal-Newton for nth root                                 | M      |
 | 7c  | Rational $x^{a/b}$ decomposition                               | S      |
 
----
-
 ## 6. Result-Equivalence vs Python / Rust
 
 The 2026-04-30 sweep flags zero `match py` / `match rs` failures across
@@ -459,8 +447,6 @@ decimo follows IEEE 754-2008 §3.3 preferred-exponent rules for the
 trailing-zero shape of multiply/divide results, matching Python
 `decimal` and .NET. See `decimal128_enhancement.md §6` for the same
 issue at fixed precision.
-
----
 
 ## 7. Architectural Reference
 
@@ -500,8 +486,6 @@ binary splitting). All implementable in base-10^9.
 | Ln near-1          | UInt32-divide Taylor (T3b) | Taylor + cached ln(10) + NTT   | small gap     |
 | Ln far-from-1      | Recompute ln(2) + ln(1.25) | Cached `ln(10)` + range-reduce | **gap**       |
 | Rounding           | Word-level truncation      | Similar                        | decimo faster |
-
----
 
 ## 8. Priority Summary
 
