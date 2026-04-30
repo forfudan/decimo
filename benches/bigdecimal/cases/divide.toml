@@ -44,7 +44,7 @@ name = "Division causing scale increase"
 [[cases]]
 a = "1.00000000000000000000000000"
 b = "0.33333333333333333333333333"
-name = "Division with high precision, repeating pattern"
+name = "Div @ high prec, repeating"
 
 [[cases]]
 a = "0"
@@ -135,19 +135,19 @@ name = "Extreme scales (large negative exponent)"
 [[cases]]
 a = "4.56e10"
 b = "1.23e-10"
-name = "Division that requires significant rescaling"
+name = "Div that requires significant rescaling"
 
 # === SPECIAL VALUE TESTS ===
 
 [[cases]]
 a = "3.14159265358979323846264338328"
 b = "2.71828182845904523536028747135"
-name = "Division of exact mathematical constants (PI / E)"
+name = "Div of math constants (PI / E)"
 
 [[cases]]
 a = "1.61803398874989484820458683437"
 b = "1.41421356237309504880168872421"
-name = "Division of famous constants (Phi / sqrt(2))"
+name = "Div of famous constants (Phi / sqrt(2))"
 
 [[cases]]
 a = "5.67896789567895678956789567896"
@@ -228,7 +228,7 @@ name = "Division with maximum precision"
 [[cases]]
 a = "1e20"
 b = "1e-20"
-name = "Division with extreme exponents difference"
+name = "Div with extreme exponents difference"
 
 [[cases]]
 a = "{9,28}.{9,28}"

@@ -1,0 +1,9 @@
+# local
+logs/
+reports/
+cases.cache/
+
+# build artifacts
+mojo/bench
+java/*.class
+go/bench

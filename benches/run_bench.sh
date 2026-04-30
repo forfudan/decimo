@@ -44,6 +44,8 @@ case "$TYPE" in
     uint) TYPE="biguint" ;;
     dec128)   TYPE="decimal128" ;;
     dec)  TYPE="bigdecimal" ;;
+    bdec) TYPE="bigdecimal" ;;
+    decimal) TYPE="bigdecimal" ;;
 esac
 
 # --- CLI benchmarks (special case — shell script, not Mojo) ---
@@ -55,7 +57,7 @@ DIR="benches/$TYPE"
 
 if [[ ! -d "$DIR" ]]; then
     echo "Error: Unknown type '$TYPE'"
-    echo "Available: bigint (int), biguint (uint), decimal128 (dec128), bigdecimal (dec)"
+    echo "Available: bigint (int), biguint (uint), decimal128 (dec128), bigdecimal (dec, bdec, decimal)"
     exit 1
 fi
 
@@ -70,6 +72,22 @@ if [[ "$TYPE" == "decimal128" ]]; then
         exec bash "$DIR/run_all.sh"
     else
         exec bash "$DIR/run_all.sh" "$OP"
+    fi
+fi
+
+# --- bigdecimal: cross-language pipeline (decimo + python) ---
+# When OP is empty, run the full multi-precision sweep across all ops and
+# produce a timestamped report under benches/bigdecimal/reports/. When OP
+# is given, restrict the sweep to that single op via --ops.
+# Extra args after OP are forwarded verbatim to run_all.sh (e.g.
+# `pixi run bench dec add --precisions 100 1000`).
+if [[ "$TYPE" == "bigdecimal" ]]; then
+    shift  # drop TYPE
+    if [[ -z "$OP" ]]; then
+        exec bash "$DIR/run_all.sh"
+    else
+        shift  # drop OP
+        exec bash "$DIR/run_all.sh" --ops "$OP" "$@"
     fi
 fi
 

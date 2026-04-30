@@ -1,31 +1,7 @@
-# Multi-precision benchmark for exp()
-# Tests scaling behavior across precision levels.
-
-[[precision_levels]]
-iterations = 50
+[config]
 precision = 50
-
-[[precision_levels]]
-iterations = 20
-precision = 100
-
-[[precision_levels]]
-iterations = 5
-precision = 200
-
-[[precision_levels]]
-iterations = 2
-precision = 500
-
-[[precision_levels]]
-iterations = 1
-precision = 1000
-
-[[precision_levels]]
-iterations = 1
-precision = 2000
-
-# === REPRESENTATIVE CASES ===
+# iterations are auto-tuned per case targeting ~50ms total
+iterations = 200
 
 [[cases]]
 a = "0"

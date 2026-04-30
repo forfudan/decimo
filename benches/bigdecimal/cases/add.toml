@@ -43,7 +43,7 @@ name = "Addition causing scale reduction"
 [[cases]]
 a = "0.33333333333333333333333333"
 b = "0.66666666666666666666666667"
-name = "Addition with high precision, repeating pattern"
+name = "Add @ high prec, repeating"
 
 [[cases]]
 a = "0.33333333333333333333333333"
@@ -134,19 +134,19 @@ name = "Extreme scales (large negative exponent)"
 [[cases]]
 a = "1.23e-10"
 b = "4.56e10"
-name = "Addition that requires significant rescaling"
+name = "Add that requires significant rescaling"
 
 # === SPECIAL VALUE TESTS ===
 
 [[cases]]
 a = "3.14159265358979323846264338328"
 b = "2.71828182845904523536028747135"
-name = "Addition of exact mathematical constants (PI + E)"
+name = "Add of math constants (PI + E)"
 
 [[cases]]
 a = "1.61803398874989484820458683437"
 b = "1.41421356237309504880168872421"
-name = "Addition of famous constants (Phi + sqrt(2))"
+name = "Add of famous constants (Phi + sqrt(2))"
 
 [[cases]]
 a = "1.23451234512345123451234512345"
@@ -227,7 +227,7 @@ name = "Addition with maximum precision"
 [[cases]]
 a = "1e20"
 b = "1e-20"
-name = "Addition with extreme exponents difference"
+name = "Add with extreme exponents difference"
 
 [[cases]]
 a = "{9,28}.{9,28}"
@@ -281,44 +281,44 @@ name = "Addition of 1000-digit decimals"
 [[cases]]
 a = "1{23456789,93}123456.{789012345,93}789012345"
 b = "9{87654321,93}987654.{321098765,93}321098765"
-name = "Addition of 1500-digit decimals with large fractional parts"
+name = "Add of 1500-d dec w/ large frac"
 
 [[cases]]
 a = "{9,1000}.{9,1000}"
 b = "0.{0,999}1"
-name = "Addition of 2000-digit decimals with carries"
+name = "Add of 2000-digit dec with carries"
 
 [[cases]]
 a = "1.{23456789,149}123456789e+500"
 b = "9.{87654321,149}987654321e+495"
-name = "Large decimal addition with scientific notation (1200 digits)"
+name = "Large dec add w/ sci notation (1200 d)"
 
 [[cases]]
 a = "1{23456789,112}1234567.{890123456,112}890123456"
 b = "-1{23456789,112}1234566.{890123456,112}890123455"
-name = "Very large positive + very large negative decimals (1800 digits)"
+name = "Very large pos + neg dec (1800 d)"
 
 [[cases]]
 a = "1{23456789,124}1234567.{890123456,124}890123456"
 b = "0.{0,1200}1{23456789,37}123456789"
-name = "Addition of decimals with vastly different scales (2500 digits total)"
+name = "Add of dec w/ very diff scales (2500 d total)"
 
 [[cases]]
 a = "1{12358132134,49}1123581321.{34455891442,49}34455891442"
 b = "2{35813213455,49}3358132134.{55891442334,49}55891442334"
-name = "Fibonacci-like large decimal addition (1100 digits each)"
+name = "Fib-like large dec add (1100 d each)"
 
 [[cases]]
 a = "2{357111317192329,43}23571113171923.{41434751617379,43}41434751617379"
 b = "4{143717919293137,43}14137171929313.{17918389719497,43}17918389719497"
-name = "Prime-like large decimal addition (1300 digits)"
+name = "Prime-like large dec add (1300 d)"
 
 [[cases]]
 a = "1{23456789,62}1234567.{890123456,186}890123456"
 b = "0.{0,500}1{987654321,186}987654321"
-name = "Very large decimal with maximum fractional precision (2000+ digits)"
+name = "Very large dec w/ max frac prec (2000+ d)"
 
 [[cases]]
 a = "9{87654321,187}987654321.{123456789,187}123456789"
 b = "0.{0,1500}1{23456789,93}123456789"
-name = "Extreme scale difference with large decimals (3000+ digits combined)"
+name = "Extreme scale diff w/ large dec (3000+ d combined)"

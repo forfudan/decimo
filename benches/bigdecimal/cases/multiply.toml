@@ -21,7 +21,7 @@ name = "Multiplication with different scales"
 [[cases]]
 a = "1.23456789"
 b = "0.01"
-name = "Multiplication with very different scales"
+name = "Mul with very different scales"
 
 [[cases]]
 a = "123.456"
@@ -48,7 +48,7 @@ name = "Precision at decimal limit"
 [[cases]]
 a = "123.456789"
 b = "987.654321"
-name = "Multiplication resulting in scale increase"
+name = "Mul resulting in scale increase"
 
 [[cases]]
 a = "0.33333333333333333333333333"
@@ -58,7 +58,7 @@ name = "Multiplication with high precision"
 [[cases]]
 a = "0.5"
 b = "2"
-name = "Multiplication resulting in exact integer"
+name = "Mul resulting in exact integer"
 
 [[cases]]
 a = "1.23e5"
@@ -144,14 +144,14 @@ name = "Extreme scales (large negative exponents)"
 [[cases]]
 a = "1.23e-10"
 b = "4.56e10"
-name = "Multiplication with extreme exponent difference"
+name = "Mul w/ extreme exp diff"
 
 # === SPECIAL VALUE TESTS ===
 
 [[cases]]
 a = "3.14159265358979323846264338328"
 b = "2.71828182845904523536028747135"
-name = "Multiplication of exact mathematical constants (PI * E)"
+name = "Mul of math constants (PI * E)"
 
 [[cases]]
 a = "42.5"
@@ -237,7 +237,7 @@ name = "Multiplication with maximum precision"
 [[cases]]
 a = "1e+20"
 b = "1e-20"
-name = "Multiplication with extreme scale separation"
+name = "Mul with extreme scale separation"
 
 [[cases]]
 a = "123456789.987654321"
@@ -247,7 +247,7 @@ name = "Square operation"
 [[cases]]
 a = "0.333333333333333333333333333"
 b = "3.333333333333333333333333333"
-name = "Multiplication requiring significant rounding"
+name = "Mul needing rounding"
 
 [[cases]]
 a = "0.{0,25}1"
@@ -264,9 +264,9 @@ name = "Currency conversion"
 [[cases]]
 a = "25.75"
 b = "10.5"
-name = "Volume calculation (partial - length * width)"
+name = "Volume calc (partial - length * width)"
 
 [[cases]]
 a = "123.456789"
 b = "1000"
-name = "Scale calculation (multiplying by factor)"
+name = "Scale calc (multiplying by factor)"

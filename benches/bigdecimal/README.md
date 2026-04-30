@@ -1,0 +1,81 @@
+# BigDecimal cross-language benchmarks
+
+This harness benchmarks `decimo.BigDecimal` against a reference
+arbitrary-precision decimal implementation:
+
+| Lang     | Library                    | Role                                      |
+| -------- | -------------------------- | ----------------------------------------- |
+| `mojo`   | `decimo.BigDecimal`        | System under test.                        |
+| `python` | `decimal.Decimal` (stdlib) | Correctness oracle (drives `match` flag). |
+
+Each op is exercised at multiple working precisions (default **100, 1000,
+10000**), and the report shows one timings table per `(op, precision)`.
+
+## Layout
+
+```txt
+    cases/            # source-of-truth TOML test cases (one file per op)
+    mojo/   bench.mojo   +  bench   (release-built binary)
+    python/ bench.py
+    aggregate.py      # logs/*.csv  ->  reports/bigdec_report_<ts>.md
+    run_all.sh        # build all available, run all (op, precision), aggregate
+    logs/             # per-language CSV bench logs (generated)
+    reports/          # generated markdown reports
+```
+
+Log filenames embed both op and precision so multiple runs across precisions
+can coexist:
+
+```txt
+    logs/<lang>_<op>_p<precision>_<YYYYMMDD>_<HHMMSS>.csv
+```
+
+## Quick start
+
+```sh
+./run_all.sh                                  # all default ops + precisions
+./run_all.sh --ops multiply exp               # subset of ops
+./run_all.sh --precisions 100 1000            # custom precisions
+./run_all.sh --ops sqrt --precisions 100      # both
+```
+
+Direct invocation of any single harness:
+
+```sh
+# Mojo
+cd mojo
+pixi run --manifest-path ../../../pixi.toml ./bench \
+    --op multiply --precision 1000 --cases-dir ../cases --logs-dir ../logs
+
+# Python
+cd python
+pixi run --manifest-path ../../../pixi.toml python3 bench.py \
+    --op multiply --precision 1000 --cases-dir ../cases --logs-dir ../logs
+```
+
+## Adding a new test case
+
+Edit the appropriate `cases/<op>.toml` file:
+
+```toml
+[config]
+iterations = 1000          # auto-tuner cap; actual count targets ~50ms
+precision  = 50            # default precision (overridden by --precision)
+
+[[cases]]
+name = "Multiplication near 1"
+a    = "1.0000001"
+b    = "0.9999999"
+```
+
+## Report
+
+The aggregator emits a markdown report with three sections:
+
+1. **Cross-op overview** — one row per `(op, precision)` showing median
+   ns/iter per language plus `decimo / X` ratios.
+2. **Per-op detail** — for each op, one timings sub-table per precision.
+   Each row carries an `OK` / `DIFF` flag comparing `decimo` against
+   Python. Every `DIFF` is expanded inline as a collapsible `<details>`
+   block listing every language's full result string (Python included).
+3. **Agreement summary** — match rate per `(op, precision)`.
