@@ -47,12 +47,12 @@ name = "Round half up to integer (0.5 -> 1)"
 [[cases]]
 a = "12.05"
 b = "1|ROUND_HALF_UP"
-name = "Round half up to 1 decimal place (0.05 -> 0.1)"
+name = "Round HU to 1 dp (0.05 -> 0.1)"
 
 [[cases]]
 a = "-12.5"
 b = "0|ROUND_HALF_UP"
-name = "Round half up negative to integer (-0.5 -> -1)"
+name = "Round HU neg to int (-0.5 -> -1)"
 
 # === ROUND_HALF_EVEN (BANKER'S ROUNDING) MODE TESTS ===
 
@@ -69,7 +69,7 @@ name = "Round half even to integer (odd digit)"
 [[cases]]
 a = "12.25"
 b = "1|ROUND_HALF_EVEN"
-name = "Round half even to 1 decimal place (even digit)"
+name = "Round HE to 1 dp (even digit)"
 
 # === DECIMAL PLACES VARIATIONS ===
 
@@ -86,7 +86,7 @@ name = "Negative decimal places (round to tens)"
 [[cases]]
 a = "123.456"
 b = "-2|ROUND_HALF_EVEN"
-name = "Negative decimal places (round to hundreds)"
+name = "Negative dec places (round to hundreds)"
 
 # === SPECIAL VALUES AND EDGE CASES ===
 

@@ -1,0 +1,58 @@
+[config]
+iterations = 5000
+
+[[cases]]
+a = "123"
+name = "Simple integer"
+
+[[cases]]
+a = "123.45"
+name = "Simple decimal with few places"
+
+[[cases]]
+a = "-123.45"
+name = "Negative number"
+
+[[cases]]
+a = "0"
+name = "Zero value"
+
+[[cases]]
+a = "12345678901234567890"
+name = "Long integer part"
+
+[[cases]]
+a = "0.12345678901234567890123456789"
+name = "Long fractional part"
+
+[[cases]]
+a = "1.23456e5"
+name = "Scientific notation (positive exponent)"
+
+[[cases]]
+a = "1.23456e-10"
+name = "Scientific notation (negative exponent)"
+
+[[cases]]
+a = "000123.45"
+name = "Leading zeros"
+
+[[cases]]
+a = "123.45000"
+name = "Trailing zeros"
+
+[[cases]]
+a = "0.{0,30}1"
+name = "Very small value (32 digits scale)"
+
+[[cases]]
+a = "1{0,50}"
+name = "50-digit integer"
+
+[[cases]]
+a = "1{0,200}"
+name = "200-digit integer"
+
+[[cases]]
+a = "1.{0,100}1"
+name = "100-digit fraction"

@@ -1,0 +1,13 @@
+# local
+logs/
+reports/
+cases.cache/
+
+# build artifacts
+mojo/bench
+java/*.class
+rust/target/
+rust/Cargo.lock
+go/bench
+js/node_modules/
+js/package-lock.json

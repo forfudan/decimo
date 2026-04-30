@@ -1,0 +1,14 @@
+[package]
+edition = "2021"
+name = "bench"
+version = "0.1.0"
+
+[dependencies]
+bigdecimal = "0.4"
+num-traits = "0.2"
+serde = {version = "1", features = ["derive"]}
+toml = "0.8"
+
+[profile.release]
+lto = "thin"
+opt-level = 3

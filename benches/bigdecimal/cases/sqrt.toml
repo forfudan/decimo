@@ -1,0 +1,117 @@
+[config]
+precision = 50
+iterations = 100
+
+# === BASIC SQUARE ROOT TESTS ===
+
+[[cases]]
+a = "9"
+name = "Simple integer square root"
+
+[[cases]]
+a = "2.25"
+name = "Simple decimal square root"
+
+[[cases]]
+a = "1.5625"
+name = "Square root with different scales"
+
+[[cases]]
+a = "0.0001"
+name = "Square root with very different scales"
+
+[[cases]]
+a = "1"
+name = "Square root of one"
+
+# === SCALE AND PRECISION TESTS ===
+
+[[cases]]
+a = "2.0000000000000000000000000000"
+name = "Precision at decimal limit"
+
+[[cases]]
+a = "0.01"
+name = "Square root resulting in scale increase"
+
+[[cases]]
+a = "0.1111111111111111111111111111"
+name = "Square root with high precision"
+
+[[cases]]
+a = "4"
+name = "Square root resulting in exact integer"
+
+[[cases]]
+a = "1.44e2"
+name = "Square root with scientific notation"
+
+# === LARGE/SMALL NUMBER TESTS ===
+
+[[cases]]
+a = "9999999"
+name = "Large integer square root"
+
+[[cases]]
+a = "12345.6789"
+name = "Large decimal square root"
+
+[[cases]]
+a = "1{0,20}"
+name = "Very large square root"
+
+[[cases]]
+a = "1.44e10"
+name = "Extreme scales (large positive exponents)"
+
+[[cases]]
+a = "0.{0,15}1"
+name = "Very small positive values"
+
+[[cases]]
+a = "1.44e-10"
+name = "Extreme scales (large negative exponents)"
+
+# === IRRATIONAL ROOTS ===
+
+[[cases]]
+a = "2"
+name = "Square root of 2"
+
+[[cases]]
+a = "3"
+name = "Square root of 3"
+
+[[cases]]
+a = "5"
+name = "Square root of 5"
+
+[[cases]]
+a = "7"
+name = "Square root of 7"
+
+[[cases]]
+a = "11"
+name = "Square root of 11"
+
+[[cases]]
+a = "97"
+name = "Square root of 97"
+
+[[cases]]
+a = "3.14159265358979323846264338328"
+name = "Square root of PI"
+
+# === MEDIUM-SCALE STRESS TESTS ===
+
+[[cases]]
+a = "123456789.{123456789,10}"
+name = "10-word decimal square root"
+
+[[cases]]
+a = "987654321.{987654321,30}"
+name = "30-word decimal square root"
+
+[[cases]]
+a = "555666777.{555666777,60}"
+name = "60-word decimal square root"

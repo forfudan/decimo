@@ -43,7 +43,7 @@ name = "Subtraction causing scale reduction"
 [[cases]]
 a = "1.00000000000000000000000000"
 b = "0.33333333333333333333333333"
-name = "Subtraction with high precision, repeating pattern"
+name = "Sub @ high prec, repeating"
 
 [[cases]]
 a = "0.33333333333333333333333333"
@@ -65,7 +65,7 @@ name = "Positive - Negative (becomes addition)"
 [[cases]]
 a = "-10"
 b = "3.14"
-name = "Negative - Positive (becomes addition with sign change)"
+name = "Neg - Pos (sign change)"
 
 [[cases]]
 a = "-5.75"
@@ -97,7 +97,7 @@ name = "Large negative - positive"
 [[cases]]
 a = "100000000000000000000.00000000"
 b = "0.00000001"
-name = "Very large decimal subtraction with borrow"
+name = "Very large dec subtraction with borrow"
 
 [[cases]]
 a = "1{0,25}"
@@ -134,19 +134,19 @@ name = "Extreme scales (large negative exponent)"
 [[cases]]
 a = "4.56e10"
 b = "1.23e-10"
-name = "Subtraction that requires significant rescaling"
+name = "Sub needing rescaling"
 
 # === SPECIAL VALUE TESTS ===
 
 [[cases]]
 a = "3.14159265358979323846264338328"
 b = "2.71828182845904523536028747135"
-name = "Subtraction of exact mathematical constants (PI - E)"
+name = "Sub of math constants (PI - E)"
 
 [[cases]]
 a = "1.61803398874989484820458683437"
 b = "1.41421356237309504880168872421"
-name = "Subtraction of famous constants (Phi - sqrt(2))"
+name = "Sub of famous constants (Phi - sqrt(2))"
 
 [[cases]]
 a = "5.67896789567895678956789567896"
@@ -227,7 +227,7 @@ name = "Subtraction with maximum precision"
 [[cases]]
 a = "1e20"
 b = "1e-20"
-name = "Subtraction with extreme exponents difference"
+name = "Sub w/ extreme exp diff"
 
 [[cases]]
 a = "{9,28}.{9,28}"
@@ -264,7 +264,7 @@ name = "Bank balance calculation"
 [[cases]]
 a = "987654321987654321.987654321"
 b = "0.000000000000000000000000001"
-name = "Subtraction across wide range of magnitudes"
+name = "Sub across wide range of magnitudes"
 
 [[cases]]
 a = "0.0"
