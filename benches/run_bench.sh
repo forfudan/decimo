@@ -75,7 +75,7 @@ if [[ "$TYPE" == "decimal128" ]]; then
     fi
 fi
 
-# --- bigdecimal: cross-language pipeline (decimo + python + rust) ---
+# --- bigdecimal: cross-language pipeline (decimo + python) ---
 # When OP is empty, run the full multi-precision sweep across all ops and
 # produce a timestamped report under benches/bigdecimal/reports/. When OP
 # is given, restrict the sweep to that single op via --ops.

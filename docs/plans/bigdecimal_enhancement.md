@@ -9,7 +9,9 @@
 This document tracks the BigDecimal performance & correctness work
 started on 2026-02-21. It is the single source of truth for the
 arbitrary-precision decimal hot-path optimisation effort. The earlier
-verbose form (1439 lines) is preserved at `bigdecimal_enhancement.md.bak`.
+predecessor (`bigdecimal_biguint_benchmark_analysis.md`) was
+removed in PR #232; its content is recoverable from git history if a
+fuller historical view is needed.
 
 ## 1. Cross-Language Snapshot
 

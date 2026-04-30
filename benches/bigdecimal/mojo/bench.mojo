@@ -82,7 +82,7 @@ fn _parse_round_param(b: String) raises -> Tuple[Int, RoundingMode]:
     raise Error("unknown rounding mode: " + mode_str)
 
 
-fn _cmp_3way(a: BigDecimal, b: BigDecimal) raises -> String:
+fn _cmp_3way(read a: BigDecimal, read b: BigDecimal) raises -> String:
     """Stable, cross-language 3-way comparison: returns "-1", "0", or "1"."""
     if a < b:
         return String("-1")
@@ -129,12 +129,18 @@ fn _emit(v: BigDecimal) raises -> String:
 
 fn _result_for(
     op: String,
-    a: BigDecimal,
-    b: BigDecimal,
+    read a: BigDecimal,
+    read b: BigDecimal,
     a_str: String,
     b_str: String,
     precision: Int,
 ) raises -> String:
+    """Display path: produce the result string ONCE per case.
+
+    Includes `_emit` (string render) and any precision rounding so the
+    recorded `result` matches what `_time_kernel` actually computes.
+    Never call this inside a timing loop — use `_time_kernel` instead.
+    """
     if op == "add":
         return _emit(_round_to_prec(a + b, precision))
     if op == "subtract":
@@ -162,6 +168,90 @@ fn _result_for(
     if op == "round":
         var pr = _parse_round_param(b_str)
         return _emit(bd_round(a, pr[0], pr[1]))
+    raise Error("unknown op: " + op)
+
+
+fn _time_kernel(
+    op: String,
+    read a: BigDecimal,
+    read b: BigDecimal,
+    a_str: String,
+    b_str: String,
+    precision: Int,
+) raises:
+    """Pure-numeric kernel for the timing loop.
+
+    Performs the same numeric work as `_result_for` but does NOT call
+    `_emit` (string rendering). Uses `keep(...)` on a small derivative
+    of the result (`scale` or `len(words)`) to prevent dead-code
+    elimination while keeping the keep cost negligible vs the op.
+
+    For `from_string` and `to_string` the act of rendering / parsing
+    IS the operation under measurement, so those paths keep their
+    natural shape (parse → BigDecimal, render → String).
+
+    Operands `a` / `b` are taken as `read` (borrowed) so no per-iter
+    deep copy of the heap-backed BigUInt occurs.
+    """
+    if op == "add":
+        var r = _round_to_prec(a + b, precision)
+        keep(r.scale)
+        keep(len(r.coefficient.words))
+        return
+    if op == "subtract":
+        var r = _round_to_prec(a - b, precision)
+        keep(r.scale)
+        keep(len(r.coefficient.words))
+        return
+    if op == "multiply":
+        var r = _round_to_prec(a * b, precision)
+        keep(r.scale)
+        keep(len(r.coefficient.words))
+        return
+    if op == "divide":
+        var r = true_divide(a, b, precision)
+        keep(r.scale)
+        keep(len(r.coefficient.words))
+        return
+    if op == "comparison":
+        var s = _cmp_3way(a, b)
+        keep(len(s))
+        return
+    if op == "from_string":
+        var v = BigDecimal(a_str)
+        keep(v.scale)
+        keep(len(v.coefficient.words))
+        return
+    if op == "to_string":
+        var s = a.to_string(force_plain=True)
+        keep(len(s))
+        return
+    if op == "sqrt":
+        var r = bd_sqrt(a, precision)
+        keep(r.scale)
+        keep(len(r.coefficient.words))
+        return
+    if op == "exp":
+        var r = bd_exp(a, precision)
+        keep(r.scale)
+        keep(len(r.coefficient.words))
+        return
+    if op == "ln":
+        var r = bd_ln(a, precision)
+        keep(r.scale)
+        keep(len(r.coefficient.words))
+        return
+    if op == "root":
+        var r = bd_root(a, b, precision)
+        keep(r.scale)
+        keep(len(r.coefficient.words))
+        return
+    if op == "round":
+        var pr = _parse_round_param(b_str)
+        var r = bd_round(a, pr[0], pr[1])
+        keep(r.scale)
+        keep(len(r.coefficient.words))
+        return
     raise Error("unknown op: " + op)
 
 
@@ -221,14 +311,18 @@ fn _bench_case(
     else:
         b = BigDecimal(bc.b)
 
+    # Compute the displayed `result` ONCE per case (outside any timing
+    # loop). This includes _emit (string render) so the recorded result
+    # is comparable across languages.
     var result = _result_for(op, a, b, bc.a, bc.b, precision)
 
     # Calibration: time `cal_iters` reps to estimate per-iter cost.
+    # `_time_kernel` runs the pure-numeric path (no _emit) and uses
+    # `keep(...)` on a small derivative of the result to prevent DCE.
     var cal_iters: Int = 1
     var t0 = perf_counter_ns()
     for _ in range(cal_iters):
-        var r = _result_for(op, a, b, bc.a, bc.b, precision)
-        keep(len(r))
+        _time_kernel(op, a, b, bc.a, bc.b, precision)
     var cal_ns = UInt(perf_counter_ns() - t0)
     var tuned = _tune_iters(cal_ns, iter_hint)
     var iters = tuned[0]
@@ -239,8 +333,7 @@ fn _bench_case(
     for _ in range(reps):
         var t1 = perf_counter_ns()
         for _ in range(iters):
-            var r = _result_for(op, a, b, bc.a, bc.b, precision)
-            keep(len(r))
+            _time_kernel(op, a, b, bc.a, bc.b, precision)
         var dt = Int(perf_counter_ns() - t1)
         if dt < best:
             best = dt
