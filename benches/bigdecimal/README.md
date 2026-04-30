@@ -1,17 +1,12 @@
 # BigDecimal cross-language benchmarks
 
-This harness benchmarks `decimo.BigDecimal` against two reference
-arbitrary-precision decimal implementations:
+This harness benchmarks `decimo.BigDecimal` against a reference
+arbitrary-precision decimal implementation:
 
 | Lang     | Library                    | Role                                      |
 | -------- | -------------------------- | ----------------------------------------- |
 | `mojo`   | `decimo.BigDecimal`        | System under test.                        |
 | `python` | `decimal.Decimal` (stdlib) | Correctness oracle (drives `match` flag). |
-| `rust`   | [`bigdecimal`] crate       | Performance reference.                    |
-
-For Rust's `bigdecimal`, we skip `exp`/`ln`/`root` because the crate does not implement them, and we skip `divide` because it is prohibitively slow at higher precisions (10000+).
-
-[`bigdecimal`]: https://crates.io/crates/bigdecimal
 
 Each op is exercised at multiple working precisions (default **100, 1000,
 10000**), and the report shows one timings table per `(op, precision)`.
@@ -22,7 +17,6 @@ Each op is exercised at multiple working precisions (default **100, 1000,
     cases/            # source-of-truth TOML test cases (one file per op)
     mojo/   bench.mojo   +  bench   (release-built binary)
     python/ bench.py
-    rust/   src/main.rs  +  Cargo.toml
     aggregate.py      # logs/*.csv  ->  reports/bigdec_report_<ts>.md
     run_all.sh        # build all available, run all (op, precision), aggregate
     logs/             # per-language CSV bench logs (generated)
@@ -56,11 +50,6 @@ pixi run --manifest-path ../../../pixi.toml ./bench \
 # Python
 cd python
 pixi run --manifest-path ../../../pixi.toml python3 bench.py \
-    --op multiply --precision 1000 --cases-dir ../cases --logs-dir ../logs
-
-# Rust
-cd rust
-cargo run --release -- \
     --op multiply --precision 1000 --cases-dir ../cases --logs-dir ../logs
 ```
 

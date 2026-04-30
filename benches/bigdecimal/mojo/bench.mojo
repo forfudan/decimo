@@ -107,16 +107,23 @@ fn _emit(v: BigDecimal) raises -> String:
     """Render a BigDecimal in fixed-point (no scientific notation).
 
     Works around a corner case in `BigDecimal.to_string(force_plain=True)`
-    where negative-scale numbers (e.g. `1686 × 10**2`) lose the trailing
-    magnitude zeros (would render "1686" instead of "168600"). We append
-    those zeros explicitly here so the output is comparable to Python's
-    `format(decimal.Decimal, 'f')` and Rust's `to_plain_string()`.
+    where some negative-scale numbers (e.g. `1686 × 10**2`) may render the
+    coefficient digits only ("1686") and omit the magnitude trailing
+    zeros ("168600"). We pad up to the *expected* total digit count
+    derived from `coefficient.number_of_digits() + |scale|`, only
+    appending the *deficit*. If `to_string(force_plain=True)` already
+    emits all the magnitude zeros (current and future correct
+    behaviour) the deficit is zero and nothing is appended.
     """
     var s = v.to_string(force_plain=True)
     if v.scale < 0:
-        var pad = -v.scale
-        for _ in range(pad):
-            s += "0"
+        var coef_digits = v.coefficient.number_of_digits()
+        var sign_chars = 1 if v.sign else 0
+        var expected_total = coef_digits + (-v.scale) + sign_chars
+        if len(s) < expected_total:
+            var pad = expected_total - len(s)
+            for _ in range(pad):
+                s += "0"
     return s^
 
 
@@ -139,9 +146,11 @@ fn _result_for(
     if op == "comparison":
         return _cmp_3way(a, b)
     if op == "from_string":
-        return _emit(_round_to_prec(BigDecimal(a_str), precision))
+        # Parsing/rendering is precision-insensitive: do not round to
+        # `precision`. The kernel times exactly the parse+render path.
+        return _emit(BigDecimal(a_str))
     if op == "to_string":
-        return _emit(_round_to_prec(a.copy(), precision))
+        return _emit(a)
     if op == "sqrt":
         return _emit(bd_sqrt(a, precision))
     if op == "exp":

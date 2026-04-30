@@ -92,37 +92,41 @@ the operation only runs at p=100 in that snapshot.
 
 ### 2.5 Performance tracking — decimo / python ratio (>1 = decimo slower)
 
-| Date     | op     | p=100 | p=1000 | p=10000 | p=100000 |
-| -------- | ------ | ----: | -----: | ------: | -------: |
-| 20260224 | add    |  4.7× |   4.9× |    4.9× |     4.6× |
-| 20260224 | sub    |  3.6× |   3.5× |    3.8× |     3.6× |
-| 20260224 | mul    |  2.3× |   2.4× |    2.4× |     2.2× |
-| 20260224 | div    |  5.4× |   5.8× |    5.0× |     4.9× |
-| 20260224 | cmp    |  0.2× |   0.1× |    0.2× |        — |
-| 20260224 | sqrt   |  2.1× |   0.7× |    0.3× |        — |
-| 20260224 | exp    |  1.8× |   0.4× |       — |        — |
-| 20260224 | ln     |  4.6× |   9.2× |       — |        — |
-| 20260224 | root   |  0.3× |   0.0× |       — |        — |
-| 20260224 | frmstr |  1.2× |   1.2× |    1.2× |        — |
-| 20260224 | tostr  |  1.3× |   1.3× |    1.2× |        — |
-| 20260224 | round  |  1.9× |   2.1× |    2.2× |        — |
+| Date     | op     | p=100 | p=1000 | p=10000 |
+| -------- | ------ | ----: | -----: | ------: |
+| 20260224 | add    |  4.7× |   4.9× |    4.9× |
+| 20260224 | sub    |  3.6× |   3.5× |    3.8× |
+| 20260224 | mul    |  2.3× |   2.4× |    2.4× |
+| 20260224 | div    |  5.4× |   5.8× |    5.0× |
+| 20260224 | cmp    |  0.2× |      — |       — |
+| 20260224 | sqrt   |  2.1× |   0.7× |    0.3× |
+| 20260224 | exp    |  1.8× |   0.4× |       — |
+| 20260224 | ln     |  4.6× |   9.2× |       — |
+| 20260224 | root   |  0.3× |   0.0× |       — |
+| 20260224 | frmstr |  1.2× |   1.2× |    1.2× |
+| 20260224 | tostr  |  1.3× |   1.3× |    1.2× |
+| 20260224 | round  |  1.9× |   2.1× |    2.2× |
+| 20260430 | add    |  4.9× |   5.4× |    5.0× |
+| 20260430 | sub    |  3.7× |   3.7× |    3.3× |
+| 20260430 | mul    |  2.6× |   2.3× |    2.4× |
+| 20260430 | div    |  6.5× |   5.3× |    5.1× |
+| 20260430 | cmp    |  0.2× |      — |       — |
+| 20260430 | sqrt   |  2.1× |   0.7× |    0.3× |
+| 20260430 | exp    |  1.6× |   0.4× |       — |
+| 20260430 | ln     |  4.3× |   8.9× |       — |
+| 20260430 | root   |  0.2× |   0.0× |       — |
+| 20260430 | frmstr |  1.4× |      — |       — |
+| 20260430 | tostr  |  1.0× |      — |       — |
+| 20260430 | round  |  2.2× |   2.2× |    2.3× |
 
-Latest sweep (2026-04-30, `bigdec_report_20260429_222750.md`).
-
-### 2.6 Performance tracking — decimo / rust ratio
-
-Rust `bigdecimal` lacks `exp`, `ln`, `root`, `round`; `divide` skipped
-because the crate's naive long division is unusably slow at p≥1000.
-
-| Date     | op     | p=100 | p=1000 | p=10000 | p=100000 |
-| -------- | ------ | ----: | -----: | ------: | -------: |
-| 20260224 | add    |  5.1× |   6.7× |    6.6× |     6.0× |
-| 20260224 | sub    |  4.8× |   5.1× |    5.8× |     5.3× |
-| 20260224 | mul    |  6.5× |   5.3× |    5.5× |     6.0× |
-| 20260224 | cmp    |  4.4× |   3.9× |    4.3× |        — |
-| 20260224 | sqrt   |  4.3× |   4.6× |    2.8× |        — |
-| 20260224 | frmstr |  2.4× |   2.1× |    2.3× |        — |
-| 20260224 | tostr  |  1.2× |   1.5× |    1.4× |        — |
+Latest sweep (2026-04-30, `bigdec_report_20260430_192858.md`).
+**Note (2026-04-30):** the cross-language harness was simplified to
+`decimo` vs `python` only. The previous Rust `bigdecimal` reference was
+dropped — it lacked `exp`/`ln`/`root`/`round`, used naive long-division,
+and its add/sub/mul timed kernels were initially measuring the wrong
+path (PR #232). `from_string`/`to_string` numbers shifted vs the
+20260224 baseline because precision rounding was removed from those
+kernels (parse/render are precision-insensitive ops).
 
 ## 3. Hypothesis Ledger
 
@@ -244,24 +248,24 @@ because the lesson generalises to the variable-length case unchanged.
 ### 5.1 Worst-case ratios still > 1.5× python (latest sweep 2026-04-30)
 
 The new bench harness exposes that **all small-to-medium-precision
-arithmetic ops sit at 2–5× python**, not the previously reported 2–4×
+arithmetic ops sit at 2–6× python**, not the previously reported 2–4×
 on a smaller corpus. Closing these is the path to the ≤1.5× target.
 
-| Op          | Worst case (p=100)                     | decimo | python | rust | dm/py | Likely cause                                    |
-| ----------- | -------------------------------------- | -----: | -----: | ---: | ----: | ----------------------------------------------- |
-| add         | Add of 2000-digit dec with carries     |   3116 |    222 | 63.8 | 14.0× | scale-align + per-call overhead                 |
-| add         | Fib-like large dec add (1100 d)        |   2021 |    128 | 90.4 | 15.8× | same                                            |
-| add         | Addition at precision boundary         |    524 |   57.5 | 38.2 |  9.1× | over-allocation at boundary                     |
-| sub         | (similar long-decimal cases)           |  ~2000 |   ~120 |  ~70 |  ~14× | same                                            |
-| mul         | High precision multiply small operands |    140 |     61 | 21.7 |  2.3× | dispatch overhead, no small-coef fast path      |
-| div         | Repeating-decimal div                  |    805 |  149.6 |    — |  5.4× | full Burnikel-Ziegler even for short divisor    |
-| div (p=10k) | Long decimal divide                    |    25k |   5.0k |    — |  5.0× | same                                            |
-| sqrt(p=100) | √(small irrational)                    |   8.6k |   4.1k | 2.0k |  2.1× | reciprocal-Newton overhead at tiny size         |
-| ln(p=100)   | far-from-1 (`ln(10)`, `ln(0.1)`)       |   104k |  22.5k |    — |  4.6× | recompute from scratch (no global ln(10) cache) |
-| ln(p=1000)  | far-from-1                             |    38M |   4.2M |    — |  9.2× | same; gap widens with precision                 |
-| from_string | (many long-decimal cases)              |    170 |    140 |   72 |  1.2× | already close; finish via digit batching        |
-| to_string   | (many cases)                           |    200 |    160 |  140 |  1.3× | finish via right-aligned `InlineArray`          |
-| round       | Various                                |    200 |     90 |    — |  2.2× | likely `debug_assert .format`                   |
+| Op          | Worst case (p=100)                     | decimo | python | dm/py | Likely cause                                    |
+| ----------- | -------------------------------------- | -----: | -----: | ----: | ----------------------------------------------- |
+| add         | Add of 2000-digit dec with carries     |   3116 |    222 | 14.0× | scale-align + per-call overhead                 |
+| add         | Fib-like large dec add (1100 d)        |   2021 |    128 | 15.8× | same                                            |
+| add         | Addition at precision boundary         |    524 |   57.5 |  9.1× | over-allocation at boundary                     |
+| sub         | (similar long-decimal cases)           |  ~2000 |   ~120 |  ~14× | same                                            |
+| mul         | High precision multiply small operands |    140 |     61 |  2.3× | dispatch overhead, no small-coef fast path      |
+| div         | Repeating-decimal div                  |    805 |  149.6 |  5.4× | full Burnikel-Ziegler even for short divisor    |
+| div (p=10k) | Long decimal divide                    |    25k |   5.0k |  5.0× | same                                            |
+| sqrt(p=100) | √(small irrational)                    |   8.6k |   4.1k |  2.1× | reciprocal-Newton overhead at tiny size         |
+| ln(p=100)   | far-from-1 (`ln(10)`, `ln(0.1)`)       |   104k |  22.5k |  4.6× | recompute from scratch (no global ln(10) cache) |
+| ln(p=1000)  | far-from-1                             |    38M |   4.2M |  9.2× | same; gap widens with precision                 |
+| from_string | (many long-decimal cases)              |    170 |    140 |  1.2× | already close; finish via digit batching        |
+| to_string   | (many cases)                           |    200 |    160 |  1.3× | finish via right-aligned `InlineArray`          |
+| round       | Various                                |    200 |     90 |  2.2× | likely `debug_assert .format`                   |
 
 **Where decimo already wins.** `comparison` is 5–10× *faster* than
 python (0.1–0.2×). `sqrt` at p≥1000 is 0.3–0.7× py. `exp` at p=1000
@@ -428,20 +432,15 @@ P7 — `round` (2× py → target ≤1.0×)
 | 7b  | Reciprocal-Newton for nth root                                 | M      |
 | 7c  | Rational $x^{a/b}$ decomposition                               | S      |
 
-## 6. Result-Equivalence vs Python / Rust
+## 6. Result-Equivalence vs Python
 
-The 2026-04-30 sweep flags zero `match py` / `match rs` failures across
-all numeric ops. The only acknowledged differences:
+The 2026-04-30 sweep flags zero `match py` failures across all numeric
+ops. The only acknowledged differences:
 
-| Op    | Source                       | Notes                                                                                     |
-| ----- | ---------------------------- | ----------------------------------------------------------------------------------------- |
-| root  | Python `da ** (1/n)` oracle  | Python rounds `1/n` to working precision before exponentiation; 1–3 ulp differences are   |
-|       |                              | expected and **not bugs**. Negative-base nth roots additionally raise `InvalidOperation`. |
-| div   | rust `bigdecimal` skipped    | Crate uses naive long division; p=100000 takes ~700 ms / iter. Skipped at harness level.  |
-| exp/  | rust `bigdecimal` not avail. | Crate does not implement these ops. `match rs` column shown as `-`.                       |
-| ln/   |                              |                                                                                           |
-| root/ |                              |                                                                                           |
-| round |                              |                                                                                           |
+| Op   | Source                      | Notes                                                                                     |
+| ---- | --------------------------- | ----------------------------------------------------------------------------------------- |
+| root | Python `da ** (1/n)` oracle | Python rounds `1/n` to working precision before exponentiation; 1–3 ulp differences are   |
+|      |                             | expected and **not bugs**. Negative-base nth roots additionally raise `InvalidOperation`. |
 
 decimo follows IEEE 754-2008 §3.3 preferred-exponent rules for the
 trailing-zero shape of multiply/divide results, matching Python

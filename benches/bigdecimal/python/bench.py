@@ -7,7 +7,9 @@ to ~50ms per case, and emits one CSV per case to logs/python_<op>_<ts>.csv:
     timestamp,language,op,case_name,result,ns_per_iter
 
 Python's decimal.Decimal is the **oracle**: the aggregator marks the `match`
-column as OK iff every other language's result string equals Python's.
+column as OK iff every other language's result is numerically equal to
+Python's, so formatting-only differences such as trailing zeros do not
+count as DIFFs.
 
 Usage:
     python3 bench.py --op multiply --cases-dir ../cases --logs-dir ../logs
@@ -86,15 +88,16 @@ def _fmt(d) -> str:
     """Format a Decimal as fixed-point (no scientific notation).
 
     For non-Decimal values (e.g. comparison int, str), fall back to str().
+    Important: do NOT apply `+d`. The arithmetic ops (`a+b`, `a*b`, ...)
+    already round their result to the active context precision; calling
+    `+d` afterwards is at best idempotent for arithmetic ops but adds an
+    unwanted rounding pass for `from_string`/`to_string` (where the
+    timed kernel deliberately preserves the input digits). Keeping the
+    display path rounding-free keeps the displayed result aligned with
+    what the kernel actually computed.
     """
     if isinstance(d, decimal.Decimal):
-        # `+d` applies the current context (rounds to prec). `format(_, 'f')`
-        # then renders without scientific notation. We deliberately do NOT
-        # `.normalize()` here: trailing zeros after the decimal point carry
-        # precision information, and the aggregator compares results as
-        # numeric values (not strings) so canonical-form differences don't
-        # show up as DIFFs.
-        return format(+d, "f")
+        return format(d, "f")
     return str(d)
 
 
@@ -120,11 +123,11 @@ def make_kernel(op: str, a: str, b: str, precision: int):
         cmp = -1 if da < db else (1 if da > db else 0)
         return str(cmp), (lambda: -1 if da < db else (1 if da > db else 0)), True
     if op == "from_string":
-        # Apply current-context precision so the result is comparable to
-        # other languages that round the parsed value to `precision` digits.
-        return _fmt(+decimal.Decimal(a)), (lambda: +decimal.Decimal(a)), True
+        # Parsing is precision-insensitive: do not apply current-context
+        # rounding. The kernel times exactly the parse path.
+        return _fmt(decimal.Decimal(a)), (lambda: decimal.Decimal(a)), True
     if op == "to_string":
-        return _fmt(+da), (lambda: format(+da, "f")), True
+        return _fmt(da), (lambda: format(da, "f")), True
     if op == "sqrt":
         return _fmt(da.sqrt()), (lambda: da.sqrt()), True
     if op == "exp":

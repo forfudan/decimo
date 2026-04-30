@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Run BigDecimal benchmarks across precisions for mojo (decimo) / python /
-# rust, then write a timestamped markdown report under reports/.
+# Run BigDecimal benchmarks across precisions for mojo (decimo) / python,
+# then write a timestamped markdown report under reports/.
 #
 # Raw per-language CSV logs land in   logs/{lang}_{op}_p{prec}_{ts}.csv
 # Aggregated markdown report lands in reports/bigdec_report_{ts}.md
@@ -14,7 +14,7 @@
 # When --precisions is NOT supplied, per-op default precisions are used:
 #   - exp / ln / root            -> 100, 1000             (heavy transcendentals)
 #   - add / subtract / multiply / divide
-#                                -> 100, 1000, 10000, 100000  (cheap, stress)
+#                                -> 100, 1000, 10000      (cheap, stress)
 #   - everything else            -> 100, 1000, 10000      (default sweep)
 #
 # Default ops: add subtract multiply divide comparison from_string to_string
@@ -53,7 +53,7 @@ precs_for_op() {
   fi
   case "$op" in
     exp|ln|root)                            echo "100 1000" ;;
-    add|subtract|multiply|divide)           echo "100 1000 10000 100000" ;;
+    add|subtract|multiply|divide)           echo "100 1000 10000" ;;
     # Precision-insensitive ops: run once. The kernels do no rounding at
     # `precision`, so additional precisions just duplicate the work.
     comparison|from_string|to_string)       echo "100" ;;
@@ -80,26 +80,13 @@ else
   echo "!!! Mojo build failed; skipping mojo harness."
 fi
 
-# ---- Build Rust harness ----
-HAVE_RUST=0
-if command -v cargo >/dev/null 2>&1; then
-  echo ">>> Building Rust harness..."
-  if (cd rust && cargo build --release --quiet); then
-    HAVE_RUST=1
-    RUST_BIN="$(pwd)/rust/target/release/bench"
-  else
-    echo "!!! Rust build failed; skipping rust harness."
-  fi
-else
-  echo ">>> cargo not found; skipping rust harness."
-fi
-
-# ---- Check Python (needs tomllib => 3.11+) ----
+# ---- Check Python (needs tomllib OR tomli) ----
 HAVE_PY=0
-if $PIXI_RUN_TOP python3 -c 'import tomllib' 2>/dev/null; then
+if $PIXI_RUN_TOP python3 -c 'import tomllib' 2>/dev/null \
+   || $PIXI_RUN_TOP python3 -c 'import tomli' 2>/dev/null; then
   HAVE_PY=1
 else
-  echo ">>> python (>=3.11 with tomllib) not available; skipping python harness."
+  echo ">>> python (with tomllib >=3.11 or tomli) not available; skipping python harness."
 fi
 
 run_step() {
@@ -126,18 +113,6 @@ for op in "${OPS[@]}"; do
       run_step "python decimal.Decimal" \
         bash -c "cd python && $PIXI_RUN python3 bench.py --op '$op' --precision '$prec' --cases-dir ../cases --logs-dir ../logs"
     fi
-    if [ "$HAVE_RUST" = "1" ]; then
-      # Rust `bigdecimal` divide uses naïve long division at full
-      # precision; even at p=1000 it is ~30x slower than mojo/python and
-      # at p=100000 it takes hundreds of seconds per case, dominating
-      # the sweep wall time. Skip the entire `divide` op for Rust.
-      if [ "$op" = "divide" ]; then
-        echo "--- rust bigdecimal --- skipped (op=divide too slow at all precisions)"
-      else
-        run_step "rust bigdecimal" \
-          "$RUST_BIN" --op "$op" --precision "$prec" --cases-dir "$(pwd)/cases" --logs-dir "$(pwd)/logs"
-      fi
-    fi
   done
 done
 
@@ -146,5 +121,5 @@ echo ">>> Aggregating into report..."
 $PIXI_RUN_TOP python3 ./aggregate.py \
     --logs-dir logs \
     --reports-dir reports \
-    --langs mojo python rust \
+    --langs mojo python \
     --combos "${COMBOS[@]}"

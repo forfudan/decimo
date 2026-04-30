@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """Aggregate per-language CSV bench logs into a side-by-side markdown report.
 
-Languages: mojo (decimo, system under test), python (oracle), rust (bigdecimal
-crate, performance reference).
+Languages: mojo (decimo, system under test), python (oracle).
 
 Multi-precision aware: log filenames look like `<lang>_<op>_p<prec>_<ts>.csv`.
 The report shows **one timings table per (op, precision)**; cross-op overview
 lists each (op, precision) pair as a row; agreement summary is per
 (op, precision).
 
-The `match` column is **OK** iff `decimo` and Python agree on the result
-string (Python's `decimal.Decimal` is the oracle). DIFF cases are expanded
-inside collapsible `<details>` blocks listing every language's full result.
+The `match` column is **OK** iff `decimo` and Python agree on the numeric
+result value when both results can be parsed as decimals (so formatting-only
+differences such as trailing zeros, e.g. ``"1.290"`` vs ``"1.29"``, still
+count as matching). For non-decimal results, matching falls back to exact
+string equality. DIFF cases are expanded inside collapsible `<details>`
+blocks listing every language's full result.
 """
 
 from __future__ import annotations
@@ -33,8 +35,8 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-LANGS_DEFAULT = ["mojo", "python", "rust"]
-LANG_LABEL = {"mojo": "decimo", "python": "python", "rust": "rust BD"}
+LANGS_DEFAULT = ["mojo", "python"]
+LANG_LABEL = {"mojo": "decimo", "python": "python"}
 
 # Maximum width for case names rendered in markdown tables. Long names are
 # truncated with an ellipsis to keep tables readable; the full name is still
@@ -154,10 +156,6 @@ def collect_env_info() -> list[tuple[str, str]]:
         if v:
             info.append(("Mojo", v))
     info.append(("Python", platform.python_version()))
-    if shutil.which("rustc"):
-        v = _run(["rustc", "--version"])
-        if v:
-            info.append(("Rust", v))
     return info
 
 
@@ -173,6 +171,85 @@ def _is_numeric_col(values: list[str]) -> bool:
         except ValueError:
             return False
     return seen
+
+
+# Threshold above which a DIFF result is considered "long" and worth
+# folding the shared head / tail. 200 chars is roughly two lines on a
+# typical viewer, so anything past that benefits from folding.
+_FOLD_LONG_THRESHOLD = 200
+# Minimum run length of identical chars at the head/tail that must be
+# present before we consider folding it. Short shared runs would clutter
+# the output with `(N same chars)` markers without saving real space.
+_FOLD_MIN_RUN = 40
+# How many chars to keep verbatim on the inside edge of a folded run,
+# so the reader can see the boundary digits surrounding the divergence.
+_FOLD_KEEP_EDGE = 8
+
+
+def _fold_diff_results(results: list[str | None]) -> list[str | None]:
+    """Fold long DIFF result strings around the diverging region.
+
+    Given N result strings (some may be ``None`` for missing rows), find
+    the longest common prefix and longest common suffix shared by ALL
+    non-None results. If both are long enough, replace those runs with
+    ``(K same chars)`` markers, keeping a few boundary chars verbatim so
+    the divergence boundary stays visible.
+
+    No folding is applied if the longest result is below the length
+    threshold or if shared runs are too short to be worth summarising.
+    """
+    real = [r for r in results if r is not None]
+    if not real:
+        return results
+    if max(len(r) for r in real) < _FOLD_LONG_THRESHOLD:
+        return results
+    # Longest common prefix.
+    prefix_len = 0
+    min_len = min(len(r) for r in real)
+    while prefix_len < min_len and all(
+        r[prefix_len] == real[0][prefix_len] for r in real
+    ):
+        prefix_len += 1
+    # Longest common suffix, but never overlapping the prefix on any string.
+    suffix_len = 0
+    while suffix_len < min_len - prefix_len and all(
+        r[-1 - suffix_len] == real[0][-1 - suffix_len] for r in real
+    ):
+        suffix_len += 1
+
+    fold_prefix = prefix_len >= _FOLD_MIN_RUN
+    fold_suffix = suffix_len >= _FOLD_MIN_RUN
+    if not fold_prefix and not fold_suffix:
+        return results
+
+    out: list[str | None] = []
+    for r in results:
+        if r is None:
+            out.append(None)
+            continue
+        head_keep = _FOLD_KEEP_EDGE if fold_prefix else 0
+        tail_keep = _FOLD_KEEP_EDGE if fold_suffix else 0
+        # Defensive: never fold more than the string can give us.
+        head_keep = min(head_keep, prefix_len)
+        tail_keep = min(tail_keep, suffix_len)
+        head_fold = prefix_len - head_keep
+        tail_fold = suffix_len - tail_keep
+        middle_start = prefix_len
+        middle_end = len(r) - suffix_len
+        parts: list[str] = []
+        if fold_prefix:
+            parts.append(f"({head_fold} same chars)...")
+            parts.append(r[prefix_len - head_keep : prefix_len])
+        else:
+            parts.append(r[:prefix_len])
+        parts.append(r[middle_start:middle_end])
+        if fold_suffix:
+            parts.append(r[len(r) - suffix_len : len(r) - suffix_len + tail_keep])
+            parts.append(f"...({tail_fold} same chars)")
+        else:
+            parts.append(r[len(r) - suffix_len :])
+        out.append("".join(parts))
+    return out
 
 
 def render_aligned_table(header: list[str], rows: list[list[str]]) -> list[str]:
@@ -281,14 +358,12 @@ def main() -> int:
         f"- Precisions: {', '.join(str(p) for p in args.precisions)}",
         "- **Time unit: nanoseconds per iteration (ns/iter)** \u2014 lower is faster.",
         "",
-        "All timing columns (`decimo`, `python`, `rust BD`) are **ns / iter**.",
-        "Each per-op timings table has two correctness columns:",
-        "`match py` (vs Python `decimal.Decimal`) and `match rs` (vs the",
-        "Rust `bigdecimal` crate). Both compare values numerically at very",
-        "high precision \u2014 trailing-zero differences are not flagged. A",
-        "case is listed in the `DIFF` block if `decimo` disagrees with",
-        "*either* oracle. `match rs` is `-` for ops the Rust crate does",
-        "not implement (`exp`, `ln`, `root`, `round`).",
+        "All timing columns (`decimo`, `python`) are **ns / iter**.",
+        "Each per-op timings table has a single correctness column,",
+        "`match py` (vs Python `decimal.Decimal`), comparing values",
+        "numerically at very high precision — trailing-zero differences",
+        "are not flagged. A case is listed in the `DIFF` block if `decimo`",
+        "disagrees with the Python oracle.",
         "",
         "> **Note on `root` op.** Python's nth-root is emulated via",
         "> `da ** (Decimal(1)/n)`, where `1/n` is itself rounded to the",
@@ -313,7 +388,7 @@ def main() -> int:
     for lang in args.langs:
         overview_header.append(LANG_LABEL.get(lang, lang))
     ratio_pairs = [l for l in args.langs if l != "mojo"]
-    ratio_short = {"python": "py", "rust": "rs"}
+    ratio_short = {"python": "py"}
     for lang in ratio_pairs:
         overview_header.append(f"dm/{ratio_short.get(lang, lang)}")
     overview_rows: list[list[str]] = []
@@ -350,41 +425,29 @@ def main() -> int:
                 lang for lang in ratio_pairs if lang in per_lang and "mojo" in per_lang
             ]
 
-            case_records: list[tuple[str, bool, bool, dict[str, dict[str, str]]]] = []
+            case_records: list[tuple[str, bool, dict[str, dict[str, str]]]] = []
             for case in case_orders[(op, prec)]:
                 recs = {
                     lang: per_lang.get(lang, {}).get(case, {}) for lang in present_langs
                 }
                 mojo_val = recs.get("mojo", {}).get("result")
                 py_val = recs.get("python", {}).get("result")
-                rs_val = recs.get("rust", {}).get("result")
                 # Match against Python (oracle).
                 if mojo_val is None or py_val is None:
                     py_match = False
                 else:
                     py_match = _values_equal(mojo_val, py_val)
-                # Match against Rust. If Rust didn't run this op (skip / no
-                # row), treat as N/A — render as "-" and don't count it as
-                # a DIFF for the purposes of opening a details block.
-                if mojo_val is None or rs_val is None:
-                    rs_match = None  # type: ignore[assignment]
-                else:
-                    rs_match = _values_equal(mojo_val, rs_val)
-                case_records.append((case, py_match, rs_match, recs))  # type: ignore[arg-type]
+                case_records.append((case, py_match, recs))
 
-            time_header = ["case", "match py", "match rs"] + [
+            time_header = ["case", "match py"] + [
                 LANG_LABEL.get(l, l) for l in present_langs
             ]
             for lang in present_ratio_pairs:
                 time_header.append(f"dm/{ratio_short.get(lang, lang)}")
             time_body: list[list[str]] = []
-            for case, py_match, rs_match, recs in case_records:
+            for case, py_match, recs in case_records:
                 py_cell = "OK" if py_match else "DIFF"
-                if rs_match is None:
-                    rs_cell = "-"
-                else:
-                    rs_cell = "OK" if rs_match else "DIFF"
-                row = [_short_name(case), py_cell, rs_cell]
+                row = [_short_name(case), py_cell]
                 for lang in present_langs:
                     row.append(
                         fmt_num(recs[lang].get("ns_per_iter") if recs[lang] else None)
@@ -398,32 +461,35 @@ def main() -> int:
             lines.append("")
 
             # A case is shown in the DIFF block iff decimo disagrees with
-            # *any* available oracle (Python or Rust). N/A on Rust does
-            # not trigger a DIFF on its own.
-            diffs = [
-                t
-                for t in case_records
-                if (not t[1]) or (t[2] is False)  # py_match False or rs_match False
-            ]
+            # the Python oracle.
+            diffs = [t for t in case_records if not t[1]]
             if diffs:
                 lines.append(
                     f"<details><summary>{len(diffs)} DIFF case(s) at "
                     f"<code>{op}</code> / prec={prec} \u2014 click to expand</summary>"
                 )
                 lines.append("")
-                for case, _py_match, _rs_match, recs in diffs:
+                for case, _py_match, recs in diffs:
                     lines.append(f"**{case}**")
                     lines.append("")
-                    lines.append("| language | result |")
-                    lines.append("| --- | --- |")
+                    # Collect (label, raw_result) pairs.
+                    pairs: list[tuple[str, str | None]] = []
                     for lang in args.langs:
                         rec = recs.get(lang, {}) if lang in present_langs else {}
                         r = rec.get("result") if rec else None
-                        if r is None:
-                            cell = "_(no row)_"
+                        pairs.append((LANG_LABEL.get(lang, lang), r))
+                    # Fold each result so identical leading / trailing runs
+                    # shared across all results are summarised. Only the
+                    # diverging middle is shown verbatim. If results are
+                    # short there is nothing to fold and they print whole.
+                    folded = _fold_diff_results([p[1] for p in pairs])
+                    lines.append("```")
+                    for (label, _), shown in zip(pairs, folded):
+                        if shown is None:
+                            lines.append(f"{label}: (no row)")
                         else:
-                            cell = "`" + r.replace("|", "\\|") + "`"
-                        lines.append(f"| {LANG_LABEL.get(lang, lang)} | {cell} |")
+                            lines.append(f"{label}: {shown}")
+                    lines.append("```")
                     lines.append("")
                 lines.append("</details>")
                 lines.append("")
