@@ -25,8 +25,11 @@ def test_bigdecimal_arithmetics() raises:
     var toml = parse_file(file_path)
     var test_cases: List[TestCase]
 
-    # BigDecimal add/sub/mul are exact (unlimited precision).
-    # Set Python context precision high so Python doesn't round.
+    # BigDecimal `.add` / `.subtract` / `.multiply` methods are exact
+    # (precision=0 by default). The operators `+ - *` round to PRECISION
+    # (28) like Python `decimal.Decimal`. We exercise the exact paths
+    # here, so set Python context precision high enough that Python
+    # also returns the exact result.
     pydecimal.getcontext().prec = 500
 
     # -------------------------------------------------------
@@ -36,7 +39,7 @@ def test_bigdecimal_arithmetics() raises:
     test_cases = load_test_cases(toml, "addition_tests")
     count_wrong = 0
     for test_case in test_cases:
-        var result = BDec(test_case.a) + BDec(test_case.b)
+        var result = BDec(test_case.a).add(BDec(test_case.b))
         var mojo_str = String(result)
         var py_str = String(
             pydecimal.Decimal(test_case.a) + pydecimal.Decimal(test_case.b)
@@ -64,7 +67,7 @@ def test_bigdecimal_arithmetics() raises:
     test_cases = load_test_cases(toml, "subtraction_tests")
     count_wrong = 0
     for test_case in test_cases:
-        var result = BDec(test_case.a) - BDec(test_case.b)
+        var result = BDec(test_case.a).subtract(BDec(test_case.b))
         var mojo_str = String(result)
         var py_str = String(
             pydecimal.Decimal(test_case.a) - pydecimal.Decimal(test_case.b)
@@ -92,7 +95,7 @@ def test_bigdecimal_arithmetics() raises:
     test_cases = load_test_cases(toml, "multiplication_tests")
     count_wrong = 0
     for test_case in test_cases:
-        var result = BDec(test_case.a) * BDec(test_case.b)
+        var result = BDec(test_case.a).multiply(BDec(test_case.b))
         var mojo_str = String(result)
         var py_str = String(
             pydecimal.Decimal(test_case.a) * pydecimal.Decimal(test_case.b)

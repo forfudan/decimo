@@ -248,7 +248,9 @@ def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
     )
 
     # Final formula: π = 426880 * √10005 / sum_series
-    var result = bdec_426880 * bdec_10005.sqrt(working_precision) * sum_series
+    var result = bdec_426880.multiply(
+        bdec_10005.sqrt(working_precision)
+    ).multiply(sum_series)
 
     result.round_to_precision(
         precision,

@@ -64,7 +64,7 @@ def sin(x: BigDecimal, precision: Int) raises -> BigDecimal:
     var bdec_4 = BigDecimal.from_raw_components(UInt32(4), scale=0, sign=False)
     var bdec_6 = BigDecimal.from_raw_components(UInt32(6), scale=0, sign=False)
     var bdec_pi = decimo.bigdecimal.constants.pi(precision=working_precision)
-    var bdec_2pi = bdec_2 * bdec_pi
+    var bdec_2pi = bdec_2.multiply(bdec_pi)
     var bdec_pi_div_2 = bdec_pi.true_divide(bdec_2, precision=working_precision)
     var bdec_1d6 = BigDecimal.from_raw_components(
         UInt32(16), scale=1, sign=False
@@ -116,7 +116,7 @@ def sin(x: BigDecimal, precision: Int) raises -> BigDecimal:
     # To avoid infinite recursion, we use 1.6 as a threshold.
     # π/4 < |x| ≤ 1.6
     elif x_reduced.compare_absolute(bdec_1d6) <= 0:
-        x_reduced = bdec_pi_div_2 - x_reduced
+        x_reduced = bdec_pi_div_2.subtract(x_reduced)
         result = cos_taylor_series(
             x_reduced, minimum_precision=working_precision
         )
@@ -127,14 +127,14 @@ def sin(x: BigDecimal, precision: Int) raises -> BigDecimal:
     # π/2 < 1.6 < |x| ≤ π
     # 0 ≤ (π - x) < π - 1.6 < π/2
     elif x_reduced.compare_absolute(bdec_pi) <= 0:
-        x_reduced = bdec_pi - x_reduced
+        x_reduced = bdec_pi.subtract(x_reduced)
         result = sin(x_reduced, precision=precision)
 
     # π < |x| < 2π: Use identity sin(x) = -sin(x - π)
     # 0 < (x - π) < π
     # Note tha the acutal range is (π, 6), so it is reduced to (0, 6 - π).
     else:
-        x_reduced = x_reduced - bdec_pi
+        x_reduced = x_reduced.subtract(bdec_pi)
         result = -sin(x_reduced, precision=precision)
 
     if is_negative:
@@ -177,7 +177,7 @@ def sin_taylor_series(
 
     var term = x.copy()  # x^n / n!
     var result = x.copy()
-    var x_squared = x * x
+    var x_squared = x.multiply(x)
     var n = 1
     var sign = -1
 
@@ -234,7 +234,7 @@ def cos(x: BigDecimal, precision: Int) raises -> BigDecimal:
     # cos(x) = sin(π/2 - x)
     var pi = decimo.bigdecimal.constants.pi(precision=working_precision)
     var pi_div_2 = pi.true_divide(2, precision=working_precision)
-    var result = sin(pi_div_2 - x, precision=precision)
+    var result = sin(pi_div_2.subtract(x), precision=precision)
     return result^
 
 
@@ -268,7 +268,7 @@ def cos_taylor_series(
     var bdec_1 = BigDecimal.from_raw_components(UInt32(1), scale=0, sign=False)
     var term = bdec_1.copy()  # Current term: x^n / n!
     var result = bdec_1.copy()  # Start with 1
-    var x_squared = x * x
+    var x_squared = x.multiply(x)
     var n = 0  # Current power (0, 2, 4, 6, ...)
     var sign = -1  # Alternating sign
 
@@ -373,7 +373,7 @@ def tan_cot(x: BigDecimal, precision: Int, is_tan: Bool) raises -> BigDecimal:
 
     var pi = decimo.bigdecimal.constants.pi(precision=working_precision_pi)
     var bdec_2 = BigDecimal.from_raw_components(UInt32(2), scale=0, sign=False)
-    var two_pi = bdec_2 * pi
+    var two_pi = bdec_2.multiply(pi)
     var pi_div_2 = pi.true_divide(bdec_2, precision=working_precision_pi)
 
     var x_reduced = x.copy()
@@ -516,13 +516,13 @@ def arctan(x: BigDecimal, precision: Int) raises -> BigDecimal:
         # Use sqrt_reciprocal for speed — exact perfect square detection is
         # unnecessary since this is an intermediate computation.
         var sqrt_term = decimo.bigdecimal.exponential.sqrt_reciprocal(
-            bdec_1 + x * x, working_precision
+            bdec_1.add(x.multiply(x)), working_precision
         )
         var x_divided = x.true_divide(
-            bdec_1 + sqrt_term, precision=working_precision
+            bdec_1.add(sqrt_term), precision=working_precision
         )
-        result = bdec_2 * arctan_taylor_series(
-            x_divided, minimum_precision=precision
+        result = bdec_2.multiply(
+            arctan_taylor_series(x_divided, minimum_precision=precision)
         )
 
     else:  # x.compare_absolute(bdec_1) > 0
@@ -540,9 +540,9 @@ def arctan(x: BigDecimal, precision: Int) raises -> BigDecimal:
         )
 
         if x.sign:
-            result = -half_pi - arctan_reciprocal
+            result = (-half_pi).subtract(arctan_reciprocal)
         else:
-            result = half_pi - arctan_reciprocal
+            result = half_pi.subtract(arctan_reciprocal)
 
     result.round_to_precision(
         precision,
@@ -584,7 +584,7 @@ def arctan_taylor_series(
     var term = x.copy()  # x^n
     var term_divided = x.copy()  # x^n / n
     var result = x.copy()
-    var x_squared = x * x
+    var x_squared = x.multiply(x)
     var n = 1
     var sign = -1
 

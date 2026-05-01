@@ -124,7 +124,7 @@ struct BigDecimal(
     # - A Bool value for the sign.
     # Final value:
     # (-1)**sign * coefficient * 10^(-scale)
-    #
+
     # ===------------------------------------------------------------------=== #
     # Organization of fields and methods:
     # - Internal representation fields
@@ -980,39 +980,55 @@ struct BigDecimal(
 
     @always_inline
     def __add__(self, other: Self) raises -> Self:
-        """Adds two values.
+        """Adds two values, rounding the result to `PRECISION` significant
+        digits (HALF_EVEN), matching Python `decimal.Decimal`.
+        Use `self.add(other)` to get the exact, unrounded sum.
 
         Args:
             other: The right-hand side operand.
 
         Returns:
-            The sum of the two values.
+            The sum of the two values, rounded to `PRECISION` digits.
         """
-        return decimo.bigdecimal.arithmetics.add(self, other)
+        return decimo.bigdecimal.arithmetics.add(
+            self, other, precision=PRECISION
+        )
 
     @always_inline
     def __sub__(self, other: Self) raises -> Self:
-        """Subtracts two values.
+        """Subtracts two values, rounding the result to `PRECISION`
+        significant digits (HALF_EVEN), matching Python
+        `decimal.Decimal`.
+        Use `self.subtract(other)` to get the exact, unrounded difference.
 
         Args:
             other: The right-hand side operand.
 
         Returns:
-            The difference of the two values.
+            The difference of the two values, rounded to `PRECISION`
+            digits.
         """
-        return decimo.bigdecimal.arithmetics.subtract(self, other)
+        return decimo.bigdecimal.arithmetics.subtract(
+            self, other, precision=PRECISION
+        )
 
     @always_inline
     def __mul__(self, other: Self) raises -> Self:
-        """Multiplies two values.
+        """Multiplies two values, rounding the result to `PRECISION`
+        significant digits (HALF_EVEN), matching Python
+        `decimal.Decimal`.
+        Use `self.multiply(other)` to get the exact, unrounded product.
 
         Args:
             other: The right-hand side operand.
 
         Returns:
-            The product of the two values.
+            The product of the two values, rounded to `PRECISION`
+            digits.
         """
-        return decimo.bigdecimal.arithmetics.multiply(self, other)
+        return decimo.bigdecimal.arithmetics.multiply(
+            self, other, precision=PRECISION
+        )
 
     @always_inline
     def __truediv__(self, other: Self) raises -> Self:
@@ -1122,12 +1138,15 @@ struct BigDecimal(
     # ===------------------------------------------------------------------=== #
 
     @always_inline
-    def add(self, other: Self, precision: Int = PRECISION) raises -> Self:
+    def add(self, other: Self, precision: Int = 0) raises -> Self:
         """Adds two values with explicit precision.
 
         Args:
             other: The right-hand side operand.
-            precision: The precision to use for the operation.
+            precision: Target significant-digit precision for the result.
+                When `0` (default) the exact sum is returned, matching the
+                `+` operator. When `> 0` the exact sum is computed and
+                then rounded HALF_EVEN to `precision` significant digits.
 
         Returns:
             The sum of the two values.
@@ -1137,12 +1156,16 @@ struct BigDecimal(
         )
 
     @always_inline
-    def subtract(self, other: Self, precision: Int = PRECISION) raises -> Self:
+    def subtract(self, other: Self, precision: Int = 0) raises -> Self:
         """Subtracts two values with explicit precision.
 
         Args:
             other: The right-hand side operand.
-            precision: The precision to use for the operation.
+            precision: Target significant-digit precision for the result.
+                When `0` (default) the exact difference is returned,
+                matching the `-` operator. When `> 0` the exact
+                difference is computed and then rounded HALF_EVEN to
+                `precision` significant digits.
 
         Returns:
             The difference of the two values.
@@ -1152,12 +1175,16 @@ struct BigDecimal(
         )
 
     @always_inline
-    def multiply(self, other: Self, precision: Int = PRECISION) raises -> Self:
+    def multiply(self, other: Self, precision: Int = 0) raises -> Self:
         """Multiplies two values with explicit precision.
 
         Args:
             other: The right-hand side operand.
-            precision: The precision to use for the operation.
+            precision: Target significant-digit precision for the result.
+                When `0` (default) the exact product is returned,
+                matching the `*` operator. When `> 0` the exact product
+                is computed and then rounded HALF_EVEN to `precision`
+                significant digits.
 
         Returns:
             The product of the two values.
@@ -1191,7 +1218,8 @@ struct BigDecimal(
 
     @always_inline
     def __radd__(self, other: Self) raises -> Self:
-        """Adds two values (reflected).
+        """Adds two values (reflected). Rounds to `PRECISION` digits
+        (HALF_EVEN), matching `__add__`.
 
         Args:
             other: The left-hand side operand.
@@ -1199,11 +1227,14 @@ struct BigDecimal(
         Returns:
             The sum of the two values.
         """
-        return decimo.bigdecimal.arithmetics.add(self, other)
+        return decimo.bigdecimal.arithmetics.add(
+            self, other, precision=PRECISION
+        )
 
     @always_inline
     def __rsub__(self, other: Self) raises -> Self:
-        """Subtracts two values (reflected).
+        """Subtracts two values (reflected). Rounds to `PRECISION` digits
+        (HALF_EVEN), matching `__sub__`.
 
         Args:
             other: The left-hand side operand.
@@ -1211,11 +1242,14 @@ struct BigDecimal(
         Returns:
             The difference `other - self`.
         """
-        return decimo.bigdecimal.arithmetics.subtract(other, self)
+        return decimo.bigdecimal.arithmetics.subtract(
+            other, self, precision=PRECISION
+        )
 
     @always_inline
     def __rmul__(self, other: Self) raises -> Self:
-        """Multiplies two values (reflected).
+        """Multiplies two values (reflected). Rounds to `PRECISION`
+        digits (HALF_EVEN), matching `__mul__`.
 
         Args:
             other: The left-hand side operand.
@@ -1223,7 +1257,9 @@ struct BigDecimal(
         Returns:
             The product of the two values.
         """
-        return decimo.bigdecimal.arithmetics.multiply(self, other)
+        return decimo.bigdecimal.arithmetics.multiply(
+            self, other, precision=PRECISION
+        )
 
     @always_inline
     def __rfloordiv__(self, other: Self) raises -> Self:

@@ -287,22 +287,23 @@ lessons in §4. All borrow patterns proven on the Decimal128 hot path.
 
 P0 — Structural API change (foundation for most P1 wins)
 
-- **T-API1 — DONE.** Added `precision: Int = 0` to `add`,
-  `subtract`, `multiply` (the `__add__`/`__sub__`/`__mul__`
-  overloads keep `precision=0`, unchanged). When `precision > 0` the
+- **T-API1 — DONE.** Added `precision: Int = 0` to the free
+  functions `add`, `subtract`, `multiply`. When `precision > 0` the
   function computes the **exact** result and rounds HALF_EVEN. The
-  upfront-operand-truncation strategy that motivated the API is
-  tracked separately as T-API3.
+  Python-facing surface follows `decimal.Decimal`:
+  `__add__`/`__sub__`/`__mul__` (and the reflected variants) round to
+  `PRECISION` (28) significant digits, while the explicit
+  `BigDecimal.add` / `subtract` / `multiply` methods default to
+  `precision=0` (exact) so callers can opt out of rounding without
+  reaching for the free function. The upfront-operand-truncation
+  strategy that originally motivated the API is tracked separately
+  as T-API3.
 
 - **T-API2 — Zero-copy scale alignment for add/sub/mul.**
   Disproven as the performance gain is limited.
 
 - **T-API3 — `add`/`sub`/`multiply` with `precision > 0`: correct
-  pre-truncation.** The naive "drop low words of the longer operand"
-  heuristic fails for similar-length operands. Strategies to
-  prototype:
-
-  Disproven as it is trivial.
+  pre-truncation.** Disproven as it is trivial.
 
 P1 — Add/Sub small-precision target (currently 4.7× / 3.6× py → target ≤2×)
 
