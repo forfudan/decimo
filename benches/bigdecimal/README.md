@@ -17,7 +17,7 @@ Each op is exercised at multiple working precisions (default **100, 1000,
     cases/            # source-of-truth TOML test cases (one file per op)
     mojo/   bench.mojo   +  bench   (release-built binary)
     python/ bench.py
-    aggregate.py      # logs/*.csv  ->  reports/bigdec_report_<ts>.md
+    aggregate.py      # logs/*.csv  ->  reports/bigdecimal_report_<ts>.md
     run_all.sh        # build all available, run all (op, precision), aggregate
     logs/             # per-language CSV bench logs (generated)
     reports/          # generated markdown reports

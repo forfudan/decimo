@@ -118,7 +118,7 @@ def subtract(x1: BigInt10, x2: BigInt10) -> BigInt10:
     if comparison_result > 0:  # |x1| > |x2|
         # Subtract smaller from larger
         magnitude = x1.magnitude.copy()
-        decimo.biguint.arithmetics.subtract_inplace_no_check(
+        decimo.biguint.arithmetics.subtract_no_check_inplace(
             magnitude, x2.magnitude
         )
         sign = x1.sign
@@ -126,7 +126,7 @@ def subtract(x1: BigInt10, x2: BigInt10) -> BigInt10:
     else:  # |x1| < |x2|
         # Subtract larger from smaller and negate the result
         magnitude = x2.magnitude.copy()
-        decimo.biguint.arithmetics.subtract_inplace_no_check(
+        decimo.biguint.arithmetics.subtract_no_check_inplace(
             magnitude, x1.magnitude
         )
         sign = not x1.sign

@@ -1738,7 +1738,7 @@ def add_inplace(mut x: BigInt, read other: BigInt):
             x.sign = other.sign
 
 
-def add_inplace_int(mut x: BigInt, value: Int):
+def add_int_inplace(mut x: BigInt, value: Int):
     """Performs x += value (Int) by mutating x.words directly.
 
     Optimized for adding a small integer: avoids constructing a full BigInt.

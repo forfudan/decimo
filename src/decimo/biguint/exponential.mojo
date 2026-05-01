@@ -98,7 +98,7 @@ def sqrt(x: BigUInt) -> BigUInt:
                 quotient = BigUInt.one()
 
             guess += quotient
-            decimo.biguint.arithmetics.floor_divide_inplace_by_2(guess)
+            decimo.biguint.arithmetics.floor_divide_by_2_inplace(guess)
 
             if guess == prev_guess:
                 break
@@ -112,7 +112,7 @@ def sqrt(x: BigUInt) -> BigUInt:
         # var guess_squared = guess * guess
         # if guess_squared > x:
         #     # guess must be larger than 1
-        #     decimo.biguint.arithmetics.subtract_inplace_by_uint32(guess, 1)
+        #     decimo.biguint.arithmetics.subtract_by_uint32_inplace(guess, 1)
 
         return guess^
 

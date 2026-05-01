@@ -358,7 +358,7 @@ def integer_power(
             fill_zeros_to_precision=False,
         )
 
-        decimo.biguint.arithmetics.floor_divide_inplace_by_2(exp_value)
+        decimo.biguint.arithmetics.floor_divide_by_2_inplace(exp_value)
 
     # For negative exponents, compute reciprocal
     if is_negative_exponent:
@@ -1162,7 +1162,7 @@ def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
         # Newton step: n = (n + c/n) / 2
         var q = c.floor_divide(n)
         n += q
-        decimo.biguint.arithmetics.floor_divide_inplace_by_2(n)
+        decimo.biguint.arithmetics.floor_divide_by_2_inplace(n)
         if n == prev_n:
             break
         if prev_n == n + BigUInt.one():
@@ -1295,7 +1295,7 @@ def sqrt_exact(x: BigDecimal, precision: Int) raises -> BigDecimal:
         # Check: n % 5 == 0
         # Since our BigUInt base is 10^9, n % 5 == (last_word % 5)
         if n.words[0] % 5 == 0:
-            decimo.biguint.arithmetics.add_inplace_by_uint32(n, 1)
+            decimo.biguint.arithmetics.add_by_uint32_inplace(n, 1)
 
     # Construct result: coefficient=n, scale=-e (since exponent=e means *10^e)
     var result = BigDecimal(n^, -e, False)
@@ -1849,7 +1849,7 @@ def exp(x: BigDecimal, precision: Int) raises -> BigDecimal:
         # This is exact — no rounding needed.
         var reduced_coeff = x.coefficient.copy()
         for _ in range(m):
-            decimo.biguint.arithmetics.multiply_inplace_by_uint32(
+            decimo.biguint.arithmetics.multiply_by_uint32_inplace(
                 reduced_coeff, 5
             )
         var reduced_x = BigDecimal(reduced_coeff^, x.scale + m, False)
@@ -2330,7 +2330,7 @@ def ln_series_expansion(
         # Step 1: Undo previous denominator: multiply by (2k-1).
         # Note: when k=1, old_denom=1, so this is a no-op by design;
         # the first term (k=0) has denominator 1, which needs no undoing.
-        decimo.biguint.arithmetics.multiply_inplace_by_uint32(
+        decimo.biguint.arithmetics.multiply_by_uint32_inplace(
             term.coefficient, old_denom
         )
         # Step 2: Multiply by u²
@@ -2432,7 +2432,7 @@ def compute_ln2(working_precision: Int) raises -> BigDecimal:
         decimo.bigdecimal.arithmetics.multiply_inplace(term, x_squared)
         term = term.true_divide_inexact_by_uint32(new_k, working_precision)
         # Multiply by k using coefficient-level UInt32 multiply (avoids BigDecimal alloc)
-        decimo.biguint.arithmetics.multiply_inplace_by_uint32(
+        decimo.biguint.arithmetics.multiply_by_uint32_inplace(
             term.coefficient, k
         )
         k = new_k

@@ -14,7 +14,7 @@
 #                from_string, to_string, sqrt, exp, ln, root, round.
 
 from decimo import BigDecimal
-from decimo.bigdecimal.arithmetics import true_divide
+from decimo.bigdecimal.arithmetics import add, multiply, subtract, true_divide
 from decimo.bigdecimal.exponential import sqrt as bd_sqrt
 from decimo.bigdecimal.exponential import exp as bd_exp
 from decimo.bigdecimal.exponential import ln as bd_ln
@@ -142,11 +142,11 @@ fn _result_for(
     Never call this inside a timing loop — use `_time_kernel` instead.
     """
     if op == "add":
-        return _emit(_round_to_prec(a + b, precision))
+        return _emit(add(a, b, precision))
     if op == "subtract":
-        return _emit(_round_to_prec(a - b, precision))
+        return _emit(subtract(a, b, precision))
     if op == "multiply":
-        return _emit(_round_to_prec(a * b, precision))
+        return _emit(multiply(a, b, precision))
     if op == "divide":
         return _emit(true_divide(a, b, precision))
     if op == "comparison":
@@ -194,17 +194,17 @@ fn _time_kernel(
     deep copy of the heap-backed BigUInt occurs.
     """
     if op == "add":
-        var r = _round_to_prec(a + b, precision)
+        var r = add(a, b, precision)
         keep(r.scale)
         keep(len(r.coefficient.words))
         return
     if op == "subtract":
-        var r = _round_to_prec(a - b, precision)
+        var r = subtract(a, b, precision)
         keep(r.scale)
         keep(len(r.coefficient.words))
         return
     if op == "multiply":
-        var r = _round_to_prec(a * b, precision)
+        var r = multiply(a, b, precision)
         keep(r.scale)
         keep(len(r.coefficient.words))
         return

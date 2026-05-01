@@ -20,36 +20,55 @@ Implements functions for mathematical operations on BigDecimal objects.
 
 from std import math
 
+from decimo.bigdecimal.rounding import round_to_precision
 from decimo.errors import ZeroDivisionError
 from decimo.rounding_mode import RoundingMode
 
 # ===----------------------------------------------------------------------=== #
 # Arithmetic operations on BigDecimal objects
-# add(x1, x2)
-# subtract(x1, x2)
-# multiply(x1, x2)
+# add(x1, x2, precision=0)
+# subtract(x1, x2, precision=0)
+# multiply(x1, x2, precision=0)
 # true_divide(x1, x2, precision)
 # true_divide_inexact(x1, x2, number_of_significant_digits)
 # ===----------------------------------------------------------------------=== #
 
 
-def add(x1: BigDecimal, x2: BigDecimal) raises -> BigDecimal:
+def add(
+    x1: BigDecimal, x2: BigDecimal, precision: Int = 0
+) raises -> BigDecimal:
     """Returns the sum of two numbers.
 
     Args:
         x1: The first operand.
         x2: The second operand.
+        precision: Optional target significant-digit precision for the
+            result. When `0` (default) the function returns the exact
+            sum. When `>0` the exact sum is computed and then rounded
+            to `precision` significant digits via HALF_EVEN.
 
     Returns:
-        The sum of x1 and x2.
+        The sum of x1 and x2 (exact when `precision == 0`, otherwise
+        rounded to `precision` significant digits).
 
     Notes:
 
     Rules for addition:
-    - This function always return the exact result of the addition.
-    - The result's scale is the maximum of the two operands' scales.
+    - When `precision == 0`, the result is exact and its scale is the
+      maximum of the two operands' scales.
     - The result's sign is determined by the signs of the operands.
     """
+    if precision > 0:
+        var result = add(x1, x2, precision=0)
+        round_to_precision(
+            result,
+            precision,
+            RoundingMode.ROUND_HALF_EVEN,
+            remove_extra_digit_due_to_rounding=False,
+            fill_zeros_to_precision=False,
+        )
+        return result^
+
     var max_scale = max(x1.scale, x2.scale)
     var scale_factor1 = (max_scale - x1.scale) if x1.scale < max_scale else 0
     var scale_factor2 = (max_scale - x2.scale) if x2.scale < max_scale else 0
@@ -92,22 +111,40 @@ def add(x1: BigDecimal, x2: BigDecimal) raises -> BigDecimal:
         )
 
 
-def subtract(x1: BigDecimal, x2: BigDecimal) raises -> BigDecimal:
+def subtract(
+    x1: BigDecimal, x2: BigDecimal, precision: Int = 0
+) raises -> BigDecimal:
     """Returns the difference of two numbers.
 
     Args:
         x1: The first operand (minuend).
         x2: The second operand (subtrahend).
+        precision: Optional target significant-digit precision for the
+            result. When `0` (default) the function returns the exact
+            difference. When `>0` the exact difference is computed
+            and then rounded to `precision` significant digits via
+            HALF_EVEN.
 
     Returns:
-        The difference of x1 and x2 (x1 - x2).
+        The difference of x1 and x2 (x1 - x2). Exact when
+        `precision == 0`, otherwise rounded to `precision` digits.
 
     Notes:
 
-    - This function always return the exact result of the subtraction.
-    - The result's scale is the maximum of the two operands' scales.
+    - When `precision == 0`, the result is exact and its scale is the
+      maximum of the two operands' scales.
     - The result's sign is determined by the signs of the operands.
     """
+    if precision > 0:
+        var result = subtract(x1, x2, precision=0)
+        round_to_precision(
+            result,
+            precision,
+            RoundingMode.ROUND_HALF_EVEN,
+            remove_extra_digit_due_to_rounding=False,
+            fill_zeros_to_precision=False,
+        )
+        return result^
 
     var max_scale = max(x1.scale, x2.scale)
     var scale_factor1 = (max_scale - x1.scale) if x1.scale < max_scale else 0
@@ -154,22 +191,40 @@ def subtract(x1: BigDecimal, x2: BigDecimal) raises -> BigDecimal:
         )
 
 
-def multiply(x1: BigDecimal, x2: BigDecimal) -> BigDecimal:
+def multiply(
+    x1: BigDecimal, x2: BigDecimal, precision: Int = 0
+) raises -> BigDecimal:
     """Returns the product of two numbers.
 
     Args:
         x1: The first operand (multiplicand).
         x2: The second operand (multiplier).
+        precision: Optional target significant-digit precision for the
+            result. When `0` (default) the function returns the exact
+            product. When `>0` the exact product is computed and then
+            rounded to `precision` significant digits via HALF_EVEN.
 
     Returns:
-        The product of x1 and x2.
+        The product of x1 and x2. Exact when `precision == 0`,
+        otherwise rounded to `precision` digits.
 
     Notes:
 
-    - This function always returns the exact result of the multiplication.
-    - The result's scale is the sum of the two operands' scales (except for zero).
+    - When `precision == 0`, the result is exact and its scale is the
+      sum of the two operands' scales (except for zero).
     - The result's sign follows the standard sign rules for multiplication.
     """
+    if precision > 0:
+        var result = multiply(x1, x2, precision=0)
+        round_to_precision(
+            result,
+            precision,
+            RoundingMode.ROUND_HALF_EVEN,
+            remove_extra_digit_due_to_rounding=False,
+            fill_zeros_to_precision=False,
+        )
+        return result^
+
     # Handle zero operands as special cases for efficiency
     if x1.coefficient.is_zero() or x2.coefficient.is_zero():
         return BigDecimal(
@@ -235,13 +290,13 @@ def add_inplace(mut x1: BigDecimal, x2: BigDecimal) raises:
             return
     if x2.coefficient.is_zero():
         if scale_factor1 > 0:
-            x1.coefficient.multiply_inplace_by_power_of_ten(scale_factor1)
+            x1.coefficient.multiply_by_power_of_ten_inplace(scale_factor1)
         x1.scale = max_scale
         return
 
     # Scale x1 in place if needed
     if scale_factor1 > 0:
-        x1.coefficient.multiply_inplace_by_power_of_ten(scale_factor1)
+        x1.coefficient.multiply_by_power_of_ten_inplace(scale_factor1)
 
     if x1.sign == x2.sign:
         # Same sign: add magnitudes (use inplace add on x1's coefficient)
@@ -740,7 +795,7 @@ def true_divide_inexact(
     # Scale up the dividend to ensure sufficient precision
     var scaled_x1 = x1.coefficient.copy()
     if buffer_digits > 0:
-        scaled_x1.multiply_inplace_by_power_of_ten(buffer_digits)
+        scaled_x1.multiply_by_power_of_ten_inplace(buffer_digits)
 
     # Perform division
     var quotient: BigUInt = scaled_x1 // x2.coefficient
@@ -802,7 +857,7 @@ def _true_divide_inexact_truncated(
 
     var scaled_x1 = x1_coef_tr^
     if buffer_digits > 0:
-        scaled_x1.multiply_inplace_by_power_of_ten(buffer_digits)
+        scaled_x1.multiply_by_power_of_ten_inplace(buffer_digits)
 
     var quotient: BigUInt = scaled_x1 // x2_coef_tr
     var result_scale = buffer_digits + scale_adjust_digits + x1.scale - x2.scale
@@ -874,7 +929,7 @@ def true_divide_inexact_by_uint32(
     # Scale up the dividend to ensure sufficient precision
     var scaled_x1 = x1.coefficient.copy()
     if buffer_digits > 0:
-        scaled_x1.multiply_inplace_by_power_of_ten(buffer_digits)
+        scaled_x1.multiply_by_power_of_ten_inplace(buffer_digits)
 
     # O(n) division by single word — the key speedup
     var quotient = decimo.biguint.arithmetics.floor_divide_by_uint32(

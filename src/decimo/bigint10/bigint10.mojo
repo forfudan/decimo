@@ -796,7 +796,7 @@ struct BigInt10(
         """
         # Optimize the case `i += 1`
         if (self >= 0) and (other >= 0) and (other <= 999_999_999):
-            decimo.biguint.arithmetics.add_inplace_by_uint32(
+            decimo.biguint.arithmetics.add_by_uint32_inplace(
                 self.magnitude, UInt32(other)
             )
         else:

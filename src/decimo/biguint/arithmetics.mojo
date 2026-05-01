@@ -48,33 +48,36 @@ comptime CUTOFF_BURNIKEL_ZIEGLER = 32
 # add_slices_simd(x: BigUInt, y: BigUInt) -> BigUInt
 # add_slices(x: BigUInt, y: BigUInt, start_x: Int, end_x: Int, start_y: Int, end_y: Int) -> BigUInt
 # add_inplace(x1: BigUInt, x2: BigUInt)
-# add_inplace_by_uint32(x: BigUInt, y: UInt32) -> None
+# add_by_uint32_inplace(x: BigUInt, y: UInt32) -> None
 #
 # subtract(x1: BigUInt, x2: BigUInt) -> BigUInt
 # subtract_inplace(x1: BigUInt, x2: BigUInt) -> None
-# subtract_inplace_no_check(x1: BigUInt, x2: BigUInt) -> None
-# subtract_inplace_by_uint32(x: BigUInt, y: UInt32) -> None
+# subtract_no_check_inplace(x1: BigUInt, x2: BigUInt) -> None
+# subtract_by_uint32_inplace(x: BigUInt, y: UInt32) -> None
 #
 # multiply(x1: BigUInt, x2: BigUInt) -> BigUInt
 # multiply_slices_school(x: BigUInt, y: BigUInt, start_x: Int, end_x: Int, start_y: Int, end_y: Int) -> BigUInt
 # multiply_slices_karatsuba(x: BigUInt, y: BigUInt, start_x: Int, end_x: Int, start_y: Int, end_y: Int, cutoff_number_of_words: Int) -> BigUInt
 # multiply_slices_toom3(x: BigUInt, y: BigUInt, bounds_x: Tuple[Int, Int], bounds_y: Tuple[Int, Int]) -> BigUInt
-# multiply_inplace_by_uint32(x: BigUInt, y: UInt32) -> None
+# multiply_by_uint32_inplace(x: BigUInt, y: UInt32) -> None
 # multiply_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt
-# multiply_inplace_by_power_of_billion(mut x: BigUInt, n: Int)
+# multiply_by_power_of_billion_inplace(mut x: BigUInt, n: Int)
 # exact_divide_by_2_inplace(mut x: BigUInt)
 # exact_divide_by_3_inplace(mut x: BigUInt)
 #
 # floor_divide(x1: BigUInt, x2: BigUInt) -> BigUInt
 # floor_divide_school(x1: BigUInt, x2: BigUInt) -> BigUInt
 # floor_divide_estimate_quotient(x1: BigUInt, x2: BigUInt, j: Int, m: Int) -> UInt64
-# floor_divide_inplace_by_single_word(x1: BigUInt, x2: BigUInt) -> None
-# floor_divide_inplace_by_double_words(x1: BigUInt, x2: BigUInt) -> None
-# floor_divide_inplace_by_2(x: BigUInt) -> Nonet, x2: BigUInt) -> BigUInt
+# floor_divide_by_single_word_inplace(x1: BigUInt, x2: BigUInt) -> None
+# floor_divide_by_double_words_inplace(x1: BigUInt, x2: BigUInt) -> None
+# floor_divide_by_2_inplace(x: BigUInt) -> None
 # floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt
+# floor_divide_by_power_of_ten_inplace(x: BigUInt, n: Int) -> None
+# floor_divide_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt
+# floor_divide_by_power_of_billion_inplace(x: BigUInt, n: Int) -> None
 #
 # truncate_divide(x1: BigUInt, x2: BigUInt) -> BigUInt
-# ceil_divide(x1: BigUInt, x2: BigUInt) -> BigUIntulo(x1: BigUIn# floor_divide_school(x1: BigUInt, x2: BigUInt) -> BigUInt
+# ceil_divide(x1: BigUInt, x2: BigUInt) -> BigUInt
 #
 # floor_modulo(x1: BigUInt, x2: BigUInt) -> BigUInt
 # ceil_modulo(x1: BigUInt, x2: BigUInt) -> BigUInt
@@ -128,7 +131,7 @@ def absolute(x: BigUInt) -> BigUInt:
 
 # ===----------------------------------------------------------------------=== #
 # Addition algorithms
-# add, add_inplace, add_inplace_by_uint32
+# add, add_inplace, add_by_uint32_inplace
 # ===----------------------------------------------------------------------=== #
 
 
@@ -174,13 +177,13 @@ def add(x: BigUInt, y: BigUInt) -> BigUInt:
             )
         else:  # If x is single-word, we can handle it with UInt32
             var result = y.copy()
-            add_inplace_by_uint32(result, x.words[0])
+            add_by_uint32_inplace(result, x.words[0])
             return result^
 
     if len(y.words) == 1:
         # If y is single-word, we can handle it with UInt32
         var result = x.copy()
-        add_inplace_by_uint32(result, y.words[0])
+        add_by_uint32_inplace(result, y.words[0])
         return result^
 
     # If both numbers are double-word, we can handle them with UInt64
@@ -237,7 +240,7 @@ def add_slices(
         else:
             # If y slice is longer
             var result = BigUInt.from_slice(y, bounds_y)
-            add_inplace_by_uint32(result, x.words[bounds_x[0]])
+            add_by_uint32_inplace(result, x.words[bounds_x[0]])
             return result^
     if n_words_y_slice == 1:
         if y.words[bounds_y[0]] == 0:
@@ -245,7 +248,7 @@ def add_slices(
         else:
             # If x slice is longer
             var result = BigUInt.from_slice(x, bounds_x)
-            add_inplace_by_uint32(result, y.words[bounds_y[0]])
+            add_by_uint32_inplace(result, y.words[bounds_y[0]])
             return result^
 
     # Normal cases
@@ -376,7 +379,7 @@ def add_inplace(mut x: BigUInt, y: BigUInt) -> None:
         return
 
     if len(y.words) == 1:
-        add_inplace_by_uint32(x, y.words[0])
+        add_by_uint32_inplace(x, y.words[0])
         return
 
     # Normal cases
@@ -400,7 +403,7 @@ def add_inplace(mut x: BigUInt, y: BigUInt) -> None:
     return
 
 
-def add_inplace_by_slice(
+def add_by_slice_inplace(
     mut x: BigUInt, y: BigUInt, bounds_y: Tuple[Int, Int]
 ) -> None:
     """Increments a BigUInt number in-place by another BigUInt slice.
@@ -414,7 +417,7 @@ def add_inplace_by_slice(
     # Short circuit cases
     if x.is_zero():
         debug_assert[assert_mode="none"](
-            len(x.words) == 1, "add_inplace_by_slice(): leading zero words in x"
+            len(x.words) == 1, "add_by_slice_inplace(): leading zero words in x"
         )
         x = BigUInt.from_slice(
             y, bounds=(bounds_y[0], bounds_y[1])
@@ -427,7 +430,7 @@ def add_inplace_by_slice(
     var n_words_y_slice = bounds_y[1] - bounds_y[0]
 
     if n_words_y_slice == 1:
-        add_inplace_by_uint32(x, y.words[bounds_y[0]])
+        add_by_uint32_inplace(x, y.words[bounds_y[0]])
         return
 
     # Normal cases
@@ -452,7 +455,7 @@ def add_inplace_by_slice(
     return
 
 
-def add_inplace_by_uint32(mut x: BigUInt, y: UInt32) -> None:
+def add_by_uint32_inplace(mut x: BigUInt, y: UInt32) -> None:
     """Increments a BigUInt number by a UInt32 value.
 
     Args:
@@ -711,7 +714,7 @@ def subtract_inplace(mut x: BigUInt, y: BigUInt) raises -> None:
 
     # If y is a single-word number, we can handle it with UInt32
     if len(y.words) == 1:
-        subtract_inplace_by_uint32(x, y.words[0])
+        subtract_by_uint32_inplace(x, y.words[0])
         return
 
     # Note that len(x.words) >= len(y.words) here
@@ -733,7 +736,7 @@ def subtract_inplace(mut x: BigUInt, y: BigUInt) raises -> None:
     return
 
 
-def subtract_inplace_no_check(mut x: BigUInt, y: BigUInt) -> None:
+def subtract_no_check_inplace(mut x: BigUInt, y: BigUInt) -> None:
     """Subtracts y from x in-place without checking for underflow.
 
     Notes:
@@ -750,7 +753,7 @@ def subtract_inplace_no_check(mut x: BigUInt, y: BigUInt) -> None:
     # If the subtrahend is zero, return the minuend
     if y.is_zero():
         debug_assert[assert_mode="none"](
-            len(y.words) == 1, "subtract_inplace_no_check(): leading zero words"
+            len(y.words) == 1, "subtract_no_check_inplace(): leading zero words"
         )
         return
 
@@ -774,7 +777,7 @@ def subtract_inplace_no_check(mut x: BigUInt, y: BigUInt) -> None:
     return
 
 
-def subtract_inplace_by_uint32(mut x: BigUInt, y: UInt32) -> None:
+def subtract_by_uint32_inplace(mut x: BigUInt, y: UInt32) -> None:
     """Subtracts a UInt32 value from a BigUInt number in-place.
 
     Args:
@@ -789,7 +792,7 @@ def subtract_inplace_by_uint32(mut x: BigUInt, y: UInt32) -> None:
 
     debug_assert[assert_mode="none"](
         (len(x.words) > 1) or (x.words[0] >= y),
-        "subtract_inplace_by_uint32(): Underflow due to x < y.",
+        "subtract_by_uint32_inplace(): Underflow due to x < y.",
     )
 
     x.words[0] -= y
@@ -850,7 +853,7 @@ def multiply(x: BigUInt, y: BigUInt) -> BigUInt:
 
     # SPECIAL CASES
     # If x or y is a single-word number
-    # We can use `multiply_inplace_by_uint32` because this is only one loop
+    # We can use `multiply_by_uint32_inplace` because this is only one loop
     # No need to split the long number into two parts
     if len(x.words) == 1:
         var x_word = x.words[0]
@@ -860,7 +863,7 @@ def multiply(x: BigUInt, y: BigUInt) -> BigUInt:
             return y.copy()
         else:
             var result = y.copy()
-            multiply_inplace_by_uint32(result, x_word)
+            multiply_by_uint32_inplace(result, x_word)
             return result^
 
     if len(y.words) == 1:
@@ -871,7 +874,7 @@ def multiply(x: BigUInt, y: BigUInt) -> BigUInt:
             return x.copy()
         else:
             var result = x.copy()
-            multiply_inplace_by_uint32(result, y_word)
+            multiply_by_uint32_inplace(result, y_word)
             return result^
 
     # CASE 1
@@ -976,7 +979,7 @@ def multiply_slices_school(
             return BigUInt.from_slice(y, (bounds_y[0], bounds_y[1]))
         else:
             var result = BigUInt.from_slice(y, (bounds_y[0], bounds_y[1]))
-            multiply_inplace_by_uint32(result, x_word)
+            multiply_by_uint32_inplace(result, x_word)
             return result^
     if n_words_y_slice == 1:
         var y_word = y.words[bounds_y[0]]
@@ -986,7 +989,7 @@ def multiply_slices_school(
             return BigUInt.from_slice(x, (bounds_x[0], bounds_x[1]))
         else:
             var result = BigUInt.from_slice(x, (bounds_x[0], bounds_x[1]))
-            multiply_inplace_by_uint32(result, y_word)
+            multiply_by_uint32_inplace(result, y_word)
             return result^
 
     # The max number of words in the result is the sum of the words in the operands
@@ -1122,7 +1125,7 @@ def multiply_slices_karatsuba(
         )
         # z2 = 0
 
-        z1.multiply_inplace_by_power_of_billion(m)
+        z1.multiply_by_power_of_billion_inplace(m)
         z1 += z0
         z1.remove_leading_empty_words()
         return z1^
@@ -1150,7 +1153,7 @@ def multiply_slices_karatsuba(
             cutoff_number_of_words,
         )
         # z2 = 0
-        z1.multiply_inplace_by_power_of_billion(m)
+        z1.multiply_by_power_of_billion_inplace(m)
         z1 += z0
         z1.remove_leading_empty_words()
         return z1^
@@ -1203,12 +1206,12 @@ def multiply_slices_karatsuba(
         )
 
         # z1 >= z2 + z0 by construction
-        subtract_inplace_no_check(z1, z2)
-        subtract_inplace_no_check(z1, z0)
+        subtract_no_check_inplace(z1, z2)
+        subtract_no_check_inplace(z1, z0)
 
         # z2*9^(m * 2) + z1*9^m + z0
-        z2.multiply_inplace_by_power_of_billion(2 * m)
-        z1.multiply_inplace_by_power_of_billion(m)
+        z2.multiply_by_power_of_billion_inplace(2 * m)
+        z1.multiply_by_power_of_billion_inplace(m)
         z2 += z1
         z2 += z0
 
@@ -1329,11 +1332,11 @@ def multiply_slices_toom3(
         var cmp = decimo.biguint.comparison.compare(x0_plus_x2, x1_val)
         if cmp >= 0:
             pxm1 = x0_plus_x2.copy()
-            subtract_inplace_no_check(pxm1, x1_val)
+            subtract_no_check_inplace(pxm1, x1_val)
             pxm1_neg = False
         else:
             pxm1 = x1_val^
-            subtract_inplace_no_check(pxm1, x0_plus_x2)
+            subtract_no_check_inplace(pxm1, x0_plus_x2)
             pxm1_neg = True
     else:
         pxm1 = x0_plus_x2.copy()
@@ -1347,11 +1350,11 @@ def multiply_slices_toom3(
         var cmp = decimo.biguint.comparison.compare(y0_plus_y2, y1_val)
         if cmp >= 0:
             qym1 = y0_plus_y2.copy()
-            subtract_inplace_no_check(qym1, y1_val)
+            subtract_no_check_inplace(qym1, y1_val)
             qym1_neg = False
         else:
             qym1 = y1_val^
-            subtract_inplace_no_check(qym1, y0_plus_y2)
+            subtract_no_check_inplace(qym1, y0_plus_y2)
             qym1_neg = True
     else:
         qym1 = y0_plus_y2.copy()
@@ -1361,13 +1364,13 @@ def multiply_slices_toom3(
     var px2: BigUInt
     if has_x2:
         px2 = BigUInt.from_slice(x, (sx2_start, sx2_end))
-        multiply_inplace_by_uint32(px2, UInt32(2))
+        multiply_by_uint32_inplace(px2, UInt32(2))
     else:
         px2 = BigUInt.zero()
     if has_x1:
         var x1_slice = BigUInt.from_slice(x, (sx1_start, sx1_end))
         add_inplace(px2, x1_slice)
-    multiply_inplace_by_uint32(px2, UInt32(2))
+    multiply_by_uint32_inplace(px2, UInt32(2))
     var x0_slice = BigUInt.from_slice(x, (sx0_start, sx0_end))
     add_inplace(px2, x0_slice)
 
@@ -1375,13 +1378,13 @@ def multiply_slices_toom3(
     var qy2: BigUInt
     if has_y2:
         qy2 = BigUInt.from_slice(y, (sy2_start, sy2_end))
-        multiply_inplace_by_uint32(qy2, UInt32(2))
+        multiply_by_uint32_inplace(qy2, UInt32(2))
     else:
         qy2 = BigUInt.zero()
     if has_y1:
         var y1_slice = BigUInt.from_slice(y, (sy1_start, sy1_end))
         add_inplace(qy2, y1_slice)
-    multiply_inplace_by_uint32(qy2, UInt32(2))
+    multiply_by_uint32_inplace(qy2, UInt32(2))
     var y0_slice = BigUInt.from_slice(y, (sy0_start, sy0_end))
     add_inplace(qy2, y0_slice)
 
@@ -1447,7 +1450,7 @@ def multiply_slices_toom3(
     else:
         # v1 - vm1 = 2*(w1 + w3) >= 0
         t1 = v1.copy()
-        subtract_inplace_no_check(t1, vm1)
+        subtract_no_check_inplace(t1, vm1)
     exact_divide_by_2_inplace(t1)
 
     # --- Compute w2 = (v1 + vm1_signed) / 2 - w0 - w4 ---
@@ -1457,34 +1460,34 @@ def multiply_slices_toom3(
     var w2: BigUInt
     if vm1_neg:
         w2 = v1.copy()
-        subtract_inplace_no_check(w2, vm1)
+        subtract_no_check_inplace(w2, vm1)
     else:
         w2 = add(v1, vm1)
     exact_divide_by_2_inplace(w2)
     # w2 = w2 - w0 - w4 (both subtractions are safe: result = w2 >= 0)
-    subtract_inplace_no_check(w2, v0)
-    subtract_inplace_no_check(w2, vinf)
+    subtract_no_check_inplace(w2, v0)
+    subtract_no_check_inplace(w2, vinf)
 
     # --- Compute t3 = (v2 - w0 - 16*w4) / 2 = w1 + 2*w2 + 4*w3 ---
     var t3 = v2^  # move v2, no longer needed
-    subtract_inplace_no_check(t3, v0)
+    subtract_no_check_inplace(t3, v0)
     # Subtract 16 * vinf
     if not vinf.is_zero():
         var vinf_16 = vinf.copy()
-        multiply_inplace_by_uint32(vinf_16, UInt32(16))
-        subtract_inplace_no_check(t3, vinf_16)
+        multiply_by_uint32_inplace(vinf_16, UInt32(16))
+        subtract_no_check_inplace(t3, vinf_16)
     exact_divide_by_2_inplace(t3)
 
     # --- Compute w3 = (t3 - 2*w2 - t1) / 3 ---
     # Avoid copy: subtract w2 twice instead of creating w2*2
-    subtract_inplace_no_check(t3, w2)
-    subtract_inplace_no_check(t3, w2)
-    subtract_inplace_no_check(t3, t1)
+    subtract_no_check_inplace(t3, w2)
+    subtract_no_check_inplace(t3, w2)
+    subtract_no_check_inplace(t3, t1)
     exact_divide_by_3_inplace(t3)
     # t3 now holds w3
 
     # --- Compute w1 = t1 - w3 ---
-    subtract_inplace_no_check(t1, t3)
+    subtract_no_check_inplace(t1, t3)
     # t1 now holds w1
 
     # ===================================================================
@@ -1529,7 +1532,7 @@ def multiply_slices_toom3(
     return result^
 
 
-def multiply_inplace_by_uint32(mut x: BigUInt, y: UInt32):
+def multiply_by_uint32_inplace(mut x: BigUInt, y: UInt32):
     """Multiplies in-place a BigUInt by a UInt32 value.
 
     Args:
@@ -1537,10 +1540,10 @@ def multiply_inplace_by_uint32(mut x: BigUInt, y: UInt32):
         y: The single word to multiply by.
     """
     # Short circuit cases when y is between 0 and 4
-    # See `multiply_inplace_by_uint32_le_4()` for details
+    # See `multiply_by_uint32_le_4_inplace()` for details
     # The performance is the best when `y <= 2`
     if y <= 2:
-        multiply_inplace_by_uint32_le_4(x, y)
+        multiply_by_uint32_le_4_inplace(x, y)
         return
 
     var y_as_uint64 = UInt64(y)
@@ -1556,7 +1559,7 @@ def multiply_inplace_by_uint32(mut x: BigUInt, y: UInt32):
         x.words.append(UInt32(carry))
 
 
-def multiply_inplace_by_uint32_le_4(mut x: BigUInt, y: UInt32):
+def multiply_by_uint32_le_4_inplace(mut x: BigUInt, y: UInt32):
     """Multiplies in-place a BigUInt by a UInt32 value which is between 0 and 4.
 
     Args:
@@ -1565,7 +1568,7 @@ def multiply_inplace_by_uint32_le_4(mut x: BigUInt, y: UInt32):
 
     Notes:
 
-    This function will be used in the `multiply_inplace_by_uint32()` function.
+    This function will be used in the `multiply_by_uint32_inplace()` function.
     It is optimized for the case where y is between 0 and 4.
 
     When a valid word times 2, 3, or 4, the result is no larger than 4*10^9,
@@ -1702,7 +1705,7 @@ def multiply_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
     return result^
 
 
-def multiply_inplace_by_power_of_ten(mut x: BigUInt, n: Int):
+def multiply_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
     """Multiplies a BigUInt in-place by 10^n (n >= 0).
 
     Args:
@@ -1716,7 +1719,7 @@ def multiply_inplace_by_power_of_ten(mut x: BigUInt, n: Int):
     """
     debug_assert[assert_mode="none"](
         n >= 0,
-        "multiply_inplace_by_power_of_ten(): n must be non-negative, got ",
+        "multiply_by_power_of_ten_inplace(): n must be non-negative, got ",
         n,
     )
 
@@ -1726,7 +1729,7 @@ def multiply_inplace_by_power_of_ten(mut x: BigUInt, n: Int):
     if x.is_zero():
         debug_assert[assert_mode="none"](
             len(x.words) == 1,
-            "multiply_inplace_by_power_of_ten(): leading zero words",
+            "multiply_by_power_of_ten_inplace(): leading zero words",
         )
         # If x is zero, we can just return
         # No need to add zeros, it will still be zero
@@ -1738,7 +1741,7 @@ def multiply_inplace_by_power_of_ten(mut x: BigUInt, n: Int):
     # SPECIAL CASE: If n is a multiple of 9
     if number_of_remaining_digits == 0:
         # If n is a multiple of 9, we just need to add zero words
-        x.multiply_inplace_by_power_of_billion(number_of_zero_words)
+        x.multiply_by_power_of_billion_inplace(number_of_zero_words)
         return
 
     else:  # number_of_remaining_digits > 0
@@ -1821,7 +1824,7 @@ def multiply_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
     if x.is_zero():
         debug_assert[assert_mode="none"](
             len(x.words) == 1,
-            "multiply_inplace_by_power_of_billion(): leading zero words",
+            "multiply_by_power_of_billion_inplace(): leading zero words",
         )
         # If x is zero, we can just return
         # No need to add zeros, it will still be zero
@@ -1837,7 +1840,7 @@ def multiply_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
     return res^
 
 
-def multiply_inplace_by_power_of_billion(mut x: BigUInt, n: Int):
+def multiply_by_power_of_billion_inplace(mut x: BigUInt, n: Int):
     """Multiplies a BigUInt in-place by (10^9)^n (n >= 0).
     This equals to adding 9n zeros (n words) to the end of the number.
 
@@ -1852,7 +1855,7 @@ def multiply_inplace_by_power_of_billion(mut x: BigUInt, n: Int):
     """
     debug_assert[assert_mode="none"](
         n >= 0,
-        "multiply_inplace_by_power_of_billion(): n must be non-negative, got ",
+        "multiply_by_power_of_billion_inplace(): n must be non-negative, got ",
         n,
     )
 
@@ -1862,7 +1865,7 @@ def multiply_inplace_by_power_of_billion(mut x: BigUInt, n: Int):
     if x.is_zero():
         debug_assert[assert_mode="none"](
             len(x.words) == 1,
-            "multiply_inplace_by_power_of_billion(): leading zero words",
+            "multiply_by_power_of_billion_inplace(): leading zero words",
         )
         # If x is zero, we can just return
         # No need to add zeros, it will still be zero
@@ -2137,8 +2140,8 @@ def floor_divide_school(x: BigUInt, y: BigUInt) raises -> BigUInt:
 
         # Calculate trial product
         trial_product = y.copy()
-        multiply_inplace_by_uint32(trial_product, quotient)
-        multiply_inplace_by_power_of_billion(trial_product, index_of_word)
+        multiply_by_uint32_inplace(trial_product, quotient)
+        multiply_by_power_of_billion_inplace(trial_product, index_of_word)
 
         # By construction, no correction is needed
         # Add correction attempts counter to avoid infinite loop
@@ -2154,7 +2157,7 @@ def floor_divide_school(x: BigUInt, y: BigUInt) raises -> BigUInt:
         # Store the quotient word
         result.words[index_of_word] = quotient
         # By construction, trial_product <= remainder
-        subtract_inplace_no_check(remainder, trial_product)
+        subtract_no_check_inplace(remainder, trial_product)
         index_of_word -= 1
 
     result.remove_leading_empty_words()
@@ -2286,7 +2289,7 @@ def floor_divide_by_uint32(x: BigUInt, y: UInt32) -> BigUInt:
     return result^
 
 
-def floor_divide_inplace_by_uint32(mut x: BigUInt, y: UInt32) -> None:
+def floor_divide_by_uint32_inplace(mut x: BigUInt, y: UInt32) -> None:
     """Divides a BigUInt by a UInt32 divisor in-place.
 
     Args:
@@ -2299,7 +2302,11 @@ def floor_divide_inplace_by_uint32(mut x: BigUInt, y: UInt32) -> None:
     It is not intended for public use. You need to ensure that y is non-zero.
     """
     debug_assert[assert_mode="none"](
-        y != 0, "biguint.arithmetics.floor_divide_by_uint32(): Division by zero"
+        y != 0,
+        (
+            "biguint.arithmetics.floor_divide_by_uint32_inplace(): Division by"
+            " zero"
+        ),
     )
 
     # Most significant word of the dividend
@@ -2330,7 +2337,7 @@ def floor_divide_by_uint64(x: BigUInt, y: UInt64) -> BigUInt:
     """
     debug_assert[assert_mode="none"](
         y != 0,
-        "biguint.arithmetics.floor_divide_inplace_by_uint64(): ",
+        "biguint.arithmetics.floor_divide_by_uint64(): ",
         "Division by zero.",
     )
 
@@ -2360,7 +2367,7 @@ def floor_divide_by_uint64(x: BigUInt, y: UInt64) -> BigUInt:
     return result^
 
 
-def floor_divide_inplace_by_uint64(mut x: BigUInt, y: UInt64) -> None:
+def floor_divide_by_uint64_inplace(mut x: BigUInt, y: UInt64) -> None:
     """Divides a BigUInt by UInt64 in-place.
 
     Args:
@@ -2369,7 +2376,7 @@ def floor_divide_inplace_by_uint64(mut x: BigUInt, y: UInt64) -> None:
     """
     debug_assert[assert_mode="none"](
         y != 0,
-        "biguint.arithmetics.floor_divide_inplace_by_uint64(): ",
+        "biguint.arithmetics.floor_divide_by_uint64_inplace(): ",
         "Division by zero.",
     )
 
@@ -2408,7 +2415,7 @@ def floor_divide_by_uint128(x: BigUInt, y: UInt128) -> BigUInt:
     """
     debug_assert[assert_mode="none"](
         y != 0,
-        "biguint.arithmetics.floor_divide_inplace_by_uint128(): ",
+        "biguint.arithmetics.floor_divide_by_uint128(): ",
         "Division by zero.",
     )
 
@@ -2474,7 +2481,7 @@ def floor_divide_by_uint128(x: BigUInt, y: UInt128) -> BigUInt:
     return result^
 
 
-def floor_divide_inplace_by_2(mut x: BigUInt) -> None:
+def floor_divide_by_2_inplace(mut x: BigUInt) -> None:
     """Divides a BigUInt by 2 in-place.
 
     Args:
@@ -2482,7 +2489,7 @@ def floor_divide_inplace_by_2(mut x: BigUInt) -> None:
     """
     if x.is_zero():
         debug_assert[assert_mode="none"](
-            len(x.words) == 1, "floor_divide_inplace_by_2(): leading zero words"
+            len(x.words) == 1, "floor_divide_by_2_inplace(): leading zero words"
         )
         return
 
@@ -2500,7 +2507,8 @@ def floor_divide_inplace_by_2(mut x: BigUInt) -> None:
     x.remove_leading_empty_words()
 
 
-# TODO: Implement a in-place version of this function
+# TODO: If n % 9 == 0, the in-place version can be optimized by
+# delegating to `floor_divide_by_power_of_billion_inplace` directly.
 def floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
     """Floor divides a BigUInt by 10^n (n>=0).
     It is equal to removing the last n digits of the number.
@@ -2510,7 +2518,7 @@ def floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
         n: The power of 10 to divide by. Should be non-negative.
 
     Returns:
-        A new BigUInt containing the result of the multiplication.
+        A new BigUInt containing the result of the division.
 
     Notes:
 
@@ -2529,30 +2537,97 @@ def floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
     if n <= 0:
         return x.copy()
 
-    # First remove the last words (10^9)
-    var result: BigUInt
-    if len(x.words) == 1:
-        result = x.copy()
-    else:
-        var word_shift = n // 9
-        # If we need to drop more words than exists, result is zero
-        if word_shift >= len(x.words):
-            return BigUInt.zero()
-        # Create result with the remaining words
-        result = BigUInt(uninitialized_capacity=len(x.words) - word_shift)
-        for i in range(word_shift, len(x.words)):
-            result.words.append(x.words[i])
-
-    # Then shift the remaining words right
-    # Get the last word of the divisor
+    var word_shift = n // 9
     var digit_shift = n % 9
-    var carry = UInt32(0)
-    var divisor: UInt32
+
+    # If we need to drop more words than exists, the result is zero.
+    if word_shift >= len(x.words):
+        return BigUInt.zero()
+
+    # Whole-word divide: delegate to the cheaper specialised path.
     if digit_shift == 0:
-        # No need to shift, just return the result
-        result.remove_leading_empty_words()
-        return result^
-    elif digit_shift == 1:
+        return floor_divide_by_power_of_billion(x, word_shift)
+
+    # Drop the low `word_shift` words via memcpy, then sub-word shift.
+    var keep = len(x.words) - word_shift
+    var result = BigUInt(unsafe_uninit_length=keep)
+    memcpy(
+        dest=result.words._data,
+        src=x.words._data + word_shift,
+        count=keep,
+    )
+    _shift_right_by_decimal_digits_inplace(result, digit_shift)
+    return result^
+
+
+fn floor_divide_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
+    """In-place version of `floor_divide_by_power_of_ten`. Drops the
+    `n` lowest decimal digits of `x` directly inside its `words`
+    storage, avoiding an allocation when only a sub-word shift is
+    needed.
+
+    Args:
+        x: The BigUInt value to divide in place.
+        n: The power of 10 to divide by. Should be non-negative.
+
+    Notes:
+
+    No-op when `n <= 0`. When `n` is at least the current decimal
+    width, `x` becomes the canonical zero (a single word holding 0).
+    Delegates to `floor_divide_by_power_of_billion_inplace` whenever
+    `n` is a multiple of 9, which is the common case for word-aligned
+    truncation. In debug mode, asserts that `n` is non-negative.
+    """
+    debug_assert[assert_mode="none"](
+        n >= 0,
+        (
+            "biguint.arithmetics.floor_divide_by_power_of_ten_inplace(): "
+            "n must be non-negative but got "
+            + String(n)
+        ),
+    )
+
+    if n <= 0:
+        return
+
+    var word_shift = n // 9
+    var digit_shift = n % 9
+
+    if word_shift >= len(x.words):
+        x.words.shrink(0)
+        x.words.append(UInt32(0))
+        return
+
+    if digit_shift == 0:
+        floor_divide_by_power_of_billion_inplace(x, word_shift)
+        return
+
+    if word_shift > 0:
+        # Forward shift is safe: dst index < src index, dst[i] is
+        # written before src[i+1] is read.
+        var keep = len(x.words) - word_shift
+        for i in range(keep):
+            x.words[i] = x.words[i + word_shift]
+        x.words.shrink(keep)
+
+    _shift_right_by_decimal_digits_inplace(x, digit_shift)
+
+
+fn _shift_right_by_decimal_digits_inplace(mut x: BigUInt, digit_shift: Int):
+    """Divides `x` in place by `10^digit_shift`, where
+    `1 <= digit_shift <= 8`. Assumes any whole-word shift has already
+    been applied; this only performs the sub-word digit shift and
+    canonicalises the result.
+    """
+    debug_assert[assert_mode="none"](
+        digit_shift >= 1 and digit_shift <= 8,
+        (
+            "biguint.arithmetics._shift_right_by_decimal_digits_inplace(): "
+            "digit_shift must be in [1, 8]"
+        ),
+    )
+    var divisor: UInt32
+    if digit_shift == 1:
         divisor = UInt32(10)
     elif digit_shift == 2:
         divisor = UInt32(100)
@@ -2569,14 +2644,13 @@ def floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
     else:  # digit_shift == 8
         divisor = UInt32(100000000)
     var power_of_carry = BigUInt.BASE // divisor
-    for i in range(len(result.words) - 1, -1, -1):
-        var quot = result.words[i] // divisor
-        var rem = result.words[i] % divisor
-        result.words[i] = quot + carry * power_of_carry
+    var carry = UInt32(0)
+    for i in range(len(x.words) - 1, -1, -1):
+        var quot = x.words[i] // divisor
+        var rem = x.words[i] % divisor
+        x.words[i] = quot + carry * power_of_carry
         carry = rem
-
-    result.remove_leading_empty_words()
-    return result^
+    x.remove_leading_empty_words()
 
 
 def floor_divide_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
@@ -2619,6 +2693,46 @@ def floor_divide_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
             count=n_words_of_result,
         )
         return result^
+
+
+fn floor_divide_by_power_of_billion_inplace(mut x: BigUInt, n: Int):
+    """In-place version of `floor_divide_by_power_of_billion`. Drops
+    the `n` lowest base-10^9 words of `x` directly inside its `words`
+    storage, avoiding an allocation.
+
+    Args:
+        x: The BigUInt value to divide in place.
+        n: The power of 10^9 to divide by. Should be non-negative.
+
+    Notes:
+
+    No-op when `n <= 0`. When `n` is at least the current word count,
+    `x` becomes the canonical zero (a single word holding 0). In
+    debug mode, asserts that `n` is non-negative.
+    """
+    debug_assert[assert_mode="none"](
+        n >= 0,
+        (
+            "biguint.arithmetics.floor_divide_by_power_of_billion_inplace(): "
+            "n must be non-negative but got "
+            + String(n)
+        ),
+    )
+
+    if n <= 0:
+        return
+
+    var keep = len(x.words) - n
+    if keep <= 0:
+        x.words.shrink(0)
+        x.words.append(UInt32(0))
+        return
+
+    # Forward shift is safe: dst index < src index, dst[i] is written
+    # before src[i+1] is read.
+    for i in range(keep):
+        x.words[i] = x.words[i + n]
+    x.words.shrink(keep)
 
 
 # FAST RUCURSIVE DIVISION ALGORITHM
@@ -2694,10 +2808,10 @@ def floor_divide_burnikel_ziegler(
         n - len(normalized_b.words)
     ) * 9 + ndigits_to_shift
 
-    decimo.biguint.arithmetics.multiply_inplace_by_power_of_ten(
+    decimo.biguint.arithmetics.multiply_by_power_of_ten_inplace(
         normalized_b, n_digits_to_scale_up
     )
-    decimo.biguint.arithmetics.multiply_inplace_by_power_of_ten(
+    decimo.biguint.arithmetics.multiply_by_power_of_ten_inplace(
         normalized_a, n_digits_to_scale_up
     )
 
@@ -2711,10 +2825,10 @@ def floor_divide_burnikel_ziegler(
         gap_ratio = BigUInt.BASE_MAX // normalized_b.words[-1]
 
     if gap_ratio >= 2:
-        decimo.biguint.arithmetics.multiply_inplace_by_uint32(
+        decimo.biguint.arithmetics.multiply_by_uint32_inplace(
             normalized_b, gap_ratio
         )
-        decimo.biguint.arithmetics.multiply_inplace_by_uint32(
+        decimo.biguint.arithmetics.multiply_by_uint32_inplace(
             normalized_a, gap_ratio
         )
 
@@ -2770,17 +2884,17 @@ def floor_divide_burnikel_ziegler(
             )
             q_i = _tuple[0].copy()
             z = _tuple[1].copy()
-            decimo.biguint.arithmetics.multiply_inplace_by_power_of_billion(
+            decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(
                 q, n
             )
             q += q_i
 
         if i > 0:
-            decimo.biguint.arithmetics.multiply_inplace_by_power_of_billion(
+            decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(
                 z, n
             )
             # z = r + a[(i - 1) * n : i * n]
-            decimo.biguint.arithmetics.add_inplace_by_slice(
+            decimo.biguint.arithmetics.add_by_slice_inplace(
                 z,
                 normalized_a,
                 bounds_y=((i - 1) * n, i * n),
@@ -2844,7 +2958,7 @@ def floor_divide_two_by_one(
         var s = _tuple[1].copy()  # s is the final remainder
 
         # q -> q1q0
-        decimo.biguint.arithmetics.multiply_inplace_by_power_of_billion(
+        decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(
             q, n // 2
         )
         q += q0
@@ -2889,19 +3003,19 @@ def floor_divide_three_by_two(
         a2a1 = a1.copy()
     else:
         a2a1 = a2.copy()
-        decimo.biguint.arithmetics.multiply_inplace_by_power_of_billion(a2a1, n)
+        decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(a2a1, n)
         a2a1 += a1
     # TODO: Refine this when Mojo support move values of unpacked tuples
     _tuple = floor_divide_two_by_one(a2a1, b1, n, cut_off)
     var q = _tuple[0].copy()
     ref c = _tuple[1]  # c is the carry
     var d = q * b0
-    decimo.biguint.arithmetics.multiply_inplace_by_power_of_billion(c, n)
+    decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(c, n)
     var r = c + a0
 
     if r < d:
         var b = b1.copy()
-        decimo.biguint.arithmetics.multiply_inplace_by_power_of_billion(b, n)
+        decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(b, n)
         b += b0
         q -= BigUInt.one()
         r += b
@@ -3002,8 +3116,8 @@ def floor_divide_slices_two_by_one(
         var q = _tuple[0].copy()  # q is q1
         ref r = _tuple[1]  # r is the carry
 
-        multiply_inplace_by_power_of_billion(r, n // 2)
-        add_inplace_by_slice(r, a, (bounds_a[0], bounds_a[0] + n // 2))
+        multiply_by_power_of_billion_inplace(r, n // 2)
+        add_by_slice_inplace(r, a, (bounds_a[0], bounds_a[0] + n // 2))
         _tuple = floor_divide_slices_three_by_two(
             r, b, (0, len(r.words)), bounds_b, n // 2, cut_off
         )
@@ -3011,7 +3125,7 @@ def floor_divide_slices_two_by_one(
         var s = _tuple[1].copy()  # s is the final remainder
 
         # q -> q1q0
-        decimo.biguint.arithmetics.multiply_inplace_by_power_of_billion(
+        decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(
             q, n // 2
         )
         q += q0
@@ -3081,17 +3195,17 @@ def floor_divide_slices_three_by_two(
     ref c = _tuple[1]  # c is the carry
 
     var d = multiply_slices(q, b, (0, len(q.words)), bounds_b0)
-    decimo.biguint.arithmetics.multiply_inplace_by_power_of_billion(c, n)
+    decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(c, n)
     var r = add_slices(c, a, bounds_x=(0, len(c.words)), bounds_y=bounds_a0)
 
     if r < d:
         q -= BigUInt.one()
         # r = r + b
-        add_inplace_by_slice(r, b, bounds_y=bounds_b)
+        add_by_slice_inplace(r, b, bounds_y=bounds_b)
         if r < d:
             q -= BigUInt.one()
             # r = r + b
-            add_inplace_by_slice(r, b, bounds_y=bounds_b)
+            add_by_slice_inplace(r, b, bounds_y=bounds_b)
 
     r -= d
     q.remove_leading_empty_words()
@@ -3271,7 +3385,7 @@ def ceil_divide(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
     # Apply floor division and check if there is a remainder
     var quotient = floor_divide(x1, x2)
     if quotient * x2 < x1:
-        add_inplace_by_uint32(quotient, 1)
+        add_by_uint32_inplace(quotient, 1)
     return quotient^
 
 
