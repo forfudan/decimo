@@ -67,12 +67,15 @@ jobs:
             echo "=== build crashed, retrying in 5s... ==="
             sleep 5
           done
+      - name: Verify decimo.mojopkg was produced
+        run: test -f decimo.mojopkg
       - name: Upload decimo.mojopkg artifact
         uses: actions/upload-artifact@v4
         with:
           name: decimo-mojopkg
           path: decimo.mojopkg
           retention-days: 1
+          if-no-files-found: error
 
   # ── Test: BigDecimal ─────────────────────────────────────────────────────────
   test-bigdecimal:

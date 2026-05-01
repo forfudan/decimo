@@ -1,5 +1,5 @@
 name: Setup Decimo with Pixi
-description: Install pixi (cached), activate the Mojo environment, and download the prebuilt decimo.mojopkg artifact into tests/ and benches/.
+description: Install pixi (cached), activate the Mojo environment, and download the prebuilt decimo.mojopkg artifact into tests/.
 
 runs:
   using: composite
