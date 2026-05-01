@@ -995,7 +995,7 @@ struct BigDecimal(
         return decimo.bigdecimal.arithmetics.subtract(self, other)
 
     @always_inline
-    def __mul__(self, other: Self) -> Self:
+    def __mul__(self, other: Self) raises -> Self:
         """Multiplies two values.
 
         Args:
@@ -2195,7 +2195,7 @@ struct BigDecimal(
         if precision_diff <= 0:
             return
 
-        decimo.biguint.arithmetics.multiply_inplace_by_power_of_ten(
+        decimo.biguint.arithmetics.multiply_by_power_of_ten_inplace(
             self.coefficient, precision_diff
         )
         self.scale += precision_diff

@@ -79,49 +79,60 @@ Dated by report file under `benches/bigdecimal/reports/`. Append-only.
 Best-of-5, `-D ASSERT=none`. Append-only. Where a precision is omitted
 the operation only runs at p=100 in that snapshot.
 
-| Date     | op   | p=100 | p=1000 | p=10000 | p=100000 | note                                       |
-| -------- | ---- | ----: | -----: | ------: | -------: | ------------------------------------------ |
-| 20260221 | div  |   ~7M |    ~6M |   ~480M |   444M\* | pre-T1 asymmetric (\*65536w/32768w)        |
-| 20260221 | div  |   614 |   3.2k |     25k |     245k | post-T1 asymmetric (614 ns at 32768/65536) |
-| 20260224 | sqrt |  8.6k |   166k |      7M |        — | post-T4 reciprocal-Newton                  |
-| 20260224 | exp  |   24k |   1.7M |       — |        — | post-T3d aggressive halving                |
-| 20260224 | ln   |  104k |    38M |       — |        — | post-T3a/b/c (far-from-1 still slow)       |
-| 20260430 | add  |   276 |    280 |     290 |      269 | latest 60-case sweep                       |
-| 20260430 | sub  |   211 |    203 |     220 |      210 | latest 50-case sweep                       |
-| 20260430 | mul  |   140 |    140 |     140 |      130 | latest 50-case sweep                       |
-| 20260430 | div  |   805 |   3.2k |     25k |     245k | latest 64-case sweep                       |
-| 20260430 | cmp  |   9.4 |    8.7 |     9.5 |        — | independent of precision                   |
+| Date      | op   | p=100 | p=1000 | p=10000 | p=100000 | note                                         |
+| --------- | ---- | ----: | -----: | ------: | -------: | -------------------------------------------- |
+| 20260221  | div  |   ~7M |    ~6M |   ~480M |   444M\* | pre-T1 asymmetric (\*65536w/32768w)          |
+| 20260221  | div  |   614 |   3.2k |     25k |     245k | post-T1 asymmetric (614 ns at 32768/65536)   |
+| 20260224  | sqrt |  8.6k |   166k |      7M |        — | post-T4 reciprocal-Newton                    |
+| 20260224  | exp  |   24k |   1.7M |       — |        — | post-T3d aggressive halving                  |
+| 20260224  | ln   |  104k |    38M |       — |        — | post-T3a/b/c (far-from-1 still slow)         |
+| 20260430  | add  |   276 |    280 |     290 |      269 | latest 60-case sweep                         |
+| 20260430  | sub  |   211 |    203 |     220 |      210 | latest 50-case sweep                         |
+| 20260430  | mul  |   140 |    140 |     140 |      130 | latest 50-case sweep                         |
+| 20260430  | div  |   805 |   3.2k |     25k |     245k | latest 64-case sweep                         |
+| 20260430  | cmp  |   9.4 |    8.7 |     9.5 |        — | independent of precision                     |
+| 20260430b | add  |   134 |    126 |     142 |        — | post-T-API1: −50% / −55% / −51% vs row above |
+| 20260430b | sub  |   137 |    138 |     136 |        — | post-T-API1: −35% / −32% / −38% vs row above |
+| 20260430b | mul  |    90 |    105 |      80 |        — | post-T-API1: −36% / −25% / −43% vs row above |
 
 ### 2.5 Performance tracking — decimo / python ratio (>1 = decimo slower)
 
-| Date     | op     | p=100 | p=1000 | p=10000 |
-| -------- | ------ | ----: | -----: | ------: |
-| 20260224 | add    |  4.7× |   4.9× |    4.9× |
-| 20260224 | sub    |  3.6× |   3.5× |    3.8× |
-| 20260224 | mul    |  2.3× |   2.4× |    2.4× |
-| 20260224 | div    |  5.4× |   5.8× |    5.0× |
-| 20260224 | cmp    |  0.2× |      — |       — |
-| 20260224 | sqrt   |  2.1× |   0.7× |    0.3× |
-| 20260224 | exp    |  1.8× |   0.4× |       — |
-| 20260224 | ln     |  4.6× |   9.2× |       — |
-| 20260224 | root   |  0.3× |   0.0× |       — |
-| 20260224 | frmstr |  1.2× |   1.2× |    1.2× |
-| 20260224 | tostr  |  1.3× |   1.3× |    1.2× |
-| 20260224 | round  |  1.9× |   2.1× |    2.2× |
-| 20260430 | add    |  4.9× |   5.4× |    5.0× |
-| 20260430 | sub    |  3.7× |   3.7× |    3.3× |
-| 20260430 | mul    |  2.6× |   2.3× |    2.4× |
-| 20260430 | div    |  6.5× |   5.3× |    5.1× |
-| 20260430 | cmp    |  0.2× |      — |       — |
-| 20260430 | sqrt   |  2.1× |   0.7× |    0.3× |
-| 20260430 | exp    |  1.6× |   0.4× |       — |
-| 20260430 | ln     |  4.3× |   8.9× |       — |
-| 20260430 | root   |  0.2× |   0.0× |       — |
-| 20260430 | frmstr |  1.4× |      — |       — |
-| 20260430 | tostr  |  1.0× |      — |       — |
-| 20260430 | round  |  2.2× |   2.2× |    2.3× |
+| Date      | op     | p=100 | p=1000 | p=10000 | Comments      |
+| --------- | ------ | ----: | -----: | ------: | ------------- |
+| 20260224  | add    |  4.7× |   4.9× |    4.9× |               |
+| 20260224  | sub    |  3.6× |   3.5× |    3.8× |               |
+| 20260224  | mul    |  2.3× |   2.4× |    2.4× |               |
+| 20260224  | div    |  5.4× |   5.8× |    5.0× |               |
+| 20260224  | cmp    |  0.2× |      — |       — |               |
+| 20260224  | sqrt   |  2.1× |   0.7× |    0.3× |               |
+| 20260224  | exp    |  1.8× |   0.4× |       — |               |
+| 20260224  | ln     |  4.6× |   9.2× |       — |               |
+| 20260224  | root   |  0.3× |   0.0× |       — |               |
+| 20260224  | frmstr |  1.2× |   1.2× |    1.2× |               |
+| 20260224  | tostr  |  1.3× |   1.3× |    1.2× |               |
+| 20260224  | round  |  1.9× |   2.1× |    2.2× |               |
+| 20260430  | add    |  4.9× |   5.4× |    5.0× |               |
+| 20260430  | sub    |  3.7× |   3.7× |    3.3× |               |
+| 20260430  | mul    |  2.6× |   2.3× |    2.4× |               |
+| 20260430  | div    |  6.5× |   5.3× |    5.1× |               |
+| 20260430b | add    |  2.2× |   2.1× |    2.4× | (post-T-API1) |
+| 20260430b | sub    |  2.3× |   2.3× |    2.3× | (post-T-API1) |
+| 20260430b | mul    |  1.7× |   2.0× |    1.6× | (post-T-API1) |
+| 20260430  | cmp    |  0.2× |      — |       — |               |
+| 20260430  | sqrt   |  2.1× |   0.7× |    0.3× |               |
+| 20260430  | exp    |  1.6× |   0.4× |       — |               |
+| 20260430  | ln     |  4.3× |   8.9× |       — |               |
+| 20260430  | root   |  0.2× |   0.0× |       — |               |
+| 20260430  | frmstr |  1.4× |      — |       — |               |
+| 20260430  | tostr  |  1.0× |      — |       — |               |
+| 20260430  | round  |  2.2× |   2.2× |    2.3× |               |
 
-Latest sweep (2026-04-30, `bigdec_report_20260430_192858.md`).
+Latest sweep (2026-05-01, `bigdecimal_report_20260501_115440.md`,
+add/sub/mul only — post-T-API1 with style cleanup; baseline
+`bigdecimal_report_20260430_192858.md`). Re-measured after the
+in-place truncation rewrite; numbers within ±5% of the first
+post-T-API1 sweep `bigdecimal_report_20260430_211128.md` and slightly
+better for short-precision cases.
 **Note (2026-04-30):** the cross-language harness was simplified to
 `decimo` vs `python` only. The previous Rust `bigdecimal` reference was
 dropped — it lacked `exp`/`ln`/`root`/`round`, used naive long-division,
@@ -160,7 +171,9 @@ kernels (parse/render are precision-insensitive ops).
 | 16  | Short-divisor fast path in `divide` (single-word loop)           | OPEN — `BigUInt.floor_divide_by_uint32` exists; lift to BigDecimal  |
 | 17  | Add/sub `multiply_by_power_of_ten` allocates oversized           | OPEN — root cause of 4.7× py on small-precision add                 |
 | 18  | Small-coefficient mul fast path (bypass Karatsuba dispatch)      | OPEN — borrowed from decimal128 H#4 dispatch-overhead lesson        |
-| 19  | `precision` arg on `add`/`sub`/`multiply` (truncate ops upfront) | OPEN — structural; foundation for T-A2/T-M1 (see T-API1)            |
+| 19  | `precision` arg on `add`/`sub`/`multiply` (truncate ops upfront) | DONE (T-API1, 2026-04-30b)                                          |
+| 20  | Private functions with `_`; Replace raises with debug asserts    | OPEN — improves runtime performance by avoiding unnecessary checks  |
+| 21  | More inplace variants for `BigUInt` and `BigDecimal`             | OPEN — further reduces allocations and improves performance         |
 
 ## 4. Lessons Learnt (the reusable bits)
 
@@ -247,19 +260,20 @@ because the lesson generalises to the variable-length case unchanged.
 
 ## 5. Open Items / Future Improvements
 
-### 5.1 Worst-case ratios still > 1.5× python (latest sweep 2026-04-30)
+### 5.1 Worst-case ratios still > 1.5× python (latest sweep 2026-05-01, post-T-API1)
 
-The new bench harness exposes that **all small-to-medium-precision
-arithmetic ops sit at 2–6× python**, not the previously reported 2–4×
-on a smaller corpus. Closing these is the path to the ≤1.5× target.
+The T-API1 sweep (`bigdecimal_report_20260501_115440.md`) shows the
+add/sub/mul kernels are now within ~2–3× python on every case;
+long-decimal add/sub worst cases dropped from 10–15× py down to
+1.4–4× py.
 
 | Op          | Worst case (p=100)                     | decimo | python | dm/py | Likely cause                                    |
 | ----------- | -------------------------------------- | -----: | -----: | ----: | ----------------------------------------------- |
-| add         | Add of 2000-digit dec with carries     |   3116 |    222 | 14.0× | scale-align + per-call overhead                 |
-| add         | Fib-like large dec add (1100 d)        |   2021 |    128 | 15.8× | same                                            |
-| add         | Addition at precision boundary         |    524 |   57.5 |  9.1× | over-allocation at boundary                     |
-| sub         | (similar long-decimal cases)           |  ~2000 |   ~120 |  ~14× | same                                            |
-| mul         | High precision multiply small operands |    140 |     61 |  2.3× | dispatch overhead, no small-coef fast path      |
+| add         | Add of 1000-digit decimals             |    660 |    140 |  4.7× | residual scale-align overhead post-truncation   |
+| add         | Fib-like large dec add (1100 d)        |    662 |    147 |  4.5× | same                                            |
+| add         | Add of 2000-digit dec with carries     |    644 |    215 |  3.0× | exact path retained for cancellation guard      |
+| sub         | (similar long-decimal cases)           |   ~650 |   ~200 |   ~3× | same                                            |
+| mul         | High precision multiply small operands |    105 |     51 |  2.0× | dispatch overhead, no small-coef fast path      |
 | div         | Repeating-decimal div                  |    805 |  149.6 |  5.4× | full Burnikel-Ziegler even for short divisor    |
 | div (p=10k) | Long decimal divide                    |    25k |   5.0k |  5.0× | same                                            |
 | sqrt(p=100) | √(small irrational)                    |   8.6k |   4.1k |  2.1× | reciprocal-Newton overhead at tiny size         |
@@ -281,32 +295,39 @@ lessons in §4. All borrow patterns proven on the Decimal128 hot path.
 
 P0 — Structural API change (foundation for most P1 wins)
 
-- **T-API1: Add `precision: Int = 0` argument to `add`, `subtract`,
-  `multiply`** (and the `__add__`/`__sub__`/`__mul__` overloads).
-  Today these ops produce the full exact result regardless of how many
-  digits the user actually wants. Python `decimal` and Java
-  `BigDecimal` round to context precision after every op; that is a
-  large part of why Python is 4.7× / 3.6× / 2.3× faster on add/sub/mul
-  at p=100. With a precision hint:
+- **T-API1 — DONE (2026-04-30b).** Added `precision: Int = 0` argument
+  to `add`, `subtract`, `multiply` (existing `__add__`/`__sub__`/`__mul__`
+  overloads keep `precision=0` and so are unchanged). When `precision
+  > 0`:
 
-  - **add/sub:** when one operand's scale is so small relative to the
-    other that its low-order digits would round away (the 14× py
-    "Add of 2000-digit dec with carries" worst case), truncate it via
-    `floor_divide_by_power_of_billion()` *before* the SIMD addition.
-    Same trick that drove T1 (asymmetric divide) to 76× py.
-  - **multiply:** when `digits(a) + digits(b) > precision + guard`,
-    truncate the longer operand by `excess` words upfront. The product
-    of two 1000-digit operands at p=100 currently does the full
-    2000-digit Karatsuba then discards 1900 digits.
-  - **divide:** already takes precision; no change.
-  - **comparison / from_string / to_string:** unaffected.
+  - **add/sub:** estimate the result's leading exponent, then for each
+    operand drop the low base-10^9 words that fall below
+    `result_max_exp - precision - 18` guard digits. A *cancellation
+    guard* skips the truncation when signs would subtract AND the two
+    leading exponents are within `precision + 18` of each other,
+    preserving correctness when the leading digits cancel into the
+    precision window. Final result rounded HALF_EVEN.
+  - **multiply:** when `digits(a) + digits(b) > precision + 18`, the
+    longer operand is truncated by `(excess // 9)` low words upfront,
+    bringing the Karatsuba/Toom-3 width down to the precision window.
 
-  **Default `precision=0` preserves current exact-result behaviour for
-  back-compat.** When non-zero it acts as the rounding context for the
-  return value *and* as a hint for upfront operand truncation.
-  **Estimated:** 30–70% on every long-decimal arithmetic case; the
-  single highest-leverage change open today. Foundation that T-A2,
-  T-M1, T-D1 plug into.
+  Result (sweep `bigdecimal_report_20260501_115440.md`, all 460 cases
+  match python oracle 100%):
+
+  - add: median ns/iter 276/280/290 → 134/126/142 (−50% / −55% / −51%);
+    worst-case dm/py ratio 14× → 4.7×.
+  - sub: 211/203/220 → 137/138/136 (−35% / −32% / −38%);
+    worst case dm/py ~14× → ~3×.
+  - mul: 140/140/140 → 90/105/80 (−36% / −25% / −43%); worst case
+    dm/py 2.3× → 2.0×.
+
+  Within the 30–70% estimate at the median; exceeds it on the long-
+  decimal worst cases (e.g. "Add of 2000-d with carries" 3115 → 644 ns,
+  −79%; "Extreme scale diff with large dec (3000+ d)" 4803 → 739 ns,
+  −85%).
+
+  Foundation in place for T-A2 (multiply_by_power_of_ten alloc audit)
+  and T-M1 to push the small-precision residual gap toward ≤2× py.
 
 P1 — Add/Sub small-precision target (currently 4.7× / 3.6× py → target ≤2×)
 
@@ -425,14 +446,15 @@ P7 — `round` (2× py → target ≤1.0×)
 
 ### 5.3 Long-term tasks not on the active roadmap
 
-| #   | Task                                                           | Effort |
-| --- | -------------------------------------------------------------- | ------ |
-| 5   | NTT multiplication (≥1024 words). Closes the gap with libmpdec | XL     |
-| 9   | SIMD-optimised schoolbook mul kernel                           | M      |
-| 3e  | Binary splitting for ln Taylor series                          | L      |
-| 3g  | AGM-based ln for p ≥ 1000                                      | XL     |
-| 7b  | Reciprocal-Newton for nth root                                 | M      |
-| 7c  | Rational $x^{a/b}$ decomposition                               | S      |
+| #   | Task                                                                                                                                                                 | Effort |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| 5   | NTT multiplication (≥1024 words). Closes the gap with libmpdec                                                                                                       | XL     |
+| 9   | SIMD-optimised schoolbook mul kernel                                                                                                                                 | M      |
+| 3e  | Binary splitting for ln Taylor series                                                                                                                                | L      |
+| 3g  | AGM-based ln for p ≥ 1000                                                                                                                                            | XL     |
+| 7b  | Reciprocal-Newton for nth root                                                                                                                                       | M      |
+| 7c  | Rational $x^{a/b}$ decomposition                                                                                                                                     | S      |
+| 11  | Make `BigUInt.remove_trailing_digits_with_rounding` private and replace its runtime `raise` with a debug assert (saves one `raises` propagation across all callers). | S      |
 
 ## 6. Result-Equivalence vs Python
 
@@ -493,28 +515,28 @@ binary splitting). All implementable in base-10^9.
 Open items in priority order (target: dm/py ≤ 1.5× across the board,
 some ops < 1.0×):
 
-| #      | Issue                                              | Effort | Priority | Target gain             |
-| ------ | -------------------------------------------------- | ------ | -------- | ----------------------- |
-| T-API1 | `precision` arg on `add`/`sub`/`multiply`          | M      | **P0**   | 30–70% long-dec arith   |
-| T-A1   | `debug_assert .format` sweep across BigDecimal     | S      | **P1**   | 10–30% all ops          |
-| T-A2   | `multiply_by_power_of_ten` audit + inplace variant | M      | **P1**   | 30–50% long-dec add/sub |
-| T-A3   | Hot-path-first switch in `add`/`sub`               | S      | **P1**   | 1–3 ns / call           |
-| T-A4   | `@no_inline` raise helpers in BigDecimal/BigUInt   | S      | **P1**   | unblocks always-inline  |
-| T-A5   | `is_zero`/`is_integer` branch audit                | S      | P2       | small                   |
-| T-M1   | Small-coefficient mul fast path                    | M      | **P1**   | 50–70% small-mul        |
-| T-M2   | Single-pass rounding in `multiply`                 | S      | P2       | ~5 ns / call            |
-| T-D1   | Short-divisor fast path in `divide`                | M      | **P1**   | 3–10× short-divisor     |
-| T-D2   | Trailing-zero strip allocation in divide           | S      | P2       | 5–15%                   |
-| T-D3   | Reciprocal-Newton divide (legacy Task 2)           | XL     | P3       | 2× large balanced       |
-| T-S1   | Small-coef short-circuit in `sqrt` p=100           | S      | P2       | ~50% at p=100           |
-| T-L1   | atanh reformulation for ln (T3f)                   | M      | **P1**   | 3× ln near-1            |
-| T-L2   | Process-wide ln(10) cache recipe                   | S      | P3       | doc                     |
-| T-L3   | AGM ln for p ≥ 1000 (T3g)                          | XL     | P4       | 10–50× p≥1000           |
-| T-IO1  | `from_string` digit batching                       | M      | P2       | 30–50%                  |
-| T-IO2  | `to_string` right-aligned InlineArray              | M      | P2       | 20–40%                  |
-| T-R1   | `round` `.format` sweep                            | S      | P2       | small                   |
-| T-7b   | Reciprocal-Newton nth root                         | M      | P3       | 1.5–2×                  |
-| T-7c   | Rational $x^{a/b}$ decomposition                   | S      | P2       | 5–10× frac roots        |
-| T-5    | NTT multiplication                                 | XL     | P4       | 2–10×                   |
-| T-9    | SIMD schoolbook mul base                           | M      | P3       | 1.5–2×                  |
-| T-3e   | Binary splitting for ln Taylor                     | L      | P4       | 2–4× p≥500              |
+| #      | Issue                                              | Effort | Priority | Target gain                                                   |
+| ------ | -------------------------------------------------- | ------ | -------- | ------------------------------------------------------------- |
+| T-API1 | `precision` arg on `add`/`sub`/`multiply`          | M      | **DONE** | −25–55% median; −70–85% on long-dec worst cases (2026-04-30b) |
+| T-A1   | `debug_assert .format` sweep across BigDecimal     | S      | **P1**   | 10–30% all ops                                                |
+| T-A2   | `multiply_by_power_of_ten` audit + inplace variant | M      | **P1**   | 30–50% long-dec add/sub                                       |
+| T-A3   | Hot-path-first switch in `add`/`sub`               | S      | **P1**   | 1–3 ns / call                                                 |
+| T-A4   | `@no_inline` raise helpers in BigDecimal/BigUInt   | S      | **P1**   | unblocks always-inline                                        |
+| T-A5   | `is_zero`/`is_integer` branch audit                | S      | P2       | small                                                         |
+| T-M1   | Small-coefficient mul fast path                    | M      | **P1**   | 50–70% small-mul                                              |
+| T-M2   | Single-pass rounding in `multiply`                 | S      | P2       | ~5 ns / call                                                  |
+| T-D1   | Short-divisor fast path in `divide`                | M      | **P1**   | 3–10× short-divisor                                           |
+| T-D2   | Trailing-zero strip allocation in divide           | S      | P2       | 5–15%                                                         |
+| T-D3   | Reciprocal-Newton divide (legacy Task 2)           | XL     | P3       | 2× large balanced                                             |
+| T-S1   | Small-coef short-circuit in `sqrt` p=100           | S      | P2       | ~50% at p=100                                                 |
+| T-L1   | atanh reformulation for ln (T3f)                   | M      | **P1**   | 3× ln near-1                                                  |
+| T-L2   | Process-wide ln(10) cache recipe                   | S      | P3       | doc                                                           |
+| T-L3   | AGM ln for p ≥ 1000 (T3g)                          | XL     | P4       | 10–50× p≥1000                                                 |
+| T-IO1  | `from_string` digit batching                       | M      | P2       | 30–50%                                                        |
+| T-IO2  | `to_string` right-aligned InlineArray              | M      | P2       | 20–40%                                                        |
+| T-R1   | `round` `.format` sweep                            | S      | P2       | small                                                         |
+| T-7b   | Reciprocal-Newton nth root                         | M      | P3       | 1.5–2×                                                        |
+| T-7c   | Rational $x^{a/b}$ decomposition                   | S      | P2       | 5–10× frac roots                                              |
+| T-5    | NTT multiplication                                 | XL     | P4       | 2–10×                                                         |
+| T-9    | SIMD schoolbook mul base                           | M      | P3       | 1.5–2×                                                        |
+| T-3e   | Binary splitting for ln Taylor                     | L      | P4       | 2–4× p≥500                                                    |

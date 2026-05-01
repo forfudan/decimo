@@ -3,7 +3,7 @@
 # then write a timestamped markdown report under reports/.
 #
 # Raw per-language CSV logs land in   logs/{lang}_{op}_p{prec}_{ts}.csv
-# Aggregated markdown report lands in reports/bigdec_report_{ts}.md
+# Aggregated markdown report lands in reports/bigdecimal_report_{ts}.md
 #
 # Usage:
 #   ./run_all.sh                               # all default ops + per-op precs

@@ -1221,7 +1221,7 @@ struct BigInt(
         Args:
             other: The right-hand side operand.
         """
-        decimo.bigint.arithmetics.add_inplace_int(self, other)
+        decimo.bigint.arithmetics.add_int_inplace(self, other)
 
     @always_inline
     def __isub__(mut self, other: Self):
@@ -2003,7 +2003,7 @@ struct BigInt(
 # ===----------------------------------------------------------------------=== #
 
 
-def _multiply_inplace_by_uint32(mut x: BigInt, y: UInt32):
+def _multiply_by_uint32_inplace(mut x: BigInt, y: UInt32):
     """Multiplies a BigInt magnitude by a UInt32 scalar in-place.
 
     This is used internally by from_string() during base conversion.
@@ -2029,7 +2029,7 @@ def _multiply_inplace_by_uint32(mut x: BigInt, y: UInt32):
         x.words.append(UInt32(carry))
 
 
-def _add_inplace_by_uint32(mut x: BigInt, y: UInt32):
+def _add_by_uint32_inplace(mut x: BigInt, y: UInt32):
     """Adds a UInt32 value to a BigInt magnitude in-place.
 
     This is used internally by from_string() during base conversion.

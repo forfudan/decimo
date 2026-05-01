@@ -1102,7 +1102,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         """
         var result = self.copy()
         for _ in range(shift_amount):
-            decimo.biguint.arithmetics.floor_divide_inplace_by_2(result)
+            decimo.biguint.arithmetics.floor_divide_by_2_inplace(result)
         return result^
 
     # ===------------------------------------------------------------------=== #
@@ -1661,11 +1661,11 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         return decimo.biguint.arithmetics.floor_divide_modulo(self, other)
 
     @always_inline
-    def floor_divide_inplace_by_2(mut self) raises:
+    def floor_divide_by_2_inplace(mut self) raises:
         """Divides this number by 2 in place.
-        See `floor_divide_inplace_by_2()` for more information.
+        See `floor_divide_by_2_inplace()` for more information.
         """
-        decimo.biguint.arithmetics.floor_divide_inplace_by_2(self)
+        decimo.biguint.arithmetics.floor_divide_by_2_inplace(self)
 
     @always_inline
     def multiply_by_power_of_ten(self, n: Int) -> Self:
@@ -1681,14 +1681,14 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         return decimo.biguint.arithmetics.multiply_by_power_of_ten(self, n)
 
     @always_inline
-    def multiply_inplace_by_power_of_ten(mut self, n: Int):
+    def multiply_by_power_of_ten_inplace(mut self, n: Int):
         """Multiplies this number in-place by 10^n (n>=0).
-        See `multiply_inplace_by_power_of_ten()` for more information.
+        See `multiply_by_power_of_ten_inplace()` for more information.
 
         Args:
             n: The power of 10 to multiply by.
         """
-        decimo.biguint.arithmetics.multiply_inplace_by_power_of_ten(self, n)
+        decimo.biguint.arithmetics.multiply_by_power_of_ten_inplace(self, n)
 
     @always_inline
     def floor_divide_by_power_of_ten(self, n: Int) -> Self:
@@ -1705,14 +1705,14 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         return decimo.biguint.arithmetics.floor_divide_by_power_of_ten(self, n)
 
     @always_inline
-    def multiply_inplace_by_power_of_billion(mut self, n: Int):
+    def multiply_by_power_of_billion_inplace(mut self, n: Int):
         """Multiplies a BigUInt in-place by (10^9)^n if n > 0.
         This equals to adding 9n zeros (n words) to the end of the number.
 
         Args:
             n: The power of 10^9 to multiply by. Should be non-negative.
         """
-        decimo.biguint.arithmetics.multiply_inplace_by_power_of_billion(self, n)
+        decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(self, n)
 
     def power(self, exponent: Int) raises -> Self:
         """Returns the result of raising this number to the power of `exponent`.
@@ -2277,7 +2277,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             )
 
         if round_up:
-            decimo.biguint.arithmetics.add_inplace_by_uint32(result, UInt32(1))
+            decimo.biguint.arithmetics.add_by_uint32_inplace(result, UInt32(1))
             # Check whether rounding results in extra digit
             if result.is_power_of_10():
                 if remove_extra_digit_due_to_rounding:
