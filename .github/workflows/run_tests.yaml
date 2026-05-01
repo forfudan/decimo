@@ -14,30 +14,49 @@ defaults:
   run:
     shell: bash
 
-# Shared setup repeated per job (GitHub Actions has no job-level includes,
-# so we keep each job self-contained for clarity and parallelism).
+# The `build` job is the gate: format check, doc generation, and the
+# `decimo.mojopkg` build all run once. The package is uploaded as an
+# artifact so downstream test jobs can download it instead of rebuilding
+# (saves ~30s of `mojo package` per job × 10 jobs). The pixi environment
+# is cached by `prefix-dev/setup-pixi@v0.9.5`, so test jobs no longer
+# `curl | sh` and `pixi install` from scratch.
 
 jobs:
-  # ── Test: BigDecimal ─────────────────────────────────────────────────────────
-  test-bigdecimal:
-    name: Test BigDecimal
+  # ── Gate: Format + Doc + Build package ───────────────────────────────────────
+  build:
+    name: Build & Format & Doc
     runs-on: macos-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Install pixi
-        run: curl -fsSL https://pixi.sh/install.sh | sh
-      - name: Add pixi to PATH
+      - uses: prefix-dev/setup-pixi@v0.9.5
+        with:
+          cache: true
+          activate-environment: true
+      - name: Install pre-commit
+        run: pip install pre-commit
+      - name: Format check
+        run: pre-commit run --all-files
+      - name: Generate docs (with retry for Mojo compiler intermittent crashes)
         run: |
-          echo "PIXI_HOME=$HOME/.pixi" >> $GITHUB_ENV
-          echo "$HOME/.pixi/bin" >> $GITHUB_PATH
-      - name: pixi install
-        run: pixi install
-      - name: Build packages (with retry for Mojo compiler intermittent crashes)
+          for attempt in 1 2 3; do
+            echo "=== doc attempt $attempt ==="
+            if pixi run doc; then
+              echo "=== doc succeeded on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== doc failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== doc crashed, retrying in 5s... ==="
+            sleep 5
+          done
+      - name: Build package (with retry for Mojo compiler intermittent crashes)
         run: |
           for attempt in 1 2 3; do
             echo "=== build attempt $attempt ==="
-            if pixi run mojo package src/decimo && cp decimo.mojopkg tests/; then
+            if pixi run mojo package src/decimo; then
               echo "=== build succeeded on attempt $attempt ==="
               break
             fi
@@ -48,6 +67,22 @@ jobs:
             echo "=== build crashed, retrying in 5s... ==="
             sleep 5
           done
+      - name: Upload decimo.mojopkg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: decimo-mojopkg
+          path: decimo.mojopkg
+          retention-days: 1
+
+  # ── Test: BigDecimal ─────────────────────────────────────────────────────────
+  test-bigdecimal:
+    name: Test BigDecimal
+    needs: build
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-decimo
       - name: Run tests (with retry for Mojo compiler intermittent crashes)
         run: |
           for attempt in 1 2 3; do
@@ -67,33 +102,12 @@ jobs:
   # ── Test: BigInt ─────────────────────────────────────────────────────────────
   test-bigint:
     name: Test BigInt
+    needs: build
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Install pixi
-        run: curl -fsSL https://pixi.sh/install.sh | sh
-      - name: Add pixi to PATH
-        run: |
-          echo "PIXI_HOME=$HOME/.pixi" >> $GITHUB_ENV
-          echo "$HOME/.pixi/bin" >> $GITHUB_PATH
-      - name: pixi install
-        run: pixi install
-      - name: Build packages (with retry for Mojo compiler intermittent crashes)
-        run: |
-          for attempt in 1 2 3; do
-            echo "=== build attempt $attempt ==="
-            if pixi run mojo package src/decimo && cp decimo.mojopkg tests/; then
-              echo "=== build succeeded on attempt $attempt ==="
-              break
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "=== build failed after 3 attempts ==="
-              exit 1
-            fi
-            echo "=== build crashed, retrying in 5s... ==="
-            sleep 5
-          done
+      - uses: ./.github/actions/setup-decimo
       - name: Run tests (with retry for Mojo compiler intermittent crashes)
         run: |
           for attempt in 1 2 3; do
@@ -113,33 +127,12 @@ jobs:
   # ── Test: BigUint ────────────────────────────────────────────────────────────
   test-biguint:
     name: Test BigUint
+    needs: build
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Install pixi
-        run: curl -fsSL https://pixi.sh/install.sh | sh
-      - name: Add pixi to PATH
-        run: |
-          echo "PIXI_HOME=$HOME/.pixi" >> $GITHUB_ENV
-          echo "$HOME/.pixi/bin" >> $GITHUB_PATH
-      - name: pixi install
-        run: pixi install
-      - name: Build packages (with retry for Mojo compiler intermittent crashes)
-        run: |
-          for attempt in 1 2 3; do
-            echo "=== build attempt $attempt ==="
-            if pixi run mojo package src/decimo && cp decimo.mojopkg tests/; then
-              echo "=== build succeeded on attempt $attempt ==="
-              break
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "=== build failed after 3 attempts ==="
-              exit 1
-            fi
-            echo "=== build crashed, retrying in 5s... ==="
-            sleep 5
-          done
+      - uses: ./.github/actions/setup-decimo
       - name: Run tests (with retry for Mojo compiler intermittent crashes)
         run: |
           for attempt in 1 2 3; do
@@ -159,33 +152,12 @@ jobs:
   # ── Test: BigInt10 ───────────────────────────────────────────────────────────
   test-bigint10:
     name: Test BigInt10
+    needs: build
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Install pixi
-        run: curl -fsSL https://pixi.sh/install.sh | sh
-      - name: Add pixi to PATH
-        run: |
-          echo "PIXI_HOME=$HOME/.pixi" >> $GITHUB_ENV
-          echo "$HOME/.pixi/bin" >> $GITHUB_PATH
-      - name: pixi install
-        run: pixi install
-      - name: Build packages (with retry for Mojo compiler intermittent crashes)
-        run: |
-          for attempt in 1 2 3; do
-            echo "=== build attempt $attempt ==="
-            if pixi run mojo package src/decimo && cp decimo.mojopkg tests/; then
-              echo "=== build succeeded on attempt $attempt ==="
-              break
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "=== build failed after 3 attempts ==="
-              exit 1
-            fi
-            echo "=== build crashed, retrying in 5s... ==="
-            sleep 5
-          done
+      - uses: ./.github/actions/setup-decimo
       - name: Run tests (with retry for Mojo compiler intermittent crashes)
         run: |
           for attempt in 1 2 3; do
@@ -205,33 +177,12 @@ jobs:
   # ── Test: Decimal128 ─────────────────────────────────────────────────────────
   test-decimal128:
     name: Test Decimal128
+    needs: build
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Install pixi
-        run: curl -fsSL https://pixi.sh/install.sh | sh
-      - name: Add pixi to PATH
-        run: |
-          echo "PIXI_HOME=$HOME/.pixi" >> $GITHUB_ENV
-          echo "$HOME/.pixi/bin" >> $GITHUB_PATH
-      - name: pixi install
-        run: pixi install
-      - name: Build packages (with retry for Mojo compiler intermittent crashes)
-        run: |
-          for attempt in 1 2 3; do
-            echo "=== build attempt $attempt ==="
-            if pixi run mojo package src/decimo && cp decimo.mojopkg tests/; then
-              echo "=== build succeeded on attempt $attempt ==="
-              break
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "=== build failed after 3 attempts ==="
-              exit 1
-            fi
-            echo "=== build crashed, retrying in 5s... ==="
-            sleep 5
-          done
+      - uses: ./.github/actions/setup-decimo
       - name: Run tests (with retry for Mojo compiler intermittent crashes)
         run: |
           for attempt in 1 2 3; do
@@ -251,33 +202,12 @@ jobs:
   # ── Test: Rational ──────────────────────────────────────────────────────────
   test-rational:
     name: Test Rational
+    needs: build
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Install pixi
-        run: curl -fsSL https://pixi.sh/install.sh | sh
-      - name: Add pixi to PATH
-        run: |
-          echo "PIXI_HOME=$HOME/.pixi" >> $GITHUB_ENV
-          echo "$HOME/.pixi/bin" >> $GITHUB_PATH
-      - name: pixi install
-        run: pixi install
-      - name: Build packages (with retry for Mojo compiler intermittent crashes)
-        run: |
-          for attempt in 1 2 3; do
-            echo "=== build attempt $attempt ==="
-            if pixi run mojo package src/decimo && cp decimo.mojopkg tests/; then
-              echo "=== build succeeded on attempt $attempt ==="
-              break
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "=== build failed after 3 attempts ==="
-              exit 1
-            fi
-            echo "=== build crashed, retrying in 5s... ==="
-            sleep 5
-          done
+      - uses: ./.github/actions/setup-decimo
       - name: Run tests (with retry for Mojo compiler intermittent crashes)
         run: |
           for attempt in 1 2 3; do
@@ -297,35 +227,14 @@ jobs:
   # ── Test: BigFloat ─────────────────────────────────────────────────────────
   test-bigfloat:
     name: Test BigFloat
+    needs: build
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Install pixi
-        run: curl -fsSL https://pixi.sh/install.sh | sh
-      - name: Add pixi to PATH
-        run: |
-          echo "PIXI_HOME=$HOME/.pixi" >> $GITHUB_ENV
-          echo "$HOME/.pixi/bin" >> $GITHUB_PATH
-      - name: pixi install
-        run: pixi install
+      - uses: ./.github/actions/setup-decimo
       - name: Install MPFR
         run: brew install mpfr
-      - name: Build packages (with retry for Mojo compiler intermittent crashes)
-        run: |
-          for attempt in 1 2 3; do
-            echo "=== build attempt $attempt ==="
-            if pixi run mojo package src/decimo && cp decimo.mojopkg tests/; then
-              echo "=== build succeeded on attempt $attempt ==="
-              break
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "=== build failed after 3 attempts ==="
-              exit 1
-            fi
-            echo "=== build crashed, retrying in 5s... ==="
-            sleep 5
-          done
       - name: Run tests (with retry for Mojo compiler intermittent crashes)
         run: |
           for attempt in 1 2 3; do
@@ -345,33 +254,12 @@ jobs:
   # ── Test: TOML parser ─────────────────────────────────────────────────────
   test-toml:
     name: Test TOML parser
+    needs: build
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Install pixi
-        run: curl -fsSL https://pixi.sh/install.sh | sh
-      - name: Add pixi to PATH
-        run: |
-          echo "PIXI_HOME=$HOME/.pixi" >> $GITHUB_ENV
-          echo "$HOME/.pixi/bin" >> $GITHUB_PATH
-      - name: pixi install
-        run: pixi install
-      - name: Build packages (with retry for Mojo compiler intermittent crashes)
-        run: |
-          for attempt in 1 2 3; do
-            echo "=== build attempt $attempt ==="
-            if pixi run mojo package src/decimo && cp decimo.mojopkg tests/; then
-              echo "=== build succeeded on attempt $attempt ==="
-              break
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "=== build failed after 3 attempts ==="
-              exit 1
-            fi
-            echo "=== build crashed, retrying in 5s... ==="
-            sleep 5
-          done
+      - uses: ./.github/actions/setup-decimo
       - name: Run tests (with retry for Mojo compiler intermittent crashes)
         run: |
           for attempt in 1 2 3; do
@@ -389,20 +277,20 @@ jobs:
           done
 
   # ── Test: CLI ────────────────────────────────────────────────────────────────
+  # The CLI test needs a freshly built binary, not the .mojopkg, so we
+  # invoke `pixi run buildcli` here. Uses cached pixi env (no curl install,
+  # no second `pixi install` from scratch).
   test-cli:
     name: Test CLI
+    needs: build
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Install pixi
-        run: curl -fsSL https://pixi.sh/install.sh | sh
-      - name: Add pixi to PATH
-        run: |
-          echo "PIXI_HOME=$HOME/.pixi" >> $GITHUB_ENV
-          echo "$HOME/.pixi/bin" >> $GITHUB_PATH
-      - name: pixi install
-        run: pixi install
+      - uses: prefix-dev/setup-pixi@v0.9.5
+        with:
+          cache: true
+          activate-environment: true
       - name: Build CLI binary (with retry for Mojo compiler intermittent crashes)
         run: |
           for attempt in 1 2 3; do
@@ -437,18 +325,15 @@ jobs:
   # ── Test: Python bindings ────────────────────────────────────────────────────
   test-python:
     name: Test Python bindings
+    needs: build
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Install pixi
-        run: curl -fsSL https://pixi.sh/install.sh | sh
-      - name: Add pixi to PATH
-        run: |
-          echo "PIXI_HOME=$HOME/.pixi" >> $GITHUB_ENV
-          echo "$HOME/.pixi/bin" >> $GITHUB_PATH
-      - name: pixi install
-        run: pixi install
+      - uses: prefix-dev/setup-pixi@v0.9.5
+        with:
+          cache: true
+          activate-environment: true
       - name: Build & run Python tests (with retry for Mojo compiler intermittent crashes)
         run: |
           for attempt in 1 2 3; do
@@ -464,54 +349,3 @@ jobs:
             echo "=== test run crashed, retrying in 5s... ==="
             sleep 5
           done
-
-  # ── Doc generation check ──────────────────────────────────────────────────────
-  doc-check:
-    name: Doc generation
-    runs-on: macos-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install pixi
-        run: curl -fsSL https://pixi.sh/install.sh | sh
-      - name: Add pixi to PATH
-        run: |
-          echo "PIXI_HOME=$HOME/.pixi" >> $GITHUB_ENV
-          echo "$HOME/.pixi/bin" >> $GITHUB_PATH
-      - name: pixi install
-        run: pixi install
-      - name: Generate docs (with retry for Mojo compiler intermittent crashes)
-        run: |
-          for attempt in 1 2 3; do
-            echo "=== doc attempt $attempt ==="
-            if pixi run doc; then
-              echo "=== doc succeeded on attempt $attempt ==="
-              break
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "=== doc failed after 3 attempts ==="
-              exit 1
-            fi
-            echo "=== doc crashed, retrying in 5s... ==="
-            sleep 5
-          done
-
-  # ── Format check ─────────────────────────────────────────────────────────────
-  format-check:
-    name: Format check
-    runs-on: macos-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install pixi
-        run: curl -fsSL https://pixi.sh/install.sh | sh
-      - name: Add pixi to PATH
-        run: |
-          echo "PIXI_HOME=$HOME/.pixi" >> $GITHUB_ENV
-          echo "$HOME/.pixi/bin" >> $GITHUB_PATH
-      - name: pixi install
-        run: pixi install
-      - name: Install pre-commit
-        run: pip install pre-commit
-      - name: Run format check
-        run: pre-commit run --all-files
