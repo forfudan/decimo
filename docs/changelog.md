@@ -28,6 +28,14 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 1. Mark `number_of_bits()` as `@always_inline` to remove the call frame on `multiply()`'s critical path.
 1. **`exp()` / `ln()` / `log10()` range reduction:** rewrite Taylor and range-reduction loops so that worst-case ratios drop to **≤ 1.0× rust_decimal** across all 42 bench cases (previously up to 1.7×). `exp_series()` now uses precomputed factorial reciprocals (two multiplies per term instead of one multiply + one divide), `ln()` reads the decade exponent `q` directly from the input scale instead of looping divisions/multiplications by 10, and `log10()`'s integer-power-of-10 fast path uses `number_of_digits` (O(1)) instead of a per-digit `% 10 / //= 10` loop. Adds new bench harnesses `cases/{ln,log10,exp}.toml` and wires `ln`/`log10`/`exp` into `run_all.sh` and the Rust harness (via the `maths` feature).
 
+**BigDecimal:**
+
+1. **Operator semantics aligned with Python `decimal.Decimal`:** the `+` / `-` / `*` operators (and their reflected and augmented variants `__radd__` / `__rsub__` / `__rmul__` / `__iadd__` / `__isub__` / `__imul__`) now round HALF_EVEN to the default precision (`PRECISION = 28` significant digits), instead of returning an exact unrounded result. This matches Python `decimal.Decimal` default-context behavior.
+1. **New exact methods with explicit precision:** `BigDecimal.add(other, precision=0)`, `subtract(other, precision=0)`, and `multiply(other, precision=0)` give callers an explicit choice — `precision=0` (default) returns the exact unrounded result, `precision > 0` rounds HALF_EVEN to that many significant digits. Use these methods (instead of operators) whenever exact intermediate arithmetic matters.
+1. **New in-place exact methods:** `BigDecimal.add_inplace(other, precision=0)`, `subtract_inplace(other, precision=0)`, and `multiply_inplace(other, precision=0)`, mirroring the precision-aware non-inplace methods. Use these in tight loops to replace `+= / -= / *=` when exact intermediate arithmetic matters. The free functions `arithmetics.add_inplace` / `subtract_inplace` / `multiply_inplace` also gain the same `precision` parameter.
+1. **Internal call sites migrated:** `pi_machin` (`constants.mojo`), Newton iterations and Taylor series in `exponential.mojo`, and range-reduction loops in `trigonometric.mojo` now use the exact `*_inplace` methods so high-precision π / `ln` / `exp` / trig results are no longer silently capped at 28 digits.
+1. **CLI calculator:** the RPN evaluator (`src/cli/calculator/evaluator.mojo`) now drives `+` / `-` / `*` through `.add(b, working_precision)` / `.subtract(...)` / `.multiply(...)` so the user-requested `--precision` is honored end to end (previously results were silently capped at PRECISION = 28).
+
 ## 20260323 (v0.9.0)
 
 Decimo v0.9.0 updates the codebase to **Mojo v0.26.2** and marks the **"make it useful"** phase. This release introduces three major additions:

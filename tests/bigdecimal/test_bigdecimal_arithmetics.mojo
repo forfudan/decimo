@@ -308,6 +308,174 @@ def test_bigdecimal_arithmetics_with_precision() raises:
     )
 
 
+def test_bigdecimal_operators_round_to_precision() raises:
+    """Tests that `+`, `-`, `*` (and reflected and augmented variants)
+    round HALF_EVEN to `PRECISION` (28) significant digits, matching
+    Python `decimal.Decimal` default-context behavior.
+    """
+    var pydecimal = Python.import_module("decimal")
+    pydecimal.getcontext().prec = 28
+
+    # Pairs chosen so the exact result has > 28 digits, forcing the
+    # operator to actually round (rather than returning an exact answer
+    # that already fits in 28 digits).
+    var pairs = List[Tuple[String, String, String]]()
+    pairs.append(
+        Tuple[String, String, String](
+            "1.234567890123456789012345678",
+            "9.876543210987654321098765432",
+            "mul_long_long",
+        )
+    )
+    pairs.append(
+        Tuple[String, String, String](
+            "1.234567890123456789012345678",
+            "0.876543210987654321098765432",
+            "add_long_long",
+        )
+    )
+    pairs.append(
+        Tuple[String, String, String](
+            "1.000000000000000000000000001",
+            "1.000000000000000000000000002",
+            "sub_close_carry",
+        )
+    )
+    pairs.append(
+        Tuple[String, String, String](
+            "9.999999999999999999999999995",
+            "0.000000000000000000000000005",
+            "add_carry_to_extra_digit",
+        )
+    )
+    pairs.append(
+        Tuple[String, String, String](
+            "12345678901234567890123456785",
+            "1",
+            "add_half_even_round_down",
+        )
+    )
+    pairs.append(
+        Tuple[String, String, String](
+            "12345678901234567890123456795",
+            "1",
+            "add_half_even_round_up",
+        )
+    )
+
+    var count_wrong = 0
+    for p in pairs:
+        var ma = BDec(p[0])
+        var mb = BDec(p[1])
+        var pa = pydecimal.Decimal(p[0])
+        var pb = pydecimal.Decimal(p[1])
+
+        # __add__
+        var add_op = ma + mb
+        var add_py = String(pa + pb)
+        if String(add_op) != add_py:
+            print(
+                "op + (",
+                p[2],
+                "):\n  Mojo: ",
+                String(add_op),
+                "\n  Py:   ",
+                add_py,
+            )
+            count_wrong += 1
+
+        # __radd__ (BigDecimal does not promote ints automatically here,
+        # but reflected on BigDecimal is exercised by `mb + ma`)
+        var radd_op = mb + ma
+        var radd_py = String(pb + pa)
+        if String(radd_op) != radd_py:
+            print(
+                "op + reflected (",
+                p[2],
+                "):\n  Mojo: ",
+                String(radd_op),
+                "\n  Py:   ",
+                radd_py,
+            )
+            count_wrong += 1
+
+        # __sub__
+        var sub_op = ma - mb
+        var sub_py = String(pa - pb)
+        if String(sub_op) != sub_py:
+            print(
+                "op - (",
+                p[2],
+                "):\n  Mojo: ",
+                String(sub_op),
+                "\n  Py:   ",
+                sub_py,
+            )
+            count_wrong += 1
+
+        # __mul__
+        var mul_op = ma * mb
+        var mul_py = String(pa * pb)
+        if String(mul_op) != mul_py:
+            print(
+                "op * (",
+                p[2],
+                "):\n  Mojo: ",
+                String(mul_op),
+                "\n  Py:   ",
+                mul_py,
+            )
+            count_wrong += 1
+
+        # __iadd__
+        var iadd_val = ma.copy()
+        iadd_val += mb
+        if String(iadd_val) != add_py:
+            print(
+                "op += (",
+                p[2],
+                "):\n  Mojo: ",
+                String(iadd_val),
+                "\n  Py:   ",
+                add_py,
+            )
+            count_wrong += 1
+
+        # __isub__
+        var isub_val = ma.copy()
+        isub_val -= mb
+        if String(isub_val) != sub_py:
+            print(
+                "op -= (",
+                p[2],
+                "):\n  Mojo: ",
+                String(isub_val),
+                "\n  Py:   ",
+                sub_py,
+            )
+            count_wrong += 1
+
+        # __imul__
+        var imul_val = ma.copy()
+        imul_val *= mb
+        if String(imul_val) != mul_py:
+            print(
+                "op *= (",
+                p[2],
+                "):\n  Mojo: ",
+                String(imul_val),
+                "\n  Py:   ",
+                mul_py,
+            )
+            count_wrong += 1
+
+    testing.assert_equal(
+        count_wrong,
+        0,
+        "Operators must round HALF_EVEN to PRECISION matching Python decimal.",
+    )
+
+
 def main() raises:
     # print("Running BigDecimal arithmetic tests")
 

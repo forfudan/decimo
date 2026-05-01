@@ -88,10 +88,10 @@ def sin(x: BigDecimal, precision: Int) raises -> BigDecimal:
     if x_reduced.compare_absolute(bdec_6) >= 0:
         if x_reduced.sign:
             # x in [-2π, -6], reduce to [0, 2π-6]
-            x_reduced += bdec_2pi
+            x_reduced.add_inplace(bdec_2pi)
         else:
             # x in [6, 2π], reduce to [0, 2π-6]
-            x_reduced -= bdec_2pi
+            x_reduced.subtract_inplace(bdec_2pi)
 
     # Step 2: Reduce to [0, 2π) using symmetry
     # At this stage, the value should be in the range [0, 6].
@@ -188,16 +188,16 @@ def sin_taylor_series(
         # x^n = x^(n-2) * x^2 / ((n-1)(n))
         n += 2
         # Use inplace multiply to avoid BigDecimal allocation
-        term *= x_squared
+        term.multiply_inplace(x_squared)
         # Use O(n) uint32 division instead of full BigDecimal divide
         # n*(n-1) fits in UInt32 for any practical Taylor series iteration count
         term = term.true_divide_inexact_by_uint32(
             UInt32(n * (n - 1)), working_precision
         )
         if sign == 1:
-            result += term
+            result.add_inplace(term)
         else:
-            result -= term
+            result.subtract_inplace(term)
         sign *= -1
 
         # Ensure that the result will not explode in size
@@ -277,16 +277,16 @@ def cos_taylor_series(
     while term.compare_absolute(epsilon) > 0:
         n += 2  # Next even power: 2, 4, 6, 8, ...
         # Use inplace multiply to avoid BigDecimal allocation
-        term *= x_squared
+        term.multiply_inplace(x_squared)
         # Use O(n) uint32 division instead of full BigDecimal divide
         term = term.true_divide_inexact_by_uint32(
             UInt32(n * (n - 1)), working_precision
         )
 
         if sign == 1:
-            result += term
+            result.add_inplace(term)
         else:
-            result -= term
+            result.subtract_inplace(term)
 
         sign *= -1
 
@@ -383,16 +383,16 @@ def tan_cot(x: BigDecimal, precision: Int, is_tan: Bool) raises -> BigDecimal:
         # Adjust to (-π, π) range
         if x_reduced.compare_absolute(pi) > 0:
             if x_reduced.sign:
-                x_reduced += two_pi
+                x_reduced.add_inplace(two_pi)
             else:
-                x_reduced -= two_pi
+                x_reduced.subtract_inplace(two_pi)
 
     # Now reduce to (-π/2, π/2) using tan(x + π) = tan(x)
     if x_reduced.compare_absolute(pi_div_2) > 0:
         if x_reduced.sign:
-            x_reduced += pi
+            x_reduced.add_inplace(pi)
         else:
-            x_reduced -= pi
+            x_reduced.subtract_inplace(pi)
 
     # Calculate
     # tan(x) = sin(x) / cos(x)
@@ -594,15 +594,15 @@ def arctan_taylor_series(
     while term_divided.compare_absolute(epsilon) > 0:
         n += 2
         # Use inplace multiply to avoid BigDecimal allocation
-        term *= x_squared  # x^n = x^(n-2) * x^2
+        term.multiply_inplace(x_squared)  # x^n = x^(n-2) * x^2
         # Use O(n) uint32 division instead of full BigDecimal divide
         term_divided = term.true_divide_inexact_by_uint32(
             UInt32(n), working_precision
         )  # x^n / n
         if sign == 1:
-            result += term_divided
+            result.add_inplace(term_divided)
         else:
-            result -= term_divided
+            result.subtract_inplace(term_divided)
         sign *= -1
         # Ensure that the result will not explode in size
         result.round_to_precision(

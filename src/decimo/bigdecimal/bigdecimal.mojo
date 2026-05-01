@@ -1133,84 +1133,6 @@ struct BigDecimal(
         return (quotient^, remainder^)
 
     # ===------------------------------------------------------------------=== #
-    # Basic binary arithmetic operation without dunders
-    # These methods allow users to set the precision explicitly
-    # ===------------------------------------------------------------------=== #
-
-    @always_inline
-    def add(self, other: Self, precision: Int = 0) raises -> Self:
-        """Adds two values with explicit precision.
-
-        Args:
-            other: The right-hand side operand.
-            precision: Target significant-digit precision for the result.
-                When `0` (default) the exact sum is returned, matching the
-                `+` operator. When `> 0` the exact sum is computed and
-                then rounded HALF_EVEN to `precision` significant digits.
-
-        Returns:
-            The sum of the two values.
-        """
-        return decimo.bigdecimal.arithmetics.add(
-            self, other, precision=precision
-        )
-
-    @always_inline
-    def subtract(self, other: Self, precision: Int = 0) raises -> Self:
-        """Subtracts two values with explicit precision.
-
-        Args:
-            other: The right-hand side operand.
-            precision: Target significant-digit precision for the result.
-                When `0` (default) the exact difference is returned,
-                matching the `-` operator. When `> 0` the exact
-                difference is computed and then rounded HALF_EVEN to
-                `precision` significant digits.
-
-        Returns:
-            The difference of the two values.
-        """
-        return decimo.bigdecimal.arithmetics.subtract(
-            self, other, precision=precision
-        )
-
-    @always_inline
-    def multiply(self, other: Self, precision: Int = 0) raises -> Self:
-        """Multiplies two values with explicit precision.
-
-        Args:
-            other: The right-hand side operand.
-            precision: Target significant-digit precision for the result.
-                When `0` (default) the exact product is returned,
-                matching the `*` operator. When `> 0` the exact product
-                is computed and then rounded HALF_EVEN to `precision`
-                significant digits.
-
-        Returns:
-            The product of the two values.
-        """
-        return decimo.bigdecimal.arithmetics.multiply(
-            self, other, precision=precision
-        )
-
-    @always_inline
-    def true_divide(
-        self, other: Self, precision: Int = PRECISION
-    ) raises -> Self:
-        """Divides two values using true division with explicit precision.
-
-        Args:
-            other: The right-hand side operand.
-            precision: The precision to use for the operation.
-
-        Returns:
-            The quotient of the two values.
-        """
-        return decimo.bigdecimal.arithmetics.true_divide(
-            self, other, precision=precision
-        )
-
-    # ===------------------------------------------------------------------=== #
     # Basic binary right-side arithmetic operation dunders
     # These methods are called to implement the binary arithmetic operations
     # (+, -, *, @, /, //, %, divmod(), pow(), **, <<, >>, &, ^, |)
@@ -1324,30 +1246,45 @@ struct BigDecimal(
 
     @always_inline
     def __iadd__(mut self, other: Self) raises:
-        """Adds in place.
+        """Adds in place, rounding to `PRECISION` significant digits
+        (HALF_EVEN), matching Python `decimal.Decimal`.
+        Use `self.add_inplace(other)` to add in place exactly without
+        rounding.
 
         Args:
             other: The right-hand side operand.
         """
-        decimo.bigdecimal.arithmetics.add_inplace(self, other)
+        decimo.bigdecimal.arithmetics.add_inplace(
+            self, other, precision=PRECISION
+        )
 
     @always_inline
     def __isub__(mut self, other: Self) raises:
-        """Subtracts in place.
+        """Subtracts in place, rounding to `PRECISION` significant digits
+        (HALF_EVEN), matching Python `decimal.Decimal`.
+        Use `self.subtract_inplace(other)` to subtract in place exactly
+        without rounding.
 
         Args:
             other: The right-hand side operand.
         """
-        decimo.bigdecimal.arithmetics.subtract_inplace(self, other)
+        decimo.bigdecimal.arithmetics.subtract_inplace(
+            self, other, precision=PRECISION
+        )
 
     @always_inline
     def __imul__(mut self, other: Self) raises:
-        """Multiplies in place.
+        """Multiplies in place, rounding to `PRECISION` significant digits
+        (HALF_EVEN), matching Python `decimal.Decimal`.
+        Use `self.multiply_inplace(other)` to multiply in place exactly
+        without rounding.
 
         Args:
             other: The right-hand side operand.
         """
-        decimo.bigdecimal.arithmetics.multiply_inplace(self, other)
+        decimo.bigdecimal.arithmetics.multiply_inplace(
+            self, other, precision=PRECISION
+        )
 
     @always_inline
     def __itruediv__(mut self, other: Self) raises:
@@ -1555,6 +1492,135 @@ struct BigDecimal(
         return decimo.bigdecimal.rounding.round(
             self, ndigits=0, rounding_mode=RoundingMode.down()
         )
+
+    # ===------------------------------------------------------------------=== #
+    # Basic arithmetic operation without dunders
+    # These methods allow users to set the precision explicitly
+    # ===------------------------------------------------------------------=== #
+
+    @always_inline
+    def add(self, other: Self, precision: Int = 0) raises -> Self:
+        """Adds two values with explicit precision.
+
+        Args:
+            other: The right-hand side operand.
+            precision: Target significant-digit precision for the result.
+                When `0` (default) the exact, unrounded sum is returned.
+                When `> 0` the exact sum is computed and then rounded
+                HALF_EVEN to `precision` significant digits.
+                Note: this differs from the `+` operator which always
+                rounds to `PRECISION` (matching Python `decimal.Decimal`).
+
+        Returns:
+            The sum of the two values.
+        """
+        return decimo.bigdecimal.arithmetics.add(
+            self, other, precision=precision
+        )
+
+    @always_inline
+    def subtract(self, other: Self, precision: Int = 0) raises -> Self:
+        """Subtracts two values with explicit precision.
+
+        Args:
+            other: The right-hand side operand.
+            precision: Target significant-digit precision for the result.
+                When `0` (default) the exact, unrounded difference is
+                returned. When `> 0` the exact difference is computed
+                and then rounded HALF_EVEN to `precision` significant
+                digits.
+                Note: this differs from the `-` operator which always
+                rounds to `PRECISION` (matching Python `decimal.Decimal`).
+
+        Returns:
+            The difference of the two values.
+        """
+        return decimo.bigdecimal.arithmetics.subtract(
+            self, other, precision=precision
+        )
+
+    @always_inline
+    def multiply(self, other: Self, precision: Int = 0) raises -> Self:
+        """Multiplies two values with explicit precision.
+
+        Args:
+            other: The right-hand side operand.
+            precision: Target significant-digit precision for the result.
+                When `0` (default) the exact, unrounded product is
+                returned. When `> 0` the exact product is computed and
+                then rounded HALF_EVEN to `precision` significant digits.
+                Note: this differs from the `*` operator which always
+                rounds to `PRECISION` (matching Python `decimal.Decimal`).
+
+        Returns:
+            The product of the two values.
+        """
+        return decimo.bigdecimal.arithmetics.multiply(
+            self, other, precision=precision
+        )
+
+    @always_inline
+    def true_divide(
+        self, other: Self, precision: Int = PRECISION
+    ) raises -> Self:
+        """Divides two values using true division with explicit precision.
+
+        Args:
+            other: The right-hand side operand.
+            precision: The precision to use for the operation.
+
+        Returns:
+            The quotient of the two values.
+        """
+        return decimo.bigdecimal.arithmetics.true_divide(
+            self, other, precision=precision
+        )
+
+    @always_inline
+    def add_inplace(mut self, other: Self, precision: Int = 0) raises:
+        """Adds `other` to `self` in place with explicit precision.
+
+        Args:
+            other: The right-hand side operand.
+            precision: Target significant-digit precision for the result.
+                When `0` (default) the exact, unrounded sum is stored in
+                `self`. When `> 0` the exact sum is computed and then
+                rounded HALF_EVEN to `precision` significant digits.
+                Note: this differs from the `+=` operator which always
+                rounds to `PRECISION` (matching Python `decimal.Decimal`).
+        """
+        decimo.bigdecimal.arithmetics.add_inplace(self, other, precision)
+
+    @always_inline
+    def subtract_inplace(mut self, other: Self, precision: Int = 0) raises:
+        """Subtracts `other` from `self` in place with explicit precision.
+
+        Args:
+            other: The right-hand side operand.
+            precision: Target significant-digit precision for the result.
+                When `0` (default) the exact, unrounded difference is
+                stored in `self`. When `> 0` the exact difference is
+                computed and then rounded HALF_EVEN to `precision`
+                significant digits.
+                Note: this differs from the `-=` operator which always
+                rounds to `PRECISION` (matching Python `decimal.Decimal`).
+        """
+        decimo.bigdecimal.arithmetics.subtract_inplace(self, other, precision)
+
+    @always_inline
+    def multiply_inplace(mut self, other: Self, precision: Int = 0) raises:
+        """Multiplies `self` by `other` in place with explicit precision.
+
+        Args:
+            other: The right-hand side operand.
+            precision: Target significant-digit precision for the result.
+                When `0` (default) the exact, unrounded product is stored
+                in `self`. When `> 0` the exact product is computed and
+                then rounded HALF_EVEN to `precision` significant digits.
+                Note: this differs from the `*=` operator which always
+                rounds to `PRECISION` (matching Python `decimal.Decimal`).
+        """
+        decimo.bigdecimal.arithmetics.multiply_inplace(self, other, precision)
 
     # ===------------------------------------------------------------------=== #
     # Mathematical methods that do not implement a trait (not a dunder)

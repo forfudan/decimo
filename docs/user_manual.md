@@ -435,9 +435,25 @@ print(x.is_positive())      # True
 
 ### How Precision Works
 
-- **Addition, subtraction, multiplication** are always **exact** — no precision loss.
-- **Division** and **mathematical functions** (`sqrt`, `ln`, `exp`, etc.) accept an optional `precision` parameter specifying the number of **significant digits** in the result.
 - The default precision is **28** significant digits, matching Python's `decimal` module.
+- **Operators** `+` `-` `*` `+=` `-=` `*=` (and reflected `__radd__` / `__rsub__` / `__rmul__`) round their result HALF_EVEN to the default precision (28 significant digits), matching Python `decimal.Decimal` default-context arithmetic.
+- **Methods** `.add(other)` / `.subtract(other)` / `.multiply(other)` (and the in-place variants `.add_inplace(other)` / `.subtract_inplace(other)` / `.multiply_inplace(other)`) take an optional `precision: Int = 0` argument. The default `precision=0` returns the **exact, unrounded** result; passing `precision > 0` rounds HALF_EVEN to that many significant digits.
+- **Division** and **mathematical functions** (`sqrt`, `ln`, `exp`, etc.) accept an optional `precision` parameter specifying the number of **significant digits** in the result.
+
+```mojo
+var a = Decimal("999999999999999999999999999999")  # 30 nines
+var b = Decimal("1")
+
+# Operators round to 28 digits (matches Python decimal default context)
+print(a + b)             # 1.000000000000000000000000000E+30
+
+# Methods at precision=0 (default) are exact
+print(a.add(b))          # 1000000000000000000000000000000
+
+# Methods accept an explicit precision
+print(a.add(b, 50))      # 1000000000000000000000000000000 (exact, fits)
+print(a.multiply(a, 40)) # 40-significant-digit rounded product
+```
 
 ```mojo
 var x = Decimal("2")

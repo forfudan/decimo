@@ -1937,7 +1937,7 @@ def exp_taylor_series(
         n += 1
 
         # Add term to result
-        result += term
+        result.add_inplace(term)
 
         # print("DEUBG: round {}, term {}, result {}".format(n, term, result))
 
@@ -2065,10 +2065,14 @@ def ln(
     var combined_ln1d25_factor = adj_power_of_5 + power_of_10
     if combined_ln2_factor != 0:
         var ln2 = cache.get_ln2(working_precision)
-        result += ln2.multiply(BigDecimal.from_int(combined_ln2_factor))
+        result.add_inplace(
+            ln2.multiply(BigDecimal.from_int(combined_ln2_factor))
+        )
     if combined_ln1d25_factor != 0:
         var ln1d25 = cache.get_ln1d25(working_precision)
-        result += ln1d25.multiply(BigDecimal.from_int(combined_ln1d25_factor))
+        result.add_inplace(
+            ln1d25.multiply(BigDecimal.from_int(combined_ln1d25_factor))
+        )
 
     # Round to final precision
     result.round_to_precision(
@@ -2257,7 +2261,7 @@ def ln_series_expansion(
         var k: UInt32 = 1
 
         # ln(1+z) = z - z²/2 + z³/3 - z⁴/4 + ...
-        result += term  # first term is z
+        result.add_inplace(term)  # first term is z
 
         for _ in range(2, max_terms):
             decimo.bigdecimal.arithmetics.multiply_inplace(term, z)
@@ -2283,9 +2287,9 @@ def ln_series_expansion(
             )
 
             if is_even:
-                result -= next_term
+                result.subtract_inplace(next_term)
             else:
-                result += next_term
+                result.add_inplace(next_term)
 
             if next_term.adjusted() < -working_precision:
                 break
@@ -2338,7 +2342,7 @@ def ln_series_expansion(
         # Step 3: Divide by (2k+1) — also truncates to working_precision
         term = term.true_divide_inexact_by_uint32(new_denom, working_precision)
 
-        result += term
+        result.add_inplace(term)
 
         if term.adjusted() < -working_precision:
             break
@@ -2425,7 +2429,7 @@ def compute_ln2(working_precision: Int) raises -> BigDecimal:
     # Series: term_k = 2 * x^(2k-1) * 1 * 3 * 5 * ... * (2k-3) / (1 * 3 * 5 * ... * (2k-1))
     # Recurrence: term_{k+1} = term_k * x² * k / (k+2)
     for _ in range(1, max_terms):
-        result += term
+        result.add_inplace(term)
         var new_k = k + 2
         # Use O(n) single-word division instead of full BigDecimal div
         # Use cached x_squared with inplace multiply, and uint32 multiply for k
