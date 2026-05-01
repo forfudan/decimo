@@ -39,30 +39,30 @@ import decimo.str
 comptime Decimal = BigDecimal
 """An arbitrary-precision decimal, similar to Python's `decimal.Decimal`.
 
-Notes:
+Examples:
 
-Internal Representation:
+```mojo
+from decimo.prelude import *
+print(Decimal("123.456"))  # Normal string representation
+print(Decimal("1.23E+5"))  # Scientific notation
+print(Decimal("-0.00100e-2"))  # Negative number with exponent
+print(Decimal("12_345.678_9"))  # Underscores for readability
+```
 
-- A base-10 unsigned integer (BigUInt) for coefficient.
-- A Int value for the scale
-- A Bool value for the sign.
-
-Final value:
-(-1)**sign * coefficient * 10^(-scale)
 """
 comptime BDec = BigDecimal
 """An arbitrary-precision decimal, similar to Python's `decimal.Decimal`.
 
-Notes:
+Examples:
 
-Internal Representation:
+```mojo
+from decimo.prelude import *
+print(Decimal("123.456"))  # Normal string representation
+print(Decimal("1.23E+5"))  # Scientific notation
+print(Decimal("-0.00100e-2"))  # Negative number with exponent
+print(Decimal("12_345.678_9"))  # Underscores for readability
+```
 
-- A base-10 unsigned integer (BigUInt) for coefficient.
-- A Int value for the scale
-- A Bool value for the sign.
-
-Final value:
-(-1)**sign * coefficient * 10^(-scale)
 """
 
 comptime PRECISION = 28  # Same as Python's decimal module default precision of 28 places.
@@ -105,18 +105,26 @@ struct BigDecimal(
 ):
     """An arbitrary-precision decimal, similar to Python's `decimal.Decimal`.
 
-    Notes:
+    Examples:
 
-    Internal Representation:
+    ```mojo
+    from decimo.prelude import *
+    print(Decimal("123.456"))  # Normal string representation
+    print(Decimal("1.23E+5"))  # Scientific notation
+    print(Decimal("-0.00100e-2"))  # Negative number with exponent
+    print(Decimal("12_345.678_9"))  # Underscores for readability
+    ```
 
-    - A base-10 unsigned integer (BigUInt) for coefficient.
-    - A Int value for the scale
-    - A Bool value for the sign.
-
-    Final value:
-    (-1)**sign * coefficient * 10^(-scale)
     """
 
+    # NOTE:
+    # Internal Representation:
+    # - A base-10 unsigned integer (BigUInt) for coefficient.
+    # - A Int value for the scale
+    # - A Bool value for the sign.
+    # Final value:
+    # (-1)**sign * coefficient * 10^(-scale)
+    #
     # ===------------------------------------------------------------------=== #
     # Organization of fields and methods:
     # - Internal representation fields
