@@ -70,14 +70,14 @@ comptime CUTOFF_BURNIKEL_ZIEGLER = 32
 # floor_divide_estimate_quotient(x1: BigUInt, x2: BigUInt, j: Int, m: Int) -> UInt64
 # floor_divide_by_single_word_inplace(x1: BigUInt, x2: BigUInt) -> None
 # floor_divide_by_double_words_inplace(x1: BigUInt, x2: BigUInt) -> None
-# floor_divide_by_2_inplace(x: BigUInt) -> Nonet, x2: BigUInt) -> BigUInt
+# floor_divide_by_2_inplace(x: BigUInt) -> None
 # floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt
 # floor_divide_by_power_of_ten_inplace(x: BigUInt, n: Int) -> None
 # floor_divide_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt
 # floor_divide_by_power_of_billion_inplace(x: BigUInt, n: Int) -> None
 #
 # truncate_divide(x1: BigUInt, x2: BigUInt) -> BigUInt
-# ceil_divide(x1: BigUInt, x2: BigUInt) -> BigUIntulo(x1: BigUIn# floor_divide_school(x1: BigUInt, x2: BigUInt) -> BigUInt
+# ceil_divide(x1: BigUInt, x2: BigUInt) -> BigUInt
 #
 # floor_modulo(x1: BigUInt, x2: BigUInt) -> BigUInt
 # ceil_modulo(x1: BigUInt, x2: BigUInt) -> BigUInt
@@ -2302,7 +2302,11 @@ def floor_divide_by_uint32_inplace(mut x: BigUInt, y: UInt32) -> None:
     It is not intended for public use. You need to ensure that y is non-zero.
     """
     debug_assert[assert_mode="none"](
-        y != 0, "biguint.arithmetics.floor_divide_by_uint32(): Division by zero"
+        y != 0,
+        (
+            "biguint.arithmetics.floor_divide_by_uint32_inplace(): Division by"
+            " zero"
+        ),
     )
 
     # Most significant word of the dividend
@@ -2333,7 +2337,7 @@ def floor_divide_by_uint64(x: BigUInt, y: UInt64) -> BigUInt:
     """
     debug_assert[assert_mode="none"](
         y != 0,
-        "biguint.arithmetics.floor_divide_by_uint64_inplace(): ",
+        "biguint.arithmetics.floor_divide_by_uint64(): ",
         "Division by zero.",
     )
 
@@ -2411,7 +2415,7 @@ def floor_divide_by_uint128(x: BigUInt, y: UInt128) -> BigUInt:
     """
     debug_assert[assert_mode="none"](
         y != 0,
-        "biguint.arithmetics.floor_divide_by_uint128_inplace(): ",
+        "biguint.arithmetics.floor_divide_by_uint128(): ",
         "Division by zero.",
     )
 
@@ -2503,9 +2507,8 @@ def floor_divide_by_2_inplace(mut x: BigUInt) -> None:
     x.remove_leading_empty_words()
 
 
-# TODO: Implement a in-place version of this function
-# TODO: If n % 9 == 0, we can optimize by just calling the
-# `floor_divide_by_power_of_billion_inplace` function.
+# TODO: If n % 9 == 0, the in-place version can be optimized by
+# delegating to `floor_divide_by_power_of_billion_inplace` directly.
 def floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
     """Floor divides a BigUInt by 10^n (n>=0).
     It is equal to removing the last n digits of the number.
@@ -2614,8 +2617,7 @@ fn _shift_right_by_decimal_digits_inplace(mut x: BigUInt, digit_shift: Int):
     """Divides `x` in place by `10^digit_shift`, where
     `1 <= digit_shift <= 8`. Assumes any whole-word shift has already
     been applied; this only performs the sub-word digit shift and
-    canonicalises the result. The `mut x` signature makes the in-place
-    semantics explicit, so no `_inplace` suffix is needed.
+    canonicalises the result.
     """
     debug_assert[assert_mode="none"](
         digit_shift >= 1 and digit_shift <= 8,

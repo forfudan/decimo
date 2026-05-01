@@ -21,10 +21,6 @@ Implements functions for mathematical operations on BigDecimal objects.
 from std import math
 
 from decimo.bigdecimal.rounding import round_to_precision
-from decimo.biguint.arithmetics import (
-    floor_divide_by_power_of_billion,
-    floor_divide_by_power_of_billion_inplace,
-)
 from decimo.errors import ZeroDivisionError
 from decimo.rounding_mode import RoundingMode
 
@@ -48,12 +44,8 @@ def add(
         x2: The second operand.
         precision: Optional target significant-digit precision for the
             result. When `0` (default) the function returns the exact
-            sum (current behaviour). When `>0` the function truncates
-            each operand at word granularity to the smallest range
-            that still feeds `precision + 18` guard digits into the
-            sum, then rounds the result to `precision` significant
-            digits via HALF_EVEN. This avoids materialising the full
-            exact sum when only the leading `precision` digits matter.
+            sum. When `>0` the exact sum is computed and then rounded
+            to `precision` significant digits via HALF_EVEN.
 
     Returns:
         The sum of x1 and x2 (exact when `precision == 0`, otherwise
@@ -71,64 +63,6 @@ def add(
         and not x1.coefficient.is_zero()
         and not x2.coefficient.is_zero()
     ):
-        comptime BUFFER_DIGITS = 18  # 2 base-10^9 words, word-aligned
-        var ndigits1 = x1.coefficient.number_of_digits()
-        var ndigits2 = x2.coefficient.number_of_digits()
-        var leading_exp1 = ndigits1 - 1 - x1.scale
-        var leading_exp2 = ndigits2 - 1 - x2.scale
-        var result_leading_exp = max(leading_exp1, leading_exp2) + 1
-        var lowest_kept_exp = result_leading_exp - precision - BUFFER_DIGITS
-        # Cancellation guard: opposite signs make this an effective
-        # subtraction; if the leading exponents are within the
-        # precision window, the leading digits may cancel and the
-        # surviving digits would be those we are about to truncate.
-        # The guard is intentionally conservative — it triggers as
-        # soon as the leading exponents fall within the window even
-        # when the leading digits themselves obviously cannot cancel
-        # (e.g. 1.0e100 + (-9.5e100)). The check is O(1) and always
-        # correct; an exact pre-check would cost a comparison of
-        # leading digits and rarely pays off.
-        var drop1 = 0
-        var drop2 = 0
-        var cancellation_possible = (
-            x1.sign != x2.sign
-            and abs(leading_exp1 - leading_exp2) <= precision + BUFFER_DIGITS
-        )
-        if not cancellation_possible:
-            drop1 = (lowest_kept_exp + x1.scale) // 9
-            if drop1 < 0:
-                drop1 = 0
-            elif drop1 > (ndigits1 - 1) // 9:
-                drop1 = (ndigits1 - 1) // 9
-            drop2 = (lowest_kept_exp + x2.scale) // 9
-            if drop2 < 0:
-                drop2 = 0
-            elif drop2 > (ndigits2 - 1) // 9:
-                drop2 = (ndigits2 - 1) // 9
-        if drop1 > 0 or drop2 > 0:
-            var x1_truncated = x1.copy()
-            if drop1 > 0:
-                floor_divide_by_power_of_billion_inplace(
-                    x1_truncated.coefficient, drop1
-                )
-                x1_truncated.scale -= 9 * drop1
-            var x2_truncated = x2.copy()
-            if drop2 > 0:
-                floor_divide_by_power_of_billion_inplace(
-                    x2_truncated.coefficient, drop2
-                )
-                x2_truncated.scale -= 9 * drop2
-            var result = add(x1_truncated, x2_truncated, precision=0)
-            round_to_precision(
-                result,
-                precision,
-                RoundingMode.ROUND_HALF_EVEN,
-                remove_extra_digit_due_to_rounding=False,
-                fill_zeros_to_precision=False,
-            )
-            return result^
-        # Operands are already inside the precision window; just round
-        # the exact sum.
         var result = add(x1, x2, precision=0)
         round_to_precision(
             result,
@@ -191,10 +125,8 @@ def subtract(
         x2: The second operand (subtrahend).
         precision: Optional target significant-digit precision for the
             result. When `0` (default) the function returns the exact
-            difference. When `>0` the function truncates each operand
-            at word granularity to the smallest range that still feeds
-            `precision + 18` guard digits into the subtraction, then
-            rounds the result to `precision` significant digits via
+            difference. When `>0` the exact difference is computed
+            and then rounded to `precision` significant digits via
             HALF_EVEN.
 
     Returns:
@@ -212,64 +144,6 @@ def subtract(
         and not x1.coefficient.is_zero()
         and not x2.coefficient.is_zero()
     ):
-        comptime BUFFER_DIGITS = 18  # 2 base-10^9 words, word-aligned
-        var ndigits1 = x1.coefficient.number_of_digits()
-        var ndigits2 = x2.coefficient.number_of_digits()
-        var leading_exp1 = ndigits1 - 1 - x1.scale
-        var leading_exp2 = ndigits2 - 1 - x2.scale
-        var result_leading_exp = max(leading_exp1, leading_exp2) + 1
-        var lowest_kept_exp = result_leading_exp - precision - BUFFER_DIGITS
-        # Cancellation guard: same signs make this an effective
-        # subtraction of magnitudes; if the leading exponents are
-        # within the precision window, the leading digits may cancel
-        # and the surviving digits would be those we are about to
-        # truncate. The guard is intentionally conservative — it
-        # triggers as soon as the leading exponents fall within the
-        # window even when the leading digits themselves obviously
-        # cannot cancel (e.g. 9.5e100 - 1.0e100). The check is O(1)
-        # and always correct; an exact pre-check would cost a
-        # comparison of leading digits and rarely pays off.
-        var drop1 = 0
-        var drop2 = 0
-        var cancellation_possible = (
-            x1.sign == x2.sign
-            and abs(leading_exp1 - leading_exp2) <= precision + BUFFER_DIGITS
-        )
-        if not cancellation_possible:
-            drop1 = (lowest_kept_exp + x1.scale) // 9
-            if drop1 < 0:
-                drop1 = 0
-            elif drop1 > (ndigits1 - 1) // 9:
-                drop1 = (ndigits1 - 1) // 9
-            drop2 = (lowest_kept_exp + x2.scale) // 9
-            if drop2 < 0:
-                drop2 = 0
-            elif drop2 > (ndigits2 - 1) // 9:
-                drop2 = (ndigits2 - 1) // 9
-        if drop1 > 0 or drop2 > 0:
-            var x1_truncated = x1.copy()
-            if drop1 > 0:
-                floor_divide_by_power_of_billion_inplace(
-                    x1_truncated.coefficient, drop1
-                )
-                x1_truncated.scale -= 9 * drop1
-            var x2_truncated = x2.copy()
-            if drop2 > 0:
-                floor_divide_by_power_of_billion_inplace(
-                    x2_truncated.coefficient, drop2
-                )
-                x2_truncated.scale -= 9 * drop2
-            var result = subtract(x1_truncated, x2_truncated, precision=0)
-            round_to_precision(
-                result,
-                precision,
-                RoundingMode.ROUND_HALF_EVEN,
-                remove_extra_digit_due_to_rounding=False,
-                fill_zeros_to_precision=False,
-            )
-            return result^
-        # Operands are already inside the precision window; just round
-        # the exact difference.
         var result = subtract(x1, x2, precision=0)
         round_to_precision(
             result,
@@ -335,13 +209,8 @@ def multiply(
         x2: The second operand (multiplier).
         precision: Optional target significant-digit precision for the
             result. When `0` (default) the function returns the exact
-            product. When `>0` and the combined operand digit count
-            exceeds `precision + 18`, the longer operand is truncated
-            at word granularity to bring the product width down to
-            `precision + 18` guard digits, after which the result is
+            product. When `>0` the exact product is computed and then
             rounded to `precision` significant digits via HALF_EVEN.
-            This skips the work of materialising digits that would be
-            rounded away.
 
     Returns:
         The product of x1 and x2. Exact when `precision == 0`,
@@ -358,59 +227,6 @@ def multiply(
         and not x1.coefficient.is_zero()
         and not x2.coefficient.is_zero()
     ):
-        comptime BUFFER_DIGITS = 18  # 2 base-10^9 words, word-aligned
-        var ndigits1 = x1.coefficient.number_of_digits()
-        var ndigits2 = x2.coefficient.number_of_digits()
-        var product_ndigits = ndigits1 + ndigits2
-        var product_budget = precision + BUFFER_DIGITS
-        if product_ndigits > product_budget:
-            var excess = product_ndigits - product_budget
-            # Truncate the LONGER operand: dropping its low base-10^9
-            # words shrinks the product width by the same amount of
-            # digits, but only loses information well below the
-            # precision window (kept >= BUFFER_DIGITS guard).
-            if ndigits1 >= ndigits2:
-                var drop1 = excess // 9
-                if drop1 > (ndigits1 - 1) // 9:
-                    drop1 = (ndigits1 - 1) // 9
-                var x1_truncated = BigDecimal(
-                    coefficient=floor_divide_by_power_of_billion(
-                        x1.coefficient, drop1
-                    ),
-                    scale=x1.scale - 9 * drop1,
-                    sign=x1.sign,
-                )
-                var result = multiply(x1_truncated, x2, precision=0)
-                round_to_precision(
-                    result,
-                    precision,
-                    RoundingMode.ROUND_HALF_EVEN,
-                    remove_extra_digit_due_to_rounding=False,
-                    fill_zeros_to_precision=False,
-                )
-                return result^
-            else:
-                var drop2 = excess // 9
-                if drop2 > (ndigits2 - 1) // 9:
-                    drop2 = (ndigits2 - 1) // 9
-                var x2_truncated = BigDecimal(
-                    coefficient=floor_divide_by_power_of_billion(
-                        x2.coefficient, drop2
-                    ),
-                    scale=x2.scale - 9 * drop2,
-                    sign=x2.sign,
-                )
-                var result = multiply(x1, x2_truncated, precision=0)
-                round_to_precision(
-                    result,
-                    precision,
-                    RoundingMode.ROUND_HALF_EVEN,
-                    remove_extra_digit_due_to_rounding=False,
-                    fill_zeros_to_precision=False,
-                )
-                return result^
-        # Operands are already inside the precision window; just round
-        # the exact product.
         var result = multiply(x1, x2, precision=0)
         round_to_precision(
             result,
