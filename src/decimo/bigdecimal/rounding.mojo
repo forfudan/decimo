@@ -147,25 +147,21 @@ def round_to_precision(
         else:
             return
 
-    number.coefficient = (
-        number.coefficient.remove_trailing_digits_with_rounding(
-            ndigits=ndigits_to_remove,
-            rounding_mode=rounding_mode,
-            remove_extra_digit_due_to_rounding=False,
-            sign=number.sign,
-        )
+    number.coefficient.remove_trailing_digits_with_rounding_inplace(
+        ndigits=ndigits_to_remove,
+        rounding_mode=rounding_mode,
+        remove_extra_digit_due_to_rounding=False,
+        sign=number.sign,
     )
     number.scale -= ndigits_to_remove
 
     if remove_extra_digit_due_to_rounding and (
         number.coefficient.number_of_digits() > precision
     ):
-        number.coefficient = (
-            number.coefficient.remove_trailing_digits_with_rounding(
-                ndigits=1,
-                rounding_mode=RoundingMode.down(),
-                remove_extra_digit_due_to_rounding=False,
-            )
+        number.coefficient.remove_trailing_digits_with_rounding_inplace(
+            ndigits=1,
+            rounding_mode=RoundingMode.down(),
+            remove_extra_digit_due_to_rounding=False,
         )
         number.scale -= 1
 

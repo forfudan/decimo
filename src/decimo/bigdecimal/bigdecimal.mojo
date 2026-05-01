@@ -1070,6 +1070,7 @@ struct BigDecimal(
             self, exponent, precision=PRECISION
         )
 
+    @always_inline
     def __divmod__(self, other: Self) raises -> Tuple[Self, Self]:
         """Returns `(self // other, self % other)`.
 
@@ -1096,6 +1097,7 @@ struct BigDecimal(
         )
         return (quotient^, remainder^)
 
+    @always_inline
     def __rdivmod__(self, other: Self) raises -> Tuple[Self, Self]:
         """Returns `divmod(other, self)` for right-side divmod.
 
@@ -1113,6 +1115,73 @@ struct BigDecimal(
             decimo.bigdecimal.arithmetics.multiply(quotient, self),
         )
         return (quotient^, remainder^)
+
+    # ===------------------------------------------------------------------=== #
+    # Basic binary arithmetic operation without dunders
+    # These methods allow users to set the precision explicitly
+    # ===------------------------------------------------------------------=== #
+
+    @always_inline
+    def add(self, other: Self, precision: Int = PRECISION) raises -> Self:
+        """Adds two values with explicit precision.
+
+        Args:
+            other: The right-hand side operand.
+            precision: The precision to use for the operation.
+
+        Returns:
+            The sum of the two values.
+        """
+        return decimo.bigdecimal.arithmetics.add(
+            self, other, precision=precision
+        )
+
+    @always_inline
+    def subtract(self, other: Self, precision: Int = PRECISION) raises -> Self:
+        """Subtracts two values with explicit precision.
+
+        Args:
+            other: The right-hand side operand.
+            precision: The precision to use for the operation.
+
+        Returns:
+            The difference of the two values.
+        """
+        return decimo.bigdecimal.arithmetics.subtract(
+            self, other, precision=precision
+        )
+
+    @always_inline
+    def multiply(self, other: Self, precision: Int = PRECISION) raises -> Self:
+        """Multiplies two values with explicit precision.
+
+        Args:
+            other: The right-hand side operand.
+            precision: The precision to use for the operation.
+
+        Returns:
+            The product of the two values.
+        """
+        return decimo.bigdecimal.arithmetics.multiply(
+            self, other, precision=precision
+        )
+
+    @always_inline
+    def true_divide(
+        self, other: Self, precision: Int = PRECISION
+    ) raises -> Self:
+        """Divides two values using true division with explicit precision.
+
+        Args:
+            other: The right-hand side operand.
+            precision: The precision to use for the operation.
+
+        Returns:
+            The quotient of the two values.
+        """
+        return decimo.bigdecimal.arithmetics.true_divide(
+            self, other, precision=precision
+        )
 
     # ===------------------------------------------------------------------=== #
     # Basic binary right-side arithmetic operation dunders

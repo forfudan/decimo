@@ -2290,3 +2290,122 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
                         )
                     )
         return result^
+
+    @always_inline
+    def remove_trailing_digits_with_rounding_inplace(
+        mut self,
+        ndigits: Int,
+        rounding_mode: RoundingMode,
+        remove_extra_digit_due_to_rounding: Bool,
+        sign: Bool = False,
+    ) raises:
+        """In-place sibling of `remove_trailing_digits_with_rounding`.
+
+        Drops the lowest `ndigits` decimal digits of `self`, applying the
+        same rounding rules, but reuses the existing `words` storage via
+        `floor_divide_by_power_of_ten_inplace` instead of allocating a
+        fresh coefficient buffer. Saves one alloc and one full-buffer
+        copy per call, which compounds across every `precision > 0`
+        invocation of `add` / `subtract` / `multiply` (each ends in a
+        `round_to_precision` call).
+
+        Args:
+            ndigits: The number of digits to remove.
+            rounding_mode: The rounding mode to use. See
+                `remove_trailing_digits_with_rounding` for the full list.
+            remove_extra_digit_due_to_rounding: If True, also drop one
+                more trailing digit when rounding produces an extra
+                leading digit (e.g. 999 → 1000 → 100).
+            sign: The sign of the original number (True = negative).
+                Only consulted for CEILING / FLOOR modes.
+
+        Raises:
+            ValueError: If `ndigits` is negative or exceeds the digit
+                count of `self`.
+        """
+        if ndigits < 0:
+            raise ValueError(
+                function=(
+                    "BigUInt.remove_trailing_digits_with_rounding_inplace()"
+                ),
+                message=(
+                    "The number of digits to remove is negative: "
+                    + String(ndigits)
+                ),
+            )
+        if ndigits == 0:
+            return
+        var ndigits_self = self.number_of_digits()
+        if ndigits > ndigits_self:
+            raise ValueError(
+                function=(
+                    "BigUInt.remove_trailing_digits_with_rounding_inplace()"
+                ),
+                message=(
+                    "The number of digits to remove is larger than the "
+                    "number of digits in the BigUInt: "
+                    + String(ndigits)
+                    + " > "
+                    + String(ndigits_self)
+                ),
+            )
+
+        # Resolve the rounding decision against the *pre-truncation*
+        # digits of `self`, mirroring the out-of-place variant.
+        var effective_mode = rounding_mode
+        if rounding_mode == RoundingMode.ceiling():
+            effective_mode = (
+                RoundingMode.up() if not sign else RoundingMode.down()
+            )
+        elif rounding_mode == RoundingMode.floor():
+            effective_mode = (
+                RoundingMode.down() if not sign else RoundingMode.up()
+            )
+
+        var round_up: Bool = False
+        if effective_mode == RoundingMode.down():
+            pass
+        elif effective_mode == RoundingMode.up():
+            if self.number_of_trailing_zeros() < ndigits:
+                round_up = True
+        elif effective_mode == RoundingMode.half_up():
+            if self.ith_digit(ndigits - 1) >= 5:
+                round_up = True
+        elif effective_mode == RoundingMode.half_down():
+            var cut_off_digit = self.ith_digit(ndigits - 1)
+            if cut_off_digit > 5:
+                round_up = True
+            elif cut_off_digit == 5:
+                if self.number_of_trailing_zeros() < ndigits - 1:
+                    round_up = True
+        elif effective_mode == RoundingMode.half_even():
+            var cut_off_digit = self.ith_digit(ndigits - 1)
+            if cut_off_digit > 5:
+                round_up = True
+            elif cut_off_digit < 5:
+                pass
+            else:  # cut_off_digit == 5
+                if self.number_of_trailing_zeros() < ndigits - 1:
+                    round_up = True
+                else:
+                    round_up = self.ith_digit(ndigits) % 2 == 1
+        # TODO: Remove this fallback once Mojo has proper enum support.
+        else:
+            raise ValueError(
+                function=(
+                    "BigUInt.remove_trailing_digits_with_rounding_inplace()"
+                ),
+                message=("Unknown rounding mode: " + String(rounding_mode)),
+            )
+
+        # Drop the digits in place, then apply the carry from rounding.
+        decimo.biguint.arithmetics.floor_divide_by_power_of_ten_inplace(
+            self, ndigits
+        )
+        if round_up:
+            decimo.biguint.arithmetics.add_by_uint32_inplace(self, UInt32(1))
+            if self.is_power_of_10():
+                if remove_extra_digit_due_to_rounding:
+                    decimo.biguint.arithmetics.floor_divide_by_power_of_ten_inplace(
+                        self, 1
+                    )
