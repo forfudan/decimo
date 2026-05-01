@@ -1815,22 +1815,6 @@ struct BigDecimal(
     # === Arithmetic operations === #
 
     @always_inline
-    def true_divide(
-        self, other: Self, precision: Int = PRECISION
-    ) raises -> Self:
-        """Returns the result of true division of two BigDecimal numbers.
-        See `arithmetics.true_divide()` for more information.
-
-        Args:
-            other: The divisor.
-            precision: The number of significant digits for the result.
-
-        Returns:
-            The quotient of the division.
-        """
-        return decimo.bigdecimal.arithmetics.true_divide(self, other, precision)
-
-    @always_inline
     def true_divide_inexact(
         self, other: Self, number_of_significant_digits: Int
     ) raises -> Self:
