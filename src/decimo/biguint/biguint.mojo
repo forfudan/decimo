@@ -1663,7 +1663,8 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
     @always_inline
     def floor_divide_by_2_inplace(mut self) raises:
         """Divides this number by 2 in place.
-        See `floor_divide_by_2_inplace()` for more information.
+        See `decimo.biguint.arithmetics.floor_divide_by_2_inplace()`
+        for more information.
         """
         decimo.biguint.arithmetics.floor_divide_by_2_inplace(self)
 
@@ -1683,7 +1684,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
     @always_inline
     def multiply_by_power_of_ten_inplace(mut self, n: Int):
         """Multiplies this number in-place by 10^n (n>=0).
-        See `multiply_by_power_of_ten_inplace()` for more information.
+        See
+        `decimo.biguint.arithmetics.multiply_by_power_of_ten_inplace()`
+        for more information.
 
         Args:
             n: The power of 10 to multiply by.

@@ -58,11 +58,7 @@ def add(
       maximum of the two operands' scales.
     - The result's sign is determined by the signs of the operands.
     """
-    if (
-        precision > 0
-        and not x1.coefficient.is_zero()
-        and not x2.coefficient.is_zero()
-    ):
+    if precision > 0:
         var result = add(x1, x2, precision=0)
         round_to_precision(
             result,
@@ -139,11 +135,7 @@ def subtract(
       maximum of the two operands' scales.
     - The result's sign is determined by the signs of the operands.
     """
-    if (
-        precision > 0
-        and not x1.coefficient.is_zero()
-        and not x2.coefficient.is_zero()
-    ):
+    if precision > 0:
         var result = subtract(x1, x2, precision=0)
         round_to_precision(
             result,
@@ -222,11 +214,7 @@ def multiply(
       sum of the two operands' scales (except for zero).
     - The result's sign follows the standard sign rules for multiplication.
     """
-    if (
-        precision > 0
-        and not x1.coefficient.is_zero()
-        and not x2.coefficient.is_zero()
-    ):
+    if precision > 0:
         var result = multiply(x1, x2, precision=0)
         round_to_precision(
             result,

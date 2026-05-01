@@ -161,10 +161,31 @@ def test_bigdecimal_arithmetics_with_precision() raises:
     - Short operands inside the precision window.
     - Equally-long operands at high digit count.
     - Asymmetric (long * short, wide-exponent) operands.
+    - Zero on either side (must still be rounded to `precision`).
     """
     comptime PRECISION = 50
 
     var inputs = List[Tuple[String, String, String]]()
+    inputs.append(
+        Tuple[String, String, String](
+            "0", "1234567890123456789.123456789", "zero_left"
+        )
+    )
+    inputs.append(
+        Tuple[String, String, String](
+            "1234567890123456789.123456789", "0", "zero_right"
+        )
+    )
+    inputs.append(
+        Tuple[String, String, String](
+            "0", "1234567890123456789.123456789", "zero_left"
+        )
+    )
+    inputs.append(
+        Tuple[String, String, String](
+            "1234567890123456789.123456789", "0", "zero_right"
+        )
+    )
     inputs.append(
         Tuple[String, String, String](
             "1234567890" * 30, "9876543210" * 30, "long_same_sign"
