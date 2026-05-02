@@ -256,7 +256,7 @@ def evaluate_rpn(
                 )
             var b = stack.pop()
             var a = stack.pop()
-            stack.append(a + b)
+            stack.append(a.add(b, working_precision))
 
         elif kind == TOKEN_MINUS:
             if len(stack) < 2:
@@ -267,7 +267,7 @@ def evaluate_rpn(
                 )
             var b = stack.pop()
             var a = stack.pop()
-            stack.append(a - b)
+            stack.append(a.subtract(b, working_precision))
 
         elif kind == TOKEN_STAR:
             if len(stack) < 2:
@@ -278,12 +278,7 @@ def evaluate_rpn(
                 )
             var b = stack.pop()
             var a = stack.pop()
-            var product = a * b
-            # Multiplication can grow digits unboundedly; trim to
-            # working precision to prevent intermediate blowup.
-            product.round_to_precision(
-                working_precision, RoundingMode.half_even(), False, False
-            )
+            var product = a.multiply(b, working_precision)
             stack.append(product^)
 
         elif kind == TOKEN_SLASH:

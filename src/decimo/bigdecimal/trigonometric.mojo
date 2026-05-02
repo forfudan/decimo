@@ -64,7 +64,7 @@ def sin(x: BigDecimal, precision: Int) raises -> BigDecimal:
     var bdec_4 = BigDecimal.from_raw_components(UInt32(4), scale=0, sign=False)
     var bdec_6 = BigDecimal.from_raw_components(UInt32(6), scale=0, sign=False)
     var bdec_pi = decimo.bigdecimal.constants.pi(precision=working_precision)
-    var bdec_2pi = bdec_2 * bdec_pi
+    var bdec_2pi = bdec_2.multiply(bdec_pi)
     var bdec_pi_div_2 = bdec_pi.true_divide(bdec_2, precision=working_precision)
     var bdec_1d6 = BigDecimal.from_raw_components(
         UInt32(16), scale=1, sign=False
@@ -88,10 +88,10 @@ def sin(x: BigDecimal, precision: Int) raises -> BigDecimal:
     if x_reduced.compare_absolute(bdec_6) >= 0:
         if x_reduced.sign:
             # x in [-2π, -6], reduce to [0, 2π-6]
-            x_reduced += bdec_2pi
+            x_reduced.add_inplace(bdec_2pi)
         else:
             # x in [6, 2π], reduce to [0, 2π-6]
-            x_reduced -= bdec_2pi
+            x_reduced.subtract_inplace(bdec_2pi)
 
     # Step 2: Reduce to [0, 2π) using symmetry
     # At this stage, the value should be in the range [0, 6].
@@ -116,7 +116,7 @@ def sin(x: BigDecimal, precision: Int) raises -> BigDecimal:
     # To avoid infinite recursion, we use 1.6 as a threshold.
     # π/4 < |x| ≤ 1.6
     elif x_reduced.compare_absolute(bdec_1d6) <= 0:
-        x_reduced = bdec_pi_div_2 - x_reduced
+        x_reduced = bdec_pi_div_2.subtract(x_reduced)
         result = cos_taylor_series(
             x_reduced, minimum_precision=working_precision
         )
@@ -127,14 +127,14 @@ def sin(x: BigDecimal, precision: Int) raises -> BigDecimal:
     # π/2 < 1.6 < |x| ≤ π
     # 0 ≤ (π - x) < π - 1.6 < π/2
     elif x_reduced.compare_absolute(bdec_pi) <= 0:
-        x_reduced = bdec_pi - x_reduced
+        x_reduced = bdec_pi.subtract(x_reduced)
         result = sin(x_reduced, precision=precision)
 
     # π < |x| < 2π: Use identity sin(x) = -sin(x - π)
     # 0 < (x - π) < π
     # Note tha the acutal range is (π, 6), so it is reduced to (0, 6 - π).
     else:
-        x_reduced = x_reduced - bdec_pi
+        x_reduced = x_reduced.subtract(bdec_pi)
         result = -sin(x_reduced, precision=precision)
 
     if is_negative:
@@ -177,7 +177,7 @@ def sin_taylor_series(
 
     var term = x.copy()  # x^n / n!
     var result = x.copy()
-    var x_squared = x * x
+    var x_squared = x.multiply(x)
     var n = 1
     var sign = -1
 
@@ -188,16 +188,16 @@ def sin_taylor_series(
         # x^n = x^(n-2) * x^2 / ((n-1)(n))
         n += 2
         # Use inplace multiply to avoid BigDecimal allocation
-        term *= x_squared
+        term.multiply_inplace(x_squared)
         # Use O(n) uint32 division instead of full BigDecimal divide
         # n*(n-1) fits in UInt32 for any practical Taylor series iteration count
         term = term.true_divide_inexact_by_uint32(
             UInt32(n * (n - 1)), working_precision
         )
         if sign == 1:
-            result += term
+            result.add_inplace(term)
         else:
-            result -= term
+            result.subtract_inplace(term)
         sign *= -1
 
         # Ensure that the result will not explode in size
@@ -234,7 +234,7 @@ def cos(x: BigDecimal, precision: Int) raises -> BigDecimal:
     # cos(x) = sin(π/2 - x)
     var pi = decimo.bigdecimal.constants.pi(precision=working_precision)
     var pi_div_2 = pi.true_divide(2, precision=working_precision)
-    var result = sin(pi_div_2 - x, precision=precision)
+    var result = sin(pi_div_2.subtract(x), precision=precision)
     return result^
 
 
@@ -268,7 +268,7 @@ def cos_taylor_series(
     var bdec_1 = BigDecimal.from_raw_components(UInt32(1), scale=0, sign=False)
     var term = bdec_1.copy()  # Current term: x^n / n!
     var result = bdec_1.copy()  # Start with 1
-    var x_squared = x * x
+    var x_squared = x.multiply(x)
     var n = 0  # Current power (0, 2, 4, 6, ...)
     var sign = -1  # Alternating sign
 
@@ -277,16 +277,16 @@ def cos_taylor_series(
     while term.compare_absolute(epsilon) > 0:
         n += 2  # Next even power: 2, 4, 6, 8, ...
         # Use inplace multiply to avoid BigDecimal allocation
-        term *= x_squared
+        term.multiply_inplace(x_squared)
         # Use O(n) uint32 division instead of full BigDecimal divide
         term = term.true_divide_inexact_by_uint32(
             UInt32(n * (n - 1)), working_precision
         )
 
         if sign == 1:
-            result += term
+            result.add_inplace(term)
         else:
-            result -= term
+            result.subtract_inplace(term)
 
         sign *= -1
 
@@ -373,7 +373,7 @@ def tan_cot(x: BigDecimal, precision: Int, is_tan: Bool) raises -> BigDecimal:
 
     var pi = decimo.bigdecimal.constants.pi(precision=working_precision_pi)
     var bdec_2 = BigDecimal.from_raw_components(UInt32(2), scale=0, sign=False)
-    var two_pi = bdec_2 * pi
+    var two_pi = bdec_2.multiply(pi)
     var pi_div_2 = pi.true_divide(bdec_2, precision=working_precision_pi)
 
     var x_reduced = x.copy()
@@ -383,16 +383,16 @@ def tan_cot(x: BigDecimal, precision: Int, is_tan: Bool) raises -> BigDecimal:
         # Adjust to (-π, π) range
         if x_reduced.compare_absolute(pi) > 0:
             if x_reduced.sign:
-                x_reduced += two_pi
+                x_reduced.add_inplace(two_pi)
             else:
-                x_reduced -= two_pi
+                x_reduced.subtract_inplace(two_pi)
 
     # Now reduce to (-π/2, π/2) using tan(x + π) = tan(x)
     if x_reduced.compare_absolute(pi_div_2) > 0:
         if x_reduced.sign:
-            x_reduced += pi
+            x_reduced.add_inplace(pi)
         else:
-            x_reduced -= pi
+            x_reduced.subtract_inplace(pi)
 
     # Calculate
     # tan(x) = sin(x) / cos(x)
@@ -516,13 +516,13 @@ def arctan(x: BigDecimal, precision: Int) raises -> BigDecimal:
         # Use sqrt_reciprocal for speed — exact perfect square detection is
         # unnecessary since this is an intermediate computation.
         var sqrt_term = decimo.bigdecimal.exponential.sqrt_reciprocal(
-            bdec_1 + x * x, working_precision
+            bdec_1.add(x.multiply(x)), working_precision
         )
         var x_divided = x.true_divide(
-            bdec_1 + sqrt_term, precision=working_precision
+            bdec_1.add(sqrt_term), precision=working_precision
         )
-        result = bdec_2 * arctan_taylor_series(
-            x_divided, minimum_precision=precision
+        result = bdec_2.multiply(
+            arctan_taylor_series(x_divided, minimum_precision=precision)
         )
 
     else:  # x.compare_absolute(bdec_1) > 0
@@ -540,9 +540,9 @@ def arctan(x: BigDecimal, precision: Int) raises -> BigDecimal:
         )
 
         if x.sign:
-            result = -half_pi - arctan_reciprocal
+            result = (-half_pi).subtract(arctan_reciprocal)
         else:
-            result = half_pi - arctan_reciprocal
+            result = half_pi.subtract(arctan_reciprocal)
 
     result.round_to_precision(
         precision,
@@ -584,7 +584,7 @@ def arctan_taylor_series(
     var term = x.copy()  # x^n
     var term_divided = x.copy()  # x^n / n
     var result = x.copy()
-    var x_squared = x * x
+    var x_squared = x.multiply(x)
     var n = 1
     var sign = -1
 
@@ -594,15 +594,15 @@ def arctan_taylor_series(
     while term_divided.compare_absolute(epsilon) > 0:
         n += 2
         # Use inplace multiply to avoid BigDecimal allocation
-        term *= x_squared  # x^n = x^(n-2) * x^2
+        term.multiply_inplace(x_squared)  # x^n = x^(n-2) * x^2
         # Use O(n) uint32 division instead of full BigDecimal divide
         term_divided = term.true_divide_inexact_by_uint32(
             UInt32(n), working_precision
         )  # x^n / n
         if sign == 1:
-            result += term_divided
+            result.add_inplace(term_divided)
         else:
-            result -= term_divided
+            result.subtract_inplace(term_divided)
         sign *= -1
         # Ensure that the result will not explode in size
         result.round_to_precision(

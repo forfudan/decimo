@@ -189,7 +189,7 @@ struct MathCache:
         var extra = precision + 9
         var ln2 = self.get_ln2(extra)
         var ln1d25 = self.get_ln1d25(extra)
-        self._ln10 = ln2 * BigDecimal.from_int(3) + ln1d25
+        self._ln10 = ln2.multiply(BigDecimal(3)).add(ln1d25)
         self._ln10.round_to_precision(
             precision=precision,
             rounding_mode=RoundingMode.down(),
@@ -284,7 +284,7 @@ def power(
     # Need to be careful with negative base
     var abs_base = abs(base)
     var ln_result = ln(abs_base, working_precision)
-    var product = ln_result * exponent
+    var product = ln_result.multiply(exponent)
     var exp_result = exp(product, working_precision)
 
     # Handle sign for negative base with odd integer exponents
@@ -349,7 +349,7 @@ def integer_power(
 
         # Use inplace multiply for squaring is not beneficial
         # because we need to copy first — just use regular multiply
-        current_power = current_power * current_power
+        current_power = current_power.multiply(current_power)
         # Round to avoid coefficient explosion
         current_power.round_to_precision(
             working_precision,
@@ -720,11 +720,11 @@ def integer_root(
 
         var numerator: BigDecimal
         if n_minus_1_int == 1:
-            numerator = r + x_div_r_pow
+            numerator = r.add(x_div_r_pow)
         elif n_minus_1_int == 2:
-            numerator = r + r + x_div_r_pow
+            numerator = r.add(r).add(x_div_r_pow)
         else:
-            numerator = r * n_minus_1_bd + x_div_r_pow
+            numerator = r.multiply(n_minus_1_bd).add(x_div_r_pow)
 
         var r_new: BigDecimal
         if n_int <= Int(UInt32.MAX):
@@ -1094,7 +1094,7 @@ def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
     for i in range(len(prec_schedule) - 1, -1, -1):
         var ip = prec_schedule[i] + 10
 
-        var r_sq = r * r
+        var r_sq = r.multiply(r)
         r_sq.round_to_precision(
             precision=ip,
             rounding_mode=RoundingMode.half_up(),
@@ -1110,7 +1110,7 @@ def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
             fill_zeros_to_precision=False,
         )
 
-        var correction = three - r_sq
+        var correction = three.subtract(r_sq)
 
         decimo.bigdecimal.arithmetics.multiply_inplace(r, correction)
         r.round_to_precision(
@@ -1123,7 +1123,7 @@ def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
         r = r.true_divide_inexact_by_uint32(UInt32(2), ip)
 
     # --- Compute sqrt(c) = c_norm * r * 10^(norm_shift/2) ---
-    var result_bd = c_norm * r
+    var result_bd = c_norm.multiply(r)
     result_bd.scale -= norm_shift // 2
 
     # Round to enough digits to get an accurate integer
@@ -1413,7 +1413,7 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
         var ip = prec_schedule[i] + 10  # iteration precision with guard
 
         # r^2 (self-squaring, cannot use multiply_inplace)
-        var r_sq = r * r
+        var r_sq = r.multiply(r)
         r_sq.round_to_precision(
             precision=ip,
             rounding_mode=RoundingMode.half_up(),
@@ -1431,7 +1431,7 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
         )
 
         # 3 - x_norm * r^2 (should be close to 2 when converged)
-        var correction = three - r_sq
+        var correction = three.subtract(r_sq)
 
         # r * (3 - x_norm * r^2) (inplace)
         decimo.bigdecimal.arithmetics.multiply_inplace(r, correction)
@@ -1446,7 +1446,7 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
         r = r.true_divide_inexact_by_uint32(UInt32(2), ip)
 
     # --- Final: sqrt(x_norm) = x_norm * r ---
-    var result = x_norm * r
+    var result = x_norm.multiply(r)
 
     # --- Un-normalize: sqrt(x) = sqrt(x_norm) * 10^(shift/2) ---
     result.scale -= shift // 2
@@ -1471,7 +1471,7 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
         var stripped_scale = result.scale - n_trailing
         var candidate = BigDecimal(stripped_coef^, stripped_scale, False)
         # Verify: candidate * candidate == x?
-        var check = candidate * candidate
+        var check = candidate.multiply(candidate)
         if check == x:
             # If the scale went negative but the input had non-negative scale,
             # normalize back to scale=0 to preserve integer representation.
@@ -1691,7 +1691,7 @@ def sqrt_decimal_approach(x: BigDecimal, precision: Int) raises -> BigDecimal:
     while guess != prev_guess and iteration_count < 100:
         prev_guess = guess.copy()
         var quotient = x.true_divide_inexact(guess, working_precision)
-        var sum_val = guess + quotient
+        var sum_val = guess.add(quotient)
         # Use O(n) uint32 division instead of full BigDecimal divide-by-2
         guess = sum_val.true_divide_inexact_by_uint32(2, working_precision)
         iteration_count += 1
@@ -1859,7 +1859,7 @@ def exp(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
         # Square result M times: exp(x) = exp(x/2^M)^(2^M)
         for _ in range(m):
-            result = result * result
+            result = result.multiply(result)
             result.round_to_precision(
                 precision=working_precision,
                 rounding_mode=RoundingMode.half_up(),
@@ -1937,7 +1937,7 @@ def exp_taylor_series(
         n += 1
 
         # Add term to result
-        result += term
+        result.add_inplace(term)
 
         # print("DEUBG: round {}, term {}, result {}".format(n, term, result))
 
@@ -2038,17 +2038,17 @@ def ln(
     elif m < BigDecimal(BigUInt(raw_words=[275]), 3, False):
         # [0.135, 0.275) * 5 -> [0.675, 1.375)]
         adj_power_of_5 = -1
-        m = m * BigDecimal(BigUInt(raw_words=[5]), 0, False)
+        m = m.multiply(BigDecimal(BigUInt(raw_words=[5]), 0, False))
     elif m < BigDecimal(BigUInt(raw_words=[65]), 2, False):
         # [0.275, 0.65) * 2 -> [0.55, 1.3)]
         adj_power_of_2 = -1
-        m = m * BigDecimal(BigUInt(raw_words=[2]), 0, False)
+        m = m.multiply(BigDecimal(BigUInt(raw_words=[2]), 0, False))
     else:  # [0.65, 1) -> no change
         pass
 
     # Use series expansion for ln(m) = ln(1+z) = z - z²/2 + z³/3 - ...
     var result = ln_series_expansion(
-        m - BigDecimal(BigUInt.one(), 0, False), working_precision
+        m.subtract(BigDecimal(BigUInt.one(), 0, False)), working_precision
     )
 
     # Apply range reduction adjustments
@@ -2065,10 +2065,14 @@ def ln(
     var combined_ln1d25_factor = adj_power_of_5 + power_of_10
     if combined_ln2_factor != 0:
         var ln2 = cache.get_ln2(working_precision)
-        result += ln2 * BigDecimal.from_int(combined_ln2_factor)
+        result.add_inplace(
+            ln2.multiply(BigDecimal.from_int(combined_ln2_factor))
+        )
     if combined_ln1d25_factor != 0:
         var ln1d25 = cache.get_ln1d25(working_precision)
-        result += ln1d25 * BigDecimal.from_int(combined_ln1d25_factor)
+        result.add_inplace(
+            ln1d25.multiply(BigDecimal.from_int(combined_ln1d25_factor))
+        )
 
     # Round to final precision
     result.round_to_precision(
@@ -2257,7 +2261,7 @@ def ln_series_expansion(
         var k: UInt32 = 1
 
         # ln(1+z) = z - z²/2 + z³/3 - z⁴/4 + ...
-        result += term  # first term is z
+        result.add_inplace(term)  # first term is z
 
         for _ in range(2, max_terms):
             decimo.bigdecimal.arithmetics.multiply_inplace(term, z)
@@ -2283,9 +2287,9 @@ def ln_series_expansion(
             )
 
             if is_even:
-                result -= next_term
+                result.subtract_inplace(next_term)
             else:
-                result += next_term
+                result.add_inplace(next_term)
 
             if next_term.adjusted() < -working_precision:
                 break
@@ -2301,11 +2305,11 @@ def ln_series_expansion(
     # ---- atanh path (optimal for larger z with many digits) ----
     # Compute u = z / (2 + z)
     var two = BigDecimal(BigUInt(raw_words=[2]), 0, False)
-    var two_plus_z = z + two
+    var two_plus_z = z.add(two)
     var u = z.true_divide(two_plus_z, working_precision)
 
     # Compute u² (cached for the recurrence)
-    var u_squared = u * u
+    var u_squared = u.multiply(u)
     u_squared.round_to_precision(
         working_precision,
         RoundingMode.down(),
@@ -2338,7 +2342,7 @@ def ln_series_expansion(
         # Step 3: Divide by (2k+1) — also truncates to working_precision
         term = term.true_divide_inexact_by_uint32(new_denom, working_precision)
 
-        result += term
+        result.add_inplace(term)
 
         if term.adjusted() < -working_precision:
             break
@@ -2413,19 +2417,19 @@ def compute_ln2(working_precision: Int) raises -> BigDecimal:
     )  # x = 1/3
 
     var result = BigDecimal(BigUInt.zero(), 0, False)
-    var term = x * BigDecimal(
-        BigUInt(raw_words=[2]), 0, False
+    var term = x.multiply(
+        BigDecimal(BigUInt(raw_words=[2]), 0, False)
     )  # First term: 2*(1/3)
     var k: UInt32 = 1
 
     # Cache x² to avoid recomputing each iteration (was term * x * x)
-    var x_squared = x * x
+    var x_squared = x.multiply(x)
 
     # Add terms: 2*(x + x³/3 + x⁵/5 + ...)
     # Series: term_k = 2 * x^(2k-1) * 1 * 3 * 5 * ... * (2k-3) / (1 * 3 * 5 * ... * (2k-1))
     # Recurrence: term_{k+1} = term_k * x² * k / (k+2)
     for _ in range(1, max_terms):
-        result += term
+        result.add_inplace(term)
         var new_k = k + 2
         # Use O(n) single-word division instead of full BigDecimal div
         # Use cached x_squared with inplace multiply, and uint32 multiply for k

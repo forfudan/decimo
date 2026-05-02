@@ -240,7 +240,9 @@ def multiply(
     )
 
 
-def multiply_inplace(mut x1: BigDecimal, x2: BigDecimal):
+def multiply_inplace(
+    mut x1: BigDecimal, x2: BigDecimal, precision: Int = 0
+) raises:
     """Multiplies x1 by x2 in place, avoiding full BigDecimal construction.
 
     This computes the product and moves the result words into x1,
@@ -249,6 +251,10 @@ def multiply_inplace(mut x1: BigDecimal, x2: BigDecimal):
     Args:
         x1: The first operand (modified in place to hold the result).
         x2: The second operand (multiplier).
+        precision: Optional target significant-digit precision for the
+            result. When `0` (default) the in-place product is exact.
+            When `>0` the exact product is computed and then rounded
+            in place to `precision` significant digits via HALF_EVEN.
     """
     if x1.coefficient.is_zero() or x2.coefficient.is_zero():
         x1.coefficient = BigUInt.zero()
@@ -260,8 +266,17 @@ def multiply_inplace(mut x1: BigDecimal, x2: BigDecimal):
     x1.scale = x1.scale + x2.scale
     x1.sign = x1.sign != x2.sign
 
+    if precision > 0:
+        round_to_precision(
+            x1,
+            precision,
+            RoundingMode.ROUND_HALF_EVEN,
+            remove_extra_digit_due_to_rounding=False,
+            fill_zeros_to_precision=False,
+        )
 
-def add_inplace(mut x1: BigDecimal, x2: BigDecimal) raises:
+
+def add_inplace(mut x1: BigDecimal, x2: BigDecimal, precision: Int = 0) raises:
     """Adds x2 to x1 in place.
 
     This avoids constructing a new BigDecimal for the result.
@@ -270,6 +285,10 @@ def add_inplace(mut x1: BigDecimal, x2: BigDecimal) raises:
     Args:
         x1: The accumulator (modified in place to hold x1 + x2).
         x2: The value to add.
+        precision: Optional target significant-digit precision for the
+            result. When `0` (default) the in-place sum is exact.
+            When `>0` the exact sum is computed and then rounded in
+            place to `precision` significant digits via HALF_EVEN.
     """
     var max_scale = max(x1.scale, x2.scale)
     var scale_factor1 = (max_scale - x1.scale) if x1.scale < max_scale else 0
@@ -280,58 +299,72 @@ def add_inplace(mut x1: BigDecimal, x2: BigDecimal) raises:
         if x2.coefficient.is_zero():
             x1.scale = max_scale
             x1.sign = False
-            return
         else:
             x1.coefficient = x2.coefficient.multiply_by_power_of_ten(
                 scale_factor2
             )
             x1.scale = max_scale
             x1.sign = x2.sign
-            return
-    if x2.coefficient.is_zero():
+    elif x2.coefficient.is_zero():
         if scale_factor1 > 0:
             x1.coefficient.multiply_by_power_of_ten_inplace(scale_factor1)
         x1.scale = max_scale
-        return
-
-    # Scale x1 in place if needed
-    if scale_factor1 > 0:
-        x1.coefficient.multiply_by_power_of_ten_inplace(scale_factor1)
-
-    if x1.sign == x2.sign:
-        # Same sign: add magnitudes (use inplace add on x1's coefficient)
-        if scale_factor2 == 0:
-            decimo.biguint.arithmetics.add_inplace(
-                x1.coefficient, x2.coefficient
-            )
-        else:
-            var coef2 = x2.coefficient.multiply_by_power_of_ten(scale_factor2)
-            decimo.biguint.arithmetics.add_inplace(x1.coefficient, coef2)
-        x1.scale = max_scale
     else:
-        # Different signs: subtract magnitudes
-        var coef2 = (
-            x2.coefficient.multiply_by_power_of_ten(
-                scale_factor2
-            ) if scale_factor2
-            > 0 else x2.coefficient.copy()
+        # Scale x1 in place if needed
+        if scale_factor1 > 0:
+            x1.coefficient.multiply_by_power_of_ten_inplace(scale_factor1)
+
+        if x1.sign == x2.sign:
+            # Same sign: add magnitudes (use inplace add on x1's coefficient)
+            if scale_factor2 == 0:
+                decimo.biguint.arithmetics.add_inplace(
+                    x1.coefficient, x2.coefficient
+                )
+            else:
+                var coef2 = x2.coefficient.multiply_by_power_of_ten(
+                    scale_factor2
+                )
+                decimo.biguint.arithmetics.add_inplace(x1.coefficient, coef2)
+            x1.scale = max_scale
+        else:
+            # Different signs: subtract magnitudes
+            var coef2 = (
+                x2.coefficient.multiply_by_power_of_ten(
+                    scale_factor2
+                ) if scale_factor2
+                > 0 else x2.coefficient.copy()
+            )
+
+            if x1.coefficient > coef2:
+                decimo.biguint.arithmetics.subtract_inplace(
+                    x1.coefficient, coef2
+                )
+                x1.scale = max_scale
+            elif coef2 > x1.coefficient:
+                decimo.biguint.arithmetics.subtract_inplace(
+                    coef2, x1.coefficient
+                )
+                x1.coefficient = coef2^
+                x1.scale = max_scale
+                x1.sign = x2.sign
+            else:
+                x1.coefficient = BigUInt.zero()
+                x1.scale = max_scale
+                x1.sign = False
+
+    if precision > 0:
+        round_to_precision(
+            x1,
+            precision,
+            RoundingMode.ROUND_HALF_EVEN,
+            remove_extra_digit_due_to_rounding=False,
+            fill_zeros_to_precision=False,
         )
 
-        if x1.coefficient > coef2:
-            decimo.biguint.arithmetics.subtract_inplace(x1.coefficient, coef2)
-            x1.scale = max_scale
-        elif coef2 > x1.coefficient:
-            decimo.biguint.arithmetics.subtract_inplace(coef2, x1.coefficient)
-            x1.coefficient = coef2^
-            x1.scale = max_scale
-            x1.sign = x2.sign
-        else:
-            x1.coefficient = BigUInt.zero()
-            x1.scale = max_scale
-            x1.sign = False
 
-
-def subtract_inplace(mut x1: BigDecimal, x2: BigDecimal) raises:
+def subtract_inplace(
+    mut x1: BigDecimal, x2: BigDecimal, precision: Int = 0
+) raises:
     """Subtracts x2 from x1 in place.
 
     This avoids constructing a new BigDecimal for the result.
@@ -339,6 +372,11 @@ def subtract_inplace(mut x1: BigDecimal, x2: BigDecimal) raises:
     Args:
         x1: The accumulator (modified in place to hold x1 - x2).
         x2: The value to subtract.
+        precision: Optional target significant-digit precision for the
+            result. When `0` (default) the in-place difference is
+            exact. When `>0` the exact difference is computed and
+            then rounded in place to `precision` significant digits
+            via HALF_EVEN.
     """
     # Create a negated view of x2 and use add_inplace
     var neg_x2 = BigDecimal(
@@ -346,7 +384,7 @@ def subtract_inplace(mut x1: BigDecimal, x2: BigDecimal) raises:
         scale=x2.scale,
         sign=not x2.sign,
     )
-    add_inplace(x1, neg_x2)
+    add_inplace(x1, neg_x2, precision)
 
 
 def true_divide(

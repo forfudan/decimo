@@ -248,7 +248,9 @@ def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
     )
 
     # Final formula: π = 426880 * √10005 / sum_series
-    var result = bdec_426880 * bdec_10005.sqrt(working_precision) * sum_series
+    var result = bdec_426880.multiply(
+        bdec_10005.sqrt(working_precision)
+    ).multiply(sum_series)
 
     result.round_to_precision(
         precision,
@@ -364,8 +366,10 @@ def pi_machin(precision: Int) raises -> BigDecimal:
 
     # Calculate 4 * arctan(1/5)
     var one_fifth = bdec_1.true_divide(bdec_5, working_precision)
-    var term1 = bdec_4 * decimo.bigdecimal.trigonometric.arctan_taylor_series(
-        one_fifth, working_precision
+    var term1 = bdec_4.multiply(
+        decimo.bigdecimal.trigonometric.arctan_taylor_series(
+            one_fifth, working_precision
+        )
     )
 
     # Calculate arctan(1/239)
@@ -375,8 +379,8 @@ def pi_machin(precision: Int) raises -> BigDecimal:
     )
 
     # π/4 = 4*arctan(1/5) - arctan(1/239)
-    var pi_over_4 = term1 - term2
-    var result = bdec_4 * pi_over_4
+    var pi_over_4 = term1.subtract(term2)
+    var result = bdec_4.multiply(pi_over_4)
 
     result.round_to_precision(
         precision,
