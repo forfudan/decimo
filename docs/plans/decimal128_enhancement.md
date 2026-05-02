@@ -153,6 +153,22 @@ value before the fact and §2.4 / §2.5 for end-to-end snapshots.
 |          | `lower > upper`. 8 new tests in `test_decimal128_comparison.mojo` cover              |
 |          | positives/negatives, tie-preserves-scale, signed zeros, in-range / below /           |
 |          | above / boundary clamps, and invalid-bounds raise.                                   |
+| 20260502 | **`divide` long-division refactor (P1 of §5.1).** Three independent changes in the   |
+|          | UInt128 sub-case: (a) dropped the `+1` rounding-digit padding from `max_steps`, so   |
+|          | the long division produces exactly the final coefficient and the post-divide         |
+|          | `round_coefficient` overflow fix-up is no longer triggered for results that fit      |
+|          | `MAX_AS_UINT128`; (b) replaced the `UInt256` `combined = quot * 10^k + quot_added`   |
+|          | fold with a `UInt128` multiply (post-bulk total digits ≤ 29 → < 2^97 fits UInt128);  |
+|          | (c) replaced the OLD "+1 padding then `round_coefficient` (banker's) with override   |
+|          | `if digit == 5 and rem != 0: quot += 1`" pattern with a direct three-branch          |
+|          | banker's test on the residual rem (`2*rem > x2`/`==`/`<`), eliminating the wide      |
+|          | divide that `round_coefficient` performed at the boundary. Behaviour preserved:      |
+|          | banker's (round-half-to-even) at exact half; round-up at "5 with non-zero tail"      |
+|          | (mathematically > half, not a banker's tie). Added `test_divide_bankers_rounding_at` |
+|          | `_boundary` (5 cases) pinning all four arms (even-keeps, odd-bumps, 5+tail,          |
+|          | below-half) cross-checked against Python `decimal` ROUND_HALF_EVEN. Bench best-of-3  |
+|          | UInt128 path: `Repeating decimal` 47 → 36 ns, `High precision division` 47–61 →      |
+|          | 33–39 ns, `Large coprime quotient` 42–54 → 29–35 ns. UInt256 sub-case unchanged.     |
 
 ### 2.5 Performance tracking — absolute decimo median ns/iter
 
@@ -301,18 +317,20 @@ context. All P1/P2 items have landed; P3 items are tracked in §5.
 These are the residual gaps after this PR. Each requires algorithmic
 work, not micro-optimisation.
 
-| Op          | Worst case                      | decimo |  rust | dm/rs | Likely root cause                                                                                            |
-| ----------- | ------------------------------- | -----: | ----: | ----: | ------------------------------------------------------------------------------------------------------------ |
-| multiply    | High precision multiplication   |   13.0 |  6.50 |  2.0× | UInt128 path: 17×17-digit prod, mandatory `round_coefficient` work                                           |
-| multiply    | Multiplication by zero          |    4.0 |  1.38 |  2.9× | Per-call dispatch overhead (raises + special-case tree)                                                      |
-| multiply    | Negative numbers                |    4.0 |  1.08 |  3.7× | Same                                                                                                         |
-| multiply    | e * e^0.5                       |   23.0 | 27.79 |  0.8× | UInt256 path; *faster* than rust                                                                             |
-| divide      | Division with repeating decimal |   47.0 | 12.12 |  3.9× | Rust uses a `div_internal` magic-multiply trick; decimo's two-phase loop still pays 28 digits' worth of bulk |
-| divide      | High precision division         |   48.0 | 19.21 |  2.5× | Same                                                                                                         |
-| divide      | Large coprime quotient          |   43.0 | 16.88 |  2.5× | Same                                                                                                         |
-| from_string | Long integer part (20 digits)   |   24.7 | 11.52 |  2.1× | UInt128 multiply-by-10 per digit; could batch into u64 chunks                                                |
-| from_string | Long fractional (28 digits)     |   46.2 | 27.12 |  1.7× | Same                                                                                                         |
-| from_string | Zero value                      |    4.3 |  1.79 |  2.4× | Per-call dispatch; rust has a 2-byte fast path                                                               |
+| Op          | Worst case                    | decimo |  rust | dm/rs | Likely root cause                                                  |
+| ----------- | ----------------------------- | -----: | ----: | ----: | ------------------------------------------------------------------ |
+| multiply    | High precision mul            |   13.0 |  6.50 |  2.0× | UInt128 path: 17×17-digit prod, mandatory `round_coefficient` work |
+| multiply    | Multiplication by zero        |    4.0 |  1.38 |  2.9× | Per-call dispatch overhead (raises + special-case tree)            |
+| multiply    | Negative numbers              |    4.0 |  1.08 |  3.7× | Same                                                               |
+| multiply    | e * e^0.5                     |   23.0 | 27.79 |  0.8× | UInt256 path; *faster* than rust                                   |
+| divide      | Div with repeating decimal    |   36.0 | 12.04 |  3.0× | One bulk wide-divide + post-divide overhead. After 20260502        |
+|             |                               |        |       |       | refactor (§2.4); rust_decimal still uses a `div_internal` magic-   |
+|             |                               |        |       |       | multiply trick. Closing the rest needs reciprocal multiplication.  |
+| divide      | High precision division       |   37.0 | 18.67 |  2.0× | Same                                                               |
+| divide      | Large coprime quotient        |   30.0 | 16.67 |  1.8× | Same                                                               |
+| from_string | Long integer part (20 digits) |   24.7 | 11.52 |  2.1× | UInt128 multiply-by-10 per digit; could batch into u64 chunks      |
+| from_string | Long fractional (28 digits)   |   46.2 | 27.12 |  1.7× | Same                                                               |
+| from_string | Zero value                    |    4.3 |  1.79 |  2.4× | Per-call dispatch; rust has a 2-byte fast path                     |
 
 **Possible follow-ups** (none committed):
 
@@ -399,6 +417,41 @@ It is a long-term proposal; not on the active roadmap.
 
 See git history (pre-2026-04-23) for the full analysis.
 
+### 5.6 Per-op `RoundingMode` parameter on `Decimal128` arithmetic — REJECTED
+
+**Considered 2026-05-02.** Question: should `Decimal128.divide` (and by
+extension `multiply`, etc.) accept a `RoundingMode` argument so callers
+can override the default banker's rounding without a follow-up
+`.round(...)` call?
+
+Cross-language survey of fixed-precision decimal types:
+
+| Library                 | `/` rounding             | Per-op `mode` arg?   |
+| ----------------------- | ------------------------ | -------------------- |
+| C# `System.Decimal`     | banker's                 | No                   |
+| Rust `rust_decimal`     | banker's                 | No                   |
+| Apache Arrow Decimal128 | banker's                 | No                   |
+| Go `govalues/decimal`   | banker's                 | No                   |
+| Python `decimal`        | context-based (banker's) | No (use context)     |
+| Java `BigDecimal`       | must specify or throws   | Yes (arbitrary-prec) |
+| decimo `BigDecimal`     | must specify or default  | Yes (arbitrary-prec) |
+
+**Verdict: REJECTED.** The industry pattern for fixed-precision decimal
+types is "implicit banker's on arithmetic, explicit `.round(scale, mode)`
+for adjustment". Decimo already provides `Decimal128.round(scale, RoundingMode)`,
+so consumers needing a different mode can chain. Adding a per-op
+parameter to arithmetic would diverge from C#/Rust without a clear
+use-case, complicate the hot-path signature, and risk silent
+inconsistency between the rounding applied by the operator and any
+follow-up call. Banker's-only matches the IEEE 754-2008 default
+(round-nearest-even) and is what users coming from `System.Decimal` /
+`rust_decimal` expect.
+
+For per-op rounding control, callers should write
+`x.divide(y).round(scale, RoundingMode.half_up())` or use
+`BigDecimal` (which is the arbitrary-precision type and does take a
+mode parameter, matching Java `BigDecimal`). No code change required.
+
 ---
 
 ## 6. Result-Equivalence vs `rust_decimal` / .NET (3 vs 1 verdict)
@@ -429,11 +482,12 @@ Part II → "A note on result exponents (`Decimal` and `Dec128`)".
 
 Open items, in priority order:
 
-| #   | Issue                                             | Effort | Priority |
-| --- | ------------------------------------------------- | ------ | -------- |
-| 5.1 | divide repeating-decimal long tail (47 → ≤ 19 ns) | Large  | P1       |
-| 5.1 | from_string digit batching                        | Medium | P2       |
-| 5.2 | `normalize()`                                     | Small  | P3       |
-| 5.2 | `__hash__` (depends on `normalize()`)             | Small  | P3       |
-| 5.3 | `exp()` sub-unit chunk constants (`exp(π)`)       | Medium | P4       |
-| 5.5 | Steal flag bits → 32-digit coefficient            | Large  | P4       |
+| #   | Issue                                            | Effort | Priority |
+| --- | ------------------------------------------------ | ------ | -------- |
+| 5.1 | divide reciprocal-multiply (36 → ≤ 19 ns target) | Large  | P2       |
+| 5.1 | from_string digit batching                       | Medium | P2       |
+| 5.2 | `normalize()`                                    | Small  | P3       |
+| 5.2 | `__hash__` (depends on `normalize()`)            | Small  | P3       |
+| 5.6 | Per-op `RoundingMode` on Decimal128 arithmetic   | —      | REJECTED |
+| 5.3 | `exp()` sub-unit chunk constants (`exp(π)`)      | Medium | P4       |
+| 5.5 | Steal flag bits → 32-digit coefficient           | Large  | P4       |
