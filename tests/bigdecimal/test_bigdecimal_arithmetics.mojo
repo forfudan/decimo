@@ -384,9 +384,8 @@ def test_bigdecimal_operators_round_to_precision() raises:
             )
             count_wrong += 1
 
-        # __radd__ (BigDecimal does not promote ints automatically here,
-        # but reflected on BigDecimal is exercised by `mb + ma`)
-        var radd_op = mb + ma
+        # __radd__
+        var radd_op = ma.__radd__(mb)
         var radd_py = String(pb + pa)
         if String(radd_op) != radd_py:
             print(
