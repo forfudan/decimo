@@ -1042,11 +1042,14 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         # Long division producing exactly the final coefficient
         # (no extra +1 "rounding digit" padding). Total digits is
         # bounded by `MAX_NUM_DIGITS = 29`, scale by `MAX_SCALE = 28`.
-        # Rounding is decided directly from the final remainder via
-        # the round-half-up signal `(rem << 1) >= x2_coef` — equivalent
-        # to "the next-digit (uncomputed) is >= 5", with any non-zero
-        # rem treated as inexact (decimo's policy: round up at exact-5
-        # when there is more after).
+        # Rounding (banker's, round-half-to-even) is decided directly
+        # from the final residual remainder via a three-branch test on
+        # `2 * rem` against `x2_coef`:
+        #   2*rem  > x2_coef  → next-digit > 5 (or 5+nonzero-tail) → up
+        #   2*rem == x2_coef  → exact half       → bump only if `quot`
+        #                                          last-kept digit odd
+        #   2*rem  < x2_coef  → next-digit < 5                     → drop
+        # See the detailed derivation just before the rounding block.
 
         # The final step counter stands for the number of decimal points.
         var step_counter = 0
