@@ -386,6 +386,71 @@ def test_divide_repeating_decimals() raises:
     )
 
 
+def test_divide_bankers_rounding_at_boundary() raises:
+    """Banker's (round-half-to-even) at the MAX_SCALE+1 cutoff.
+
+    Discriminating cases between banker's and round-half-up, all
+    exercising the post-bulk rounding branch in `divide()`'s UInt128
+    path. Reference values cross-checked with Python's `decimal`:
+
+        from decimal import Decimal, ROUND_HALF_EVEN
+        (Decimal(k) / Decimal(2**29)).quantize(
+            Decimal('1E-28'), rounding=ROUND_HALF_EVEN
+        )
+    """
+
+    # 1) Exact-half terminator with EVEN last-kept digit.
+    #    1 / 2^29 = 0.00000000186264514923095703125 (29 frac digits).
+    #    Cut at 28 frac → drop "5" with rem == 0; 28th digit = 2 (even).
+    #    Banker's: keep, no round-up → "...0312".
+    #    Half-up   would give "...0313" (regression marker).
+    testing.assert_equal(
+        Decimal128(1) / Decimal128(536870912),  # 2^29
+        Decimal128("0.0000000018626451492309570312"),
+        "Banker's: exact half, even kept → drop",
+    )
+
+    # 2) Exact-half terminator with EVEN last-kept digit (second
+    #    exemplar to confirm the pattern).
+    #    5 / 2^29 = 0.0000000093132257461547851562**5**.
+    #    Cut at 28 → 28th digit = 2 (even); banker's drops 5.
+    #    Half-up   would give "...1563".
+    testing.assert_equal(
+        Decimal128(5) / Decimal128(536870912),
+        Decimal128("0.0000000093132257461547851562"),
+        "Banker's: exact half, even kept → drop (case 2)",
+    )
+
+    # 3) Exact-half terminator with ODD last-kept digit.
+    #    3 / 2^29 = 0.0000000055879354476928710937**5**.
+    #    Cut at 28 → 28th digit = 7 (odd); banker's bumps to 8.
+    #    Half-up coincidentally agrees here (both round up).
+    testing.assert_equal(
+        Decimal128(3) / Decimal128(536870912),
+        Decimal128("0.0000000055879354476928710938"),
+        "Banker's: exact half, odd kept → bump to even",
+    )
+
+    # 4) "5 with non-zero tail" — NOT a banker's tie.
+    #    1 / 7 = 0.142857142857142857142857142857...  (non-terminating)
+    #    Cut at 28 → 28th = 8, 29th = 5, 30th = 7 (and so on).
+    #    True value strictly > .5 of the unit, so banker's and half-up
+    #    agree: round up. Last kept digit becomes 9.
+    testing.assert_equal(
+        Decimal128(1) / Decimal128(7),
+        Decimal128("0.1428571428571428571428571429"),
+        "5-with-tail: round up regardless of mode",
+    )
+
+    # 5) Below-half repeating: 1/3 ends in all 3s. 28th = 3, 29th = 3.
+    #    Drop. Result has 28 trailing 3s.
+    testing.assert_equal(
+        Decimal128(1) / Decimal128(3),
+        Decimal128("0.3333333333333333333333333333"),
+        "Below-half: drop",
+    )
+
+
 def test_divide_properties_and_edge() raises:
     """Scale property checks, edge cases with comparisons and overflow."""
     var a25 = Decimal128(1) / Decimal128(81)

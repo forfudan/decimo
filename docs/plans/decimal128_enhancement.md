@@ -87,7 +87,7 @@ value before the fact and §2.4 / §2.5 for end-to-end snapshots.
 | 20260422 | H#14 `power_of_10_unsafe` sweep + `from_uint128` `@always_inline` with `raises`      |
 |          | extracted into `@no_inline` helpers. add dm/rs 1.2→0.8; divide dm/rs 2.2→1.0         |
 
-### 2.4 Performance — comparison / format / parse (this PR)
+### 2.4 Performance — comparison / format / parse
 
 | Date     | Item                                                                                 |
 | -------- | ------------------------------------------------------------------------------------ |
@@ -153,6 +153,32 @@ value before the fact and §2.4 / §2.5 for end-to-end snapshots.
 |          | `lower > upper`. 8 new tests in `test_decimal128_comparison.mojo` cover              |
 |          | positives/negatives, tie-preserves-scale, signed zeros, in-range / below /           |
 |          | above / boundary clamps, and invalid-bounds raise.                                   |
+| 20260502 | **`divide` long-division refactor (P1 of §5.1).** Three independent changes in the   |
+|          | UInt128 sub-case: (a) dropped the `+1` rounding-digit padding from `max_steps`, so   |
+|          | the long division produces exactly the final coefficient and the post-divide         |
+|          | `round_coefficient` overflow fix-up is no longer triggered for results that fit      |
+|          | `MAX_AS_UINT128`; (b) replaced the `UInt256` `combined = quot * 10^k + quot_added`   |
+|          | fold with a `UInt128` multiply (post-bulk total digits ≤ 29 → < 2^97 fits UInt128);  |
+|          | (c) replaced the OLD "+1 padding then `round_coefficient` (banker's) with override   |
+|          | `if digit == 5 and rem != 0: quot += 1`" pattern with a direct three-branch          |
+|          | banker's test on the residual rem (`2*rem > x2`/`==`/`<`), eliminating the wide      |
+|          | divide that `round_coefficient` performed at the boundary. Behaviour preserved:      |
+|          | banker's (round-half-to-even) at exact half; round-up at "5 with non-zero tail"      |
+|          | (mathematically > half, not a banker's tie). Added `test_divide_bankers_rounding_at` |
+|          | `_boundary` (5 cases) pinning all four arms (even-keeps, odd-bumps, 5+tail,          |
+|          | below-half) cross-checked against Python `decimal` ROUND_HALF_EVEN. Bench best-of-3  |
+|          | UInt128 path: `Repeating decimal` 47 → 36 ns, `High precision division` 47–61 →      |
+|          | 33–39 ns, `Large coprime quotient` 42–54 → 29–35 ns. UInt256 sub-case unchanged.     |
+|          | Negative results explored same day (none landed): (i) chunked-9 UInt128/UInt128      |
+|          | divide replacing the bulk UInt256 path regressed +10–15 ns because aarch64           |
+|          | UInt128/UInt128 falls back to libgcc `__udivti3` (~30 ns) vs the existing            |
+|          | `udiv_u256_by_u64`'s 4× hardware-favored u128/u64 divides; (ii) manually splitting   |
+|          | the probe-loop `// + %` into one divide + multiply-subtract regressed +4–5 ns        |
+|          | because LLVM already CSE-deduplicates `// + %` to a single `__udivmodti4`            |
+|          | (verified by bench, matches the existing UInt256-loop comment); (iii) full           |
+|          | rust_decimal `partial_divide_64`-style port is the only remaining algorithmic        |
+|          | win but requires Granlund-Möller shift-normalize that Mojo cannot express            |
+|          | without inline asm or LLVM intrinsics, deferred to §7 P2.                            |
 
 ### 2.5 Performance tracking — absolute decimo median ns/iter
 
@@ -213,7 +239,7 @@ context. All P1/P2 items have landed; P3 items are tracked in §5.
 | 4   | UInt256 promotion in `mul` when product fits UInt128       | DEPRIORITISED — bench cases all have `combined_num_bits ≥ 186`, mandatory UInt256                     |
 | 4.1 | `is_integer` branch in `multiply()`                        | DONE — removed; 548→5 ns on `Both integer`                                                            |
 | 5   | divide long-division loop                                  | DONE — two-phase probe + UInt256/u64 schoolbook                                                       |
-| 6   | `to_string` per-call allocation                            | DONE (this PR) — `write_to` writes digits via 32-byte `InlineArray` + single `StringSlice`            |
+| 6   | `to_string` per-call allocation                            | DONE — `write_to` writes digits via 32-byte `InlineArray` + single `StringSlice`                      |
 | 7   | bitcast 4×UInt32 → single UInt128 in `coefficient()`       | DISPROVEN                                                                                             |
 | 8   | `from_uint128()` raises overhead                           | DISPROVEN initially, but H#14 found it once `from_uint128` is `@always_inline`                        |
 | 9   | Power-of-10 LUT vs if/elif tree                            | LANDED bisect tree; LUT regressed when `debug_assert .format` was eager                               |
@@ -222,9 +248,9 @@ context. All P1/P2 items have landed; P3 items are tracked in §5.
 | 12  | `subtract` diff-scale: inline vs `add(x1, negative(x2))`   | DONE — saves ~3 ns / op                                                                               |
 | 13  | divide two-phase: probe + bulk finish                      | DONE — divide max 287→56 ns                                                                           |
 | 14  | `power_of_10_unsafe` sweep + `from_uint128` always-inline  | DONE — divide median 8→6 ns; raises extracted to `@no_inline` helpers                                 |
-| 15  | `compare_absolute` rewrite                                 | DONE (this PR) — worst case 13.6→3.8 ns                                                               |
-| 16  | `multiply` single-pass rounding (saves second wide divide) | DONE (this PR) — High-precision 19→13 ns                                                              |
-| 17  | `from_string` per-byte switch reorder + branch merge       | DONE (this PR) — Long integer 41→22 ns                                                                |
+| 15  | `compare_absolute` rewrite                                 | DONE — worst case 13.6→3.8 ns                                                                         |
+| 16  | `multiply` single-pass rounding (saves second wide divide) | DONE — High-precision 19→13 ns                                                                        |
+| 17  | `from_string` per-byte switch reorder + branch merge       | DONE — Long integer 41→22 ns                                                                          |
 | 18  | `Decimal128.from_string` call `str.parse_numeric_string`   | DISPROVEN — Output-shape mismatch: `parse_numeric_string` returns `List[UInt8]` digit bytes           |
 |     |                                                            | (right for arbitrary-precision `BigInt`/`BigUInt`/`BigDecimal`), `Decimal128.from_string` accumulates |
 |     |                                                            | straight into `UInt128` in-loop. Routing Decimal128 through the shared parser would add               |
@@ -298,27 +324,35 @@ context. All P1/P2 items have landed; P3 items are tracked in §5.
 
 ### 5.1 Worst-case ratios still > 1.5× rust
 
-These are the residual gaps after this PR. Each requires algorithmic
-work, not micro-optimisation.
+These are the residual gaps. Each requires algorithmic work, not 
+micro-optimisation.
 
-| Op          | Worst case                      | decimo |  rust | dm/rs | Likely root cause                                                                                            |
-| ----------- | ------------------------------- | -----: | ----: | ----: | ------------------------------------------------------------------------------------------------------------ |
-| multiply    | High precision multiplication   |   13.0 |  6.50 |  2.0× | UInt128 path: 17×17-digit prod, mandatory `round_coefficient` work                                           |
-| multiply    | Multiplication by zero          |    4.0 |  1.38 |  2.9× | Per-call dispatch overhead (raises + special-case tree)                                                      |
-| multiply    | Negative numbers                |    4.0 |  1.08 |  3.7× | Same                                                                                                         |
-| multiply    | e * e^0.5                       |   23.0 | 27.79 |  0.8× | UInt256 path; *faster* than rust                                                                             |
-| divide      | Division with repeating decimal |   47.0 | 12.12 |  3.9× | Rust uses a `div_internal` magic-multiply trick; decimo's two-phase loop still pays 28 digits' worth of bulk |
-| divide      | High precision division         |   48.0 | 19.21 |  2.5× | Same                                                                                                         |
-| divide      | Large coprime quotient          |   43.0 | 16.88 |  2.5× | Same                                                                                                         |
-| from_string | Long integer part (20 digits)   |   24.7 | 11.52 |  2.1× | UInt128 multiply-by-10 per digit; could batch into u64 chunks                                                |
-| from_string | Long fractional (28 digits)     |   46.2 | 27.12 |  1.7× | Same                                                                                                         |
-| from_string | Zero value                      |    4.3 |  1.79 |  2.4× | Per-call dispatch; rust has a 2-byte fast path                                                               |
+| Op          | Worst case                    | decimo |  rust | dm/rs | Likely root cause                                                  |
+| ----------- | ----------------------------- | -----: | ----: | ----: | ------------------------------------------------------------------ |
+| multiply    | High precision mul            |   13.0 |  6.50 |  2.0× | UInt128 path: 17×17-digit prod, mandatory `round_coefficient` work |
+| multiply    | Multiplication by zero        |    4.0 |  1.38 |  2.9× | Per-call dispatch overhead (raises + special-case tree)            |
+| multiply    | Negative numbers              |    4.0 |  1.08 |  3.7× | Same                                                               |
+| multiply    | e * e^0.5                     |   23.0 | 27.79 |  0.8× | UInt256 path; *faster* than rust                                   |
+| divide      | Div with repeating decimal    |   36.0 | 12.04 |  3.0× | One bulk wide-divide + post-divide overhead. After 20260502        |
+|             |                               |        |       |       | refactor (§2.4); rust_decimal still uses a `div_internal` magic-   |
+|             |                               |        |       |       | multiply trick. Closing the rest needs reciprocal multiplication.  |
+| divide      | High precision division       |   37.0 | 18.67 |  2.0× | Same                                                               |
+| divide      | Large coprime quotient        |   30.0 | 16.67 |  1.8× | Same                                                               |
+| from_string | Long integer part (20 digits) |   24.7 | 11.52 |  2.1× | UInt128 multiply-by-10 per digit; could batch into u64 chunks      |
+| from_string | Long fractional (28 digits)   |   46.2 | 27.12 |  1.7× | Same                                                               |
+| from_string | Zero value                    |    4.3 |  1.79 |  2.4× | Per-call dispatch; rust has a 2-byte fast path                     |
 
 **Possible follow-ups** (none committed):
 
-- *divide* (highest impact): adopt rust_decimal's reciprocal-multiplication
-  approach. Pre-compute reciprocals of common divisors or use a single
-  hardware `__udivti3` + correction, instead of the per-digit loop.
+- *divide* — REJECTED 2026-05-02. Adopting rust_decimal's
+  reciprocal-multiplication / `partial_divide_64` approach was
+  investigated and rejected: the win in rust comes from inlined
+  shift-normalize Granlund-Möller code that LLVM emits for u128/u64,
+  which Mojo cannot express in pure source (the `UInt128/UInt128`
+  operator lowers through libgcc `__udivti3` regardless). All explored
+  pure-Mojo variants (chunked-9, manual divmod split) regressed; see
+  the 2026-05-02 §2.4 entry for measurements. Revisit only if Mojo
+  gains inline-asm or a dedicated `divrem_2by1` intrinsic.
 - *from_string*: digit batching — accumulate up to 19 digits in a `UInt64`,
   then `coef = coef * 10^k + batch` once per chunk. ~5–7× reduction on the
   inner-loop multiplies. Targeted estimate: 24 → ~14 ns on `Long integer`.
@@ -399,6 +433,17 @@ It is a long-term proposal; not on the active roadmap.
 
 See git history (pre-2026-04-23) for the full analysis.
 
+### 5.6 Per-op `RoundingMode` parameter on `Decimal128` arithmetic — REJECTED
+
+**Considered 2026-05-02.** Cross-language survey of fixed-precision
+decimal `/`: C# `System.Decimal`, `rust_decimal`, Apache Arrow Decimal128,
+Go `govalues/decimal`, Python `decimal` — *none* take a per-op rounding
+mode; all use implicit banker's. Only arbitrary-precision types (Java /
+decimo `BigDecimal`) take one. **Verdict: REJECTED** to match the
+fixed-precision convention. Decimo already exposes
+`Decimal128.round(scale, RoundingMode)` for follow-up adjustment, and
+`BigDecimal` for callers needing per-op control.
+
 ---
 
 ## 6. Result-Equivalence vs `rust_decimal` / .NET (3 vs 1 verdict)
@@ -429,11 +474,12 @@ Part II → "A note on result exponents (`Decimal` and `Dec128`)".
 
 Open items, in priority order:
 
-| #   | Issue                                             | Effort | Priority |
-| --- | ------------------------------------------------- | ------ | -------- |
-| 5.1 | divide repeating-decimal long tail (47 → ≤ 19 ns) | Large  | P1       |
-| 5.1 | from_string digit batching                        | Medium | P2       |
-| 5.2 | `normalize()`                                     | Small  | P3       |
-| 5.2 | `__hash__` (depends on `normalize()`)             | Small  | P3       |
-| 5.3 | `exp()` sub-unit chunk constants (`exp(π)`)       | Medium | P4       |
-| 5.5 | Steal flag bits → 32-digit coefficient            | Large  | P4       |
+| #   | Issue                                          | Effort | Priority |
+| --- | ---------------------------------------------- | ------ | -------- |
+| 5.1 | from_string digit batching                     | Medium | P2       |
+| 5.2 | `normalize()`                                  | Small  | P3       |
+| 5.2 | `__hash__` (depends on `normalize()`)          | Small  | P3       |
+| 5.6 | Per-op `RoundingMode` on Decimal128 arithmetic | —      | REJECTED |
+| 5.1 | divide reciprocal-multiply (rust_decimal port) | —      | REJECTED |
+| 5.3 | `exp()` sub-unit chunk constants (`exp(π)`)    | Medium | P4       |
+| 5.5 | Steal flag bits → 32-digit coefficient         | Large  | P4       |

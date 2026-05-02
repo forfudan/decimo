@@ -1039,15 +1039,19 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         rem = x1_coef % x2_coef
 
     if is_use_uint128:
-        # Maximum number of steps is minimum of the following two values:
-        # - MAX_NUM_DIGITS - ndigits_initial_quot + 1
-        # - Decimal128.MAX_SCALE - diff_scale - adjusted_scale + 1 (significant digits be rounded off)
-        # ndigits_initial_quot is the number of digits of the quotient before using long division
-        # The extra digit is used for rounding up when it is 5 and not exact division
+        # Long division producing exactly the final coefficient
+        # (no extra +1 "rounding digit" padding). Total digits is
+        # bounded by `MAX_NUM_DIGITS = 29`, scale by `MAX_SCALE = 28`.
+        # Rounding (banker's, round-half-to-even) is decided directly
+        # from the final residual remainder via a three-branch test on
+        # `2 * rem` against `x2_coef`:
+        #   2*rem  > x2_coef  → next-digit > 5 (or 5+nonzero-tail) → up
+        #   2*rem == x2_coef  → exact half       → bump only if `quot`
+        #                                          last-kept digit odd
+        #   2*rem  < x2_coef  → next-digit < 5                     → drop
+        # See the detailed derivation just before the rounding block.
 
-        # digit is the tempory quotient digit
-        var digit = UInt128(0)
-        # The final step counter stands for the number of dicimal points
+        # The final step counter stands for the number of decimal points.
         var step_counter = 0
         var ndigits_initial_quot = decimo.decimal128.utility.number_of_digits(
             quot
@@ -1066,9 +1070,11 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         # full UInt256/UInt256 software fallback). This collapses ~25
         # iterations of the per-digit loop into one division.
         comptime PROBE_STEPS = 2
+        # No `+1` padding here: we compute the exact final digit count
+        # and recover the rounding signal from the remainder.
         var max_steps = min(
-            Decimal128.MAX_NUM_DIGITS - ndigits_initial_quot + 1,
-            Decimal128.MAX_SCALE - diff_scale - adjusted_scale + 1,
+            Decimal128.MAX_NUM_DIGITS - ndigits_initial_quot,
+            Decimal128.MAX_SCALE - diff_scale - adjusted_scale,
         )
         while (
             (rem != 0)
@@ -1076,63 +1082,65 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             and (step_counter < max_steps)
         ):
             rem *= 10
-            digit = rem // x2_coef
-            quot = quot * 10 + digit
+            quot = quot * 10 + (rem // x2_coef)
             rem = rem % x2_coef
             step_counter += 1
 
         if (rem != 0) and (step_counter < max_steps):
             var bulk_steps = max_steps - step_counter
-            # bulk_steps bound: max_steps ≤ MAX_NUM_DIGITS + 1 = 30 (the
-            # `+1` is the rounding digit; reached when
-            # `ndigits_initial_quot == 0`, which happens when the initial
-            # `x1_coef // x2_coef == 0`, e.g. 1/3). Entry to this arm
-            # requires the probe loop to have exited via
+            # bulk_steps bound: max_steps ≤ MAX_NUM_DIGITS = 29. Entry
+            # to this arm requires the probe loop to have exited via
             # `step_counter >= PROBE_STEPS = 2`, so in practice
-            # `bulk_steps ≤ 30 - 2 = 28`, comfortably within
+            # `bulk_steps ≤ 29 - 2 = 27`, well within
             # `power_of_10_unsafe`'s `0 ≤ n ≤ 29` range for `uint128`.
             var scale_factor = decimo.decimal128.utility.power_of_10_unsafe[
                 DType.uint128
             ](bulk_steps)
-            var scale_factor_256 = UInt256(scale_factor)
             # `rem * 10^bulk_steps` always fits in UInt256: rem < x2_coef
-            # ≤ 2^96 and bulk_steps ≤ 28 so 10^bulk_steps < 2^94, giving
-            # rem * 10^bulk_steps < 2^190.
+            # ≤ 2^96 and bulk_steps ≤ 27 so 10^bulk_steps < 2^90, giving
+            # rem * 10^bulk_steps < 2^186.
+            var rem_scaled: UInt256 = UInt256(rem) * UInt256(scale_factor)
 
-            var rem_scaled: UInt256 = UInt256(rem) * scale_factor_256
-            var x2_256 = UInt256(x2_coef)
-
-            var quot_added: UInt256
-            var rem_after: UInt256
+            var quot_added_u128: UInt128
+            var rem_after_u128: UInt128
             if x2_coef <= UInt128(0xFFFF_FFFF_FFFF_FFFF):
                 # Fast path: 4-step schoolbook over u64 limbs.
                 var pair = decimo.decimal128.utility.udiv_u256_by_u64(
                     rem_scaled, UInt64(x2_coef)
                 )
-                quot_added = pair[0]
-                rem_after = UInt256(pair[1])
+                # `quot_added < 10^bulk_steps ≤ 10^27 < 2^90`, fits UInt128.
+                quot_added_u128 = UInt128(
+                    pair[0] & UInt256(0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF)
+                )
+                rem_after_u128 = UInt128(pair[1])
             else:
                 # Rare 96-bit-divisor fallback: software UInt256 divide.
-                quot_added = rem_scaled // x2_256
-                rem_after = rem_scaled - quot_added * x2_256
+                var x2_256 = UInt256(x2_coef)
+                var quot_added_256 = rem_scaled // x2_256
+                var rem_after_256 = rem_scaled - quot_added_256 * x2_256
+                quot_added_u128 = UInt128(
+                    quot_added_256
+                    & UInt256(0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF)
+                )
+                rem_after_u128 = UInt128(
+                    rem_after_256
+                    & UInt256(0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF)
+                )
 
-            var combined: UInt256 = (
-                UInt256(quot) * scale_factor_256
-            ) + quot_added
-            # `combined` fits in UInt128: total decimal digits is at
-            # most `ndigits_initial_quot + step_counter + bulk_steps =
-            # ndigits_initial_quot + max_steps ≤ MAX_NUM_DIGITS + 1 = 30`.
-            quot = UInt128(
-                combined & UInt256(0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF)
-            )
+            # UInt128 fold (was UInt256 in the previous design).
+            # `quot * 10^bulk_steps` fits UInt128: post-bulk total
+            # digits = ndigits_initial_quot + step_counter + bulk_steps
+            # = ndigits_initial_quot + max_steps ≤ MAX_NUM_DIGITS = 29,
+            # so the product is < 10^29 < 2^97. Adding `quot_added_u128`
+            # (< 10^27) keeps it < 2 * 10^29 < 2^98, well below 2^128.
+            quot = quot * scale_factor + quot_added_u128
             step_counter = max_steps
 
-            if rem_after == 0:
+            if rem_after_u128 == 0:
                 # Exact division. The per-digit loop would have stopped
                 # at the first zero remainder, so its `quot` carries no
                 # trailing zeros from beyond that point. Bisect-strip
                 # the equivalent zeros so the final scale matches.
-                digit = 0
                 rem = 0
                 var pow16 = UInt128(10000000000000000)
                 while (step_counter >= 16) and (quot % pow16 == 0):
@@ -1154,22 +1162,45 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
                     quot = quot // 10
                     step_counter -= 1
             else:
-                # Inexact: the bottom digit of `quot` is the +1 extra
-                # rounding digit (`max_steps` includes it by construction).
-                # The `digit == 5 and rem != 0` patch below uses it.
-                digit = quot % 10
-                rem = UInt128(1)
+                # Inexact: forward the bulk-divide remainder for the
+                # unified rounding step below.
+                rem = rem_after_u128
 
-        # Yuhao's notes: When the remainder is non-zero at the end and the the digit to round is 5
-        # we always round up, even if the rounding mode is round half to even
-        # 朱宇浩注: 捨去項爲5時,其後方的數字可能會影響捨去項,但後方數字可能是無限位,所以無法確定
-        # 比如: 1.0000000000000000000000000000_5 可能是 1.0000000000000000000000000000_5{100 zeros}1
-        # 但我們只能算到 1.0000000000000000000000000000_5,
-        # 在銀行家捨去法中,我們將捨去項爲5時,向上捨去, 保留28位後爲1.0000000000000000000000000000
-        # 這樣的捨去法是不準確的,所以我們一律在到達餘數非零且捨去項爲5時,向上捨去
-        if (digit == 5) and (rem != 0):
-            # Not exact division, round up the last digit
-            quot += 1
+        # Banker's rounding (round-half-to-even) derived directly from
+        # the residual remainder, matching the .NET / rust_decimal
+        # convention for fixed-precision decimal divide.
+        #
+        # Compare `2*rem` against the divisor `x2_coef`:
+        #   2*rem  > x2_coef  → next-digit > 5             → round up
+        #   2*rem == x2_coef  → next-digit == 5, exact tail → banker's
+        #   2*rem  < x2_coef  → next-digit < 5             → drop
+        #
+        # Why the equality test really is "exact half (no further tail)":
+        # `2*rem == x2_coef` ⇒ `rem*10 == 5*x2_coef`, so
+        # `next_digit = (rem*10) // x2_coef == 5` and
+        # `next_rem    = (rem*10) %  x2_coef == 0` — i.e. the exact
+        # value is `quot.5` with all-zeros after, the textbook midpoint.
+        # Banker's rounds to the nearest even (round up only if the kept
+        # last digit `quot & 1` is odd).
+        #
+        # The strict `2*rem > x2_coef` arm covers the "5 with non-zero
+        # tail" case (e.g. 1/7 truncated at 28 frac digits → next is 5
+        # but the true value is strictly > .5 of the unit), which is
+        # *not* a banker's tie — rounding up is mathematically required.
+        #
+        # 朱宇浩注: 採用銀行家捨去法 (四捨六入五成雙)。
+        # 當餘數的兩倍嚴格大於除數時,下一位數字大於 5 (或等於 5 但其後仍有非零尾,
+        # 如 1/7 在第 28 位之後),四捨五入向上;當餘數的兩倍等於除數時,下一位
+        # 數字恰爲 5 且其後全爲零 (即恰好爲半),依銀行家法捨入到偶數;當餘數的
+        # 兩倍小於除數時,直接捨去。此實作與 .NET System.Decimal、rust_decimal
+        # 的除法默認捨入規則一致。
+        if rem != 0:
+            var double_rem = rem << 1
+            if double_rem > x2_coef:
+                quot += 1
+            elif (double_rem == x2_coef) and ((quot & 1) == 1):
+                # Exact half + last-kept-digit odd → bump to even.
+                quot += 1
 
         var scale_of_quot = step_counter + diff_scale + adjusted_scale
 
