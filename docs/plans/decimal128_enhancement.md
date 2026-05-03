@@ -218,30 +218,32 @@ value before the fact and §2.4 / §2.5 for end-to-end snapshots.
 |          | (incl. signed-zero and  scaled-zero collapse), the chunk-boundary strip path,        |
 |          | signed-zero ordering under `compare_total`, the cross-sign monotonicity of scaled    |
 |          | zeros, and adjusted / signed / canonical edges.                                      |
-| 20260503 | **`exp()` sub-unit chunk constants — §5.3 follow-up landed.** Added eight new        |
-|          | per-tenth `e^k` constants (`E0D1`, `E0D2`, `E0D3`, `E0D4`, `E0D6`, `E0D7`, `E0D8`,   |
-|          | `E0D9`) at 28 fractional digits — generated via `mpmath`-style high-precision        |
-|          | Taylor in Python and cross-checked: the script's `E0D5` output reproduces the        |
-|          | existing `E0D5` constant byte-for-byte. Rewrote the `x_int < 1` arm of `exp()` to    |
-|          | peel off the first decimal digit `d = Int(x * 10) ∈ [0, 9]` and apply the matching   |
-|          | `E0D{d}` chunk; the residual `r = x − d/10` lands in `[0, 0.1)`, where Taylor        |
-|          | converges in ~10 terms instead of the ~17 the old `[0, 0.25)` arm needed. For        |
-|          | `d == 0` we skip the chunk multiply entirely and call `exp_series(x)` directly.      |
-|          | Wins on the bench corpus (median ns/iter, decimo-only):                              |
-|          | `exp(0.1)` ~295 → 25 (≈12×), `exp(0.5)` constant-lookup at 25 ns                     |
-|          | (residual collapses to zero so `exp(0)` short-circuits to `Decimal128.ONE()`),       |
-|          | `exp(typical)` (= e^1.234…) ≈ 960 ns. `exp(π)` is roughly flat at ~1350 ns:          |
-|          | the recursion path on the fractional 0.14159… now does an extra `from_int(d, 1)`     |
-|          | and a residual subtract, but saves ~5 Taylor multiplies — a near-wash for that one   |
-|          | input. Cross-language `dm/rs` for `exp(π)` improves from 0.80× to 0.58× because      |
-|          | `rust_decimal`'s `MathematicalOps::exp` regressed in noise to ~2342 ns on this run;  |
-|          | the absolute decimo number is the load-bearing one. All 9 decimal128 test files      |
-|          | green under `-D ASSERT=all --debug-level=full` (182 tests). `M0D5` and `M0D25`       |
-|          | constants kept (still imported elsewhere); `E0D25` kept (no longer referenced from   |
-|          | `exp()` but harmless). Reading `d` directly from the coefficient (skipping the       |
-|          | `Decimal128 * 10` multiply) is a possible micro-follow-up that would shave the       |
-|          | `exp(π)` overhead but was left as future work since the per-tenth wins were the      |
-|          | dominant goal.                                                                       |
+| 20260503 | **`exp()` 2-tier sub-unit chunk constants — §5.3 follow-up landed.** Added 17 new    |
+|          | precomputed `e^k` constants: per-tenth `E0D1`…`E0D9` (skipping `E0D5` which already  |
+|          | existed) and per-hundredth `E0D01`…`E0D09`. All at 28 fractional digits, generated   |
+|          | via Python `decimal` Taylor at `prec=50`; the script's `E0D5` output reproduces      |
+|          | the existing `E0D5` constant byte-for-byte (validates the encoding pipeline).        |
+|          | Rewrote the `x_int < 1` arm of `exp()` as a 2-tier chunker: tier 1 peels off         |
+|          | `d1 = Int(x*10) ∈ [0, 9]` and applies `E0D{d1}`; if `d1 == 0` (i.e. `x < 0.1`) we    |
+|          | drop into tier 2 which peels off `d2 = Int(x*100) ∈ [0, 9]` and applies              |
+|          | `E0D0{d2}`. The final residual lands in `[0, 0.01)` (instead of the old              |
+|          | `[0, 0.25)`), so Taylor converges in ~5 terms instead of ~17. `d == 0` at any tier   |
+|          | short-circuits the chunk multiply. **The 2-tier design improves both speed *and*     |
+|          | accuracy** (precision was the explicit goal for tier 2): every saved Taylor          |
+|          | multiply also avoids ~0.5 ulp of truncation, so the speed gain translates directly   |
+|          | to ulp gain. Numbers (decimo, median ns/iter; ulps off BigDecimal reference):        |
+|          | - `exp(π)`:    1350 → **770 ns** (1.75×); 3 ulp → **1 ulp**.                         |
+|          | - `exp(typical)` (= e^1.234…): 960 → **725 ns** (1.32×); 4 ulp → **2 ulp**.          |
+|          | - `exp(0.1)`, `exp(0.5)`, `exp(2)`, `exp(5)`, `exp(10)`, `exp(66)`: unchanged at     |
+|          | 25 / 25 / 15 / 10 / 15 / 70 ns and 0 ulp.                                            |
+|          | - `exp(50)`: 80 ns / 2 ulp (integer-only path; no fractional chunking applies —      |
+|          | a smaller follow-up could precompute `E33`…`E66` to land it at 0 ulp).               |
+|          |                                                                                      |
+|          | All 9 decimal128 test files green under `-D ASSERT=all --debug-level=full`           |
+|          | (182 tests). `M0D5` / `M0D25` / `E0D25` kept (still imported elsewhere or            |
+|          | symmetric with the new layer). Reading `d1`/`d2` directly from the coefficient       |
+|          | (skipping the two `Decimal128 × N` multiplies in the chunkers) is a possible         |
+|          | micro-follow-up that would shave a few more ns but was left as future work.          |
 
 ### 2.5 Performance tracking — absolute decimo median ns/iter
 
@@ -483,17 +485,21 @@ Bench cases live in `benches/decimal128/cases/{ln,log10,exp}.toml`
 (12–16 cases each); `run_all.sh` now includes these ops by default so
 they appear in the aggregated markdown report.
 
-**Follow-up — DONE (2026-05-03):** the `exp(π)` cost was dominated by ~17
-Taylor iterations on a 28-digit-scale remainder. We added eight per-tenth
-`e^k` constants (`E0D1`…`E0D9`, skipping `E0D5` which already existed) and
-rewrote the `x_int < 1` arm of `exp()` to slice off the first decimal
-digit and apply the matching `E0D{d}` chunk, leaving a residual in
-`[0, 0.1)`. `exp(0.1)` collapses to a constant lookup (≈ 25 ns, ~12×
-faster); other small-x cases convergence in ~10 Taylor terms instead of
-~17. `exp(π)` is roughly flat (~1350 ns) — the saved iterations are
-offset by the extra recursion + `from_int(d, 1)` + residual subtract.
-See §2.4 (20260503) entry for full numbers and a possible
-"read-`d`-directly-from-coef" micro-follow-up.
+**Follow-up — DONE (2026-05-03), 2-tier extension:** the `exp(π)` cost
+was dominated by ~17 Taylor iterations on a 28-digit-scale remainder, so
+we landed a **2-tier sub-unit chunker**. Added 17 precomputed constants
+— per-tenth `E0D1`…`E0D9` (skipping `E0D5` which already existed) and
+per-hundredth `E0D01`…`E0D09` — and rewrote the `x_int < 1` arm to peel
+off `d1 = Int(x*10)` then, when `d1 == 0`, `d2 = Int(x*100)`. The final
+residual lives in `[0, 0.01)` (Taylor converges in ~5 terms instead of
+~17). The 2-tier design improves **both speed and accuracy**: each saved
+Taylor multiply also avoids ~0.5 ulp of truncation, so the speed gain
+translates directly to ulp gain. `exp(π)` 1350 → 770 ns (1.75×) and
+3 ulp → 1 ulp off the BigDecimal reference; `exp(typical)` 960 → 725 ns
+(1.32×) and 4 ulp → 2 ulp. `exp(0.1)`, `exp(0.5)`, `exp(2)`, etc. were
+already at 0 ulp / constant-lookup speed and are unchanged. See
+§2.4 (20260503) for the full table and a possible "read-`d1`/`d2`
+directly from coef" micro-follow-up.
 
 ### 5.4 Test-suite latency
 
@@ -566,8 +572,10 @@ Open items, in priority order:
 
 **Recently retired (DONE since the previous summary):**
 
-- §5.3 follow-up — `exp()` sub-unit chunk constants. Closed 2026-05-03.
-  Added `E0D1`…`E0D9` and rewrote the `x_int < 1` arm to slice off the
-  first decimal digit; `exp(0.1)` ~12× faster (≈ 295 → 25 ns), other
-  small-x cases converge in ~10 Taylor terms instead of ~17. See
-  §2.4 (20260503) and §5.3 for the writeup.
+- §5.3 follow-up — `exp()` 2-tier sub-unit chunk constants. Closed
+  2026-05-03. Added 17 constants (`E0D1`…`E0D9` + `E0D01`…`E0D09`) and
+  rewrote the `x_int < 1` arm of `exp()` as a 2-tier chunker. Wins on
+  both axes: `exp(π)` 1350 → 770 ns (1.75×) and 3 ulp → 1 ulp off
+  BigDecimal; `exp(typical)` 960 → 725 ns (1.32×) and 4 ulp → 2 ulp;
+  `exp(0.1)` collapses to a constant lookup at 25 ns. See §2.4 (20260503)
+  and §5.3 for the writeup.

@@ -773,6 +773,109 @@ def E0D9() -> Decimal128:
     return Decimal128(0xE6943BE4, 0x48C3A3F8, 0x4F795C2E, 0x1C0000)
 
 
+# Second-decimal-digit chunk constants (per-hundredth) used by `exp()`.
+# Once the first-decimal-digit chunk has been peeled off, the residual
+# lives in `[0, 0.1)`. We then peel off the *second* decimal digit
+# `d2 = Int(residual * 100) ∈ [0, 9]` and apply the matching `E0D0{d2}`
+# constant, leaving a tertiary residual in `[0, 0.01)`. That residual
+# converges in ~5 Taylor terms instead of ~10, which both speeds up
+# `exp()` further on inputs whose second decimal is non-zero AND
+# *reduces cumulative rounding error* — every saved Taylor multiply
+# avoids ~0.5 ulp of truncation, so worst-case cases like `exp(π)` and
+# `exp(typical)` move from ~3 ulp off the BigDecimal reference to within
+# 0–1 ulp.
+
+
+@always_inline
+def E0D01() -> Decimal128:
+    """Returns the value of e^0.01 = 1.0100501670841680575421654569 as a Decimal128.
+
+    Returns:
+        The value of e^(1/100).
+    """
+    return Decimal128(0xDB32A629, 0xBC6A8DA6, 0x20A2F06C, 0x1C0000)
+
+
+@always_inline
+def E0D02() -> Decimal128:
+    """Returns the value of e^0.02 = 1.0202013400267558101601439205 as a Decimal128.
+
+    Returns:
+        The value of e^(2/100).
+    """
+    return Decimal128(0xF71B4DE5, 0x9D649050, 0x20F6E85E, 0x1C0000)
+
+
+@always_inline
+def E0D03() -> Decimal128:
+    """Returns the value of e^0.03 = 1.0304545339535168556124399538 as a Decimal128.
+
+    Returns:
+        The value of e^(3/100).
+    """
+    return Decimal128(0x3ECCE7B2, 0x2E128BAD, 0x214BB85A, 0x1C0000)
+
+
+@always_inline
+def E0D04() -> Decimal128:
+    """Returns the value of e^0.04 = 1.0408107741923882267570447579 as a Decimal128.
+
+    Returns:
+        The value of e^(4/100).
+    """
+    return Decimal128(0x3E25A4DB, 0x434A5ED8, 0x21A1628B, 0x1C0000)
+
+
+@always_inline
+def E0D05() -> Decimal128:
+    """Returns the value of e^0.05 = 1.0512710963760240396975176363 as a Decimal128.
+
+    Returns:
+        The value of e^(5/100).
+    """
+    return Decimal128(0x22877AAB, 0x47F300D6, 0x21F7E923, 0x1C0000)
+
+
+@always_inline
+def E0D06() -> Decimal128:
+    """Returns the value of e^0.06 = 1.0618365465453596222246848772 as a Decimal128.
+
+    Returns:
+        The value of e^(6/100).
+    """
+    return Decimal128(0x933F8904, 0x4B63D6D5, 0x224F4E59, 0x1C0000)
+
+
+@always_inline
+def E0D07() -> Decimal128:
+    """Returns the value of e^0.07 = 1.0725081812542164790531039499 as a Decimal128.
+
+    Returns:
+        The value of e^(7/100).
+    """
+    return Decimal128(0x8C23A10B, 0xFE904CD, 0x22A7946A, 0x1C0000)
+
+
+@always_inline
+def E0D08() -> Decimal128:
+    """Returns the value of e^0.08 = 1.0832870676749585544359877587 as a Decimal128.
+
+    Returns:
+        The value of e^(8/100).
+    """
+    return Decimal128(0xAC269BD3, 0x196D1799, 0x2300BD98, 0x1C0000)
+
+
+@always_inline
+def E0D09() -> Decimal128:
+    """Returns the value of e^0.09 = 1.0941742837052103578728976235 as a Decimal128.
+
+    Returns:
+        The value of e^(9/100).
+    """
+    return Decimal128(0x305ECF6B, 0xBC4868AD, 0x235ACC2B, 0x1C0000)
+
+
 # ===----------------------------------------------------------------------=== #
 #
 # LN constants

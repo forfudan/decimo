@@ -38,6 +38,7 @@ from decimo.errors import (
     ConversionError,
 )
 import decimo.decimal128.utility
+from decimo.bigdecimal.bigdecimal import BigDecimal
 
 comptime Dec128 = Decimal128
 """A 128-bit fixed-point decimal number."""
@@ -509,6 +510,20 @@ struct Decimal128(
         flags |= (scale << Self.SCALE_SHIFT) & Self.SCALE_MASK
 
         return Self(low, mid, 0, flags)
+
+    @staticmethod
+    def from_decimal(value: BigDecimal) raises -> Self:
+        """Initializes a Decimal128 from a BigDecimal with rounding.
+
+        Args:
+            value: The BigDecimal value to convert to Decimal128.
+
+        Returns:
+            The Decimal128 representation of the BigDecimal.
+
+        Raises:
+            ValueError: If the BigDecimal value cannot be represented as Decimal128.
+        """
 
     @staticmethod
     @no_inline
