@@ -1,13 +1,20 @@
 # Decimo (formerly DeciMojo) <!-- omit from toc -->
 
-An arbitrary-precision integer and decimal library for [Mojo](https://www.modular.com/mojo), inspired by Python's `int` and `Decimal`.
+An arbitrary-precision integer and decimal library for [Mojo](https://www.modular.com/mojo), with a 128-bit fixed-point decimal type, inspired by Python's `int` and `Decimal`. Install it with `pixi add decimo`.
 
-Comes with `decimo`, an interactive arbitrary-precision calculator (REPL + one-shot mode) powered by [ArgMojo](https://github.com/forfudan/argmojo). Install it in one line with Homebrew: `brew install forfudan/tap/decimo`.
+Comes with an interactive arbitrary-precision calculator (REPL + one-shot mode) powered by [ArgMojo](https://github.com/forfudan/argmojo). Install it with `brew install forfudan/tap/decimo`.
 
 [![Version](https://img.shields.io/badge/version-v0.10.0-blue)](https://github.com/forfudan/decimo/releases/tag/v0.10.0)
 [![Mojo](https://img.shields.io/badge/mojo-0.26.2-orange)](https://docs.modular.com/mojo/manual/)
 [![pixi](https://img.shields.io/badge/pixi%20add-decimo-purple)](https://prefix.dev/channels/modular-community/packages/decimo)
 [![CI](https://img.shields.io/github/actions/workflow/status/forfudan/decimo/run_tests.yaml?branch=main&label=tests)](https://github.com/forfudan/decimo/actions/workflows/run_tests.yaml)
+
+| Type      | Alias                | Information                              | Layout       |
+| --------- | -------------------- | ---------------------------------------- | ------------ |
+| `Integer` | `BInt`, `BigInt`     | Equivalent to Python's `int`             | Base-2^32    |
+| `Decimal` | `BDec`, `BigDecimal` | Equivalent to Python's `decimal.Decimal` | Base-10^9    |
+| `Dec128`  | `Decimal128`         | 128-bit fixed-precision decimal type     | 32-bit words |
+| `Float`   | `BigFloat`           | Arbitrary-precision floating-point type  | MPFR/GMP     |
 
 <!-- 
 [![License](https://img.shields.io/github/license/forfudan/decimo)](LICENSE)
@@ -38,15 +45,7 @@ The core types are[^auxiliary]:
 - An arbitrary-precision decimal implementation (`Decimal`) allowing for calculations with unlimited digits and decimal places[^arbitrary], which is a Mojo-native equivalent of Python's `decimal.Decimal`.
 - A 128-bit fixed-point decimal implementation (`Dec128`) supporting up to 29 significant digits with a maximum of 28 decimal places[^fixed], which is a Mojo-native equivalent of C#'s `System.Decimal` or Rust's `rust_decimal`.
 - An arbitrary-precision floating-point implementation (`Float`) backed by the GNU MPFR library, supporting computations with configurable precision and a wide exponent range. Unlike `Decimal`, which uses base-10 arithmetic, `Float` uses binary floating-point internally. This type is optional and requires MPFR/GMP to be installed on the user's system.
-- An arbitrary-precision exact rational number type (`Rational`) represented as a reduced fraction of two `Integer`s (numerator and denominator). It supports exact arithmetic and comparisons without any loss of precision, making it ideal for applications that require precise fractional calculations.
-
-| Type       | Alternative names    | Information                              | Internal representation |
-| ---------- | -------------------- | ---------------------------------------- | ----------------------- |
-| `Integer`  | `BInt`, `BigInt`     | Equivalent to Python's `int`             | Base-2^32               |
-| `Decimal`  | `BDec`, `BigDecimal` | Equivalent to Python's `decimal.Decimal` | Base-10^9               |
-| `Dec128`   | `Decimal128`         | 128-bit fixed-precision decimal type     | Triple 32-bit words     |
-| `Float`    | `BigFloat`           | Arbitrary-precision floating-point type  | MPFR/GMP                |
-| `Rational` | N/A                  | Exact rational number type               | Two `Integer`s          |
+<!-- - An arbitrary-precision exact rational number type (`Rational`) represented as a reduced fraction of two `Integer`s (numerator and denominator). It supports exact arithmetic and comparisons without any loss of precision, making it ideal for applications that require precise fractional calculations. -->
 
 **Decimo** combines "**Deci**mal" and "**Mo**jo" - reflecting its purpose and implementation language. "Decimo" is also a Latin word meaning "tenth" and is the root of the word "decimal".
 
