@@ -16,9 +16,9 @@
 #       ./bigdec_ref.mojo --op ln --cases-dir ../cases --logs-dir ../logs
 
 from decimo import BigDecimal
+from decimo import Decimal128
 import decimo.bigdecimal.exponential as bdexp
-from decimo.rounding_mode import RoundingMode
-from decimo.tests import BenchCase, load_bench_cases
+from decimo.tests import load_bench_cases
 from std.python import Python
 from std.sys import argv as sys_argv
 
@@ -57,118 +57,18 @@ def _pad(s: String, width: Int) -> String:
     return out
 
 
-def _strip_trailing_zeros(s: String) -> String:
-    # Strip trailing zeros after the decimal point so the ref result is
-    # easy to eyeball next to the Decimal128 / rust_decimal column.
-    # Leaves integer values ("0", "1") and scientific notation untouched.
-    if "." not in s or "e" in s or "E" in s:
-        return s
-    var end = len(s)
-    while end > 0 and s[byte = end - 1 : end] == "0":
-        end -= 1
-    if end > 0 and s[byte = end - 1 : end] == ".":
-        end -= 1
-    return String(s[byte=0:end])
-
-
-# Decimal128's coefficient is a 96-bit unsigned integer:
-#   MAX_AS_UINT128 = 2**96 - 1 = 79228162514264337593543950335  (29 digits)
-# So a value can be stored at 29 significant digits iff its normalized
-# coefficient is <= MAX. Otherwise it falls back to 28 digits.
-comptime _DEC128_MAX_COEF = String("79228162514264337593543950335")
-
-
-# Extract the digit-only coefficient string from a BigDecimal's textual
-# form: drop sign, decimal point, and any leading zeros (sub-1 values).
-# Stops at the first 'e'/'E' so scientific-notation tails don't leak in.
-def _coefficient_digits(s: String) -> String:
-    var out = String("")
-    var seen_nonzero = False
-    for ch in s.codepoint_slices():
-        if ch == "-" or ch == "+" or ch == ".":
-            continue
-        if ch == "e" or ch == "E":
-            break
-        if not seen_nonzero:
-            if ch == "0":
-                continue
-            seen_nonzero = True
-        out += String(ch)
-    return out
-
-
-def _fits_in_dec128(s: String) -> Bool:
-    var coef = _coefficient_digits(s)
-    if len(coef) < 29:
-        return True
-    if len(coef) > 29:
-        return False
-    # Same-length 29-digit comparison is well-defined as a string compare.
-    return coef <= _DEC128_MAX_COEF
-
-
-# Round a BigDecimal using Decimal128's variable-precision policy: try
-# 29 significant digits first; if the resulting coefficient overflows
-# 2**96-1 then fall back to 28. `fill_zeros_to_precision=True` ensures
-# the result *always* shows the full target precision (so a trailing
-# significant zero doesn't make the column look like it has one fewer
-# digit than Decimal128 would actually store).
-def _round_and_str(mut v: BigDecimal) raises -> String:
-    v.round_to_precision(
-        29,
-        RoundingMode.ROUND_HALF_EVEN,
-        remove_extra_digit_due_to_rounding=False,
-        fill_zeros_to_precision=True,
-    )
-    var s = String(v)
-    if not _fits_in_dec128(s):
-        v.round_to_precision(
-            28,
-            RoundingMode.ROUND_HALF_EVEN,
-            remove_extra_digit_due_to_rounding=False,
-            fill_zeros_to_precision=True,
-        )
-        s = String(v)
-    return _collapse_exact_integer(s)
-
-
-# If the rounded value is an exact integer (all post-decimal digits are
-# zero, or the value is the textual zero "0E-N"), collapse to compact
-# integer form so the oracle column matches Decimal128's natural output
-# for cases like log10(100) -> 2 instead of "2.0000000000000000000000000000".
-def _collapse_exact_integer(s: String) -> String:
-    # Find dot and 'E' positions.
-    var dot = -1
-    var e_pos = -1
-    for i in range(len(s)):
-        var ch = s[byte = i : i + 1]
-        if ch == ".":
-            dot = i
-        elif ch == "e" or ch == "E":
-            e_pos = i
-            break
-    # Case 1: "0E-28" or "-0E-28" -> "0".
-    if e_pos >= 0 and dot < 0:
-        var mantissa = String(s[byte=0:e_pos])
-        var all_zero = True
-        for ch in mantissa.codepoint_slices():
-            if String(ch) != "0" and String(ch) != "-" and String(ch) != "+":
-                all_zero = False
-                break
-        if all_zero:
-            return String("0")
-        return s
-    # Case 2: "N.000...0" -> "N" (only if no exponent and post-dot all zero).
-    if dot >= 0 and e_pos < 0:
-        var post = String(s[byte = dot + 1 : len(s)])
-        var all_zero = True
-        for ch in post.codepoint_slices():
-            if String(ch) != "0":
-                all_zero = False
-                break
-        if all_zero:
-            return String(s[byte=0:dot])
-    return s
+# Round a BigDecimal to the Decimal128 storage grid (≤ 96-bit
+# coefficient, scale ≤ 28) using banker's rounding, and return its
+# canonical Decimal128 string.
+#
+# Previously this was ~80 lines of hand-written significant-digit
+# rounding, coefficient-bound checks, and exact-integer collapsing.
+# `Decimal128.from_decimal()` now performs all of this in one call by
+# routing through `from_string()` (which applies `ROUND_HALF_EVEN` via
+# `round_coefficient`, calls `fit_to_max_coefficient` to honour the
+# 29-digit cap, and emits Decimal128's natural string form).
+def _round_and_str(v: BigDecimal) raises -> String:
+    return String(Decimal128.from_decimal(v))
 
 
 def _ref_result(
@@ -229,7 +129,7 @@ def main() raises:
         op,
         "(work=",
         work_precision,
-        ", target=29-then-28 [Decimal128 policy])",
+        ", quantised onto Decimal128 grid via from_decimal())",
     )
     print(_pad("case", 40), "result")
     for ref bc in cases:
