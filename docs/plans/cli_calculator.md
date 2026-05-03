@@ -448,7 +448,7 @@ blank lines skipped — same conventions as the existing `-F` script format.
 | ---- | ----------------------------------------------------- | :----: | --------------------------------------------------------------------------------------- |
 | 5.1  | Single-line user functions `f(x) = expr`              |   ✗    | Tokenizer + statement-vs-expression dispatcher; LHS-paren disambiguates from `x = expr` |
 | 5.2  | Multi-arg + recursion `g(x, y) = …`                   |   ✗    | Recursion-depth cap (≈1000) with friendly error                                         |
-| 5.3  | Local parameter scope, no closures                    |   ✗    | Params shadow globals; assignments inside a fn are local by default (bc rule)           |
+| 5.3  | Local parameter scope, no closures                    |   ✗    | Params shadow globals; assignments inside a def are local by default (bc rule)          |
 | 5.4  | `-L/--load <file>` to load a library (silent eval)    |   ✗    | Accepts `.dm` and `.decimo`; only definitions printed silently                          |
 | 5.5  | `-I/--interactive` enters REPL after `-F`/`-L`        |   ✗    | `decimo -L lib.dm -I`; composes with existing `-F`                                      |
 | 5.6  | Auto-load `~/.decimorc`                               |   ✗    | Skippable via `--no-rc`; load order: rc → `-L` → `-F` → REPL                            |

@@ -2560,7 +2560,7 @@ def floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
     return result^
 
 
-fn floor_divide_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
+def floor_divide_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
     """In-place version of `floor_divide_by_power_of_ten`. Drops the
     `n` lowest decimal digits of `x` directly inside its `words`
     storage, avoiding an allocation when only a sub-word shift is
@@ -2613,7 +2613,7 @@ fn floor_divide_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
     _shift_right_by_decimal_digits_inplace(x, digit_shift)
 
 
-fn _shift_right_by_decimal_digits_inplace(mut x: BigUInt, digit_shift: Int):
+def _shift_right_by_decimal_digits_inplace(mut x: BigUInt, digit_shift: Int):
     """Divides `x` in place by `10^digit_shift`, where
     `1 <= digit_shift <= 8`. Assumes any whole-word shift has already
     been applied; this only performs the sub-word digit shift and
@@ -2695,7 +2695,7 @@ def floor_divide_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
         return result^
 
 
-fn floor_divide_by_power_of_billion_inplace(mut x: BigUInt, n: Int):
+def floor_divide_by_power_of_billion_inplace(mut x: BigUInt, n: Int):
     """In-place version of `floor_divide_by_power_of_billion`. Drops
     the `n` lowest base-10^9 words of `x` directly inside its `words`
     storage, avoiding an allocation.

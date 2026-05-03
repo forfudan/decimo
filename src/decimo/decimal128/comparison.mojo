@@ -307,3 +307,68 @@ def clamp(
     if compare(x, upper) > 0:
         return upper
     return x
+
+
+def compare_total(a: Decimal128, b: Decimal128) -> Int8:
+    """Returns the IBM GDA total ordering (`§5.5.13 compare-total`) of `a`
+    vs `b`. Unlike `compare()` (which treats `1.0 == 1.00` and collapses
+    every zero into a single equivalence class), `compare_total` produces a
+    *strict* total order on the representation, so numerically equal values
+    that differ in scale or signed-zero status receive a deterministic
+    order.
+
+    Ordering rules:
+
+    1. Negatives precede positives, including signed zero (`-0 < +0`).
+    2. Among same-sign non-zero values: usual numeric order.
+    3. Among numerically equal values (incl. same-signed zeros), the
+       *lower* scale comes first for positives; reversed for negatives, so
+       the global sequence stays monotonic across the zero boundary:
+       `... -0.00 < -0.0 < -0 < +0 < +0.0 < +0.00 < ... < 1.0 < 1.00 ...`.
+
+    Args:
+        a: First Decimal128 value.
+        b: Second Decimal128 value.
+
+    Returns:
+        `-1` if `a` precedes `b`, `0` if identical representations,
+        `+1` otherwise.
+    """
+
+    # Dual-zero case must be handled BEFORE delegating to `compare()` —
+    # `compare()` returns 0 for any two zeros regardless of sign or scale,
+    # which would collapse the four representations `{-0, +0} × {scale...}`
+    # into a single equivalence class, contradicting the total-order
+    # contract. Order by sign first (negative zero precedes positive zero),
+    # then fall through to the same scale tie-break as the non-zero arm.
+    var a_zero = a.is_zero()
+    var b_zero = b.is_zero()
+    if a_zero and b_zero:
+        var a_neg = a.is_negative()
+        var b_neg = b.is_negative()
+        if a_neg != b_neg:
+            return Int8(-1) if a_neg else Int8(1)
+        # Same-signed zeros: scale tie-break (rule 3).
+        var s_a_z = a.scale()
+        var s_b_z = b.scale()
+        if s_a_z == s_b_z:
+            return Int8(0)
+        if a_neg:
+            return Int8(-1) if s_a_z > s_b_z else Int8(1)
+        return Int8(-1) if s_a_z < s_b_z else Int8(1)
+
+    var c = compare(a, b)
+    if c != 0:
+        return c
+
+    # Numerically equal non-zero values (same sign, same magnitude, possibly
+    # different scale). For positives, lower scale wins. For negatives,
+    # higher scale wins so the sequence stays monotonic across the sign
+    # boundary (... -1.00 < -1.0 < -1 < ... < 1 < 1.0 < 1.00 ...).
+    var s_a = a.scale()
+    var s_b = b.scale()
+    if s_a == s_b:
+        return Int8(0)
+    if a.is_negative():
+        return Int8(-1) if s_a > s_b else Int8(1)
+    return Int8(-1) if s_a < s_b else Int8(1)

@@ -72,7 +72,7 @@ def ljust(s: String, width: Int, fillchar: String = " ") -> String:
 
 
 @no_inline
-fn _raise_invalid_char(c: UInt8, value: String) raises -> None:
+def _raise_invalid_char(c: UInt8, value: String) raises -> None:
     # Non-ASCII bytes (>127) are typically a stray UTF-8 lead/continuation
     # byte; surfacing them via `chr()` produces garbled output that is not
     # actionable. Include the raw byte value (hex) AND the original input so

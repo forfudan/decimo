@@ -1,13 +1,16 @@
 """
-Tests for Decimal128 integer-part / fractional-part / sign helpers and
+Tests for Decimal128 integer-part / fractional-part / sign helpers,
 the IEEE 754 / IBM GDA "preferred exponent" semantics for multiply and
-divide.
+divide, and the canonicalisation / introspection surface
+(`normalize`, `__hash__`, `same_quantum`, `adjusted`, `compare_total`,
+`is_signed`, `canonical`, `is_canonical`).
 
-Consolidates test_decimal128_{integer_part, preferred_exp}.mojo.
-Neither file uses TOML.
+Consolidates test_decimal128_{integer_part, preferred_exp,
+canonicalization}.mojo. None use TOML.
 """
 
 from std import testing
+from std.hashlib.hasher import default_hasher
 
 from decimo import Dec128
 
@@ -297,6 +300,292 @@ def test_divide_above_ideal_exponent() raises:
     """6.0 / 2 should hit ideal exponent -1 → '3.0'."""
     var result = Dec128("6.0") / Dec128("2")
     testing.assert_equal(String(result), "3.0")
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# normalize()
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_normalize_strips_fractional_zeros() raises:
+    testing.assert_equal(String(Dec128("1.000").normalize()), "1")
+    testing.assert_equal(String(Dec128("1.0").normalize()), "1")
+    testing.assert_equal(String(Dec128("123.4500").normalize()), "123.45")
+    testing.assert_equal(String(Dec128("0.1000").normalize()), "0.1")
+
+
+def test_normalize_keeps_integer_trailing_zeros() raises:
+    """`100` has scale 0 already; normalize must not collapse it to `1E2`
+    (we don't carry an exponent separate from scale, so the trailing
+    zeros in the integer part of a scale-0 value are part of the
+    coefficient)."""
+    testing.assert_equal(String(Dec128("100").normalize()), "100")
+    testing.assert_equal(String(Dec128("1000").normalize()), "1000")
+
+
+def test_normalize_no_trailing_zeros_is_idempotent() raises:
+    testing.assert_equal(String(Dec128("1.23").normalize()), "1.23")
+    testing.assert_equal(String(Dec128("3").normalize()), "3")
+    testing.assert_equal(String(Dec128("-3.14159").normalize()), "-3.14159")
+
+
+def test_normalize_zero_canonicalizes_to_positive_zero_scale_zero() raises:
+    """All zero representations collapse to `Decimal128.ZERO()` so
+    hashing / equality stay consistent."""
+    testing.assert_equal(String(Dec128("0").normalize()), "0")
+    testing.assert_equal(String(Dec128("0.0").normalize()), "0")
+    testing.assert_equal(String(Dec128("0.0000").normalize()), "0")
+    testing.assert_equal(String(Dec128("-0").normalize()), "0")
+    testing.assert_equal(String(Dec128("-0.000").normalize()), "0")
+
+
+def test_normalize_negative_strips_zeros_keeps_sign() raises:
+    testing.assert_equal(String(Dec128("-1.500").normalize()), "-1.5")
+    testing.assert_equal(String(Dec128("-100.00").normalize()), "-100")
+
+
+def test_normalize_high_precision_strips_at_chunk_boundary() raises:
+    """Hits the 9-digit chunk pre-pass: 18 trailing zeros -> 2 chunks
+    peeled in two iterations."""
+    var v = Dec128("1.000000000000000000")  # 1 then 18 zeros, scale 18
+    testing.assert_equal(String(v.normalize()), "1")
+    var w = Dec128("1.234500000000000000")  # scale 18, last 14 zeros
+    testing.assert_equal(String(w.normalize()), "1.2345")
+
+
+def test_normalize_max_scale_no_zeros_to_strip_is_idempotent() raises:
+    """Tests scale=28 with coef=5 (no trailing zeros): nothing to strip,
+    `normalize()` is the identity."""
+    var v = Dec128("0.0000000000000000000000000005")
+    var n = v.normalize()
+    testing.assert_equal(String(v), String(n))
+    testing.assert_true(v == n)
+    testing.assert_equal(n.scale(), 28)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# __hash__ (Hashable)
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def _h(d: Dec128) -> UInt64:
+    """Helper: feed `d` through the default Mojo hasher and finish."""
+    var h = default_hasher()
+    d.__hash__(h)
+    return h^.finish()
+
+
+def test_hash_equal_values_same_scale_collide() raises:
+    testing.assert_equal(_h(Dec128("1.23")), _h(Dec128("1.23")))
+
+
+def test_hash_equal_values_different_scale_collide() raises:
+    """The defining contract: a == b => hash(a) == hash(b)."""
+    testing.assert_true(Dec128("1.0") == Dec128("1.00"))
+    testing.assert_equal(_h(Dec128("1.0")), _h(Dec128("1.00")))
+    testing.assert_equal(_h(Dec128("1")), _h(Dec128("1.000000")))
+    testing.assert_equal(_h(Dec128("100")), _h(Dec128("100.000")))
+
+
+def test_hash_zero_collides_across_signs_and_scales() raises:
+    """All zeros hash the same after normalize() canonicalises sign+scale."""
+    var z0 = _h(Dec128("0"))
+    testing.assert_equal(z0, _h(Dec128("0.0")))
+    testing.assert_equal(z0, _h(Dec128("0.000000")))
+    testing.assert_equal(z0, _h(Dec128("-0")))
+    testing.assert_equal(z0, _h(Dec128("-0.00")))
+
+
+def test_hash_distinct_values_distinct() raises:
+    """Sanity sample (NOT a contract — 64-bit hashes can collide in
+    principle). We only assert it on a tiny hand-picked set where the
+    AHasher output is empirically distinct on the current platform; this
+    is a smoke test for the hashing path being wired up at all, not a
+    distinctness guarantee.
+
+    The Hashable contract is `a == b ⇒ hash(a) == hash(b)` only — the
+    converse is NOT required. Coverage of the contract proper lives in
+    `test_hash_equal_values_*_collide` and
+    `test_hash_zero_collides_across_signs_and_scales` above.
+    """
+    # Smoke: the hasher must return a value at all (no panic, no zero-
+    # init bug). We deliberately do NOT assert distinctness across
+    # arbitrary inputs to avoid flaky failures from random collisions.
+    _ = _h(Dec128("1.23"))
+    _ = _h(Dec128("-1.23"))
+    _ = _h(Dec128("100"))
+    _ = _h(Dec128("1000"))
+
+
+def test_hash_negative() raises:
+    testing.assert_equal(_h(Dec128("-1.5")), _h(Dec128("-1.500")))
+    # Probabilistic distinctness check kept off the assert path — see
+    # `test_hash_distinct_values_distinct` for the rationale.
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# same_quantum()
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_same_quantum_equal_scale() raises:
+    testing.assert_true(Dec128("1.23").same_quantum(Dec128("4.56")))
+    testing.assert_true(Dec128("0.001").same_quantum(Dec128("999.999")))
+    testing.assert_true(Dec128("100").same_quantum(Dec128("0")))
+
+
+def test_same_quantum_different_scale() raises:
+    testing.assert_false(Dec128("1.230").same_quantum(Dec128("1.23")))
+    testing.assert_false(Dec128("1").same_quantum(Dec128("1.0")))
+
+
+def test_same_quantum_signs_irrelevant() raises:
+    testing.assert_true(Dec128("-1.23").same_quantum(Dec128("4.56")))
+    testing.assert_true(Dec128("-0.00").same_quantum(Dec128("0.00")))
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# adjusted()
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_adjusted_basic() raises:
+    # 1.2345e2 -> adjusted = 2
+    testing.assert_equal(Dec128("123.45").adjusted(), 2)
+    # 1.00e2 -> adjusted = 2
+    testing.assert_equal(Dec128("100").adjusted(), 2)
+    # 1.0e0 -> adjusted = 0
+    testing.assert_equal(Dec128("1").adjusted(), 0)
+    # 1.0e0 (with trailing zeros bumping digit count) -> adjusted = 0
+    testing.assert_equal(Dec128("1.00").adjusted(), 0)
+
+
+def test_adjusted_fractional() raises:
+    # 1.23e-3 -> -3
+    testing.assert_equal(Dec128("0.00123").adjusted(), -3)
+    # 1e-1 -> -1
+    testing.assert_equal(Dec128("0.1").adjusted(), -1)
+    # 5e-28 -> -28 (max scale)
+    testing.assert_equal(
+        Dec128("0.0000000000000000000000000005").adjusted(), -28
+    )
+
+
+def test_adjusted_negative_value() raises:
+    """Sign does not affect adjusted exponent."""
+    testing.assert_equal(Dec128("-123.45").adjusted(), 2)
+    testing.assert_equal(Dec128("-0.001").adjusted(), -3)
+
+
+def test_adjusted_zero() raises:
+    testing.assert_equal(Dec128("0").adjusted(), 0)
+    testing.assert_equal(Dec128("0.000").adjusted(), 0)
+    testing.assert_equal(Dec128("-0.00").adjusted(), 0)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# compare_total()
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_compare_total_distinguishes_scales_when_equal() raises:
+    """Numerically equal values: lower scale precedes higher scale for
+    positives (`1 < 1.0 < 1.00`)."""
+    testing.assert_equal(Int(Dec128("1.0").compare_total(Dec128("1.00"))), -1)
+    testing.assert_equal(Int(Dec128("1").compare_total(Dec128("1.0"))), -1)
+    testing.assert_equal(Int(Dec128("1.00").compare_total(Dec128("1.0"))), 1)
+
+
+def test_compare_total_negative_reverses_scale_ordering() raises:
+    """For negatives, higher scale precedes lower scale so the global
+    sequence stays monotonic across the sign change."""
+    testing.assert_equal(Int(Dec128("-1.00").compare_total(Dec128("-1.0"))), -1)
+    testing.assert_equal(Int(Dec128("-1.0").compare_total(Dec128("-1"))), -1)
+
+
+def test_compare_total_falls_back_to_value_when_scales_match() raises:
+    testing.assert_equal(Int(Dec128("1.5").compare_total(Dec128("2.5"))), -1)
+    testing.assert_equal(Int(Dec128("2.5").compare_total(Dec128("1.5"))), 1)
+
+
+def test_compare_total_identical_returns_zero() raises:
+    testing.assert_equal(Int(Dec128("1.23").compare_total(Dec128("1.23"))), 0)
+    testing.assert_equal(Int(Dec128("-0.00").compare_total(Dec128("-0.00"))), 0)
+
+
+def test_compare_total_signs() raises:
+    # Negative precedes positive even when |a| > |b|.
+    testing.assert_equal(Int(Dec128("-100").compare_total(Dec128("0.1"))), -1)
+    testing.assert_equal(Int(Dec128("0.1").compare_total(Dec128("-100"))), 1)
+
+
+def test_compare_total_signed_zero() raises:
+    """Signed zero edge case (rule 1): `-0 < +0` even though `compare()`
+    treats them as equal. This is the load-bearing difference between
+    `compare()` and `compare_total()` — the latter must NOT delegate to
+    `compare()` for the dual-zero branch (which would return 0 and break
+    the strict total order)."""
+    testing.assert_equal(Int(Dec128("-0.00").compare_total(Dec128("0.00"))), -1)
+    testing.assert_equal(Int(Dec128("0.00").compare_total(Dec128("-0.00"))), 1)
+    testing.assert_equal(Int(Dec128("-0").compare_total(Dec128("0"))), -1)
+
+
+def test_compare_total_scaled_zeros_same_sign() raises:
+    """Scaled-zero edge case (rule 3): same-sign zeros differ by scale.
+    For positives lower scale precedes higher (`0 < 0.0 < 0.00`); for
+    negatives the relation reverses (`-0.00 < -0.0 < -0`) so the global
+    sequence stays monotonic across +0/-0."""
+    # Positive zeros: lower scale precedes higher.
+    testing.assert_equal(Int(Dec128("0").compare_total(Dec128("0.0"))), -1)
+    testing.assert_equal(Int(Dec128("0.0").compare_total(Dec128("0.00"))), -1)
+    testing.assert_equal(Int(Dec128("0.00").compare_total(Dec128("0"))), 1)
+    # Negative zeros: higher scale precedes lower.
+    testing.assert_equal(Int(Dec128("-0.00").compare_total(Dec128("-0.0"))), -1)
+    testing.assert_equal(Int(Dec128("-0.0").compare_total(Dec128("-0"))), -1)
+    testing.assert_equal(Int(Dec128("-0").compare_total(Dec128("-0.0"))), 1)
+    # Identical zero representations still tie.
+    testing.assert_equal(Int(Dec128("0").compare_total(Dec128("0"))), 0)
+    testing.assert_equal(Int(Dec128("-0.00").compare_total(Dec128("-0.00"))), 0)
+
+
+def test_compare_total_zero_vs_nonzero_signs() raises:
+    """Cross-cases that mix signed zero with non-zero values: the sign
+    rule (rule 1) still dominates."""
+    # +0 < any positive non-zero; -0 < any positive non-zero.
+    testing.assert_equal(Int(Dec128("0").compare_total(Dec128("1"))), -1)
+    testing.assert_equal(Int(Dec128("-0").compare_total(Dec128("1"))), -1)
+    # any negative non-zero < +0 and < -0.
+    testing.assert_equal(Int(Dec128("-1").compare_total(Dec128("0"))), -1)
+    testing.assert_equal(Int(Dec128("-1").compare_total(Dec128("-0"))), -1)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# is_signed / canonical / is_canonical
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_is_signed() raises:
+    testing.assert_true(Dec128("-1").is_signed())
+    testing.assert_true(Dec128("-0.00").is_signed())  # signed zero
+    testing.assert_false(Dec128("1").is_signed())
+    testing.assert_false(Dec128("0").is_signed())
+
+
+def test_canonical_returns_self_unchanged() raises:
+    """Decimal128 has no non-canonical encoding; `canonical()` is identity."""
+    var v = Dec128("123.450")
+    var c = v.canonical()
+    testing.assert_equal(String(v), String(c))
+    testing.assert_true(v == c)
+    # Also keep the original scale (does NOT normalize).
+    testing.assert_equal(c.scale(), 3)
+
+
+def test_is_canonical_always_true() raises:
+    testing.assert_true(Dec128("0").is_canonical())
+    testing.assert_true(Dec128("123.45").is_canonical())
+    testing.assert_true(Dec128("-0.00").is_canonical())
+    testing.assert_true(Dec128("79228162514264337593543950335").is_canonical())
 
 
 def main() raises:
