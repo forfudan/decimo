@@ -683,6 +683,96 @@ def E0D25() -> Decimal128:
     return Decimal128(0xB43646F1, 0x2654858A, 0x297D3595, 0x1C0000)
 
 
+# First-decimal-digit chunk constants used by the `exp()` sub-unit
+# range-reduction step. Once the integer part of `x` has been peeled off
+# (E1..E15, E16, E32), the remaining fractional part is in `[0, 1)`. We
+# slice off the first decimal digit `d = Int(remainder * 10)` and apply
+# the matching `E0D{d}` constant, leaving a residual in `[0, 0.1)`. That
+# residual then converges in roughly one third the Taylor terms compared
+# to feeding the full `[0, 1)` argument to `exp_series` (which used to
+# accept up to 0.25 directly).
+
+
+@always_inline
+def E0D1() -> Decimal128:
+    """Returns the value of e^0.1 = 1.1051709180756476248117078265 as a Decimal128.
+
+    Returns:
+        The value of e^(1/10).
+    """
+    return Decimal128(0x1079E8F9, 0x2C369C6C, 0x23B5C273, 0x1C0000)
+
+
+@always_inline
+def E0D2() -> Decimal128:
+    """Returns the value of e^0.2 = 1.2214027581601698339210719946 as a Decimal128.
+
+    Returns:
+        The value of e^(2/10).
+    """
+    return Decimal128(0x716CF2CA, 0xF042F48C, 0x277734F1, 0x1C0000)
+
+
+@always_inline
+def E0D3() -> Decimal128:
+    """Returns the value of e^0.3 = 1.3498588075760031039837443133 as a Decimal128.
+
+    Returns:
+        The value of e^(3/10).
+    """
+    return Decimal128(0x8F94143D, 0xDC7DFEAC, 0x2B9DC535, 0x1C0000)
+
+
+@always_inline
+def E0D4() -> Decimal128:
+    """Returns the value of e^0.4 = 1.4918246976412703178248529528 as a Decimal128.
+
+    Returns:
+        The value of e^(4/10).
+    """
+    return Decimal128(0xC22DA678, 0x13399FE0, 0x303415AD, 0x1C0000)
+
+
+@always_inline
+def E0D6() -> Decimal128:
+    """Returns the value of e^0.6 = 1.8221188003905089748753676682 as a Decimal128.
+
+    Returns:
+        The value of e^(6/10).
+    """
+    return Decimal128(0x84FB798A, 0xF47D352B, 0x3AE036A4, 0x1C0000)
+
+
+@always_inline
+def E0D7() -> Decimal128:
+    """Returns the value of e^0.7 = 2.0137527074704765216245493886 as a Decimal128.
+
+    Returns:
+        The value of e^(7/10).
+    """
+    return Decimal128(0xE3A5307E, 0x24DF0E6B, 0x41115F3A, 0x1C0000)
+
+
+@always_inline
+def E0D8() -> Decimal128:
+    """Returns the value of e^0.8 = 2.2255409284924676045795375314 as a Decimal128.
+
+    Returns:
+        The value of e^(8/10).
+    """
+    return Decimal128(0x998238D2, 0xD03F9254, 0x47E93E3A, 0x1C0000)
+
+
+@always_inline
+def E0D9() -> Decimal128:
+    """Returns the value of e^0.9 = 2.4596031111569496638001265636 as a Decimal128.
+
+    Returns:
+        The value of e^(9/10).
+    """
+    return Decimal128(0xE6943BE4, 0x48C3A3F8, 0x4F795C2E, 0x1C0000)
+
+
 # ===----------------------------------------------------------------------=== #
 #
 # LN constants

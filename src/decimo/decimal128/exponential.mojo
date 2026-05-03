@@ -536,19 +536,37 @@ def exp(x: Decimal128) raises -> Decimal128:
         return decimo.decimal128.constants.E()
 
     elif x_int < 1:
-        var M0D5 = decimo.decimal128.constants.M0D5()
-        var M0D25 = decimo.decimal128.constants.M0D25()
-
-        if x < M0D25:  # 0 < x < 0.25
+        # Sub-unit chunking by first decimal digit:
+        # peel off `d = floor(x * 10) ∈ [0, 9]` and apply the precomputed
+        # `E0D{d}` constant. The residual `r = x - d/10` is in `[0, 0.1)`,
+        # which converges in ~10 Taylor terms instead of the ~20 the old
+        # `[0, 0.25)` arm needed. For d == 0 we skip the multiply
+        # entirely and go straight to `exp_series(x)`.
+        var ten = Decimal128(10)
+        var d = Int(x * ten)  # 0..9; truncated toward zero, x ≥ 0 here.
+        if d == 0:
             return exp_series(x)
-
-        elif x < M0D5:  # 0.25 <= x < 0.5
-            exp_chunk = decimo.decimal128.constants.E0D25()
-            remainder = x - M0D25
-
-        else:  # 0.5 <= x < 1
+        var d_over_10 = Decimal128.from_int(value=d, scale=UInt32(1))
+        var residual = x - d_over_10
+        if d == 1:
+            exp_chunk = decimo.decimal128.constants.E0D1()
+        elif d == 2:
+            exp_chunk = decimo.decimal128.constants.E0D2()
+        elif d == 3:
+            exp_chunk = decimo.decimal128.constants.E0D3()
+        elif d == 4:
+            exp_chunk = decimo.decimal128.constants.E0D4()
+        elif d == 5:
             exp_chunk = decimo.decimal128.constants.E0D5()
-            remainder = x - M0D5
+        elif d == 6:
+            exp_chunk = decimo.decimal128.constants.E0D6()
+        elif d == 7:
+            exp_chunk = decimo.decimal128.constants.E0D7()
+        elif d == 8:
+            exp_chunk = decimo.decimal128.constants.E0D8()
+        else:  # d == 9
+            exp_chunk = decimo.decimal128.constants.E0D9()
+        remainder = residual
 
     elif x_int == 1:  # 1 <= x < 2, chunk = 1
         exp_chunk = decimo.decimal128.constants.E()
