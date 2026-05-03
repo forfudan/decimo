@@ -207,11 +207,17 @@ value before the fact and §2.4 / §2.5 for end-to-end snapshots.
 |          | (identity / always-True — Decimal128 has no non-canonical encoding). `normalize()`   |
 |          | uses a 9-digit chunk pre-pass via `power_of_10_unsafe[uint128](9)` then a 1-digit    |
 |          | tail loop; both rely on LLVM's CSE of `// + %` to one `__udivmodti4` (Lesson #2).    |
-|          | All `@always_inline` except `normalize`, `compare_total`, and `__hash__`. 27 new     |
-|          | tests appended to `tests/decimal128/test_decimal128_methods.mojo` (consolidated      |
-|          | with the integer-part / preferred-exp suite, 58 total) cover the hash/eq contract    |
-|          | (incl. signed-zero and scaled-zero collapse), the chunk-boundary strip path, the     |
-|          | cross-sign monotonicity of `compare_total`, and adjusted/signed/canonical edges.     |
+|          | All `@always_inline` except `normalize` and `__hash__`. `compare_total` lives in     |
+|          | `comparison.mojo` as a free function (alongside `compare`, `min`, `max`, `clamp`);   |
+|          | the `Decimal128.compare_total` method is an `@always_inline` thin wrapper. The       |
+|          | dual-zero branch is handled *before* delegating to `compare()` because `compare()`   |
+|          | collapses every zero (`{-0,+0} × scale`) into a single equivalence class, which      |
+|          | would break the strict-total-order contract; the free function orders by sign first  |
+|          | (`-0 < +0`) then by scale (rule 3). 30 new tests appended to                         |
+|          | `tests/decimal128/test_decimal128_methods.mojo` cover the hash/eq contract           |
+|          | (incl. signed-zero and  scaled-zero collapse), the chunk-boundary strip path,        |
+|          | signed-zero ordering under `compare_total`, the cross-sign monotonicity of scaled    |
+|          | zeros, and adjusted / signed / canonical edges.                                      |
 
 ### 2.5 Performance tracking — absolute decimo median ns/iter
 

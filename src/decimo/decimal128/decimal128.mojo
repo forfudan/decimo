@@ -1925,7 +1925,7 @@ struct Decimal128(
     # - This `__hash__` method will be invoked with the hasher as the argument.
     # - `hasher.update()` will be called three times to feed the normalized
     #   sign, coefficient, and scale into the hasher.
-    # -`AHsher._update_with_simd()` will be called to update the hash state.
+    # - `AHasher._update_with_simd()` will be called to update the hash state.
     def __hash__[H: Hasher](self, mut hasher: H):
         """Hashes this Decimal128 in a way that respects numeric equality
         (`a == b` implies `hash(a) == hash(b)`). The hash is computed on the
@@ -2410,23 +2410,25 @@ struct Decimal128(
             return 0
         return self.number_of_significant_digits() - 1 - self.scale()
 
+    @always_inline
     def compare_total(self, other: Decimal128) -> Int8:
-        """Returns the IBM GDA *total ordering* of `self` vs `other`. Unlike
-        `compare()` (which treats `1.0 == 1.00`), `compare_total` produces a
-        strict total order on the representation, so values that compare
-        equal under `==` but differ in scale receive a deterministic order
-        (lower scale first; equivalently: representation with fewer trailing
-        zeros first).
+        """Returns the IBM GDA total ordering of `self` vs `other`.
+
+        Notes:
+
+        Unlike `compare()` (which treats `1.0 == 1.00` and collapses every zero
+        to a single equivalence class), `compare_total` produces a strict total
+        order on the *representation*: numerically equal values that differ
+        in scale or signed-zero status receive a deterministic order.
 
         Ordering rules (IBM GDA §5.5.13, "compare-total"):
 
-        1. Negatives precede positives.
-        2. Among same-sign values, the larger magnitude precedes the smaller
-           when negative; the opposite when positive (i.e. usual numeric
-           order).
-        3. Among numerically equal values, the *lower* scale (fewer trailing
-           zeros) comes first for positives; reversed for negatives, so that
-           `-1.00 < -1.0 < ...` mirrors `1.0 < 1.00`.
+        1. Negatives precede positives (including signed zero: `-0 < +0`).
+        2. Among same-sign non-zero values: usual numeric order.
+        3. Among numerically equal values (incl. same-signed zeros), the
+           *lower* scale comes first for positives; reversed for negatives,
+           so the global sequence stays monotonic across the zero boundary:
+           `... -0.00 < -0.0 < -0 < +0 < +0.0 < +0.00 ...`.
 
         Args:
             other: The Decimal128 to compare against.
@@ -2439,30 +2441,14 @@ struct Decimal128(
 
         ```mojo
         from decimo import Decimal128
-        print(Decimal128("1.0").compare_total(Decimal128("1.00")))  # -1
-        print(Decimal128("1").compare_total(Decimal128("1.0")))     # -1
-        print(Decimal128("-1.0").compare_total(Decimal128("-1")))   # -1
+        print(Decimal128("1.0").compare_total(Decimal128("1.00")))    # -1
+        print(Decimal128("1").compare_total(Decimal128("1.0")))       # -1
+        print(Decimal128("-1.0").compare_total(Decimal128("-1")))     # -1
+        print(Decimal128("-0.00").compare_total(Decimal128("0.00")))  # -1
         ```
         End of example.
         """
-
-        var c = decimo.decimal128.comparison.compare(self, other)
-        if c != 0:
-            return c
-
-        # Numerically equal: order by scale. For positives (and zero),
-        # lower scale wins. For negatives, higher scale wins so that the
-        # sequence remains monotonic across the sign boundary
-        # (... -1.00, -1.0, -1, 0, 1, 1.0, 1.00 ...).
-        var s_self = self.scale()
-        var s_other = other.scale()
-        if s_self == s_other:
-            return Int8(0)
-
-        var self_neg = self.is_negative() and not self.is_zero()
-        if self_neg:
-            return Int8(-1) if s_self > s_other else Int8(1)
-        return Int8(-1) if s_self < s_other else Int8(1)
+        return decimo.decimal128.comparison.compare_total(self, other)
 
     @always_inline
     def is_signed(self) -> Bool:

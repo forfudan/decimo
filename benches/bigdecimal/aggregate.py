@@ -47,7 +47,7 @@ DISPLAY_NAME_MAX = 48
 def _short_name(name: str) -> str:
     if len(name) <= DISPLAY_NAME_MAX:
         return name
-    return name[: DISPLAY_NAME_MAX - 1] + "\u2026"  # ellipsis
+    return name[: DISPLAY_NAME_MAX - 1] + "…"  # ellipsis
 
 
 def _values_equal(a: str, b: str) -> bool:
@@ -356,7 +356,7 @@ def main() -> int:
         f"- Languages: {', '.join(LANG_LABEL.get(l, l) for l in args.langs)}",
         f"- Ops: {', '.join(args.ops)}",
         f"- Precisions: {', '.join(str(p) for p in args.precisions)}",
-        "- **Time unit: nanoseconds per iteration (ns/iter)** \u2014 lower is faster.",
+        "- **Time unit: nanoseconds per iteration (ns/iter)** — lower is faster.",
         "",
         "All timing columns (`decimo`, `python`) are **ns / iter**.",
         "Each per-op timings table has a single correctness column,",
@@ -466,7 +466,7 @@ def main() -> int:
             if diffs:
                 lines.append(
                     f"<details><summary>{len(diffs)} DIFF case(s) at "
-                    f"<code>{op}</code> / prec={prec} \u2014 click to expand</summary>"
+                    f"<code>{op}</code> / prec={prec} — click to expand</summary>"
                 )
                 lines.append("")
                 for case, _py_match, recs in diffs:
