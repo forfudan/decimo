@@ -23,13 +23,13 @@ from std.python import Python
 from std.sys import argv as sys_argv
 
 
-fn _now_stamp() raises -> String:
+def _now_stamp() raises -> String:
     var dt = Python.import_module("datetime")
     var now = dt.datetime.now(dt.timezone.utc)
     return String(now.strftime("%Y%m%d_%H%M%S"))
 
 
-fn _csv_quote(s: String) -> String:
+def _csv_quote(s: String) -> String:
     var needs_quote = False
     for ch in s.codepoint_slices():
         if ch == "," or ch == '"' or ch == "\n" or ch == "\r":
@@ -47,7 +47,7 @@ fn _csv_quote(s: String) -> String:
     return out
 
 
-fn _pad(s: String, width: Int) -> String:
+def _pad(s: String, width: Int) -> String:
     if len(s) >= width:
         return s
     var out = s
@@ -57,7 +57,7 @@ fn _pad(s: String, width: Int) -> String:
     return out
 
 
-fn _strip_trailing_zeros(s: String) -> String:
+def _strip_trailing_zeros(s: String) -> String:
     # Strip trailing zeros after the decimal point so the ref result is
     # easy to eyeball next to the Decimal128 / rust_decimal column.
     # Leaves integer values ("0", "1") and scientific notation untouched.
@@ -81,7 +81,7 @@ comptime _DEC128_MAX_COEF = String("79228162514264337593543950335")
 # Extract the digit-only coefficient string from a BigDecimal's textual
 # form: drop sign, decimal point, and any leading zeros (sub-1 values).
 # Stops at the first 'e'/'E' so scientific-notation tails don't leak in.
-fn _coefficient_digits(s: String) -> String:
+def _coefficient_digits(s: String) -> String:
     var out = String("")
     var seen_nonzero = False
     for ch in s.codepoint_slices():
@@ -97,7 +97,7 @@ fn _coefficient_digits(s: String) -> String:
     return out
 
 
-fn _fits_in_dec128(s: String) -> Bool:
+def _fits_in_dec128(s: String) -> Bool:
     var coef = _coefficient_digits(s)
     if len(coef) < 29:
         return True
@@ -113,7 +113,7 @@ fn _fits_in_dec128(s: String) -> Bool:
 # the result *always* shows the full target precision (so a trailing
 # significant zero doesn't make the column look like it has one fewer
 # digit than Decimal128 would actually store).
-fn _round_and_str(mut v: BigDecimal) raises -> String:
+def _round_and_str(mut v: BigDecimal) raises -> String:
     v.round_to_precision(
         29,
         RoundingMode.ROUND_HALF_EVEN,
@@ -136,7 +136,7 @@ fn _round_and_str(mut v: BigDecimal) raises -> String:
 # zero, or the value is the textual zero "0E-N"), collapse to compact
 # integer form so the oracle column matches Decimal128's natural output
 # for cases like log10(100) -> 2 instead of "2.0000000000000000000000000000".
-fn _collapse_exact_integer(s: String) -> String:
+def _collapse_exact_integer(s: String) -> String:
     # Find dot and 'E' positions.
     var dot = -1
     var e_pos = -1
@@ -171,7 +171,9 @@ fn _collapse_exact_integer(s: String) -> String:
     return s
 
 
-fn _ref_result(op: String, a_str: String, work_precision: Int) raises -> String:
+def _ref_result(
+    op: String, a_str: String, work_precision: Int
+) raises -> String:
     var a = BigDecimal.from_string(a_str)
     if op == "ln":
         var r = bdexp.ln(a, work_precision)
@@ -185,7 +187,7 @@ fn _ref_result(op: String, a_str: String, work_precision: Int) raises -> String:
     raise Error("bigdec_ref only supports ln, log10, exp (got '" + op + "')")
 
 
-fn main() raises:
+def main() raises:
     var argv = sys_argv()
     var op = String("ln")
     var cases_dir = String("../cases")

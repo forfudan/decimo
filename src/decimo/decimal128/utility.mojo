@@ -1409,7 +1409,7 @@ comptime _U256_MASK_LO128 = UInt256(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)
 
 
 @always_inline
-fn _mulhi_u256(a: UInt256, b: UInt256) -> UInt256:
+def _mulhi_u256(a: UInt256, b: UInt256) -> UInt256:
     """Returns the high 256 bits of `a * b` (both unsigned 256-bit).
 
     Splits each operand into two u128 halves and uses the schoolbook
@@ -1497,7 +1497,7 @@ comptime _GM_SHIFT_BLOB = (
 
 
 @always_inline
-fn udiv_u256_by_pow10_gm(value: UInt256, k: Int) -> UInt256:
+def udiv_u256_by_pow10_gm(value: UInt256, k: Int) -> UInt256:
     """Returns `floor(value / 10^k)` using one mulhi-256 plus a shift.
 
     Args:
@@ -1535,7 +1535,7 @@ fn udiv_u256_by_pow10_gm(value: UInt256, k: Int) -> UInt256:
 
 
 @always_inline
-fn udiv_u256_by_u64(n: UInt256, d: UInt64) -> Tuple[UInt256, UInt64]:
+def udiv_u256_by_u64(n: UInt256, d: UInt64) -> Tuple[UInt256, UInt64]:
     """Schoolbook UInt256 / UInt64 division, hardware-fast on aarch64.
 
     Args:

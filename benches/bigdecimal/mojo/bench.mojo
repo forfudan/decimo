@@ -34,13 +34,13 @@ from std.sys import argv as sys_argv
 from std.time import perf_counter_ns
 
 
-fn _now_stamp() raises -> String:
+def _now_stamp() raises -> String:
     var dt = Python.import_module("datetime")
     var now = dt.datetime.now(dt.timezone.utc)
     return String(now.strftime("%Y%m%d_%H%M%S"))
 
 
-fn _csv_quote(s: String) -> String:
+def _csv_quote(s: String) -> String:
     var needs = False
     for ch in s.codepoint_slices():
         if ch == "," or ch == '"' or ch == "\n" or ch == "\r":
@@ -58,7 +58,7 @@ fn _csv_quote(s: String) -> String:
     return out
 
 
-fn _parse_round_param(b: String) raises -> Tuple[Int, RoundingMode]:
+def _parse_round_param(b: String) raises -> Tuple[Int, RoundingMode]:
     """Decode "ndigits|MODE" into (ndigits, RoundingMode)."""
     var idx = b.find("|")
     if idx < 0:
@@ -82,7 +82,7 @@ fn _parse_round_param(b: String) raises -> Tuple[Int, RoundingMode]:
     raise Error("unknown rounding mode: " + mode_str)
 
 
-fn _cmp_3way(read a: BigDecimal, read b: BigDecimal) raises -> String:
+def _cmp_3way(read a: BigDecimal, read b: BigDecimal) raises -> String:
     """Stable, cross-language 3-way comparison: returns "-1", "0", or "1"."""
     if a < b:
         return String("-1")
@@ -91,7 +91,7 @@ fn _cmp_3way(read a: BigDecimal, read b: BigDecimal) raises -> String:
     return String("0")
 
 
-fn _round_to_prec(var v: BigDecimal, precision: Int) raises -> BigDecimal:
+def _round_to_prec(var v: BigDecimal, precision: Int) raises -> BigDecimal:
     """Round `v` to `precision` significant digits (HALF_EVEN), in-place."""
     round_to_precision(
         v,
@@ -103,7 +103,7 @@ fn _round_to_prec(var v: BigDecimal, precision: Int) raises -> BigDecimal:
     return v^
 
 
-fn _emit(v: BigDecimal) raises -> String:
+def _emit(v: BigDecimal) raises -> String:
     """Render a BigDecimal in fixed-point (no scientific notation).
 
     Works around a corner case in `BigDecimal.to_string(force_plain=True)`
@@ -127,7 +127,7 @@ fn _emit(v: BigDecimal) raises -> String:
     return s^
 
 
-fn _result_for(
+def _result_for(
     op: String,
     read a: BigDecimal,
     read b: BigDecimal,
@@ -171,7 +171,7 @@ fn _result_for(
     raise Error("unknown op: " + op)
 
 
-fn _time_kernel(
+def _time_kernel(
     op: String,
     read a: BigDecimal,
     read b: BigDecimal,
@@ -260,7 +260,7 @@ fn _time_kernel(
 # precision don't collapse to <1 timer-tick and report 0 ns/iter.
 # Returns (iters, reps): reps shrinks to 1 for very-slow ops to bound wall
 # time per case at ~500ms.
-fn _tune_iters(initial_ns: UInt, hint_iters: Int) -> Tuple[Int, Int]:
+def _tune_iters(initial_ns: UInt, hint_iters: Int) -> Tuple[Int, Int]:
     comptime TARGET_NS: UInt = 50_000_000  # 50ms per rep target
     comptime MIN_RES_NS: UInt = 100_000  # 100µs floor for resolution
     comptime MAX_WALL_NS: UInt = 500_000_000  # 500ms total per case
@@ -287,7 +287,7 @@ fn _tune_iters(initial_ns: UInt, hint_iters: Int) -> Tuple[Int, Int]:
     return Tuple[Int, Int](n, reps)
 
 
-fn _bench_case(
+def _bench_case(
     op: String,
     bc: BenchCase,
     iter_hint: Int,
@@ -340,7 +340,7 @@ fn _bench_case(
     return Tuple[String, Float64](result, Float64(best) / Float64(iters))
 
 
-fn _pad(s: String, w: Int) -> String:
+def _pad(s: String, w: Int) -> String:
     if len(s) >= w:
         return s
     var out = s
@@ -349,7 +349,7 @@ fn _pad(s: String, w: Int) -> String:
     return out
 
 
-fn main() raises:
+def main() raises:
     var argv = sys_argv()
     var op = String("add")
     var cases_dir = String("../cases")

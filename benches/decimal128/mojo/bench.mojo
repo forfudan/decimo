@@ -21,7 +21,7 @@ from std.sys import argv as sys_argv
 from std.time import perf_counter_ns
 
 
-fn _now_stamp() raises -> String:
+def _now_stamp() raises -> String:
     var dt = Python.import_module("datetime")
     # Use UTC to match the rust/csharp/vbnet harnesses, so log filenames are
     # comparable across machines/timezones and "latest log" selection is stable.
@@ -29,7 +29,7 @@ fn _now_stamp() raises -> String:
     return String(now.strftime("%Y%m%d_%H%M%S"))
 
 
-fn _csv_quote(s: String) -> String:
+def _csv_quote(s: String) -> String:
     var needs_quote = False
     for ch in s.codepoint_slices():
         if ch == "," or ch == '"' or ch == "\n" or ch == "\r":
@@ -47,7 +47,7 @@ fn _csv_quote(s: String) -> String:
     return out
 
 
-fn _bench_one[
+def _bench_one[
     Body: fn(a: Decimal128, b: Decimal128) raises capturing[_] -> UInt64,
 ](a: Decimal128, b: Decimal128, iters: Int) raises -> Float64:
     """Run `Body(a, b)` once per inner iter; best-of-5; returns ns/op.
@@ -79,7 +79,7 @@ fn _bench_one[
     return Float64(best) / Float64(iters)
 
 
-fn _bench_str(a_str: String, iters: Int) raises -> Float64:
+def _bench_str(a_str: String, iters: Int) raises -> Float64:
     """from_string microbench — re-parses the string each iter."""
     comptime REPS = 5
     var best: Int = 0x7FFF_FFFF_FFFF_FFFF
@@ -96,7 +96,7 @@ fn _bench_str(a_str: String, iters: Int) raises -> Float64:
     return Float64(best) / Float64(iters)
 
 
-fn _bench_to_str(d: Decimal128, iters: Int) raises -> Float64:
+def _bench_to_str(d: Decimal128, iters: Int) raises -> Float64:
     comptime REPS = 5
     var best: Int = 0x7FFF_FFFF_FFFF_FFFF
     var sink: UInt64 = 0
@@ -111,7 +111,7 @@ fn _bench_to_str(d: Decimal128, iters: Int) raises -> Float64:
     return Float64(best) / Float64(iters)
 
 
-fn _result_for(op: String, a: Decimal128, b: Decimal128) raises -> String:
+def _result_for(op: String, a: Decimal128, b: Decimal128) raises -> String:
     if op == "add":
         return String(a + b)
     elif op == "subtract":
@@ -139,7 +139,7 @@ fn _result_for(op: String, a: Decimal128, b: Decimal128) raises -> String:
     raise Error("unknown op: " + op)
 
 
-fn _run_case(
+def _run_case(
     op: String,
     bc: BenchCase,
     iters: Int,
@@ -152,35 +152,35 @@ fn _run_case(
     if op == "add":
 
         @parameter
-        fn _f_add(x: Decimal128, y: Decimal128) raises -> UInt64:
+        def _f_add(x: Decimal128, y: Decimal128) raises -> UInt64:
             return UInt64((x + y).coefficient() & 0xFFFF_FFFF_FFFF_FFFF)
 
         per = _bench_one[_f_add](a, b, iters)
     elif op == "subtract":
 
         @parameter
-        fn _f_sub(x: Decimal128, y: Decimal128) raises -> UInt64:
+        def _f_sub(x: Decimal128, y: Decimal128) raises -> UInt64:
             return UInt64((x - y).coefficient() & 0xFFFF_FFFF_FFFF_FFFF)
 
         per = _bench_one[_f_sub](a, b, iters)
     elif op == "multiply":
 
         @parameter
-        fn _f_mul(x: Decimal128, y: Decimal128) raises -> UInt64:
+        def _f_mul(x: Decimal128, y: Decimal128) raises -> UInt64:
             return UInt64((x * y).coefficient() & 0xFFFF_FFFF_FFFF_FFFF)
 
         per = _bench_one[_f_mul](a, b, iters)
     elif op == "divide":
 
         @parameter
-        fn _f_div(x: Decimal128, y: Decimal128) raises -> UInt64:
+        def _f_div(x: Decimal128, y: Decimal128) raises -> UInt64:
             return UInt64((x / y).coefficient() & 0xFFFF_FFFF_FFFF_FFFF)
 
         per = _bench_one[_f_div](a, b, iters)
     elif op == "comparison":
 
         @parameter
-        fn _f_cmp(x: Decimal128, y: Decimal128) raises -> UInt64:
+        def _f_cmp(x: Decimal128, y: Decimal128) raises -> UInt64:
             return UInt64(1) if x < y else UInt64(0)
 
         per = _bench_one[_f_cmp](a, b, iters)
@@ -191,21 +191,21 @@ fn _run_case(
     elif op == "ln":
 
         @parameter
-        fn _f_ln(x: Decimal128, y: Decimal128) raises -> UInt64:
+        def _f_ln(x: Decimal128, y: Decimal128) raises -> UInt64:
             return UInt64(x.ln().coefficient() & 0xFFFF_FFFF_FFFF_FFFF)
 
         per = _bench_one[_f_ln](a, b, iters)
     elif op == "log10":
 
         @parameter
-        fn _f_log10(x: Decimal128, y: Decimal128) raises -> UInt64:
+        def _f_log10(x: Decimal128, y: Decimal128) raises -> UInt64:
             return UInt64(x.log10().coefficient() & 0xFFFF_FFFF_FFFF_FFFF)
 
         per = _bench_one[_f_log10](a, b, iters)
     elif op == "exp":
 
         @parameter
-        fn _f_exp(x: Decimal128, y: Decimal128) raises -> UInt64:
+        def _f_exp(x: Decimal128, y: Decimal128) raises -> UInt64:
             return UInt64(x.exp().coefficient() & 0xFFFF_FFFF_FFFF_FFFF)
 
         per = _bench_one[_f_exp](a, b, iters)
@@ -215,7 +215,7 @@ fn _run_case(
     return Tuple[String, Float64](result, per)
 
 
-fn _pad(s: String, width: Int) -> String:
+def _pad(s: String, width: Int) -> String:
     if len(s) >= width:
         return s
     var out = s
@@ -225,7 +225,7 @@ fn _pad(s: String, width: Int) -> String:
     return out
 
 
-fn main() raises:
+def main() raises:
     var argv = sys_argv()
     var op = String("add")
     var cases_dir = String("../cases")

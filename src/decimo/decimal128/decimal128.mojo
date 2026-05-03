@@ -24,6 +24,7 @@ mathematical methods that do not implement a trait.
 """
 
 from std.memory import UnsafePointer
+from std.hashlib.hasher import Hasher
 
 import decimo.decimal128.arithmetics
 import decimo.decimal128.comparison
@@ -46,6 +47,7 @@ struct Decimal128(
     Absable,
     Comparable,
     Floatable,
+    Hashable,
     IntableRaising,
     Roundable,
     TrivialRegisterPassable,
@@ -1875,7 +1877,7 @@ struct Decimal128(
 
     # ===------------------------------------------------------------------=== #
     # Other dunders that implements traits
-    # round
+    # round, hash
     # ===------------------------------------------------------------------=== #
 
     @always_inline
@@ -1916,9 +1918,40 @@ struct Decimal128(
         except e:
             return self
 
+    # [Mojo Miji]
+    # What will happen if we run `hash()` on a Decimal128 value, e.g., `a`?
+    # - a default hasher, i.e., `AHasher` will be created.
+    # - `hasher.update(a)` will be called.
+    # - This `__hash__` method will be invoked with the hasher as the argument.
+    # - `hasher.update()` will be called three times to feed the normalized
+    #   sign, coefficient, and scale into the hasher.
+    # -`AHsher._update_with_simd()` will be called to update the hash state.
+    def __hash__[H: Hasher](self, mut hasher: H):
+        """Hashes this Decimal128 in a way that respects numeric equality
+        (`a == b` implies `hash(a) == hash(b)`). The hash is computed on the
+        normalized `(sign, coefficient, scale)` triple, so e.g.
+        `Decimal128("1.0")` and `Decimal128("1.00")` hash identically — both
+        normalize to coefficient=1, scale=0.
+
+        Parameters:
+            H: The `Hasher` implementation type.
+
+        Args:
+            hasher: The hasher to update.
+        """
+        var n = self.normalize()
+        # Feed the three semantically meaningful fields. After normalize(),
+        # zero is canonical (+0, scale 0, coef 0) so all zero-valued
+        # Decimal128 inputs converge to the same hash. For non-zero values
+        # equal under `==`, normalize() yields identical (coef, scale, sign)
+        # triples by construction.
+        hasher.update(UInt8(n.is_negative()))
+        hasher.update(n.coefficient())
+        hasher.update(UInt8(n.scale()))
+
     # ===------------------------------------------------------------------=== #
     # Mathematical methods that do not implement a trait (not a dunder)
-    # exp, ln, round, sqrt
+    # exp, ln, round, sqrt, root, log10, power, quantize
     # ===------------------------------------------------------------------=== #
 
     @always_inline
@@ -1961,6 +1994,94 @@ struct Decimal128(
             The quantized `Decimal128` value.
         """
         return decimo.decimal128.rounding.quantize(self, exp, rounding_mode)
+
+    @always_inline
+    def exp(self) raises -> Self:
+        """Calculates the exponential of this Decimal128.
+        See `exp()` for more information.
+
+        Returns:
+            The value of e raised to this power.
+        """
+        return decimo.decimal128.exponential.exp(self)
+
+    @always_inline
+    def ln(self) raises -> Self:
+        """Calculates the natural logarithm of this Decimal128.
+        See `ln()` for more information.
+
+        Returns:
+            The natural logarithm of this value.
+        """
+        return decimo.decimal128.exponential.ln(self)
+
+    @always_inline
+    def log10(self) raises -> Decimal128:
+        """Computes the base-10 logarithm of this Decimal128.
+
+        Returns:
+            The base-10 logarithm of this value.
+        """
+        return decimo.decimal128.exponential.log10(self)
+
+    @always_inline
+    def log(self, base: Decimal128) raises -> Decimal128:
+        """Computes the logarithm of this Decimal128 with an arbitrary base.
+
+        Args:
+            base: The logarithm base.
+
+        Returns:
+            The logarithm of this value in the given base.
+        """
+        return decimo.decimal128.exponential.log(self, base)
+
+    @always_inline
+    def power(self, exponent: Int) raises -> Decimal128:
+        """Raises this Decimal128 to the power of an integer.
+
+        Args:
+            exponent: The integer exponent to raise to.
+
+        Returns:
+            The value raised to the given power.
+        """
+        return decimo.decimal128.exponential.power(self, Self(exponent))
+
+    @always_inline
+    def power(self, exponent: Decimal128) raises -> Decimal128:
+        """Raises this Decimal128 to the power of another Decimal128.
+
+        Args:
+            exponent: The `Decimal128` exponent to raise to.
+
+        Returns:
+            The value raised to the given power.
+        """
+        return decimo.decimal128.exponential.power(self, exponent)
+
+    @always_inline
+    def root(self, n: Int) raises -> Self:
+        """Calculates the n-th root of this Decimal128.
+        See `root()` for more information.
+
+        Args:
+            n: The degree of the root to compute.
+
+        Returns:
+            The n-th root of this value.
+        """
+        return decimo.decimal128.exponential.root(self, n)
+
+    @always_inline
+    def sqrt(self) raises -> Self:
+        """Calculates the square root of this Decimal128.
+        See `sqrt()` for more information.
+
+        Returns:
+            The square root of this value.
+        """
+        return decimo.decimal128.exponential.sqrt(self)
 
     # ===------------------------------------------------------------------=== #
     # Integer-part / fractional-part / sign helpers
@@ -2137,97 +2258,246 @@ struct Decimal128(
             self.is_negative(),
         )
 
-    @always_inline
-    def exp(self) raises -> Self:
-        """Calculates the exponential of this Decimal128.
-        See `exp()` for more information.
-
-        Returns:
-            The value of e raised to this power.
-        """
-        return decimo.decimal128.exponential.exp(self)
-
-    @always_inline
-    def ln(self) raises -> Self:
-        """Calculates the natural logarithm of this Decimal128.
-        See `ln()` for more information.
-
-        Returns:
-            The natural logarithm of this value.
-        """
-        return decimo.decimal128.exponential.ln(self)
-
-    @always_inline
-    def log10(self) raises -> Decimal128:
-        """Computes the base-10 logarithm of this Decimal128.
-
-        Returns:
-            The base-10 logarithm of this value.
-        """
-        return decimo.decimal128.exponential.log10(self)
-
-    @always_inline
-    def log(self, base: Decimal128) raises -> Decimal128:
-        """Computes the logarithm of this Decimal128 with an arbitrary base.
-
-        Args:
-            base: The logarithm base.
-
-        Returns:
-            The logarithm of this value in the given base.
-        """
-        return decimo.decimal128.exponential.log(self, base)
-
-    @always_inline
-    def power(self, exponent: Int) raises -> Decimal128:
-        """Raises this Decimal128 to the power of an integer.
-
-        Args:
-            exponent: The integer exponent to raise to.
-
-        Returns:
-            The value raised to the given power.
-        """
-        return decimo.decimal128.exponential.power(self, Self(exponent))
-
-    @always_inline
-    def power(self, exponent: Decimal128) raises -> Decimal128:
-        """Raises this Decimal128 to the power of another Decimal128.
-
-        Args:
-            exponent: The `Decimal128` exponent to raise to.
-
-        Returns:
-            The value raised to the given power.
-        """
-        return decimo.decimal128.exponential.power(self, exponent)
-
-    @always_inline
-    def root(self, n: Int) raises -> Self:
-        """Calculates the n-th root of this Decimal128.
-        See `root()` for more information.
-
-        Args:
-            n: The degree of the root to compute.
-
-        Returns:
-            The n-th root of this value.
-        """
-        return decimo.decimal128.exponential.root(self, n)
-
-    @always_inline
-    def sqrt(self) raises -> Self:
-        """Calculates the square root of this Decimal128.
-        See `sqrt()` for more information.
-
-        Returns:
-            The square root of this value.
-        """
-        return decimo.decimal128.exponential.sqrt(self)
-
     # ===------------------------------------------------------------------=== #
-    # Other methods
+    # Canonicalization / introspection helpers
+    # normalize, same_quantum, adjusted, compare_total,
+    # is_signed, canonical, is_canonical
     # ===------------------------------------------------------------------=== #
+
+    def normalize(self) -> Self:
+        """Returns the canonical (trailing-zero-stripped) form of this
+        Decimal128. Mirrors Python `Decimal.normalize()`: the result has the
+        same numeric value as `self` but the smallest scale that still
+        represents it exactly. Zero is canonicalized to a positive zero with
+        scale 0 regardless of the input's sign or scale (matches Python's
+        `Decimal("-0.000").normalize() == Decimal("0")`).
+
+        Returns:
+            A new `Decimal128` with all trailing zeros stripped from the
+            coefficient (and the scale lowered by the same amount).
+
+        Notes:
+
+        Two decimals that compare equal (`==`) but differ only in scale
+        (e.g. `Decimal128("1.0")` vs `Decimal128("1.00")`) normalize to
+        the same `(coefficient, scale, sign)` triple. This is the
+        invariant `__hash__` relies on.
+
+        Performance: trailing-zero stripping uses a 9-digit chunk pre-pass
+        (one `UInt128 // 10^9` per fully-zero chunk) followed by a 1-digit
+        tail loop. Each `% / //` pair is CSE-folded by LLVM to one
+        `__udivmodti4` call (Lesson #2), so the loop touches each digit
+        once.
+
+        Example:
+
+        ```mojo
+        from decimo import Decimal128
+        print(Decimal128("1.000").normalize())      # 1
+        print(Decimal128("123.4500").normalize())   # 123.45
+        print(Decimal128("-0.00").normalize())      # 0  (sign cleared)
+        print(Decimal128("100").normalize())        # 100 (no trailing
+                                                    # fractional zeros to
+                                                    # strip; scale is
+                                                    # already 0)
+        ```
+        End of example.
+        """
+
+        # Zero collapses to canonical (+0, scale 0). This matches Python
+        # `Decimal` and IBM GDA: signed-zero / scaled-zero distinctions are
+        # eliminated by `normalize`. Hashing relies on this so that every
+        # zero-valued Decimal128 hashes the same.
+        if self.is_zero():
+            return Decimal128.ZERO()
+
+        var scale = self.scale()
+
+        # Already at scale 0: no trailing fractional digits to strip and the
+        # coefficient itself may legitimately end in zeros (e.g. "100"). No
+        # further work to do; return as-is. This is the hot path for integer
+        # values.
+        if scale == 0:
+            return self
+
+        var coef = self.coefficient()
+        var sign = self.is_negative()
+
+        # 9-digit chunk pre-pass: when scale >= 9, peel a whole `10^9`
+        # block off the coefficient if and only if the low 9 digits are
+        # zero. `power_of_10_unsafe[uint128](9)` is well within the
+        # `0..29` contract. Each iteration consumes one `__udivmodti4`
+        # (LLVM CSE-folds `// + %`).
+        comptime CHUNK = 9
+        var pow9 = decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
+            CHUNK
+        )
+        while scale >= CHUNK and coef % pow9 == 0:
+            coef = coef // pow9
+            scale -= CHUNK
+
+        # 1-digit tail. After the chunk pre-pass the residual scale is in
+        # `0..(CHUNK + 27)` worst case (27 since MAX_SCALE = 28 and we only
+        # strip when the chunk is exact); in practice this loop runs at
+        # most 8 iterations.
+        while scale > 0 and coef % 10 == 0:
+            coef = coef // 10
+            scale -= 1
+
+        # `from_uint128` revalidates 96-bit fit + scale range. Both must
+        # already hold for `self` (we only shrink coef + scale), so the
+        # raise paths are dead; we still call the public constructor to
+        # avoid duplicating the bit-pack / mask code.
+        try:
+            return Decimal128.from_uint128(coef, scale=UInt32(scale), sign=sign)
+        except:
+            # Unreachable: `coef <= self.coefficient()` (only divided by
+            # positive powers of 10) and `scale <= self.scale() <= 28`.
+            # `from_uint128` cannot raise on these inputs.
+            return self
+
+    @always_inline
+    def same_quantum(self, other: Decimal128) -> Bool:
+        """Returns True iff `self` and `other` have the same scale, i.e.
+        the same number of fractional digits. Mirrors Python
+        `Decimal.same_quantum()` and IBM GDA `same-quantum`.
+
+        Args:
+            other: The Decimal128 to compare scales against.
+
+        Returns:
+            `True` if `self.scale() == other.scale()`, `False` otherwise.
+
+        Example:
+
+        ```mojo
+        from decimo import Decimal128
+        print(Decimal128("1.23").same_quantum(Decimal128("4.56")))   # True
+        print(Decimal128("1.230").same_quantum(Decimal128("1.23")))  # False
+        ```
+        End of example.
+        """
+        return (self.flags & Self.SCALE_MASK) == (other.flags & Self.SCALE_MASK)
+
+    @always_inline
+    def adjusted(self) -> Int:
+        """Returns the adjusted exponent of this Decimal128.
+
+        The adjusted exponent is the exponent of the most significant digit.
+        Defined as `number_of_significant_digits() - 1 - scale()`.
+        Useful for order-of-magnitude probes (e.g. `floor(log10(|self|))` on
+        positive values) without going through `log10`.
+
+        Mirrors Python `Decimal.adjusted()` and IBM GDA `adjusted-exponent`.
+        For zero, returns 0 (matching Python's behaviour for `Decimal(0)`;
+        IBM GDA leaves this implementation-defined).
+
+        Returns:
+            The adjusted exponent as an `Int`.
+
+        Example:
+
+        ```mojo
+        from decimo import Decimal128
+        print(Decimal128("123.45").adjusted())    # 2  (1.2345e2)
+        print(Decimal128("0.00123").adjusted())   # -3 (1.23e-3)
+        print(Decimal128("100").adjusted())       # 2  (1.00e2)
+        print(Decimal128("0").adjusted())         # 0
+        ```
+        End of example.
+        """
+        if self.is_zero():
+            return 0
+        return self.number_of_significant_digits() - 1 - self.scale()
+
+    def compare_total(self, other: Decimal128) -> Int8:
+        """Returns the IBM GDA *total ordering* of `self` vs `other`. Unlike
+        `compare()` (which treats `1.0 == 1.00`), `compare_total` produces a
+        strict total order on the representation, so values that compare
+        equal under `==` but differ in scale receive a deterministic order
+        (lower scale first; equivalently: representation with fewer trailing
+        zeros first).
+
+        Ordering rules (IBM GDA §5.5.13, "compare-total"):
+
+        1. Negatives precede positives.
+        2. Among same-sign values, the larger magnitude precedes the smaller
+           when negative; the opposite when positive (i.e. usual numeric
+           order).
+        3. Among numerically equal values, the *lower* scale (fewer trailing
+           zeros) comes first for positives; reversed for negatives, so that
+           `-1.00 < -1.0 < ...` mirrors `1.0 < 1.00`.
+
+        Args:
+            other: The Decimal128 to compare against.
+
+        Returns:
+            `-1` if `self` precedes `other`, `0` if identical
+            representations, `+1` otherwise.
+
+        Example:
+
+        ```mojo
+        from decimo import Decimal128
+        print(Decimal128("1.0").compare_total(Decimal128("1.00")))  # -1
+        print(Decimal128("1").compare_total(Decimal128("1.0")))     # -1
+        print(Decimal128("-1.0").compare_total(Decimal128("-1")))   # -1
+        ```
+        End of example.
+        """
+
+        var c = decimo.decimal128.comparison.compare(self, other)
+        if c != 0:
+            return c
+
+        # Numerically equal: order by scale. For positives (and zero),
+        # lower scale wins. For negatives, higher scale wins so that the
+        # sequence remains monotonic across the sign boundary
+        # (... -1.00, -1.0, -1, 0, 1, 1.0, 1.00 ...).
+        var s_self = self.scale()
+        var s_other = other.scale()
+        if s_self == s_other:
+            return Int8(0)
+
+        var self_neg = self.is_negative() and not self.is_zero()
+        if self_neg:
+            return Int8(-1) if s_self > s_other else Int8(1)
+        return Int8(-1) if s_self < s_other else Int8(1)
+
+    @always_inline
+    def is_signed(self) -> Bool:
+        """Returns True iff the sign bit is set. Alias of `is_negative()`,
+        provided for parity with Python `Decimal.is_signed()`. Note that a
+        scaled negative zero (e.g. `Decimal128("-0.00")`) is *signed* even
+        though it compares equal to positive zero.
+
+        Returns:
+            `True` if the sign bit is set, `False` otherwise.
+        """
+        return self.is_negative()
+
+    @always_inline
+    def canonical(self) -> Self:
+        """Returns `self` unchanged. Provided for parity with Python
+        `Decimal.canonical()` / IBM GDA `canonical`. Decimal128 has no
+        non-canonical encodings (no NaN payloads, no Inf, no subnormal
+        representations), so every value is already its own canonical form.
+
+        Returns:
+            `self`.
+        """
+        return self
+
+    @always_inline
+    def is_canonical(self) -> Bool:
+        """Returns `True` unconditionally. Provided for parity with Python
+        `Decimal.is_canonical()` / IBM GDA `is-canonical`. Decimal128 has no
+        non-canonical encodings.
+
+        Returns:
+            `True`.
+        """
+        return True
 
     @always_inline
     def coefficient(self) -> UInt128:
