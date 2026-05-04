@@ -3,7 +3,7 @@
 > **Date**: 2026-04-08 (created), last consolidated 2026-04-23
 > **Target**: decimo >=0.9.0
 > **Mojo Version**: >=0.26.2
-> **Status**: Fully executed as of 2026-05-04
+<!-- > **Status**: Fully executed as of 2026-05-04 -->
 >
 > 子曰：工欲善其事，必先利其器。
 > Confucius said: If a craftsman wants to do good work, he must first sharpen his tools.
@@ -12,7 +12,7 @@ This document tracks the Decimal128 audit started on 2026-04-08 and the
 performance work that followed. It is the single source of truth for the
 arithmetic / parse / format hot-path optimisation effort.
 
-This plan has been fully executed as of 2026-05-04 (PR #239).
+<!-- This plan has been fully executed as of 2026-05-04 (PR #239). -->
 
 ---
 
@@ -540,6 +540,38 @@ fixed-precision convention. Decimo already exposes
 `Decimal128.round(scale, RoundingMode)` for follow-up adjustment, and
 `BigDecimal` for callers needing per-op control.
 
+### 5.7 API additions
+
+On 2026-05-04, I added the trivial API methods
+(`__bool__`, `__pos__`, `is_positive`, `is_odd`,
+`number_of_trailing_zeros`, `to_string_with_separators`,
+`to_scientific_string` / `to_eng_string` aliases) and consolidated
+`to_string_scientific()` into `to_string(scientific=, engineering=)`.
+The four items below are pending implementation.
+
+1. **`fma(a, b)` — fused multiply-add.** Compute `self * a + b` with a
+   single rounding step. Useful for dot products and Horner-form
+   polynomial evaluation. `BigDecimal.fma` already exists. The
+   Decimal128 version needs to keep the intermediate 256-bit product
+   unrounded, then add `b` and round once — non-trivial because the
+   existing `multiply` always rounds. It is a must have for users
+   who want to reduce the intermediate rounding errors in a sequence of
+   operations.
+2. **`__divmod__(other)` / `__rdivmod__(other)`.** Return
+   `(quotient, remainder)` in a single call. Today callers must do two
+   separate divisions (`a // b` and `a % b`), each going through the
+   full division pipeline. A combined entry point would amortise the
+   cost. `BigDecimal` exposes both dunders.
+3. **`cbrt()` — cube root.** Convenience wrapper for `root(3)`.
+   Trivial, but useful.
+4. **Trigonometric functions** — `sin`, `cos`, `tan`, `cot`, `csc`,
+   `sec`, `arctan`, etc. Not commonly found in fixed-point decimal types,
+   but can be a unique selling point for decimo. The problem is that the
+   cumulative rounding errors in the Taylor series can be larger as we do not
+   have buffer digits to carry the intermediate precision. Need to make 
+   notes that the ULPs can be larger than 1 for some inputs. For users needing
+   more precision, they can use `BigDecimal`.
+
 ---
 
 ## 6. Result-Equivalence vs `rust_decimal` / .NET (3 vs 1 verdict)
@@ -568,4 +600,14 @@ Part II → "A note on result exponents (`Decimal` and `Dec128`)".
 
 ## 7. Priority Summary
 
-All items have been addressed.
+Open items, in priority order:
+
+| #   | Item                          | Section | Notes | Notes                                           |
+| --- | ----------------------------- | ------- | ----- | ----------------------------------------------- |
+| 1   | `fma(a, b)` — single-rounding | §5.7.1  | —     | Needs a 256-bit unrounded product path;         |
+|     | fused multiply-add            |         |       | useful for dot products and Horner evaluation.  |
+| 2   | `__divmod__` / `__rdivmod__`  | §5.7.2  | —     | Amortise the divide pipeline across `//` + `%`. |
+| 3   | `cbrt()`                      | §5.7.3  | —     | Trivial wrapper over `root(3)`.                 |
+| 4   | Trigonometric functions       | §5.7.4  | —     | Quite unique to a 128-bit decimal library.      |
+|     | (`sin`, `cos`, `tan`, `cot`,  |         |       |                                                 |
+|     | `csc`, `sec`, `arctan`, etc)  |         |       |                                                 |
