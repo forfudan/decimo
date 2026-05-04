@@ -38,6 +38,7 @@ from decimo.errors import (
     ConversionError,
 )
 import decimo.decimal128.utility
+from decimo.bigdecimal.bigdecimal import BigDecimal
 
 comptime Dec128 = Decimal128
 """A 128-bit fixed-point decimal number."""
@@ -509,6 +510,43 @@ struct Decimal128(
         flags |= (scale << Self.SCALE_SHIFT) & Self.SCALE_MASK
 
         return Self(low, mid, 0, flags)
+
+    # This method is primarily intended for the bench harness, where a high
+    # precision BigDecimal reference value can be quantised to the
+    # Decimal128 grid so that the two string representations are
+    # directly comparable.
+    @staticmethod
+    def from_decimal(value: BigDecimal) raises -> Self:
+        """Initializes a Decimal128 from a BigDecimal with rounding.
+
+        The BigDecimal value is rendered to its plain string form
+        (`force_plain = True`) and then parsed via `from_string()`,
+        which applies banker's rounding (`ROUND_HALF_EVEN`) when the value has
+        more than 28 fractional digits and raises `OverflowError` when
+        the integral part does not fit in 96 bits.
+
+        Args:
+            value: The BigDecimal value to convert to Decimal128.
+
+        Returns:
+            The Decimal128 representation of `value`, rounded to at most
+            28 fractional digits using banker's rounding.
+
+        Raises:
+            OverflowError: If the integral part of `value` does not fit
+                in the 96-bit Decimal128 coefficient.
+
+        Examples:
+
+        ```mojo
+        from decimo.prelude import *
+        var bd = BigDecimal("3.14159265358979323846264338327950288")
+        var d  = Decimal128.from_decimal(bd)
+        print(d)  # 3.1415926535897932384626433833
+        ```
+        End of examples.
+        """
+        return Self.from_string(value.to_string(force_plain=True))
 
     @staticmethod
     @no_inline

@@ -14,6 +14,7 @@ from decimo.toml.parser import TOMLDocument
 
 from decimo import Dec128
 from decimo import Decimal128
+from decimo import BigDecimal
 from decimo.tests import TestCase, parse_file, load_test_cases
 
 
@@ -461,6 +462,68 @@ def test_from_float_boundary_cases() raises:
     )
     testing.assert_true(String(Dec128.from_float(123.000000)).startswith("123"))
     testing.assert_equal(String(Dec128.from_float(0.125)), "0.125")
+
+
+def test_from_decimal_round_trip() raises:
+    """Values whose canonical form already fits in Decimal128 should
+    round-trip through `from_decimal()` byte-for-byte."""
+    testing.assert_equal(String(Dec128.from_decimal(BigDecimal("0"))), "0")
+    testing.assert_equal(String(Dec128.from_decimal(BigDecimal("1"))), "1")
+    testing.assert_equal(String(Dec128.from_decimal(BigDecimal("-1"))), "-1")
+    testing.assert_equal(
+        String(Dec128.from_decimal(BigDecimal("3.14"))), "3.14"
+    )
+    testing.assert_equal(
+        String(Dec128.from_decimal(BigDecimal("-3.14"))), "-3.14"
+    )
+    testing.assert_equal(String(Dec128.from_decimal(BigDecimal("0.1"))), "0.1")
+    testing.assert_equal(
+        String(
+            Dec128.from_decimal(BigDecimal("1.2345678901234567890123456789"))
+        ),
+        "1.2345678901234567890123456789",
+    )
+    testing.assert_equal(
+        String(Dec128.from_decimal(BigDecimal("9999999999999999999999999999"))),
+        "9999999999999999999999999999",
+    )
+
+
+def test_from_decimal_banker_rounding() raises:
+    """High-precision BigDecimal values should be quantised to 28 dp
+    using banker's rounding (`ROUND_HALF_EVEN`)."""
+    # 35 fractional digits → must round to 28.
+    var pi35 = BigDecimal("3.14159265358979323846264338327950288")
+    testing.assert_equal(
+        String(Dec128.from_decimal(pi35)),
+        "3.1415926535897932384626433833",
+    )
+    # Exact half, last kept digit even (2) → stays 2 (ROUND_HALF_EVEN).
+    var half_even = BigDecimal("0.12345678901234567890123456785")
+    testing.assert_equal(
+        String(Dec128.from_decimal(half_even)),
+        "0.1234567890123456789012345678",
+    )
+    # Exact half, last kept digit odd (3) → rounds up to 4.
+    var half_up = BigDecimal("0.12345678901234567890123456735")
+    testing.assert_equal(
+        String(Dec128.from_decimal(half_up)),
+        "0.1234567890123456789012345674",
+    )
+
+
+def test_from_decimal_overflow() raises:
+    """Values whose integral part overflows the 96-bit coefficient
+    must raise `OverflowError`. We assert on the error message
+    substring (`"overflow"` from `OverflowError.__str__`) rather than a
+    bare `try/except` so the test fails loudly if `from_decimal()` raises
+    a different error type — e.g. a regression in `to_string(force_plain
+    =True)` previously returned `"1"` for `BigDecimal("1e40")`, which
+    `from_string()` happily parsed without raising at all.
+    """
+    var huge = BigDecimal("1e40")
+    with testing.assert_raises(contains="Cannot fit Decimal128 coefficient"):
+        var _d = Dec128.from_decimal(huge)
 
 
 def main() raises:

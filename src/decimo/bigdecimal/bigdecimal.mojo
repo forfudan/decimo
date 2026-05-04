@@ -803,12 +803,21 @@ struct BigDecimal(
                 result += coefficient_string
 
             elif leftdigits >= num_digits:
-                # All digits are before the decimal point (scale == 0).
-                # Example: coefficient "12345", scale 0 -> "12345"
+                # All digits are before the decimal point.
+                # When scale == 0 we land here with leftdigits == num_digits
+                # and emit the coefficient as-is (e.g. "12345" / scale 0
+                # -> "12345"). When `force_plain=True` is set on a value
+                # with scale < 0 (i.e. an integer-with-trailing-zeros
+                # backed by an exponent rather than the coefficient itself,
+                # e.g. coefficient "1" / scale -40 representing 1e40),
+                # `leftdigits - num_digits` trailing zeros must be appended
+                # so the plain-notation result reflects the true magnitude
+                # ("10000000000000000000000000000000000000000" rather than
+                # "1"). Without this padding `from_string(to_string(...))`
+                # round-trips silently to the wrong value.
                 result += coefficient_string
-                # leftdigits - num_digits trailing zeros (always 0 here
-                # since scale >= 0 implies leftdigits <= num_digits,
-                # with equality when scale == 0).
+                if leftdigits > num_digits:
+                    result += "0" * (leftdigits - num_digits)
 
             else:
                 # Decimal point falls within the digit string.

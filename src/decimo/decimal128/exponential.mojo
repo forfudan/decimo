@@ -536,19 +536,75 @@ def exp(x: Decimal128) raises -> Decimal128:
         return decimo.decimal128.constants.E()
 
     elif x_int < 1:
-        var M0D5 = decimo.decimal128.constants.M0D5()
-        var M0D25 = decimo.decimal128.constants.M0D25()
-
-        if x < M0D25:  # 0 < x < 0.25
-            return exp_series(x)
-
-        elif x < M0D5:  # 0.25 <= x < 0.5
-            exp_chunk = decimo.decimal128.constants.E0D25()
-            remainder = x - M0D25
-
-        else:  # 0.5 <= x < 1
-            exp_chunk = decimo.decimal128.constants.E0D5()
-            remainder = x - M0D5
+        # Sub-unit chunking by the first two decimal digits.
+        # Tier 1 peels off `d1 = floor(x * 10) ∈ [0, 9]` and applies `E0D{d1}`;
+        # the tier-1 residual `r1 = x − d1/10` lives in `[0, 0.1)`.
+        # When `d1 == 0` we drop into Tier 2: peel off
+        # `d2 = floor(x * 100) ∈ [0, 9]` and apply `E0D0{d2}`;
+        # the tier-2 residual `r2 = x − d2/100` lives in `[0, 0.01)`.
+        # Both tiers are short-circuited when their digit is zero so we never
+        # multiply by `Decimal128.ONE()`.
+        #
+        # [Mojo Miji]
+        # Why two tiers (precision, not just speed): every chunk multiply
+        # truncates ~0.5 ulp, but every saved Taylor multiply also avoids
+        # ~0.5 ulp. The Taylor count drops from ~17 (old `[0, 0.25)` arm)
+        # to ~10 (1-tier, residual < 0.1) to ~5 (2-tier, residual < 0.01).
+        # Net: ~10 fewer multiplies on `exp(π)` and `exp(typical)`,
+        # bringing them from ~3 ulp off the BigDecimal reference to within
+        # 0–1 ulp.
+        var ten = Decimal128(10)
+        var d1 = Int(x * ten)  # 0..9; truncated toward zero, x ≥ 0 here.
+        if d1 != 0:
+            var d1_over_10 = Decimal128.from_int(value=d1, scale=UInt32(1))
+            var residual = x - d1_over_10
+            if d1 == 1:
+                exp_chunk = decimo.decimal128.constants.E0D1()
+            elif d1 == 2:
+                exp_chunk = decimo.decimal128.constants.E0D2()
+            elif d1 == 3:
+                exp_chunk = decimo.decimal128.constants.E0D3()
+            elif d1 == 4:
+                exp_chunk = decimo.decimal128.constants.E0D4()
+            elif d1 == 5:
+                exp_chunk = decimo.decimal128.constants.E0D5()
+            elif d1 == 6:
+                exp_chunk = decimo.decimal128.constants.E0D6()
+            elif d1 == 7:
+                exp_chunk = decimo.decimal128.constants.E0D7()
+            elif d1 == 8:
+                exp_chunk = decimo.decimal128.constants.E0D8()
+            else:  # d1 == 9
+                exp_chunk = decimo.decimal128.constants.E0D9()
+            remainder = residual
+        else:
+            # d1 == 0 ⇒ x < 0.1, drop into tier 2.
+            var hundred = Decimal128(100)
+            var d2 = Int(x * hundred)  # 0..9
+            if d2 == 0:
+                # x < 0.01 — Taylor converges in ≤ 5 terms, no chunk needed.
+                return exp_series(x)
+            var d2_over_100 = Decimal128.from_int(value=d2, scale=UInt32(2))
+            var residual = x - d2_over_100
+            if d2 == 1:
+                exp_chunk = decimo.decimal128.constants.E0D01()
+            elif d2 == 2:
+                exp_chunk = decimo.decimal128.constants.E0D02()
+            elif d2 == 3:
+                exp_chunk = decimo.decimal128.constants.E0D03()
+            elif d2 == 4:
+                exp_chunk = decimo.decimal128.constants.E0D04()
+            elif d2 == 5:
+                exp_chunk = decimo.decimal128.constants.E0D05()
+            elif d2 == 6:
+                exp_chunk = decimo.decimal128.constants.E0D06()
+            elif d2 == 7:
+                exp_chunk = decimo.decimal128.constants.E0D07()
+            elif d2 == 8:
+                exp_chunk = decimo.decimal128.constants.E0D08()
+            else:  # d2 == 9
+                exp_chunk = decimo.decimal128.constants.E0D09()
+            remainder = residual
 
     elif x_int == 1:  # 1 <= x < 2, chunk = 1
         exp_chunk = decimo.decimal128.constants.E()

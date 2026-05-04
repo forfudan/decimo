@@ -6,6 +6,14 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 
 ### ⭐️ New in v0.10.0
 
+**Decimal128:**
+
+1. Add **`normalize()`** to strip non-significant trailing zeros from the coefficient (matches Python `decimal.Decimal.normalize()`), **`__hash__()`** so `Decimal128` can be used as a dict key or set element, **`same_quantum(other)`** for IEEE 754-style scale comparison, plus other small additions (PR #238).
+1. Add **`from_decimal(BigDecimal)`** static constructor that quantises a high-precision `BigDecimal` onto the Decimal128 grid by rendering with `to_string(force_plain=True)` and re-parsing via `from_string()` (banker's rounding to 28 fractional digits, raises `OverflowError` when the integral part overflows the 96-bit coefficient). Primarily used by the cross-language bench harness as an oracle bridge from `BigDecimal` reference values into the Decimal128 grid (PR #239).
+1. Add **`max`, `min`, `clamp`** instance methods (PR #230).
+1. Add **`trunc`, `floor`, `ceil`, `fract`, `signum`, `unpack`** instance methods to round towards zero / −∞ / +∞, extract the fractional part and sign, and unpack into the underlying coefficient/sign/scale words (PR #227).
+1. Add **`fit_to_max_coefficient()`** and **`round_coefficient()`** utility helpers; `from_string()` and the arithmetic paths now share these instead of inline scratch logic (PR #216).
+
 **CLI Calculator:**
 
 1. Add **pipe/stdin mode**: read expressions from standard input, one per line, when no positional argument is given and stdin is piped (e.g. `echo "1+2" | decimo`, `printf "pi\nsqrt(2)" | decimo -P 100`). Blank lines and comment lines (starting with `#`) are automatically skipped.
@@ -23,10 +31,18 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 
 **Decimal128:**
 
-1. Sweep all hot-path `UInt(128|256)(10) ** k` calls (in `arithmetics`, `comparison`, `rounding`, `decimal128`) to `power_of_10_unsafe`, replacing runtime exponentiation (~4–12 ns) with a single rodata indexed load (~0.8 ns).
-1. Mark `Decimal128.from_uint128()` as `@always_inline` and split its two cold `raise ValueError` blocks into separate `@no_inline` helpers (`_raise_from_uint128_value_too_large`, `_raise_from_uint128_scale_too_large`), so the inline body stays small (two checks + bitcast + flag-or) without dragging `String.format` into every caller. Brings `add` to **0.9× rust**, `subtract` to **0.9–1.3× rust**, and `divide` to **1.0× rust** on the median bench.
-1. Mark `number_of_bits()` as `@always_inline` to remove the call frame on `multiply()`'s critical path.
-1. **`exp()` / `ln()` / `log10()` range reduction:** rewrite Taylor and range-reduction loops so that worst-case ratios drop to **≤ 1.0× rust_decimal** across all 42 bench cases (previously up to 1.7×). `exp_series()` now uses precomputed factorial reciprocals (two multiplies per term instead of one multiply + one divide), `ln()` reads the decade exponent `q` directly from the input scale instead of looping divisions/multiplications by 10, and `log10()`'s integer-power-of-10 fast path uses `number_of_digits` (O(1)) instead of a per-digit `% 10 / //= 10` loop. Adds new bench harnesses `cases/{ln,log10,exp}.toml` and wires `ln`/`log10`/`exp` into `run_all.sh` and the Rust harness (via the `maths` feature).
+1. Sweep all hot-path `UInt(128|256)(10) ** k` calls (in `arithmetics`, `comparison`, `rounding`, `decimal128`) to `power_of_10_unsafe`, replacing runtime exponentiation (~4–12 ns) with a single rodata indexed load (~0.8 ns) (PR #224).
+1. Mark `Decimal128.from_uint128()` as `@always_inline` and split its two cold `raise ValueError` blocks into separate `@no_inline` helpers (`_raise_from_uint128_value_too_large`, `_raise_from_uint128_scale_too_large`), so the inline body stays small (two checks + bitcast + flag-or) without dragging `String.format` into every caller. Brings `add` to **0.9× rust**, `subtract` to **0.9–1.3× rust**, and `divide` to **1.0× rust** on the median bench (PR #224).
+1. Mark `number_of_bits()` as `@always_inline` to remove the call frame on `multiply()`'s critical path; underlying implementation switches to `std.bit.bit_width` (PR #218).
+1. **`exp()` / `ln()` / `log10()` range reduction:** rewrite Taylor and range-reduction loops so that worst-case ratios drop to **≤ 1.0× rust_decimal** across all 42 bench cases (previously up to 1.7×). `exp_series()` now uses precomputed factorial reciprocals (two multiplies per term instead of one multiply + one divide), `ln()` reads the decade exponent `q` directly from the input scale instead of looping divisions/multiplications by 10, and `log10()`'s integer-power-of-10 fast path uses `number_of_digits` (O(1)) instead of a per-digit `% 10 / //= 10` loop. Adds new bench harnesses `cases/{ln,log10,exp}.toml` and wires `ln`/`log10`/`exp` into `run_all.sh` and the Rust harness (via the `maths` feature) (PR #229).
+1. **`exp()` 2-tier sub-unit chunker:** add 17 precomputed sub-unit constants — per-tenth `E0D1`…`E0D9` and per-hundredth `E0D01`…`E0D09` — and rewrite the `x_int < 1` arm to peel off the first decimal digit, then (when that digit is zero) the second decimal digit, before falling back to `exp_series()` on a residual in `[0, 0.01)`. Halves Taylor iterations on inputs like `exp(π)` (1350 → 770 ns) and improves accuracy from 3 ulp → 1 ulp off the `BigDecimal` reference; `exp(0.1)` collapses to a single constant lookup at 25 ns.
+1. Improve **`divide()`** by dropping a redundant rounding-digit padding step; trims the hot path without changing semantics or rounding (PR #237).
+1. Update **comparison functions, `from_string()`, `to_string()`, etc.** to improve performance: tighter inner loops on the codepoint iterator, cheaper sign/scale extraction, and shared scratch buffers (PR #225).
+1. Optimize **`divide()`** to use a school-book long-division layout that avoids the slow `UInt256 // UInt256` fallback for typical operands (PR #223).
+1. Reorder branches in **`add()` and `subtract()`** so the sign-and-scale-aligned hot path is hit first; cold cases (sign mismatch, scale-only mismatch) move to the tail (PR #220, #222).
+1. Improve the performance of **`multiply()`**: remove the `is_integer()` and `format()` calls from the hot path, optimize `power_of_10()`, and **fix latent rounding bugs** that affected products whose intermediate scale exceeded 28 (PR #221).
+1. Add edge-case tests for **`compare_absolute()`** (PR #217).
+1. **Remove `nan` and `inf` values:** `Decimal128` is now a strict finite type. `from_words()` updated accordingly and `power_of_10()` further improved (PR #215).
 
 **BigDecimal:**
 
@@ -35,6 +51,14 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 1. **New in-place exact methods:** `BigDecimal.add_inplace(other, precision=0)`, `subtract_inplace(other, precision=0)`, and `multiply_inplace(other, precision=0)`, mirroring the precision-aware non-inplace methods. Use these in tight loops to replace `+= / -= / *=` when exact intermediate arithmetic matters. The free functions `arithmetics.add_inplace` / `subtract_inplace` / `multiply_inplace` also gain the same `precision` parameter.
 1. **Internal call sites migrated:** `pi_machin` (`constants.mojo`), Newton iterations and Taylor series in `exponential.mojo`, and range-reduction loops in `trigonometric.mojo` now use the exact `*_inplace` methods so high-precision π / `ln` / `exp` / trig results are no longer silently capped at 28 digits.
 1. **CLI calculator:** the RPN evaluator (`src/cli/calculator/evaluator.mojo`) now drives `+` / `-` / `*` through `.add(b, working_precision)` / `.subtract(...)` / `.multiply(...)` so the user-requested `--precision` is honored end to end (previously results were silently capped at PRECISION = 28).
+1. **Fix `to_string(force_plain=True)` dropping trailing zeros for `scale < 0`:** `BigDecimal("1e40").to_string(force_plain=True)` previously returned `"1"` instead of the full 41-digit integer, silently producing a wrong value when re-parsed (e.g. via `Decimal128.from_decimal()`). The plain-notation `leftdigits >= num_digits` branch now materialises the `leftdigits − num_digits` trailing zeros that `force_plain=True` requires when `scale < 0`.
+
+### 🧪 Tests and benchmarks in v0.10.0
+
+**Decimal128:**
+
+1. Consolidate the Dec128 test suites into fewer files (`test_decimal128_arithmetics.mojo`, `test_decimal128_creation.mojo`, etc.) for faster compilation and easier navigation (PR #228).
+1. Refactor the cross-language benchmark harness to include comparisons against **Rust (`rust_decimal`)**, **C# (`System.Decimal`)**, and **VB.NET** (PR #219); `BigDecimal` acts as the high-precision oracle for `ln` / `log10` / `exp` (PR #229).
 
 ## 20260323 (v0.9.0)
 

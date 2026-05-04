@@ -3,12 +3,16 @@
 > **Date**: 2026-04-08 (created), last consolidated 2026-04-23
 > **Target**: decimo >=0.9.0
 > **Mojo Version**: >=0.26.2
+> **Status**: Fully executed as of 2026-05-04
 >
 > 子曰：工欲善其事，必先利其器。
+> Confucius said: If a craftsman wants to do good work, he must first sharpen his tools.
 
 This document tracks the Decimal128 audit started on 2026-04-08 and the
 performance work that followed. It is the single source of truth for the
 arithmetic / parse / format hot-path optimisation effort.
+
+This plan has been fully executed as of 2026-05-04 (PR #239).
 
 ---
 
@@ -218,6 +222,32 @@ value before the fact and §2.4 / §2.5 for end-to-end snapshots.
 |          | (incl. signed-zero and  scaled-zero collapse), the chunk-boundary strip path,        |
 |          | signed-zero ordering under `compare_total`, the cross-sign monotonicity of scaled    |
 |          | zeros, and adjusted / signed / canonical edges.                                      |
+| 20260503 | **`exp()` 2-tier sub-unit chunk constants — §5.3 follow-up landed.** Added 17 new    |
+|          | precomputed `e^k` constants: per-tenth `E0D1`…`E0D9` (skipping `E0D5` which already  |
+|          | existed) and per-hundredth `E0D01`…`E0D09`. All at 28 fractional digits, generated   |
+|          | via Python `decimal` Taylor at `prec=50`; the script's `E0D5` output reproduces      |
+|          | the existing `E0D5` constant byte-for-byte (validates the encoding pipeline).        |
+|          | Rewrote the `x_int < 1` arm of `exp()` as a 2-tier chunker: tier 1 peels off         |
+|          | `d1 = Int(x*10) ∈ [0, 9]` and applies `E0D{d1}`; if `d1 == 0` (i.e. `x < 0.1`) we    |
+|          | drop into tier 2 which peels off `d2 = Int(x*100) ∈ [0, 9]` and applies              |
+|          | `E0D0{d2}`. The final residual lands in `[0, 0.01)` (instead of the old              |
+|          | `[0, 0.25)`), so Taylor converges in ~5 terms instead of ~17. `d == 0` at any tier   |
+|          | short-circuits the chunk multiply. **The 2-tier design improves both speed *and*     |
+|          | accuracy** (precision was the explicit goal for tier 2): every saved Taylor          |
+|          | multiply also avoids ~0.5 ulp of truncation, so the speed gain translates directly   |
+|          | to ulp gain. Numbers (decimo, median ns/iter; ulps off BigDecimal reference):        |
+|          | - `exp(π)`:    1350 → **770 ns** (1.75×); 3 ulp → **1 ulp**.                         |
+|          | - `exp(typical)` (= e^1.234…): 960 → **725 ns** (1.32×); 4 ulp → **2 ulp**.          |
+|          | - `exp(0.1)`, `exp(0.5)`, `exp(2)`, `exp(5)`, `exp(10)`, `exp(66)`: unchanged at     |
+|          | 25 / 25 / 15 / 10 / 15 / 70 ns and 0 ulp.                                            |
+|          | - `exp(50)`: 80 ns / 2 ulp (integer-only path; no fractional chunking applies —      |
+|          | a smaller follow-up could precompute `E33`…`E66` to land it at 0 ulp).               |
+|          |                                                                                      |
+|          | All 9 decimal128 test files green under `-D ASSERT=all --debug-level=full`           |
+|          | (182 tests). `M0D5` / `M0D25` / `E0D25` kept (still imported elsewhere or            |
+|          | symmetric with the new layer). Reading `d1`/`d2` directly from the coefficient       |
+|          | (skipping the two `Decimal128 × N` multiplies in the chunkers) is a possible         |
+|          | micro-follow-up that would shave a few more ns but was left as future work.          |
 
 ### 2.5 Performance tracking — absolute decimo median ns/iter
 
@@ -459,11 +489,21 @@ Bench cases live in `benches/decimal128/cases/{ln,log10,exp}.toml`
 (12–16 cases each); `run_all.sh` now includes these ops by default so
 they appear in the aggregated markdown report.
 
-**Follow-up (not blocking):** `exp(π)` cost is dominated by ~17 Taylor
-iterations on a 28-digit-scale remainder where each multiply triggers
-wide-divide truncation. Further speedup would require precomputed
-sub-unit `e^k` constants (`E0D1`, `E0D01`, ...) to chunk the remainder,
-or a multiply path that defers truncation — left as a future task.
+**Follow-up — DONE (2026-05-03), 2-tier extension:** the `exp(π)` cost
+was dominated by ~17 Taylor iterations on a 28-digit-scale remainder, so
+we landed a **2-tier sub-unit chunker**. Added 17 precomputed constants
+— per-tenth `E0D1`…`E0D9` (skipping `E0D5` which already existed) and
+per-hundredth `E0D01`…`E0D09` — and rewrote the `x_int < 1` arm to peel
+off `d1 = Int(x*10)` then, when `d1 == 0`, `d2 = Int(x*100)`. The final
+residual lives in `[0, 0.01)` (Taylor converges in ~5 terms instead of
+~17). The 2-tier design improves **both speed and accuracy**: each saved
+Taylor multiply also avoids ~0.5 ulp of truncation, so the speed gain
+translates directly to ulp gain. `exp(π)` 1350 → 770 ns (1.75×) and
+3 ulp → 1 ulp off the BigDecimal reference; `exp(typical)` 960 → 725 ns
+(1.32×) and 4 ulp → 2 ulp. `exp(0.1)`, `exp(0.5)`, `exp(2)`, etc. were
+already at 0 ulp / constant-lookup speed and are unchanged. See
+§2.4 (20260503) for the full table and a possible "read-`d1`/`d2`
+directly from coef" micro-follow-up.
 
 ### 5.4 Test-suite latency
 
@@ -528,8 +568,4 @@ Part II → "A note on result exponents (`Decimal` and `Dec128`)".
 
 ## 7. Priority Summary
 
-Open items, in priority order:
-
-| #   | Issue                                       | Effort | Priority |
-| --- | ------------------------------------------- | ------ | -------- |
-| 5.3 | `exp()` sub-unit chunk constants (`exp(π)`) | Medium | P4       |
+All items have been addressed.
