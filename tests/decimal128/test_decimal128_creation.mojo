@@ -514,14 +514,16 @@ def test_from_decimal_banker_rounding() raises:
 
 def test_from_decimal_overflow() raises:
     """Values whose integral part overflows the 96-bit coefficient
-    must raise `OverflowError`."""
+    must raise `OverflowError`. We assert on the error message
+    substring (`"overflow"` from `OverflowError.__str__`) rather than a
+    bare `try/except` so the test fails loudly if `from_decimal()` raises
+    a different error type — e.g. a regression in `to_string(force_plain
+    =True)` previously returned `"1"` for `BigDecimal("1e40")`, which
+    `from_string()` happily parsed without raising at all.
+    """
     var huge = BigDecimal("1e40")
-    var raised = False
-    try:
+    with testing.assert_raises(contains="Cannot fit Decimal128 coefficient"):
         var _d = Dec128.from_decimal(huge)
-    except:
-        raised = True
-    testing.assert_true(raised)
 
 
 def main() raises:

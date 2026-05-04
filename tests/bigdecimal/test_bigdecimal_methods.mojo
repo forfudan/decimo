@@ -207,6 +207,39 @@ def test_to_scientific_string_is_alias() raises:
         )
 
 
+def test_to_string_force_plain_negative_scale() raises:
+    """`force_plain=True` must materialise trailing zeros for values with
+    `scale < 0` (i.e. internally an exponent rather than coefficient
+    digits). Regression test for the bug where `BigDecimal("1e40")`
+    stringified as `"1"` instead of `"1" + 40*"0"`, silently producing a
+    wrong value when `from_string()` re-parsed it (e.g. through
+    `Decimal128.from_decimal()`)."""
+    testing.assert_equal(
+        BigDecimal("1e40").to_string(force_plain=True),
+        "10000000000000000000000000000000000000000",
+    )
+    testing.assert_equal(
+        BigDecimal("12e3").to_string(force_plain=True), "12000"
+    )
+    testing.assert_equal(
+        BigDecimal("-7e5").to_string(force_plain=True), "-700000"
+    )
+    # Single digit / single trailing zero edge case.
+    testing.assert_equal(BigDecimal("5e1").to_string(force_plain=True), "50")
+    # scale == 0 path stays unaffected.
+    testing.assert_equal(
+        BigDecimal("12345").to_string(force_plain=True), "12345"
+    )
+    # scale > 0 path stays unaffected.
+    testing.assert_equal(BigDecimal("1.23").to_string(force_plain=True), "1.23")
+    # Round-trip: `from_string(to_string(force_plain=True))` must equal
+    # the original value (this is what `Decimal128.from_decimal()` relies
+    # on for overflow detection).
+    var huge = BigDecimal("1e40")
+    var round_trip = BigDecimal(huge.to_string(force_plain=True))
+    testing.assert_true(huge == round_trip)
+
+
 # ===----------------------------------------------------------------------=== #
 # number_of_digits()
 # ===----------------------------------------------------------------------=== #
