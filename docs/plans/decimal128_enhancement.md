@@ -3,12 +3,16 @@
 > **Date**: 2026-04-08 (created), last consolidated 2026-04-23
 > **Target**: decimo >=0.9.0
 > **Mojo Version**: >=0.26.2
+> **Status**: Fully executed as of 2026-05-04
 >
 > 子曰：工欲善其事，必先利其器。
+> Confucius said: If a craftsman wants to do good work, he must first sharpen his tools.
 
 This document tracks the Decimal128 audit started on 2026-04-08 and the
 performance work that followed. It is the single source of truth for the
 arithmetic / parse / format hot-path optimisation effort.
+
+This plan has been fully executed as of 2026-05-04 (PR #239).
 
 ---
 
@@ -564,18 +568,4 @@ Part II → "A note on result exponents (`Decimal` and `Dec128`)".
 
 ## 7. Priority Summary
 
-Open items, in priority order:
-
-| #   | Issue                                                | Effort | Priority |
-| --- | ---------------------------------------------------- | ------ | -------- |
-| 5.5 | 96-bit coefficient → 32-digit decimal-bounded layout | Large  | P4       |
-
-**Recently retired (DONE since the previous summary):**
-
-- §5.3 follow-up — `exp()` 2-tier sub-unit chunk constants. Closed
-  2026-05-03. Added 17 constants (`E0D1`…`E0D9` + `E0D01`…`E0D09`) and
-  rewrote the `x_int < 1` arm of `exp()` as a 2-tier chunker. Wins on
-  both axes: `exp(π)` 1350 → 770 ns (1.75×) and 3 ulp → 1 ulp off
-  BigDecimal; `exp(typical)` 960 → 725 ns (1.32×) and 4 ulp → 2 ulp;
-  `exp(0.1)` collapses to a constant lookup at 25 ns. See §2.4 (20260503)
-  and §5.3 for the writeup.
+All items have been addressed.
