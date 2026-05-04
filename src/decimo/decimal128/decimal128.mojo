@@ -1358,9 +1358,8 @@ struct Decimal128(
         var coef = self.coefficient()
         var result: String
 
-        # Special case: zero. Both scientific and engineering paths render
-        # zero as `0E±N` so the magnitude (i.e. the original scale) round-
-        # trips through `from_string`.
+        # Special case: zero. When `scale == 0` we emit `"0"` (or `"-0"`)
+        # without an exponent suffix; otherwise we emit `0E-<scale>`.
         if coef == 0:
             if scale == 0:
                 result = String("-0") if self.is_negative() else String("0")
