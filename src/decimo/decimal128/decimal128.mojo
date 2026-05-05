@@ -2193,12 +2193,16 @@ struct Decimal128(
 
         ```mojo
         from decimo.prelude import *
-        # Single-rounding cancellation: (10**16 * 1) + (-10**16) = 0,
-        # but (10**16 + 1e-16) * 1 + (-10**16) keeps the tiny addend.
-        var a = Dec128("10000000000000000")
-        var b = Dec128("1.0000000000000001")
-        var c = Dec128("-10000000000000001")
-        print(a.fma(b, c))  # 0.0000000000000001 (single rounding)
+        # Single-rounding advantage: pi*pi requires rounding to fit
+        # Decimal128's 29-digit grid; subtracting 9.8 then exposes the
+        # rounding noise that a two-step (a*b)+c would carry.
+        var pi = Dec128("3.141592653589793238462643383")
+        # fma keeps the full UInt256 product and reclaims one extra
+        # digit of precision over the naive (a*b)+c path:
+        print(pi.fma(pi, Dec128("-9.8")))
+        # 0.0696044010893586188344909981   (28 fractional digits)
+        print((pi * pi) + Dec128("-9.8"))
+        # 0.069604401089358618834490998    (27 fractional digits)
         ```
 
         Args:

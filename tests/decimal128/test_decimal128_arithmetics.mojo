@@ -746,16 +746,27 @@ def test_fma_basic() raises:
 
 
 def test_fma_zero_operands() raises:
-    """`x.fma(0, c) == c` and `0.fma(x, c) == c` (multiplication shortcut)."""
+    """Zero multiplicand / addend cases. Scale alignment still applies
+    (matching `(a*b)+c` and Python `decimal.Decimal.fma`): a zero
+    product carries the would-be product's scale, and a zero addend
+    contributes its scale to the result via add()-style alignment.
+    """
+    # 123.45 * 0 has scale 2, then + 7 (scale 0) = 7.00 (scale 2).
     testing.assert_equal(
         String(Decimal128("123.45").fma(Decimal128.ZERO(), Decimal128("7"))),
-        "7",
+        "7.00",
     )
+    # 0 (scale 0) * 99 (scale 0) has scale 0, then + -2.5 (scale 1) = -2.5.
     testing.assert_equal(
         String(Decimal128.ZERO().fma(Decimal128("99"), Decimal128("-2.5"))),
         "-2.5",
     )
-    # Zero addend: fma(a, b, 0) == a * b.
+    # 3 * 4 + 0.000 = 12.000 (zero addend at scale 3 extends the scale).
+    testing.assert_equal(
+        String(Decimal128("3").fma(Decimal128("4"), Decimal128("0.000"))),
+        "12.000",
+    )
+    # 3 * 4 + 0 (scale 0) = 12 (no scale extension).
     testing.assert_equal(
         String(Decimal128("3").fma(Decimal128("4"), Decimal128.ZERO())),
         "12",
@@ -835,13 +846,10 @@ def test_fma_large_values() raises:
 
 
 def test_fma_overflow() raises:
-    """Result overflows Decimal128 capacity."""
+    """Result overflows Decimal128 capacity → OverflowError."""
     var max_val = Decimal128.MAX()
-    try:
+    with testing.assert_raises(contains="overflow"):
         var _r = max_val.fma(Decimal128("2"), Decimal128.ZERO())
-        testing.assert_true(False, "Expected OverflowError")
-    except:
-        pass
 
 
 def main() raises:

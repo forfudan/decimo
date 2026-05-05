@@ -524,8 +524,10 @@ burden on users to judge when they're hitting the coefficient limit,
 no complex rounding logic to handle the 29-digit edge case, wider range.
 
 Cons: completely different API shape (four raw words instead of three + flags),
-incompatible with .NET and rust_decimal, more complex implementation (101-bit
+incompatible with .NET and rust_decimal, more complex implementation (107-bit
 coefficient arithmetic instead of 96-bit).
+
+107 comes from log(10^32, 2).
 
 It is a long-term proposal; not on the active roadmap.
 
@@ -603,14 +605,22 @@ Part II → "A note on result exponents (`Decimal` and `Dec128`)".
 
 ---
 
-## 7. Priority Summary
+## 7. Tasks and future improvements
 
 Open items, in priority order:
 
-| #   | Item                         | Section | Notes | Notes                                           |
-| --- | ---------------------------- | ------- | ----- | ----------------------------------------------- |
-| 1   | `__divmod__` / `__rdivmod__` | §5.7.2  | —     | Amortise the divide pipeline across `//` + `%`. |
-| 2   | `cbrt()`                     | §5.7.3  | —     | Trivial wrapper over `root(3)`.                 |
-| 3   | Trigonometric functions      | §5.7.4  | —     | Quite unique to a 128-bit decimal library.      |
-|     | (`sin`, `cos`, `tan`, `cot`, |         |       |                                                 |
-|     | `csc`, `sec`, `arctan`, etc) |         |       |                                                 |
+| #   | Item                         | Section | Notes                                           |
+| --- | ---------------------------- | ------- | ----------------------------------------------- |
+| 1   | `__divmod__` / `__rdivmod__` | §5.7.2  | Amortise the divide pipeline across `//` + `%`. |
+| 2   | `cbrt()`                     | §5.7.3  | Trivial wrapper over `root(3)`.                 |
+
+Future improvements (may not be necessary or urgent):
+
+| #   | Item                          | Section | Notes                                          |
+| --- | ----------------------------- | ------- | ---------------------------------------------- |
+| 1   | Trigonometric functions       | §5.7.4  | Quite unique to a 128-bit decimal library.     |
+|     | (`sin`, `cos`, `tan`, `cot`,  |         | But why not use `BigDecimal`?                  |
+|     | `csc`, `sec`, `arctan`, etc)  |         |                                                |
+| 2   | 96-bit → 32-digit coefficient | §5.5    | Cleaner API, wider range, always 32 sig digit. |
+|     | low, mid, high, top (11 bits) |         | Incompatible with other implementations.       |
+|     |                               |         | Cannot be bit-casted to others.                |

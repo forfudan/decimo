@@ -1431,15 +1431,14 @@ def fma(x1: Decimal128, x2: Decimal128, x3: Decimal128) raises -> Decimal128:
         OverflowError: If the result overflows Decimal128 capacity.
     """
 
-    # SPECIAL CASES: zero multiplicand → just return x3 (with sign of
-    # the would-be product preserved on the zero, matching multiply()).
-    if x1.is_zero() or x2.is_zero():
-        return x3
-
-    # Special case: zero addend → reduce to multiply(x1, x2) which
-    # already implements single-rounding for its own context.
-    if x3.is_zero():
-        return multiply(x1, x2)
+    # NOTE: We deliberately do NOT special-case zero operands here.
+    # Doing so would skip the addition-style scale-alignment rules that
+    # `multiply()` and `add()` apply to exact zeros (e.g. `0.01 * 0` has
+    # scale `2`, so `0.01.fma(0, 7)` must render as `"7.00"`, not
+    # `"7"`). The generic path below already handles zero coefficients
+    # correctly because UInt256 arithmetic is exact at zero and the
+    # alignment check still falls back to the two-step path when the
+    # combined working scale would overflow the 58-digit ceiling.
 
     # ---- Compute the exact product as a UInt256 ----
     var p_coef_256 = UInt256(x1.coefficient()) * UInt256(x2.coefficient())
@@ -1500,8 +1499,14 @@ def fma(x1: Decimal128, x2: Decimal128, x3: Decimal128) raises -> Decimal128:
             sum_coef = b_coef_256 - p_coef_256
             sum_sign = b_sign
 
-    # Cancellation produced an exact zero — preserve sign-of-x1*x2 like
-    # IEEE 754 prefers (consistent with subtract()'s zero handling).
+    # Cancellation produced an exact zero. We canonicalise to positive
+    # zero, matching `add()` / `subtract()`'s zero handling (which also
+    # always emit `+0` for exact-zero results, regardless of operand
+    # signs). This mirrors Python `decimal.Decimal.fma` and is what the
+    # default-context IBM General Decimal Arithmetic spec prescribes
+    # (§4.1 "sign of zero"); IEEE 754-2008 §6.3 would prefer the sign
+    # of the larger-magnitude operand, but Decimal128's add/subtract
+    # already deviate from that for consistency with .NET / Python.
     if sum_coef == 0:
         var result_scale = max(0, min(common_scale, Decimal128.MAX_SCALE))
         return Decimal128(0, 0, 0, UInt32(result_scale), False)
