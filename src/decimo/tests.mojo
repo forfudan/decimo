@@ -154,7 +154,7 @@ struct BenchCase(Copyable, Movable, Writable):
     """The second operand as a numeric string (empty for unary benchmarks)."""
     var c: String
     """The third operand as a numeric string (empty for binary/unary benchmarks).
-    Used by ternary ops such as `fma` (`self * b + c`)."""
+    Used by ternary ops such as `fma` (`a * b + c`)."""
 
     def __init__(
         out self, name: String, a: String, b: String = "", c: String = ""

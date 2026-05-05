@@ -48,8 +48,18 @@ for op in "${OPS[@]}"; do
   echo
   echo "===== $op ====="
 
-  echo "--- rust_decimal ---"
-  "$RUST_BIN" --op "$op" --cases-dir "$(pwd)/cases" --logs-dir "$(pwd)/logs"
+  # `rust_decimal` does not expose a fused multiply-add primitive, and
+  # the in-tree Rust harness panics on unknown ops. Skip the Rust run
+  # for `fma` (and any future ternary ops) rather than failing the
+  # whole pipeline under `set -e`. The decimo ↔ BigDecimal oracle
+  # comparison below still validates correctness for `fma`.
+  case "$op" in
+    fma)
+      echo "--- rust_decimal: skipping (no fma primitive in rust_decimal) ---" ;;
+    *)
+      echo "--- rust_decimal ---"
+      "$RUST_BIN" --op "$op" --cases-dir "$(pwd)/cases" --logs-dir "$(pwd)/logs" ;;
+  esac
 
   # System.Decimal (C# and VB.NET) only implements the basic arithmetic ops.
   # ln / log10 / exp are not in the .NET BCL, so skip those harnesses for

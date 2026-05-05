@@ -557,13 +557,15 @@ fused multiply-add); the three items below are still pending.
    a single final rounding. The intermediate product is kept exact in
    `UInt256`; the addend is aligned by scale (falling back to the
    two-step `multiply(self, other) + third` path when the aligned
-   working coefficient would exceed the 58-digit `UInt256` ceiling),
-   then a signed magnitude combine and a single `round_coefficient`
-   pass mirror `multiply()`'s late stage. Bit-identical to the
-   high-precision `BigDecimal` oracle (work=40, using the exact
-   `multiply(precision=0)` / `add(precision=0)` methods) on all 12
-   cross-language bench cases. Bench harness lands at
-   `benches/decimal128/cases/fma.toml`.
+   working coefficient would exceed the implementation's 58-digit
+   working cap — the size of the `power_of_10_unsafe[uint256]` rodata
+   table, which is the fast power-of-10 path used here, not a UInt256
+   limit), then a signed magnitude combine and a single
+   `round_coefficient` pass mirror `multiply()`'s late stage.
+   Bit-identical to the high-precision `BigDecimal` oracle (work=40,
+   using the exact `multiply(precision=0)` / `add(precision=0)`
+   methods) on all 12 cross-language bench cases. Bench harness lands
+   at `benches/decimal128/cases/fma.toml`.
 2. **`__divmod__(other)` / `__rdivmod__(other)`.** Return
    `(quotient, remainder)` in a single call. Today callers must do two
    separate divisions (`a // b` and `a % b`), each going through the

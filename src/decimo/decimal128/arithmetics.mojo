@@ -1450,7 +1450,15 @@ def fma(x1: Decimal128, x2: Decimal128, x3: Decimal128) raises -> Decimal128:
     var b_sign = x3.is_negative()
 
     # ---- Align the two addends to a common scale ----
-    # Working precision cap for UInt256 (10^58 ≤ UInt256 max ~1.16e77).
+    # `WORK_DIGITS_CAP = 58` is not a UInt256 limit (UInt256 holds
+    # around 77 decimal digits). It is the size of the rodata table backing
+    # `power_of_10_unsafe[uint256]` (n must be ≤ 58, see
+    # `decimo.decimal128.utility.power_of_10_unsafe`), and also the cap
+    # of `number_of_digits[uint256]`. Beyond 58 we fall back to the
+    # two-step `multiply(x1,x2) + x3` path rather than introducing a
+    # slower power-of-10 path here; precision loss is bounded by one
+    # extra ULP and only kicks in for operands whose combined working
+    # scale exceeds 58 digits, which is rare in practice.
     comptime WORK_DIGITS_CAP = 58
 
     var common_scale: Int
