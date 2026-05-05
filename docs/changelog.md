@@ -13,6 +13,11 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 1. Add **`max`, `min`, `clamp`** instance methods (PR #230).
 1. Add **`trunc`, `floor`, `ceil`, `fract`, `signum`, `unpack`** instance methods to round towards zero / −∞ / +∞, extract the fractional part and sign, and unpack into the underlying coefficient/sign/scale words (PR #227).
 1. Add **`fit_to_max_coefficient()`** and **`round_coefficient()`** utility helpers; `from_string()` and the arithmetic paths now share these instead of inline scratch logic (PR #216).
+1. Add **`__bool__`** (so `if d:` and `Bool(d)` work) and **`__pos__`** (so `+d` is a copy), matching Python `decimal.Decimal` and `BigDecimal`. `Decimal128` now also conforms to the `Boolable` trait.
+1. Add **`is_positive()`** (strictly positive, i.e. nonzero and not negative) and **`is_odd()`** (true when the integer part's units digit is odd, regardless of sign or fractional part), matching the existing `is_negative()` / `is_zero()` / `is_one()` introspection surface.
+1. Add **`number_of_trailing_zeros()`**, mirroring `BigDecimal.number_of_trailing_zeros()`. Returns the count of trailing zero digits in the coefficient (e.g. `Decimal128("1.2300").number_of_trailing_zeros() == 2`).
+1. Add **`to_scientific_string()`** and **`to_eng_string()`** convenience aliases for `to_string(scientific=True)` / `to_string(engineering=True)`, matching the equivalent `BigDecimal` API.
+1. Add **`to_string_with_separators(separator="_")`** which renders the plain-notation string with digit-group separators inserted every 3 digits in both the integer and fractional parts, matching `BigDecimal.to_string_with_separators`. Implemented as a thin alias for `to_string(delimiter=separator)` (the `delimiter` argument was added to `to_string` in this release; see the Changed section).
 
 **CLI Calculator:**
 
@@ -43,6 +48,9 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 1. Improve the performance of **`multiply()`**: remove the `is_integer()` and `format()` calls from the hot path, optimize `power_of_10()`, and **fix latent rounding bugs** that affected products whose intermediate scale exceeded 28 (PR #221).
 1. Add edge-case tests for **`compare_absolute()`** (PR #217).
 1. **Remove `nan` and `inf` values:** `Decimal128` is now a strict finite type. `from_words()` updated accordingly and `power_of_10()` further improved (PR #215).
+1. **Consolidate `to_string_scientific()` into `to_string()`:** `Decimal128.to_string()` now takes three optional arguments — `scientific: Bool = False`, `engineering: Bool = False`, and `delimiter: String = ""` — mirroring `BigDecimal.to_string`. The previous standalone `to_string_scientific()` has been removed (no callers in the repo); use `to_string(scientific=True)` or the new `to_scientific_string()` alias instead. Also adds engineering notation as a new code path (exponent always a multiple of 3, e.g. `Decimal128("0.5").to_string(engineering=True) == "500E-3"`); when both `scientific` and `engineering` are True, engineering wins. Passing `delimiter="_"` (or any other separator string) inserts digit-group separators every 3 digits in the mantissa while preserving the optional `E±N` exponent suffix verbatim.
+1. **Remove `Decimal128.copy()` and `Decimal128.clone()`:** both were trivial returns of `Self(self.low, self.mid, self.high, self.flags)` and unused anywhere in the repo. `Decimal128` is a `TrivialRegisterPassable` value type, so `var b = a` is the idiomatic copy.
+1. **Remove `Decimal128.print_internal_representation()`:** the method was a one-line wrapper around `print(self.internal_representation())` and is unused in the repo. Use `print(x.internal_representation())` directly instead. The structured-string method `internal_representation()` is unchanged.
 
 **BigDecimal:**
 

@@ -3,8 +3,9 @@ from decimo.prelude import *
 
 def main() raises:
     # === Construction ===
-    var a = Dec128("123.45")  # From string
-    var b = Dec128(123)  # From integer
+    # Decimal128 and Dec128 are aliases
+    var a = Decimal128("123.45")  # From string
+    var b = Decimal128(123)  # From integer
     var c = Dec128(123, 2)  # Integer with scale (1.23)
     var d = Dec128.from_float(3.14159)  # From floating-point
 
@@ -28,7 +29,7 @@ def main() raises:
     # === Type Conversions ===
     print(Float64(a))  # To float: 123.45
     print(a.to_int())  # To integer: 123
-    print(a.to_str())  # To string: "123.45"
+    print(a.to_string())  # To string: "123.45"
     print(a.coefficient())  # Get coefficient: 12345
     print(a.scale())  # Get scale: 2
 
@@ -58,4 +59,6 @@ def main() raises:
     # === Convenience Methods ===
     print(Dec128("123.400").is_integer())  # Check if integer: False
     print(a.number_of_significant_digits())  # Count significant digits: 5
-    print(Dec128("12.34").to_str_scientific())  # Scientific notation: 1.234E+1
+    print(
+        Dec128("12.34").to_scientific_string()
+    )  # Scientific notation: 1.234E+1

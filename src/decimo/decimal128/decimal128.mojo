@@ -46,6 +46,7 @@ comptime Dec128 = Decimal128
 
 struct Decimal128(
     Absable,
+    Boolable,
     Comparable,
     Floatable,
     Hashable,
@@ -1023,24 +1024,6 @@ struct Decimal128(
         # Return both the significant digits and the scale
         return Self(low, mid, high, UInt32(scale), is_negative)
 
-    @always_inline
-    def copy(self) -> Self:
-        """Returns a copy of the Decimal128.
-
-        Returns:
-            A copy of this `Decimal128`.
-        """
-        return Self(self.low, self.mid, self.high, self.flags)
-
-    @always_inline
-    def clone(self) -> Self:
-        """Returns a copy of the Decimal128.
-
-        Returns:
-            A copy of this `Decimal128`.
-        """
-        return Self(self.low, self.mid, self.high, self.flags)
-
     # ===------------------------------------------------------------------=== #
     # Output dunders, type-transfer dunders
     # ===------------------------------------------------------------------=== #
@@ -1320,73 +1303,212 @@ struct Decimal128(
 
         return res
 
-    def to_string(self) -> String:
-        """Returns string representation of the Decimal128.
-        Preserves trailing zeros after decimal128 point to match the scale.
+    def to_string(
+        self,
+        scientific: Bool = False,
+        engineering: Bool = False,
+        delimiter: String = "",
+    ) -> String:
+        """Returns a string representation of the Decimal128.
+
+        - Default (`scientific=False`, `engineering=False`): plain
+          fixed-point notation that preserves trailing zeros after the
+          decimal point to match the scale (e.g. `Decimal128("1.2300")`
+          renders as `"1.2300"`). Streamed via `write_to` for speed.
+        - `scientific=True`: scientific notation `M.NNNNe±XX` where the
+          coefficient's trailing zeros are first stripped and the exponent
+          uses the `E+N` / `E-N` style. A one-digit coefficient gets a
+          `.0` mantissa suffix (e.g. `5E+0` is rendered as `"5.0E+0"`).
+        - `engineering=True`: engineering notation where the exponent is
+          always a multiple of 3 (e.g. `12345` -> `"12.345E+3"`,
+          `0.00123` -> `"1.23E-3"`, `0.5` -> `"500E-3"`). Trailing zeros
+          in the coefficient are stripped first.
+        - When both `scientific` and `engineering` are True, **engineering
+          wins** (matches `BigDecimal.to_string`).
+
+        Args:
+            scientific: If True, format in scientific notation with one
+                digit before the decimal point.
+            engineering: If True, format in engineering notation with the
+                exponent rounded down to the nearest multiple of 3.
+            delimiter: A string inserted every 3 digits in both the
+                integer and fractional parts of the mantissa (e.g. `"_"`
+                gives `"1_234.567_89"`). The optional `E±N` exponent
+                suffix on scientific / engineering notation is preserved
+                verbatim. An empty string (default) disables grouping.
 
         Returns:
             The string representation of this `Decimal128`.
         """
-        var out = String()
-        self.write_to(out)
-        return out^
+        # Default plain fixed-point path with no grouping: stream via
+        # write_to (fast path; avoids the intermediate buffer rebuild).
+        if not scientific and not engineering and not delimiter:
+            var out = String()
+            self.write_to(out)
+            return out^
 
-    # TODO:
-    # Consolidate this method with `to_string()` and make `scientific` an
-    # optional comptime parameter to `to_string()`.
-    def to_string_scientific(self) raises -> String:
-        """Returns a string representation of this Decimal128 in scientific notation.
+        # Default plain fixed-point path with grouping: build via write_to
+        # then apply the digit-group separator pass.
+        if not scientific and not engineering:
+            var out = String()
+            self.write_to(out)
+            return _insert_digit_separators(out^, delimiter)
 
-        Returns:
-            A string representation of this Decimal128 in scientific notation.
-
-        Raises:
-            Error: If significant_digits is not between 1 and 28.
-
-        Notes:
-
-        Scientific notation format: M.NNNNe±XX where:
-        - M is the first significant digit.
-        - NNNN is the remaining significant digits.
-        - ±XX is the exponent.
-        """
         var scale: Int = self.scale()
         var coef = self.coefficient()
+        var result: String
 
-        # Special case: zero
-        if self.is_zero():
+        # Special case: zero. When `scale == 0` we emit `"0"` (or `"-0"`)
+        # without an exponent suffix; otherwise we emit `0E-<scale>`.
+        if coef == 0:
             if scale == 0:
-                return String("0")
+                result = String("-0") if self.is_negative() else String("0")
             else:
-                return String("0E-") + String("0") * self.scale()
+                var sign = String("-") if self.is_negative() else String("")
+                result = sign + String("0E-") + String(scale)
+            if delimiter:
+                return _insert_digit_separators(result^, delimiter)
+            return result^
 
+        # Strip trailing zeros from the coefficient. Both scientific and
+        # engineering notations conventionally drop them so the mantissa
+        # only carries significant digits.
         while coef % 10 == 0:
             coef = coef // 10
             scale -= 1
 
-        # 0.00100: coef=100, scale=5
-        # => 0.001: coef=1, scale=3, ndigits_fractional_part=0
-        # => 1.0e-3: coef=1, exponent=-3
-        var ndigits_coef = decimo.decimal128.utility.number_of_digits(coef)
-        var ndigits_fractional_part = ndigits_coef - 1
-        var exponent = ndigits_fractional_part - scale
-
-        # Format in scientific notation:
-        # sign, first digit, decimal128 point, remaining digits
         var coef_str = String(coef)
-        var result: String = String("-") if self.is_negative() else String("")
-        if len(coef_str) == 1:
-            result = result + coef_str + String(".0")
-        else:
-            result = result + coef_str[byte=0] + String(".") + coef_str[byte=1:]
+        var ndigits_coef = len(coef_str)
+        # `leftdigits` is the number of digits to the left of the decimal
+        # point in plain notation (matches the convention used by
+        # `BigDecimal.to_string`). For a coefficient of `n` digits with
+        # scale `s`, `leftdigits = n - s`.
+        var leftdigits = ndigits_coef - scale
+        # The "adjusted exponent" is the exponent that would appear if the
+        # mantissa had exactly one digit before the decimal point. This is
+        # the standard scientific-notation exponent.
+        var adjusted_exp = leftdigits - 1
+        var sign = String("-") if self.is_negative() else String("")
 
-        # Add exponent (E+XX or E-XX)
-        if exponent >= 0:
-            result += "E+" + String(exponent)
-        else:
-            result += "E" + String(exponent)
+        if engineering:
+            # Engineering notation: exponent is the largest multiple of 3
+            # that is `<= adjusted_exp` (rounding toward -infinity so that
+            # the mantissa stays in `[1, 1000)`).
+            var eng_exp: Int
+            if adjusted_exp >= 0:
+                eng_exp = (adjusted_exp // 3) * 3
+            else:
+                eng_exp = -((-adjusted_exp + 2) // 3) * 3
+            var lead_digits = adjusted_exp - eng_exp + 1  # always 1, 2, or 3
 
-        return result
+            # Right-pad the coefficient with zeros if there are fewer
+            # significant digits than `lead_digits` (e.g. coef="5" with
+            # lead_digits=3 -> coef="500", giving "500E-3").
+            if ndigits_coef < lead_digits:
+                coef_str = coef_str + "0" * (lead_digits - ndigits_coef)
+
+            result = sign
+            if len(coef_str) <= lead_digits:
+                result += coef_str
+            else:
+                result += coef_str[byte=:lead_digits]
+                result += "."
+                result += coef_str[byte=lead_digits:]
+
+            # Append exponent. Omit the `E` suffix entirely when
+            # `eng_exp == 0` (matches `BigDecimal.to_eng_string`).
+            if eng_exp != 0:
+                result += "E"
+                if eng_exp > 0:
+                    result += "+"
+                result += String(eng_exp)
+        else:
+            # Scientific notation: 1 digit before the decimal point.
+            # A one-digit coefficient gets a `.0` mantissa suffix to
+            # preserve the historical Decimal128 scientific format (e.g.
+            # `5.0E+0`).
+            result = sign
+            if ndigits_coef == 1:
+                result = result + coef_str + String(".0")
+            else:
+                result = (
+                    result + coef_str[byte=0] + String(".") + coef_str[byte=1:]
+                )
+
+            # Exponent: explicit sign in `E+N` style, plain `E-N` for negative.
+            if adjusted_exp >= 0:
+                result += "E+" + String(adjusted_exp)
+            else:
+                result += "E" + String(adjusted_exp)
+
+        if delimiter:
+            return _insert_digit_separators(result^, delimiter)
+        return result^
+
+    @always_inline
+    def to_scientific_string(self) -> String:
+        """Returns the number in scientific notation (trailing zeros stripped).
+
+        Convenience alias for `to_string(scientific=True)`.
+
+        Examples:
+
+        ```mojo
+        from decimo.prelude import *
+        print(Dec128("123456.789").to_scientific_string())  # "1.23456789E+5"
+        print(Dec128("0.00123").to_scientific_string())     # "1.23E-3"
+        ```
+
+        Returns:
+            The number formatted in scientific notation.
+        """
+        return self.to_string(scientific=True)
+
+    @always_inline
+    def to_eng_string(self) -> String:
+        """Returns the number in engineering notation (exponent is a multiple
+        of 3, trailing zeros stripped).
+
+        Convenience alias for `to_string(engineering=True)`.
+
+        Examples:
+
+        ```mojo
+        from decimo.prelude import *
+        print(Dec128("123456.789").to_eng_string())  # "123.456789E+3"
+        print(Dec128("0.00123").to_eng_string())     # "1.23E-3"
+        ```
+
+        Returns:
+            The number formatted in engineering notation.
+        """
+        return self.to_string(engineering=True)
+
+    @always_inline
+    def to_string_with_separators(self, separator: String = "_") -> String:
+        """Returns the plain-notation string with digit-group separators
+        inserted every 3 digits.
+
+        Convenience alias for `to_string(delimiter=separator)`. Groups
+        both the integer and fractional parts.
+
+        Args:
+            separator: The separator string (default: `"_"`).
+
+        Examples:
+
+        ```mojo
+        from decimo.prelude import *
+        print(Dec128("1234567.89").to_string_with_separators())       # "1_234_567.89"
+        print(Dec128("1234567.89").to_string_with_separators(","))    # "1,234,567.89"
+        print(Dec128("-9876543210.123456").to_string_with_separators())
+        # "-9_876_543_210.123_456"
+        ```
+
+        Returns:
+            The plain-notation string with digit-group separators.
+        """
+        return self.to_string(delimiter=separator)
 
     def as_tuple(self) -> Tuple[Bool, UInt128, Int]:
         """Returns a tuple representation of the number.
@@ -1423,6 +1545,28 @@ struct Decimal128(
             The negated value.
         """
         return decimo.decimal128.arithmetics.negative(self)
+
+    @always_inline
+    fn __bool__(self) -> Bool:
+        """Returns True if the value is nonzero.
+
+        This enables `if x:` syntax, consistent with Python's `decimal.Decimal`.
+
+        Returns:
+            True if the value is nonzero, False otherwise.
+        """
+        return not self.is_zero()
+
+    @always_inline
+    def __pos__(self) -> Self:
+        """Returns the value unchanged (unary plus).
+
+        This enables `+x` syntax, consistent with Python's `decimal.Decimal`.
+
+        Returns:
+            A copy of this value.
+        """
+        return self
 
     # ===------------------------------------------------------------------=== #
     # Basic binary arithmetic operation dunders
@@ -2683,10 +2827,6 @@ struct Decimal128(
         result += sep_line
         return result^
 
-    def print_internal_representation(self):
-        """Prints the internal representation details of a Decimal128."""
-        print(self.internal_representation())
-
     @always_inline
     def is_integer(self) -> Bool:
         """Determines whether this Decimal128 value represents an integer.
@@ -2743,6 +2883,34 @@ struct Decimal128(
             `True` if negative, `False` otherwise.
         """
         return (self.flags & Self.SIGN_MASK) != 0
+
+    @always_inline
+    def is_positive(self) -> Bool:
+        """Returns True if this Decimal128 represents a strictly positive
+        value (i.e. nonzero and not negative).
+
+        Returns:
+            `True` if strictly positive, `False` otherwise.
+        """
+        return not self.is_negative() and not self.is_zero()
+
+    def is_odd(self) -> Bool:
+        """Returns True if the integer part of this Decimal128 is odd.
+
+        The fractional part (if any) is ignored. The sign is also ignored;
+        e.g. `-13.5` is odd because its integer part `-13` is odd.
+
+        Returns:
+            `True` if the integer part's units digit is odd, `False`
+            otherwise.
+        """
+        var coef = self.coefficient()
+        var scale = self.scale()
+        if scale > 0:
+            coef = coef // decimo.decimal128.utility.power_of_10_unsafe[
+                DType.uint128
+            ](scale)
+        return Bool(coef & 1)
 
     @always_inline
     def is_one(self) -> Bool:
@@ -2817,3 +2985,126 @@ struct Decimal128(
             return 0  # Zero has zero significant digit
         else:
             return decimo.decimal128.utility.number_of_digits(coef)
+
+    def number_of_trailing_zeros(self) -> Int:
+        """Returns the number of trailing zero digits in the coefficient.
+
+        Trailing zeros conveyed by the scale (e.g. `Decimal128("1.2300")`
+        has coefficient `12300` and 2 trailing zeros) are counted; pure
+        zero values return 0.
+
+        Examples:
+
+        ```mojo
+        from decimo.prelude import *
+        print(Dec128("1.2300").number_of_trailing_zeros())    # 2
+        print(Dec128("12000").number_of_trailing_zeros())     # 3
+        print(Dec128("0").number_of_trailing_zeros())         # 0
+        ```
+
+        Returns:
+            The count of trailing zero digits in the coefficient.
+        """
+        var coef = self.coefficient()
+        if coef == 0:
+            return 0
+        var n = 0
+        while coef % 10 == 0:
+            coef = coef // 10
+            n += 1
+        return n
+
+
+# ===----------------------------------------------------------------------=== #
+# Module-level helpers
+# ===----------------------------------------------------------------------=== #
+
+
+def _insert_digit_separators(s: String, delimiter: String) -> String:
+    """Insert `delimiter` every 3 digits in both the integer and
+    fractional parts of a numeric string.
+
+    The function is aware of an optional leading `-` sign and a trailing
+    exponent suffix (`E+3`, `E-12`, etc.). Only the mantissa digits are
+    grouped; the sign and exponent are preserved verbatim. Mirrors the
+    `_insert_digit_separators` helper in `bigdecimal.mojo`.
+    """
+    if not delimiter:
+        return s
+
+    var sb = StringSlice(s).as_bytes()
+    var n = len(sb)
+    var ptr = sb.unsafe_ptr()
+
+    # Locate optional leading minus (ASCII 45).
+    var start = 0
+    if n > 0 and ptr[0] == 45:
+        start = 1
+
+    # Locate optional exponent suffix 'E' (ASCII 69); it bounds the
+    # mantissa so the exponent itself is left untouched.
+    var e_pos = n
+    for i in range(start, n):
+        if ptr[i] == 69:
+            e_pos = i
+            break
+
+    # Locate optional decimal point '.' (ASCII 46) within the mantissa.
+    var dot_pos = -1
+    for i in range(start, e_pos):
+        if ptr[i] == 46:
+            dot_pos = i
+            break
+
+    var int_end = dot_pos if dot_pos >= 0 else e_pos
+    var int_part = String(s[byte=start:int_end])
+    var frac_part = String("")
+    if dot_pos >= 0:
+        frac_part = String(s[byte = dot_pos + 1 : e_pos])
+    var exp_part = String(
+        s[byte=e_pos:n]
+    )  # includes leading 'E', empty if none
+
+    # --- Group integer part right-to-left every 3 digits ---
+    var int_len = len(int_part)
+    var int_grouped: String
+    if int_len > 3:
+        var blocks = List[String](capacity=int_len // 3 + 1)
+        var end_i = int_len
+        var start_i = end_i - 3
+        while start_i > 0:
+            blocks.append(String(int_part[byte=start_i:end_i]))
+            end_i = start_i
+            start_i -= 3
+        blocks.append(String(int_part[byte=0:end_i]))
+        int_grouped = String("")
+        var i = len(blocks) - 1
+        while i >= 0:
+            int_grouped += blocks[i]
+            if i > 0:
+                int_grouped += delimiter
+            i -= 1
+    else:
+        int_grouped = int_part^
+
+    # --- Group fractional part left-to-right every 3 digits ---
+    var frac_grouped: String
+    var frac_len = len(frac_part)
+    if frac_len > 3:
+        frac_grouped = String("")
+        var i = 0
+        while i < frac_len:
+            var end_j = i + 3
+            if end_j > frac_len:
+                end_j = frac_len
+            frac_grouped += frac_part[byte=i:end_j]
+            if end_j < frac_len:
+                frac_grouped += delimiter
+            i = end_j
+    else:
+        frac_grouped = frac_part^
+
+    var prefix = String("-") if start == 1 else String("")
+    if dot_pos >= 0:
+        return prefix + int_grouped + "." + frac_grouped + exp_part
+    return prefix + int_grouped + exp_part

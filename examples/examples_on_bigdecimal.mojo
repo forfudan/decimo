@@ -2,8 +2,8 @@ from decimo.prelude import *
 
 
 def main() raises:
-    var a = Decimal("123456789.123456789")
-    var b = Decimal("1234.56789")
+    var a = BigDecimal("123456789.123456789")
+    var b = Decimal("1234.56789")  # Alias of BigDecimal
 
     # === Basic Arithmetic === #
     print(a + b)  # 123458023.691346789

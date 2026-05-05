@@ -9,12 +9,12 @@ Comes with an interactive arbitrary-precision calculator (REPL + one-shot mode) 
 [![pixi](https://img.shields.io/badge/pixi%20add-decimo-purple)](https://prefix.dev/channels/modular-community/packages/decimo)
 [![CI](https://img.shields.io/github/actions/workflow/status/forfudan/decimo/run_tests.yaml?branch=main&label=tests)](https://github.com/forfudan/decimo/actions/workflows/run_tests.yaml)
 
-| Type      | Alias                | Information                              | Layout       |
-| --------- | -------------------- | ---------------------------------------- | ------------ |
-| `Integer` | `BInt`, `BigInt`     | Equivalent to Python's `int`             | Base-2^32    |
-| `Decimal` | `BDec`, `BigDecimal` | Equivalent to Python's `decimal.Decimal` | Base-10^9    |
-| `Dec128`  | `Decimal128`         | 128-bit fixed-precision decimal type     | 32-bit words |
-| `Float`   | `BigFloat`           | Arbitrary-precision floating-point type  | MPFR/GMP     |
+| Type         | Alias             | Information                              | Layout       |
+| ------------ | ----------------- | ---------------------------------------- | ------------ |
+| `BigInt`     | `BInt`, `Integer` | Equivalent to Python's `int`             | Base-2^32    |
+| `BigDecimal` | `BDec`, `Decimal` | Equivalent to Python's `decimal.Decimal` | Base-10^9    |
+| `Decimal128` | `Dec128`          | 128-bit fixed-precision decimal type     | 32-bit words |
+| `BigFloat`   | `Float`           | Arbitrary-precision floating-point type  | MPFR/GMP     |
 
 <!-- 
 [![License](https://img.shields.io/github/license/forfudan/decimo)](LICENSE)
@@ -37,14 +37,14 @@ Comes with an interactive arbitrary-precision calculator (REPL + one-shot mode) 
 
 Decimo provides an arbitrary-precision integer and decimal library for Mojo. It delivers exact calculations for financial modeling, scientific computing, and applications where floating-point approximation errors are unacceptable. Beyond basic arithmetic, the library includes advanced mathematical functions with guaranteed precision.
 
-For Pythonistas, `decimo.Integer` to Mojo is like `int` to Python, and `decimo.Decimal` to Mojo is like `decimal.Decimal` to Python. `decimo.Dec128` to Mojo is like `System.Decimal` to C# or `rust_decimal` to Rust.
+For Pythonistas, `decimo.BigInt` to Mojo is like `int` to Python, and `decimo.BigDecimal` to Mojo is like `decimal.Decimal` to Python. `decimo.Decimal128` to Mojo is like `System.Decimal` to C# or `rust_decimal` to Rust.
 
 The core types are[^auxiliary]:
 
-- An arbitrary-precision signed integer type `Integer`[^bigint], which is a Mojo-native equivalent of Python's `int`.
-- An arbitrary-precision decimal implementation (`Decimal`) allowing for calculations with unlimited digits and decimal places[^arbitrary], which is a Mojo-native equivalent of Python's `decimal.Decimal`.
-- A 128-bit fixed-point decimal implementation (`Dec128`) supporting up to 29 significant digits with a maximum of 28 decimal places[^fixed], which is a Mojo-native equivalent of C#'s `System.Decimal` or Rust's `rust_decimal`.
-- An arbitrary-precision floating-point implementation (`Float`) backed by the GNU MPFR library, supporting computations with configurable precision and a wide exponent range. Unlike `Decimal`, which uses base-10 arithmetic, `Float` uses binary floating-point internally. This type is optional and requires MPFR/GMP to be installed on the user's system.
+- An arbitrary-precision signed integer type `BigInt`[^bigint] (alias `BInt`), which is a Mojo-native equivalent of Python's `int`.
+- An arbitrary-precision decimal implementation (`BigDecimal`) (alias `Decimal`) allowing for calculations with unlimited digits and decimal places[^arbitrary], which is a Mojo-native equivalent of Python's `decimal.Decimal`.
+- A 128-bit fixed-point decimal implementation (`Decimal128`) (alias `Dec128`) supporting up to 29 significant digits with a maximum of 28 decimal places[^fixed], which is a Mojo-native equivalent of C#'s `System.Decimal` or Rust's `rust_decimal`.
+- An arbitrary-precision floating-point implementation (`BigFloat`) backed by the GNU MPFR library, supporting computations with configurable precision and a wide exponent range. Unlike `BigDecimal`, which uses base-10 arithmetic, `BigFloat` uses binary floating-point internally. This type is optional and requires MPFR/GMP to be installed on the user's system.
 <!-- - An arbitrary-precision exact rational number type (`Rational`) represented as a reduced fraction of two `Integer`s (numerator and denominator). It supports exact arithmetic and comparisons without any loss of precision, making it ideal for applications that require precise fractional calculations. -->
 
 **Decimo** combines "**Deci**mal" and "**Mo**jo" - reflecting its purpose and implementation language. "Decimo" is also a Latin word meaning "tenth" and is the root of the word "decimal".
@@ -172,23 +172,23 @@ from decimo import *
 
 This will import the following types or aliases into your namespace:
 
-- `Integer` (and its aliases `BInt`, `BigInt`): An arbitrary-precision signed integer type, equivalent to Python's `int`.
-- `Decimal` (and its aliases `BDec`, `BigDecimal`): An arbitrary-precision decimal type, equivalent to Python's `decimal.Decimal`.
-- `Dec128` (and its alias `Decimal128`): A 128-bit fixed-precision decimal type.
+- `BigInt` (and its aliases `BInt`, `Integer`): An arbitrary-precision signed integer type, equivalent to Python's `int`.
+- `BigDecimal` (and its aliases `BDec`, `Decimal`): An arbitrary-precision decimal type, equivalent to Python's `decimal.Decimal`.
+- `Decimal128` (and its alias `Dec128`): A 128-bit fixed-precision decimal type.
 - `RoundingMode`: An enumeration for rounding modes.
 - `ROUND_DOWN`, `ROUND_HALF_UP`, `ROUND_HALF_EVEN`, `ROUND_UP`: Constants for common rounding modes.
 
 ---
 
-Here are some examples showcasing the arbitrary-precision feature of the `Decimal` type. For some mathematical operations, the default precision (number of significant digits) is set to `28`. You can change the precision by passing the `precision` argument to the function. This default precision will be configurable globally in future when Mojo supports global variables.
+Here are some examples showcasing the arbitrary-precision feature of the `BigDecimal` (`Decimal`) type. For some mathematical operations, the default precision (number of significant digits) is set to `28`. You can change the precision by passing the `precision` argument to the function. This default precision will be configurable globally in future when Mojo supports global variables.
 
 ```mojo
 from decimo.prelude import *
 
 
 def main() raises:
-    var a = Decimal("123456789.123456789") 
-    var b = Decimal("1234.56789")
+    var a = BigDecimal("123456789.123456789") 
+    var b = Decimal("1234.56789")  # Alias of BigDecimal
 
     # === Basic Arithmetic === #
     print(a + b)  # 123458023.691346789
@@ -257,7 +257,7 @@ def main() raises:
 
 ---
 
-Here is a comprehensive quick-start guide showcasing each major function of the `Integer` (`BInt`) type.
+Here is a comprehensive quick-start guide showcasing each major function of the `BigInt` (`BInt`, `Integer`) type.
 
 ```mojo
 from decimo.prelude import *
@@ -265,9 +265,9 @@ from decimo.prelude import *
 
 def main() raises:
     # === Construction ===
-    var a = Integer("12345678901234567890")  # From string
-    var b = Integer(12345)  # From integer
-    var c = Integer("1991_10,18")  # From string with separators and spaces
+    var a = BigInt("12345678901234567890")  # From string
+    var b = BigInt(12345)  # From integer
+    var c = BInt("1991_10,18")  # From string with separators and spaces
     print(a, b, c)
 
     # === Basic Arithmetic ===
@@ -281,12 +281,12 @@ def main() raises:
     print(a % b)  # Modulo: 9615
 
     # === Power Operation ===
-    print(Integer(2).power(10))  # Power: 1024
-    print(Integer(2) ** 10)  # Power (using ** operator): 1024
+    print(BigInt(2).power(10))  # Power: 1024
+    print(BigInt(2) ** 10)  # Power (using ** operator): 1024
 
     # === Comparison ===
     print(a > b)  # Greater than: True
-    print(a == Integer("12345678901234567890"))  # Equality: True
+    print(a == BigInt("12345678901234567890"))  # Equality: True
     print(a.is_zero())  # Check for zero: False
 
     # === Type Conversions ===
@@ -295,13 +295,13 @@ def main() raises:
     # === Sign Handling ===
     print(-a)  # Negation: -12345678901234567890
     print(
-        abs(Integer("-12345678901234567890"))
+        abs(BigInt("-12345678901234567890"))
     )  # Absolute value: 12345678901234567890
     print(a.is_negative())  # Check if negative: False
 
     # === Extremely large numbers ===
     # 3600 digits // 1800 digits
-    print(Integer("123456789" * 400) // Integer("987654321" * 200))
+    print(BigInt("123456789" * 400) // BigInt("987654321" * 200))
 
     # === Greatest common divisor ===
     print(a.gcd(b))  # Greatest common divisor: 15
@@ -310,67 +310,73 @@ def main() raises:
 
 ---
 
-Here is a comprehensive quick-start guide showcasing each major function of the `Dec128` type.
+Here is a comprehensive quick-start guide showcasing each major function of the `Decimal128` (`Dec128`) type.
 
 ```mojo
 from decimo.prelude import *
 
+
 def main() raises:
     # === Construction ===
-    var a = Dec128("123.45")                         # From string
-    var b = Dec128(123)                              # From integer
-    var c = Dec128(123, 2)                           # Integer with scale (1.23)
-    var d = Dec128.from_float(3.14159)               # From floating-point
-    
+    # Decimal128 and Dec128 are aliases
+    var a = Decimal128("123.45")  # From string
+    var b = Decimal128(123)  # From integer
+    var c = Dec128(123, 2)  # Integer with scale (1.23)
+    var d = Dec128.from_float(3.14159)  # From floating-point
+
     # === Basic Arithmetic ===
-    print(a + b)                                     # Addition: 246.45
-    print(a - b)                                     # Subtraction: 0.45
-    print(a * b)                                     # Multiplication: 15184.35
-    print(a / b)                                     # Division: 1.0036585365853658536585365854
-    
+    print(a + b)  # Addition: 246.45
+    print(a - b)  # Subtraction: 0.45
+    print(a * b)  # Multiplication: 15184.35
+    print(a / b)  # Division: 1.0036585365853658536585365854
+
     # === Rounding & Precision ===
-    print(a.round(1))                                # Round to 1 decimal place: 123.5
-    print(a.quantize(Dec128("0.01")))                # Format to 2 decimal places: 123.45
-    print(a.round(0, RoundingMode.ROUND_DOWN))       # Round down to integer: 123
-    
+    print(a.round(1))  # Round to 1 decimal place: 123.5
+    print(a.quantize(Dec128("0.01")))  # Format to 2 decimal places: 123.45
+    print(a.round(0, RoundingMode.ROUND_DOWN))  # Round down to integer: 123
+
     # === Comparison ===
-    print(a > b)                                     # Greater than: True
-    print(a == Dec128("123.45"))                     # Equality: True
-    print(a.is_zero())                               # Check for zero: False
-    print(Dec128("0").is_zero())                     # Check for zero: True
-    
+    print(a > b)  # Greater than: True
+    print(a == Dec128("123.45"))  # Equality: True
+    print(a.is_zero())  # Check for zero: False
+    print(Dec128("0").is_zero())  # Check for zero: True
+
     # === Type Conversions ===
-    print(Float64(a))                                # To float: 123.45
-    print(a.to_int())                                # To integer: 123
-    print(a.to_str())                                # To string: "123.45"
-    print(a.coefficient())                           # Get coefficient: 12345
-    print(a.scale())                                 # Get scale: 2
-    
+    print(Float64(a))  # To float: 123.45
+    print(a.to_int())  # To integer: 123
+    print(a.to_string())  # To string: "123.45"
+    print(a.coefficient())  # Get coefficient: 12345
+    print(a.scale())  # Get scale: 2
+
     # === Mathematical Functions ===
-    print(Dec128("2").sqrt())                        # Square root: 1.4142135623730950488016887242
-    print(Dec128("100").root(3))                     # Cube root: 4.641588833612778892410076351
-    print(Dec128("2.71828").ln())                    # Natural log: 0.9999993273472820031578910056
-    print(Dec128("10").log10())                      # Base-10 log: 1
-    print(Dec128("16").log(Dec128("2")))             # Log base 2: 3.9999999999999999999999999999
-    print(Dec128("10").exp())                        # e^10: 22026.465794806716516957900645
-    print(Dec128("2").power(10))                     # Power: 1024
-    
+    print(Dec128("2").sqrt())  # Square root: 1.4142135623730950488016887242
+    print(Dec128("100").root(3))  # Cube root: 4.641588833612778892410076351
+    print(Dec128("2.71828").ln())  # Natural log: 0.9999993273472820031578910056
+    print(Dec128("10").log10())  # Base-10 log: 1
+    print(
+        Dec128("16").log(Dec128("2"))
+    )  # Log base 2: 3.9999999999999999999999999999
+    print(Dec128("10").exp())  # e^10: 22026.465794806716516957900645
+    print(Dec128("2").power(10))  # Power: 1024
+
     # === Sign Handling ===
-    print(-a)                                        # Negation: -123.45
-    print(abs(Dec128("-123.45")))                    # Absolute value: 123.45
-    print(Dec128("123.45").is_negative())            # Check if negative: False
-    
+    print(-a)  # Negation: -123.45
+    print(abs(Dec128("-123.45")))  # Absolute value: 123.45
+    print(Dec128("123.45").is_negative())  # Check if negative: False
+
     # === Special Values ===
-    print(Dec128.PI())                               # π constant: 3.1415926535897932384626433833
-    print(Dec128.E())                                # e constant: 2.7182818284590452353602874714
-    print(Dec128.ONE())                              # Value 1: 1
-    print(Dec128.ZERO())                             # Value 0: 0
-    print(Dec128.MAX())                              # Maximum value: 79228162514264337593543950335
-    
+    print(Dec128.PI())  # π constant: 3.1415926535897932384626433833
+    print(Dec128.E())  # e constant: 2.7182818284590452353602874714
+    print(Dec128.ONE())  # Value 1: 1
+    print(Dec128.ZERO())  # Value 0: 0
+    print(Dec128.MAX())  # Maximum value: 79228162514264337593543950335
+
     # === Convenience Methods ===
-    print(Dec128("123.400").is_integer())            # Check if integer: False
-    print(a.number_of_significant_digits())          # Count significant digits: 5
-    print(Dec128("12.34").to_str_scientific())       # Scientific notation: 1.234E+1
+    print(Dec128("123.400").is_integer())  # Check if integer: False
+    print(a.number_of_significant_digits())  # Count significant digits: 5
+    print(
+        Dec128("12.34").to_scientific_string()
+    )  # Scientific notation: 1.234E+1
 ```
 
 ## Objective

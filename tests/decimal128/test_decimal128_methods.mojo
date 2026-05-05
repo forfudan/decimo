@@ -588,5 +588,205 @@ def test_is_canonical_always_true() raises:
     testing.assert_true(Dec128("79228162514264337593543950335").is_canonical())
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# to_string(scientific=True) / to_scientific_string()
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_to_string_default_unchanged() raises:
+    """Default to_string() preserves trailing zeros via the scale."""
+    testing.assert_equal(Dec128("1.2300").to_string(), "1.2300")
+    testing.assert_equal(Dec128("0").to_string(), "0")
+    testing.assert_equal(Dec128("-0.00").to_string(), "-0.00")
+    testing.assert_equal(Dec128("12345").to_string(), "12345")
+
+
+def test_to_string_scientific_basic() raises:
+    testing.assert_equal(
+        Dec128("123456.789").to_string(scientific=True), "1.23456789E+5"
+    )
+    testing.assert_equal(
+        Dec128("0.00123").to_string(scientific=True), "1.23E-3"
+    )
+    # One-digit coefficient renders with the historical `.0` suffix.
+    testing.assert_equal(Dec128("1").to_string(scientific=True), "1.0E+0")
+    testing.assert_equal(Dec128("10").to_string(scientific=True), "1.0E+1")
+
+
+def test_to_string_scientific_strips_trailing_zeros() raises:
+    # Coefficient 50000, scale 4 -> magnitude 5, scientific 5.0E+0.
+    testing.assert_equal(Dec128("5.0000").to_string(scientific=True), "5.0E+0")
+
+
+def test_to_string_scientific_negative() raises:
+    testing.assert_equal(
+        Dec128("-0.00123").to_string(scientific=True), "-1.23E-3"
+    )
+    testing.assert_equal(Dec128("-12.5").to_string(scientific=True), "-1.25E+1")
+
+
+def test_to_string_scientific_zero() raises:
+    testing.assert_equal(Dec128("0").to_string(scientific=True), "0")
+    testing.assert_equal(Dec128("0.000").to_string(scientific=True), "0E-3")
+    testing.assert_equal(Dec128("-0.000").to_string(scientific=True), "-0E-3")
+
+
+def test_to_scientific_string_alias() raises:
+    var v = Dec128("123456.789")
+    testing.assert_equal(v.to_scientific_string(), v.to_string(scientific=True))
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# to_string(engineering=True) / to_eng_string()
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_to_string_engineering_basic() raises:
+    testing.assert_equal(
+        Dec128("123456.789").to_string(engineering=True), "123.456789E+3"
+    )
+    testing.assert_equal(
+        Dec128("0.00123").to_string(engineering=True), "1.23E-3"
+    )
+    testing.assert_equal(Dec128("1000000").to_string(engineering=True), "1E+6")
+    # adjusted_exp == 0 -> no E suffix.
+    testing.assert_equal(Dec128("1").to_string(engineering=True), "1")
+    testing.assert_equal(Dec128("12.34").to_string(engineering=True), "12.34")
+
+
+def test_to_string_engineering_pads_lead_digits() raises:
+    # adjusted_exp = -1, eng_exp = -3, lead_digits = 3 -> "500E-3".
+    testing.assert_equal(Dec128("0.5").to_string(engineering=True), "500E-3")
+    # adjusted_exp = 1, eng_exp = 0, lead_digits = 2 -> "50".
+    testing.assert_equal(Dec128("50").to_string(engineering=True), "50")
+
+
+def test_to_string_engineering_negative_and_zero() raises:
+    testing.assert_equal(
+        Dec128("-123456.789").to_string(engineering=True), "-123.456789E+3"
+    )
+    testing.assert_equal(Dec128("0").to_string(engineering=True), "0")
+    testing.assert_equal(Dec128("0.00").to_string(engineering=True), "0E-2")
+
+
+def test_to_string_engineering_wins_over_scientific() raises:
+    """Both flags True -> engineering takes precedence."""
+    var v = Dec128("123456.789")
+    testing.assert_equal(
+        v.to_string(scientific=True, engineering=True), "123.456789E+3"
+    )
+
+
+def test_to_eng_string_alias() raises:
+    var v = Dec128("123456.789")
+    testing.assert_equal(v.to_eng_string(), v.to_string(engineering=True))
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# to_string_with_separators()
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_to_string_with_separators_default() raises:
+    testing.assert_equal(
+        Dec128("1234567.89").to_string_with_separators(), "1_234_567.89"
+    )
+    testing.assert_equal(
+        Dec128("-9876543210.123456").to_string_with_separators(),
+        "-9_876_543_210.123_456",
+    )
+    # Short integer part (no grouping needed).
+    testing.assert_equal(
+        Dec128("12.345678").to_string_with_separators(), "12.345_678"
+    )
+
+
+def test_to_string_with_separators_custom() raises:
+    testing.assert_equal(
+        Dec128("1234567.89").to_string_with_separators(","), "1,234,567.89"
+    )
+
+
+def test_to_string_with_separators_no_fraction() raises:
+    testing.assert_equal(
+        Dec128("1234567").to_string_with_separators(), "1_234_567"
+    )
+    testing.assert_equal(Dec128("123").to_string_with_separators(), "123")
+
+
+def test_to_string_delimiter_arg() raises:
+    """`to_string(delimiter=...)` is the underlying primitive; the
+    convenience alias `to_string_with_separators` should match it."""
+    testing.assert_equal(
+        Dec128("1234567.89").to_string(delimiter="_"), "1_234_567.89"
+    )
+    # Combines with scientific notation: the exponent is preserved
+    # verbatim (only the mantissa is grouped).
+    testing.assert_equal(
+        Dec128("12345678.9").to_string(scientific=True, delimiter="_"),
+        "1.234_567_89E+7",
+    )
+    # Engineering notation + delimiter.
+    testing.assert_equal(
+        Dec128("123456.789").to_string(engineering=True, delimiter="_"),
+        "123.456_789E+3",
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# __bool__ / __pos__
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_bool_dunder() raises:
+    testing.assert_true(Bool(Dec128("1")))
+    testing.assert_true(Bool(Dec128("-0.001")))
+    testing.assert_false(Bool(Dec128("0")))
+    testing.assert_false(Bool(Dec128("-0.000")))
+
+
+def test_pos_dunder() raises:
+    var v = Dec128("-123.45")
+    var p = +v
+    testing.assert_equal(String(p), "-123.45")
+    testing.assert_true(p == v)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# is_positive / is_odd / number_of_trailing_zeros
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def test_is_positive() raises:
+    testing.assert_true(Dec128("1").is_positive())
+    testing.assert_true(Dec128("0.001").is_positive())
+    testing.assert_false(Dec128("0").is_positive())
+    testing.assert_false(Dec128("-0.00").is_positive())
+    testing.assert_false(Dec128("-1").is_positive())
+
+
+def test_is_odd_integer() raises:
+    testing.assert_true(Dec128("3").is_odd())
+    testing.assert_true(Dec128("-7").is_odd())
+    testing.assert_false(Dec128("4").is_odd())
+    testing.assert_false(Dec128("0").is_odd())
+
+
+def test_is_odd_with_fraction() raises:
+    """Fractional part is ignored; sign is ignored."""
+    testing.assert_true(Dec128("13.5").is_odd())
+    testing.assert_true(Dec128("-13.999").is_odd())
+    testing.assert_false(Dec128("12.999").is_odd())
+    testing.assert_false(Dec128("0.999").is_odd())
+
+
+def test_number_of_trailing_zeros() raises:
+    testing.assert_equal(Dec128("1.2300").number_of_trailing_zeros(), 2)
+    testing.assert_equal(Dec128("12000").number_of_trailing_zeros(), 3)
+    testing.assert_equal(Dec128("0").number_of_trailing_zeros(), 0)
+    testing.assert_equal(Dec128("0.000").number_of_trailing_zeros(), 0)
+    testing.assert_equal(Dec128("123.45").number_of_trailing_zeros(), 0)
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()
