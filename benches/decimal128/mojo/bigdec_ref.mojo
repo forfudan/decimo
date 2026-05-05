@@ -72,7 +72,11 @@ def _round_and_str(v: BigDecimal) raises -> String:
 
 
 def _ref_result(
-    op: String, a_str: String, work_precision: Int
+    op: String,
+    a_str: String,
+    b_str: String,
+    c_str: String,
+    work_precision: Int,
 ) raises -> String:
     var a = BigDecimal.from_string(a_str)
     if op == "ln":
@@ -84,7 +88,23 @@ def _ref_result(
     elif op == "exp":
         var r = bdexp.exp(a, work_precision)
         return _round_and_str(r)
-    raise Error("bigdec_ref only supports ln, log10, exp (got '" + op + "')")
+    elif op == "fma":
+        # fma(a, b, c) = a*b + c with a single final rounding. Use the
+        # exact precision-aware methods (`precision=0` => exact, no
+        # intermediate rounding) so the BigDecimal oracle keeps the full
+        # mathematical product before the final quantisation onto the
+        # Decimal128 grid via `_round_and_str` / `from_decimal`.
+        # NOTE: the `*` and `+` operators round HALF_EVEN to the default
+        # 28-digit precision by default (v0.10.0+), which would corrupt
+        # the oracle by capping at 28 digits *before* the Decimal128
+        # quantiser sees it.
+        var b = BigDecimal.from_string(b_str)
+        var c = BigDecimal.from_string(c_str)
+        var r = a.multiply(b, precision=0).add(c, precision=0)
+        return _round_and_str(r)
+    raise Error(
+        "bigdec_ref only supports ln, log10, exp, fma (got '" + op + "')"
+    )
 
 
 def main() raises:
@@ -133,7 +153,7 @@ def main() raises:
     )
     print(_pad("case", 40), "result")
     for ref bc in cases:
-        var result = _ref_result(op, bc.a, work_precision)
+        var result = _ref_result(op, bc.a, bc.b, bc.c, work_precision)
         print(_pad(bc.name, 40), result)
         log.write(
             ts

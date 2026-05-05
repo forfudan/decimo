@@ -524,8 +524,10 @@ burden on users to judge when they're hitting the coefficient limit,
 no complex rounding logic to handle the 29-digit edge case, wider range.
 
 Cons: completely different API shape (four raw words instead of three + flags),
-incompatible with .NET and rust_decimal, more complex implementation (101-bit
+incompatible with .NET and rust_decimal, more complex implementation (107-bit
 coefficient arithmetic instead of 96-bit).
+
+107 comes from log(10^32, 2).
 
 It is a long-term proposal; not on the active roadmap.
 
@@ -547,16 +549,23 @@ On 2026-05-04, I added the trivial API methods
 `number_of_trailing_zeros`, `to_string_with_separators`,
 `to_scientific_string` / `to_eng_string` aliases) and consolidated
 `to_string_scientific()` into `to_string(scientific=, engineering=)`.
-The four items below are pending implementation.
+On 2026-05-05, I implemented `fma(other, third)` (single-rounding
+fused multiply-add); the three items below are still pending.
 
-1. **`fma(a, b)` — fused multiply-add.** Compute `self * a + b` with a
-   single rounding step. Useful for dot products and Horner-form
-   polynomial evaluation. `BigDecimal.fma` already exists. The
-   Decimal128 version needs to keep the intermediate 256-bit product
-   unrounded, then add `b` and round once — non-trivial because the
-   existing `multiply` always rounds. It is a must have for users
-   who want to reduce the intermediate rounding errors in a sequence of
-   operations.
+1. **`fma(a, b)` — fused multiply-add.** Implemented 2026-05-05.
+   `Decimal128.fma(other, third)` computes `self * other + third` with
+   a single final rounding. The intermediate product is kept exact in
+   `UInt256`; the addend is aligned by scale (falling back to the
+   two-step `multiply(self, other) + third` path when the aligned
+   working coefficient would exceed the implementation's 58-digit
+   working cap — the size of the `power_of_10_unsafe[uint256]` rodata
+   table, which is the fast power-of-10 path used here, not a UInt256
+   limit), then a signed magnitude combine and a single
+   `round_coefficient` pass mirror `multiply()`'s late stage.
+   Bit-identical to the high-precision `BigDecimal` oracle (work=40,
+   using the exact `multiply(precision=0)` / `add(precision=0)`
+   methods) on all 12 cross-language bench cases. Bench harness lands
+   at `benches/decimal128/cases/fma.toml`.
 2. **`__divmod__(other)` / `__rdivmod__(other)`.** Return
    `(quotient, remainder)` in a single call. Today callers must do two
    separate divisions (`a // b` and `a % b`), each going through the
@@ -598,16 +607,22 @@ Part II → "A note on result exponents (`Decimal` and `Dec128`)".
 
 ---
 
-## 7. Priority Summary
+## 7. Tasks and future improvements
 
 Open items, in priority order:
 
-| #   | Item                          | Section | Notes | Notes                                           |
-| --- | ----------------------------- | ------- | ----- | ----------------------------------------------- |
-| 1   | `fma(a, b)` — single-rounding | §5.7.1  | —     | Needs a 256-bit unrounded product path;         |
-|     | fused multiply-add            |         |       | useful for dot products and Horner evaluation.  |
-| 2   | `__divmod__` / `__rdivmod__`  | §5.7.2  | —     | Amortise the divide pipeline across `//` + `%`. |
-| 3   | `cbrt()`                      | §5.7.3  | —     | Trivial wrapper over `root(3)`.                 |
-| 4   | Trigonometric functions       | §5.7.4  | —     | Quite unique to a 128-bit decimal library.      |
-|     | (`sin`, `cos`, `tan`, `cot`,  |         |       |                                                 |
-|     | `csc`, `sec`, `arctan`, etc)  |         |       |                                                 |
+| #   | Item                         | Section | Notes                                           |
+| --- | ---------------------------- | ------- | ----------------------------------------------- |
+| 1   | `__divmod__` / `__rdivmod__` | §5.7.2  | Amortise the divide pipeline across `//` + `%`. |
+| 2   | `cbrt()`                     | §5.7.3  | Trivial wrapper over `root(3)`.                 |
+
+Future improvements (may not be necessary or urgent):
+
+| #   | Item                          | Section | Notes                                          |
+| --- | ----------------------------- | ------- | ---------------------------------------------- |
+| 1   | Trigonometric functions       | §5.7.4  | Quite unique to a 128-bit decimal library.     |
+|     | (`sin`, `cos`, `tan`, `cot`,  |         | But why not use `BigDecimal`?                  |
+|     | `csc`, `sec`, `arctan`, etc)  |         |                                                |
+| 2   | 96-bit → 32-digit coefficient | §5.5    | Cleaner API, wider range, always 32 sig digit. |
+|     | low, mid, high, top (11 bits) |         | Incompatible with other implementations.       |
+|     |                               |         | Cannot be bit-casted to others.                |

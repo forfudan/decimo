@@ -144,7 +144,7 @@ struct TestCase(Copyable, Movable, Writable):
 
 
 struct BenchCase(Copyable, Movable, Writable):
-    """A benchmark case with a name and one or two operands."""
+    """A benchmark case with a name and up to three operands."""
 
     var name: String
     """The display name of the benchmark case."""
@@ -152,18 +152,25 @@ struct BenchCase(Copyable, Movable, Writable):
     """The first operand as a numeric string."""
     var b: String
     """The second operand as a numeric string (empty for unary benchmarks)."""
+    var c: String
+    """The third operand as a numeric string (empty for binary/unary benchmarks).
+    Used by ternary ops such as `fma` (`a * b + c`)."""
 
-    def __init__(out self, name: String, a: String, b: String = ""):
+    def __init__(
+        out self, name: String, a: String, b: String = "", c: String = ""
+    ):
         """Creates a `BenchCase` with the given name and operands.
 
         Args:
             name: The display name of the benchmark case.
             a: The first operand as a numeric string.
             b: The second operand as a numeric string (defaults to empty).
+            c: The third operand as a numeric string (defaults to empty).
         """
         self.name = name
         self.a = a
         self.b = b
+        self.c = c
 
     def __init__(out self, *, copy: Self):
         """Creates a copy of a `BenchCase`.
@@ -174,6 +181,7 @@ struct BenchCase(Copyable, Movable, Writable):
         self.name = copy.name
         self.a = copy.a
         self.b = copy.b
+        self.c = copy.c
 
     def __init__(out self, *, deinit take: Self):
         """Moves a `BenchCase` into a new instance.
@@ -184,6 +192,7 @@ struct BenchCase(Copyable, Movable, Writable):
         self.name = take.name^
         self.a = take.a^
         self.b = take.b^
+        self.c = take.c^
 
     def write_to[T: Writer](self, mut writer: T):
         """Writes a formatted representation of the benchmark case to a writer.
@@ -201,6 +210,8 @@ struct BenchCase(Copyable, Movable, Writable):
             self.a,
             "', b='",
             self.b,
+            "', c='",
+            self.c,
             "')",
         )
 
@@ -377,12 +388,15 @@ def load_bench_cases(toml_path: String) raises -> List[BenchCase]:
         var name = case_table["name"].as_string()
         var a = expand_value(case_table["a"].as_string())
 
-        # b is optional for unary operations
+        # b and c are optional (b for unary ops, c for binary ops).
         var b = String("")
         if "b" in case_table:
             b = expand_value(case_table["b"].as_string())
+        var c = String("")
+        if "c" in case_table:
+            c = expand_value(case_table["c"].as_string())
 
-        cases.append(BenchCase(name, a, b))
+        cases.append(BenchCase(name, a, b, c))
 
     return cases^
 

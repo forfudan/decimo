@@ -257,13 +257,12 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         OverflowError: If the result overflows Decimal128 capacity.
 
     Examples:
-    ---------
+
     ```console
     var a = Decimal128("10.5")
     var b = Decimal128("3.2")
     var result = a - b  # Returns 7.3
     ```
-    .
     """
     var x1_coef = x1.coefficient()
     var x2_coef = x2.coefficient()
@@ -685,7 +684,7 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             )
 
         # Single-pass rounding: compute the total digits to drop so that
-        # both the coefficient (≤ MAX_AS_UINT128) and the scale (≤
+        # both the coefficient (<= MAX_AS_UINT128) and the scale (<=
         # MAX_SCALE) constraints are satisfied in one `round_coefficient`
         # call. Saves the extra `number_of_digits` + wide divide that the
         # old `fit_to_max_coefficient` + re-round pattern incurred.
@@ -738,7 +737,7 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     var prod: UInt256 = UInt256(x1_coef) * UInt256(x2_coef)
 
     # Single-pass rounding: compute the total digits to drop so that
-    # both the coefficient (≤ MAX_AS_UINT128) and the scale (≤ MAX_SCALE)
+    # both the coefficient (<= MAX_AS_UINT128) and the scale (<= MAX_SCALE)
     # constraints are satisfied in one `round_coefficient` call. Saves
     # the extra UInt256 division that the old `fit_to_max_coefficient`
     # + re-round pattern incurred.
@@ -1088,16 +1087,16 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
         if (rem != 0) and (step_counter < max_steps):
             var bulk_steps = max_steps - step_counter
-            # bulk_steps bound: max_steps ≤ MAX_NUM_DIGITS = 29. Entry
+            # bulk_steps bound: max_steps <= MAX_NUM_DIGITS = 29. Entry
             # to this arm requires the probe loop to have exited via
             # `step_counter >= PROBE_STEPS = 2`, so in practice
-            # `bulk_steps ≤ 29 - 2 = 27`, well within
-            # `power_of_10_unsafe`'s `0 ≤ n ≤ 29` range for `uint128`.
+            # `bulk_steps <= 29 - 2 = 27`, well within
+            # `power_of_10_unsafe`'s `0 <= n <= 29` range for `uint128`.
             var scale_factor = decimo.decimal128.utility.power_of_10_unsafe[
                 DType.uint128
             ](bulk_steps)
             # `rem * 10^bulk_steps` always fits in UInt256: rem < x2_coef
-            # ≤ 2^96 and bulk_steps ≤ 27 so 10^bulk_steps < 2^90, giving
+            # <= 2^96 and bulk_steps <= 27 so 10^bulk_steps < 2^90, giving
             # rem * 10^bulk_steps < 2^186.
             var rem_scaled: UInt256 = UInt256(rem) * UInt256(scale_factor)
 
@@ -1108,7 +1107,7 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
                 var pair = decimo.decimal128.utility.udiv_u256_by_u64(
                     rem_scaled, UInt64(x2_coef)
                 )
-                # `quot_added < 10^bulk_steps ≤ 10^27 < 2^90`, fits UInt128.
+                # `quot_added < 10^bulk_steps <= 10^27 < 2^90`, fits UInt128.
                 quot_added_u128 = UInt128(
                     pair[0] & UInt256(0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFF)
                 )
@@ -1130,7 +1129,7 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             # UInt128 fold (was UInt256 in the previous design).
             # `quot * 10^bulk_steps` fits UInt128: post-bulk total
             # digits = ndigits_initial_quot + step_counter + bulk_steps
-            # = ndigits_initial_quot + max_steps ≤ MAX_NUM_DIGITS = 29,
+            # = ndigits_initial_quot + max_steps <= MAX_NUM_DIGITS = 29,
             # so the product is < 10^29 < 2^97. Adding `quot_added_u128`
             # (< 10^27) keeps it < 2 * 10^29 < 2^98, well below 2^128.
             quot = quot * scale_factor + quot_added_u128
@@ -1402,3 +1401,172 @@ def modulo(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         return x1 - (truncate_divide(x1, x2) * x2)
     except e:
         raise e^
+
+
+def fma(x1: Decimal128, x2: Decimal128, x3: Decimal128) raises -> Decimal128:
+    """Fused multiply-add: returns `x1 * x2 + x3` with a single final rounding.
+
+    Equivalent to Python's `decimal.Decimal.fma(other, third)`. The product
+    `x1 * x2` is held at full UInt256 precision and the addend `x3` is
+    aligned at the same scale before a single rounding step reduces the
+    result to Decimal128's grid (<= 96-bit coefficient, scale <= 28).
+
+    A single rounding step gives smaller error than `(x1 * x2) + x3`,
+    which rounds twice (once at the multiply, once at the add). For
+    operands whose product would already overflow the UInt256 working
+    width after scale alignment the implementation falls back to the
+    two-step `(x1 * x2) + x3` path; this is signalled in the comment
+    just before the fallback.
+
+    Args:
+        x1: The first multiplicand.
+        x2: The second multiplicand.
+        x3: The addend.
+
+    Returns:
+        A new Decimal128 containing `x1 * x2 + x3`.
+
+    Raises:
+        OverflowError: If the result overflows Decimal128 capacity.
+    """
+
+    # NOTE: We deliberately do NOT special-case zero operands here.
+    # Doing so would skip the addition-style scale-alignment rules that
+    # `multiply()` and `add()` apply to exact zeros (e.g. `0.01 * 0` has
+    # scale `2`, so `0.01.fma(0, 7)` must render as `"7.00"`, not
+    # `"7"`). The generic path below already handles zero coefficients
+    # correctly because UInt256 arithmetic is exact at zero and the
+    # alignment check still falls back to the two-step path when the
+    # combined working scale would overflow the 58-digit ceiling.
+
+    # ---- Compute the exact product as a UInt256 ----
+    var p_coef_256 = UInt256(x1.coefficient()) * UInt256(x2.coefficient())
+    var p_scale = x1.scale() + x2.scale()
+    var p_sign = x1.is_negative() != x2.is_negative()
+
+    var b_coef_256 = UInt256(x3.coefficient())
+    var b_scale = x3.scale()
+    var b_sign = x3.is_negative()
+
+    # ---- Align the two addends to a common scale ----
+    # `WORK_DIGITS_CAP = 58` is not a UInt256 limit (UInt256 holds
+    # around 77 decimal digits). It is the size of the rodata table backing
+    # `power_of_10_unsafe[uint256]` (n must be <= 58, see
+    # `decimo.decimal128.utility.power_of_10_unsafe`), and also the cap
+    # of `number_of_digits[uint256]`. Beyond 58 we fall back to the
+    # two-step `multiply(x1,x2) + x3` path rather than introducing a
+    # slower power-of-10 path here; precision loss is bounded by one
+    # extra ULP and only kicks in for operands whose combined working
+    # scale exceeds 58 digits, which is rare in practice.
+    comptime WORK_DIGITS_CAP = 58
+
+    var common_scale: Int
+    if p_scale > b_scale:
+        var diff = p_scale - b_scale
+        var b_ndigits = decimo.decimal128.utility.number_of_digits(b_coef_256)
+        if b_ndigits + diff <= WORK_DIGITS_CAP:
+            b_coef_256 = (
+                b_coef_256
+                * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](
+                    diff
+                )
+            )
+            common_scale = p_scale
+        else:
+            # Fallback: scaling b would overflow UInt256. Drop to the
+            # two-step path; precision loss is bounded by one extra ULP.
+            return multiply(x1, x2) + x3
+    elif b_scale > p_scale:
+        var diff = b_scale - p_scale
+        var p_ndigits = decimo.decimal128.utility.number_of_digits(p_coef_256)
+        if p_ndigits + diff <= WORK_DIGITS_CAP:
+            p_coef_256 = (
+                p_coef_256
+                * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](
+                    diff
+                )
+            )
+            common_scale = b_scale
+        else:
+            return multiply(x1, x2) + x3
+    else:
+        common_scale = p_scale
+
+    # ---- Combine signed magnitudes ----
+    var sum_coef: UInt256
+    var sum_sign: Bool
+    if p_sign == b_sign:
+        sum_coef = p_coef_256 + b_coef_256
+        sum_sign = p_sign
+    else:
+        if p_coef_256 >= b_coef_256:
+            sum_coef = p_coef_256 - b_coef_256
+            sum_sign = p_sign
+        else:
+            sum_coef = b_coef_256 - p_coef_256
+            sum_sign = b_sign
+
+    # Cancellation produced an exact zero. We canonicalise to positive
+    # zero, matching `add()` / `subtract()`'s zero handling (which also
+    # always emit `+0` for exact-zero results, regardless of operand
+    # signs). This mirrors Python `decimal.Decimal.fma` and is what the
+    # default-context IBM General Decimal Arithmetic spec prescribes
+    # (§4.1 "sign of zero"); IEEE 754-2008 §6.3 would prefer the sign
+    # of the larger-magnitude operand, but Decimal128's add/subtract
+    # already deviate from that for consistency with .NET / Python.
+    if sum_coef == 0:
+        var result_scale = max(0, min(common_scale, Decimal128.MAX_SCALE))
+        return Decimal128(0, 0, 0, UInt32(result_scale), False)
+
+    # ---- Single-rounding pass: shrink to fit Decimal128 grid ----
+    # Mirrors the late-stage rounding from multiply(): compute the total
+    # digits to drop so that both `sum_coef <= MAX_AS_UINT128` and
+    # `final_scale <= MAX_SCALE` are satisfied in one round_coefficient
+    # call.
+    var ndigits = decimo.decimal128.utility.number_of_digits(sum_coef)
+    var drop_for_scale = common_scale - Decimal128.MAX_SCALE
+    var drop_for_fit: Int
+    if sum_coef > UInt256(Decimal128.MAX_AS_UINT128):
+        drop_for_fit = max(1, ndigits - Decimal128.MAX_NUM_DIGITS)
+    else:
+        drop_for_fit = 0
+
+    var drop = max(0, max(drop_for_scale, drop_for_fit))
+    if drop > common_scale:
+        raise OverflowError(
+            message="Decimal128 overflow in fma().",
+            function="fma()",
+        )
+
+    var rounded: UInt256
+    if drop == 0:
+        rounded = sum_coef
+    else:
+        rounded = decimo.decimal128.utility.round_coefficient[
+            skip_digit_check=True
+        ](sum_coef, ndigits_to_remove=drop)
+        # Banker's-rounding carry may push the value past MAX_AS_UINT128.
+        # Re-round the ORIGINAL sum_coef (not the already-rounded value)
+        # with one more digit dropped to avoid double-rounding artifacts.
+        if rounded > UInt256(Decimal128.MAX_AS_UINT128):
+            drop += 1
+            if drop > common_scale:
+                raise OverflowError(
+                    message="Decimal128 overflow in fma().",
+                    function="fma()",
+                )
+            rounded = decimo.decimal128.utility.round_coefficient[
+                skip_digit_check=True
+            ](sum_coef, ndigits_to_remove=drop)
+
+    var final_scale = common_scale - drop
+    if final_scale < 0:
+        raise OverflowError(
+            message="Decimal128 overflow in fma().",
+            function="fma()",
+        )
+
+    var low = UInt32(rounded & 0xFFFFFFFF)
+    var mid = UInt32((rounded >> 32) & 0xFFFFFFFF)
+    var high = UInt32((rounded >> 64) & 0xFFFFFFFF)
+    return Decimal128(low, mid, high, UInt32(final_scale), sum_sign)

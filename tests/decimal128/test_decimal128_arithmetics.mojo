@@ -724,5 +724,133 @@ def test_modulo_consistency_with_floor_division() raises:
     _check("10", "-3")
 
 
+# ===----------------------------------------------------------------------=== #
+# fma
+# ===----------------------------------------------------------------------=== #
+
+
+def test_fma_basic() raises:
+    """Smoke tests covering the simple, scale-aligned cases."""
+    testing.assert_equal(
+        String(Decimal128("2").fma(Decimal128("3"), Decimal128("5"))),
+        "11",  # 2*3 + 5
+    )
+    testing.assert_equal(
+        String(Decimal128("1.5").fma(Decimal128("4"), Decimal128("0.5"))),
+        "6.5",  # 1.5*4 + 0.5
+    )
+    testing.assert_equal(
+        String(Decimal128("0.1").fma(Decimal128("0.2"), Decimal128("0.03"))),
+        "0.05",  # 0.1*0.2 + 0.03
+    )
+
+
+def test_fma_zero_operands() raises:
+    """Zero multiplicand / addend cases. Scale alignment still applies
+    (matching `(a*b)+c` and Python `decimal.Decimal.fma`): a zero
+    product carries the would-be product's scale, and a zero addend
+    contributes its scale to the result via add()-style alignment.
+    """
+    # 123.45 * 0 has scale 2, then + 7 (scale 0) = 7.00 (scale 2).
+    testing.assert_equal(
+        String(Decimal128("123.45").fma(Decimal128.ZERO(), Decimal128("7"))),
+        "7.00",
+    )
+    # 0 (scale 0) * 99 (scale 0) has scale 0, then + -2.5 (scale 1) = -2.5.
+    testing.assert_equal(
+        String(Decimal128.ZERO().fma(Decimal128("99"), Decimal128("-2.5"))),
+        "-2.5",
+    )
+    # 3 * 4 + 0.000 = 12.000 (zero addend at scale 3 extends the scale).
+    testing.assert_equal(
+        String(Decimal128("3").fma(Decimal128("4"), Decimal128("0.000"))),
+        "12.000",
+    )
+    # 3 * 4 + 0 (scale 0) = 12 (no scale extension).
+    testing.assert_equal(
+        String(Decimal128("3").fma(Decimal128("4"), Decimal128.ZERO())),
+        "12",
+    )
+
+
+def test_fma_signs() raises:
+    """Sign combinations for product and addend."""
+    # Same sign: positive + positive.
+    testing.assert_equal(
+        String(Decimal128("2").fma(Decimal128("3"), Decimal128("4"))), "10"
+    )
+    # Same sign: negative * negative + positive.
+    testing.assert_equal(
+        String(Decimal128("-2").fma(Decimal128("-3"), Decimal128("4"))), "10"
+    )
+    # Opposite signs: positive product + negative addend.
+    testing.assert_equal(
+        String(Decimal128("2").fma(Decimal128("3"), Decimal128("-4"))), "2"
+    )
+    # Opposite signs: negative product + positive addend that wins.
+    testing.assert_equal(
+        String(Decimal128("-2").fma(Decimal128("3"), Decimal128("10"))), "4"
+    )
+    # Opposite signs: negative product + positive addend, product wins.
+    testing.assert_equal(
+        String(Decimal128("-5").fma(Decimal128("3"), Decimal128("10"))), "-5"
+    )
+
+
+def test_fma_exact_cancellation() raises:
+    """Exact zero result keeps the natural scale."""
+    var r = Decimal128("3").fma(Decimal128("4"), Decimal128("-12"))
+    testing.assert_equal(String(r), "0")
+
+
+def test_fma_single_rounding_advantage() raises:
+    """The fma result should differ from `(a*b)+c` when the intermediate
+    product overflows Decimal128's precision and the addend would be
+    cancelled away by the multiply's pre-rounding.
+    Classic example: (1 + 1e-20) * 1 - 1.
+    """
+    # In Decimal128 the product 1.000_000_000_000_000_000_01 * 1 keeps
+    # all 21 digits (well within MAX_NUM_DIGITS=29). Adding -1 yields
+    # exactly 1e-20.
+    var a = Decimal128("1.00000000000000000001")
+    var b = Decimal128("1")
+    var c = Decimal128("-1")
+    testing.assert_equal(String(a.fma(b, c)), "0.00000000000000000001")
+    # Two-step computation also gives the same answer here because the
+    # product fits without rounding. fma should match.
+    testing.assert_equal(String(a.fma(b, c)), String((a * b) + c))
+
+
+def test_fma_scale_alignment() raises:
+    """Different scales for the product and addend get aligned."""
+    # 1.5 (scale 1) * 2 (scale 0) = 3.0 (scale 1); + 0.001 (scale 3) = 3.001.
+    testing.assert_equal(
+        String(Decimal128("1.5").fma(Decimal128("2"), Decimal128("0.001"))),
+        "3.001",
+    )
+    # Inverse: small product, large-scale addend wins the alignment.
+    testing.assert_equal(
+        String(
+            Decimal128("0.5").fma(Decimal128("0.5"), Decimal128("100.000000"))
+        ),
+        "100.250000",
+    )
+
+
+def test_fma_large_values() raises:
+    """Big coefficients near the Decimal128 capacity."""
+    # 7.92...e28 * 0.1 = 7.92...e27; add another 7.92...e27 = ~1.58e28.
+    var huge = Decimal128("7000000000000000000000000000")
+    var r = huge.fma(Decimal128("0.5"), huge)
+    testing.assert_equal(String(r), "10500000000000000000000000000")
+
+
+def test_fma_overflow() raises:
+    """Result overflows Decimal128 capacity → OverflowError."""
+    var max_val = Decimal128.MAX()
+    with testing.assert_raises(contains="overflow"):
+        var _r = max_val.fma(Decimal128("2"), Decimal128.ZERO())
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()
