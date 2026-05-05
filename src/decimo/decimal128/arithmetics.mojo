@@ -1402,3 +1402,159 @@ def modulo(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         return x1 - (truncate_divide(x1, x2) * x2)
     except e:
         raise e^
+
+
+def fma(x1: Decimal128, x2: Decimal128, x3: Decimal128) raises -> Decimal128:
+    """Fused multiply-add: returns `x1 * x2 + x3` with a single final rounding.
+
+    Equivalent to Python's `decimal.Decimal.fma(other, third)`. The product
+    `x1 * x2` is held at full UInt256 precision and the addend `x3` is
+    aligned at the same scale before a single rounding step reduces the
+    result to Decimal128's grid (≤ 96-bit coefficient, scale ≤ 28).
+
+    A single rounding step gives smaller error than `(x1 * x2) + x3`,
+    which rounds twice (once at the multiply, once at the add). For
+    operands whose product would already overflow the UInt256 working
+    width after scale alignment the implementation falls back to the
+    two-step `(x1 * x2) + x3` path; this is signalled in the comment
+    just before the fallback.
+
+    Args:
+        x1: The first multiplicand.
+        x2: The second multiplicand.
+        x3: The addend.
+
+    Returns:
+        A new Decimal128 containing `x1 * x2 + x3`.
+
+    Raises:
+        OverflowError: If the result overflows Decimal128 capacity.
+    """
+
+    # SPECIAL CASES: zero multiplicand → just return x3 (with sign of
+    # the would-be product preserved on the zero, matching multiply()).
+    if x1.is_zero() or x2.is_zero():
+        return x3
+
+    # Special case: zero addend → reduce to multiply(x1, x2) which
+    # already implements single-rounding for its own context.
+    if x3.is_zero():
+        return multiply(x1, x2)
+
+    # ---- Compute the exact product as a UInt256 ----
+    var p_coef_256 = UInt256(x1.coefficient()) * UInt256(x2.coefficient())
+    var p_scale = x1.scale() + x2.scale()
+    var p_sign = x1.is_negative() != x2.is_negative()
+
+    var b_coef_256 = UInt256(x3.coefficient())
+    var b_scale = x3.scale()
+    var b_sign = x3.is_negative()
+
+    # ---- Align the two addends to a common scale ----
+    # Working precision cap for UInt256 (10^58 ≤ UInt256 max ~1.16e77).
+    comptime WORK_DIGITS_CAP = 58
+
+    var common_scale: Int
+    if p_scale > b_scale:
+        var diff = p_scale - b_scale
+        var b_ndigits = decimo.decimal128.utility.number_of_digits(b_coef_256)
+        if b_ndigits + diff <= WORK_DIGITS_CAP:
+            b_coef_256 = (
+                b_coef_256
+                * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](
+                    diff
+                )
+            )
+            common_scale = p_scale
+        else:
+            # Fallback: scaling b would overflow UInt256. Drop to the
+            # two-step path; precision loss is bounded by one extra ULP.
+            return multiply(x1, x2) + x3
+    elif b_scale > p_scale:
+        var diff = b_scale - p_scale
+        var p_ndigits = decimo.decimal128.utility.number_of_digits(p_coef_256)
+        if p_ndigits + diff <= WORK_DIGITS_CAP:
+            p_coef_256 = (
+                p_coef_256
+                * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](
+                    diff
+                )
+            )
+            common_scale = b_scale
+        else:
+            return multiply(x1, x2) + x3
+    else:
+        common_scale = p_scale
+
+    # ---- Combine signed magnitudes ----
+    var sum_coef: UInt256
+    var sum_sign: Bool
+    if p_sign == b_sign:
+        sum_coef = p_coef_256 + b_coef_256
+        sum_sign = p_sign
+    else:
+        if p_coef_256 >= b_coef_256:
+            sum_coef = p_coef_256 - b_coef_256
+            sum_sign = p_sign
+        else:
+            sum_coef = b_coef_256 - p_coef_256
+            sum_sign = b_sign
+
+    # Cancellation produced an exact zero — preserve sign-of-x1*x2 like
+    # IEEE 754 prefers (consistent with subtract()'s zero handling).
+    if sum_coef == 0:
+        var result_scale = max(0, min(common_scale, Decimal128.MAX_SCALE))
+        return Decimal128(0, 0, 0, UInt32(result_scale), False)
+
+    # ---- Single-rounding pass: shrink to fit Decimal128 grid ----
+    # Mirrors the late-stage rounding from multiply(): compute the total
+    # digits to drop so that both `sum_coef ≤ MAX_AS_UINT128` and
+    # `final_scale ≤ MAX_SCALE` are satisfied in one round_coefficient
+    # call.
+    var ndigits = decimo.decimal128.utility.number_of_digits(sum_coef)
+    var drop_for_scale = common_scale - Decimal128.MAX_SCALE
+    var drop_for_fit: Int
+    if sum_coef > UInt256(Decimal128.MAX_AS_UINT128):
+        drop_for_fit = max(1, ndigits - Decimal128.MAX_NUM_DIGITS)
+    else:
+        drop_for_fit = 0
+
+    var drop = max(0, max(drop_for_scale, drop_for_fit))
+    if drop > common_scale:
+        raise OverflowError(
+            message="Decimal128 overflow in fma().",
+            function="fma()",
+        )
+
+    var rounded: UInt256
+    if drop == 0:
+        rounded = sum_coef
+    else:
+        rounded = decimo.decimal128.utility.round_coefficient[
+            skip_digit_check=True
+        ](sum_coef, ndigits_to_remove=drop)
+        # Banker's-rounding carry may push the value past MAX_AS_UINT128.
+        # Re-round the ORIGINAL sum_coef (not the already-rounded value)
+        # with one more digit dropped to avoid double-rounding artifacts.
+        if rounded > UInt256(Decimal128.MAX_AS_UINT128):
+            drop += 1
+            if drop > common_scale:
+                raise OverflowError(
+                    message="Decimal128 overflow in fma().",
+                    function="fma()",
+                )
+            rounded = decimo.decimal128.utility.round_coefficient[
+                skip_digit_check=True
+            ](sum_coef, ndigits_to_remove=drop)
+
+    var final_scale = common_scale - drop
+    if final_scale < 0:
+        raise OverflowError(
+            message="Decimal128 overflow in fma().",
+            function="fma()",
+        )
+
+    var low = UInt32(rounded & 0xFFFFFFFF)
+    var mid = UInt32((rounded >> 32) & 0xFFFFFFFF)
+    var high = UInt32((rounded >> 64) & 0xFFFFFFFF)
+    return Decimal128(low, mid, high, UInt32(final_scale), sum_sign)

@@ -81,7 +81,7 @@ for op in "${OPS[@]}"; do
   # (work=40, target=28) so the report has an oracle column showing the
   # numerically "more correct" value to compare decimo / rust against.
   case "$op" in
-    ln|log10|exp)
+    ln|log10|exp|fma)
       echo "--- decimo.BigDecimal (oracle, work=40, target=28) ---"
       (cd mojo && pixi run --manifest-path ../../../pixi.toml mojo run \
            -I ../../../src --debug-level=line-tables -D ASSERT=none \

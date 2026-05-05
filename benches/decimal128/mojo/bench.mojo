@@ -111,7 +111,9 @@ def _bench_to_str(d: Decimal128, iters: Int) raises -> Float64:
     return Float64(best) / Float64(iters)
 
 
-def _result_for(op: String, a: Decimal128, b: Decimal128) raises -> String:
+def _result_for(
+    op: String, a: Decimal128, b: Decimal128, c: Decimal128
+) raises -> String:
     if op == "add":
         return String(a + b)
     elif op == "subtract":
@@ -136,6 +138,8 @@ def _result_for(op: String, a: Decimal128, b: Decimal128) raises -> String:
         return String(a.log10())
     elif op == "exp":
         return String(a.exp())
+    elif op == "fma":
+        return String(a.fma(b, c))
     raise Error("unknown op: " + op)
 
 
@@ -146,7 +150,8 @@ def _run_case(
 ) raises -> Tuple[String, Float64]:
     var a = Decimal128(bc.a)
     var b = Decimal128(bc.b) if bc.b != "" else Decimal128.ZERO()
-    var result = _result_for(op, a, b)
+    var c = Decimal128(bc.c) if bc.c != "" else Decimal128.ZERO()
+    var result = _result_for(op, a, b, c)
 
     var per: Float64
     if op == "add":
@@ -209,6 +214,14 @@ def _run_case(
             return UInt64(x.exp().coefficient() & 0xFFFF_FFFF_FFFF_FFFF)
 
         per = _bench_one[_f_exp](a, b, iters)
+    elif op == "fma":
+        # Capture the third operand `c` so the kernel runs the true
+        # ternary fused multiply-add per iteration.
+        @parameter
+        def _f_fma(x: Decimal128, y: Decimal128) raises -> UInt64:
+            return UInt64(x.fma(y, c).coefficient() & 0xFFFF_FFFF_FFFF_FFFF)
+
+        per = _bench_one[_f_fma](a, b, iters)
     else:
         raise Error("unknown op: " + op)
 

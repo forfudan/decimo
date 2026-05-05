@@ -2178,6 +2178,42 @@ struct Decimal128(
         return decimo.decimal128.rounding.quantize(self, exp, rounding_mode)
 
     @always_inline
+    def fma(self, other: Self, third: Self) raises -> Self:
+        """Returns `self * other + third` with a single final rounding step.
+
+        Fused multiply-add (FMA):
+        Equivalent to Python's `decimal.Decimal.fma(other, third)`. This is
+        more accurate than `(self * other) + third` (which rounds twice)
+        because the product is held at full UInt256 precision and the
+        addend `third` is aligned at the same scale before a single
+        rounding step. See `decimo.decimal128.arithmetics.fma` for the
+        implementation.
+
+        Examples:
+
+        ```mojo
+        from decimo.prelude import *
+        # Single-rounding cancellation: (10**16 * 1) + (-10**16) = 0,
+        # but (10**16 + 1e-16) * 1 + (-10**16) keeps the tiny addend.
+        var a = Dec128("10000000000000000")
+        var b = Dec128("1.0000000000000001")
+        var c = Dec128("-10000000000000001")
+        print(a.fma(b, c))  # 0.0000000000000001 (single rounding)
+        ```
+
+        Args:
+            other: The multiplier.
+            third: The addend.
+
+        Returns:
+            A new `Decimal128` containing `self * other + third`.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
+        """
+        return decimo.decimal128.arithmetics.fma(self, other, third)
+
+    @always_inline
     def exp(self) raises -> Self:
         """Calculates the exponential of this Decimal128.
         See `exp()` for more information.

@@ -1,0 +1,115 @@
+[config]
+iterations = 5000
+
+# Ternary op: fma(a, b, c) = a * b + c with a single final rounding.
+# All three operands are read.  Cases are split into two groups:
+#
+#   1. Cases where fma matches `(a*b)+c` bit-for-bit (sanity / common
+#      shapes that should not regress).
+#   2. Cases where fma is provably MORE accurate than `(a*b)+c`,
+#      because the intermediate `a*b` requires rounding off some
+#      digits which the addend `c` then exposes.  These are the
+#      cases that justify shipping fma as a separate API.
+#
+# Decimal128's grid is 29 significant digits at scale ≤ 28.  The
+# group-2 cases below all push `a*b` past those limits before c
+# cancels the dominant bits.
+
+# ---- Group 1: trivial / no-rounding-loss cases ----
+
+[[cases]]
+a = "2"
+b = "3"
+c = "5"
+name = "fma(2, 3, 5) trivial integer"
+
+[[cases]]
+a = "1.5"
+b = "4"
+c = "0.5"
+name = "fma(1.5, 4, 0.5) small mixed scale"
+
+[[cases]]
+a = "0.1"
+b = "0.2"
+c = "0.03"
+name = "fma(0.1, 0.2, 0.03) all fractional"
+
+[[cases]]
+a = "-2"
+b = "-3"
+c = "4"
+name = "fma(-2, -3, 4) sign combinations"
+
+[[cases]]
+a = "-5"
+b = "3"
+c = "10"
+name = "fma(-5, 3, 10) opposite-sign product"
+
+[[cases]]
+a = "3"
+b = "4"
+c = "-12"
+name = "fma(3, 4, -12) exact cancellation to zero"
+
+[[cases]]
+a = "1.00000000000000000001"
+b = "1"
+c = "-1"
+name = "fma(1+1e-20, 1, -1) addend cancels integer"
+
+[[cases]]
+a = "7000000000000000000000000000"
+b = "0.5"
+c = "7000000000000000000000000000"
+name = "fma(huge, half, huge) near MAX magnitude"
+
+# ---- Group 2: fma strictly more accurate than (a*b)+c ----
+# These are the cases that motivate fma. The product a*b requires
+# rounding off lower digits to fit Decimal128's 29-digit / scale-28
+# grid; the addend c then cancels the dominant bits of the rounded
+# product, leaving only the *rounding noise* in the two-step result.
+# fma keeps the full UInt256 product before rounding, so the addend
+# cancellation happens against the exact product and the surviving
+# digits are real.  The result-equivalence report is expected to
+# show these as DIFF vs `(a*b)+c`; the BigDecimal oracle is the
+# authoritative answer (and matches fma).
+
+[[cases]]
+# pi * pi - 9.8.  Two-step gives ~27 fractional digits; fma keeps
+# 28 fractional digits because the cancellation against 9.8 reclaims
+# one digit's worth of precision from the rounded product.
+a = "3.141592653589793238462643383"
+b = "3.141592653589793238462643383"
+c = "-9.8"
+name = "fma(pi, pi, -9.8) Horner residual"
+
+[[cases]]
+# e * pi - 8.539.  Same shape: the addend cancels the integer part
+# of the product and exposes the rounding noise that a two-step
+# multiply-then-add would carry.
+a = "2.718281828459045235360287471"
+b = "3.141592653589793238462643383"
+c = "-8.539"
+name = "fma(e, pi, -8.539) Horner residual"
+
+[[cases]]
+# Catastrophic cancellation: (1+e)*(1-e) = 1 - e^2.  Two-step
+# rounds the product to 1 exactly, then 1 - 1 = 0.  fma keeps the
+# exact -e^2 = -1e-30 internally, which still rounds to 0 at scale
+# 28 but with the correct sign bit.  Demonstrates the sign-of-zero
+# preservation that fma offers in catastrophic-cancellation cases.
+a = "1.000000000000001"
+b = "0.999999999999999"
+c = "-1"
+name = "fma((1+e)(1-e), -1) catastrophic cancellation"
+
+[[cases]]
+# High-precision typical: full 25-digit operands, addend exposes
+# tail bits of the product.  Demonstrates fma in a realistic
+# numerical-recipes setting.
+a = "1.234567890123456789012345"
+b = "1.234567890123456789012345"
+c = "-1.524157875323883675019051"
+name = "fma(typ, typ, -near_sq) near-cancellation"
