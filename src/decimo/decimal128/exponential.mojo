@@ -110,7 +110,12 @@ def power(base: Decimal128, exponent: Int) raises -> Decimal128:
         A new Decimal128 containing the result.
 
     Raises:
-        ValueError: If the base is zero and exponent is negative.
+        ValueError: If the base is zero and the exponent is negative
+            (`0^n` is undefined for `n < 0`).
+        OverflowError: If an intermediate `result * current_base` step
+            (binary exponentiation) or the final reciprocal
+            `Decimal128.ONE() / result` (for negative exponents) does
+            not fit Decimal128's 96-bit coefficient.
     """
 
     # Special cases
@@ -175,7 +180,15 @@ def root(x: Decimal128, n: Int) raises -> Decimal128:
         A new Decimal128 containing the n-th root of x.
 
     Raises:
-        ValueError: If n is non-positive or the input is invalid.
+        ValueError: If `n <= 0`, if `n` is even and `x` is negative, or
+            if the `n > 50` fallback path `exp(ln(x) / n)` raises (any
+            underlying `exp` / `ln` failure is wrapped as `ValueError`
+            with the original error attached as `previous_error`).
+        OverflowError: If an intermediate Newton-Raphson step overflows
+            Decimal128 capacity. In particular `power(guess, n-1)` and
+            the per-iteration `n_minus_1_decimal * guess + x / pow_n_minus_1`
+            combine can overflow for pathological inputs whose initial
+            guess sits far from the true root.
     """
     # var t0 = time.perf_counter_ns()
 
@@ -364,7 +377,15 @@ def cbrt(x: Decimal128) raises -> Decimal128:
         A new Decimal128 containing the cube root of x.
 
     Raises:
-        Any error raised by `root(x, 3)`.
+        OverflowError: If a Newton-Raphson intermediate inside
+            `root()` overflows Decimal128 capacity. None of `root()`'s
+            `ValueError` paths apply when `n` is hardcoded to `3`
+            (`n <= 0` is false, `n` is odd so even-root-of-negative
+            does not trigger, and the `n > 50` `exp(ln(x)/n)` fallback
+            is not reached), so `OverflowError` is the only error that
+            can actually surface here. `cbrt` is still declared
+            `raises` so that any future regression in `root()` would
+            propagate rather than be silently masked.
     """
     return root(x, 3)
 
@@ -379,7 +400,14 @@ def sqrt(x: Decimal128) raises -> Decimal128:
         A new Decimal128 containing the square root of x.
 
     Raises:
-        ValueError: If x is negative.
+        ValueError: If `x` is negative.
+
+    Notes:
+        `sqrt(x)` is monotone non-expanding for `x >= 1`
+        (`sqrt(x) <= x`) and bounded by `sqrt(MAX) ~= 2.81e14` for
+        any valid `x`, so the Newton-Raphson intermediates cannot
+        overflow Decimal128 capacity. No `OverflowError` path exists
+        for any non-negative input.
     """
     # Special cases
     if x.is_negative():
@@ -505,7 +533,12 @@ def exp(x: Decimal128) raises -> Decimal128:
         A Decimal128 approximation of e^x.
 
     Raises:
-        OverflowError: If x is too large (> 66.54).
+        OverflowError: If `x > 66.54` (raised explicitly), or if
+            `x < -66.54` and the recursive `Decimal128.ONE() / exp(-x)`
+            divide cannot fit because `exp(-x)` overflowed first.
+            Intermediate `power(exp_chunk, num_chunks)` and
+            `exp_main * exp_remainder` multiplies can also overflow
+            for `x` close to the `66.54` boundary.
 
     Notes:
         Because ln(2^96-1) ~= 66.54212933375474970405428366,
@@ -716,6 +749,12 @@ def exp_series(x: Decimal128) raises -> Decimal128:
     Returns:
         A Decimal128 approximation of e^x.
 
+    Raises:
+        OverflowError: Only if the caller misuses this function with
+            `|x| >= 1`. For the intended `|x| < 1` regime the partial
+            sums are bounded by `e ~= 2.71828`, so the per-iteration
+            `result + term` cannot overflow Decimal128 capacity.
+
     Notes:
 
     Sum terms of Taylor series: e^x = 1 + x + x²/2! + x³/3! + ...
@@ -771,10 +810,13 @@ def ln(x: Decimal128) raises -> Decimal128:
         A Decimal128 approximation of ln(x).
 
     Raises:
-        ValueError: If x is non-positive.
+        ValueError: If `x` is non-positive.
 
     Notes:
-        This implementation uses range reduction to improve accuracy and performance.
+        This implementation uses range reduction to improve accuracy
+        and performance. For any positive Decimal128 input the result
+        magnitude is bounded by `|ln(MAX)| < 67`, so no `OverflowError`
+        path exists.
     """
 
     # print("DEBUG: ln(x) called with x =", x)
@@ -984,6 +1026,13 @@ def ln_series(z: Decimal128) raises -> Decimal128:
     Returns:
         A Decimal128 approximation of ln(1+z).
 
+    Raises:
+        OverflowError: Only if the caller misuses this function with
+            `|z|` outside the convergent regime. For the intended
+            `|z| < 0.5` use the partial sums are bounded by `ln(1.5)`
+            in magnitude, so the per-iteration combine cannot
+            overflow Decimal128 capacity.
+
     Notes:
         Uses the series: ln(1+z) = z - z²/2 + z³/3 - z⁴/4 + ...
         This series converges fastest when |z| is small.
@@ -1043,7 +1092,12 @@ def log(x: Decimal128, base: Decimal128) raises -> Decimal128:
         A Decimal128 approximation of log_base(x).
 
     Raises:
-        ValueError: If x is non-positive, base is non-positive, or base is 1.
+        ValueError: If `x` is non-positive, `base` is non-positive, or
+            `base == 1`.
+        OverflowError: If `base` is positive but extremely close to 1
+            (e.g. `1 + 1e-28`), in which case `ln(base)` is on the
+            order of `1e-28` and the final `ln(x) / ln(base)` divide
+            can overflow Decimal128 capacity for non-trivial `x`.
 
     Notes:
 
@@ -1101,10 +1155,13 @@ def log10(x: Decimal128) raises -> Decimal128:
         A Decimal128 approximation of log10(x).
 
     Raises:
-        ValueError: If x is non-positive.
+        ValueError: If `x` is non-positive.
 
     Notes:
         This implementation uses the identity log10(x) = ln(x) / ln(10).
+        For any positive Decimal128 input the result magnitude is
+        bounded by `|log10(MAX)| < 29`, so no `OverflowError` path
+        exists.
     """
     # Special cases: x <= 0
     if x.is_negative() or x.is_zero():
