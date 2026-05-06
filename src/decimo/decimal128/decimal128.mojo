@@ -1719,6 +1719,43 @@ struct Decimal128(
         return decimo.decimal128.arithmetics.modulo(self, Self(other))
 
     @always_inline
+    def __divmod__(self, other: Self) raises -> Tuple[Self, Self]:
+        """Returns `(self // other, self % other)` in a single call.
+
+        Equivalent to `(self // other, self % other)` but amortises the
+        divide pipeline: the truncated quotient is computed once and
+        reused to derive the remainder as `self - quotient * other`,
+        avoiding the second full `divide()` that the two-step path
+        would perform. The identity
+        `self == (self // other) * other + (self % other)` always
+        holds.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            A `(quotient, remainder)` tuple.
+
+        Raises:
+            ZeroDivisionError: If `other` is zero.
+            OverflowError: If the result overflows.
+        """
+        var q = decimo.decimal128.arithmetics.truncate_divide(self, other)
+        return (q, self - q * other)
+
+    @always_inline
+    def __divmod__(self, other: Int) raises -> Tuple[Self, Self]:
+        """Returns `(self // other, self % other)` in a single call.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            A `(quotient, remainder)` tuple.
+        """
+        return self.__divmod__(Self(other))
+
+    @always_inline
     def __pow__(self, exponent: Self) raises -> Self:
         """Raises to a power.
 
@@ -2285,6 +2322,7 @@ struct Decimal128(
     @always_inline
     def root(self, n: Int) raises -> Self:
         """Calculates the n-th root of this Decimal128.
+
         See `root()` for more information.
 
         Args:
@@ -2298,12 +2336,24 @@ struct Decimal128(
     @always_inline
     def sqrt(self) raises -> Self:
         """Calculates the square root of this Decimal128.
+
         See `sqrt()` for more information.
 
         Returns:
             The square root of this value.
         """
         return decimo.decimal128.exponential.sqrt(self)
+
+    @always_inline
+    def cbrt(self) -> Self:
+        """Calculates the cube root of this Decimal128.
+
+        See `cbrt()` for more information.
+
+        Returns:
+            The cube root of this value.
+        """
+        return decimo.decimal128.exponential.cbrt(self)
 
     # ===------------------------------------------------------------------=== #
     # Integer-part / fractional-part / sign helpers

@@ -3,7 +3,7 @@
 > **Date**: 2026-04-08 (created), last consolidated 2026-04-23
 > **Target**: decimo >=0.9.0
 > **Mojo Version**: >=0.26.2
-<!-- > **Status**: Fully executed as of 2026-05-04 -->
+> **Status**: Fully executed as of 2026-05-06
 >
 > 子曰：工欲善其事，必先利其器。
 > Confucius said: If a craftsman wants to do good work, he must first sharpen his tools.
@@ -12,7 +12,7 @@ This document tracks the Decimal128 audit started on 2026-04-08 and the
 performance work that followed. It is the single source of truth for the
 arithmetic / parse / format hot-path optimisation effort.
 
-<!-- This plan has been fully executed as of 2026-05-04 (PR #239). -->
+This plan has been fully executed as of 2026-05-06 (PR #242).
 
 ---
 
@@ -566,13 +566,21 @@ fused multiply-add); the three items below are still pending.
    using the exact `multiply(precision=0)` / `add(precision=0)`
    methods) on all 12 cross-language bench cases. Bench harness lands
    at `benches/decimal128/cases/fma.toml`.
-2. **`__divmod__(other)` / `__rdivmod__(other)`.** Return
-   `(quotient, remainder)` in a single call. Today callers must do two
-   separate divisions (`a // b` and `a % b`), each going through the
-   full division pipeline. A combined entry point would amortise the
-   cost. `BigDecimal` exposes both dunders.
-3. **`cbrt()` — cube root.** Convenience wrapper for `root(3)`.
-   Trivial, but useful.
+2. **`__divmod__(other)`.** Implemented 2026-05-06.
+   `Decimal128.__divmod__(other)` returns `(self // other, self % other)`
+   in a single call. The truncated quotient is computed once via
+   `truncate_divide()` and reused to derive the remainder as
+   `self - q * other`, avoiding the second full `divide()` pass that
+   the naive two-step path performs. Identity
+   `self == q * other + r` always holds. Both `Self` and `Int`
+   right-hand sides are supported. (`__rdivmod__` is omitted: Mojo's
+   `Decimal128(Int)` constructor lets `divmod(int_value, dec_value)`
+   be expressed as `Decimal128(int_value).__divmod__(dec_value)`,
+   matching how the existing arithmetic dunders are exposed.)
+3. **`cbrt()` — cube root.** Implemented 2026-05-06. Convenience
+   wrapper for `self.root(3)`; matches the `BigDecimal.cbrt()` API.
+   Unlike `sqrt()`, `cbrt()` is well-defined for negative values
+   (delegates to `root()`'s odd-root handling).
 4. **Trigonometric functions** — `sin`, `cos`, `tan`, `cot`, `csc`,
    `sec`, `arctan`, etc. Not commonly found in fixed-point decimal types,
    but can be a unique selling point for decimo. The problem is that the
@@ -607,14 +615,7 @@ Part II → "A note on result exponents (`Decimal` and `Dec128`)".
 
 ---
 
-## 7. Tasks and future improvements
-
-Open items, in priority order:
-
-| #   | Item                         | Section | Notes                                           |
-| --- | ---------------------------- | ------- | ----------------------------------------------- |
-| 1   | `__divmod__` / `__rdivmod__` | §5.7.2  | Amortise the divide pipeline across `//` + `%`. |
-| 2   | `cbrt()`                     | §5.7.3  | Trivial wrapper over `root(3)`.                 |
+## 7. Future improvements
 
 Future improvements (may not be necessary or urgent):
 

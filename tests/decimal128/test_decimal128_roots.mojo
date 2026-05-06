@@ -333,5 +333,41 @@ def test_power_exceptions() raises:
     testing.assert_true(caught, "(-2)^0.5 exception")
 
 
+# ===----------------------------------------------------------------------=== #
+# cbrt - convenience wrapper for root(3)
+# ===----------------------------------------------------------------------=== #
+
+
+def test_cbrt_basic() raises:
+    """Cube root must agree with `root(3)` and handle perfect cubes."""
+    testing.assert_equal(
+        String(Dec128("8").cbrt()), String(Dec128("8").root(3))
+    )
+    testing.assert_equal(
+        String(Dec128("27").cbrt()), String(Dec128("27").root(3))
+    )
+    testing.assert_equal(String(Dec128("0").cbrt()), "0")
+    testing.assert_equal(String(Dec128("1").cbrt()), "1")
+
+
+def test_cbrt_negative() raises:
+    """Cube root of a negative value is well-defined (unlike sqrt)."""
+    # `root(3)` already supports odd roots of negatives; cbrt inherits that.
+    testing.assert_equal(
+        String(Dec128("-8").cbrt()), String(Dec128("-8").root(3))
+    )
+    testing.assert_true(
+        Dec128("-27").cbrt().is_negative(), "cbrt(-27) is negative"
+    )
+
+
+def test_cbrt_approximate() raises:
+    """Spot-check the prefix of an irrational cube root."""
+    testing.assert_true(
+        String(Dec128("10").cbrt()).startswith("2.154434690031883721"),
+        "cbrt(10) prefix",
+    )
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()

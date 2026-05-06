@@ -1,6 +1,6 @@
 # Decimo (formerly DeciMojo) <!-- omit from toc -->
 
-An arbitrary-precision integer and decimal library for [Mojo](https://www.modular.com/mojo), with a 128-bit fixed-point decimal type, inspired by Python's `int` and `Decimal`. Install it with `pixi add decimo`.
+An arbitrary-precision integer and decimal library for [Mojo](https://www.modular.com/mojo), also with a 128-bit fixed-point decimal type, inspired by Python's `int` and `Decimal`. Install it with `pixi add decimo`.
 
 Comes with an interactive arbitrary-precision calculator (REPL + one-shot mode) powered by [ArgMojo](https://github.com/forfudan/argmojo). Install it with `brew install forfudan/tap/decimo`.
 
