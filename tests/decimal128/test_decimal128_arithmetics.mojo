@@ -725,6 +725,47 @@ def test_modulo_consistency_with_floor_division() raises:
 
 
 # ===----------------------------------------------------------------------=== #
+# __divmod__
+# ===----------------------------------------------------------------------=== #
+
+
+def test_divmod_basic() raises:
+    """`a.__divmod__(b)` must equal `(a // b, a % b)` and satisfy
+    `a == q * b + r`."""
+
+    def _check(a_str: String, b_str: String) raises:
+        var a = Decimal128(a_str)
+        var b = Decimal128(b_str)
+        var qr = a.__divmod__(b)
+        var q = qr[0]
+        var r = qr[1]
+        testing.assert_equal(String(q), String(a // b))
+        testing.assert_equal(String(r), String(a % b))
+        testing.assert_equal(String(q * b + r), String(a))
+
+    _check("10", "3")
+    _check("-10", "3")
+    _check("10", "-3")
+    _check("10.5", "2.5")
+    _check("123.45", "0.7")
+    _check("0", "5")
+
+
+def test_divmod_int_rhs() raises:
+    """`__divmod__(Int)` overload."""
+    var a = Decimal128("17.5")
+    var qr = a.__divmod__(4)
+    testing.assert_equal(String(qr[0]), String(a // Decimal128(4)))
+    testing.assert_equal(String(qr[1]), String(a % Decimal128(4)))
+
+
+def test_divmod_zero_divisor() raises:
+    """Division by zero must raise."""
+    with testing.assert_raises():
+        var _qr = Decimal128(10).__divmod__(Decimal128(0))
+
+
+# ===----------------------------------------------------------------------=== #
 # fma
 # ===----------------------------------------------------------------------=== #
 
