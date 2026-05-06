@@ -350,7 +350,7 @@ def root(x: Decimal128, n: Int) raises -> Decimal128:
     return guess
 
 
-def cbrt(x: Decimal128) -> Decimal128:
+def cbrt(x: Decimal128) raises -> Decimal128:
     """Computes the cube root of a Decimal128 value.
 
     Convenience wrapper for `root(x, 3)`. Unlike `sqrt()`, `cbrt()` is
@@ -362,16 +362,11 @@ def cbrt(x: Decimal128) -> Decimal128:
 
     Returns:
         A new Decimal128 containing the cube root of x.
+
+    Raises:
+        Any error raised by `root(x, 3)`.
     """
-    try:
-        return root(x, 3)
-    except:
-        # UNREACHABLE:
-        # `root(x, n)` only raises for `n <= 0`, even roots
-        # of negatives, or the high `n` (`>50`).
-        # None of these conditions apply when `n` is hardcoded to `3`,
-        # so the unreachable `except` branch is a safety net only.
-        return Decimal128.ZERO()
+    return root(x, 3)
 
 
 def sqrt(x: Decimal128) raises -> Decimal128:

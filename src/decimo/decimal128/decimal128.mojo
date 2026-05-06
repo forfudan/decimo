@@ -2219,13 +2219,16 @@ struct Decimal128(
         return decimo.decimal128.exponential.sqrt(self)
 
     @always_inline
-    def cbrt(self) -> Self:
+    def cbrt(self) raises -> Self:
         """Calculates the cube root of this Decimal128.
 
         See `cbrt()` for more information.
 
         Returns:
             The cube root of this value.
+
+        Raises:
+            Any error raised by `cbrt()`.
         """
         return decimo.decimal128.exponential.cbrt(self)
 
