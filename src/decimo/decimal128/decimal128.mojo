@@ -267,6 +267,8 @@ struct Decimal128(
                 previous_error=e^,
             )
 
+    @always_inline
+    @implicit
     def __init__(out self, value: Int):
         """Initializes a Decimal128 from an integer.
         See `from_int()` for more information.
@@ -296,6 +298,7 @@ struct Decimal128(
                 previous_error=e^,
             )
 
+    @always_inline
     def __init__(out self, value: String) raises:
         """Initializes a Decimal128 from a string representation.
         See `from_string()` for more information.
@@ -1587,18 +1590,6 @@ struct Decimal128(
         return decimo.decimal128.arithmetics.add(self, other)
 
     @always_inline
-    def __add__(self, other: Int) raises -> Self:
-        """Adds two values.
-
-        Args:
-            other: The right-hand side operand.
-
-        Returns:
-            The sum.
-        """
-        return decimo.decimal128.arithmetics.add(self, Self(other))
-
-    @always_inline
     def __sub__(self, other: Self) raises -> Self:
         """Subtracts two values.
 
@@ -1609,18 +1600,6 @@ struct Decimal128(
             The difference.
         """
         return decimo.decimal128.arithmetics.subtract(self, other)
-
-    @always_inline
-    def __sub__(self, other: Int) raises -> Self:
-        """Subtracts two values.
-
-        Args:
-            other: The right-hand side operand.
-
-        Returns:
-            The difference.
-        """
-        return decimo.decimal128.arithmetics.subtract(self, Self(other))
 
     @always_inline
     def __mul__(self, other: Self) raises -> Self:
@@ -1635,18 +1614,6 @@ struct Decimal128(
         return decimo.decimal128.arithmetics.multiply(self, other)
 
     @always_inline
-    def __mul__(self, other: Int) raises -> Self:
-        """Multiplies two values.
-
-        Args:
-            other: The right-hand side operand.
-
-        Returns:
-            The product.
-        """
-        return decimo.decimal128.arithmetics.multiply(self, Self(other))
-
-    @always_inline
     def __truediv__(self, other: Self) raises -> Self:
         """Divides two values using true division.
 
@@ -1657,18 +1624,6 @@ struct Decimal128(
             The quotient.
         """
         return decimo.decimal128.arithmetics.divide(self, other)
-
-    @always_inline
-    def __truediv__(self, other: Int) raises -> Self:
-        """Divides two values using true division.
-
-        Args:
-            other: The right-hand side operand.
-
-        Returns:
-            The quotient.
-        """
-        return decimo.decimal128.arithmetics.divide(self, Self(other))
 
     @always_inline
     def __floordiv__(self, other: Self) raises -> Self:
@@ -1683,18 +1638,6 @@ struct Decimal128(
         return decimo.decimal128.arithmetics.truncate_divide(self, other)
 
     @always_inline
-    def __floordiv__(self, other: Int) raises -> Self:
-        """Performs truncate division with // operator.
-
-        Args:
-            other: The right-hand side operand.
-
-        Returns:
-            The truncated quotient.
-        """
-        return decimo.decimal128.arithmetics.truncate_divide(self, Self(other))
-
-    @always_inline
     def __mod__(self, other: Self) raises -> Self:
         """Performs truncate modulo.
 
@@ -1705,18 +1648,6 @@ struct Decimal128(
             The remainder.
         """
         return decimo.decimal128.arithmetics.modulo(self, other)
-
-    @always_inline
-    def __mod__(self, other: Int) raises -> Self:
-        """Performs truncate modulo.
-
-        Args:
-            other: The right-hand side operand.
-
-        Returns:
-            The remainder.
-        """
-        return decimo.decimal128.arithmetics.modulo(self, Self(other))
 
     @always_inline
     def __divmod__(self, other: Self) raises -> Tuple[Self, Self]:
@@ -1742,18 +1673,6 @@ struct Decimal128(
         """
         var q = decimo.decimal128.arithmetics.truncate_divide(self, other)
         return (q, self - q * other)
-
-    @always_inline
-    def __divmod__(self, other: Int) raises -> Tuple[Self, Self]:
-        """Returns `(self // other, self % other)` in a single call.
-
-        Args:
-            other: The right-hand side operand.
-
-        Returns:
-            A `(quotient, remainder)` tuple.
-        """
-        return self.__divmod__(Self(other))
 
     @always_inline
     def __pow__(self, exponent: Self) raises -> Self:
@@ -1787,7 +1706,7 @@ struct Decimal128(
     # ===------------------------------------------------------------------=== #
 
     @always_inline
-    def __radd__(self, other: Int) raises -> Self:
+    def __radd__(self, other: Self) raises -> Self:
         """Adds two values (reflected).
 
         Args:
@@ -1796,10 +1715,10 @@ struct Decimal128(
         Returns:
             The sum.
         """
-        return decimo.decimal128.arithmetics.add(Self(other), self)
+        return decimo.decimal128.arithmetics.add(other, self)
 
     @always_inline
-    def __rsub__(self, other: Int) raises -> Self:
+    def __rsub__(self, other: Self) raises -> Self:
         """Subtracts two values (reflected).
 
         Args:
@@ -1808,10 +1727,10 @@ struct Decimal128(
         Returns:
             The difference.
         """
-        return decimo.decimal128.arithmetics.subtract(Self(other), self)
+        return decimo.decimal128.arithmetics.subtract(other, self)
 
     @always_inline
-    def __rmul__(self, other: Int) raises -> Self:
+    def __rmul__(self, other: Self) raises -> Self:
         """Multiplies two values (reflected).
 
         Args:
@@ -1820,10 +1739,10 @@ struct Decimal128(
         Returns:
             The product.
         """
-        return decimo.decimal128.arithmetics.multiply(Self(other), self)
+        return decimo.decimal128.arithmetics.multiply(other, self)
 
     @always_inline
-    def __rtruediv__(self, other: Int) raises -> Self:
+    def __rtruediv__(self, other: Self) raises -> Self:
         """Divides two values using true division (reflected).
 
         Args:
@@ -1832,10 +1751,10 @@ struct Decimal128(
         Returns:
             The quotient.
         """
-        return decimo.decimal128.arithmetics.divide(Self(other), self)
+        return decimo.decimal128.arithmetics.divide(other, self)
 
     @always_inline
-    def __rfloordiv__(self, other: Int) raises -> Self:
+    def __rfloordiv__(self, other: Self) raises -> Self:
         """Performs truncate division with // operator (reflected).
 
         Args:
@@ -1844,10 +1763,10 @@ struct Decimal128(
         Returns:
             The truncated quotient.
         """
-        return decimo.decimal128.arithmetics.truncate_divide(Self(other), self)
+        return decimo.decimal128.arithmetics.truncate_divide(other, self)
 
     @always_inline
-    def __rmod__(self, other: Int) raises -> Self:
+    def __rmod__(self, other: Self) raises -> Self:
         """Performs truncate modulo (reflected).
 
         Args:
@@ -1856,7 +1775,7 @@ struct Decimal128(
         Returns:
             The remainder.
         """
-        return decimo.decimal128.arithmetics.modulo(Self(other), self)
+        return decimo.decimal128.arithmetics.modulo(other, self)
 
     # ===------------------------------------------------------------------=== #
     # Basic binary augmented arithmetic assignments dunders
@@ -1875,15 +1794,6 @@ struct Decimal128(
         self = decimo.decimal128.arithmetics.add(self, other)
 
     @always_inline
-    def __iadd__(mut self, other: Int) raises:
-        """Adds in place.
-
-        Args:
-            other: The right-hand side operand.
-        """
-        self = decimo.decimal128.arithmetics.add(self, Self(other))
-
-    @always_inline
     def __isub__(mut self, other: Self) raises:
         """Subtracts in place.
 
@@ -1891,15 +1801,6 @@ struct Decimal128(
             other: The right-hand side operand.
         """
         self = decimo.decimal128.arithmetics.subtract(self, other)
-
-    @always_inline
-    def __isub__(mut self, other: Int) raises:
-        """Subtracts in place.
-
-        Args:
-            other: The right-hand side operand.
-        """
-        self = decimo.decimal128.arithmetics.subtract(self, Self(other))
 
     @always_inline
     def __imul__(mut self, other: Self) raises:
@@ -1911,15 +1812,6 @@ struct Decimal128(
         self = decimo.decimal128.arithmetics.multiply(self, other)
 
     @always_inline
-    def __imul__(mut self, other: Int) raises:
-        """Multiplies in place.
-
-        Args:
-            other: The right-hand side operand.
-        """
-        self = decimo.decimal128.arithmetics.multiply(self, Self(other))
-
-    @always_inline
     def __itruediv__(mut self, other: Self) raises:
         """Divides in place using true division.
 
@@ -1929,15 +1821,6 @@ struct Decimal128(
         self = decimo.decimal128.arithmetics.divide(self, other)
 
     @always_inline
-    def __itruediv__(mut self, other: Int) raises:
-        """Divides in place using true division.
-
-        Args:
-            other: The right-hand side operand.
-        """
-        self = decimo.decimal128.arithmetics.divide(self, Self(other))
-
-    @always_inline
     def __ifloordiv__(mut self, other: Self) raises:
         """Performs truncate division with // operator.
 
@@ -1945,15 +1828,6 @@ struct Decimal128(
             other: The right-hand side operand.
         """
         self = decimo.decimal128.arithmetics.truncate_divide(self, other)
-
-    @always_inline
-    def __ifloordiv__(mut self, other: Int) raises:
-        """Performs truncate division with // operator.
-
-        Args:
-            other: The right-hand side operand.
-        """
-        self = decimo.decimal128.arithmetics.truncate_divide(self, Self(other))
 
     @always_inline
     def __imod__(mut self, other: Self) raises:
