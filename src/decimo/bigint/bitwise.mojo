@@ -70,7 +70,7 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
             var result_words = List[UInt32](capacity=min_len)
             for i in range(min_len):
                 result_words.append(a.words[i] & b.words[i])
-            while len(result_words) > 1 and result_words[-1] == 0:
+            while len(result_words) > 1 and result_words[len(result_words) - 1] == 0:
                 result_words.shrink(len(result_words) - 1)
             return BigInt(raw_words=result_words^, sign=False)
         elif op == "or":
@@ -80,7 +80,7 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
                 var wa = UInt32(0) if i >= len(a.words) else a.words[i]
                 var wb = UInt32(0) if i >= len(b.words) else b.words[i]
                 result_words.append(wa | wb)
-            while len(result_words) > 1 and result_words[-1] == 0:
+            while len(result_words) > 1 and result_words[len(result_words) - 1] == 0:
                 result_words.shrink(len(result_words) - 1)
             return BigInt(raw_words=result_words^, sign=False)
         else:  # xor
@@ -90,7 +90,7 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
                 var wa = UInt32(0) if i >= len(a.words) else a.words[i]
                 var wb = UInt32(0) if i >= len(b.words) else b.words[i]
                 result_words.append(wa ^ wb)
-            while len(result_words) > 1 and result_words[-1] == 0:
+            while len(result_words) > 1 and result_words[len(result_words) - 1] == 0:
                 result_words.shrink(len(result_words) - 1)
             return BigInt(raw_words=result_words^, sign=False)
 
@@ -142,7 +142,7 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
     # Convert result back from two's complement if negative
     if not result_negative:
         # Non-negative: result_tc is the magnitude
-        while len(result_tc) > 1 and result_tc[-1] == 0:
+        while len(result_tc) > 1 and result_tc[len(result_tc) - 1] == 0:
             result_tc.shrink(len(result_tc) - 1)
         if len(result_tc) == 1 and result_tc[0] == 0:
             return BigInt()
@@ -163,7 +163,7 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
         if carry > 0:
             mag.append(UInt32(carry))
         # Strip leading zeros
-        while len(mag) > 1 and mag[-1] == 0:
+        while len(mag) > 1 and mag[len(mag) - 1] == 0:
             mag.shrink(len(mag) - 1)
         if len(mag) == 1 and mag[0] == 0:
             return BigInt()
@@ -216,7 +216,7 @@ def _binary_bitwise_op_inplace[
             if len(a.words) > min_len:
                 a.words.shrink(min_len)
             # Strip leading zeros
-            while len(a.words) > 1 and a.words[-1] == 0:
+            while len(a.words) > 1 and a.words[len(a.words) - 1] == 0:
                 a.words.shrink(len(a.words) - 1)
             return
         elif op == "or":
@@ -227,7 +227,7 @@ def _binary_bitwise_op_inplace[
             for i in range(b_len):
                 a.words[i] = a.words[i] | b.words[i]
             # Words beyond b_len remain as-is (OR with 0)
-            while len(a.words) > 1 and a.words[-1] == 0:
+            while len(a.words) > 1 and a.words[len(a.words) - 1] == 0:
                 a.words.shrink(len(a.words) - 1)
             return
         else:  # xor
@@ -237,7 +237,7 @@ def _binary_bitwise_op_inplace[
             for i in range(b_len):
                 a.words[i] = a.words[i] ^ b.words[i]
             # Words beyond b_len remain as-is (XOR with 0)
-            while len(a.words) > 1 and a.words[-1] == 0:
+            while len(a.words) > 1 and a.words[len(a.words) - 1] == 0:
                 a.words.shrink(len(a.words) - 1)
             return
 
@@ -287,7 +287,7 @@ def _binary_bitwise_op_inplace[
 
     # Convert result back from two's complement if negative
     if not result_negative:
-        while len(result_tc) > 1 and result_tc[-1] == 0:
+        while len(result_tc) > 1 and result_tc[len(result_tc) - 1] == 0:
             result_tc.shrink(len(result_tc) - 1)
         if len(result_tc) == 1 and result_tc[0] == 0:
             a.words.clear()
@@ -310,7 +310,7 @@ def _binary_bitwise_op_inplace[
                 break
         if carry > 0:
             mag.append(UInt32(carry))
-        while len(mag) > 1 and mag[-1] == 0:
+        while len(mag) > 1 and mag[len(mag) - 1] == 0:
             mag.shrink(len(mag) - 1)
         if len(mag) == 1 and mag[0] == 0:
             a.words.clear()
@@ -401,7 +401,7 @@ def bitwise_not(x: BigInt) -> BigInt:
             result_words.append(UInt32(diff & 0xFFFF_FFFF))
             borrow = (diff >> 63) & 1
         # Strip leading zeros
-        while len(result_words) > 1 and result_words[-1] == 0:
+        while len(result_words) > 1 and result_words[len(result_words) - 1] == 0:
             result_words.shrink(len(result_words) - 1)
         if len(result_words) == 1 and result_words[0] == 0:
             return BigInt()

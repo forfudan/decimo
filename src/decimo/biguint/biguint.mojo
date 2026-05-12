@@ -28,6 +28,7 @@ from std.memory import UnsafePointer, memcpy, memcmp
 from decimo.bigint10.bigint10 import BigInt10
 import decimo.biguint.arithmetics
 import decimo.biguint.comparison
+import decimo.biguint.exponential
 from decimo.errors import (
     ConversionError,
     ValueError,
@@ -1024,8 +1025,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         if line_width > 0:
             var start = 0
             var end = line_width
-            var lines = List[String](capacity=len(result) // line_width + 1)
-            while end < len(result):
+            var lines = List[String](
+                capacity=(result).byte_length() // line_width + 1
+            )
+            while end < (result).byte_length():
                 lines.append(String(result[byte=start:end]))
                 start = end
                 end += line_width
@@ -1045,9 +1048,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         """
 
         var result = self.to_string()
-        var end = len(result)
+        var end = (result).byte_length()
         var start = end - 3
-        var blocks = List[String](capacity=len(result) // 3 + 1)
+        var blocks = List[String](capacity=(result).byte_length() // 3 + 1)
         while start > 0:
             blocks.append(String(result[byte=start:end]))
             end = start
@@ -1840,9 +1843,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             A formatted string showing the number and its individual words.
         """
         # Collect all labels to find max width
-        var max_label_len = len("number:")
+        var max_label_len = ("number:").byte_length()
         for i in range(len(self.words)):
-            var label_len = len("word :") + len(String(i))
+            var label_len = ("word :").byte_length() + (String(i)).byte_length()
             if label_len > max_label_len:
                 max_label_len = label_len
 
@@ -1857,7 +1860,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         var string_of_number = self.to_string(line_width=value_width).split(
             "\n"
         )
-        result += "number:" + String(" ") * (col - len("number:"))
+        result += "number:" + String(" ") * (col - ("number:").byte_length())
         for i in range(len(string_of_number)):
             if i > 0:
                 result += String(" ") * col
@@ -1866,7 +1869,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         # word lines
         for i in range(len(self.words)):
             var label = "word " + String(i) + ":"
-            result += label + String(" ") * (col - len(label))
+            result += label + String(" ") * (col - (label).byte_length())
             result += (
                 decimo.str.rjust(String(self.words[i]), 9, fillchar="0") + "\n"
             )
@@ -1891,7 +1894,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         # If there are leading zero words, it means that we have to loop over
         # all words to check if the number is zero.
         debug_assert[assert_mode="none"](
-            (len(self.words) == 1) or (self.words[-1] != 0),
+            (len(self.words) == 1) or (self.words[len(self.words) - 1] != 0),
             "biguint.BigUInt.is_zero(): ",
             "BigUInt should not contain leading zero words.",
         )  # 0 should have only one word by design

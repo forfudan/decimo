@@ -32,7 +32,7 @@ def rjust(s: String, width: Int, fillchar: String = " ") -> String:
     Returns:
         The right-justified string, or the original string if it is already at least `width` characters.
     """
-    var n = len(s)
+    var n = s.byte_length()
     if n >= width:
         return s
     return fillchar * (width - n) + s
@@ -49,7 +49,7 @@ def ljust(s: String, width: Int, fillchar: String = " ") -> String:
     Returns:
         The left-justified string, or the original string if it is already at least `width` characters.
     """
-    var n = len(s)
+    var n = s.byte_length()
     if n >= width:
         return s
     return s + fillchar * (width - n)
@@ -402,10 +402,9 @@ def parse_numeric_string(
         # Use vectorize to batch-subtract ASCII '0' (48) using SIMD.
         coef.resize(significant_count, 0)
 
-        @parameter
         def convert_fast[
             simd_width: Int
-        ](i: Int) unified {mut coef, read value_bytes, read extract_start}:
+        ](i: Int) {mut coef, read value_bytes, read extract_start}:
             coef.unsafe_ptr().store[width=simd_width](
                 i,
                 value_bytes.unsafe_ptr().load[width=simd_width](
@@ -426,10 +425,9 @@ def parse_numeric_string(
         # Region before decimal point
         if before_count > 0:
 
-            @parameter
             def convert_before[
                 simd_width: Int
-            ](i: Int) unified {mut coef, read value_bytes, read extract_start}:
+            ](i: Int) {mut coef, read value_bytes, read extract_start}:
                 coef.unsafe_ptr().store[width=simd_width](
                     i,
                     value_bytes.unsafe_ptr().load[width=simd_width](
@@ -443,10 +441,9 @@ def parse_numeric_string(
         # Region after decimal point
         if after_count > 0:
 
-            @parameter
             def convert_after[
                 simd_width: Int
-            ](i: Int) unified {
+            ](i: Int) {
                 mut coef,
                 read value_bytes,
                 read decimal_point_pos,

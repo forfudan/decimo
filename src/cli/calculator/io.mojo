@@ -136,7 +136,7 @@ def split_into_lines(text: String) -> List[String]:
     """
     var lines = List[String]()
     var start = 0
-    var text_len = len(text)
+    var text_len = text.byte_length()
 
     for i in range(text_len):
         if text[byte=i] == "\n":
@@ -151,9 +151,9 @@ def split_into_lines(text: String) -> List[String]:
     if start < text_len:
         var last = String(text[byte=start:text_len])
         # Strip trailing \r if present
-        if len(last) > 0 and last[byte=len(last) - 1] == "\r":
-            last = String(last[byte = 0 : len(last) - 1])
-        if len(last) > 0:
+        if last.byte_length() > 0 and last[byte=last.byte_length() - 1] == "\r":
+            last = String(last[byte = 0 : last.byte_length() - 1])
+        if last.byte_length() > 0:
             lines.append(last)
 
     return lines^
@@ -181,7 +181,7 @@ def strip_comment(line: String) -> String:
         strip_comment("sqrt(2)")      → `sqrt(2)`.
         strip_comment("")             → `""`.
     """
-    var n = len(line)
+    var n = line.byte_length()
     if n == 0:
         return String("")
 
@@ -210,7 +210,7 @@ def is_blank(line: String) -> Bool:
     Returns:
         True if the line is empty or whitespace-only.
     """
-    var n = len(line)
+    var n = line.byte_length()
     if n == 0:
         return True
 
@@ -256,7 +256,7 @@ def strip(s: String) -> String:
     var bytes = StringSlice(s).as_bytes()
     var ptr = bytes.unsafe_ptr()
     var start = 0
-    var end = len(s)
+    var end = s.byte_length()
 
     while start < end:
         var c = ptr[start]
@@ -292,7 +292,7 @@ def filter_expression_lines(lines: List[String]) -> List[String]:
     var result = List[String]()
     for i in range(len(lines)):
         var line = strip(strip_comment(lines[i]))
-        if len(line) > 0:
+        if line.byte_length() > 0:
             result.append(line)
     return result^
 

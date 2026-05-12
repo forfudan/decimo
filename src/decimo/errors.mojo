@@ -171,8 +171,8 @@ struct DecimoError[error_type: StringLiteral = "DecimoError"](Writable):
             previous_error: An optional previous error that caused this one.
         """
         var loc = call_location()  # Comptime evaluated
-        self.file = _shorten_path(String(loc.file_name))
-        self.line = loc.line
+        self.file = _shorten_path(String(loc.file_name()))
+        self.line = loc.line()
         self.function = function
         self.message = message
         if previous_error is None:

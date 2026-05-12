@@ -55,7 +55,9 @@ comptime CYAN = "\x1b[96m"
 """ANSI escape code for bright cyan."""
 comptime WHITE = "\x1b[97m"
 """ANSI escape code for bright white."""
-comptime ORANGE = "\x1b[33m"  # dark yellow — renders as orange on most terminals
+comptime ORANGE = (  # dark yellow — renders as orange on most terminals
+    "\x1b[33m"
+)
 """ANSI escape code for orange (dark yellow)."""
 
 # Semantic aliases.
@@ -251,6 +253,6 @@ def _write_caret(expr: String, position: Int):
 
     # Caret line — spaces + coloured '^'.
     var caret_col = position if position >= 0 else 0
-    if caret_col > len(expr):
-        caret_col = len(expr)
+    if caret_col > expr.byte_length():
+        caret_col = expr.byte_length()
     _write_stderr("  " + " " * caret_col + CARET_COLOR + "^" + RESET)

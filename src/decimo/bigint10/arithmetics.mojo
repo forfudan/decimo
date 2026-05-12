@@ -22,6 +22,7 @@ from decimo.bigint10.bigint10 import BigInt10
 from decimo.biguint.biguint import BigUInt
 from decimo.errors import ZeroDivisionError
 from decimo.rounding_mode import RoundingMode
+import decimo.biguint.arithmetics
 
 
 def add(x1: BigInt10, x2: BigInt10) -> BigInt10:

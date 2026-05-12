@@ -104,9 +104,9 @@ def display_calc_error(error_msg: String, expr: String):
     comptime PREFIX = "Error at position "
 
     if error_msg.startswith(PREFIX):
-        var after_prefix = len(PREFIX)
+        var after_prefix = PREFIX.byte_length()
         var colon_pos = -1
-        for i in range(after_prefix, len(error_msg)):
+        for i in range(after_prefix, error_msg.byte_length()):
             if error_msg[byte=i] == ":":
                 colon_pos = i
                 break
@@ -143,7 +143,7 @@ def pad_to_precision(plain: String, precision: Int) -> String:
         return plain
 
     var dot_pos = -1
-    for i in range(len(plain)):
+    for i in range(plain.byte_length()):
         if plain[byte=i] == ".":
             dot_pos = i
             break
@@ -152,7 +152,7 @@ def pad_to_precision(plain: String, precision: Int) -> String:
         # No decimal point — add one with `precision` zeros
         return plain + "." + "0" * precision
 
-    var frac_len = len(plain) - dot_pos - 1
+    var frac_len = plain.byte_length() - dot_pos - 1
     if frac_len >= precision:
         return plain
 

@@ -90,7 +90,7 @@ struct SourcePosition:
             self.column = 1
         else:
             self.column += 1
-        self.index += len(char)
+        self.index += (char).byte_length()
 
 
 struct TokenType(Copyable, ImplicitlyCopyable, Movable):
@@ -365,14 +365,14 @@ struct Tokenizer:
         """
         self.source = source
         self.position = SourcePosition()
-        if len(source) > 0:
+        if (source).byte_length() > 0:
             self.current_char = String(source[byte=0])
         else:
             self.current_char = ""
 
     def _get_char(self, index: Int) -> String:
         """Get character at given index or empty string if out of bounds."""
-        if index >= len(self.source):
+        if index >= (self.source).byte_length():
             return ""
         return String(self.source[byte=index])
 
@@ -548,7 +548,7 @@ struct Tokenizer:
                 hex_str += ch
                 self._advance()
             var codepoint: Int = 0
-            for i in range(len(hex_str)):
+            for i in range((hex_str).byte_length()):
                 var ch = String(hex_str[byte=i])
                 codepoint *= 16
                 if ch >= "0" and ch <= "9":
@@ -574,7 +574,7 @@ struct Tokenizer:
                 hex_str += ch
                 self._advance()
             var codepoint: Int = 0
-            for i in range(len(hex_str)):
+            for i in range((hex_str).byte_length()):
                 var ch = String(hex_str[byte=i])
                 codepoint *= 16
                 if ch >= "0" and ch <= "9":
@@ -614,7 +614,7 @@ struct Tokenizer:
             result += self.current_char  # 'x'/'o'/'b'
             self._advance()
             # Determine valid digit set based on the base prefix
-            var base_char = String(result[byte=len(result) - 1])  # 'x'/'o'/'b'
+            var base_char = String(result[byte=(result).byte_length() - 1])  # 'x'/'o'/'b'
             var digits_found = False
 
             if base_char == "x" or base_char == "X":

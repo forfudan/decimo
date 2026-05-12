@@ -9,9 +9,8 @@ readme = "README.md"
 version = "0.10.0"
 
 [dependencies]
-# argmojo = ">=0.4.0" # CLI argument parsing for the Decimo calculator (TODO: waiting for argmojo 0.4.0 compatible with mojo 0.26.2)
-argmojo = ">=0.5.0,<0.6.0" # CLI argument parsing for the Decimo calculator
-mojo = ">=0.26.2.0,<0.26.3" # Mojo language compiler and runtime
+# argmojo = ">=0.5.0,<0.6.0" # CLI argument parsing for the Decimo calculator
+mojo = ">=1.0.0b1,<2" # Mojo language compiler and runtime
 python = ">=3.13" # For Python bindings and tests
 python-build = ">=0.2.0" # Build PyPI wheel (`pixi run wheel`)
 ruff = ">=0.15.0" # Python code formatter
@@ -78,15 +77,17 @@ dec_debug = """clear && pixi run package && cd benches/decimal128 \
 # Only do this when necessary
 # (argmojo is not compatible with the latest mojo version)
 fetch = """git clone https://github.com/forfudan/argmojo.git temp/argmojo 2>/dev/null || true \
-&&cd temp/argmojo && git checkout 29b6f54545f850e19d9a9ccfd1185d87f54e92b2 2>/dev/null"""
+&&cd temp/argmojo && git fetch --all --tags --prune 2>/dev/null \
+&& git checkout fc06e173e3c335f449df13859560bb40a2d4d872 2>/dev/null"""
 
 # cli calculator
 bcli = "clear && pixi run buildcli"
 # Uncomment the following lines if we build the CLI package with
 # local clone of argmojo
-# buildcli = """pixi run mojo package temp/argmojo/src/argmojo -o temp/argmojo.mojopkg \
-# && pixi run mojo build -I src -I src/cli -I temp -o decimo src/cli/main.mojo"""
-buildcli = """pixi run mojo build -I src -I src/cli -o decimo src/cli/main.mojo"""
+buildcli = """pixi run mojo package src/decimo -o temp/decimo.mojopkg \
+&& pixi run mojo package temp/argmojo/src/argmojo -o temp/argmojo.mojopkg \
+&& pixi run mojo build -I temp -I src/cli -o decimo src/cli/main.mojo"""
+# buildcli = """pixi run mojo build -I src -I src/cli -o decimo src/cli/main.mojo"""
 tcli = "clear && pixi run test cli"
 testcli = "pixi run buildcli && bash tests/test.sh cli"
 
