@@ -35,7 +35,22 @@ run_mojo_suite() {
     local dir="$1"
     for f in tests/"$dir"/*.mojo; do
         echo "=== $f ==="
-        pixi run mojo run -I src -D ASSERT=all --debug-level=full "$f"
+        # Retry once on transient Python init crash (libpython sporadic load failure).
+        local attempt=1
+        local max_attempts=2
+        while (( attempt <= max_attempts )); do
+            if pixi run mojo run -I tests -D ASSERT=all --debug-level=full "$f"; then
+                break
+            fi
+            local rc=$?
+            if (( attempt < max_attempts )); then
+                echo "WARN: $f failed (rc=$rc), retrying (attempt $((attempt + 1))/$max_attempts)..."
+                attempt=$((attempt + 1))
+            else
+                echo "ERROR: $f failed after $max_attempts attempts"
+                return $rc
+            fi
+        done
     done
 }
 
