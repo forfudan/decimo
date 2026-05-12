@@ -4,12 +4,12 @@ channels = ["https://conda.modular.com/max", "https://repo.prefix.dev/modular-co
 description = "An arbitrary-precision decimal and integer library for Mojo"
 license = "Apache-2.0"
 name = "decimo"
-platforms = ["osx-arm64", "linux-64"]
+platforms = ["osx-arm64", "linux-64", "linux-aarch64"]
 readme = "README.md"
 version = "0.10.0"
 
 [dependencies]
-# argmojo = "==0.6.0" # CLI argument parsing for the Decimo calculator
+# argmojo = ">=0.6.0,<0.7" # CLI argument parsing for the Decimo calculator
 mojo = ">=1.0.0b1,<2" # Mojo language compiler and runtime
 python = ">=3.13" # For Python bindings and tests
 python-build = ">=0.2.0" # Build PyPI wheel (`pixi run wheel`)
