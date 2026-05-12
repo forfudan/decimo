@@ -1,6 +1,6 @@
 [workspace]
 authors = ["ZHU Yuhao (朱宇浩) <dr.yuhao.zhu@outlook.com>"]
-channels = ["https://conda.modular.com/max", "https://conda.modular.com/max-nightly", "https://repo.prefix.dev/modular-community", "conda-forge"]
+channels = ["https://conda.modular.com/max", "https://repo.prefix.dev/modular-community", "conda-forge"]
 description = "An arbitrary-precision decimal and integer library for Mojo"
 license = "Apache-2.0"
 name = "decimo"
@@ -90,7 +90,9 @@ fetch = """git clone https://github.com/forfudan/argmojo.git temp/argmojo 2>/dev
 bcli = "clear && pixi run buildcli"
 # Uncomment the following lines if we build the CLI package with
 # local clone of argmojo
-buildcli = """pixi run mojo package src/decimo -o temp/decimo.mojopkg \
+buildcli = """pixi run fetch \
+&& mkdir -p temp \
+&& pixi run mojo package src/decimo -o temp/decimo.mojopkg \
 && pixi run mojo package temp/argmojo/src/argmojo -o temp/argmojo.mojopkg \
 && pixi run mojo build -I temp -I src/cli -o decimo src/cli/main.mojo"""
 # buildcli = """pixi run mojo build -I src -I src/cli -o decimo src/cli/main.mojo"""
@@ -99,7 +101,8 @@ testcli = "pixi run buildcli && bash tests/test.sh cli"
 
 # python bindings (mojo4py)
 bpy = "clear && pixi run buildpy"
-buildpy = """pixi run mojo build python/decimo_module.mojo \
+buildpy = """pixi run mojo package src/decimo -o tests/decimo.mojopkg \
+&& pixi run mojo build python/decimo_module.mojo \
 --emit shared-lib -I tests -o python/src/decimo/_decimo.so"""
 testpy = "pixi run buildpy && pixi run python python/tests/test_decimo.py"
 tpy = "clear && pixi run testpy"
