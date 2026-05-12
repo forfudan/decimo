@@ -1,19 +1,20 @@
 """
-Test BigDecimal trigonometric functions
+Tests BigDecimal trigonometric functions.
 """
 
 from std.python import Python
 from std import testing
 
-from decimo import BDec
+from decimo import BigDecimal
 from decimo.tests import TestCase, parse_file, load_test_cases
 from decimo.toml.parser import TOMLDocument
+import decimo.bigdecimal.trigonometric
 
 comptime file_path = "tests/bigdecimal/test_data/bigdecimal_trigonometric.toml"
 
 
 def run_test[
-    func: def(BDec, Int) raises -> BDec
+    func: def(BigDecimal, Int) thin raises -> BigDecimal
 ](toml: TOMLDocument, table_name: String, msg: String) raises:
     """Run a specific test case from the TOML document."""
     # print("------------------------------------------------------")
@@ -21,11 +22,12 @@ def run_test[
     var test_cases = load_test_cases(toml, table_name)
     count_wrong = 0
     for test_case in test_cases:
-        var result = func(BDec(test_case.a), 50)
+        var _bdec = BigDecimal(test_case.a)
+        var result = func(_bdec, 50)
         try:
             testing.assert_equal(
                 lhs=result,
-                rhs=BDec(test_case.expected),
+                rhs=BigDecimal(test_case.expected),
                 msg=test_case.description,
             )
         except e:

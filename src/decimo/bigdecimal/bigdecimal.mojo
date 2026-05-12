@@ -29,6 +29,7 @@ from std import testing
 
 from decimo.errors import ConversionError, ValueError
 from decimo.rounding_mode import RoundingMode
+from decimo.bigdecimal.exponential import MathCache
 from decimo.bigdecimal.rounding import round_to_precision
 from decimo.bigint10.bigint10 import BigInt10
 import decimo.str
@@ -1758,7 +1759,7 @@ struct BigDecimal(
     def ln(
         self,
         precision: Int,
-        mut cache: decimo.bigdecimal.exponential.MathCache,
+        mut cache: MathCache,
     ) raises -> Self:
         """Returns the natural logarithm using a cache for ln(2)/ln(1.25).
 

@@ -9,7 +9,7 @@ readme = "README.md"
 version = "0.10.0"
 
 [dependencies]
-# argmojo = ">=0.5.0,<0.6.0" # CLI argument parsing for the Decimo calculator
+# argmojo = "==0.6.0" # CLI argument parsing for the Decimo calculator
 mojo = ">=1.0.0b1,<2" # Mojo language compiler and runtime
 python = ">=3.13" # For Python bindings and tests
 python-build = ">=0.2.0" # Build PyPI wheel (`pixi run wheel`)
@@ -26,14 +26,20 @@ format = """pixi run mojo format ./src \
 &&pixi run ruff format ./python"""
 
 # doc
+# Note: the CLI calculator doc step uses `-I tests` (the prebuilt
+# `decimo.mojopkg`) instead of `-I src`. Mojo 1.0.0b1's `mojo doc` cannot
+# resolve `decimo.X.Y.foo`-style qualified references when re-traversing
+# the source tree via `-I src`. Loading the pre-built package via
+# `-I tests` sidesteps that regression. The `package` task below is
+# therefore reordered so `package_decimo` runs before `doc`.
 doc = """pixi run mojo doc --diagnose-missing-doc-strings src/decimo > /dev/null \
-&& pixi run mojo doc --diagnose-missing-doc-strings -I src src/cli/calculator > /dev/null"""
+&& pixi run mojo doc --diagnose-missing-doc-strings -I tests src/cli/calculator > /dev/null"""
 
 # compile the package
 p = "clear && pixi run package"
 package = """pixi run format \
-&&pixi run doc \
-&&pixi run package_decimo"""
+&&pixi run package_decimo \
+&&pixi run doc"""
 package_decimo = """pixi run mojo package src/decimo \
 &&cp decimo.mojopkg tests/ \
 &&cp decimo.mojopkg benches/ \
@@ -94,7 +100,7 @@ testcli = "pixi run buildcli && bash tests/test.sh cli"
 # python bindings (mojo4py)
 bpy = "clear && pixi run buildpy"
 buildpy = """pixi run mojo build python/decimo_module.mojo \
---emit shared-lib -I src -o python/src/decimo/_decimo.so"""
+--emit shared-lib -I tests -o python/src/decimo/_decimo.so"""
 testpy = "pixi run buildpy && pixi run python python/tests/test_decimo.py"
 tpy = "clear && pixi run testpy"
 # build PyPI wheel (placeholder, no .so included)

@@ -689,7 +689,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
                     ),
                 )
             for i in range(1, scale + 1):
-                if coef[-i] != 0:
+                if coef[len(coef) - i] != 0:
                     raise ConversionError(
                         function="BigUInt.from_string(value: String)",
                         message=(

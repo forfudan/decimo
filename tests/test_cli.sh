@@ -8,7 +8,7 @@ cd "$REPO_ROOT"
 
 # ── Unit tests ─────────────────────────────────────────────────────────────
 for f in tests/cli/*.mojo; do
-    pixi run mojo run -I src -I src/cli -D ASSERT=all --debug-level=full "$f"
+    pixi run mojo run -I tests -I src/cli -D ASSERT=all --debug-level=full "$f"
 done
 
 # ── Integration tests (exercise the compiled binary) ───────────────────────

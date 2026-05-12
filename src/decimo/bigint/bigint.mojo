@@ -493,8 +493,9 @@ struct BigInt(
                     ),
                 )
             # Check that the fractional digits are all zero
+            var coef_len = len(coef)
             for i in range(1, scale + 1):
-                if coef[-i] != 0:
+                if coef[coef_len - i] != 0:
                     raise ConversionError(
                         function="BigInt.from_string(value: String)",
                         message=(
