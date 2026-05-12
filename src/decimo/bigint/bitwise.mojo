@@ -70,7 +70,10 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
             var result_words = List[UInt32](capacity=min_len)
             for i in range(min_len):
                 result_words.append(a.words[i] & b.words[i])
-            while len(result_words) > 1 and result_words[len(result_words) - 1] == 0:
+            while (
+                len(result_words) > 1
+                and result_words[len(result_words) - 1] == 0
+            ):
                 result_words.shrink(len(result_words) - 1)
             return BigInt(raw_words=result_words^, sign=False)
         elif op == "or":
@@ -80,7 +83,10 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
                 var wa = UInt32(0) if i >= len(a.words) else a.words[i]
                 var wb = UInt32(0) if i >= len(b.words) else b.words[i]
                 result_words.append(wa | wb)
-            while len(result_words) > 1 and result_words[len(result_words) - 1] == 0:
+            while (
+                len(result_words) > 1
+                and result_words[len(result_words) - 1] == 0
+            ):
                 result_words.shrink(len(result_words) - 1)
             return BigInt(raw_words=result_words^, sign=False)
         else:  # xor
@@ -90,7 +96,10 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
                 var wa = UInt32(0) if i >= len(a.words) else a.words[i]
                 var wb = UInt32(0) if i >= len(b.words) else b.words[i]
                 result_words.append(wa ^ wb)
-            while len(result_words) > 1 and result_words[len(result_words) - 1] == 0:
+            while (
+                len(result_words) > 1
+                and result_words[len(result_words) - 1] == 0
+            ):
                 result_words.shrink(len(result_words) - 1)
             return BigInt(raw_words=result_words^, sign=False)
 
@@ -401,7 +410,9 @@ def bitwise_not(x: BigInt) -> BigInt:
             result_words.append(UInt32(diff & 0xFFFF_FFFF))
             borrow = (diff >> 63) & 1
         # Strip leading zeros
-        while len(result_words) > 1 and result_words[len(result_words) - 1] == 0:
+        while (
+            len(result_words) > 1 and result_words[len(result_words) - 1] == 0
+        ):
             result_words.shrink(len(result_words) - 1)
         if len(result_words) == 1 and result_words[0] == 0:
             return BigInt()

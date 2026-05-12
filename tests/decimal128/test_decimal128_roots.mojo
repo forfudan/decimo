@@ -17,7 +17,9 @@ from decimo.tests import parse_file, load_test_cases
 
 
 comptime sqrt_path = "tests/decimal128/test_data/decimal128_sqrt.toml"
-comptime root_power_path = "tests/decimal128/test_data/decimal128_root_power.toml"
+comptime root_power_path = (
+    "tests/decimal128/test_data/decimal128_root_power.toml"
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

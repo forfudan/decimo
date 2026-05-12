@@ -274,7 +274,7 @@ struct LineEditor(Movable):
 
     def add_history(mut self, line: String):
         """Adds a line to history manually."""
-        if len(line) == 0:
+        if line.byte_length() == 0:
             return
         self._history.append(line)
         if len(self._history) > self._max_history:

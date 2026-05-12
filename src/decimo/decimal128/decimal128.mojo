@@ -1381,7 +1381,7 @@ struct Decimal128(
             scale -= 1
 
         var coef_str = String(coef)
-        var ndigits_coef = (coef_str).byte_length()
+        var ndigits_coef = coef_str.byte_length()
         # `leftdigits` is the number of digits to the left of the decimal
         # point in plain notation (matches the convention used by
         # `BigDecimal.to_string`). For a coefficient of `n` digits with
@@ -1411,7 +1411,7 @@ struct Decimal128(
                 coef_str = coef_str + "0" * (lead_digits - ndigits_coef)
 
             result = sign
-            if (coef_str).byte_length() <= lead_digits:
+            if coef_str.byte_length() <= lead_digits:
                 result += coef_str
             else:
                 result += coef_str[byte=:lead_digits]
@@ -2767,13 +2767,13 @@ struct Decimal128(
 
         var max_label_len = 0
         for i in range(len(labels)):
-            if (labels[i]).byte_length() > max_label_len:
-                max_label_len = (labels[i]).byte_length()
+            if labels[i].byte_length() > max_label_len:
+                max_label_len = labels[i].byte_length()
 
         var col = max_label_len + 4  # 4 spaces after longest label
 
         def pad(label: String) {read col} -> String:
-            return label + String(" ") * (col - (label).byte_length())
+            return label + String(" ") * (col - label.byte_length())
 
         var sep_line = String("-") * (col + 30)
 
@@ -3033,7 +3033,7 @@ def _insert_digit_separators(s: String, delimiter: String) -> String:
     )  # includes leading 'E', empty if none
 
     # --- Group integer part right-to-left every 3 digits ---
-    var int_len = (int_part).byte_length()
+    var int_len = int_part.byte_length()
     var int_grouped: String
     if int_len > 3:
         var blocks = List[String](capacity=int_len // 3 + 1)
@@ -3056,7 +3056,7 @@ def _insert_digit_separators(s: String, delimiter: String) -> String:
 
     # --- Group fractional part left-to-right every 3 digits ---
     var frac_grouped: String
-    var frac_len = (frac_part).byte_length()
+    var frac_len = frac_part.byte_length()
     if frac_len > 3:
         frac_grouped = String("")
         var i = 0

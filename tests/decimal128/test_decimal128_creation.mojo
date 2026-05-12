@@ -18,7 +18,9 @@ from decimo import BigDecimal
 from decimo.tests import TestCase, parse_file, load_test_cases
 
 
-comptime from_string_path = "tests/decimal128/test_data/decimal128_from_string.toml"
+comptime from_string_path = (
+    "tests/decimal128/test_data/decimal128_from_string.toml"
+)
 comptime from_int_path = "tests/decimal128/test_data/decimal128_from_int.toml"
 
 

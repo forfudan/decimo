@@ -18,7 +18,9 @@ from decimo.rounding_mode import RoundingMode
 from decimo.tests import TestCase, parse_file, load_test_cases
 
 
-comptime arithmetics_path = "tests/decimal128/test_data/decimal128_arithmetics.toml"
+comptime arithmetics_path = (
+    "tests/decimal128/test_data/decimal128_arithmetics.toml"
+)
 comptime multiply_path = "tests/decimal128/test_data/decimal128_multiply.toml"
 comptime divide_path = "tests/decimal128/test_data/decimal128_divide.toml"
 comptime modulo_path = "tests/decimal128/test_data/decimal128_modulo.toml"

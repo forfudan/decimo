@@ -7,10 +7,16 @@ from std import testing
 from decimo.bigint10.bigint10 import BigInt10
 from decimo.tests import TestCase, parse_file, load_test_cases
 
-comptime file_path_arithmetics = "tests/bigint10/test_data/bigint10_arithmetics.toml"
+comptime file_path_arithmetics = (
+    "tests/bigint10/test_data/bigint10_arithmetics.toml"
+)
 comptime file_path_multiply = "tests/bigint10/test_data/bigint10_multiply.toml"
-comptime file_path_floor_divide = "tests/bigint10/test_data/bigint10_floor_divide.toml"
-comptime file_path_truncate_divide = "tests/bigint10/test_data/bigint10_truncate_divide.toml"
+comptime file_path_floor_divide = (
+    "tests/bigint10/test_data/bigint10_floor_divide.toml"
+)
+comptime file_path_truncate_divide = (
+    "tests/bigint10/test_data/bigint10_truncate_divide.toml"
+)
 
 
 def _set_max_str_digits(limit: Int) raises:

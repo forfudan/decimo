@@ -9,7 +9,9 @@ from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.tests import TestCase, parse_file, load_test_cases
 from decimo.toml.parser import TOMLDocument
 
-comptime from_string_file_path = "tests/bigdecimal/test_data/bigdecimal_from_string.toml"
+comptime from_string_file_path = (
+    "tests/bigdecimal/test_data/bigdecimal_from_string.toml"
+)
 
 
 def _run_from_string_section(

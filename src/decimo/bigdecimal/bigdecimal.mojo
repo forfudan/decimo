@@ -2709,7 +2709,7 @@ def _insert_digit_separators(s: String, delimiter: String) -> String:
         frac_part = String(s[byte = dot_pos + 1 : e_pos])
 
     # --- Group integer part (right-to-left every 3 digits) ---
-    var int_len = (int_part).byte_length()
+    var int_len = int_part.byte_length()
     if int_len > 3:
         var blocks = List[String](capacity=int_len // 3 + 1)
         var end_i = int_len
