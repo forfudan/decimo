@@ -149,6 +149,10 @@ def parse_settings(input: String, mut settings: Settings) raises:
     Args:
         input: The settings string (without the leading `:`).
         settings: The Settings struct to modify in place.
+
+    Raises:
+        Error: If a token is unknown, an option is missing its value,
+            or a value cannot be parsed.
     """
     var tokens = _split_whitespace(input)
     var n = len(tokens)

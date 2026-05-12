@@ -951,6 +951,11 @@ struct TOMLParser:
 
         Returns:
             The parsed `TOMLDocument`.
+
+        Raises:
+            Error: If the token stream is malformed (e.g., unexpected
+                tokens, duplicate keys, unterminated arrays/tables, or
+                invalid table headers).
         """
         var document = TOMLDocument()
         var current_path = List[String]()

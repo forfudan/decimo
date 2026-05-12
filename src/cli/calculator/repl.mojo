@@ -82,6 +82,11 @@ def run_repl(
         pad: Initial zero-padding flag.
         delimiter: Initial digit-group delimiter.
         rounding_mode: Initial rounding mode.
+
+    Raises:
+        Error: If the line editor cannot be initialised or an unrecoverable
+            I/O error occurs while reading from stdin. Per-line evaluation
+            errors are caught internally and do not propagate.
     """
     var settings = Settings(
         precision,

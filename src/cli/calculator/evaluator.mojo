@@ -347,6 +347,10 @@ def final_round(
 
     Returns:
         A new Decimal rounded to the requested precision.
+
+    Raises:
+        Error: If `precision` is invalid for the underlying rounding
+            operation.
     """
     if value.is_zero():
         return value.copy()
@@ -374,6 +378,11 @@ def evaluate(
 
     Returns:
         The result as a BigDecimal, rounded to `precision` significant digits.
+
+    Raises:
+        Error: If the expression cannot be tokenized, parsed, or
+            evaluated (e.g., syntax error, unknown identifier, division
+            by zero, domain error in a math function).
     """
     var tokens = tokenize(expr)
     var rpn = parse_to_rpn(tokens^)

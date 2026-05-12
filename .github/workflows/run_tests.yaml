@@ -37,21 +37,6 @@ jobs:
         run: pip install pre-commit
       - name: Format check
         run: pre-commit run --all-files
-      - name: Generate docs (with retry for Mojo compiler intermittent crashes)
-        run: |
-          for attempt in 1 2 3; do
-            echo "=== doc attempt $attempt ==="
-            if pixi run doc; then
-              echo "=== doc succeeded on attempt $attempt ==="
-              break
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "=== doc failed after 3 attempts ==="
-              exit 1
-            fi
-            echo "=== doc crashed, retrying in 5s... ==="
-            sleep 5
-          done
       - name: Build package (with retry for Mojo compiler intermittent crashes)
         run: |
           for attempt in 1 2 3; do
@@ -65,6 +50,28 @@ jobs:
               exit 1
             fi
             echo "=== build crashed, retrying in 5s... ==="
+            sleep 5
+          done
+      - name: Stage decimo.mojopkg next to tests
+        # `pixi run doc` documents `src/cli/calculator`, which imports
+        # `decimo.*`. Mojo 1.0.0b1 cannot resolve those qualified
+        # references when re-traversing the source tree via `-I src`,
+        # so the doc task uses `-I tests` against the prebuilt
+        # `decimo.mojopkg`. Stage it here before invoking doc.
+        run: cp decimo.mojopkg tests/
+      - name: Generate docs (with retry for Mojo compiler intermittent crashes)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== doc attempt $attempt ==="
+            if pixi run doc; then
+              echo "=== doc succeeded on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== doc failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== doc crashed, retrying in 5s... ==="
             sleep 5
           done
       - name: Verify decimo.mojopkg was produced
