@@ -316,6 +316,13 @@ jobs:
             echo "=== build crashed, retrying in 5s... ==="
             sleep 5
           done
+      - name: Stage decimo.mojopkg next to tests
+        # `tests/test.sh run_cli` and `run_bigfloat` use `-I tests` to load
+        # the prebuilt `decimo.mojopkg` (Mojo 1.0.0b1's `mojo run/build`
+        # cannot resolve `decimo.X.Y.foo` qualified references when
+        # re-traversing source via `-I src`). `pixi run buildcli` produces
+        # the package at `temp/decimo.mojopkg`, so stage a copy here.
+        run: cp temp/decimo.mojopkg tests/
       - name: Run tests (with retry for Mojo compiler intermittent crashes)
         run: |
           for attempt in 1 2 3; do

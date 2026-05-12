@@ -97,7 +97,7 @@ buildcli = """pixi run fetch \
 && pixi run mojo build -I temp -I src/cli -o decimo src/cli/main.mojo"""
 # buildcli = """pixi run mojo build -I src -I src/cli -o decimo src/cli/main.mojo"""
 tcli = "clear && pixi run test cli"
-testcli = "pixi run buildcli && bash tests/test.sh cli"
+testcli = "pixi run buildcli && cp temp/decimo.mojopkg tests/ && bash tests/test.sh cli"
 
 # python bindings (mojo4py)
 bpy = "clear && pixi run buildpy"
