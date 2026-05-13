@@ -5,7 +5,7 @@ An arbitrary-precision integer and decimal library for [Mojo](https://www.modula
 Comes with an interactive arbitrary-precision calculator (REPL + one-shot mode) powered by [ArgMojo](https://github.com/forfudan/argmojo). Install it with `brew install forfudan/tap/decimo`.
 
 [![Version](https://img.shields.io/badge/version-v0.10.0-blue)](https://github.com/forfudan/decimo/releases/tag/v0.10.0)
-[![Mojo](https://img.shields.io/badge/mojo-0.26.2-orange)](https://docs.modular.com/mojo/manual/)
+[![Mojo](https://img.shields.io/badge/mojo-1.0.0b1-orange)](https://docs.modular.com/mojo/manual/)
 [![pixi](https://img.shields.io/badge/pixi%20add-decimo-purple)](https://prefix.dev/channels/modular-community/packages/decimo)
 [![CI](https://img.shields.io/github/actions/workflow/status/forfudan/decimo/run_tests.yaml?branch=main&label=tests)](https://github.com/forfudan/decimo/actions/workflows/run_tests.yaml)
 
@@ -95,7 +95,7 @@ The following table summarizes the package versions and their corresponding Mojo
 | `decimojo` | v0.7.0  | ==0.26.1      | pixi            |
 | `decimo`   | v0.8.0  | ==0.26.1      | pixi            |
 | `decimo`   | v0.9.0  | ==0.26.2      | pixi            |
-| `decimo`   | v0.10.0 | ==0.26.2      | pixi            |
+| `decimo`   | v0.10.0 | ==1.0.0b1     | pixi            |
 
 ### Install CLI calculator
 
