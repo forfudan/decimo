@@ -21,7 +21,6 @@ Implements functions for mathematical operations on BigDecimal objects.
 from std import math
 
 import decimo.biguint.arithmetics
-import decimo.bigdecimal.arithmetics
 from decimo.bigdecimal.rounding import round_to_precision
 from decimo.errors import ZeroDivisionError
 from decimo.rounding_mode import RoundingMode
@@ -764,7 +763,7 @@ def _true_divide_general_truncated(
                 sign=result.sign,
             )
             # Verify: stripped * y == x (using original, untruncated operands)
-            var product = decimo.bigdecimal.arithmetics.multiply(stripped, y)
+            var product = multiply(stripped, y)
             if product == x:
                 return stripped^
 

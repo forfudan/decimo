@@ -1305,7 +1305,7 @@ def power_of_10_unsafe[
     dtype == DType.uint128 or dtype == DType.uint256
 ):
     """
-    Returns 10^n via a single indexed load from a string-literal rodata blob.
+    Returns 10^n via a single indexed load from a comptime InlineArray table.
 
     Parameters:
         dtype: The Mojo scalar type to calculate the power of 10 for. Must be
@@ -1323,25 +1323,30 @@ def power_of_10_unsafe[
     Notes:
 
         **WARNING**: This function performs **no runtime bounds check** in
-        release builds (`-D ASSERT=none`). Out-of-range `n` will read past
-        the end of the rodata blob and return arbitrary bits. Callers must
+        release builds (`-D ASSERT=none`). Out-of-range `n` will index
+        past the end of the table and return arbitrary bits. Callers must
         guarantee `0 <= n <= 29` for `uint128` and `0 <= n <= 58` for
         `uint256`. A `debug_assert` catches violations in debug builds
         (`-D ASSERT=all`); use `power_of_10` (asserted, raises) when you
         cannot prove `n` is in range.
 
-        Implementation: each entry is a 16-byte (uint128) or 32-byte
-        (uint256) little-endian raw value packed contiguously in a
-        `StringLiteral` blob. `unsafe_ptr().bitcast[Scalar[dtype]]()[n]`
-        yields the n-th value with a single indexed load. The
-        `StringLiteral` lives in rodata for the lifetime of the program;
-        no stack materialisation, no allocation, no per-call-site
-        `InlineArray` rebuild.
+        Implementation: the entries live in module-level `comptime`
+        `InlineArray` tables (`_POWER_OF_10_U128`, `_POWER_OF_10_U256`)
+        materialised once at compile time. Indexing into a `comptime`
+        InlineArray compiles to a single load from rodata; no stack
+        materialisation, no allocation, no per-call-site rebuild. The
+        `rebind[Scalar[dtype]]` is a zero-cost type bridge from the
+        table's concrete element type (`UInt128`/`UInt256`) to the
+        caller-requested `Scalar[dtype]`.
 
-        TODO: Drop this function once Mojo grows module-level variables
-        and the elegant `var POWER_OF_10_U128 = InlineArray[UInt128, 29]`
-        approach becomes possible. See the comment block above for the
-        full migration plan.
+        Migration note: this used to read from a packed `StringLiteral`
+        rodata blob via `unsafe_ptr().bitcast[Scalar[dtype]]().load[
+        alignment=1](n)`. Mojo 1.0.0b1 changed `StringLiteral` to
+        always-UTF-8-encode arbitrary byte literals (e.g. `\\x9a` became
+        the 2-byte sequence `[0xC2, 0x9A]`), corrupting the blob. The
+        `comptime InlineArray` approach is both safer (no manual byte
+        layout) and the elegant target form once Mojo gets full
+        module-level variable support.
     """
 
     comptime if dtype == DType.uint128:

@@ -23,7 +23,6 @@ from std import math
 from std.memory import memcpy, memset_zero
 
 from decimo.biguint.biguint import BigUInt
-import decimo.biguint.arithmetics
 import decimo.biguint.comparison
 from decimo.errors import (
     OverflowError,
@@ -2769,10 +2768,8 @@ def floor_divide_burnikel_ziegler(
     var ndigits_to_shift: Int
 
     if normalized_b.words[len(normalized_b.words) - 1] < 500_000_000:
-        ndigits_to_shift = (
-            decimo.biguint.arithmetics.calculate_ndigits_for_normalization(
-                normalized_b.words[len(normalized_b.words) - 1]
-            )
+        ndigits_to_shift = calculate_ndigits_for_normalization(
+            normalized_b.words[len(normalized_b.words) - 1]
         )
     else:
         ndigits_to_shift = 0
@@ -2792,12 +2789,8 @@ def floor_divide_burnikel_ziegler(
         n - len(normalized_b.words)
     ) * 9 + ndigits_to_shift
 
-    decimo.biguint.arithmetics.multiply_by_power_of_ten_inplace(
-        normalized_b, n_digits_to_scale_up
-    )
-    decimo.biguint.arithmetics.multiply_by_power_of_ten_inplace(
-        normalized_a, n_digits_to_scale_up
-    )
+    multiply_by_power_of_ten_inplace(normalized_b, n_digits_to_scale_up)
+    multiply_by_power_of_ten_inplace(normalized_a, n_digits_to_scale_up)
 
     # The normalized_b is now 9 digits, but may still be smaller than 500_000_000.
     var gap_ratio: UInt32
@@ -2815,12 +2808,8 @@ def floor_divide_burnikel_ziegler(
         )
 
     if gap_ratio >= 2:
-        decimo.biguint.arithmetics.multiply_by_uint32_inplace(
-            normalized_b, gap_ratio
-        )
-        decimo.biguint.arithmetics.multiply_by_uint32_inplace(
-            normalized_a, gap_ratio
-        )
+        multiply_by_uint32_inplace(normalized_b, gap_ratio)
+        multiply_by_uint32_inplace(normalized_a, gap_ratio)
 
     # STEP 2: Split the normalized a into blocks of size n.
     # t is the number of blocks in the dividend.
@@ -2874,17 +2863,13 @@ def floor_divide_burnikel_ziegler(
             )
             q_i = _tuple[0].copy()
             z = _tuple[1].copy()
-            decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(
-                q, n
-            )
+            multiply_by_power_of_billion_inplace(q, n)
             q += q_i
 
         if i > 0:
-            decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(
-                z, n
-            )
+            multiply_by_power_of_billion_inplace(z, n)
             # z = r + a[(i - 1) * n : i * n]
-            decimo.biguint.arithmetics.add_by_slice_inplace(
+            add_by_slice_inplace(
                 z,
                 normalized_a,
                 bounds_y=((i - 1) * n, i * n),
@@ -2949,9 +2934,7 @@ def floor_divide_two_by_one(
         var s = _tuple[1].copy()  # s is the final remainder
 
         # q -> q1q0
-        decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(
-            q, n // 2
-        )
+        multiply_by_power_of_billion_inplace(q, n // 2)
         q += q0
 
         return (q^, s^)
@@ -2994,19 +2977,19 @@ def floor_divide_three_by_two(
         a2a1 = a1.copy()
     else:
         a2a1 = a2.copy()
-        decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(a2a1, n)
+        multiply_by_power_of_billion_inplace(a2a1, n)
         a2a1 += a1
     # TODO: Refine this when Mojo support move values of unpacked tuples
     _tuple = floor_divide_two_by_one(a2a1, b1, n, cut_off)
     var q = _tuple[0].copy()
     ref c = _tuple[1]  # c is the carry
     var d = q * b0
-    decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(c, n)
+    multiply_by_power_of_billion_inplace(c, n)
     var r = c + a0
 
     if r < d:
         var b = b1.copy()
-        decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(b, n)
+        multiply_by_power_of_billion_inplace(b, n)
         b += b0
         q -= BigUInt.one()
         r += b
@@ -3116,9 +3099,7 @@ def floor_divide_slices_two_by_one(
         var s = _tuple[1].copy()  # s is the final remainder
 
         # q -> q1q0
-        decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(
-            q, n // 2
-        )
+        multiply_by_power_of_billion_inplace(q, n // 2)
         q += q0
 
         return (q^, s^)
@@ -3186,7 +3167,7 @@ def floor_divide_slices_three_by_two(
     ref c = _tuple[1]  # c is the carry
 
     var d = multiply_slices(q, b, (0, len(q.words)), bounds_b0)
-    decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(c, n)
+    multiply_by_power_of_billion_inplace(c, n)
     var r = add_slices(c, a, bounds_x=(0, len(c.words)), bounds_y=bounds_a0)
 
     if r < d:
