@@ -2,10 +2,10 @@ name: Build CLI release tarball
 
 # Manually-triggered build of the `decimo` CLI binary, packaged as a
 # release tarball that the Homebrew formula in
-# https://github.com/forfudan/homebrew-decimo can download.
+# https://github.com/forfudan/homebrew-tap can download.
 #
 # Trigger from the Actions tab → "Build CLI release tarball" → Run
-# workflow → enter the version (e.g. 0.10.0-alpha.1).
+# workflow → enter the version (e.g. 0.10.0).
 #
 # Two artifacts are produced (one per target platform):
 #   - decimo-<version>-linux-x86_64.tar.gz
@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version (without the leading v), e.g. 0.10.0-alpha.1"
+        description: "Version (without the leading v), e.g. 0.10.0"
         required: true
 
 jobs:

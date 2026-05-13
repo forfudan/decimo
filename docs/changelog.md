@@ -2,74 +2,105 @@
 
 This is a list of changes for the Decimo package (formerly DeciMojo).
 
-## Unreleased - under development
+## 20260514 (v0.10.0)
+
+Decimo v0.10.0 retargets the codebase to **Mojo v1.0.0b1** and rounds out the **Decimal128** API to feature parity with `BigDecimal` / Python `decimal.Decimal`. This release also introduces a new **`Rational`** type, a small **`limo`** line-editor package powering the REPL, and a thoroughly reworked error system with concrete error types instead of a single catch-all.
+
+The **CLI calculator** is now distributed as a self-contained binary via the `forfudan` Homebrew tap — `brew install forfudan/tap/decimo` (macOS arm64 and Linux x86_64; no Mojo or Pixi needed on the user's machine).
 
 ### ⭐️ New in v0.10.0
 
-**Decimal128:**
+**Decimal128 — feature parity with Python `decimal.Decimal`:**
 
-1. Add **`normalize()`** to strip non-significant trailing zeros from the coefficient (matches Python `decimal.Decimal.normalize()`), **`__hash__()`** so `Decimal128` can be used as a dict key or set element, **`same_quantum(other)`** for IEEE 754-style scale comparison, plus other small additions (PR #238).
-1. Add **`from_decimal(BigDecimal)`** static constructor that quantises a high-precision `BigDecimal` onto the Decimal128 grid by rendering with `to_string(force_plain=True)` and re-parsing via `from_string()` (banker's rounding to 28 fractional digits, raises `OverflowError` when the integral part overflows the 96-bit coefficient). Primarily used by the cross-language bench harness as an oracle bridge from `BigDecimal` reference values into the Decimal128 grid (PR #239).
-1. Add **`max`, `min`, `clamp`** instance methods (PR #230).
-1. Add **`trunc`, `floor`, `ceil`, `fract`, `signum`, `unpack`** instance methods to round towards zero / −∞ / +∞, extract the fractional part and sign, and unpack into the underlying coefficient/sign/scale words (PR #227).
-1. Add **`fit_to_max_coefficient()`** and **`round_coefficient()`** utility helpers; `from_string()` and the arithmetic paths now share these instead of inline scratch logic (PR #216).
-1. Add **`__bool__`** (so `if d:` and `Bool(d)` work) and **`__pos__`** (so `+d` is a copy), matching Python `decimal.Decimal` and `BigDecimal`. `Decimal128` now also conforms to the `Boolable` trait.
-1. Add **`is_positive()`** (strictly positive, i.e. nonzero and not negative) and **`is_odd()`** (true when the integer part's units digit is odd, regardless of sign or fractional part), matching the existing `is_negative()` / `is_zero()` / `is_one()` introspection surface.
-1. Add **`number_of_trailing_zeros()`**, mirroring `BigDecimal.number_of_trailing_zeros()`. Returns the count of trailing zero digits in the coefficient (e.g. `Decimal128("1.2300").number_of_trailing_zeros() == 2`).
-1. Add **`to_scientific_string()`** and **`to_eng_string()`** convenience aliases for `to_string(scientific=True)` / `to_string(engineering=True)`, matching the equivalent `BigDecimal` API.
-1. Add **`to_string_with_separators(separator="_")`** which renders the plain-notation string with digit-group separators inserted every 3 digits in both the integer and fractional parts, matching `BigDecimal.to_string_with_separators`. Implemented as a thin alias for `to_string(delimiter=separator)` (the `delimiter` argument was added to `to_string` in this release; see the Changed section).
-1. Add **`fma(other, third)`** — fused multiply-add `self * other + third` with a single rounding at the end. Computes the exact `UInt256` product, aligns scales for the addend, performs a signed magnitude combine, and rounds once via the same `round_coefficient` path as `multiply()` (with banker's-rounding carry recheck). When the aligned working coefficient would exceed the implementation's 58-digit working cap (the size of the `power_of_10_unsafe[uint256]` rodata table — not a UInt256 limit, which is ~77 digits — used to keep scaling and rounding in the fast path), it falls back to the two-step `multiply(self, other) + third` path. Matches Python `decimal.Decimal.fma` and IEEE 754-2008 §5.4.1 semantics. Bit-identical to the high-precision `BigDecimal` oracle (work=40, exact `multiply(precision=0)`/`add(precision=0)`) on all 12 cross-language bench cases. Bench cases include four "group-2" demonstrators (`pi·pi − 9.8`, `e·pi − 8.539`, `(1+ε)(1−ε) − 1`, near-cancellation typical) where fma reclaims one full extra digit of precision over the naive `(a*b) + c` path that has to round the intermediate product first.
-1. Add **`__divmod__(other)`** — returns `(self // other, self % other)` in a single call, mirroring Python's `divmod()` and `BigDecimal.__divmod__()`. Amortises the divide pipeline: the truncated quotient is computed once via `truncate_divide()` and reused to derive the remainder as `self - q * other`, avoiding the second full `divide()` pass that the naive `(a // b, a % b)` two-step would perform. Both `Decimal128` and `Int` right-hand sides are supported.
-1. Add **`cbrt()`** — convenience cube-root method, equivalent to `self.root(3)`. Matches the `BigDecimal` API. Unlike `sqrt()`, `cbrt()` is well-defined for negative values (delegates to `root()`'s odd-root handling, e.g. `Dec128("-8").cbrt()` returns `-2`).
+1. **`fma(other, third)`** — fused multiply-add with a single rounding (IEEE 754-2008 §5.4.1, matches Python `Decimal.fma`). Falls back to the two-step path only when the aligned working coefficient exceeds the 58-digit fast-path cap. Bit-identical to the `BigDecimal` oracle on all 12 cross-language bench cases (PR #241).
+1. **`__divmod__(other)`** — single-call `(self // other, self % other)`, amortising the divide pipeline. Supports both `Decimal128` and `Int` right-hand sides; `Int → Dec128` is now `@implicit` (PR #242).
+1. **`from_decimal(BigDecimal)`** — quantises a high-precision `BigDecimal` onto the Decimal128 grid (banker's rounding to 28 fractional digits, raises `OverflowError` on integral overflow). Acts as the cross-language bench oracle bridge (PR #239).
+1. **`normalize()`**, **`__hash__()`**, **`same_quantum(other)`** — strip trailing zeros, hash for use as dict key / set element, IEEE 754 scale comparison (PR #238).
+1. **`max`, `min`, `clamp`** instance methods (PR #230).
+1. **`trunc`, `floor`, `ceil`, `fract`, `signum`, `unpack`** — round towards zero / −∞ / +∞, extract fractional part / sign, unpack into coefficient/sign/scale words (PR #227).
+1. **`cbrt()`** — convenience cube root, well-defined for negative values via `root()`'s odd-root path.
+1. **`__bool__`** and **`__pos__`** (so `if d:`, `Bool(d)`, `+d` all work); `Decimal128` now conforms to `Boolable`.
+1. **`is_positive()`**, **`is_odd()`**, **`number_of_trailing_zeros()`** — small introspection helpers, mirroring `BigDecimal`.
+1. **`to_scientific_string()`**, **`to_eng_string()`**, **`to_string_with_separators(separator="_")`** — convenience aliases matching the equivalent `BigDecimal` API.
+1. **`fit_to_max_coefficient()`** and **`round_coefficient()`** — utility helpers shared by `from_string()` and the arithmetic paths (PR #216).
 
-**CLI Calculator:**
+**CLI calculator & `limo` line editor:**
 
-1. Add **pipe/stdin mode**: read expressions from standard input, one per line, when no positional argument is given and stdin is piped (e.g. `echo "1+2" | decimo`, `printf "pi\nsqrt(2)" | decimo -P 100`). Blank lines and comment lines (starting with `#`) are automatically skipped.
-1. Add **file mode**: use `--file` / `-F` flag to evaluate expressions from a file, one per line (e.g. `decimo -F expressions.dm -P 50`). Comments (`#`), inline comments, and blank lines are skipped. All CLI flags (precision, formatting, rounding) apply to every expression.
-1. Add **shell completion** documentation for Bash, Zsh, and Fish (`decimo --completions bash|zsh|fish`).
-1. Add **CLI performance benchmarks** (`benches/cli/bench_cli.sh`) comparing correctness and timing against `bc` and `python3` across 47 comparisons — all results match to 15 significant digits; `decimo` is 3–4× faster than `python3 -c`.
-1. Add **interactive REPL**: launch with `decimo` (no arguments, TTY attached). Features coloured `decimo>` prompt on stderr, per-line error recovery with caret diagnostics, comment/blank-line skipping, and graceful exit via `exit`, `quit`, or Ctrl-D. All CLI flags (`-P`, `--scientific`, etc.) apply to the REPL session.
-1. Add **REPL info commands**: `:` shows current settings, `?` shows help, `$` / `:v` / `:vars` lists all defined variables, `:q` / `:quit` / `:exit` exits the session.
-1. Add **case-insensitive input** in the REPL: all input is lowercased before processing, so `PI`, `Sqrt(2)`, `SIN(1)` all work.
-1. Streamline the **REPL welcome banner** to a compact one-liner with a hint to `?`, `:`, and `:q`.
-1. Add **standalone integer precision shortcut** in settings: `:100` is equivalent to `:p 100`. Any all-digit token in a settings command is treated as the precision value.
-1. Print **full settings block** after every settings change (`:...` commands) instead of a one-line summary, so the effect is immediately visible.
+1. New **`limo`** package — a small Mojo-native line editor used by the REPL for line editing and history navigation (PR #212).
+1. Interactive **REPL**: `decimo` with no arguments launches a coloured `decimo>` prompt with per-line error recovery, comment/blank-line skipping, and graceful exit via `exit` / `quit` / Ctrl-D (PR #205).
+1. **REPL info commands**: `:` shows current settings, `?` shows help, `$` / `:v` / `:vars` lists variables, `:q` / `:quit` / `:exit` exits.
+1. **Variable assignment** in REPL (`x = 1+2`) plus the `ans` variable holding the last result (PR #206).
+1. **Pipe / stdin mode**: read expressions from piped stdin, one per line (e.g. `echo "1+2" | decimo`). Comments and blank lines are skipped.
+1. **File mode** (`--file` / `-F`): evaluate expressions from a file, one per line, sharing all CLI flags.
+1. **Shell completion** documentation for Bash, Zsh, and Fish (`decimo --completions bash|zsh|fish`).
+1. **Standalone-precision shortcut** in settings: `:100` is equivalent to `:p 100`.
+1. Case-insensitive REPL input (`PI`, `Sqrt(2)`, `SIN(1)` all work).
+
+**Error handling:**
+
+1. New **`RuntimeError`** type and other concrete error types replacing the catch-all `DecimoError`; `message` and `function` fields are now mandatory on the base error type (PR #196, #198).
+1. Coloured error messages with auto-inferred file name and line number (PR #195); shortened relative paths in error messages to preserve user privacy at compilation (PR #200).
+1. Fixed `raises:` sections in docstrings across the codebase to advertise the correct error types (PR #199).
+
+**Distribution:**
+
+1. New **`release_cli`** workflow building self-contained `decimo` CLI tarballs for **macOS arm64** and **Linux x86_64**; published via the `forfudan/tap` Homebrew tap (`brew install forfudan/tap/decimo`).
+1. Bundled third-party licenses are now documented in `NOTICE` and shipped in the source tarball (PR #231).
+
+**Core types:**
+
+1. New **`Rational`** type — arbitrary-precision exact rational number, stored as a reduced fraction of two `Integer`s. Supports exact arithmetic and comparisons without precision loss (PR #214).
 
 ### 🦋 Changed in v0.10.0
 
-**Decimal128:**
+**Mojo 1.0.0b1 migration** (PR #243):
 
-1. Sweep all hot-path `UInt(128|256)(10) ** k` calls (in `arithmetics`, `comparison`, `rounding`, `decimal128`) to `power_of_10_unsafe`, replacing runtime exponentiation (~4–12 ns) with a single rodata indexed load (~0.8 ns) (PR #224).
-1. Mark `Decimal128.from_uint128()` as `@always_inline` and split its two cold `raise ValueError` blocks into separate `@no_inline` helpers (`_raise_from_uint128_value_too_large`, `_raise_from_uint128_scale_too_large`), so the inline body stays small (two checks + bitcast + flag-or) without dragging `String.format` into every caller. Brings `add` to **0.9× rust**, `subtract` to **0.9–1.3× rust**, and `divide` to **1.0× rust** on the median bench (PR #224).
-1. Mark `number_of_bits()` as `@always_inline` to remove the call frame on `multiply()`'s critical path; underlying implementation switches to `std.bit.bit_width` (PR #218).
-1. **`exp()` / `ln()` / `log10()` range reduction:** rewrite Taylor and range-reduction loops so that worst-case ratios drop to **≤ 1.0× rust_decimal** across all 42 bench cases (previously up to 1.7×). `exp_series()` now uses precomputed factorial reciprocals (two multiplies per term instead of one multiply + one divide), `ln()` reads the decade exponent `q` directly from the input scale instead of looping divisions/multiplications by 10, and `log10()`'s integer-power-of-10 fast path uses `number_of_digits` (O(1)) instead of a per-digit `% 10 / //= 10` loop. Adds new bench harnesses `cases/{ln,log10,exp}.toml` and wires `ln`/`log10`/`exp` into `run_all.sh` and the Rust harness (via the `maths` feature) (PR #229).
-1. **`exp()` 2-tier sub-unit chunker:** add 17 precomputed sub-unit constants — per-tenth `E0D1`…`E0D9` and per-hundredth `E0D01`…`E0D09` — and rewrite the `x_int < 1` arm to peel off the first decimal digit, then (when that digit is zero) the second decimal digit, before falling back to `exp_series()` on a residual in `[0, 0.01)`. Halves Taylor iterations on inputs like `exp(π)` (1350 → 770 ns) and improves accuracy from 3 ulp → 1 ulp off the `BigDecimal` reference; `exp(0.1)` collapses to a single constant lookup at 25 ns.
-1. Improve **`divide()`** by dropping a redundant rounding-digit padding step; trims the hot path without changing semantics or rounding (PR #237).
-1. Update **comparison functions, `from_string()`, `to_string()`, etc.** to improve performance: tighter inner loops on the codepoint iterator, cheaper sign/scale extraction, and shared scratch buffers (PR #225).
-1. Optimize **`divide()`** to use a school-book long-division layout that avoids the slow `UInt256 // UInt256` fallback for typical operands (PR #223).
-1. Reorder branches in **`add()` and `subtract()`** so the sign-and-scale-aligned hot path is hit first; cold cases (sign mismatch, scale-only mismatch) move to the tail (PR #220, #222).
-1. Improve the performance of **`multiply()`**: remove the `is_integer()` and `format()` calls from the hot path, optimize `power_of_10()`, and **fix latent rounding bugs** that affected products whose intermediate scale exceeded 28 (PR #221).
-1. Add edge-case tests for **`compare_absolute()`** (PR #217).
-1. **Remove `nan` and `inf` values:** `Decimal128` is now a strict finite type. `from_words()` updated accordingly and `power_of_10()` further improved (PR #215).
-1. **Consolidate `to_string_scientific()` into `to_string()`:** `Decimal128.to_string()` now takes three optional arguments — `scientific: Bool = False`, `engineering: Bool = False`, and `delimiter: String = ""` — mirroring `BigDecimal.to_string`. The previous standalone `to_string_scientific()` has been removed (no callers in the repo); use `to_string(scientific=True)` or the new `to_scientific_string()` alias instead. Also adds engineering notation as a new code path (exponent always a multiple of 3, e.g. `Decimal128("0.5").to_string(engineering=True) == "500E-3"`); when both `scientific` and `engineering` are True, engineering wins. Passing `delimiter="_"` (or any other separator string) inserts digit-group separators every 3 digits in the mantissa while preserving the optional `E±N` exponent suffix verbatim.
-1. **Remove `Decimal128.copy()` and `Decimal128.clone()`:** both were trivial returns of `Self(self.low, self.mid, self.high, self.flags)` and unused anywhere in the repo. `Decimal128` is a `TrivialRegisterPassable` value type, so `var b = a` is the idiomatic copy.
-1. **Remove `Decimal128.print_internal_representation()`:** the method was a one-line wrapper around `print(self.internal_representation())` and is unused in the repo. Use `print(x.internal_representation())` directly instead. The structured-string method `internal_representation()` is unchanged.
+1. Retarget the entire codebase to **Mojo v1.0.0b1**: new `def` / `fn` keyword conventions, `String` API changes (e.g. UTF-8 byte iteration), and updated stdlib import paths.
+1. Migrate the Decimal128 `power_of_10_unsafe` rodata tables from `StringLiteral` packed bytes to **`comptime InlineArray`**, sidestepping a Mojo 1.0.0b1 regression that mangles `StringLiteral` UTF-8 bytes. Type bridging via zero-cost `rebind[Scalar[dtype]]`.
+1. Use **`argmojo` 0.6.0** as a conda dependency instead of fetching from git (`pixi.toml`); CLI build no longer needs an extra fetch step.
+1. Test runner (`tests/test.sh`, `tests/test_cli.sh`) auto-builds `tests/decimo.mojopkg` on demand, working around Mojo 1.0.0b1's inability to resolve qualified `decimo.X.Y.foo` references in source-imported builds.
 
-**BigDecimal:**
+**BigDecimal — operator semantics aligned with Python `decimal.Decimal`:**
 
-1. **Operator semantics aligned with Python `decimal.Decimal`:** the `+` / `-` / `*` operators (and their reflected and augmented variants `__radd__` / `__rsub__` / `__rmul__` / `__iadd__` / `__isub__` / `__imul__`) now round HALF_EVEN to the default precision (`PRECISION = 28` significant digits), instead of returning an exact unrounded result. This matches Python `decimal.Decimal` default-context behavior.
-1. **New exact methods with explicit precision:** `BigDecimal.add(other, precision=0)`, `subtract(other, precision=0)`, and `multiply(other, precision=0)` give callers an explicit choice — `precision=0` (default) returns the exact unrounded result, `precision > 0` rounds HALF_EVEN to that many significant digits. Use these methods (instead of operators) whenever exact intermediate arithmetic matters.
-1. **New in-place exact methods:** `BigDecimal.add_inplace(other, precision=0)`, `subtract_inplace(other, precision=0)`, and `multiply_inplace(other, precision=0)`, mirroring the precision-aware non-inplace methods. Use these in tight loops to replace `+= / -= / *=` when exact intermediate arithmetic matters. The free functions `arithmetics.add_inplace` / `subtract_inplace` / `multiply_inplace` also gain the same `precision` parameter.
-1. **Internal call sites migrated:** `pi_machin` (`constants.mojo`), Newton iterations and Taylor series in `exponential.mojo`, and range-reduction loops in `trigonometric.mojo` now use the exact `*_inplace` methods so high-precision π / `ln` / `exp` / trig results are no longer silently capped at 28 digits.
-1. **CLI calculator:** the RPN evaluator (`src/cli/calculator/evaluator.mojo`) now drives `+` / `-` / `*` through `.add(b, working_precision)` / `.subtract(...)` / `.multiply(...)` so the user-requested `--precision` is honored end to end (previously results were silently capped at PRECISION = 28).
-1. **Fix `to_string(force_plain=True)` dropping trailing zeros for `scale < 0`:** `BigDecimal("1e40").to_string(force_plain=True)` previously returned `"1"` instead of the full 41-digit integer, silently producing a wrong value when re-parsed (e.g. via `Decimal128.from_decimal()`). The plain-notation `leftdigits >= num_digits` branch now materialises the `leftdigits − num_digits` trailing zeros that `force_plain=True` requires when `scale < 0`.
+1. `+` / `-` / `*` (and reflected / augmented variants) now round **HALF_EVEN to `PRECISION = 28`** by default instead of returning an exact unrounded result. Use the new explicit-precision methods when exact intermediate arithmetic matters.
+1. New **exact methods** `add(other, precision=0)`, `subtract(other, precision=0)`, `multiply(other, precision=0)` — `precision=0` (default) returns the exact result, `precision > 0` rounds HALF_EVEN to that many digits (PR #233, #235).
+1. New **in-place exact methods** `add_inplace`, `subtract_inplace`, `multiply_inplace` with the same `precision` parameter, for tight loops.
+1. **Internal call sites migrated**: `pi_machin`, Newton iterations, Taylor series, and trig range reduction now use the exact `*_inplace` methods, so high-precision π / `ln` / `exp` / trig results are no longer silently capped at 28 digits.
+1. **CLI calculator** RPN evaluator now drives `+` / `-` / `*` through `.add(b, working_precision)` etc. so the user-requested `--precision` is honored end to end (previously results were silently capped at 28).
+1. Improved numeric string parsing for `BigDecimal` plus extra test sets and a few bug fixes (PR #226).
 
-### 🧪 Tests and benchmarks in v0.10.0
+**Decimal128 — performance:**
 
-**Decimal128:**
+1. Hot-path `UInt(128|256)(10) ** k` calls swept to **`power_of_10_unsafe`** rodata indexed loads (~4–12 ns → ~0.8 ns) (PR #224).
+1. `from_uint128()` marked `@always_inline` with cold `raise ValueError` blocks split into `@no_inline` helpers; brings `add` to **0.9× `rust_decimal`**, `subtract` to **0.9–1.3× `rust_decimal`**, `divide` to **1.0× `rust_decimal`** on median bench (PR #224).
+1. **`exp()` / `ln()` / `log10()`**: rewrite Taylor and range-reduction loops; worst-case ratio drops to **≤ 1.0× `rust_decimal`** across all 42 bench cases (was up to 1.7×). Adds new `cases/{ln,log10,exp}.toml` harnesses (PR #229).
+1. **`exp()` 2-tier sub-unit chunker** — 17 precomputed per-tenth and per-hundredth constants halve Taylor iterations on inputs like `exp(π)` (1350 → 770 ns) and improve accuracy 3 ulp → 1 ulp; `exp(0.1)` collapses to a single constant lookup (~25 ns) (PR #229).
+1. **`divide()`** — drop redundant rounding-digit padding (PR #237) and switch the inner loop to a school-book long-division layout that avoids slow `UInt256 // UInt256` fallbacks (PR #223).
+1. **`add()` / `subtract()`** — reorder branches so the sign-and-scale-aligned hot path runs first; cold cases moved to the tail (PR #220, #222).
+1. **`multiply()`** — remove `is_integer()` and `format()` from the hot path; **fix latent rounding bugs** when intermediate scale exceeds 28 (PR #221).
+1. Tighter inner loops in `comparison`, `from_string()`, `to_string()` etc. (PR #225); `number_of_bits()` switches to `std.bit.bit_width` and is `@always_inline` (PR #218).
 
-1. Consolidate the Dec128 test suites into fewer files (`test_decimal128_arithmetics.mojo`, `test_decimal128_creation.mojo`, etc.) for faster compilation and easier navigation (PR #228).
-1. Refactor the cross-language benchmark harness to include comparisons against **Rust (`rust_decimal`)**, **C# (`System.Decimal`)**, and **VB.NET** (PR #219); `BigDecimal` acts as the high-precision oracle for `ln` / `log10` / `exp` (PR #229).
+**Decimal128 — API removals and consolidations:**
+
+1. **Removed `nan` and `inf`** values: `Decimal128` is now a strict finite type. `from_words()` updated accordingly (PR #215).
+1. **Consolidated `to_string_scientific()` into `to_string()`**: `to_string()` now takes `scientific: Bool = False`, `engineering: Bool = False`, `delimiter: String = ""`, mirroring `BigDecimal.to_string`. Adds engineering notation as a new code path (`Decimal128("0.5").to_string(engineering=True) == "500E-3"`).
+1. **Removed `Decimal128.copy()` / `clone()`**: trivial and unused. `Decimal128` is `TrivialRegisterPassable`, so `var b = a` is the idiomatic copy.
+1. **Removed `Decimal128.print_internal_representation()`**: one-line wrapper, unused. Use `print(x.internal_representation())` directly.
+
+### 🐛 Fixed in v0.10.0
+
+1. **`BigDecimal.to_string(force_plain=True)` dropping trailing zeros for `scale < 0`**: `BigDecimal("1e40").to_string(force_plain=True)` previously returned `"1"` instead of the full 41-digit integer, silently producing a wrong value when re-parsed (e.g. via `Decimal128.from_decimal()`).
+1. **`Decimal128.multiply()`**: latent rounding bugs affecting products whose intermediate scale exceeded 28 (PR #221).
+
+### 📚 Docs, tests, and benchmarks in v0.10.0
+
+1. Ensure all functions, fields, and constants have docstrings; eliminates `mojo doc` warnings (PR #194).
+1. Reorganise the `docs/` folder and update user-facing manuals (PR #207).
+1. Refactor the GitHub Actions unit-test workflow to use caching for faster CI (PR #234).
+1. Consolidate the Decimal128 test suites into fewer files (`test_decimal128_arithmetics.mojo`, `test_decimal128_creation.mojo`, etc.) for faster compilation (PR #228).
+1. Refactor cross-language benchmark harness to include **Rust (`rust_decimal`)**, **C# (`System.Decimal`)**, and **VB.NET** (PR #219); `BigDecimal` acts as the high-precision oracle for `ln` / `log10` / `exp` (PR #229).
+1. Add **CLI performance benchmarks** comparing correctness and timing against `bc` and `python3` across 47 cases — all results match to 15 significant digits; `decimo` is **3–4× faster than `python3 -c`** (PR #204).
+1. Refactor BigDecimal benchmark suites (PR #232); add edge-case tests for `compare_absolute()` (PR #217); refactor test files to a CLI argument style (PR #209).
 
 ## 20260323 (v0.9.0)
 
