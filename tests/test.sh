@@ -29,13 +29,44 @@ set -eo pipefail
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$REPO_ROOT"
 
+# ── Preflight: ensure tests/decimo.mojopkg exists ───────────────────────────
+# All Mojo test invocations below use `-I tests` to pick up the prebuilt
+# `decimo.mojopkg` (Mojo 1.0.0b1's `mojo run` cannot resolve
+# `decimo.X.Y.foo` qualified references when re-traversing source via
+# `-I src`). On a fresh checkout the package may not exist yet, so build
+# it on demand. CI normally stages a prebuilt artifact via the
+# `setup-decimo` action, in which case this is a no-op.
+ensure_decimo_mojopkg() {
+    if [[ -f tests/decimo.mojopkg ]]; then
+        return 0
+    fi
+    echo "tests/decimo.mojopkg not found; building it now..."
+    pixi run mojo package src/decimo -o tests/decimo.mojopkg
+}
+
 # ── Suite definitions ────────────────────────────────────────────────────────
 
 run_mojo_suite() {
     local dir="$1"
+    ensure_decimo_mojopkg
     for f in tests/"$dir"/*.mojo; do
         echo "=== $f ==="
-        pixi run mojo run -I src -D ASSERT=all --debug-level=full "$f"
+        # Retry once on transient Python init crash (libpython sporadic load failure).
+        local attempt=1
+        local max_attempts=2
+        while (( attempt <= max_attempts )); do
+            if pixi run mojo run -I tests -D ASSERT=all --debug-level=full "$f"; then
+                break
+            fi
+            local rc=$?
+            if (( attempt < max_attempts )); then
+                echo "WARN: $f failed (rc=$rc), retrying (attempt $((attempt + 1))/$max_attempts)..."
+                attempt=$((attempt + 1))
+            else
+                echo "ERROR: $f failed after $max_attempts attempts"
+                return $rc
+            fi
+        done
     done
 }
 
@@ -49,6 +80,7 @@ run_toml()        { run_mojo_suite toml; }
 
 run_bigfloat() {
     # BigFloat tests require the C wrapper (libdecimo_gmp_wrapper) and MPFR.
+    ensure_decimo_mojopkg
     local WRAPPER_DIR="src/decimo/gmp"
     local WRAPPER_LIB
     if [[ "$(uname)" == "Darwin" ]]; then
@@ -69,7 +101,7 @@ run_bigfloat() {
     for f in tests/bigfloat/*.mojo; do
         echo "=== $f ==="
         TMPBIN=$(mktemp /tmp/decimo_test_bigfloat_XXXXXX)
-        pixi run mojo build -I src --debug-level=full \
+        pixi run mojo build -I tests --debug-level=full \
             -Xlinker -L./"$WRAPPER_DIR" -Xlinker -ldecimo_gmp_wrapper \
             -o "$TMPBIN" "$f"
         DYLD_LIBRARY_PATH="./$WRAPPER_DIR" LD_LIBRARY_PATH="./$WRAPPER_DIR" "$TMPBIN"
@@ -79,8 +111,9 @@ run_bigfloat() {
 
 run_cli() {
     # CLI tests need the extra -I src/cli include path
+    ensure_decimo_mojopkg
     for f in tests/cli/*.mojo; do
-        pixi run mojo run -I src -I src/cli -D ASSERT=all --debug-level=full "$f"
+        pixi run mojo run -I tests -I src/cli -D ASSERT=all --debug-level=full "$f"
     done
 
     # Integration tests (exercise the compiled binary)

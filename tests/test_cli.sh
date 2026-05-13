@@ -6,9 +6,19 @@ set -e  # Exit immediately if any command fails
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$REPO_ROOT"
 
+# ── Preflight: ensure tests/decimo.mojopkg exists ───────────────────────────
+# CLI unit tests use `-I tests` to pick up the prebuilt `decimo.mojopkg`
+# (Mojo 1.0.0b1's `mojo run` cannot resolve `decimo.X.Y.foo` qualified
+# references when re-traversing source via `-I src`). On a fresh checkout
+# the package may not exist yet, so build it on demand.
+if [[ ! -f tests/decimo.mojopkg ]]; then
+    echo "tests/decimo.mojopkg not found; building it now..."
+    pixi run mojo package src/decimo -o tests/decimo.mojopkg
+fi
+
 # ── Unit tests ─────────────────────────────────────────────────────────────
 for f in tests/cli/*.mojo; do
-    pixi run mojo run -I src -I src/cli -D ASSERT=all --debug-level=full "$f"
+    pixi run mojo run -I tests -I src/cli -D ASSERT=all --debug-level=full "$f"
 done
 
 # ── Integration tests (exercise the compiled binary) ───────────────────────

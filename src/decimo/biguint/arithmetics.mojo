@@ -298,12 +298,9 @@ def add_slices_simd(
         unsafe_uninit_length=max(n_words_x_slice, n_words_y_slice)
     )
 
-    @parameter
     def vector_add[
         simd_width: Int
-    ](i: Int) unified {
-        mut result, read x, read y, read bounds_x, read bounds_y
-    }:
+    ](i: Int) {mut result, read x, read y, read bounds_x, read bounds_y}:
         result.words.unsafe_ptr().store[width=simd_width](
             i,
             x.words.unsafe_ptr().load[width=simd_width](i + bounds_x[0])
@@ -330,10 +327,9 @@ def add_slices_simd(
         n_words_shorter_slice = n_words_x_slice
         longer_start = bounds_y[0]
 
-    @parameter
     def vector_copy_rest_from_longer[
         simd_width: Int
-    ](i: Int) unified {
+    ](i: Int) {
         mut result, read longer, read n_words_shorter_slice, read longer_start
     }:
         result.words.unsafe_ptr().store[width=simd_width](
@@ -386,8 +382,7 @@ def add_inplace(mut x: BigUInt, y: BigUInt) -> None:
     if len(x.words) < len(y.words):
         x.words.resize(new_size=len(y.words), value=UInt32(0))
 
-    @parameter
-    def vector_add[simd_width: Int](i: Int) unified {mut x, read y}:
+    def vector_add[simd_width: Int](i: Int) {mut x, read y}:
         x.words.unsafe_ptr().store[width=simd_width](
             i,
             x.words.unsafe_ptr().load[width=simd_width](i)
@@ -437,10 +432,7 @@ def add_by_slice_inplace(
     if len(x.words) < n_words_y_slice:
         x.words.resize(new_size=n_words_y_slice, value=UInt32(0))
 
-    @parameter
-    def vector_add[
-        simd_width: Int
-    ](i: Int) unified {mut x, read y, read bounds_y}:
+    def vector_add[simd_width: Int](i: Int) {mut x, read y, read bounds_y}:
         x.words.unsafe_ptr().store[width=simd_width](
             i,
             x.words.unsafe_ptr().load[width=simd_width](i)
@@ -647,10 +639,7 @@ def subtract_simd(x: BigUInt, y: BigUInt) raises -> BigUInt:
     # This will first subtract the words in parallel and then handle the borrows.
     # Note that there will be potential overflow in the subtraction,
     # but we will take advantage of that.
-    @parameter
-    def vector_subtract[
-        simd_width: Int
-    ](i: Int) unified {mut result, read x, read y}:
+    def vector_subtract[simd_width: Int](i: Int) {mut result, read x, read y}:
         result.words.unsafe_ptr().store[width=simd_width](
             i,
             x.words.unsafe_ptr().load[width=simd_width](i)
@@ -659,10 +648,7 @@ def subtract_simd(x: BigUInt, y: BigUInt) raises -> BigUInt:
 
     vectorize[BigUInt.VECTOR_WIDTH](len(y.words), vector_subtract)
 
-    @parameter
-    def vector_copy_rest[
-        simd_width: Int
-    ](i: Int) unified {mut result, read x, read y}:
+    def vector_copy_rest[simd_width: Int](i: Int) {mut result, read x, read y}:
         result.words.unsafe_ptr().store[width=simd_width](
             len(y.words) + i,
             x.words.unsafe_ptr().load[width=simd_width](len(y.words) + i),
@@ -719,8 +705,7 @@ def subtract_inplace(mut x: BigUInt, y: BigUInt) raises -> None:
 
     # Note that len(x.words) >= len(y.words) here
     # Use SIMD operations to subtract the words in parallel.
-    @parameter
-    def vector_subtract[simd_width: Int](i: Int) unified {mut x, read y}:
+    def vector_subtract[simd_width: Int](i: Int) {mut x, read y}:
         x.words.unsafe_ptr().store[width=simd_width](
             i,
             x.words.unsafe_ptr().load[width=simd_width](i)
@@ -760,8 +745,7 @@ def subtract_no_check_inplace(mut x: BigUInt, y: BigUInt) -> None:
     # Underflow checks are skipped here, so we assume x >= y
     # Note that len(x.words) >= len(y.words) under this assumption
 
-    @parameter
-    def vector_subtract[simd_width: Int](i: Int) unified {mut x, read y}:
+    def vector_subtract[simd_width: Int](i: Int) {mut x, read y}:
         x.words.unsafe_ptr().store[width=simd_width](
             i,
             x.words.unsafe_ptr().load[width=simd_width](i)
@@ -1591,8 +1575,7 @@ def multiply_by_uint32_le_4_inplace(mut x: BigUInt, y: UInt32):
         return
 
     # y is 2, we can just shift the digits of each word to the left by 1
-    @parameter
-    def vector_multiply_by_2[simd_width: Int](i: Int) unified {mut x}:
+    def vector_multiply_by_2[simd_width: Int](i: Int) {mut x}:
         """Shifts the digits of each word to the left by 1."""
         x.words.unsafe_ptr().store[width=simd_width](
             i, x.words.unsafe_ptr().load[width=simd_width](i) << 1
@@ -1604,8 +1587,7 @@ def multiply_by_uint32_le_4_inplace(mut x: BigUInt, y: UInt32):
         return
 
     # y is 3, we can just multiply the digits of each word by 3
-    @parameter
-    def vector_multiply_by_3[simd_width: Int](i: Int) unified {mut x}:
+    def vector_multiply_by_3[simd_width: Int](i: Int) {mut x}:
         """Multiplies the digits of each word by 3."""
         x.words.unsafe_ptr().store[width=simd_width](
             i, x.words.unsafe_ptr().load[width=simd_width](i) * 3
@@ -1617,8 +1599,7 @@ def multiply_by_uint32_le_4_inplace(mut x: BigUInt, y: UInt32):
         return
 
     # y is 4, we can just shift the digits of each word to the left by 2
-    @parameter
-    def vector_multiply_by_4[simd_width: Int](i: Int) unified {mut x}:
+    def vector_multiply_by_4[simd_width: Int](i: Int) {mut x}:
         """Shifts the digits of each word to the left by 2."""
         x.words.unsafe_ptr().store[width=simd_width](
             i, x.words.unsafe_ptr().load[width=simd_width](i) << 2
@@ -1960,13 +1941,13 @@ def floor_divide(x: BigUInt, y: BigUInt) raises -> BigUInt:
     )
 
     debug_assert[assert_mode="none"](
-        (len(x.words) == 1) or (x.words[-1] != 0),
+        (len(x.words) == 1) or (x.words[len(x.words) - 1] != 0),
         "biguint.arithmetics.floor_divide(): BigUInt x ",
         x,
         " has leading zero words!",
     )
     debug_assert[assert_mode="none"](
-        (len(y.words) == 1) or (y.words[-1] != 0),
+        (len(y.words) == 1) or (y.words[len(y.words) - 1] != 0),
         "biguint.arithmetics.floor_divide(): BigUInt y ",
         y,
         " has leading zero words!",
@@ -2036,7 +2017,9 @@ def floor_divide(x: BigUInt, y: BigUInt) raises -> BigUInt:
         # I will normalize the divisor to improve quotient estimation
         # Calculate normalization factor to make leading digit of divisor
         # as large as possible
-        var ndigits_to_shift = calculate_ndigits_for_normalization(y.words[-1])
+        var ndigits_to_shift = calculate_ndigits_for_normalization(
+            y.words[len(y.words) - 1]
+        )
 
         if ndigits_to_shift == 0:
             # No normalization needed, just use the general division algorithm
@@ -2265,15 +2248,15 @@ def floor_divide_by_uint32(x: BigUInt, y: UInt32) -> BigUInt:
     )
 
     # Most significant word of the dividend
-    var dividend = UInt64(x.words[-1] // y)
-    var carry = UInt64(x.words[-1] % y)
+    var dividend = UInt64(x.words[len(x.words) - 1] // y)
+    var carry = UInt64(x.words[len(x.words) - 1] % y)
     var y_uint64 = UInt64(y)
     var result: BigUInt
     if dividend == 0:
         result = BigUInt(unsafe_uninit_length=len(x.words) - 1)
     else:
         result = BigUInt(unsafe_uninit_length=len(x.words))
-        result.words[-1] = UInt32(dividend)
+        result.words[len(result.words) - 1] = UInt32(dividend)
 
     # Process the rest of the words
     for i in range(len(x.words) - 2, -1, -1):
@@ -2282,7 +2265,7 @@ def floor_divide_by_uint32(x: BigUInt, y: UInt32) -> BigUInt:
         carry = dividend % y_uint64
 
     debug_assert[assert_mode="none"](
-        (len(result.words) == 1) or (result.words[-1] != 0),
+        (len(result.words) == 1) or (result.words[len(result.words) - 1] != 0),
         "biguint.arithmetics.floor_divide_by_uint32(): ",
         "Result has leading zero words",
     )
@@ -2310,13 +2293,13 @@ def floor_divide_by_uint32_inplace(mut x: BigUInt, y: UInt32) -> None:
     )
 
     # Most significant word of the dividend
-    var dividend = UInt64(x.words[-1] // y)
-    var carry = UInt64(x.words[-1] % y)
+    var dividend = UInt64(x.words[len(x.words) - 1] // y)
+    var carry = UInt64(x.words[len(x.words) - 1] % y)
     var y_uint64 = UInt64(y)
     if dividend == 0:
         x.words.shrink(len(x.words) - 1)
     else:
-        x.words[-1] = UInt32(dividend)
+        x.words[len(x.words) - 1] = UInt32(dividend)
 
     # Process the rest of the words
     for i in range(len(x.words) - 2, -1, -1):
@@ -2345,7 +2328,7 @@ def floor_divide_by_uint64(x: BigUInt, y: UInt64) -> BigUInt:
     var y_uint128 = UInt128(y)
     var result: BigUInt
     if len(x.words) % 2 == 1:
-        carry = UInt128(x.words[-1])
+        carry = UInt128(x.words[len(x.words) - 1])
         result = BigUInt(unsafe_uninit_length=len(x.words) - 1)
     else:
         result = BigUInt(unsafe_uninit_length=len(x.words))
@@ -2383,7 +2366,7 @@ def floor_divide_by_uint64_inplace(mut x: BigUInt, y: UInt64) -> None:
     var carry = UInt128(0)
     var y_uint128 = UInt128(y)
     if len(x.words) % 2 == 1:
-        carry = UInt128(x.words[-1])
+        carry = UInt128(x.words[len(x.words) - 1])
         x.words.resize(len(x.words) - 1, UInt32(0))
 
     for i in range(len(x.words) - 1, -1, -2):
@@ -2423,7 +2406,7 @@ def floor_divide_by_uint128(x: BigUInt, y: UInt128) -> BigUInt:
     var y_uint255 = UInt256(y)
     var result: BigUInt
     if len(x.words) % 4 == 1:
-        carry = UInt256(x.words[-1])
+        carry = UInt256(x.words[len(x.words) - 1])
         result = BigUInt(unsafe_uninit_length=len(x.words) - 1)
     elif len(x.words) % 4 == 2:
         carry = UInt256(
@@ -2784,11 +2767,9 @@ def floor_divide_burnikel_ziegler(
     var normalized_a = a.copy()
     var ndigits_to_shift: Int
 
-    if normalized_b.words[-1] < 500_000_000:
-        ndigits_to_shift = (
-            decimo.biguint.arithmetics.calculate_ndigits_for_normalization(
-                normalized_b.words[-1]
-            )
+    if normalized_b.words[len(normalized_b.words) - 1] < 500_000_000:
+        ndigits_to_shift = calculate_ndigits_for_normalization(
+            normalized_b.words[len(normalized_b.words) - 1]
         )
     else:
         ndigits_to_shift = 0
@@ -2808,29 +2789,27 @@ def floor_divide_burnikel_ziegler(
         n - len(normalized_b.words)
     ) * 9 + ndigits_to_shift
 
-    decimo.biguint.arithmetics.multiply_by_power_of_ten_inplace(
-        normalized_b, n_digits_to_scale_up
-    )
-    decimo.biguint.arithmetics.multiply_by_power_of_ten_inplace(
-        normalized_a, n_digits_to_scale_up
-    )
+    multiply_by_power_of_ten_inplace(normalized_b, n_digits_to_scale_up)
+    multiply_by_power_of_ten_inplace(normalized_a, n_digits_to_scale_up)
 
     # The normalized_b is now 9 digits, but may still be smaller than 500_000_000.
     var gap_ratio: UInt32
-    if normalized_b.words[-1] >= 500_000_000:  # Already normalized
+    if (
+        normalized_b.words[len(normalized_b.words) - 1] >= 500_000_000
+    ):  # Already normalized
         gap_ratio = 1
-    elif normalized_b.words[-1] >= 250_000_000:  # 2x is enough
+    elif (
+        normalized_b.words[len(normalized_b.words) - 1] >= 250_000_000
+    ):  # 2x is enough
         gap_ratio = 2
     else:  # The most significant word is in [100_000_000, 125_000_000)
-        gap_ratio = BigUInt.BASE_MAX // normalized_b.words[-1]
+        gap_ratio = (
+            BigUInt.BASE_MAX // normalized_b.words[len(normalized_b.words) - 1]
+        )
 
     if gap_ratio >= 2:
-        decimo.biguint.arithmetics.multiply_by_uint32_inplace(
-            normalized_b, gap_ratio
-        )
-        decimo.biguint.arithmetics.multiply_by_uint32_inplace(
-            normalized_a, gap_ratio
-        )
+        multiply_by_uint32_inplace(normalized_b, gap_ratio)
+        multiply_by_uint32_inplace(normalized_a, gap_ratio)
 
     # STEP 2: Split the normalized a into blocks of size n.
     # t is the number of blocks in the dividend.
@@ -2843,7 +2822,7 @@ def floor_divide_burnikel_ziegler(
         # is smaller than 500_000_000.
         # In this sense, the first 2-by-1 division will generate a quotient
         # of either 0 or 1, which would exceeds n-word capacity.
-        if normalized_a.words[-1] >= 500_000_000:
+        if normalized_a.words[len(normalized_a.words) - 1] >= 500_000_000:
             t += 1
 
     var z = BigUInt.zero()  # Remainder of the division
@@ -2884,17 +2863,13 @@ def floor_divide_burnikel_ziegler(
             )
             q_i = _tuple[0].copy()
             z = _tuple[1].copy()
-            decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(
-                q, n
-            )
+            multiply_by_power_of_billion_inplace(q, n)
             q += q_i
 
         if i > 0:
-            decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(
-                z, n
-            )
+            multiply_by_power_of_billion_inplace(z, n)
             # z = r + a[(i - 1) * n : i * n]
-            decimo.biguint.arithmetics.add_by_slice_inplace(
+            add_by_slice_inplace(
                 z,
                 normalized_a,
                 bounds_y=((i - 1) * n, i * n),
@@ -2926,7 +2901,8 @@ def floor_divide_two_by_one(
     Otherwise, it will use the schoolbook division algorithm.
     """
     debug_assert[assert_mode="none"](
-        b.words[-1] >= 500_000_000, "b[-1] must be at least 500_000_000"
+        b.words[len(b.words) - 1] >= 500_000_000,
+        "b[-1] must be at least 500_000_000",
     )
 
     if (n & 1 == 1) or (n <= cut_off):
@@ -2958,9 +2934,7 @@ def floor_divide_two_by_one(
         var s = _tuple[1].copy()  # s is the final remainder
 
         # q -> q1q0
-        decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(
-            q, n // 2
-        )
+        multiply_by_power_of_billion_inplace(q, n // 2)
         q += q0
 
         return (q^, s^)
@@ -3003,19 +2977,19 @@ def floor_divide_three_by_two(
         a2a1 = a1.copy()
     else:
         a2a1 = a2.copy()
-        decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(a2a1, n)
+        multiply_by_power_of_billion_inplace(a2a1, n)
         a2a1 += a1
     # TODO: Refine this when Mojo support move values of unpacked tuples
     _tuple = floor_divide_two_by_one(a2a1, b1, n, cut_off)
     var q = _tuple[0].copy()
     ref c = _tuple[1]  # c is the carry
     var d = q * b0
-    decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(c, n)
+    multiply_by_power_of_billion_inplace(c, n)
     var r = c + a0
 
     if r < d:
         var b = b1.copy()
-        decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(b, n)
+        multiply_by_power_of_billion_inplace(b, n)
         b += b0
         q -= BigUInt.one()
         r += b
@@ -3071,7 +3045,7 @@ def floor_divide_slices_two_by_one(
     """
 
     debug_assert[assert_mode="none"](
-        b.words[-1] >= 500_000_000,
+        b.words[len(b.words) - 1] >= 500_000_000,
         "floor_divide_slices_two_by_one(): b[-1] must be at least 500_000_000",
     )
 
@@ -3125,9 +3099,7 @@ def floor_divide_slices_two_by_one(
         var s = _tuple[1].copy()  # s is the final remainder
 
         # q -> q1q0
-        decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(
-            q, n // 2
-        )
+        multiply_by_power_of_billion_inplace(q, n // 2)
         q += q0
 
         return (q^, s^)
@@ -3195,7 +3167,7 @@ def floor_divide_slices_three_by_two(
     ref c = _tuple[1]  # c is the carry
 
     var d = multiply_slices(q, b, (0, len(q.words)), bounds_b0)
-    decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(c, n)
+    multiply_by_power_of_billion_inplace(c, n)
     var r = add_slices(c, a, bounds_x=(0, len(c.words)), bounds_y=bounds_a0)
 
     if r < d:

@@ -48,7 +48,7 @@ def _csv_quote(s: String) -> String:
 
 
 def _bench_one[
-    Body: fn(a: Decimal128, b: Decimal128) raises capturing[_] -> UInt64,
+    Body: def(a: Decimal128, b: Decimal128) raises capturing[_] -> UInt64,
 ](a: Decimal128, b: Decimal128, iters: Int) raises -> Float64:
     """Run `Body(a, b)` once per inner iter; best-of-5; returns ns/op.
 
@@ -103,7 +103,7 @@ def _bench_to_str(d: Decimal128, iters: Int) raises -> Float64:
     for _ in range(REPS):
         var t0 = perf_counter_ns()
         for _ in range(iters):
-            sink += UInt64(len(String(d)))
+            sink += UInt64(String(d).byte_length())
         var dt = Int(perf_counter_ns() - t0)
         if dt < best:
             best = dt
@@ -229,10 +229,10 @@ def _run_case(
 
 
 def _pad(s: String, width: Int) -> String:
-    if len(s) >= width:
+    if s.byte_length() >= width:
         return s
     var out = s
-    var pad = width - len(s)
+    var pad = width - s.byte_length()
     for _ in range(pad):
         out += " "
     return out
@@ -278,7 +278,7 @@ def main() raises:
         var pair = _run_case(op, bc, iters)
         var result = pair[0]
         var per = pair[1]
-        var result_short = result if len(result) <= 30 else String(
+        var result_short = result if result.byte_length() <= 30 else String(
             result[byte=0:30]
         )
         print(_pad(bc.name, 40), _pad(result_short, 32), per)

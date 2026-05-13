@@ -6,7 +6,6 @@ runs:
   steps:
     - uses: prefix-dev/setup-pixi@v0.9.5
       with:
-        cache: true
         activate-environment: true
     - name: Download decimo.mojopkg artifact
       uses: actions/download-artifact@v4

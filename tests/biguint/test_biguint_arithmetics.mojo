@@ -11,8 +11,12 @@ from std.testing import assert_equal, assert_true
 from decimo.biguint.biguint import BigUInt
 from decimo.tests import TestCase, parse_file, load_test_cases
 
-comptime file_path_arithmetics = "tests/biguint/test_data/biguint_arithmetics.toml"
-comptime file_path_truncate_divide = "tests/biguint/test_data/biguint_truncate_divide.toml"
+comptime file_path_arithmetics = (
+    "tests/biguint/test_data/biguint_arithmetics.toml"
+)
+comptime file_path_truncate_divide = (
+    "tests/biguint/test_data/biguint_truncate_divide.toml"
+)
 
 
 def _set_max_str_digits(limit: Int) raises:

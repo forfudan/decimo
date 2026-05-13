@@ -133,10 +133,7 @@ def _run() raises:
     cmd.mutually_exclusive(["scientific", "engineering"])
     # Allow expressions starting with '-' (e.g. "-3*pi*(sin(1))") to be
     # treated as positional values rather than option flags.
-    for i in range(len(cmd.args)):
-        if cmd.args[i].name == "expr":
-            cmd.args[i]._allow_hyphen_values = True
-            break
+    cmd.allow_negative_expressions()
     cmd.add_tip(
         'If your expression contains *, ( or ), quote it: decimo "2 * (3 + 4)"'
     )
@@ -163,8 +160,8 @@ def _run() raises:
     # 3. No expr, stdin is piped     → pipe mode
     # 4. No expr, stdin is a TTY     → interactive REPL
 
-    var has_file = len(args.file.value) > 0
-    var has_expr = len(args.expr.value) > 0
+    var has_file = args.file.value.byte_length() > 0
+    var has_expr = args.expr.value.byte_length() > 0
 
     if has_file and has_expr:
         # Ambiguous: both --file and a positional expression were given.
@@ -234,7 +231,7 @@ def _run_pipe_mode(
 ) raises:
     """Read expressions from stdin (one per line) and evaluate each."""
     var text = read_stdin()
-    if len(text) == 0:
+    if text.byte_length() == 0:
         return
 
     var expressions = filter_expression_lines(split_into_lines(text))

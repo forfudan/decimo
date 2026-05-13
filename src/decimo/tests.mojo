@@ -250,7 +250,7 @@ def expand_value(s: String) raises -> String:
     var result = String()
     var i = 0
     var s_bytes = s.as_bytes()
-    var slen = len(s)
+    var slen = s.byte_length()
 
     while i < slen:
         var ch = chr(Int(s_bytes[i]))
@@ -269,7 +269,7 @@ def expand_value(s: String) raises -> String:
             # Find the LAST comma (to handle multi-char repeat strings)
             var comma_pos = -1
             var inner_bytes = inner.as_bytes()
-            var inner_len = len(inner)
+            var inner_len = inner.byte_length()
             var k = inner_len - 1
             while k >= 0:
                 if chr(Int(inner_bytes[k])) == ",":

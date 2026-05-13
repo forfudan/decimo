@@ -35,12 +35,12 @@ def compare(x1: BigUInt, x2: BigUInt) -> Int8:
         (3) -1 if x1 < x2.
     """
     debug_assert[assert_mode="none"](
-        (len(x1.words) == 1) or (x1.words[-1] != 0),
+        (len(x1.words) == 1) or (x1.words[len(x1.words) - 1] != 0),
         "biguint.comparison.compare(): ",
         "BigUInt x1 contains leading zero words.",
     )
     debug_assert[assert_mode="none"](
-        (len(x2.words) == 1) or (x2.words[-1] != 0),
+        (len(x2.words) == 1) or (x2.words[len(x2.words) - 1] != 0),
         "biguint.comparison.compare(): ",
         "BigUInt x2 contains leading zero words.",
     )

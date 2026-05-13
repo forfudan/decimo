@@ -493,8 +493,9 @@ struct BigInt(
                     ),
                 )
             # Check that the fractional digits are all zero
+            var coef_len = len(coef)
             for i in range(1, scale + 1):
-                if coef[-i] != 0:
+                if coef[coef_len - i] != 0:
                     raise ConversionError(
                         function="BigInt.from_string(value: String)",
                         message=(
@@ -562,7 +563,7 @@ struct BigInt(
                 remainder = temp & 0xFFFF_FFFF
 
             # Remove leading zeros from dividend
-            while len(div_words) > 1 and div_words[-1] == 0:
+            while len(div_words) > 1 and div_words[len(div_words) - 1] == 0:
                 div_words.shrink(len(div_words) - 1)
 
             result.words.append(UInt32(remainder))
@@ -692,7 +693,10 @@ struct BigInt(
                 remainder = temp % BigUInt.BASE
 
             # Remove leading zeros from dividend
-            while len(dividend.words) > 1 and dividend.words[-1] == 0:
+            while (
+                len(dividend.words) > 1
+                and dividend.words[len(dividend.words) - 1] == 0
+            ):
                 dividend.words.shrink(len(dividend.words) - 1)
 
             decimal_words.append(UInt32(remainder))
@@ -742,8 +746,10 @@ struct BigInt(
         if line_width > 0:
             var start = 0
             var end = line_width
-            var lines = List[String](capacity=len(result) // line_width + 1)
-            while end < len(result):
+            var lines = List[String](
+                capacity=result.byte_length() // line_width + 1
+            )
+            while end < result.byte_length():
                 lines.append(String(result[byte=start:end]))
                 start = end
                 end += line_width
@@ -781,9 +787,9 @@ struct BigInt(
             start_idx = 1  # Skip the minus sign
 
         var digits_part = String(result[byte=start_idx:])
-        var end = len(digits_part)
+        var end = digits_part.byte_length()
         var start = end - 3
-        var blocks = List[String](capacity=len(digits_part) // 3 + 1)
+        var blocks = List[String](capacity=digits_part.byte_length() // 3 + 1)
         while start > 0:
             blocks.append(String(digits_part[byte=start:end]))
             end = start
@@ -819,7 +825,7 @@ struct BigInt(
                     first_word = False
             else:
                 var h = hex(word)[byte=2:]
-                for _ in range(8 - len(h)):
+                for _ in range(8 - h.byte_length()):
                     result += "0"
                 result += h
 
@@ -851,7 +857,7 @@ struct BigInt(
                     first_word = False
             else:
                 var b = bin(word)[byte=2:]
-                for _ in range(32 - len(b)):
+                for _ in range(32 - b.byte_length()):
                     result += "0"
                 result += b
 
@@ -1912,7 +1918,7 @@ struct BigInt(
 
     def _normalize(mut self):
         """Strips leading zero words and normalizes -0 to +0."""
-        while len(self.words) > 1 and self.words[-1] == 0:
+        while len(self.words) > 1 and self.words[len(self.words) - 1] == 0:
             self.words.shrink(len(self.words) - 1)
 
         # Normalize -0 to +0
@@ -1932,11 +1938,11 @@ struct BigInt(
         fixed_labels.append("sign:")
         var max_label_len = 0
         for i in range(len(fixed_labels)):
-            if len(fixed_labels[i]) > max_label_len:
-                max_label_len = len(fixed_labels[i])
+            if fixed_labels[i].byte_length() > max_label_len:
+                max_label_len = fixed_labels[i].byte_length()
         # Check word labels
         for i in range(len(self.words)):
-            var label_len = len("word :") + len(String(i))
+            var label_len = "word :".byte_length() + String(i).byte_length()
             if label_len > max_label_len:
                 max_label_len = label_len
 
@@ -1951,7 +1957,7 @@ struct BigInt(
         var string_of_number = self.to_string(line_width=value_width).split(
             "\n"
         )
-        result += "number:" + String(" ") * (col - len("number:"))
+        result += "number:" + String(" ") * (col - "number:".byte_length())
         for i in range(len(string_of_number)):
             if i > 0:
                 result += String(" ") * col
@@ -1960,10 +1966,10 @@ struct BigInt(
         # number (hex) line
         var hex_str = self.to_hex_string()
         var hex_label = String("number (hex):")
-        result += hex_label + String(" ") * (col - len(hex_label))
+        result += hex_label + String(" ") * (col - hex_label.byte_length())
         var hex_start = 0
         var first_hex_line = True
-        while hex_start + value_width < len(hex_str):
+        while hex_start + value_width < hex_str.byte_length():
             if not first_hex_line:
                 result += String(" ") * col
             result += (
@@ -1977,13 +1983,13 @@ struct BigInt(
         result += String(hex_str[byte=hex_start:]) + "\n"
 
         # sign line
-        result += "sign:" + String(" ") * (col - len("sign:"))
+        result += "sign:" + String(" ") * (col - "sign:".byte_length())
         result += String("negative" if self.sign else "non-negative") + "\n"
 
         # word lines
         for i in range(len(self.words)):
             var label = "word " + String(i) + ":"
-            result += label + String(" ") * (col - len(label))
+            result += label + String(" ") * (col - label.byte_length())
             result += "0x" + decimo.str.rjust(
                 String(hex(self.words[i])[byte=2:]), 8, fillchar="0"
             )
@@ -2567,20 +2573,20 @@ def _dc_to_str_recursive(
 
     # Zero-pad low_str to exactly low_width digits.
     # Build the result in a pre-allocated byte buffer to avoid O(n) concatenations.
-    var padding = low_width - len(low_str)
+    var padding = low_width - low_str.byte_length()
     if padding <= 0:
         return high_str + low_str
 
-    var total_len = len(high_str) + padding + len(low_str)
+    var total_len = high_str.byte_length() + padding + low_str.byte_length()
     var buf = List[UInt8](capacity=total_len)
     # Copy high_str bytes
-    for i in range(len(high_str)):
+    for i in range(high_str.byte_length()):
         buf.append(high_str.unsafe_ptr()[i])
     # Write zero padding
     for _ in range(padding):
         buf.append(48)  # ASCII '0'
     # Copy low_str bytes
-    for i in range(len(low_str)):
+    for i in range(low_str.byte_length()):
         buf.append(low_str.unsafe_ptr()[i])
 
     return String(unsafe_from_utf8=buf^)

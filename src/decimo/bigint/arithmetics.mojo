@@ -162,7 +162,7 @@ def _subtract_magnitudes(a: List[UInt32], b: List[UInt32]) -> List[UInt32]:
         result.append(UInt32(diff & 0xFFFF_FFFF))
 
     # Strip leading zeros
-    while len(result) > 1 and result[-1] == 0:
+    while len(result) > 1 and result[len(result) - 1] == 0:
         result.shrink(len(result) - 1)
 
     return result^
@@ -681,7 +681,7 @@ def _divmod_single_word(
         remainder = temp % divisor
 
     # Strip leading zeros from quotient
-    while len(quotient) > 1 and quotient[-1] == 0:
+    while len(quotient) > 1 and quotient[len(quotient) - 1] == 0:
         quotient.shrink(len(quotient) - 1)
 
     return (quotient^, UInt32(remainder))
@@ -831,7 +831,7 @@ def _divmod_magnitudes(
         quotient[j] = UInt32(q_hat)
 
     # Strip leading zeros from quotient
-    while len(quotient) > 1 and quotient[-1] == 0:
+    while len(quotient) > 1 and quotient[len(quotient) - 1] == 0:
         quotient.shrink(len(quotient) - 1)
 
     # Step D8: Unnormalize remainder by shifting right
@@ -938,7 +938,7 @@ def _shift_right_words(
         var copy = List[UInt32](capacity=num_words)
         for i in range(min(num_words, len(a))):
             copy.append(a[i])
-        while len(copy) > 1 and copy[-1] == 0:
+        while len(copy) > 1 and copy[len(copy) - 1] == 0:
             copy.shrink(len(copy) - 1)
         if len(copy) == 0:
             copy.append(UInt32(0))
@@ -956,7 +956,7 @@ def _shift_right_words(
         result.append(UInt32(lo | hi))
 
     # Strip leading zeros
-    while len(result) > 1 and result[-1] == 0:
+    while len(result) > 1 and result[len(result) - 1] == 0:
         result.shrink(len(result) - 1)
     if len(result) == 0:
         result.append(UInt32(0))
@@ -995,7 +995,7 @@ def _get_words_slice(a: List[UInt32], start: Int, end: Int) -> List[UInt32]:
     result.resize(unsafe_uninit_length=len_slice)
     memcpy(dest=result._data, src=a._data + start, count=len_slice)
     # Strip leading zeros
-    while len(result) > 1 and result[-1] == 0:
+    while len(result) > 1 and result[len(result) - 1] == 0:
         result.shrink(len(result) - 1)
     return result^
 
@@ -1269,9 +1269,9 @@ def _divmod_knuth_d_from_slices(
     while len(u) > n:
         u.shrink(len(u) - 1)
     # Strip leading zeros
-    while len(quotient) > 1 and quotient[-1] == 0:
+    while len(quotient) > 1 and quotient[len(quotient) - 1] == 0:
         quotient.shrink(len(quotient) - 1)
-    while len(u) > 1 and u[-1] == 0:
+    while len(u) > 1 and u[len(u) - 1] == 0:
         u.shrink(len(u) - 1)
 
     return (quotient^, u^)
@@ -1396,9 +1396,9 @@ def _divmod_burnikel_ziegler(
         remainder = _shift_right_words(z, bit_shift, len(z))
 
     # Normalize results
-    while len(quotient) > 1 and quotient[-1] == 0:
+    while len(quotient) > 1 and quotient[len(quotient) - 1] == 0:
         quotient.shrink(len(quotient) - 1)
-    while len(remainder) > 1 and remainder[-1] == 0:
+    while len(remainder) > 1 and remainder[len(remainder) - 1] == 0:
         remainder.shrink(len(remainder) - 1)
 
     return (quotient^, remainder^)
@@ -1545,9 +1545,9 @@ def _bz_three_by_two_slices(
     _subtract_magnitudes_inplace(c, d)
 
     # Strip leading zeros
-    while len(q) > 1 and q[-1] == 0:
+    while len(q) > 1 and q[len(q) - 1] == 0:
         q.shrink(len(q) - 1)
-    while len(c) > 1 and c[-1] == 0:
+    while len(c) > 1 and c[len(c) - 1] == 0:
         c.shrink(len(c) - 1)
 
     return (q^, c^)
@@ -2000,7 +2000,7 @@ def right_shift_inplace(mut x: BigInt, shift: Int):
         x.words.shrink(new_len)
 
     # Strip leading zeros
-    while len(x.words) > 1 and x.words[-1] == 0:
+    while len(x.words) > 1 and x.words[len(x.words) - 1] == 0:
         x.words.shrink(len(x.words) - 1)
 
     if len(x.words) == 0:
@@ -2491,7 +2491,7 @@ def right_shift(x: BigInt, shift: Int) -> BigInt:
             result.append(UInt32(lo | hi))
 
     # Strip leading zeros
-    while len(result) > 1 and result[-1] == 0:
+    while len(result) > 1 and result[len(result) - 1] == 0:
         result.shrink(len(result) - 1)
 
     if len(result) == 0:

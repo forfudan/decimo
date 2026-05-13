@@ -725,12 +725,12 @@ struct TOMLParser:
 
     def _parse_integer(self, val_str: String) raises -> TOMLValue:
         """Parse an integer string, handling hex/octal/binary prefixes."""
-        if len(val_str) > 2:
+        if val_str.byte_length() > 2:
             var prefix = String(val_str[byte=:2])
             if prefix == "0x" or prefix == "0X":
                 var hex_str = String(val_str[byte=2:])
                 var result: Int = 0
-                for i in range(len(hex_str)):
+                for i in range(hex_str.byte_length()):
                     var ch = String(hex_str[byte=i])
                     result *= 16
                     if ch >= "0" and ch <= "9":
@@ -743,7 +743,7 @@ struct TOMLParser:
             elif prefix == "0o" or prefix == "0O":
                 var oct_str = String(val_str[byte=2:])
                 var result: Int = 0
-                for i in range(len(oct_str)):
+                for i in range(oct_str.byte_length()):
                     result = result * 8 + (
                         ord(String(oct_str[byte=i])) - ord("0")
                     )
@@ -751,7 +751,7 @@ struct TOMLParser:
             elif prefix == "0b" or prefix == "0B":
                 var bin_str = String(val_str[byte=2:])
                 var result: Int = 0
-                for i in range(len(bin_str)):
+                for i in range(bin_str.byte_length()):
                     result = result * 2 + (
                         ord(String(bin_str[byte=i])) - ord("0")
                     )
@@ -951,6 +951,11 @@ struct TOMLParser:
 
         Returns:
             The parsed `TOMLDocument`.
+
+        Raises:
+            Error: If the token stream is malformed (e.g., unexpected
+                tokens, duplicate keys, unterminated arrays/tables, or
+                invalid table headers).
         """
         var document = TOMLDocument()
         var current_path = List[String]()

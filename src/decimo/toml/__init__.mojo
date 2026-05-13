@@ -14,8 +14,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-"""
-decimo.toml — A native TOML v1.0 parser for Mojo.
+"""A native TOML v1.0 parser for Mojo.
 
 (Originally named tomlmojo, now merged into decimo as a subpackage.)
 

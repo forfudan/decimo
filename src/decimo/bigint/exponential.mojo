@@ -238,7 +238,7 @@ def _right_shift_magnitude_bits(a: List[UInt32], shift: Int) -> List[UInt32]:
             result.append(UInt32(lo | hi))
 
     # Strip leading zeros
-    while len(result) > 1 and result[-1] == 0:
+    while len(result) > 1 and result[len(result) - 1] == 0:
         result.shrink(len(result) - 1)
     if len(result) == 0:
         result.append(UInt32(0))
@@ -477,7 +477,7 @@ def _sqrt_precision_doubling_fast(x: BigInt) raises -> BigInt:
                 a_words[i] = UInt32(0xFFFF_FFFF)
                 borrow = 1
         # Strip leading zeros
-        while len(a_words) > 1 and a_words[-1] == 0:
+        while len(a_words) > 1 and a_words[len(a_words) - 1] == 0:
             a_words.shrink(len(a_words) - 1)
 
     return BigInt(raw_words=a_words^, sign=False)

@@ -29,9 +29,17 @@ from std import testing
 
 from decimo.errors import ConversionError, ValueError
 from decimo.rounding_mode import RoundingMode
+from decimo.bigdecimal.exponential import MathCache
 from decimo.bigdecimal.rounding import round_to_precision
 from decimo.bigint10.bigint10 import BigInt10
 import decimo.str
+import decimo.bigdecimal.arithmetics
+import decimo.bigdecimal.comparison
+import decimo.bigdecimal.constants
+import decimo.bigdecimal.exponential
+import decimo.bigdecimal.rounding
+import decimo.bigdecimal.trigonometric
+import decimo.biguint.arithmetics
 
 # Type aliases for the arbitrary-precision decimal type.
 # The names BigDecimal, Decimal, and BDec can be used interchangeably.
@@ -695,7 +703,7 @@ struct BigDecimal(
 
         var result = String("-") if self.sign else String("")
         var coefficient_string = self.coefficient.to_string()
-        var num_digits = len(coefficient_string)
+        var num_digits = coefficient_string.byte_length()
 
         # CPython-compatible logic for Decimal.__str__:
         #
@@ -745,11 +753,11 @@ struct BigDecimal(
 
             # Zero-pad the right side if fewer sig-digits than lead_digits
             # e.g. coef="5", lead_digits=3  ->  coef="500"  (500E-3)
-            if len(coef) < lead_digits:
-                coef = coef + "0" * (lead_digits - len(coef))
+            if coef.byte_length() < lead_digits:
+                coef = coef + "0" * (lead_digits - coef.byte_length())
 
             # Build mantissa
-            if len(coef) <= lead_digits:
+            if coef.byte_length() <= lead_digits:
                 result += coef
             else:
                 result += coef[byte=:lead_digits]
@@ -784,7 +792,7 @@ struct BigDecimal(
                         trimmed.append(cptr[i])
                     coef = String(unsafe_from_utf8=trimmed^)
             result += coef[byte=0]
-            if len(coef) > 1:
+            if coef.byte_length() > 1:
                 result += "."
                 result += coef[byte=1:]
             result += "E"
@@ -834,8 +842,10 @@ struct BigDecimal(
         if line_width > 0:
             var start = 0
             var end = line_width
-            var lines = List[String](capacity=len(result) // line_width + 1)
-            while end < len(result):
+            var lines = List[String](
+                capacity=result.byte_length() // line_width + 1
+            )
+            while end < result.byte_length():
                 lines.append(String(result[byte=start:end]))
                 start = end
                 end += line_width
@@ -1749,7 +1759,7 @@ struct BigDecimal(
     def ln(
         self,
         precision: Int,
-        mut cache: decimo.bigdecimal.exponential.MathCache,
+        mut cache: MathCache,
     ) raises -> Self:
         """Returns the natural logarithm using a cache for ln(2)/ln(1.25).
 
@@ -2386,10 +2396,10 @@ struct BigDecimal(
         fixed_labels.append("scale:")
         var max_label_len = 0
         for i in range(len(fixed_labels)):
-            if len(fixed_labels[i]) > max_label_len:
-                max_label_len = len(fixed_labels[i])
+            if fixed_labels[i].byte_length() > max_label_len:
+                max_label_len = fixed_labels[i].byte_length()
         for i in range(len(self.coefficient.words)):
-            var label_len = len("word :") + len(String(i))
+            var label_len = "word :".byte_length() + String(i).byte_length()
             if label_len > max_label_len:
                 max_label_len = label_len
 
@@ -2404,7 +2414,7 @@ struct BigDecimal(
         var string_of_number = self.to_string(line_width=value_width).split(
             "\n"
         )
-        result += "number:" + String(" ") * (col - len("number:"))
+        result += "number:" + String(" ") * (col - "number:".byte_length())
         for i in range(len(string_of_number)):
             if i > 0:
                 result += String(" ") * col
@@ -2415,24 +2425,24 @@ struct BigDecimal(
             line_width=value_width
         ).split("\n")
         var coeff_label = String("coefficient:")
-        result += coeff_label + String(" ") * (col - len(coeff_label))
+        result += coeff_label + String(" ") * (col - coeff_label.byte_length())
         for i in range(len(string_of_coefficient)):
             if i > 0:
                 result += String(" ") * col
             result += string_of_coefficient[i] + "\n"
 
         # negative line
-        result += "negative:" + String(" ") * (col - len("negative:"))
+        result += "negative:" + String(" ") * (col - "negative:".byte_length())
         result += String(self.sign) + "\n"
 
         # scale line
-        result += "scale:" + String(" ") * (col - len("scale:"))
+        result += "scale:" + String(" ") * (col - "scale:".byte_length())
         result += String(self.scale) + "\n"
 
         # word lines
         for i in range(len(self.coefficient.words)):
             var label = "word " + String(i) + ":"
-            result += label + String(" ") * (col - len(label))
+            result += label + String(" ") * (col - label.byte_length())
             result += (
                 decimo.str.rjust(
                     String(self.coefficient.words[i]), 9, fillchar="0"
@@ -2700,7 +2710,7 @@ def _insert_digit_separators(s: String, delimiter: String) -> String:
         frac_part = String(s[byte = dot_pos + 1 : e_pos])
 
     # --- Group integer part (right-to-left every 3 digits) ---
-    var int_len = len(int_part)
+    var int_len = int_part.byte_length()
     if int_len > 3:
         var blocks = List[String](capacity=int_len // 3 + 1)
         var end_i = int_len
@@ -2714,7 +2724,7 @@ def _insert_digit_separators(s: String, delimiter: String) -> String:
         int_part = delimiter.join(blocks)
 
     # --- Group fractional part (left-to-right every 3 digits) ---
-    var frac_len = len(frac_part)
+    var frac_len = frac_part.byte_length()
     if frac_len > 3:
         var blocks = List[String](capacity=frac_len // 3 + 1)
         var i = 0

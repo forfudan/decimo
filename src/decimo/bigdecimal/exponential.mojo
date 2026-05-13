@@ -18,6 +18,10 @@
 
 from std import math
 
+import decimo.bigdecimal.arithmetics
+import decimo.biguint.arithmetics
+import decimo.biguint.exponential
+import decimo.decimal128.utility
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.errors import ValueError, OverflowError, ZeroDivisionError
 from decimo.rounding_mode import RoundingMode
@@ -649,9 +653,11 @@ def integer_root(
     var x_exp = abs_x.adjusted()  # floor(log10(x))
 
     # Extract leading digits for a more precise Float64 approximation
-    var top_word = Float64(abs_x.coefficient.words[-1])
+    var top_word = Float64(
+        abs_x.coefficient.words[len(abs_x.coefficient.words) - 1]
+    )
     var digits_in_top = 0
-    var temp_val = abs_x.coefficient.words[-1]
+    var temp_val = abs_x.coefficient.words[len(abs_x.coefficient.words) - 1]
     while temp_val > 0:
         temp_val //= 10
         digits_in_top += 1
@@ -661,9 +667,9 @@ def integer_root(
     # Normalize: get a value in [1, 10) * 10^x_exp
     var mantissa = top_word / Float64(10.0) ** Float64(digits_in_top - 1)
     if len(abs_x.coefficient.words) > 1:
-        mantissa += Float64(abs_x.coefficient.words[-2]) / (
-            Float64(10.0) ** Float64(digits_in_top - 1) * 1e9
-        )
+        mantissa += Float64(
+            abs_x.coefficient.words[len(abs_x.coefficient.words) - 2]
+        ) / (Float64(10.0) ** Float64(digits_in_top - 1) * 1e9)
 
     var x_f64 = mantissa * Float64(10.0) ** Float64(x_exp)
     var guess_f64 = x_f64 ** (1.0 / Float64(n_int))
@@ -1057,9 +1063,11 @@ def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
     c_norm.scale += norm_shift
 
     # --- Float64 initial guess for 1/sqrt(c_norm) ---
-    var top_word = Float64(c_norm.coefficient.words[-1])
+    var top_word = Float64(
+        c_norm.coefficient.words[len(c_norm.coefficient.words) - 1]
+    )
     var digits_in_top: Int = 0
-    var temp_val = c_norm.coefficient.words[-1]
+    var temp_val = c_norm.coefficient.words[len(c_norm.coefficient.words) - 1]
     while temp_val > 0:
         temp_val //= 10
         digits_in_top += 1
@@ -1068,9 +1076,9 @@ def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
 
     var mantissa = top_word / Float64(10.0) ** Float64(digits_in_top - 1)
     if len(c_norm.coefficient.words) > 1:
-        mantissa += Float64(c_norm.coefficient.words[-2]) / (
-            Float64(10.0) ** Float64(digits_in_top + 8)
-        )
+        mantissa += Float64(
+            c_norm.coefficient.words[len(c_norm.coefficient.words) - 2]
+        ) / (Float64(10.0) ** Float64(digits_in_top + 8))
 
     var c_norm_exp = c_norm.adjusted()
     var c_norm_f64 = mantissa * Float64(10.0) ** Float64(c_norm_exp)
@@ -1373,9 +1381,11 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
     x_norm.scale += shift  # x_norm = x * 10^(-shift)
 
     # --- Float64 initial guess for 1/sqrt(x_norm) ---
-    var top_word = Float64(x_norm.coefficient.words[-1])
+    var top_word = Float64(
+        x_norm.coefficient.words[len(x_norm.coefficient.words) - 1]
+    )
     var digits_in_top: Int = 0
-    var temp_val = x_norm.coefficient.words[-1]
+    var temp_val = x_norm.coefficient.words[len(x_norm.coefficient.words) - 1]
     while temp_val > 0:
         temp_val //= 10
         digits_in_top += 1
@@ -1384,9 +1394,9 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
     var mantissa = top_word / Float64(10.0) ** Float64(digits_in_top - 1)
     if len(x_norm.coefficient.words) > 1:
-        mantissa += Float64(x_norm.coefficient.words[-2]) / (
-            Float64(10.0) ** Float64(digits_in_top + 8)
-        )
+        mantissa += Float64(
+            x_norm.coefficient.words[len(x_norm.coefficient.words) - 2]
+        ) / (Float64(10.0) ** Float64(digits_in_top + 8))
 
     var x_norm_exp = x_norm.adjusted()
     var x_norm_f64 = mantissa * Float64(10.0) ** Float64(x_norm_exp)
@@ -1657,17 +1667,21 @@ def sqrt_decimal_approach(x: BigDecimal, precision: Int) raises -> BigDecimal:
         )
     elif ndigits_coef <= 18:
         value = (
-            UInt128(x.coefficient.words[-1])
+            UInt128(x.coefficient.words[len(x.coefficient.words) - 1])
             * UInt128(1_000_000_000_000_000_000)
-        ) + (UInt128(x.coefficient.words[-2]) * UInt128(1_000_000_000))
+        ) + (
+            UInt128(x.coefficient.words[len(x.coefficient.words) - 2])
+            * UInt128(1_000_000_000)
+        )
     else:  # ndigits_coef > 18
         value = (
             (
-                UInt128(x.coefficient.words[-1])
+                UInt128(x.coefficient.words[len(x.coefficient.words) - 1])
                 * UInt128(1_000_000_000_000_000_000)
             )
-            + UInt128(x.coefficient.words[-2]) * UInt128(1_000_000_000)
-            + UInt128(x.coefficient.words[-3])
+            + UInt128(x.coefficient.words[len(x.coefficient.words) - 2])
+            * UInt128(1_000_000_000)
+            + UInt128(x.coefficient.words[len(x.coefficient.words) - 3])
         )
     if odd_ndigits_frac_part:
         value = value * UInt128(10)
@@ -2121,7 +2135,7 @@ def log(x: BigDecimal, base: BigDecimal, precision: Int) raises -> BigDecimal:
         raise ValueError(message="Cannot use zero as a base", function="log()")
     if (
         base.coefficient.number_of_digits() == base.scale + 1
-        and base.coefficient.words[-1] == 1
+        and base.coefficient.words[len(base.coefficient.words) - 1] == 1
     ):
         raise ValueError(
             message="Cannot use base 1 for logarithm", function="log()"
@@ -2130,7 +2144,7 @@ def log(x: BigDecimal, base: BigDecimal, precision: Int) raises -> BigDecimal:
     # Special cases
     if (
         x.coefficient.number_of_digits() == x.scale + 1
-        and x.coefficient.words[-1] == 1
+        and x.coefficient.words[len(x.coefficient.words) - 1] == 1
     ):
         return BigDecimal(BigUInt.zero(), 0, False)  # log_base(1) = 0
 
@@ -2141,7 +2155,7 @@ def log(x: BigDecimal, base: BigDecimal, precision: Int) raises -> BigDecimal:
     if (
         base.scale == 0
         and base.coefficient.number_of_digits() == 2
-        and base.coefficient.words[-1] == 10
+        and base.coefficient.words[len(base.coefficient.words) - 1] == 10
     ):
         return log10(x, precision)
 
@@ -2191,7 +2205,7 @@ def log10(x: BigDecimal, precision: Int) raises -> BigDecimal:
     # Special case for x = 1
     if (
         x.coefficient.number_of_digits() == x.scale + 1
-        and x.coefficient.words[-1] == 1
+        and x.coefficient.words[len(x.coefficient.words) - 1] == 1
     ):
         return BigDecimal(BigUInt.zero(), 0, False)  # log10(1) = 0
 
