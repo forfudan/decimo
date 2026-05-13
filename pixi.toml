@@ -4,12 +4,12 @@ channels = ["https://conda.modular.com/max", "https://repo.prefix.dev/modular-co
 description = "An arbitrary-precision decimal and integer library for Mojo"
 license = "Apache-2.0"
 name = "decimo"
-platforms = ["osx-arm64", "linux-64", "linux-aarch64"]
+platforms = ["osx-arm64", "linux-64"]
 readme = "README.md"
 version = "0.10.0"
 
 [dependencies]
-# argmojo = ">=0.6.0,<0.7" # CLI argument parsing for the Decimo calculator
+argmojo = ">=0.6.0,<0.7" # CLI argument parsing for the Decimo calculator
 mojo = ">=1.0.0b1,<2" # Mojo language compiler and runtime
 python = ">=3.13" # For Python bindings and tests
 python-build = ">=0.2.0" # Build PyPI wheel (`pixi run wheel`)
@@ -81,21 +81,26 @@ dec_debug = """clear && pixi run package && cd benches/decimal128 \
 
 # Fetch argmojo source code for CLI calculator
 # Only do this when necessary
-# (argmojo is not compatible with the latest mojo version)
-fetch = """git clone https://github.com/forfudan/argmojo.git temp/argmojo 2>/dev/null || true \
-&&cd temp/argmojo && git fetch --all --tags --prune 2>/dev/null \
-&& git checkout fc06e173e3c335f449df13859560bb40a2d4d872 2>/dev/null"""
+# (kept for fallback if conda argmojo becomes unavailable for some platform)
+# fetch = """git clone https://github.com/forfudan/argmojo.git temp/argmojo 2>/dev/null || true \
+# &&cd temp/argmojo && git fetch --all --tags --prune 2>/dev/null \
+# && git checkout fc06e173e3c335f449df13859560bb40a2d4d872 2>/dev/null"""
 
 # cli calculator
 bcli = "clear && pixi run buildcli"
-# Uncomment the following lines if we build the CLI package with
-# local clone of argmojo
-buildcli = """pixi run fetch \
-&& mkdir -p temp \
+# argmojo is provided by the conda dependency, so no temp/argmojo build
+# step is needed. We still package decimo into temp/ so the CLI build
+# (and downstream `testcli`) can use `-I temp`.
+buildcli = """mkdir -p temp \
 && pixi run mojo package src/decimo -o temp/decimo.mojopkg \
-&& pixi run mojo package temp/argmojo/src/argmojo -o temp/argmojo.mojopkg \
 && pixi run mojo build -I temp -I src/cli -o decimo src/cli/main.mojo"""
-# buildcli = """pixi run mojo build -I src -I src/cli -o decimo src/cli/main.mojo"""
+# Uncomment the following lines if we build the CLI package with a
+# local clone of argmojo (e.g. when conda argmojo is unavailable):
+# buildcli = """pixi run fetch \
+# && mkdir -p temp \
+# && pixi run mojo package src/decimo -o temp/decimo.mojopkg \
+# && pixi run mojo package temp/argmojo/src/argmojo -o temp/argmojo.mojopkg \
+# && pixi run mojo build -I temp -I src/cli -o decimo src/cli/main.mojo"""
 tcli = "clear && pixi run test cli"
 testcli = "pixi run buildcli && cp temp/decimo.mojopkg tests/ && bash tests/test.sh cli"
 
