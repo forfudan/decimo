@@ -21,7 +21,7 @@ from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.errors import ValueError
 from decimo.bigint10.bigint10 import BigInt10
 from decimo.rounding_mode import RoundingMode
-import decimo.bigdecimal.trigonometric
+import decimo.bigdecimal.trigonometric as bigdecimal_trigonometric
 
 comptime PI_1024 = BigDecimal(
     coefficient=BigUInt(
@@ -368,14 +368,14 @@ def pi_machin(precision: Int) raises -> BigDecimal:
     # Calculate 4 * arctan(1/5)
     var one_fifth = bdec_1.true_divide(bdec_5, working_precision)
     var term1 = bdec_4.multiply(
-        decimo.bigdecimal.trigonometric.arctan_taylor_series(
+        bigdecimal_trigonometric.arctan_taylor_series(
             one_fifth, working_precision
         )
     )
 
     # Calculate arctan(1/239)
     var one_239 = bdec_1.true_divide(bdec_239, working_precision)
-    var term2 = decimo.bigdecimal.trigonometric.arctan_taylor_series(
+    var term2 = bigdecimal_trigonometric.arctan_taylor_series(
         one_239, working_precision
     )
 

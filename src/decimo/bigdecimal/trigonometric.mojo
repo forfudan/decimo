@@ -23,8 +23,8 @@ from std import time
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.errors import ValueError
 from decimo.rounding_mode import RoundingMode
-import decimo.bigdecimal.constants
-import decimo.bigdecimal.exponential
+import decimo.bigdecimal.constants as bigdecimal_constants
+import decimo.bigdecimal.exponential as bigdecimal_exponential
 
 
 # ===----------------------------------------------------------------------=== #
@@ -63,7 +63,7 @@ def sin(x: BigDecimal, precision: Int) raises -> BigDecimal:
     var bdec_2 = BigDecimal.from_raw_components(UInt32(2), scale=0, sign=False)
     var bdec_4 = BigDecimal.from_raw_components(UInt32(4), scale=0, sign=False)
     var bdec_6 = BigDecimal.from_raw_components(UInt32(6), scale=0, sign=False)
-    var bdec_pi = decimo.bigdecimal.constants.pi(precision=working_precision)
+    var bdec_pi = bigdecimal_constants.pi(precision=working_precision)
     var bdec_2pi = bdec_2.multiply(bdec_pi)
     var bdec_pi_div_2 = bdec_pi.true_divide(bdec_2, precision=working_precision)
     var bdec_1d6 = BigDecimal.from_raw_components(
@@ -232,7 +232,7 @@ def cos(x: BigDecimal, precision: Int) raises -> BigDecimal:
         return BigDecimal(BigUInt.one())
 
     # cos(x) = sin(π/2 - x)
-    var pi = decimo.bigdecimal.constants.pi(precision=working_precision)
+    var pi = bigdecimal_constants.pi(precision=working_precision)
     var pi_div_2 = pi.true_divide(2, precision=working_precision)
     var result = sin(pi_div_2.subtract(x), precision=precision)
     return result^
@@ -371,7 +371,7 @@ def tan_cot(x: BigDecimal, precision: Int, is_tan: Bool) raises -> BigDecimal:
                 message="cot(nπ) is undefined", function="tan_cot()"
             )
 
-    var pi = decimo.bigdecimal.constants.pi(precision=working_precision_pi)
+    var pi = bigdecimal_constants.pi(precision=working_precision_pi)
     var bdec_2 = BigDecimal.from_raw_components(UInt32(2), scale=0, sign=False)
     var two_pi = bdec_2.multiply(pi)
     var pi_div_2 = pi.true_divide(bdec_2, precision=working_precision_pi)
@@ -515,7 +515,7 @@ def arctan(x: BigDecimal, precision: Int) raises -> BigDecimal:
         # print(bdec_1 + x * x)
         # Use sqrt_reciprocal for speed — exact perfect square detection is
         # unnecessary since this is an intermediate computation.
-        var sqrt_term = decimo.bigdecimal.exponential.sqrt_reciprocal(
+        var sqrt_term = bigdecimal_exponential.sqrt_reciprocal(
             bdec_1.add(x.multiply(x)), working_precision
         )
         var x_divided = x.true_divide(
@@ -531,7 +531,7 @@ def arctan(x: BigDecimal, precision: Int) raises -> BigDecimal:
         # For x < -2: arctan(x) = -π/2 - arctan(1/x)
         # This is to ensure convergence of the Taylor series.
         # print("Using identity for arctan with |x| > 2")
-        var half_pi = decimo.bigdecimal.constants.pi(
+        var half_pi = bigdecimal_constants.pi(
             precision=working_precision
         ).true_divide(bdec_2, precision=working_precision)
         var reciprocal_x = bdec_1.true_divide(x, precision=working_precision)

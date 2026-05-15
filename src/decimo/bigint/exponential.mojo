@@ -23,8 +23,8 @@ base-2^32 representation for efficient bit-level operations.
 
 from std import math
 
+import decimo.bigint.arithmetics as bigint_arithmetics
 from decimo.bigint.bigint import BigInt
-import decimo.bigint.arithmetics
 from decimo.errors import ValueError
 
 
@@ -391,10 +391,8 @@ def _sqrt_precision_doubling_fast(x: BigInt) raises -> BigInt:
         # All iterations completed natively
         # Final check: a -= 1 if a*a > x
         var a_words = _uint64_to_words(a_val)
-        var a_sq = decimo.bigint.arithmetics._multiply_magnitudes(
-            a_words, a_words
-        )
-        if decimo.bigint.arithmetics._compare_word_lists(a_sq, x.words) > 0:
+        var a_sq = bigint_arithmetics._multiply_magnitudes(a_words, a_words)
+        if bigint_arithmetics._compare_word_lists(a_sq, x.words) > 0:
             a_val -= 1
         return BigInt.from_integral_scalar(a_val)
 
@@ -429,10 +427,8 @@ def _sqrt_precision_doubling_fast(x: BigInt) raises -> BigInt:
     if phase15_end == -1:
         # All iterations completed natively (UInt64 + UInt128)
         var a_words = _uint128_to_words(a128)
-        var a_sq = decimo.bigint.arithmetics._multiply_magnitudes(
-            a_words, a_words
-        )
-        if decimo.bigint.arithmetics._compare_word_lists(a_sq, x.words) > 0:
+        var a_sq = bigint_arithmetics._multiply_magnitudes(a_words, a_words)
+        if bigint_arithmetics._compare_word_lists(a_sq, x.words) > 0:
             if a128 > 0:
                 a128 -= 1
             a_words = _uint128_to_words(a128)
@@ -452,19 +448,17 @@ def _sqrt_precision_doubling_fast(x: BigInt) raises -> BigInt:
         var n_shifted = _right_shift_magnitude_bits(x.words, shift_n)
 
         # Divide n_shifted by current a (before shifting)
-        var div_result = decimo.bigint.arithmetics._divmod_magnitudes(
+        var div_result = bigint_arithmetics._divmod_magnitudes(
             n_shifted, a_words
         )
 
         # Shift a left, then add quotient in-place (saves 2 allocations)
         a_words = _left_shift_magnitude_bits(a_words, shift_a)
-        decimo.bigint.arithmetics._add_magnitudes_inplace(
-            a_words, div_result[0]
-        )
+        bigint_arithmetics._add_magnitudes_inplace(a_words, div_result[0])
 
     # Final check: a -= 1 if a*a > x
-    var a_sq = decimo.bigint.arithmetics._multiply_magnitudes(a_words, a_words)
-    if decimo.bigint.arithmetics._compare_word_lists(a_sq, x.words) > 0:
+    var a_sq = bigint_arithmetics._multiply_magnitudes(a_words, a_words)
+    if bigint_arithmetics._compare_word_lists(a_sq, x.words) > 0:
         # Decrement a_words by 1 in-place
         var borrow: UInt64 = 1
         for i in range(len(a_words)):

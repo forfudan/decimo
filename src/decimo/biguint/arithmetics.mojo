@@ -23,7 +23,7 @@ from std import math
 from std.memory import memcpy, memset_zero
 
 from decimo.biguint.biguint import BigUInt
-import decimo.biguint.comparison
+import decimo.biguint.comparison as biguint_comparison
 from decimo.errors import (
     OverflowError,
     ValueError,
@@ -1313,7 +1313,7 @@ def multiply_slices_toom3(
     var pxm1_neg: Bool
     if has_x1:
         var x1_val = BigUInt.from_slice(x, (sx1_start, sx1_end))
-        var cmp = decimo.biguint.comparison.compare(x0_plus_x2, x1_val)
+        var cmp = biguint_comparison.compare(x0_plus_x2, x1_val)
         if cmp >= 0:
             pxm1 = x0_plus_x2.copy()
             subtract_no_check_inplace(pxm1, x1_val)
@@ -1331,7 +1331,7 @@ def multiply_slices_toom3(
     var qym1_neg: Bool
     if has_y1:
         var y1_val = BigUInt.from_slice(y, (sy1_start, sy1_end))
-        var cmp = decimo.biguint.comparison.compare(y0_plus_y2, y1_val)
+        var cmp = biguint_comparison.compare(y0_plus_y2, y1_val)
         if cmp >= 0:
             qym1 = y0_plus_y2.copy()
             subtract_no_check_inplace(qym1, y1_val)

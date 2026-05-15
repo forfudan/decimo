@@ -26,9 +26,9 @@ mathematical methods that do not implement a trait.
 from std.memory import UnsafePointer, memcpy, memcmp
 
 from decimo.bigint10.bigint10 import BigInt10
-import decimo.biguint.arithmetics
-import decimo.biguint.comparison
-import decimo.biguint.exponential
+import decimo.biguint.arithmetics as biguint_arithmetics
+import decimo.biguint.comparison as biguint_comparison
+import decimo.biguint.exponential as biguint_exponential
 from decimo.errors import (
     ConversionError,
     ValueError,
@@ -36,7 +36,7 @@ from decimo.errors import (
     OverflowError,
     ZeroDivisionError,
 )
-import decimo.str
+import decimo.str as decimo_str
 
 # Type aliases
 comptime BUInt = BigUInt
@@ -127,7 +127,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             A `BigUInt` representing 10 raised to the power of `exponent`.
         """
-        return decimo.biguint.arithmetics.power_of_10(exponent)
+        return biguint_arithmetics.power_of_10(exponent)
 
     # ===------------------------------------------------------------------=== #
     # Constructors and life time dunder methods
@@ -654,7 +654,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             The BigUInt representation of the string.
         """
-        _tuple = decimo.str.parse_numeric_string(value)
+        _tuple = decimo_str.parse_numeric_string(value)
         var ref coef: List[UInt8] = _tuple[0]
         var scale: Int = _tuple[1]
         var sign: Bool = _tuple[2]
@@ -1018,7 +1018,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             if i == len(self.words) - 1:
                 result += String(self.words[i])
             else:
-                result += decimo.str.rjust(
+                result += decimo_str.rjust(
                     String(self.words[i]), width=9, fillchar="0"
                 )
 
@@ -1078,7 +1078,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             The absolute value.
         """
-        return decimo.biguint.arithmetics.absolute(self)
+        return biguint_arithmetics.absolute(self)
 
     @always_inline
     def __neg__(self) raises -> Self:
@@ -1091,7 +1091,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Raises:
             OverflowError: If the number is non-zero (negative of unsigned is undefined).
         """
-        return decimo.biguint.arithmetics.negative(self)
+        return biguint_arithmetics.negative(self)
 
     @always_inline
     def __rshift__(self, shift_amount: Int) -> Self:
@@ -1105,7 +1105,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         """
         var result = self.copy()
         for _ in range(shift_amount):
-            decimo.biguint.arithmetics.floor_divide_by_2_inplace(result)
+            biguint_arithmetics.floor_divide_by_2_inplace(result)
         return result^
 
     # ===------------------------------------------------------------------=== #
@@ -1124,7 +1124,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             The sum.
         """
-        return decimo.biguint.arithmetics.add(self, other)
+        return biguint_arithmetics.add(self, other)
 
     @always_inline
     def __sub__(self, other: Self) raises -> Self:
@@ -1140,7 +1140,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             OverflowError: If the result would be negative.
         """
         try:
-            return decimo.biguint.arithmetics.subtract(self, other)
+            return biguint_arithmetics.subtract(self, other)
         except e:
             raise e^
 
@@ -1154,7 +1154,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             The product.
         """
-        return decimo.biguint.arithmetics.multiply(self, other)
+        return biguint_arithmetics.multiply(self, other)
 
     @always_inline
     def __floordiv__(self, other: Self) raises -> Self:
@@ -1170,7 +1170,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             ZeroDivisionError: If the divisor is zero.
         """
         try:
-            return decimo.biguint.arithmetics.floor_divide(self, other)
+            return biguint_arithmetics.floor_divide(self, other)
         except e:
             raise ZeroDivisionError(
                 message="See the above exception.",
@@ -1192,7 +1192,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             ZeroDivisionError: If the divisor is zero.
         """
         try:
-            return decimo.biguint.arithmetics.ceil_divide(self, other)
+            return biguint_arithmetics.ceil_divide(self, other)
         except e:
             raise ZeroDivisionError(
                 message="See the above exception.",
@@ -1214,7 +1214,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             ZeroDivisionError: If the divisor is zero.
         """
         try:
-            return decimo.biguint.arithmetics.floor_modulo(self, other)
+            return biguint_arithmetics.floor_modulo(self, other)
         except e:
             raise ZeroDivisionError(
                 message="See the above exception.",
@@ -1236,7 +1236,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             ZeroDivisionError: If the divisor is zero.
         """
         try:
-            return decimo.biguint.arithmetics.floor_divide_modulo(self, other)
+            return biguint_arithmetics.floor_divide_modulo(self, other)
         except e:
             raise e^
 
@@ -1300,7 +1300,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             The sum.
         """
-        return decimo.biguint.arithmetics.add(self, other)
+        return biguint_arithmetics.add(self, other)
 
     @always_inline
     def __rsub__(self, other: Self) raises -> Self:
@@ -1315,7 +1315,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Raises:
             OverflowError: If the result would be negative.
         """
-        return decimo.biguint.arithmetics.subtract(other, self)
+        return biguint_arithmetics.subtract(other, self)
 
     @always_inline
     def __rmul__(self, other: Self) raises -> Self:
@@ -1327,7 +1327,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             The product.
         """
-        return decimo.biguint.arithmetics.multiply(self, other)
+        return biguint_arithmetics.multiply(self, other)
 
     @always_inline
     def __rfloordiv__(self, other: Self) raises -> Self:
@@ -1342,7 +1342,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Raises:
             ZeroDivisionError: If the divisor is zero.
         """
-        return decimo.biguint.arithmetics.floor_divide(other, self)
+        return biguint_arithmetics.floor_divide(other, self)
 
     @always_inline
     def __rmod__(self, other: Self) raises -> Self:
@@ -1357,7 +1357,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Raises:
             ZeroDivisionError: If the divisor is zero.
         """
-        return decimo.biguint.arithmetics.floor_modulo(other, self)
+        return biguint_arithmetics.floor_modulo(other, self)
 
     @always_inline
     def __rdivmod__(self, other: Self) raises -> Tuple[Self, Self]:
@@ -1372,7 +1372,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Raises:
             ZeroDivisionError: If the divisor is zero.
         """
-        return decimo.biguint.arithmetics.floor_divide_modulo(other, self)
+        return biguint_arithmetics.floor_divide_modulo(other, self)
 
     @always_inline
     def __rpow__(self, base: Self) raises -> Self:
@@ -1404,7 +1404,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Args:
             other: The operand to add.
         """
-        decimo.biguint.arithmetics.add_inplace(self, other)
+        biguint_arithmetics.add_inplace(self, other)
 
     @always_inline
     def __isub__(mut self, other: Self) raises:
@@ -1417,7 +1417,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Raises:
             OverflowError: If the result would be negative.
         """
-        decimo.biguint.arithmetics.subtract_inplace(self, other)
+        biguint_arithmetics.subtract_inplace(self, other)
 
     @always_inline
     def __imul__(mut self, other: Self) raises:
@@ -1426,7 +1426,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Args:
             other: The operand to multiply by.
         """
-        self = decimo.biguint.arithmetics.multiply(self, other)
+        self = biguint_arithmetics.multiply(self, other)
 
     @always_inline
     def __ifloordiv__(mut self, other: Self) raises:
@@ -1438,7 +1438,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Raises:
             ZeroDivisionError: If the divisor is zero.
         """
-        self = decimo.biguint.arithmetics.floor_divide(self, other)
+        self = biguint_arithmetics.floor_divide(self, other)
 
     @always_inline
     def __imod__(mut self, other: Self) raises:
@@ -1450,7 +1450,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Raises:
             ZeroDivisionError: If the divisor is zero.
         """
-        self = decimo.biguint.arithmetics.floor_modulo(self, other)
+        self = biguint_arithmetics.floor_modulo(self, other)
 
     # ===------------------------------------------------------------------=== #
     # Basic binary comparison operation dunders
@@ -1467,7 +1467,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             `True` if `self` is greater than `other`, `False` otherwise.
         """
-        return decimo.biguint.comparison.greater(self, other)
+        return biguint_comparison.greater(self, other)
 
     @always_inline
     def __ge__(self, other: Self) -> Bool:
@@ -1479,7 +1479,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             `True` if `self` is greater than or equal to `other`, `False` otherwise.
         """
-        return decimo.biguint.comparison.greater_equal(self, other)
+        return biguint_comparison.greater_equal(self, other)
 
     @always_inline
     def __lt__(self, other: Self) -> Bool:
@@ -1491,7 +1491,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             `True` if `self` is less than `other`, `False` otherwise.
         """
-        return decimo.biguint.comparison.less(self, other)
+        return biguint_comparison.less(self, other)
 
     @always_inline
     def __le__(self, other: Self) -> Bool:
@@ -1503,7 +1503,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             `True` if `self` is less than or equal to `other`, `False` otherwise.
         """
-        return decimo.biguint.comparison.less_equal(self, other)
+        return biguint_comparison.less_equal(self, other)
 
     @always_inline
     def __eq__(self, other: Self) -> Bool:
@@ -1515,7 +1515,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             `True` if `self` equals `other`, `False` otherwise.
         """
-        return decimo.biguint.comparison.equal(self, other)
+        return biguint_comparison.equal(self, other)
 
     @always_inline
     def __ne__(self, other: Self) -> Bool:
@@ -1527,7 +1527,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             `True` if `self` does not equal `other`, `False` otherwise.
         """
-        return decimo.biguint.comparison.not_equal(self, other)
+        return biguint_comparison.not_equal(self, other)
 
     # ===------------------------------------------------------------------=== #
     # Other dunders
@@ -1568,7 +1568,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Args:
             other: The operand to add.
         """
-        decimo.biguint.arithmetics.add_inplace(self, other)
+        biguint_arithmetics.add_inplace(self, other)
 
     @always_inline
     def floor_divide(self, other: Self) raises -> Self:
@@ -1582,7 +1582,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             The quotient.
         """
-        return decimo.biguint.arithmetics.floor_divide(self, other)
+        return biguint_arithmetics.floor_divide(self, other)
 
     @always_inline
     def truncate_divide(self, other: Self) raises -> Self:
@@ -1596,7 +1596,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             The quotient.
         """
-        return decimo.biguint.arithmetics.truncate_divide(self, other)
+        return biguint_arithmetics.truncate_divide(self, other)
 
     @always_inline
     def ceil_divide(self, other: Self) raises -> Self:
@@ -1609,7 +1609,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             The quotient rounded up.
         """
-        return decimo.biguint.arithmetics.ceil_divide(self, other)
+        return biguint_arithmetics.ceil_divide(self, other)
 
     @always_inline
     def floor_modulo(self, other: Self) raises -> Self:
@@ -1622,7 +1622,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             The remainder.
         """
-        return decimo.biguint.arithmetics.floor_modulo(self, other)
+        return biguint_arithmetics.floor_modulo(self, other)
 
     @always_inline
     def truncate_modulo(self, other: Self) raises -> Self:
@@ -1635,7 +1635,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             The remainder.
         """
-        return decimo.biguint.arithmetics.truncate_modulo(self, other)
+        return biguint_arithmetics.truncate_modulo(self, other)
 
     @always_inline
     def ceil_modulo(self, other: Self) raises -> Self:
@@ -1648,7 +1648,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             The remainder.
         """
-        return decimo.biguint.arithmetics.ceil_modulo(self, other)
+        return biguint_arithmetics.ceil_modulo(self, other)
 
     @always_inline
     def divmod(self, other: Self) raises -> Tuple[Self, Self]:
@@ -1661,7 +1661,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             A tuple of (quotient, remainder).
         """
-        return decimo.biguint.arithmetics.floor_divide_modulo(self, other)
+        return biguint_arithmetics.floor_divide_modulo(self, other)
 
     @always_inline
     def floor_divide_by_2_inplace(mut self) raises:
@@ -1669,7 +1669,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         See `decimo.biguint.arithmetics.floor_divide_by_2_inplace()`
         for more information.
         """
-        decimo.biguint.arithmetics.floor_divide_by_2_inplace(self)
+        biguint_arithmetics.floor_divide_by_2_inplace(self)
 
     @always_inline
     def multiply_by_power_of_ten(self, n: Int) -> Self:
@@ -1682,7 +1682,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             The product of this number and 10^n.
         """
-        return decimo.biguint.arithmetics.multiply_by_power_of_ten(self, n)
+        return biguint_arithmetics.multiply_by_power_of_ten(self, n)
 
     @always_inline
     def multiply_by_power_of_ten_inplace(mut self, n: Int):
@@ -1694,7 +1694,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Args:
             n: The power of 10 to multiply by.
         """
-        decimo.biguint.arithmetics.multiply_by_power_of_ten_inplace(self, n)
+        biguint_arithmetics.multiply_by_power_of_ten_inplace(self, n)
 
     @always_inline
     def floor_divide_by_power_of_ten(self, n: Int) -> Self:
@@ -1708,7 +1708,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             The quotient after removing the last `n` digits.
         """
-        return decimo.biguint.arithmetics.floor_divide_by_power_of_ten(self, n)
+        return biguint_arithmetics.floor_divide_by_power_of_ten(self, n)
 
     @always_inline
     def multiply_by_power_of_billion_inplace(mut self, n: Int):
@@ -1718,7 +1718,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Args:
             n: The power of 10^9 to multiply by. Should be non-negative.
         """
-        decimo.biguint.arithmetics.multiply_by_power_of_billion_inplace(self, n)
+        biguint_arithmetics.multiply_by_power_of_billion_inplace(self, n)
 
     def power(self, exponent: Int) raises -> Self:
         """Returns the result of raising this number to the power of `exponent`.
@@ -1804,7 +1804,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         The square root is the largest integer y such that y * y <= x.
         """
-        return decimo.biguint.exponential.sqrt(self)
+        return biguint_exponential.sqrt(self)
 
     def isqrt(self) -> Self:
         """Returns the square root of this number.
@@ -1817,7 +1817,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         The square root is the largest integer y such that y * y <= x.
         """
-        return decimo.biguint.exponential.sqrt(self)
+        return biguint_exponential.sqrt(self)
 
     @always_inline
     def compare(self, other: Self) -> Int8:
@@ -1830,7 +1830,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             A positive value if `self > other`, 0 if equal, or a negative value if `self < other`.
         """
-        return decimo.biguint.comparison.compare(self, other)
+        return biguint_comparison.compare(self, other)
 
     # ===------------------------------------------------------------------=== #
     # Other methods
@@ -1871,7 +1871,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             var label = "word " + String(i) + ":"
             result += label + String(" ") * (col - label.byte_length())
             result += (
-                decimo.str.rjust(String(self.words[i]), 9, fillchar="0") + "\n"
+                decimo_str.rjust(String(self.words[i]), 9, fillchar="0") + "\n"
             )
 
         result += sep_line
@@ -2229,7 +2229,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             )
 
         # floor_divide_by_power_of_ten is the same as removing the last n digits
-        var result = decimo.biguint.arithmetics.floor_divide_by_power_of_ten(
+        var result = biguint_arithmetics.floor_divide_by_power_of_ten(
             self, ndigits
         )
         var round_up: Bool = False
@@ -2283,14 +2283,12 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             )
 
         if round_up:
-            decimo.biguint.arithmetics.add_by_uint32_inplace(result, UInt32(1))
+            biguint_arithmetics.add_by_uint32_inplace(result, UInt32(1))
             # Check whether rounding results in extra digit
             if result.is_power_of_10():
                 if remove_extra_digit_due_to_rounding:
-                    result = (
-                        decimo.biguint.arithmetics.floor_divide_by_power_of_ten(
-                            result, 1
-                        )
+                    result = biguint_arithmetics.floor_divide_by_power_of_ten(
+                        result, 1
                     )
         return result^
 
@@ -2402,13 +2400,11 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             )
 
         # Drop the digits in place, then apply the carry from rounding.
-        decimo.biguint.arithmetics.floor_divide_by_power_of_ten_inplace(
-            self, ndigits
-        )
+        biguint_arithmetics.floor_divide_by_power_of_ten_inplace(self, ndigits)
         if round_up:
-            decimo.biguint.arithmetics.add_by_uint32_inplace(self, UInt32(1))
+            biguint_arithmetics.add_by_uint32_inplace(self, UInt32(1))
             if self.is_power_of_10():
                 if remove_extra_digit_due_to_rounding:
-                    decimo.biguint.arithmetics.floor_divide_by_power_of_ten_inplace(
+                    biguint_arithmetics.floor_divide_by_power_of_ten_inplace(
                         self, 1
                     )

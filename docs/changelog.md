@@ -4,11 +4,22 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 
 ## 20260514 (v0.10.0)
 
-Decimo v0.10.0 retargets the codebase to **Mojo v1.0.0b1** and rounds out the **Decimal128** API to feature parity with `BigDecimal` / Python `decimal.Decimal`. This release also introduces a new **`Rational`** type, a small **`limo`** line-editor package powering the REPL, and a thoroughly reworked error system with concrete error types instead of a single catch-all.
+Decimo v0.10.0 updates the codebase to **Mojo v1.0.0b1** and marks the **"polish and parity"** phase. This release introduces four major additions.
 
-The **CLI calculator** is now distributed as a self-contained binary via the `forfudan` Homebrew tap — `brew install forfudan/tap/decimo` (macOS arm64 and Linux x86_64; no Mojo or Pixi needed on the user's machine).
+First, the **`Decimal128`** API reaches feature parity with `BigDecimal` and Python's `decimal.Decimal` / IEEE 754: `fma()`, `__divmod__()`, `from_decimal(BigDecimal)`, `cbrt()`, `normalize()`, `__hash__()`, `same_quantum()`, `max` / `min` / `clamp`, `trunc` / `floor` / `ceil` / `fract` / `signum` / `unpack`, `__bool__` / `__pos__`, and a unified `to_string` family with `scientific` / `engineering` / `delimiter` keywords. The `nan` / `inf` values are removed — `Decimal128` is now a strict finite type — and the arithmetic and string hot paths are heavily optimised.
+
+Second, **`BigDecimal`** operator semantics are aligned with Python's `decimal.Decimal`: `+`, `-`, `*` now round HALF_EVEN to the default precision (`PRECISION = 28`) instead of returning unrounded results. New explicit-precision methods `add(other, precision=0)` / `subtract(...)` / `multiply(...)` (and `*_inplace` variants) let callers choose between exact and rounded arithmetic. Internal `pi_machin` / `exp` / `ln` / trig sites switch to the exact `*_inplace` path, and the **CLI calculator's RPN evaluator** now honors `--precision` end to end.
+
+Third, the **CLI calculator** is now distributed as a self-contained binary. A new `release_cli` workflow builds tarballs for **macOS arm64** and **Linux x86_64** (Mojo runtime bundled, `rpath` patched) and publishes them via the [`forfudan/tap`](https://github.com/forfudan/homebrew-tap) Homebrew tap — `brew install forfudan/tap/decimo` and Mojo / Pixi are no longer required on the user's machine. The CLI itself gains a Mojo-native line editor **`limo`** (REPL editing, history, cursor movement); pipe / stdin and file modes (`-F`); shell-completion docs for Bash / Zsh / Fish; REPL info commands (`:`, `?`, `$`, `:q`, `:info`); the `ans` variable; user-defined variables; a `:100` precision shortcut; and case-insensitive input.
+
+Fourth, the codebase gains two new core types and a reworked error system. **`BigFloat`** is an arbitrary-precision binary floating-point type backed by **GMP / MPFR** through a thin C wrapper (`src/decimo/gmp/gmp_wrapper.c`, `src/decimo/bigfloat/mpfr_wrapper.mojo`); every operation is a single MPFR call against a pooled `mpfr_t` handle, precision is in decimal digits with 64 guard bits added internally, and the type is the right choice when MPFR-quality transcendentals or a wider exponent range than `BigDecimal` are wanted. MPFR/GMP must be present at runtime (PR #190, #191). **`Rational`** is a new exact rational number type, stored as a reduced fraction of two `Integer`s (PR #214). The **error system** replaces the catch-all `DecimoError` with concrete types such as `RuntimeError`, makes `message` and `function` mandatory, and renders coloured errors with auto-inferred shortened-relative file/line info (PR #195, #196, #198, #200); `raises:` docstring sections are audited (PR #199) and every public symbol now carries a docstring (PR #194).
 
 ### ⭐️ New in v0.10.0
+
+**New core types:**
+
+1. New **`BigFloat`** type (alias `BFlt`, `Float`) — arbitrary-precision **binary floating-point** wrapping a single MPFR handle via a C wrapper. Each arithmetic and transcendental operation is a single MPFR call against a pooled `mpfr_t` handle. Precision is specified in decimal digits and converted to bits internally; 64 guard bits are added so the requested decimal digits are correct. Provides `+ - * /`, `sqrt`, `cbrt`, `root`, `pow`, `exp`, `ln`, `log`, `log10`, full trig and hyperbolic suite, comparison and rounding, plus conversion to / from `BigDecimal`. RAII destructor frees the MPFR handle. Optional — requires MPFR/GMP to be installed at runtime; the C wrapper is built via `pixi run buildgmp` (PR #190, #191).
+1. New **`Rational`** type — arbitrary-precision exact rational number, stored as a reduced fraction of two `Integer`s. Supports exact arithmetic and comparisons without precision loss (PR #214).
 
 **Decimal128 — feature parity with Python `decimal.Decimal`:**
 
@@ -28,13 +39,17 @@ The **CLI calculator** is now distributed as a self-contained binary via the `fo
 
 1. New **`limo`** package — a small Mojo-native line editor used by the REPL for line editing and history navigation (PR #212).
 1. Interactive **REPL**: `decimo` with no arguments launches a coloured `decimo>` prompt with per-line error recovery, comment/blank-line skipping, and graceful exit via `exit` / `quit` / Ctrl-D (PR #205).
-1. **REPL info commands**: `:` shows current settings, `?` shows help, `$` / `:v` / `:vars` lists variables, `:q` / `:quit` / `:exit` exits.
+1. **REPL info commands**: `:` shows current settings, `?` shows help, `$` / `:v` / `:vars` lists variables, `:q` / `:quit` / `:exit` exits (PR #210, #211).
+1. **REPL `:info` / `:about` section** — print version, author, license, and project links from inside the REPL (PR #213).
+1. **REPL configuration system** — settings commands (`:p`, `:scientific`, etc.) now print the full settings block after every change so the effect is immediately visible; multiple flags can be set on a single line (PR #208).
 1. **Variable assignment** in REPL (`x = 1+2`) plus the `ans` variable holding the last result (PR #206).
-1. **Pipe / stdin mode**: read expressions from piped stdin, one per line (e.g. `echo "1+2" | decimo`). Comments and blank lines are skipped.
-1. **File mode** (`--file` / `-F`): evaluate expressions from a file, one per line, sharing all CLI flags.
-1. **Shell completion** documentation for Bash, Zsh, and Fish (`decimo --completions bash|zsh|fish`).
-1. **Standalone-precision shortcut** in settings: `:100` is equivalent to `:p 100`.
-1. Case-insensitive REPL input (`PI`, `Sqrt(2)`, `SIN(1)` all work).
+1. **Pipe / stdin mode**: read expressions from piped stdin, one per line (e.g. `echo "1+2" | decimo`). Comments and blank lines are skipped (PR #203).
+1. **File mode** (`--file` / `-F`): evaluate expressions from a file, one per line, sharing all CLI flags (PR #203).
+1. **Negative numbers and negative expressions** as positional CLI arguments (PR #201, #202).
+1. **Argument parsing polish** — range / value-name / argument-group validation, custom usage line, all short option names upper-cased (PR #201, #203).
+1. **Shell completion** documentation for Bash, Zsh, and Fish (`decimo --completions bash|zsh|fish`) (PR #204).
+1. **Standalone-precision shortcut** in settings: `:100` is equivalent to `:p 100` (PR #211).
+1. Case-insensitive REPL input (`PI`, `Sqrt(2)`, `SIN(1)` all work) (PR #210).
 
 **Error handling:**
 
@@ -46,10 +61,6 @@ The **CLI calculator** is now distributed as a self-contained binary via the `fo
 
 1. New **`release_cli`** workflow building self-contained `decimo` CLI tarballs for **macOS arm64** and **Linux x86_64**; published via the `forfudan/tap` Homebrew tap (`brew install forfudan/tap/decimo`).
 1. Bundled third-party licenses are now documented in `NOTICE` and shipped in the source tarball (PR #231).
-
-**Core types:**
-
-1. New **`Rational`** type — arbitrary-precision exact rational number, stored as a reduced fraction of two `Integer`s. Supports exact arithmetic and comparisons without precision loss (PR #214).
 
 ### 🦋 Changed in v0.10.0
 
@@ -87,6 +98,10 @@ The **CLI calculator** is now distributed as a self-contained binary via the `fo
 1. **Removed `Decimal128.copy()` / `clone()`**: trivial and unused. `Decimal128` is `TrivialRegisterPassable`, so `var b = a` is the idiomatic copy.
 1. **Removed `Decimal128.print_internal_representation()`**: one-line wrapper, unused. Use `print(x.internal_representation())` directly.
 
+**BigInt:**
+
+1. Rewrite type conversion from all integral scalar types (`Int`, `UInt`, `IntLiteral`, `Scalar[DType.intN]`, `Scalar[DType.uintN]`) so that every integral scalar can be converted to `BigInt` / `BigUInt` correctly, including the corner case of `Int.MIN` and signed-to-unsigned narrowing (PR #189).
+
 ### 🐛 Fixed in v0.10.0
 
 1. **`BigDecimal.to_string(force_plain=True)` dropping trailing zeros for `scale < 0`**: `BigDecimal("1e40").to_string(force_plain=True)` previously returned `"1"` instead of the full 41-digit integer, silently producing a wrong value when re-parsed (e.g. via `Decimal128.from_decimal()`).
@@ -96,11 +111,13 @@ The **CLI calculator** is now distributed as a self-contained binary via the `fo
 
 1. Ensure all functions, fields, and constants have docstrings; eliminates `mojo doc` warnings (PR #194).
 1. Reorganise the `docs/` folder and update user-facing manuals (PR #207).
+1. Add planning documents `docs/plans/gmp_integration.md` (kicks off the GMP/MPFR integration that lands as `BigFloat`) and `docs/plans/decimal128_enhancement.md` (roadmap for Decimal128 parity work in this release) (PR #190, #193).
 1. Refactor the GitHub Actions unit-test workflow to use caching for faster CI (PR #234).
 1. Consolidate the Decimal128 test suites into fewer files (`test_decimal128_arithmetics.mojo`, `test_decimal128_creation.mojo`, etc.) for faster compilation (PR #228).
 1. Refactor cross-language benchmark harness to include **Rust (`rust_decimal`)**, **C# (`System.Decimal`)**, and **VB.NET** (PR #219); `BigDecimal` acts as the high-precision oracle for `ln` / `log10` / `exp` (PR #229).
 1. Add **CLI performance benchmarks** comparing correctness and timing against `bc` and `python3` across 47 cases — all results match to 15 significant digits; `decimo` is **3–4× faster than `python3 -c`** (PR #204).
 1. Refactor BigDecimal benchmark suites (PR #232); add edge-case tests for `compare_absolute()` (PR #217); refactor test files to a CLI argument style (PR #209).
+1. Document bundled third-party libraries in `NOTICE` and ship their licenses in the source tarball (PR #231).
 
 ## 20260323 (v0.9.0)
 

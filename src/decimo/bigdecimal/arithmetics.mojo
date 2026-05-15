@@ -20,7 +20,7 @@ Implements functions for mathematical operations on BigDecimal objects.
 
 from std import math
 
-import decimo.biguint.arithmetics
+import decimo.biguint.arithmetics as biguint_arithmetics
 from decimo.bigdecimal.rounding import round_to_precision
 from decimo.errors import ZeroDivisionError
 from decimo.rounding_mode import RoundingMode
@@ -318,14 +318,12 @@ def add_inplace(mut x1: BigDecimal, x2: BigDecimal, precision: Int = 0) raises:
         if x1.sign == x2.sign:
             # Same sign: add magnitudes (use inplace add on x1's coefficient)
             if scale_factor2 == 0:
-                decimo.biguint.arithmetics.add_inplace(
-                    x1.coefficient, x2.coefficient
-                )
+                biguint_arithmetics.add_inplace(x1.coefficient, x2.coefficient)
             else:
                 var coef2 = x2.coefficient.multiply_by_power_of_ten(
                     scale_factor2
                 )
-                decimo.biguint.arithmetics.add_inplace(x1.coefficient, coef2)
+                biguint_arithmetics.add_inplace(x1.coefficient, coef2)
             x1.scale = max_scale
         else:
             # Different signs: subtract magnitudes
@@ -337,14 +335,10 @@ def add_inplace(mut x1: BigDecimal, x2: BigDecimal, precision: Int = 0) raises:
             )
 
             if x1.coefficient > coef2:
-                decimo.biguint.arithmetics.subtract_inplace(
-                    x1.coefficient, coef2
-                )
+                biguint_arithmetics.subtract_inplace(x1.coefficient, coef2)
                 x1.scale = max_scale
             elif coef2 > x1.coefficient:
-                decimo.biguint.arithmetics.subtract_inplace(
-                    coef2, x1.coefficient
-                )
+                biguint_arithmetics.subtract_inplace(coef2, x1.coefficient)
                 x1.coefficient = coef2^
                 x1.scale = max_scale
                 x1.sign = x2.sign
@@ -495,11 +489,11 @@ def true_divide_fast(
 
     var coef_x: BigUInt
     if extra_words > 0:
-        coef_x = decimo.biguint.arithmetics.multiply_by_power_of_billion(
+        coef_x = biguint_arithmetics.multiply_by_power_of_billion(
             x.coefficient, extra_words
         )
     elif extra_words < 0:
-        coef_x = decimo.biguint.arithmetics.floor_divide_by_power_of_billion(
+        coef_x = biguint_arithmetics.floor_divide_by_power_of_billion(
             x.coefficient, -extra_words
         )
     else:
@@ -527,12 +521,12 @@ def _true_divide_fast_truncated(
     )
     var y_only_remove = total_y_remove - common_remove
 
-    var y_coef_tr = decimo.biguint.arithmetics.floor_divide_by_power_of_billion(
+    var y_coef_tr = biguint_arithmetics.floor_divide_by_power_of_billion(
         y.coefficient, total_y_remove
     )
     var x_coef_tr: BigUInt
     if common_remove > 0:
-        x_coef_tr = decimo.biguint.arithmetics.floor_divide_by_power_of_billion(
+        x_coef_tr = biguint_arithmetics.floor_divide_by_power_of_billion(
             x.coefficient, common_remove
         )
     else:
@@ -546,11 +540,11 @@ def _true_divide_fast_truncated(
 
     var coef_x: BigUInt
     if extra_words > 0:
-        coef_x = decimo.biguint.arithmetics.multiply_by_power_of_billion(
+        coef_x = biguint_arithmetics.multiply_by_power_of_billion(
             x_coef_tr, extra_words
         )
     elif extra_words < 0:
-        coef_x = decimo.biguint.arithmetics.floor_divide_by_power_of_billion(
+        coef_x = biguint_arithmetics.floor_divide_by_power_of_billion(
             x_coef_tr, -extra_words
         )
     else:
@@ -626,13 +620,13 @@ def true_divide_general(
 
     var coef_x: BigUInt
     if extra_words > 0:
-        coef_x = decimo.biguint.arithmetics.multiply_by_power_of_billion(
+        coef_x = biguint_arithmetics.multiply_by_power_of_billion(
             x.coefficient, extra_words
         )
     elif extra_words < 0:
         # Dividend already has more than enough words for the desired precision.
         # Truncate low-order words to avoid computing unnecessary quotient digits.
-        coef_x = decimo.biguint.arithmetics.floor_divide_by_power_of_billion(
+        coef_x = biguint_arithmetics.floor_divide_by_power_of_billion(
             x.coefficient, -extra_words
         )
     else:
@@ -652,7 +646,7 @@ def true_divide_general(
             extra_digits, coef.number_of_trailing_zeros()
         )
         # TODO: Make a in-place version of this
-        coef = decimo.biguint.arithmetics.floor_divide_by_power_of_ten(
+        coef = biguint_arithmetics.floor_divide_by_power_of_ten(
             coef, num_digits_to_remove
         )
         extra_digits -= num_digits_to_remove
@@ -685,12 +679,12 @@ def _true_divide_general_truncated(
     )
     var y_only_remove = total_y_remove - common_remove
 
-    var y_coef_tr = decimo.biguint.arithmetics.floor_divide_by_power_of_billion(
+    var y_coef_tr = biguint_arithmetics.floor_divide_by_power_of_billion(
         y.coefficient, total_y_remove
     )
     var x_coef_tr: BigUInt
     if common_remove > 0:
-        x_coef_tr = decimo.biguint.arithmetics.floor_divide_by_power_of_billion(
+        x_coef_tr = biguint_arithmetics.floor_divide_by_power_of_billion(
             x.coefficient, common_remove
         )
     else:
@@ -704,11 +698,11 @@ def _true_divide_general_truncated(
 
     var coef_x: BigUInt
     if extra_words > 0:
-        coef_x = decimo.biguint.arithmetics.multiply_by_power_of_billion(
+        coef_x = biguint_arithmetics.multiply_by_power_of_billion(
             x_coef_tr, extra_words
         )
     elif extra_words < 0:
-        coef_x = decimo.biguint.arithmetics.floor_divide_by_power_of_billion(
+        coef_x = biguint_arithmetics.floor_divide_by_power_of_billion(
             x_coef_tr, -extra_words
         )
     else:
@@ -753,7 +747,7 @@ def _true_divide_general_truncated(
 
         if allowed_tz > 0:
             var stripped_coef = (
-                decimo.biguint.arithmetics.floor_divide_by_power_of_ten(
+                biguint_arithmetics.floor_divide_by_power_of_ten(
                     result.coefficient, allowed_tz
                 )
             )
@@ -871,17 +865,13 @@ def _true_divide_inexact_truncated(
     )
     var y_only_remove = total_y_remove - common_remove
 
-    var x2_coef_tr = (
-        decimo.biguint.arithmetics.floor_divide_by_power_of_billion(
-            x2.coefficient, total_y_remove
-        )
+    var x2_coef_tr = biguint_arithmetics.floor_divide_by_power_of_billion(
+        x2.coefficient, total_y_remove
     )
     var x1_coef_tr: BigUInt
     if common_remove > 0:
-        x1_coef_tr = (
-            decimo.biguint.arithmetics.floor_divide_by_power_of_billion(
-                x1.coefficient, common_remove
-            )
+        x1_coef_tr = biguint_arithmetics.floor_divide_by_power_of_billion(
+            x1.coefficient, common_remove
         )
     else:
         x1_coef_tr = x1.coefficient.copy()
@@ -971,9 +961,7 @@ def true_divide_inexact_by_uint32(
         scaled_x1.multiply_by_power_of_ten_inplace(buffer_digits)
 
     # O(n) division by single word — the key speedup
-    var quotient = decimo.biguint.arithmetics.floor_divide_by_uint32(
-        scaled_x1, y
-    )
+    var quotient = biguint_arithmetics.floor_divide_by_uint32(scaled_x1, y)
     var result_scale = buffer_digits + x1.scale
 
     var result_digits = quotient.number_of_digits()

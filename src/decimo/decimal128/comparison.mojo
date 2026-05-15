@@ -45,7 +45,7 @@ Implements functions for comparison operations on Decimal128 objects.
 from std import testing
 
 from decimo.decimal128.decimal128 import Decimal128
-import decimo.decimal128.utility
+import decimo.decimal128.utility as decimal128_utility
 from decimo.errors import ValueError
 
 
@@ -125,20 +125,15 @@ def compare_absolute(x: Decimal128, y: Decimal128) -> Int8:
     if x_scale > y_scale:
         var scale_diff = x_scale - y_scale
         if scale_diff <= 9:
-            var y_scaled = (
-                y_coef
-                * decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
-                    scale_diff
-                )
-            )
+            var y_scaled = y_coef * decimal128_utility.power_of_10_unsafe[
+                DType.uint128
+            ](scale_diff)
             if x_coef == y_scaled:
                 return 0
             return Int8(1) if x_coef > y_scaled else Int8(-1)
         var y_scaled_w = UInt256(
             y_coef
-        ) * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](
-            scale_diff
-        )
+        ) * decimal128_utility.power_of_10_unsafe[DType.uint256](scale_diff)
         var x_wide = UInt256(x_coef)
         if x_wide == y_scaled_w:
             return 0
@@ -147,15 +142,15 @@ def compare_absolute(x: Decimal128, y: Decimal128) -> Int8:
     # x_scale < y_scale: scale up x.
     var scale_diff = y_scale - x_scale
     if scale_diff <= 9:
-        var x_scaled = x_coef * decimo.decimal128.utility.power_of_10_unsafe[
+        var x_scaled = x_coef * decimal128_utility.power_of_10_unsafe[
             DType.uint128
         ](scale_diff)
         if x_scaled == y_coef:
             return 0
         return Int8(1) if x_scaled > y_coef else Int8(-1)
-    var x_scaled_w = UInt256(
-        x_coef
-    ) * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](scale_diff)
+    var x_scaled_w = UInt256(x_coef) * decimal128_utility.power_of_10_unsafe[
+        DType.uint256
+    ](scale_diff)
     var y_wide = UInt256(y_coef)
     if x_scaled_w == y_wide:
         return 0

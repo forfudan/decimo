@@ -40,7 +40,7 @@ from decimo.errors import (
     OverflowError,
     ZeroDivisionError,
 )
-import decimo.decimal128.utility
+import decimo.decimal128.utility as decimal128_utility
 
 
 @always_inline
@@ -104,7 +104,7 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
         # >= 29 digits: drop trailing digits to fit. If we'd need to drop more
         # digits than `x1_scale` provides, the result truly overflows.
-        var fitted = decimo.decimal128.utility.fit_to_max_coefficient(summation)
+        var fitted = decimal128_utility.fit_to_max_coefficient(summation)
         if UInt32(fitted[1]) > UInt32(x1_scale):
             raise OverflowError(
                 message="Decimal128 overflow in addition.",
@@ -128,7 +128,7 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         var scale = min(
             max(x1_scale, x2_scale),
             Decimal128.MAX_NUM_DIGITS
-            - decimo.decimal128.utility.number_of_digits(x2.to_uint128()),
+            - decimal128_utility.number_of_digits(x2.to_uint128()),
         )
         ## If x2_coef > 7922816251426433759354395033
         if (
@@ -137,7 +137,7 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             and (scale > x2_scale)
         ):
             scale -= 1
-        sum_coef *= decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
+        sum_coef *= decimal128_utility.power_of_10_unsafe[DType.uint128](
             Int(scale - x2_scale)
         )
         return Decimal128.from_uint128(
@@ -151,7 +151,7 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         var scale = min(
             max(x1_scale, x2_scale),
             Decimal128.MAX_NUM_DIGITS
-            - decimo.decimal128.utility.number_of_digits(x1.to_uint128()),
+            - decimal128_utility.number_of_digits(x1.to_uint128()),
         )
         ## If x1_coef > 7922816251426433759354395033
         if (
@@ -160,7 +160,7 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             and (scale > x1_scale)
         ):
             scale -= 1
-        sum_coef *= decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
+        sum_coef *= decimal128_utility.power_of_10_unsafe[DType.uint128](
             Int(scale - x1_scale)
         )
         return Decimal128.from_uint128(
@@ -176,7 +176,7 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         var x1_coef_scaled: UInt256 = UInt256(x1_coef)
         var x2_coef_scaled: UInt256 = UInt256(
             x2_coef
-        ) * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](
+        ) * decimal128_utility.power_of_10_unsafe[DType.uint256](
             Int(x1_scale - x2_scale)
         )
 
@@ -199,7 +199,7 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         # Scale up x1_coef to match x2_scale
         var x1_coef_scaled: UInt256 = UInt256(
             x1_coef
-        ) * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](
+        ) * decimal128_utility.power_of_10_unsafe[DType.uint256](
             Int(x2_scale - x1_scale)
         )
         var x2_coef_scaled: UInt256 = UInt256(x2_coef)
@@ -226,7 +226,7 @@ def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             is_negative,
         )
 
-    var fitted = decimo.decimal128.utility.fit_to_max_coefficient(summation)
+    var fitted = decimal128_utility.fit_to_max_coefficient(summation)
     var working_scale = UInt32(max(x1_scale, x2_scale))
     if UInt32(fitted[1]) > working_scale:
         raise OverflowError(
@@ -302,7 +302,7 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
                 False if summation == 0 else is_negative,
             )
 
-        var fitted = decimo.decimal128.utility.fit_to_max_coefficient(summation)
+        var fitted = decimal128_utility.fit_to_max_coefficient(summation)
         if UInt32(fitted[1]) > UInt32(x1_scale):
             raise OverflowError(
                 message="Decimal128 overflow in subtraction.",
@@ -328,7 +328,7 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         var scale = min(
             max(x1_scale, x2_scale),
             Decimal128.MAX_NUM_DIGITS
-            - decimo.decimal128.utility.number_of_digits(x2.to_uint128()),
+            - decimal128_utility.number_of_digits(x2.to_uint128()),
         )
         ## If x2_coef > 7922816251426433759354395033
         if (
@@ -337,7 +337,7 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             and (scale > x2_scale)
         ):
             scale -= 1
-        sum_coef *= decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
+        sum_coef *= decimal128_utility.power_of_10_unsafe[DType.uint128](
             Int(scale - x2_scale)
         )
         # Sign of result is sign of -x2.
@@ -352,7 +352,7 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         var scale = min(
             max(x1_scale, x2_scale),
             Decimal128.MAX_NUM_DIGITS
-            - decimo.decimal128.utility.number_of_digits(x1.to_uint128()),
+            - decimal128_utility.number_of_digits(x1.to_uint128()),
         )
         ## If x1_coef > 7922816251426433759354395033
         if (
@@ -361,7 +361,7 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             and (scale > x1_scale)
         ):
             scale -= 1
-        sum_coef *= decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
+        sum_coef *= decimal128_utility.power_of_10_unsafe[DType.uint128](
             Int(scale - x1_scale)
         )
         return Decimal128.from_uint128(
@@ -380,7 +380,7 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         var x1_coef_scaled: UInt256 = UInt256(x1_coef)
         var x2_coef_scaled: UInt256 = UInt256(
             x2_coef
-        ) * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](
+        ) * decimal128_utility.power_of_10_unsafe[DType.uint256](
             Int(x1_scale - x2_scale)
         )
 
@@ -403,7 +403,7 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     else:  # x1_scale < x2_scale
         var x1_coef_scaled: UInt256 = UInt256(
             x1_coef
-        ) * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](
+        ) * decimal128_utility.power_of_10_unsafe[DType.uint256](
             Int(x2_scale - x1_scale)
         )
         var x2_coef_scaled: UInt256 = UInt256(x2_coef)
@@ -430,7 +430,7 @@ def subtract(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             is_negative,
         )
 
-    var fitted = decimo.decimal128.utility.fit_to_max_coefficient(diff)
+    var fitted = decimal128_utility.fit_to_max_coefficient(diff)
     var working_scale = UInt32(max(x1_scale, x2_scale))
     if UInt32(fitted[1]) > working_scale:
         raise OverflowError(
@@ -552,7 +552,7 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         else:
             var prod = x2_coef
             # Rounding may be needed.
-            var truncated_prod = decimo.decimal128.utility.round_coefficient(
+            var truncated_prod = decimal128_utility.round_coefficient(
                 prod,
                 ndigits_to_remove=combined_scale - Decimal128.MAX_SCALE,
             )
@@ -573,7 +573,7 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         else:
             var prod = x1_coef
             # Rounding may be needed.
-            var truncated_prod = decimo.decimal128.utility.round_coefficient(
+            var truncated_prod = decimal128_utility.round_coefficient(
                 prod,
                 ndigits_to_remove=combined_scale - Decimal128.MAX_SCALE,
             )
@@ -585,8 +585,8 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     # Determine the number of bits in the coefficients
     # Used to determine the appropriate multiplication method
     # The coefficient of result would be the sum of the two numbers of bits
-    var x1_num_bits = decimo.decimal128.utility.number_of_bits(x1_coef)
-    var x2_num_bits = decimo.decimal128.utility.number_of_bits(x2_coef)
+    var x1_num_bits = decimal128_utility.number_of_bits(x1_coef)
+    var x2_num_bits = decimal128_utility.number_of_bits(x2_coef)
     var combined_num_bits = x1_num_bits + x2_num_bits
 
     # SPECIAL CASE: Both operands are true integers
@@ -655,7 +655,7 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         # subsequent `min(MAX_SCALE, combined_scale)` always yielded
         # MAX_SCALE and the second-pass rounding branch was dead code.
         else:
-            prod = decimo.decimal128.utility.round_coefficient(
+            prod = decimal128_utility.round_coefficient(
                 prod,
                 ndigits_to_remove=combined_scale - Decimal128.MAX_SCALE,
             )
@@ -688,7 +688,7 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         # MAX_SCALE) constraints are satisfied in one `round_coefficient`
         # call. Saves the extra `number_of_digits` + wide divide that the
         # old `fit_to_max_coefficient` + re-round pattern incurred.
-        var ndigits = decimo.decimal128.utility.number_of_digits(prod)
+        var ndigits = decimal128_utility.number_of_digits(prod)
         var drop_for_scale = Int(combined_scale) - Decimal128.MAX_SCALE
         var drop_for_fit: Int
         if prod > Decimal128.MAX_AS_UINT128:
@@ -706,7 +706,7 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
                 function="multiply()",
             )
 
-        var rounded = decimo.decimal128.utility.round_coefficient[
+        var rounded = decimal128_utility.round_coefficient[
             skip_digit_check=True
         ](prod, ndigits_to_remove=drop)
         # Rounding-up may carry into a new most-significant digit, pushing
@@ -718,7 +718,7 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
                     message="Decimal128 overflow in multiplication.",
                     function="multiply()",
                 )
-            rounded = decimo.decimal128.utility.round_coefficient[
+            rounded = decimal128_utility.round_coefficient[
                 skip_digit_check=True
             ](prod, ndigits_to_remove=drop)
 
@@ -741,7 +741,7 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     # constraints are satisfied in one `round_coefficient` call. Saves
     # the extra UInt256 division that the old `fit_to_max_coefficient`
     # + re-round pattern incurred.
-    var ndigits = decimo.decimal128.utility.number_of_digits(prod)
+    var ndigits = decimal128_utility.number_of_digits(prod)
     var drop_for_scale = Int(combined_scale) - Decimal128.MAX_SCALE
     var drop_for_fit: Int
     if prod > UInt256(Decimal128.MAX_AS_UINT128):
@@ -756,9 +756,9 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             function="multiply()",
         )
 
-    var rounded = decimo.decimal128.utility.round_coefficient[
-        skip_digit_check=True
-    ](prod, ndigits_to_remove=drop)
+    var rounded = decimal128_utility.round_coefficient[skip_digit_check=True](
+        prod, ndigits_to_remove=drop
+    )
     # Rounding-up may carry into a new most-significant digit, pushing
     # the result past MAX_AS_UINT128. Re-round the ORIGINAL `prod` (not
     # the already-rounded value) with one more digit dropped to avoid
@@ -770,9 +770,9 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
                 message="Decimal128 overflow in multiplication.",
                 function="multiply()",
             )
-        rounded = decimo.decimal128.utility.round_coefficient[
-            skip_digit_check=True
-        ](prod, ndigits_to_remove=drop)
+        rounded = decimal128_utility.round_coefficient[skip_digit_check=True](
+            prod, ndigits_to_remove=drop
+        )
 
     var final_scale = Int(combined_scale) - drop
 
@@ -858,22 +858,19 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         else:
             # If the result can be stored in UInt128
             if (
-                decimo.decimal128.utility.number_of_digits(x1_coef) - diff_scale
+                decimal128_utility.number_of_digits(x1_coef) - diff_scale
                 < Decimal128.MAX_NUM_DIGITS
             ):
-                var quot = (
-                    x1_coef
-                    * decimo.decimal128.utility.power_of_10_unsafe[
-                        DType.uint128
-                    ](Int(-diff_scale))
-                )
+                var quot = x1_coef * decimal128_utility.power_of_10_unsafe[
+                    DType.uint128
+                ](Int(-diff_scale))
                 return Decimal128.from_uint128(quot, 0, is_negative)
 
             # If the result should be stored in UInt256
             else:
                 var quot = UInt256(
                     x1_coef
-                ) * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](
+                ) * decimal128_utility.power_of_10_unsafe[DType.uint256](
                     Int(-diff_scale)
                 )
                 if quot > Decimal128.MAX_AS_UINT256:
@@ -906,11 +903,9 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         # For example, 1234 / 0.1234 = 10000
         # Since -diff_scale is less than 28, the result would not overflow
         else:
-            var quot = UInt128(
-                1
-            ) * decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
-                Int(-diff_scale)
-            )
+            var quot = UInt128(1) * decimal128_utility.power_of_10_unsafe[
+                DType.uint128
+            ](Int(-diff_scale))
             return Decimal128.from_uint128(quot, 0, is_negative)
 
     # SPECIAL CASE: Modulus of coefficients is zero (exact division)
@@ -939,10 +934,10 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
             # If the result can be stored in UInt128
             if (
-                decimo.decimal128.utility.number_of_digits(quot) - diff_scale
+                decimal128_utility.number_of_digits(quot) - diff_scale
                 < Decimal128.MAX_NUM_DIGITS
             ):
-                var quot = quot * decimo.decimal128.utility.power_of_10_unsafe[
+                var quot = quot * decimal128_utility.power_of_10_unsafe[
                     DType.uint128
                 ](Int(-diff_scale))
                 return Decimal128.from_uint128(quot, 0, is_negative)
@@ -951,7 +946,7 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             else:
                 var quot = UInt256(
                     quot
-                ) * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](
+                ) * decimal128_utility.power_of_10_unsafe[DType.uint256](
                     Int(-diff_scale)
                 )
                 if quot > Decimal128.MAX_AS_UINT256:
@@ -1005,8 +1000,8 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     # Yuhao's notes: remainder should be positive beacuse the previous cases have been handled
     # 朱宇浩注: 餘數應該爲正,因爲之前的特例已經處理過了
 
-    var x1_ndigits = decimo.decimal128.utility.number_of_digits(x1_coef)
-    var x2_ndigits = decimo.decimal128.utility.number_of_digits(x2_coef)
+    var x1_ndigits = decimal128_utility.number_of_digits(x1_coef)
+    var x2_ndigits = decimal128_utility.number_of_digits(x2_coef)
     var diff_digits = x1_ndigits - x2_ndigits
     # Here is an estimation of the maximum possible number of digits of the quotient's integral part
     # If it is higher than 28, we need to use UInt256 to store the quotient
@@ -1024,12 +1019,9 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
     # The adjusted dividend coefficient will not exceed 2^96 - 1
     if diff_digits < 0:
-        var adjusted_x1_coef = (
-            x1_coef
-            * decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
-                Int(-diff_digits)
-            )
-        )
+        var adjusted_x1_coef = x1_coef * decimal128_utility.power_of_10_unsafe[
+            DType.uint128
+        ](Int(-diff_digits))
         quot = adjusted_x1_coef // x2_coef
         rem = adjusted_x1_coef % x2_coef
         adjusted_scale = -diff_digits
@@ -1052,9 +1044,7 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
         # The final step counter stands for the number of decimal points.
         var step_counter = 0
-        var ndigits_initial_quot = decimo.decimal128.utility.number_of_digits(
-            quot
-        )
+        var ndigits_initial_quot = decimal128_utility.number_of_digits(quot)
         # Two-phase long division.
         #
         # Phase 1: a short probe loop (up to PROBE_STEPS digits) catches
@@ -1092,7 +1082,7 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             # `step_counter >= PROBE_STEPS = 2`, so in practice
             # `bulk_steps <= 29 - 2 = 27`, well within
             # `power_of_10_unsafe`'s `0 <= n <= 29` range for `uint128`.
-            var scale_factor = decimo.decimal128.utility.power_of_10_unsafe[
+            var scale_factor = decimal128_utility.power_of_10_unsafe[
                 DType.uint128
             ](bulk_steps)
             # `rem * 10^bulk_steps` always fits in UInt256: rem < x2_coef
@@ -1104,7 +1094,7 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             var rem_after_u128: UInt128
             if x2_coef <= UInt128(0xFFFF_FFFF_FFFF_FFFF):
                 # Fast path: 4-step schoolbook over u64 limbs.
-                var pair = decimo.decimal128.utility.udiv_u256_by_u64(
+                var pair = decimal128_utility.udiv_u256_by_u64(
                     rem_scaled, UInt64(x2_coef)
                 )
                 # `quot_added < 10^bulk_steps <= 10^27 < 2^90`, fits UInt128.
@@ -1205,9 +1195,9 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
         # If the scale is negative, we need to scale up the quotient
         if scale_of_quot < 0:
-            quot = quot * decimo.decimal128.utility.power_of_10_unsafe[
-                DType.uint128
-            ](Int(-scale_of_quot))
+            quot = quot * decimal128_utility.power_of_10_unsafe[DType.uint128](
+                Int(-scale_of_quot)
+            )
             scale_of_quot = 0
 
         # print(
@@ -1221,7 +1211,7 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         # If quot is within MAX, return the result
         if quot <= Decimal128.MAX_AS_UINT128:
             if scale_of_quot > Decimal128.MAX_SCALE:
-                quot = decimo.decimal128.utility.round_coefficient(
+                quot = decimal128_utility.round_coefficient(
                     quot,
                     ndigits_to_remove=scale_of_quot - Decimal128.MAX_SCALE,
                 )
@@ -1233,12 +1223,12 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
         # Otherwise, we need to truncate the first 29 or 28 digits
         else:
-            var fitted = decimo.decimal128.utility.fit_to_max_coefficient(quot)
+            var fitted = decimal128_utility.fit_to_max_coefficient(quot)
             var truncated_quot = fitted[0]
             var scale_of_truncated_quot = scale_of_quot - fitted[1]
 
             if scale_of_truncated_quot > Decimal128.MAX_SCALE:
-                truncated_quot = decimo.decimal128.utility.round_coefficient(
+                truncated_quot = decimal128_utility.round_coefficient(
                     truncated_quot,
                     ndigits_to_remove=scale_of_truncated_quot
                     - Decimal128.MAX_SCALE,
@@ -1266,9 +1256,7 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         var digit = UInt256(0)
         # The final step counter stands for the number of decimal points
         var step_counter = 0
-        var ndigits_initial_quot = decimo.decimal128.utility.number_of_digits(
-            quot256
-        )
+        var ndigits_initial_quot = decimal128_utility.number_of_digits(quot256)
         while (
             (rem256 != 0)
             and (
@@ -1305,7 +1293,7 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
         # If the scale is negative, we need to scale up the quotient
         if scale_of_quot < 0:
-            quot256 = quot256 * decimo.decimal128.utility.power_of_10_unsafe[
+            quot256 = quot256 * decimal128_utility.power_of_10_unsafe[
                 DType.uint256
             ](Int(-scale_of_quot))
             scale_of_quot = 0
@@ -1313,7 +1301,7 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         # If quot is within MAX, return the result
         if quot256 <= Decimal128.MAX_AS_UINT256:
             if scale_of_quot > Decimal128.MAX_SCALE:
-                quot256 = decimo.decimal128.utility.round_coefficient(
+                quot256 = decimal128_utility.round_coefficient(
                     quot256,
                     ndigits_to_remove=scale_of_quot - Decimal128.MAX_SCALE,
                 )
@@ -1329,9 +1317,7 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
         # Otherwise, we need to truncate the first 29 or 28 digits
         else:
-            var fitted = decimo.decimal128.utility.fit_to_max_coefficient(
-                quot256
-            )
+            var fitted = decimal128_utility.fit_to_max_coefficient(quot256)
             var truncated_quot = fitted[0]
             var digits_removed = fitted[1]
 
@@ -1345,7 +1331,7 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
             var scale_of_truncated_quot = scale_of_quot - digits_removed
 
             if scale_of_truncated_quot > Decimal128.MAX_SCALE:
-                truncated_quot = decimo.decimal128.utility.round_coefficient(
+                truncated_quot = decimal128_utility.round_coefficient(
                     truncated_quot,
                     ndigits_to_remove=scale_of_truncated_quot
                     - Decimal128.MAX_SCALE,
@@ -1463,14 +1449,11 @@ def fma(x1: Decimal128, x2: Decimal128, x3: Decimal128) raises -> Decimal128:
     var common_scale: Int
     if p_scale > b_scale:
         var diff = p_scale - b_scale
-        var b_ndigits = decimo.decimal128.utility.number_of_digits(b_coef_256)
+        var b_ndigits = decimal128_utility.number_of_digits(b_coef_256)
         if b_ndigits + diff <= WORK_DIGITS_CAP:
-            b_coef_256 = (
-                b_coef_256
-                * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](
-                    diff
-                )
-            )
+            b_coef_256 = b_coef_256 * decimal128_utility.power_of_10_unsafe[
+                DType.uint256
+            ](diff)
             common_scale = p_scale
         else:
             # Fallback: scaling b would overflow UInt256. Drop to the
@@ -1478,14 +1461,11 @@ def fma(x1: Decimal128, x2: Decimal128, x3: Decimal128) raises -> Decimal128:
             return multiply(x1, x2) + x3
     elif b_scale > p_scale:
         var diff = b_scale - p_scale
-        var p_ndigits = decimo.decimal128.utility.number_of_digits(p_coef_256)
+        var p_ndigits = decimal128_utility.number_of_digits(p_coef_256)
         if p_ndigits + diff <= WORK_DIGITS_CAP:
-            p_coef_256 = (
-                p_coef_256
-                * decimo.decimal128.utility.power_of_10_unsafe[DType.uint256](
-                    diff
-                )
-            )
+            p_coef_256 = p_coef_256 * decimal128_utility.power_of_10_unsafe[
+                DType.uint256
+            ](diff)
             common_scale = b_scale
         else:
             return multiply(x1, x2) + x3
@@ -1523,7 +1503,7 @@ def fma(x1: Decimal128, x2: Decimal128, x3: Decimal128) raises -> Decimal128:
     # digits to drop so that both `sum_coef <= MAX_AS_UINT128` and
     # `final_scale <= MAX_SCALE` are satisfied in one round_coefficient
     # call.
-    var ndigits = decimo.decimal128.utility.number_of_digits(sum_coef)
+    var ndigits = decimal128_utility.number_of_digits(sum_coef)
     var drop_for_scale = common_scale - Decimal128.MAX_SCALE
     var drop_for_fit: Int
     if sum_coef > UInt256(Decimal128.MAX_AS_UINT128):
@@ -1542,9 +1522,9 @@ def fma(x1: Decimal128, x2: Decimal128, x3: Decimal128) raises -> Decimal128:
     if drop == 0:
         rounded = sum_coef
     else:
-        rounded = decimo.decimal128.utility.round_coefficient[
-            skip_digit_check=True
-        ](sum_coef, ndigits_to_remove=drop)
+        rounded = decimal128_utility.round_coefficient[skip_digit_check=True](
+            sum_coef, ndigits_to_remove=drop
+        )
         # Banker's-rounding carry may push the value past MAX_AS_UINT128.
         # Re-round the ORIGINAL sum_coef (not the already-rounded value)
         # with one more digit dropped to avoid double-rounding artifacts.
@@ -1555,7 +1535,7 @@ def fma(x1: Decimal128, x2: Decimal128, x3: Decimal128) raises -> Decimal128:
                     message="Decimal128 overflow in fma().",
                     function="fma()",
                 )
-            rounded = decimo.decimal128.utility.round_coefficient[
+            rounded = decimal128_utility.round_coefficient[
                 skip_digit_check=True
             ](sum_coef, ndigits_to_remove=drop)
 
