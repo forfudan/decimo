@@ -2210,7 +2210,38 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         `remove_trailing_digits_with_rounding_inplace`: copies `self`
         once and delegates to the in-place variant. Keeps a single
         source of truth for the rounding logic.
+
+        Argument validation is performed here (before the copy) so the
+        raised error's `function` tag points at this out-of-place API
+        rather than at the inner `_inplace` helper. The in-place path
+        re-validates with its own tag for callers that invoke it
+        directly.
         """
+        # Pre-flight validation so errors are tagged with the
+        # user-facing function name. Cheap (three comparisons +
+        # one `number_of_digits()` only on the bounds path).
+        if ndigits_to_remove < 0:
+            raise ValueError(
+                function="BigUInt.remove_trailing_digits_with_rounding()",
+                message=(
+                    "The number of digits to remove is negative: "
+                    + String(ndigits_to_remove)
+                ),
+            )
+        if ndigits_to_remove == 0:
+            return self.copy()
+        var ndigits_self = self.number_of_digits()
+        if ndigits_to_remove > ndigits_self:
+            raise ValueError(
+                function="BigUInt.remove_trailing_digits_with_rounding()",
+                message=(
+                    "The number of digits to remove is larger than the "
+                    "number of digits in the BigUInt: "
+                    + String(ndigits_to_remove)
+                    + " > "
+                    + String(ndigits_self)
+                ),
+            )
         var result = self.copy()
         result.remove_trailing_digits_with_rounding_inplace(
             ndigits_to_remove=ndigits_to_remove,
@@ -2219,6 +2250,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
                 remove_extra_digit_due_to_rounding
             ),
             sign=sign,
+            ndigits_before_removal=ndigits_self,
         )
         return result^
 

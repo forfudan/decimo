@@ -30,7 +30,6 @@ from std import testing
 from decimo.errors import ConversionError, ValueError
 from decimo.rounding_mode import RoundingMode
 from decimo.bigdecimal.exponential import MathCache
-from decimo.bigdecimal.rounding import round_to_precision_inplace
 from decimo.bigint10.bigint10 import BigInt10
 import decimo.str as decimo_str
 import decimo.bigdecimal.arithmetics as bigdecimal_arithmetics

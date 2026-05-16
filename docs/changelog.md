@@ -2,6 +2,27 @@
 
 This is a list of changes for the Decimo package (formerly DeciMojo).
 
+## Unreleased
+
+1. **Renamed `BigDecimal` rounding APIs to `*_inplace`.**
+   The free function `decimo.bigdecimal.rounding.round_to_precision` and
+   the `BigDecimal.round_to_precision` method were renamed to
+   `round_to_precision_inplace` to make their mutating semantics
+   explicit. Callers must update import and call sites. The
+   out-of-place, Python-compatible `BigDecimal.round(ndigits=...)` API
+   is unchanged. See PR #245 / roadmap task T-R2.
+1. Routed `round_to_precision` through a fully in-place path, removing
+   one `BigUInt` allocation + buffer copy from 6 call sites in
+   `bigdecimal/arithmetics.mojo` (3 × `divide`) and
+   `bigdecimal/exponential.mojo`. The out-of-place
+   `BigUInt.remove_trailing_digits_with_rounding` is now a thin
+   `copy + inplace` wrapper (~110 LOC removed). Added an optional
+   `ndigits_before_removal` hint parameter so callers that already know
+   `self.number_of_digits()` skip the redundant inner pass.
+   Measured impact on `divide` (p = 100 / 1000 / 10000) is within ±1 %
+   run-to-run noise; the cleanup is kept for code quality and will
+   compound on future rounding-dominated fast paths.
+
 ## 20260514 (v0.10.0)
 
 Decimo v0.10.0 updates the codebase to **Mojo v1.0.0b1** and marks the **"polish and parity"** phase. This release introduces four major additions.
