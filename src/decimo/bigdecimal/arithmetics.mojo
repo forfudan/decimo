@@ -841,6 +841,7 @@ def true_divide_inexact(
             digits_to_remove,
             RoundingMode.down(),
             remove_extra_digit_due_to_rounding=False,
+            ndigits_before_removal=result_digits,
         )
         # Adjust the scale accordingly
         result_scale -= digits_to_remove
@@ -898,6 +899,7 @@ def _true_divide_inexact_truncated(
             digits_to_remove,
             RoundingMode.down(),
             remove_extra_digit_due_to_rounding=False,
+            ndigits_before_removal=result_digits,
         )
         result_scale -= digits_to_remove
 
@@ -971,6 +973,7 @@ def true_divide_inexact_by_uint32(
             digits_to_remove,
             RoundingMode.down(),
             remove_extra_digit_due_to_rounding=False,
+            ndigits_before_removal=result_digits,
         )
         result_scale -= digits_to_remove
 

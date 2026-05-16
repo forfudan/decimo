@@ -1699,12 +1699,14 @@ def sqrt_decimal_approach(x: BigDecimal, precision: Int) raises -> BigDecimal:
         iteration_count += 1
 
     # Round to the desired precision (in-place, no intermediate copy)
-    var ndigits_to_remove = guess.coefficient.number_of_digits() - precision
+    var guess_ndigits = guess.coefficient.number_of_digits()
+    var ndigits_to_remove = guess_ndigits - precision
     if ndigits_to_remove > 0:
         guess.coefficient.remove_trailing_digits_with_rounding_inplace(
             ndigits_to_remove,
             rounding_mode=RoundingMode.half_up(),
             remove_extra_digit_due_to_rounding=True,
+            ndigits_before_removal=guess_ndigits,
         )
         guess.scale -= ndigits_to_remove
 

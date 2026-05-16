@@ -455,13 +455,23 @@ P7 — `round` (2× py → target ≤1.0×)
   copy each). The out-of-place
   `BigUInt.remove_trailing_digits_with_rounding` was de-duplicated
   into a thin `copy + inplace` wrapper (~110 lines removed).
-  **Measured impact on divide bench (p=100/1000/10000):** ~0%
-  (162.5→163.75, 741.9→747.3, 6717→6731 ns/iter — within noise).
-  The per-call alloc saving is real but is dominated by the cost of
-  the divide itself. The cleanup is kept for code quality and
-  because the saving will compound on future rounding-dominated
-  fast paths (e.g. small-coefficient `add`/`subtract`/`multiply`
-  with `precision > 0`).
+  Additionally, a `ndigits_before_removal: Int = -1` parameter was
+  added to the inplace path so callers that already computed
+  `number_of_digits()` (the public `round()`,
+  `round_to_precision_inplace`, all 3 divide callsites, and the 1
+  exp callsite) can skip the redundant inner `number_of_digits()`
+  pass. As part of the audit the inplace function's primary
+  parameter was also renamed from `ndigits` to `ndigits_to_remove`
+  for self-documenting clarity (the public Python-compatible
+  `round(ndigits=...)` API is unchanged).
+  **Measured impact on divide bench (p=100/1000/10000):** ~0% in
+  every run — the per-call alloc and `number_of_digits()` savings
+  are dominated by the cost of the divide itself and stay inside
+  run-to-run noise (±1%). The cleanup is kept for code quality
+  (~110 LOC removed, mutating semantics now visible in the name)
+  and because the saving will compound on future
+  rounding-dominated fast paths (e.g. small-coefficient `add` /
+  `subtract` / `multiply` with `precision > 0`).
 
 ### 5.3 Long-term tasks not on the active roadmap
 
