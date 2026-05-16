@@ -26,18 +26,18 @@ mathematical methods that do not implement a trait.
 from std.memory import UnsafePointer
 from std.hashlib.hasher import Hasher
 
-import decimo.decimal128.arithmetics
-import decimo.decimal128.comparison
-import decimo.decimal128.constants
-import decimo.decimal128.exponential
-import decimo.decimal128.rounding
+import decimo.decimal128.arithmetics as decimal128_arithmetics
+import decimo.decimal128.comparison as decimal128_comparison
+import decimo.decimal128.constants as decimal128_constants
+import decimo.decimal128.exponential as decimal128_exponential
+import decimo.decimal128.rounding as decimal128_rounding
 from decimo.rounding_mode import RoundingMode
 from decimo.errors import (
     ValueError,
     OverflowError,
     ConversionError,
 )
-import decimo.decimal128.utility
+import decimo.decimal128.utility as decimal128_utility
 from decimo.bigdecimal.bigdecimal import BigDecimal
 
 comptime Dec128 = Decimal128
@@ -184,7 +184,7 @@ struct Decimal128(
         Returns:
             The value of pi (π).
         """
-        return decimo.decimal128.constants.PI()
+        return decimal128_constants.PI()
 
     @always_inline
     @staticmethod
@@ -194,7 +194,7 @@ struct Decimal128(
         Returns:
             The value of Euler's number (e).
         """
-        return decimo.decimal128.constants.E()
+        return decimal128_constants.E()
 
     # ===------------------------------------------------------------------=== #
     # Constructors and life time dunder methods
@@ -850,7 +850,7 @@ struct Decimal128(
                             ).format(raw_exponent),
                             function="Decimal128.from_string()",
                         )
-                    coef = coef * decimo.decimal128.utility.power_of_10_unsafe[
+                    coef = coef * decimal128_utility.power_of_10_unsafe[
                         DType.uint128
                     ](exponent_delta)
                     scale = 0
@@ -862,7 +862,7 @@ struct Decimal128(
         # because it is used in many cases
         if coef <= Decimal128.MAX_AS_UINT128:
             if scale > UInt32(Decimal128.MAX_SCALE):
-                coef = decimo.decimal128.utility.round_coefficient(
+                coef = decimal128_utility.round_coefficient(
                     coef,
                     ndigits_to_remove=Int(scale - UInt32(Decimal128.MAX_SCALE)),
                 )
@@ -871,7 +871,7 @@ struct Decimal128(
             return Decimal128.from_uint128(coef, scale, mantissa_sign)
 
         else:
-            var fitted = decimo.decimal128.utility.fit_to_max_coefficient(coef)
+            var fitted = decimal128_utility.fit_to_max_coefficient(coef)
             var truncated_coef = fitted[0]
             var truncated_digits = UInt32(fitted[1])
             # Guard against integral-digit overflow: if more digits were removed
@@ -888,7 +888,7 @@ struct Decimal128(
             var scale_of_truncated_coef = scale - truncated_digits
 
             if scale_of_truncated_coef > UInt32(Decimal128.MAX_SCALE):
-                truncated_coef = decimo.decimal128.utility.round_coefficient(
+                truncated_coef = decimal128_utility.round_coefficient(
                     truncated_coef,
                     ndigits_to_remove=Int(
                         scale_of_truncated_coef - UInt32(Decimal128.MAX_SCALE)
@@ -1012,12 +1012,9 @@ struct Decimal128(
             # print("DEBUG: scale = ", scale)
             # print("DEBUG: remainder = ", remainder)
 
-        coefficient = (
-            coefficient
-            // decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
-                Int(num_trailing_zeros)
-            )
-        )
+        coefficient = coefficient // decimal128_utility.power_of_10_unsafe[
+            DType.uint128
+        ](Int(num_trailing_zeros))
         scale -= num_trailing_zeros
 
         var low = UInt32(coefficient & 0xFFFFFFFF)
@@ -1297,12 +1294,9 @@ struct Decimal128(
 
         # Otherwise, get the integer part by dividing by 10^scale
         else:
-            res = (
-                self.coefficient()
-                // decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
-                    self.scale()
-                )
-            )
+            res = self.coefficient() // decimal128_utility.power_of_10_unsafe[
+                DType.uint128
+            ](self.scale())
 
         return res
 
@@ -1537,7 +1531,7 @@ struct Decimal128(
         Returns:
             The absolute value.
         """
-        return decimo.decimal128.arithmetics.absolute(self)
+        return decimal128_arithmetics.absolute(self)
 
     @always_inline
     def __neg__(self) -> Self:
@@ -1547,7 +1541,7 @@ struct Decimal128(
         Returns:
             The negated value.
         """
-        return decimo.decimal128.arithmetics.negative(self)
+        return decimal128_arithmetics.negative(self)
 
     @always_inline
     def __bool__(self) -> Bool:
@@ -1587,7 +1581,7 @@ struct Decimal128(
         Returns:
             The sum.
         """
-        return decimo.decimal128.arithmetics.add(self, other)
+        return decimal128_arithmetics.add(self, other)
 
     @always_inline
     def __sub__(self, other: Self) raises -> Self:
@@ -1599,7 +1593,7 @@ struct Decimal128(
         Returns:
             The difference.
         """
-        return decimo.decimal128.arithmetics.subtract(self, other)
+        return decimal128_arithmetics.subtract(self, other)
 
     @always_inline
     def __mul__(self, other: Self) raises -> Self:
@@ -1611,7 +1605,7 @@ struct Decimal128(
         Returns:
             The product.
         """
-        return decimo.decimal128.arithmetics.multiply(self, other)
+        return decimal128_arithmetics.multiply(self, other)
 
     @always_inline
     def __truediv__(self, other: Self) raises -> Self:
@@ -1623,7 +1617,7 @@ struct Decimal128(
         Returns:
             The quotient.
         """
-        return decimo.decimal128.arithmetics.divide(self, other)
+        return decimal128_arithmetics.divide(self, other)
 
     @always_inline
     def __floordiv__(self, other: Self) raises -> Self:
@@ -1635,7 +1629,7 @@ struct Decimal128(
         Returns:
             The truncated quotient.
         """
-        return decimo.decimal128.arithmetics.truncate_divide(self, other)
+        return decimal128_arithmetics.truncate_divide(self, other)
 
     @always_inline
     def __mod__(self, other: Self) raises -> Self:
@@ -1647,7 +1641,7 @@ struct Decimal128(
         Returns:
             The remainder.
         """
-        return decimo.decimal128.arithmetics.modulo(self, other)
+        return decimal128_arithmetics.modulo(self, other)
 
     @always_inline
     def __divmod__(self, other: Self) raises -> Tuple[Self, Self]:
@@ -1671,7 +1665,7 @@ struct Decimal128(
             ZeroDivisionError: If `other` is zero.
             OverflowError: If the result overflows.
         """
-        var q = decimo.decimal128.arithmetics.truncate_divide(self, other)
+        var q = decimal128_arithmetics.truncate_divide(self, other)
         return (q, self - q * other)
 
     @always_inline
@@ -1684,7 +1678,7 @@ struct Decimal128(
         Returns:
             The value raised to the given power.
         """
-        return decimo.decimal128.exponential.power(self, exponent)
+        return decimal128_exponential.power(self, exponent)
 
     @always_inline
     def __pow__(self, exponent: Int) raises -> Self:
@@ -1696,7 +1690,7 @@ struct Decimal128(
         Returns:
             The value raised to the given power.
         """
-        return decimo.decimal128.exponential.power(self, exponent)
+        return decimal128_exponential.power(self, exponent)
 
     # ===------------------------------------------------------------------=== #
     # Basic binary arithmetic operation dunders with reflected operands
@@ -1715,7 +1709,7 @@ struct Decimal128(
         Returns:
             The sum.
         """
-        return decimo.decimal128.arithmetics.add(other, self)
+        return decimal128_arithmetics.add(other, self)
 
     @always_inline
     def __rsub__(self, other: Self) raises -> Self:
@@ -1727,7 +1721,7 @@ struct Decimal128(
         Returns:
             The difference.
         """
-        return decimo.decimal128.arithmetics.subtract(other, self)
+        return decimal128_arithmetics.subtract(other, self)
 
     @always_inline
     def __rmul__(self, other: Self) raises -> Self:
@@ -1739,7 +1733,7 @@ struct Decimal128(
         Returns:
             The product.
         """
-        return decimo.decimal128.arithmetics.multiply(other, self)
+        return decimal128_arithmetics.multiply(other, self)
 
     @always_inline
     def __rtruediv__(self, other: Self) raises -> Self:
@@ -1751,7 +1745,7 @@ struct Decimal128(
         Returns:
             The quotient.
         """
-        return decimo.decimal128.arithmetics.divide(other, self)
+        return decimal128_arithmetics.divide(other, self)
 
     @always_inline
     def __rfloordiv__(self, other: Self) raises -> Self:
@@ -1763,7 +1757,7 @@ struct Decimal128(
         Returns:
             The truncated quotient.
         """
-        return decimo.decimal128.arithmetics.truncate_divide(other, self)
+        return decimal128_arithmetics.truncate_divide(other, self)
 
     @always_inline
     def __rmod__(self, other: Self) raises -> Self:
@@ -1775,7 +1769,7 @@ struct Decimal128(
         Returns:
             The remainder.
         """
-        return decimo.decimal128.arithmetics.modulo(other, self)
+        return decimal128_arithmetics.modulo(other, self)
 
     # ===------------------------------------------------------------------=== #
     # Basic binary augmented arithmetic assignments dunders
@@ -1791,7 +1785,7 @@ struct Decimal128(
         Args:
             other: The right-hand side operand.
         """
-        self = decimo.decimal128.arithmetics.add(self, other)
+        self = decimal128_arithmetics.add(self, other)
 
     @always_inline
     def __isub__(mut self, other: Self) raises:
@@ -1800,7 +1794,7 @@ struct Decimal128(
         Args:
             other: The right-hand side operand.
         """
-        self = decimo.decimal128.arithmetics.subtract(self, other)
+        self = decimal128_arithmetics.subtract(self, other)
 
     @always_inline
     def __imul__(mut self, other: Self) raises:
@@ -1809,7 +1803,7 @@ struct Decimal128(
         Args:
             other: The right-hand side operand.
         """
-        self = decimo.decimal128.arithmetics.multiply(self, other)
+        self = decimal128_arithmetics.multiply(self, other)
 
     @always_inline
     def __itruediv__(mut self, other: Self) raises:
@@ -1818,7 +1812,7 @@ struct Decimal128(
         Args:
             other: The right-hand side operand.
         """
-        self = decimo.decimal128.arithmetics.divide(self, other)
+        self = decimal128_arithmetics.divide(self, other)
 
     @always_inline
     def __ifloordiv__(mut self, other: Self) raises:
@@ -1827,7 +1821,7 @@ struct Decimal128(
         Args:
             other: The right-hand side operand.
         """
-        self = decimo.decimal128.arithmetics.truncate_divide(self, other)
+        self = decimal128_arithmetics.truncate_divide(self, other)
 
     @always_inline
     def __imod__(mut self, other: Self) raises:
@@ -1836,7 +1830,7 @@ struct Decimal128(
         Args:
             other: The right-hand side operand.
         """
-        self = decimo.decimal128.arithmetics.modulo(self, other)
+        self = decimal128_arithmetics.modulo(self, other)
 
     # ===------------------------------------------------------------------=== #
     # Basic binary comparison operation dunders
@@ -1854,7 +1848,7 @@ struct Decimal128(
         Returns:
             `True` if this value is greater than `other`, `False` otherwise.
         """
-        return decimo.decimal128.comparison.greater(self, other)
+        return decimal128_comparison.greater(self, other)
 
     @always_inline
     def __lt__(self, other: Decimal128) -> Bool:
@@ -1867,7 +1861,7 @@ struct Decimal128(
         Returns:
             `True` if this value is less than `other`, `False` otherwise.
         """
-        return decimo.decimal128.comparison.less(self, other)
+        return decimal128_comparison.less(self, other)
 
     @always_inline
     def __ge__(self, other: Decimal128) -> Bool:
@@ -1880,7 +1874,7 @@ struct Decimal128(
         Returns:
             `True` if this value is greater than or equal to `other`, `False` otherwise.
         """
-        return decimo.decimal128.comparison.greater_equal(self, other)
+        return decimal128_comparison.greater_equal(self, other)
 
     @always_inline
     def __le__(self, other: Decimal128) -> Bool:
@@ -1893,7 +1887,7 @@ struct Decimal128(
         Returns:
             `True` if this value is less than or equal to `other`, `False` otherwise.
         """
-        return decimo.decimal128.comparison.less_equal(self, other)
+        return decimal128_comparison.less_equal(self, other)
 
     @always_inline
     def __eq__(self, other: Decimal128) -> Bool:
@@ -1906,7 +1900,7 @@ struct Decimal128(
         Returns:
             `True` if the values are equal, `False` otherwise.
         """
-        return decimo.decimal128.comparison.equal(self, other)
+        return decimal128_comparison.equal(self, other)
 
     @always_inline
     def __ne__(self, other: Decimal128) -> Bool:
@@ -1919,7 +1913,7 @@ struct Decimal128(
         Returns:
             `True` if the values are not equal, `False` otherwise.
         """
-        return decimo.decimal128.comparison.not_equal(self, other)
+        return decimal128_comparison.not_equal(self, other)
 
     # ===------------------------------------------------------------------=== #
     # min / max / clamp
@@ -1936,7 +1930,7 @@ struct Decimal128(
         Returns:
             `self` if `self >= other`, otherwise `other`.
         """
-        return decimo.decimal128.comparison.max(self, other)
+        return decimal128_comparison.max(self, other)
 
     @always_inline
     def min(self, other: Decimal128) -> Decimal128:
@@ -1949,7 +1943,7 @@ struct Decimal128(
         Returns:
             `self` if `self <= other`, otherwise `other`.
         """
-        return decimo.decimal128.comparison.min(self, other)
+        return decimal128_comparison.min(self, other)
 
     @always_inline
     def clamp(self, lower: Decimal128, upper: Decimal128) raises -> Decimal128:
@@ -1966,7 +1960,7 @@ struct Decimal128(
         Raises:
             ValueError: If `lower > upper`.
         """
-        return decimo.decimal128.comparison.clamp(self, lower, upper)
+        return decimal128_comparison.clamp(self, lower, upper)
 
     # ===------------------------------------------------------------------=== #
     # Other dunders that implements traits
@@ -1989,7 +1983,7 @@ struct Decimal128(
             The rounded `Decimal128` value.
         """
         try:
-            return decimo.decimal128.rounding.round(
+            return decimal128_rounding.round(
                 self,
                 ndigits=ndigits,
                 rounding_mode=RoundingMode.half_even(),
@@ -2005,7 +1999,7 @@ struct Decimal128(
             The `Decimal128` rounded to 0 decimal places.
         """
         try:
-            return decimo.decimal128.rounding.round(
+            return decimal128_rounding.round(
                 self, ndigits=0, rounding_mode=RoundingMode.half_even()
             )
         except e:
@@ -2066,7 +2060,7 @@ struct Decimal128(
         Returns:
             The rounded `Decimal128` value.
         """
-        return decimo.decimal128.rounding.round(
+        return decimal128_rounding.round(
             self, ndigits=ndigits, rounding_mode=rounding_mode
         )
 
@@ -2086,7 +2080,7 @@ struct Decimal128(
         Returns:
             The quantized `Decimal128` value.
         """
-        return decimo.decimal128.rounding.quantize(self, exp, rounding_mode)
+        return decimal128_rounding.quantize(self, exp, rounding_mode)
 
     @always_inline
     def fma(self, other: Self, third: Self) raises -> Self:
@@ -2126,7 +2120,7 @@ struct Decimal128(
         Raises:
             OverflowError: If the result overflows Decimal128 capacity.
         """
-        return decimo.decimal128.arithmetics.fma(self, other, third)
+        return decimal128_arithmetics.fma(self, other, third)
 
     @always_inline
     def exp(self) raises -> Self:
@@ -2136,7 +2130,7 @@ struct Decimal128(
         Returns:
             The value of e raised to this power.
         """
-        return decimo.decimal128.exponential.exp(self)
+        return decimal128_exponential.exp(self)
 
     @always_inline
     def ln(self) raises -> Self:
@@ -2146,7 +2140,7 @@ struct Decimal128(
         Returns:
             The natural logarithm of this value.
         """
-        return decimo.decimal128.exponential.ln(self)
+        return decimal128_exponential.ln(self)
 
     @always_inline
     def log10(self) raises -> Decimal128:
@@ -2155,7 +2149,7 @@ struct Decimal128(
         Returns:
             The base-10 logarithm of this value.
         """
-        return decimo.decimal128.exponential.log10(self)
+        return decimal128_exponential.log10(self)
 
     @always_inline
     def log(self, base: Decimal128) raises -> Decimal128:
@@ -2167,7 +2161,7 @@ struct Decimal128(
         Returns:
             The logarithm of this value in the given base.
         """
-        return decimo.decimal128.exponential.log(self, base)
+        return decimal128_exponential.log(self, base)
 
     @always_inline
     def power(self, exponent: Int) raises -> Decimal128:
@@ -2179,7 +2173,7 @@ struct Decimal128(
         Returns:
             The value raised to the given power.
         """
-        return decimo.decimal128.exponential.power(self, Self(exponent))
+        return decimal128_exponential.power(self, Self(exponent))
 
     @always_inline
     def power(self, exponent: Decimal128) raises -> Decimal128:
@@ -2191,7 +2185,7 @@ struct Decimal128(
         Returns:
             The value raised to the given power.
         """
-        return decimo.decimal128.exponential.power(self, exponent)
+        return decimal128_exponential.power(self, exponent)
 
     @always_inline
     def root(self, n: Int) raises -> Self:
@@ -2205,7 +2199,7 @@ struct Decimal128(
         Returns:
             The n-th root of this value.
         """
-        return decimo.decimal128.exponential.root(self, n)
+        return decimal128_exponential.root(self, n)
 
     @always_inline
     def sqrt(self) raises -> Self:
@@ -2216,7 +2210,7 @@ struct Decimal128(
         Returns:
             The square root of this value.
         """
-        return decimo.decimal128.exponential.sqrt(self)
+        return decimal128_exponential.sqrt(self)
 
     @always_inline
     def cbrt(self) raises -> Self:
@@ -2230,7 +2224,7 @@ struct Decimal128(
         Raises:
             Any error raised by `cbrt()`.
         """
-        return decimo.decimal128.exponential.cbrt(self)
+        return decimal128_exponential.cbrt(self)
 
     # ===------------------------------------------------------------------=== #
     # Integer-part / fractional-part / sign helpers
@@ -2260,7 +2254,7 @@ struct Decimal128(
         ```
         End of example.
         """
-        return decimo.decimal128.rounding.round(
+        return decimal128_rounding.round(
             self, ndigits=0, rounding_mode=RoundingMode.ROUND_DOWN
         )
 
@@ -2286,7 +2280,7 @@ struct Decimal128(
         ```
         End of example.
         """
-        return decimo.decimal128.rounding.round(
+        return decimal128_rounding.round(
             self, ndigits=0, rounding_mode=RoundingMode.ROUND_FLOOR
         )
 
@@ -2313,7 +2307,7 @@ struct Decimal128(
         ```
         End of example.
         """
-        return decimo.decimal128.rounding.round(
+        return decimal128_rounding.round(
             self, ndigits=0, rounding_mode=RoundingMode.ROUND_CEILING
         )
 
@@ -2478,9 +2472,7 @@ struct Decimal128(
         # `0..29` contract. Each iteration consumes one `__udivmodti4`
         # (LLVM CSE-folds `// + %`).
         comptime CHUNK = 9
-        var pow9 = decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
-            CHUNK
-        )
+        var pow9 = decimal128_utility.power_of_10_unsafe[DType.uint128](CHUNK)
         while scale >= CHUNK and coef % pow9 == 0:
             coef = coef // pow9
             scale -= CHUNK
@@ -2597,7 +2589,7 @@ struct Decimal128(
         ```
         End of example.
         """
-        return decimo.decimal128.comparison.compare_total(self, other)
+        return decimal128_comparison.compare_total(self, other)
 
     @always_inline
     def is_signed(self) -> Bool:
@@ -2648,7 +2640,7 @@ struct Decimal128(
         # Fast implementation using bitcast
         # Use bitcast to directly convert the three 32-bit parts to a UInt128
         # UInt128 must little-endian on memory
-        return decimo.decimal128.utility.bitcast[DType.uint128](self)
+        return decimal128_utility.bitcast[DType.uint128](self)
 
         # Alternative implementation using arithmetic
         # Combine the three 32-bit parts into a single Int128
@@ -2721,7 +2713,7 @@ struct Decimal128(
         # If yes, then raise an error
         var max_coefficient = ~UInt128(
             0
-        ) / decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
+        ) / decimal128_utility.power_of_10_unsafe[DType.uint128](
             Int(precision_diff)
         )
         if coefficient > max_coefficient:
@@ -2839,7 +2831,7 @@ struct Decimal128(
         # blob's `0..29` range.
         return (
             self.coefficient()
-            % decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](scale)
+            % decimal128_utility.power_of_10_unsafe[DType.uint128](scale)
         ) == 0
 
     @always_inline
@@ -2874,9 +2866,9 @@ struct Decimal128(
         var coef = self.coefficient()
         var scale = self.scale()
         if scale > 0:
-            coef = coef // decimo.decimal128.utility.power_of_10_unsafe[
-                DType.uint128
-            ](scale)
+            coef = coef // decimal128_utility.power_of_10_unsafe[DType.uint128](
+                scale
+            )
         return Bool(coef & 1)
 
     @always_inline
@@ -2897,9 +2889,7 @@ struct Decimal128(
         if scale == 0 and coef == 1:
             return True
 
-        if coef == decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
-            scale
-        ):
+        if coef == decimal128_utility.power_of_10_unsafe[DType.uint128](scale):
             return True
 
         return False
@@ -2951,7 +2941,7 @@ struct Decimal128(
         if coef == 0:
             return 0  # Zero has zero significant digit
         else:
-            return decimo.decimal128.utility.number_of_digits(coef)
+            return decimal128_utility.number_of_digits(coef)
 
     def number_of_trailing_zeros(self) -> Int:
         """Returns the number of trailing zero digits in the coefficient.

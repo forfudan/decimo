@@ -18,10 +18,10 @@
 
 from std import math
 
-import decimo.bigdecimal.arithmetics
-import decimo.biguint.arithmetics
-import decimo.biguint.exponential
-import decimo.decimal128.utility
+import decimo.bigdecimal.arithmetics as bigdecimal_arithmetics
+import decimo.biguint.arithmetics as biguint_arithmetics
+import decimo.biguint.exponential as biguint_exponential
+import decimo.decimal128.utility as decimal128_utility
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.errors import ValueError, OverflowError, ZeroDivisionError
 from decimo.rounding_mode import RoundingMode
@@ -125,7 +125,7 @@ struct MathCache:
         """
         if self._ln2_precision >= precision:
             var result = self._ln2.copy()
-            result.round_to_precision(
+            result.round_to_precision_inplace(
                 precision=precision,
                 rounding_mode=RoundingMode.down(),
                 remove_extra_digit_due_to_rounding=False,
@@ -151,7 +151,7 @@ struct MathCache:
         """
         if self._ln1d25_precision >= precision:
             var result = self._ln1d25.copy()
-            result.round_to_precision(
+            result.round_to_precision_inplace(
                 precision=precision,
                 rounding_mode=RoundingMode.down(),
                 remove_extra_digit_due_to_rounding=False,
@@ -180,7 +180,7 @@ struct MathCache:
         """
         if self._ln10_precision >= precision:
             var result = self._ln10.copy()
-            result.round_to_precision(
+            result.round_to_precision_inplace(
                 precision=precision,
                 rounding_mode=RoundingMode.down(),
                 remove_extra_digit_due_to_rounding=False,
@@ -194,7 +194,7 @@ struct MathCache:
         var ln2 = self.get_ln2(extra)
         var ln1d25 = self.get_ln1d25(extra)
         self._ln10 = ln2.multiply(BigDecimal(3)).add(ln1d25)
-        self._ln10.round_to_precision(
+        self._ln10.round_to_precision_inplace(
             precision=precision,
             rounding_mode=RoundingMode.down(),
             remove_extra_digit_due_to_rounding=False,
@@ -262,7 +262,7 @@ def power(
     if exponent == BigDecimal(BigUInt.one(), 0, False):
         # return base  # x^1 = x
         var result = base.copy()
-        result.round_to_precision(
+        result.round_to_precision_inplace(
             precision,
             rounding_mode=RoundingMode.half_even(),
             remove_extra_digit_due_to_rounding=True,
@@ -295,7 +295,7 @@ def power(
     if base.sign and exponent.is_integer() and exponent.is_odd():
         exp_result.sign = True
 
-    exp_result.round_to_precision(
+    exp_result.round_to_precision_inplace(
         precision,
         rounding_mode=RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -340,11 +340,9 @@ def integer_power(
         if exp_value.words[0] % 2 == 1:
             # If current bit is set, multiply result by current power
             # Use inplace multiply
-            decimo.bigdecimal.arithmetics.multiply_inplace(
-                result, current_power
-            )
+            bigdecimal_arithmetics.multiply_inplace(result, current_power)
             # Round to avoid coefficient explosion
-            result.round_to_precision(
+            result.round_to_precision_inplace(
                 working_precision,
                 rounding_mode=RoundingMode.down(),
                 remove_extra_digit_due_to_rounding=False,
@@ -355,14 +353,14 @@ def integer_power(
         # because we need to copy first — just use regular multiply
         current_power = current_power.multiply(current_power)
         # Round to avoid coefficient explosion
-        current_power.round_to_precision(
+        current_power.round_to_precision_inplace(
             working_precision,
             rounding_mode=RoundingMode.down(),
             remove_extra_digit_due_to_rounding=False,
             fill_zeros_to_precision=False,
         )
 
-        decimo.biguint.arithmetics.floor_divide_by_2_inplace(exp_value)
+        biguint_arithmetics.floor_divide_by_2_inplace(exp_value)
 
     # For negative exponents, compute reciprocal
     if is_negative_exponent:
@@ -370,7 +368,7 @@ def integer_power(
             result, working_precision
         )
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision,
         rounding_mode=RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=False,
@@ -528,7 +526,7 @@ def root(x: BigDecimal, n: BigDecimal, precision: Int) raises -> BigDecimal:
     if x.sign:
         result.sign = True
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision=precision,
         rounding_mode=RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -586,7 +584,7 @@ def integer_root(
     # Special case: n = 1 (1st root is just the number itself)
     if n.is_one():
         var result = x.copy()
-        result.round_to_precision(
+        result.round_to_precision_inplace(
             precision,
             rounding_mode=RoundingMode.half_even(),
             remove_extra_digit_due_to_rounding=True,
@@ -713,7 +711,7 @@ def integer_root(
         # integer_power to produce huge coefficients that trigger BigUInt
         # division edge cases.
         if r.coefficient.number_of_digits() > iter_precision + BUFFER_DIGITS:
-            r.round_to_precision(
+            r.round_to_precision_inplace(
                 precision=iter_precision + BUFFER_DIGITS,
                 rounding_mode=RoundingMode.half_even(),
                 remove_extra_digit_due_to_rounding=True,
@@ -745,14 +743,14 @@ def integer_root(
             if iter_precision >= working_precision:
                 # Final precision reached: compare at target precision
                 var r_rounded = r.copy()
-                r_rounded.round_to_precision(
+                r_rounded.round_to_precision_inplace(
                     precision=precision,
                     rounding_mode=RoundingMode.half_even(),
                     remove_extra_digit_due_to_rounding=True,
                     fill_zeros_to_precision=False,
                 )
                 var r_new_rounded = r_new.copy()
-                r_new_rounded.round_to_precision(
+                r_new_rounded.round_to_precision_inplace(
                     precision=precision,
                     rounding_mode=RoundingMode.half_even(),
                     remove_extra_digit_due_to_rounding=True,
@@ -765,14 +763,14 @@ def integer_root(
                 # Before final precision: detect early convergence (exact results
                 # like cbrt(0.001)=0.1 converge in few iterations at any precision).
                 var r_rounded = r.copy()
-                r_rounded.round_to_precision(
+                r_rounded.round_to_precision_inplace(
                     precision=iter_precision,
                     rounding_mode=RoundingMode.half_even(),
                     remove_extra_digit_due_to_rounding=True,
                     fill_zeros_to_precision=False,
                 )
                 var r_new_rounded = r_new.copy()
-                r_new_rounded.round_to_precision(
+                r_new_rounded.round_to_precision_inplace(
                     precision=iter_precision,
                     rounding_mode=RoundingMode.half_even(),
                     remove_extra_digit_due_to_rounding=True,
@@ -784,7 +782,7 @@ def integer_root(
         r = r_new^
 
     r.sign = result_sign
-    r.round_to_precision(
+    r.round_to_precision_inplace(
         precision=precision,
         rounding_mode=RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -819,7 +817,7 @@ def _integer_root_via_exp_ln(
     var result = exp(ln_divided, working_precision)
     result.sign = result_sign
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision=precision,
         rounding_mode=RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -1103,15 +1101,15 @@ def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
         var ip = prec_schedule[i] + 10
 
         var r_sq = r.multiply(r)
-        r_sq.round_to_precision(
+        r_sq.round_to_precision_inplace(
             precision=ip,
             rounding_mode=RoundingMode.half_up(),
             remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
 
-        decimo.bigdecimal.arithmetics.multiply_inplace(r_sq, c_norm)
-        r_sq.round_to_precision(
+        bigdecimal_arithmetics.multiply_inplace(r_sq, c_norm)
+        r_sq.round_to_precision_inplace(
             precision=ip,
             rounding_mode=RoundingMode.half_up(),
             remove_extra_digit_due_to_rounding=True,
@@ -1120,8 +1118,8 @@ def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
 
         var correction = three.subtract(r_sq)
 
-        decimo.bigdecimal.arithmetics.multiply_inplace(r, correction)
-        r.round_to_precision(
+        bigdecimal_arithmetics.multiply_inplace(r, correction)
+        r.round_to_precision_inplace(
             precision=ip,
             rounding_mode=RoundingMode.half_up(),
             remove_extra_digit_due_to_rounding=True,
@@ -1135,7 +1133,7 @@ def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
     result_bd.scale -= norm_shift // 2
 
     # Round to enough digits to get an accurate integer
-    result_bd.round_to_precision(
+    result_bd.round_to_precision_inplace(
         precision=working_digits,
         rounding_mode=RoundingMode.half_up(),
         remove_extra_digit_due_to_rounding=True,
@@ -1151,12 +1149,12 @@ def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
         # Integer or with trailing zeros
         n = result_bd.coefficient.copy()
         if result_bd.scale < 0:
-            n = decimo.biguint.arithmetics.multiply_by_power_of_ten(
+            n = biguint_arithmetics.multiply_by_power_of_ten(
                 n, -result_bd.scale
             )
     else:
         # Has decimal places — truncate to integer
-        n = decimo.biguint.arithmetics.floor_divide_by_power_of_ten(
+        n = biguint_arithmetics.floor_divide_by_power_of_ten(
             result_bd.coefficient, result_bd.scale
         )
 
@@ -1170,7 +1168,7 @@ def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
         # Newton step: n = (n + c/n) / 2
         var q = c.floor_divide(n)
         n += q
-        decimo.biguint.arithmetics.floor_divide_by_2_inplace(n)
+        biguint_arithmetics.floor_divide_by_2_inplace(n)
         if n == prev_n:
             break
         if prev_n == n + BigUInt.one():
@@ -1249,7 +1247,7 @@ def sqrt_exact(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
     if x_exp & 1:
         # Odd exponent: c = c * 10
-        c = decimo.biguint.arithmetics.multiply_by_power_of_ten(c, 1)
+        c = biguint_arithmetics.multiply_by_power_of_ten(c, 1)
         l = (num_digits >> 1) + 1
     else:
         # Even exponent
@@ -1263,10 +1261,10 @@ def sqrt_exact(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
     if shift >= 0:
         # Pad c with 2*shift zeros: c = c * 100^shift
-        c = decimo.biguint.arithmetics.multiply_by_power_of_ten(c, 2 * shift)
+        c = biguint_arithmetics.multiply_by_power_of_ten(c, 2 * shift)
     else:
         # Truncate c: c, remainder = divmod(c, 100^(-shift))
-        var divisor = decimo.biguint.arithmetics.multiply_by_power_of_ten(
+        var divisor = biguint_arithmetics.multiply_by_power_of_ten(
             BigUInt.one(), -2 * shift
         )
         var qr = c.__divmod__(divisor)
@@ -1280,7 +1278,7 @@ def sqrt_exact(x: BigDecimal, precision: Int) raises -> BigDecimal:
     # For small c (≤ 180 digits), BigUInt.sqrt() is fast enough directly.
     var n: BigUInt
     if len(c.words) <= 20:
-        n = decimo.biguint.exponential.sqrt(c)
+        n = biguint_exponential.sqrt(c)
     else:
         n = fast_isqrt(c, prec + 10)
 
@@ -1291,11 +1289,9 @@ def sqrt_exact(x: BigDecimal, precision: Int) raises -> BigDecimal:
         # Undo the rescaling to get the natural number of significant digits.
         # This naturally strips artificial trailing zeros.
         if shift >= 0:
-            n = decimo.biguint.arithmetics.floor_divide_by_power_of_ten(
-                n, shift
-            )
+            n = biguint_arithmetics.floor_divide_by_power_of_ten(n, shift)
         else:
-            n = decimo.biguint.arithmetics.multiply_by_power_of_ten(n, -shift)
+            n = biguint_arithmetics.multiply_by_power_of_ten(n, -shift)
         e += shift
     else:
         # For inexact results, if n ends in 0 or 5, perturb by +1.
@@ -1303,7 +1299,7 @@ def sqrt_exact(x: BigDecimal, precision: Int) raises -> BigDecimal:
         # Check: n % 5 == 0
         # Since our BigUInt base is 10^9, n % 5 == (last_word % 5)
         if n.words[0] % 5 == 0:
-            decimo.biguint.arithmetics.add_by_uint32_inplace(n, 1)
+            biguint_arithmetics.add_by_uint32_inplace(n, 1)
 
     # Construct result: coefficient=n, scale=-e (since exponent=e means *10^e)
     var result = BigDecimal(n^, -e, False)
@@ -1313,7 +1309,7 @@ def sqrt_exact(x: BigDecimal, precision: Int) raises -> BigDecimal:
     # `precision` digits this is a no-op, but when the natural digit count
     # exceeds `precision` (e.g. sqrt(10000) at precision=1) it correctly
     # truncates — matching CPython's `_fix(context)` behavior.
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision=precision,
         rounding_mode=RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -1424,7 +1420,7 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
         # r^2 (self-squaring, cannot use multiply_inplace)
         var r_sq = r.multiply(r)
-        r_sq.round_to_precision(
+        r_sq.round_to_precision_inplace(
             precision=ip,
             rounding_mode=RoundingMode.half_up(),
             remove_extra_digit_due_to_rounding=True,
@@ -1432,8 +1428,8 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
         )
 
         # x_norm * r^2 (inplace to avoid allocation: r_sq becomes x_norm * r^2)
-        decimo.bigdecimal.arithmetics.multiply_inplace(r_sq, x_norm)
-        r_sq.round_to_precision(
+        bigdecimal_arithmetics.multiply_inplace(r_sq, x_norm)
+        r_sq.round_to_precision_inplace(
             precision=ip,
             rounding_mode=RoundingMode.half_up(),
             remove_extra_digit_due_to_rounding=True,
@@ -1444,8 +1440,8 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
         var correction = three.subtract(r_sq)
 
         # r * (3 - x_norm * r^2) (inplace)
-        decimo.bigdecimal.arithmetics.multiply_inplace(r, correction)
-        r.round_to_precision(
+        bigdecimal_arithmetics.multiply_inplace(r, correction)
+        r.round_to_precision_inplace(
             precision=ip,
             rounding_mode=RoundingMode.half_up(),
             remove_extra_digit_due_to_rounding=True,
@@ -1462,7 +1458,7 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
     result.scale -= shift // 2
 
     # --- Round to desired precision ---
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision=precision,
         rounding_mode=RoundingMode.half_up(),
         remove_extra_digit_due_to_rounding=True,
@@ -1473,10 +1469,8 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
     # Only strip if the stripped result is a verified perfect square.
     var n_trailing = result.coefficient.number_of_trailing_zeros()
     if n_trailing > 0:
-        var stripped_coef = (
-            decimo.biguint.arithmetics.floor_divide_by_power_of_ten(
-                result.coefficient, n_trailing
-            )
+        var stripped_coef = biguint_arithmetics.floor_divide_by_power_of_ten(
+            result.coefficient, n_trailing
         )
         var stripped_scale = result.scale - n_trailing
         var candidate = BigDecimal(stripped_coef^, stripped_scale, False)
@@ -1489,7 +1483,7 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
             # But sqrt(1e10) should return "1E+5" (scale=-5) since input has scale=-10.
             if candidate.scale < 0 and x.scale >= 0:
                 candidate.coefficient = (
-                    decimo.biguint.arithmetics.multiply_by_power_of_ten(
+                    biguint_arithmetics.multiply_by_power_of_ten(
                         candidate.coefficient, -candidate.scale
                     )
                 )
@@ -1552,22 +1546,18 @@ def sqrt_newton(x: BigDecimal, precision: Int) raises -> BigDecimal:
     var half_n_digits_to_extend = n_digits_to_extend // 2
     var extended_coefficient: BigUInt
     if n_digits_to_extend > 0:
-        extended_coefficient = (
-            decimo.biguint.arithmetics.multiply_by_power_of_ten(
-                x.coefficient, n_digits_to_extend
-            )
+        extended_coefficient = biguint_arithmetics.multiply_by_power_of_ten(
+            x.coefficient, n_digits_to_extend
         )
     elif n_digits_to_extend == 0:
         extended_coefficient = x.coefficient.copy()
     else:  # n_digits_to_extend < 0
-        extended_coefficient = (
-            decimo.biguint.arithmetics.floor_divide_by_power_of_ten(
-                x.coefficient, -n_digits_to_extend
-            )
+        extended_coefficient = biguint_arithmetics.floor_divide_by_power_of_ten(
+            x.coefficient, -n_digits_to_extend
         )
 
     # STEP 2: Calculate the square root of the extended coefficient
-    var sqrt_coefficient = decimo.biguint.exponential.sqrt(extended_coefficient)
+    var sqrt_coefficient = biguint_exponential.sqrt(extended_coefficient)
 
     # If the last p digits of the coefficient are zeros, this means that
     # we have a perfect square, so we can scale down the coefficient
@@ -1575,10 +1565,8 @@ def sqrt_newton(x: BigDecimal, precision: Int) raises -> BigDecimal:
     if (
         sqrt_coefficient.number_of_trailing_zeros() >= half_n_digits_to_extend
     ) and (half_n_digits_to_extend > 0):
-        sqrt_coefficient = (
-            decimo.biguint.arithmetics.floor_divide_by_power_of_ten(
-                sqrt_coefficient, half_n_digits_to_extend
-            )
+        sqrt_coefficient = biguint_arithmetics.floor_divide_by_power_of_ten(
+            sqrt_coefficient, half_n_digits_to_extend
         )
         new_scale -= half_n_digits_to_extend
 
@@ -1587,7 +1575,7 @@ def sqrt_newton(x: BigDecimal, precision: Int) raises -> BigDecimal:
         new_scale,
         False,
     )
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision=precision,
         rounding_mode=RoundingMode.half_up(),
         remove_extra_digit_due_to_rounding=True,
@@ -1685,7 +1673,7 @@ def sqrt_decimal_approach(x: BigDecimal, precision: Int) raises -> BigDecimal:
         )
     if odd_ndigits_frac_part:
         value = value * UInt128(10)
-    var sqrt_value = decimo.decimal128.utility.sqrt(value)
+    var sqrt_value = decimal128_utility.sqrt(value)
     var sqrt_value_biguint = BigUInt.from_unsigned_integral_scalar(sqrt_value)
     guess = BigDecimal(
         sqrt_value_biguint,
@@ -1710,16 +1698,16 @@ def sqrt_decimal_approach(x: BigDecimal, precision: Int) raises -> BigDecimal:
         guess = sum_val.true_divide_inexact_by_uint32(2, working_precision)
         iteration_count += 1
 
-    # Round to the desired precision
-    var ndigits_to_remove = guess.coefficient.number_of_digits() - precision
+    # Round to the desired precision (in-place, no intermediate copy)
+    var guess_ndigits = guess.coefficient.number_of_digits()
+    var ndigits_to_remove = guess_ndigits - precision
     if ndigits_to_remove > 0:
-        var coefficient = guess.coefficient.copy()
-        coefficient = coefficient.remove_trailing_digits_with_rounding(
+        guess.coefficient.remove_trailing_digits_with_rounding_inplace(
             ndigits_to_remove,
             rounding_mode=RoundingMode.half_up(),
             remove_extra_digit_due_to_rounding=True,
+            ndigits_before_removal=guess_ndigits,
         )
-        guess.coefficient = coefficient^
         guess.scale -= ndigits_to_remove
 
     # Remove trailing zeros for exact results
@@ -1745,7 +1733,7 @@ def sqrt_decimal_approach(x: BigDecimal, precision: Int) raises -> BigDecimal:
             var expected_ndigits_of_result = (
                 x.coefficient.number_of_digits() + 1
             ) // 2
-            guess.round_to_precision(
+            guess.round_to_precision_inplace(
                 precision=expected_ndigits_of_result,
                 rounding_mode=RoundingMode.down(),
                 remove_extra_digit_due_to_rounding=False,
@@ -1863,9 +1851,7 @@ def exp(x: BigDecimal, precision: Int) raises -> BigDecimal:
         # This is exact — no rounding needed.
         var reduced_coeff = x.coefficient.copy()
         for _ in range(m):
-            decimo.biguint.arithmetics.multiply_by_uint32_inplace(
-                reduced_coeff, 5
-            )
+            biguint_arithmetics.multiply_by_uint32_inplace(reduced_coeff, 5)
         var reduced_x = BigDecimal(reduced_coeff^, x.scale + m, False)
 
         # Compute exp(x/2^M) via Taylor series (converges in ~√(3.3·p) terms)
@@ -1874,14 +1860,14 @@ def exp(x: BigDecimal, precision: Int) raises -> BigDecimal:
         # Square result M times: exp(x) = exp(x/2^M)^(2^M)
         for _ in range(m):
             result = result.multiply(result)
-            result.round_to_precision(
+            result.round_to_precision_inplace(
                 precision=working_precision,
                 rounding_mode=RoundingMode.half_up(),
                 remove_extra_digit_due_to_rounding=False,
                 fill_zeros_to_precision=False,
             )
 
-        result.round_to_precision(
+        result.round_to_precision_inplace(
             precision=precision,
             rounding_mode=RoundingMode.half_even(),
             remove_extra_digit_due_to_rounding=False,
@@ -1894,7 +1880,7 @@ def exp(x: BigDecimal, precision: Int) raises -> BigDecimal:
     var working_precision_basic = precision + 9
     var result = exp_taylor_series(x, working_precision_basic)
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision=precision,
         rounding_mode=RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -1941,8 +1927,8 @@ def exp_taylor_series(
         # Use O(n) single-word division instead of full BigDecimal div
         var add_on = x.true_divide_inexact_by_uint32(n, minimum_precision)
         # Use inplace multiply to avoid BigDecimal allocation
-        decimo.bigdecimal.arithmetics.multiply_inplace(term, add_on)
-        term.round_to_precision(
+        bigdecimal_arithmetics.multiply_inplace(term, add_on)
+        term.round_to_precision_inplace(
             precision=minimum_precision,
             rounding_mode=RoundingMode.half_up(),
             remove_extra_digit_due_to_rounding=False,
@@ -1959,7 +1945,7 @@ def exp_taylor_series(
         if term.adjusted() < -minimum_precision:
             break
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision=minimum_precision,
         rounding_mode=RoundingMode.half_up(),
         remove_extra_digit_due_to_rounding=False,
@@ -2089,7 +2075,7 @@ def ln(
         )
 
     # Round to final precision
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision=precision,
         rounding_mode=RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -2278,7 +2264,7 @@ def ln_series_expansion(
         result.add_inplace(term)  # first term is z
 
         for _ in range(2, max_terms):
-            decimo.bigdecimal.arithmetics.multiply_inplace(term, z)
+            bigdecimal_arithmetics.multiply_inplace(term, z)
             # Truncate to prevent unbounded coefficient growth.
             # The coefficient grows by z_digits each iteration; without
             # this, after k iterations it has ~k×z_digits digits, making
@@ -2287,7 +2273,7 @@ def ln_series_expansion(
                 term.coefficient.number_of_digits()
                 > working_precision + z_digits
             ):
-                term.round_to_precision(
+                term.round_to_precision_inplace(
                     working_precision,
                     RoundingMode.down(),
                     remove_extra_digit_due_to_rounding=False,
@@ -2308,7 +2294,7 @@ def ln_series_expansion(
             if next_term.adjusted() < -working_precision:
                 break
 
-        result.round_to_precision(
+        result.round_to_precision_inplace(
             precision=working_precision,
             rounding_mode=RoundingMode.down(),
             remove_extra_digit_due_to_rounding=False,
@@ -2324,7 +2310,7 @@ def ln_series_expansion(
 
     # Compute u² (cached for the recurrence)
     var u_squared = u.multiply(u)
-    u_squared.round_to_precision(
+    u_squared.round_to_precision_inplace(
         working_precision,
         RoundingMode.down(),
         remove_extra_digit_due_to_rounding=False,
@@ -2334,7 +2320,7 @@ def ln_series_expansion(
     # Series: 2*atanh(u) = 2u + 2u³/3 + 2u⁵/5 + ...
     # First term: t₀ = 2u
     # Recurrence: t_k = t_{k-1} * u² * (2k-1) / (2k+1)
-    decimo.bigdecimal.arithmetics.multiply_inplace(u, two)
+    bigdecimal_arithmetics.multiply_inplace(u, two)
     var term = u^  # term = 2u (first term, k=0)
     var result = term.copy()
 
@@ -2348,11 +2334,11 @@ def ln_series_expansion(
         # Step 1: Undo previous denominator: multiply by (2k-1).
         # Note: when k=1, old_denom=1, so this is a no-op by design;
         # the first term (k=0) has denominator 1, which needs no undoing.
-        decimo.biguint.arithmetics.multiply_by_uint32_inplace(
+        biguint_arithmetics.multiply_by_uint32_inplace(
             term.coefficient, old_denom
         )
         # Step 2: Multiply by u²
-        decimo.bigdecimal.arithmetics.multiply_inplace(term, u_squared)
+        bigdecimal_arithmetics.multiply_inplace(term, u_squared)
         # Step 3: Divide by (2k+1) — also truncates to working_precision
         term = term.true_divide_inexact_by_uint32(new_denom, working_precision)
 
@@ -2361,7 +2347,7 @@ def ln_series_expansion(
         if term.adjusted() < -working_precision:
             break
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision=working_precision,
         rounding_mode=RoundingMode.down(),
         remove_extra_digit_due_to_rounding=False,
@@ -2412,7 +2398,7 @@ def compute_ln2(working_precision: Int) raises -> BigDecimal:
             90,
             False,
         )
-        result.round_to_precision(
+        result.round_to_precision_inplace(
             precision=working_precision,
             rounding_mode=RoundingMode.down(),
             remove_extra_digit_due_to_rounding=False,
@@ -2447,17 +2433,15 @@ def compute_ln2(working_precision: Int) raises -> BigDecimal:
         var new_k = k + 2
         # Use O(n) single-word division instead of full BigDecimal div
         # Use cached x_squared with inplace multiply, and uint32 multiply for k
-        decimo.bigdecimal.arithmetics.multiply_inplace(term, x_squared)
+        bigdecimal_arithmetics.multiply_inplace(term, x_squared)
         term = term.true_divide_inexact_by_uint32(new_k, working_precision)
         # Multiply by k using coefficient-level UInt32 multiply (avoids BigDecimal alloc)
-        decimo.biguint.arithmetics.multiply_by_uint32_inplace(
-            term.coefficient, k
-        )
+        biguint_arithmetics.multiply_by_uint32_inplace(term.coefficient, k)
         k = new_k
         if term.adjusted() < -working_precision:
             break
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision=working_precision,
         rounding_mode=RoundingMode.down(),
         remove_extra_digit_due_to_rounding=False,

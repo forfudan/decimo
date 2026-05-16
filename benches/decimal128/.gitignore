@@ -13,6 +13,7 @@ rust/Cargo.lock
 # C# build output.
 csharp/bin/
 csharp/obj/
+csharp/*.lscache
 
 # VB.NET build output.
 vbnet/bin/

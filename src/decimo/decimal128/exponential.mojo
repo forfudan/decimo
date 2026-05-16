@@ -21,9 +21,9 @@ from std import testing
 from std import time
 
 from decimo.errors import ValueError, OverflowError, ZeroDivisionError
-import decimo.decimal128.constants
-import decimo.decimal128.special
-import decimo.decimal128.utility
+import decimo.decimal128.constants as decimal128_constants
+import decimo.decimal128.special as decimal128_special
+import decimo.decimal128.utility as decimal128_utility
 
 # ===----------------------------------------------------------------------=== #
 # Power and root functions
@@ -69,7 +69,7 @@ def power(base: Decimal128, exponent: Decimal128) raises -> Decimal128:
 
     # CASE: If the exponent is simple fractions
     # 0.5
-    if exponent == decimo.decimal128.constants.M0D5():
+    if exponent == decimal128_constants.M0D5():
         try:
             return sqrt(base)
         except e:
@@ -308,11 +308,9 @@ def root(x: Decimal128, n: Int) raises -> Decimal128:
 
     # No need to do this if the last digit of the coefficient of guess is not zero
     if guess_coef % 10 == 0:
-        var num_digits_x_ceof = decimo.decimal128.utility.number_of_digits(
-            x_coef
-        )
+        var num_digits_x_ceof = decimal128_utility.number_of_digits(x_coef)
         var num_digits_x_root_coef = (num_digits_x_ceof // n) + 1
-        var num_digits_guess_coef = decimo.decimal128.utility.number_of_digits(
+        var num_digits_guess_coef = decimal128_utility.number_of_digits(
             guess_coef
         )
         var num_digits_to_decrease = (
@@ -345,8 +343,7 @@ def root(x: Decimal128, n: Int) raises -> Decimal128:
             # below.
             if n <= 38 and (
                 guess_coef_powered
-                == x_coef
-                * decimo.decimal128.utility.power_of_10[DType.uint128](n)
+                == x_coef * decimal128_utility.power_of_10[DType.uint128](n)
             ):
                 return Decimal128.from_uint128(
                     guess_coef // 10,
@@ -481,11 +478,9 @@ def sqrt(x: Decimal128) raises -> Decimal128:
 
     # No need to do this if the last digit of the coefficient of guess is not zero
     if guess_coef % 10 == 0:
-        var num_digits_x_ceof = decimo.decimal128.utility.number_of_digits(
-            x_coef
-        )
+        var num_digits_x_ceof = decimal128_utility.number_of_digits(x_coef)
         var num_digits_x_sqrt_coef = (num_digits_x_ceof >> 1) + 1
-        var num_digits_guess_coef = decimo.decimal128.utility.number_of_digits(
+        var num_digits_guess_coef = decimal128_utility.number_of_digits(
             guess_coef
         )
         var num_digits_to_decrease = (
@@ -585,7 +580,7 @@ def exp(x: Decimal128) raises -> Decimal128:
     var x_int = Int(x)
 
     if x.is_one():
-        return decimo.decimal128.constants.E()
+        return decimal128_constants.E()
 
     elif x_int < 1:
         # Sub-unit chunking by the first two decimal digits.
@@ -611,23 +606,23 @@ def exp(x: Decimal128) raises -> Decimal128:
             var d1_over_10 = Decimal128.from_int(value=d1, scale=UInt32(1))
             var residual = x - d1_over_10
             if d1 == 1:
-                exp_chunk = decimo.decimal128.constants.E0D1()
+                exp_chunk = decimal128_constants.E0D1()
             elif d1 == 2:
-                exp_chunk = decimo.decimal128.constants.E0D2()
+                exp_chunk = decimal128_constants.E0D2()
             elif d1 == 3:
-                exp_chunk = decimo.decimal128.constants.E0D3()
+                exp_chunk = decimal128_constants.E0D3()
             elif d1 == 4:
-                exp_chunk = decimo.decimal128.constants.E0D4()
+                exp_chunk = decimal128_constants.E0D4()
             elif d1 == 5:
-                exp_chunk = decimo.decimal128.constants.E0D5()
+                exp_chunk = decimal128_constants.E0D5()
             elif d1 == 6:
-                exp_chunk = decimo.decimal128.constants.E0D6()
+                exp_chunk = decimal128_constants.E0D6()
             elif d1 == 7:
-                exp_chunk = decimo.decimal128.constants.E0D7()
+                exp_chunk = decimal128_constants.E0D7()
             elif d1 == 8:
-                exp_chunk = decimo.decimal128.constants.E0D8()
+                exp_chunk = decimal128_constants.E0D8()
             else:  # d1 == 9
-                exp_chunk = decimo.decimal128.constants.E0D9()
+                exp_chunk = decimal128_constants.E0D9()
             remainder = residual
         else:
             # d1 == 0 ⇒ x < 0.1, drop into tier 2.
@@ -639,93 +634,93 @@ def exp(x: Decimal128) raises -> Decimal128:
             var d2_over_100 = Decimal128.from_int(value=d2, scale=UInt32(2))
             var residual = x - d2_over_100
             if d2 == 1:
-                exp_chunk = decimo.decimal128.constants.E0D01()
+                exp_chunk = decimal128_constants.E0D01()
             elif d2 == 2:
-                exp_chunk = decimo.decimal128.constants.E0D02()
+                exp_chunk = decimal128_constants.E0D02()
             elif d2 == 3:
-                exp_chunk = decimo.decimal128.constants.E0D03()
+                exp_chunk = decimal128_constants.E0D03()
             elif d2 == 4:
-                exp_chunk = decimo.decimal128.constants.E0D04()
+                exp_chunk = decimal128_constants.E0D04()
             elif d2 == 5:
-                exp_chunk = decimo.decimal128.constants.E0D05()
+                exp_chunk = decimal128_constants.E0D05()
             elif d2 == 6:
-                exp_chunk = decimo.decimal128.constants.E0D06()
+                exp_chunk = decimal128_constants.E0D06()
             elif d2 == 7:
-                exp_chunk = decimo.decimal128.constants.E0D07()
+                exp_chunk = decimal128_constants.E0D07()
             elif d2 == 8:
-                exp_chunk = decimo.decimal128.constants.E0D08()
+                exp_chunk = decimal128_constants.E0D08()
             else:  # d2 == 9
-                exp_chunk = decimo.decimal128.constants.E0D09()
+                exp_chunk = decimal128_constants.E0D09()
             remainder = residual
 
     elif x_int == 1:  # 1 <= x < 2, chunk = 1
-        exp_chunk = decimo.decimal128.constants.E()
+        exp_chunk = decimal128_constants.E()
         remainder = x - x_int
 
     elif x_int == 2:  # 2 <= x < 3, chunk = 2
-        exp_chunk = decimo.decimal128.constants.E2()
+        exp_chunk = decimal128_constants.E2()
         remainder = x - x_int
 
     elif x_int == 3:  # 3 <= x < 4, chunk = 3
-        exp_chunk = decimo.decimal128.constants.E3()
+        exp_chunk = decimal128_constants.E3()
         remainder = x - x_int
 
     elif x_int == 4:  # 4 <= x < 5, chunk = 4
-        exp_chunk = decimo.decimal128.constants.E4()
+        exp_chunk = decimal128_constants.E4()
         remainder = x - x_int
 
     elif x_int == 5:  # 5 <= x < 6, chunk = 5
-        exp_chunk = decimo.decimal128.constants.E5()
+        exp_chunk = decimal128_constants.E5()
         remainder = x - x_int
 
     elif x_int == 6:  # 6 <= x < 7, chunk = 6
-        exp_chunk = decimo.decimal128.constants.E6()
+        exp_chunk = decimal128_constants.E6()
         remainder = x - x_int
 
     elif x_int == 7:  # 7 <= x < 8, chunk = 7
-        exp_chunk = decimo.decimal128.constants.E7()
+        exp_chunk = decimal128_constants.E7()
         remainder = x - x_int
 
     elif x_int == 8:  # 8 <= x < 9, chunk = 8
-        exp_chunk = decimo.decimal128.constants.E8()
+        exp_chunk = decimal128_constants.E8()
         remainder = x - x_int
 
     elif x_int == 9:  # 9 <= x < 10, chunk = 9
-        exp_chunk = decimo.decimal128.constants.E9()
+        exp_chunk = decimal128_constants.E9()
         remainder = x - x_int
 
     elif x_int == 10:  # 10 <= x < 11, chunk = 10
-        exp_chunk = decimo.decimal128.constants.E10()
+        exp_chunk = decimal128_constants.E10()
         remainder = x - x_int
 
     elif x_int == 11:  # 11 <= x < 12, chunk = 11
-        exp_chunk = decimo.decimal128.constants.E11()
+        exp_chunk = decimal128_constants.E11()
         remainder = x - x_int
 
     elif x_int == 12:  # 12 <= x < 13, chunk = 12
-        exp_chunk = decimo.decimal128.constants.E12()
+        exp_chunk = decimal128_constants.E12()
         remainder = x - x_int
 
     elif x_int == 13:  # 13 <= x < 14, chunk = 13
-        exp_chunk = decimo.decimal128.constants.E13()
+        exp_chunk = decimal128_constants.E13()
         remainder = x - x_int
 
     elif x_int == 14:  # 14 <= x < 15, chunk = 14
-        exp_chunk = decimo.decimal128.constants.E14()
+        exp_chunk = decimal128_constants.E14()
         remainder = x - x_int
 
     elif x_int == 15:  # 15 <= x < 16, chunk = 15
-        exp_chunk = decimo.decimal128.constants.E15()
+        exp_chunk = decimal128_constants.E15()
         remainder = x - x_int
 
     elif x_int < 32:  # 16 <= x < 32, chunk = 16
         num_chunks = x_int >> 4
-        exp_chunk = decimo.decimal128.constants.E16()
+        exp_chunk = decimal128_constants.E16()
         remainder = x - (num_chunks << 4)
 
     else:  # chunk = 32
         num_chunks = x_int >> 5
-        exp_chunk = decimo.decimal128.constants.E32()
+        exp_chunk = decimal128_constants.E32()
         remainder = x - (num_chunks << 5)
 
     # Calculate e^(chunk * num_chunks) = (e^chunk)^num_chunks
@@ -785,7 +780,7 @@ def exp_series(x: Decimal128) raises -> Decimal128:
 
     for i in range(1, max_terms + 1):
         x_power = x_power * x
-        term = x_power * decimo.decimal128.special.factorial_reciprocal(i)
+        term = x_power * decimal128_special.factorial_reciprocal(i)
         # Check for convergence
         if term.is_zero():
             break
@@ -832,7 +827,7 @@ def ln(x: Decimal128) raises -> Decimal128:
         return Decimal128.ZERO()
 
     # Special cases for common values
-    if x == decimo.decimal128.constants.E():
+    if x == decimal128_constants.E():
         return Decimal128.ONE()
 
     # For values close to 1, use series expansion directly
@@ -853,12 +848,10 @@ def ln(x: Decimal128) raises -> Decimal128:
     # For magnitudes outside [0.1, 10), read q directly from the scale instead
     # of looping divides: pick new_scale = num_digits(coef) - 1 so the
     # reconstructed m = coef * 10^(-new_scale) lies in [1, 10).
-    if x >= decimo.decimal128.constants.M10() or x < Decimal128(
-        1, 0, 0, 1 << 16
-    ):
+    if x >= decimal128_constants.M10() or x < Decimal128(1, 0, 0, 1 << 16):
         var x_coef = x.coefficient()
         var x_scale = Int(x.scale())
-        var num_digits = decimo.decimal128.utility.number_of_digits(x_coef)
+        var num_digits = decimal128_utility.number_of_digits(x_coef)
         var new_scale = num_digits - 1  # in [0, 28]
         q = new_scale - x_scale
         m = Decimal128.from_uint128(x_coef, scale=UInt32(new_scale), sign=False)
@@ -869,13 +862,13 @@ def ln(x: Decimal128) raises -> Decimal128:
     # STEP 2:
     # normalize m to [0.5, 2) using powers of 2.
     # After step 1, m is in [0.1, 10); at most 4 halvings or 1 doubling.
-    if m >= decimo.decimal128.constants.M2():
-        while m >= decimo.decimal128.constants.M2():
-            m = m / decimo.decimal128.constants.M2()
+    if m >= decimal128_constants.M2():
+        while m >= decimal128_constants.M2():
+            m = m / decimal128_constants.M2()
             p += 1
     elif m < Decimal128(5, 0, 0, 1 << 16):
         while m < Decimal128(5, 0, 0, 1 << 16):
-            m = m * decimo.decimal128.constants.M2()
+            m = m * decimal128_constants.M2()
             p -= 1
 
     # Now 0.5 <= m < 2
@@ -888,41 +881,41 @@ def ln(x: Decimal128) raises -> Decimal128:
             ln_m = (
                 ln_series(
                     (m - Decimal128(9, 0, 0, 1 << 16))
-                    * decimo.decimal128.constants.INV0D9()
+                    * decimal128_constants.INV0D9()
                 )
-                + decimo.decimal128.constants.LN0D9()
+                + decimal128_constants.LN0D9()
             )
         elif m >= Decimal128(8, 0, 0, 1 << 16):
             ln_m = (
                 ln_series(
                     (m - Decimal128(8, 0, 0, 1 << 16))
-                    * decimo.decimal128.constants.INV0D8()
+                    * decimal128_constants.INV0D8()
                 )
-                + decimo.decimal128.constants.LN0D8()
+                + decimal128_constants.LN0D8()
             )
         elif m >= Decimal128(7, 0, 0, 1 << 16):
             ln_m = (
                 ln_series(
                     (m - Decimal128(7, 0, 0, 1 << 16))
-                    * decimo.decimal128.constants.INV0D7()
+                    * decimal128_constants.INV0D7()
                 )
-                + decimo.decimal128.constants.LN0D7()
+                + decimal128_constants.LN0D7()
             )
         elif m >= Decimal128(6, 0, 0, 1 << 16):
             ln_m = (
                 ln_series(
                     (m - Decimal128(6, 0, 0, 1 << 16))
-                    * decimo.decimal128.constants.INV0D6()
+                    * decimal128_constants.INV0D6()
                 )
-                + decimo.decimal128.constants.LN0D6()
+                + decimal128_constants.LN0D6()
             )
         else:  # 0.5 <= m < 0.6
             ln_m = (
                 ln_series(
                     (m - Decimal128(5, 0, 0, 1 << 16))
-                    * decimo.decimal128.constants.INV0D5()
+                    * decimal128_constants.INV0D5()
                 )
-                + decimo.decimal128.constants.LN0D5()
+                + decimal128_constants.LN0D5()
             )
 
     else:
@@ -933,73 +926,73 @@ def ln(x: Decimal128) raises -> Decimal128:
             ln_m = (
                 ln_series(
                     (m - Decimal128(11, 0, 0, 1 << 16))
-                    * decimo.decimal128.constants.INV1D1()
+                    * decimal128_constants.INV1D1()
                 )
-                + decimo.decimal128.constants.LN1D1()
+                + decimal128_constants.LN1D1()
             )
         elif m < Decimal128(13, 0, 0, 1 << 16):  # 1.2 <= m < 1.3
             ln_m = (
                 ln_series(
                     (m - Decimal128(12, 0, 0, 1 << 16))
-                    * decimo.decimal128.constants.INV1D2()
+                    * decimal128_constants.INV1D2()
                 )
-                + decimo.decimal128.constants.LN1D2()
+                + decimal128_constants.LN1D2()
             )
         elif m < Decimal128(14, 0, 0, 1 << 16):  # 1.3 <= m < 1.4
             ln_m = (
                 ln_series(
                     (m - Decimal128(13, 0, 0, 1 << 16))
-                    * decimo.decimal128.constants.INV1D3()
+                    * decimal128_constants.INV1D3()
                 )
-                + decimo.decimal128.constants.LN1D3()
+                + decimal128_constants.LN1D3()
             )
         elif m < Decimal128(15, 0, 0, 1 << 16):  # 1.4 <= m < 1.5
             ln_m = (
                 ln_series(
                     (m - Decimal128(14, 0, 0, 1 << 16))
-                    * decimo.decimal128.constants.INV1D4()
+                    * decimal128_constants.INV1D4()
                 )
-                + decimo.decimal128.constants.LN1D4()
+                + decimal128_constants.LN1D4()
             )
         elif m < Decimal128(16, 0, 0, 1 << 16):  # 1.5 <= m < 1.6
             ln_m = (
                 ln_series(
                     (m - Decimal128(15, 0, 0, 1 << 16))
-                    * decimo.decimal128.constants.INV1D5()
+                    * decimal128_constants.INV1D5()
                 )
-                + decimo.decimal128.constants.LN1D5()
+                + decimal128_constants.LN1D5()
             )
         elif m < Decimal128(17, 0, 0, 1 << 16):  # 1.6 <= m < 1.7
             ln_m = (
                 ln_series(
                     (m - Decimal128(16, 0, 0, 1 << 16))
-                    * decimo.decimal128.constants.INV1D6()
+                    * decimal128_constants.INV1D6()
                 )
-                + decimo.decimal128.constants.LN1D6()
+                + decimal128_constants.LN1D6()
             )
         elif m < Decimal128(18, 0, 0, 1 << 16):  # 1.7 <= m < 1.8
             ln_m = (
                 ln_series(
                     (m - Decimal128(17, 0, 0, 1 << 16))
-                    * decimo.decimal128.constants.INV1D7()
+                    * decimal128_constants.INV1D7()
                 )
-                + decimo.decimal128.constants.LN1D7()
+                + decimal128_constants.LN1D7()
             )
         elif m < Decimal128(19, 0, 0, 1 << 16):  # 1.8 <= m < 1.9
             ln_m = (
                 ln_series(
                     (m - Decimal128(18, 0, 0, 1 << 16))
-                    * decimo.decimal128.constants.INV1D8()
+                    * decimal128_constants.INV1D8()
                 )
-                + decimo.decimal128.constants.LN1D8()
+                + decimal128_constants.LN1D8()
             )
         else:  # 1.9 <= m < 2
             ln_m = (
                 ln_series(
                     (m - Decimal128(19, 0, 0, 1 << 16))
-                    * decimo.decimal128.constants.INV1D9()
+                    * decimal128_constants.INV1D9()
                 )
-                + decimo.decimal128.constants.LN1D9()
+                + decimal128_constants.LN1D9()
             )
 
     # Combine result: ln(x) = ln(m) + p*ln(2) + q*ln(10)
@@ -1007,11 +1000,11 @@ def ln(x: Decimal128) raises -> Decimal128:
 
     # Add power of 2 contribution
     if p != 0:
-        result = result + Decimal128(p) * decimo.decimal128.constants.LN2()
+        result = result + Decimal128(p) * decimal128_constants.LN2()
 
     # Add power of 10 contribution
     if q != 0:
-        result = result + Decimal128(q) * decimo.decimal128.constants.LN10()
+        result = result + Decimal128(q) * decimal128_constants.LN10()
 
     return result
 
@@ -1067,7 +1060,7 @@ def ln_series(z: Decimal128) raises -> Decimal128:
         neg = not neg  # Alternate sign
 
         if i <= 20:
-            term = term * z * decimo.decimal128.constants.N_DIVIDE_NEXT(i)
+            term = term * z * decimal128_constants.N_DIVIDE_NEXT(i)
         else:
             term = term * z * Decimal128(i) / Decimal128(i + 1)
 
@@ -1181,7 +1174,7 @@ def log10(x: Decimal128) raises -> Decimal128:
         else:
             return Decimal128(UInt32(x_scale), 0, 0, 0x8000_0000)
 
-    var ten_to_power_of_scale = decimo.decimal128.utility.power_of_10_unsafe[
+    var ten_to_power_of_scale = decimal128_utility.power_of_10_unsafe[
         DType.uint128
     ](x_scale)
 
@@ -1194,12 +1187,12 @@ def log10(x: Decimal128) raises -> Decimal128:
     # Use `number_of_digits()` instead of a per-digit divide-by-10 loop.
     if x_coef % ten_to_power_of_scale == 0:
         var integral_part = x_coef // ten_to_power_of_scale
-        var n_digits = decimo.decimal128.utility.number_of_digits(integral_part)
-        var pow10_check = decimo.decimal128.utility.power_of_10_unsafe[
-            DType.uint128
-        ](n_digits - 1)
+        var n_digits = decimal128_utility.number_of_digits(integral_part)
+        var pow10_check = decimal128_utility.power_of_10_unsafe[DType.uint128](
+            n_digits - 1
+        )
         if integral_part == pow10_check:
             return Decimal128(UInt32(n_digits - 1), 0, 0, 0)
 
     # Use the identity: log10(x) = ln(x) / ln(10)
-    return ln(x) / decimo.decimal128.constants.LN10()
+    return ln(x) / decimal128_constants.LN10()

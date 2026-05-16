@@ -21,7 +21,7 @@ from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.errors import ValueError
 from decimo.bigint10.bigint10 import BigInt10
 from decimo.rounding_mode import RoundingMode
-import decimo.bigdecimal.trigonometric
+import decimo.bigdecimal.trigonometric as bigdecimal_trigonometric
 
 comptime PI_1024 = BigDecimal(
     coefficient=BigUInt(
@@ -177,7 +177,7 @@ def pi(precision: Int) raises -> BigDecimal:
     # we can check if we have a cached value for the requested precision.
     # if precision <= 1024:
     #     var result = PI_1024
-    #     result.round_to_precision(
+    #     result.round_to_precision_inplace(
     #         precision,
     #         RoundingMode.ROUND_HALF_EVEN,
     #         remove_extra_digit_due_to_rounding=True,
@@ -253,7 +253,7 @@ def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
         bdec_10005.sqrt(working_precision)
     ).multiply(sum_series)
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision,
         RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -368,14 +368,14 @@ def pi_machin(precision: Int) raises -> BigDecimal:
     # Calculate 4 * arctan(1/5)
     var one_fifth = bdec_1.true_divide(bdec_5, working_precision)
     var term1 = bdec_4.multiply(
-        decimo.bigdecimal.trigonometric.arctan_taylor_series(
+        bigdecimal_trigonometric.arctan_taylor_series(
             one_fifth, working_precision
         )
     )
 
     # Calculate arctan(1/239)
     var one_239 = bdec_1.true_divide(bdec_239, working_precision)
-    var term2 = decimo.bigdecimal.trigonometric.arctan_taylor_series(
+    var term2 = bigdecimal_trigonometric.arctan_taylor_series(
         one_239, working_precision
     )
 
@@ -383,7 +383,7 @@ def pi_machin(precision: Int) raises -> BigDecimal:
     var pi_over_4 = term1.subtract(term2)
     var result = bdec_4.multiply(pi_over_4)
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision,
         RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,

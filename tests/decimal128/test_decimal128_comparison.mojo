@@ -1,12 +1,11 @@
 """
 Test Decimal128 comparison operations including:
-
-1. equality / inequality (function-based and operator-based)
-2. greater / greater_equal / less / less_equal
-3. zero comparison edge cases
-4. edge cases (transitivity, precision)
-5. exact comparison with trailing zeros
-6. min / max / clamp
+1. equality / inequality (function-based and operator-based).
+2. greater / greater_equal / less / less_equal.
+3. zero comparison edge cases.
+4. edge cases (transitivity, precision).
+5. exact comparison with trailing zeros.
+6. min / max / clamp.
 """
 
 from std import testing

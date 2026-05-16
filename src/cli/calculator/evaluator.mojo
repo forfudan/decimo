@@ -355,7 +355,7 @@ def final_round(
     if value.is_zero():
         return value.copy()
     var result = value.copy()
-    result.round_to_precision(precision, rounding_mode, False, False)
+    result.round_to_precision_inplace(precision, rounding_mode, False, False)
     return result^
 
 

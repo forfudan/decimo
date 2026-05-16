@@ -22,7 +22,7 @@ from decimo.bigint10.bigint10 import BigInt10
 from decimo.biguint.biguint import BigUInt
 from decimo.errors import ZeroDivisionError
 from decimo.rounding_mode import RoundingMode
-import decimo.biguint.arithmetics
+import decimo.biguint.arithmetics as biguint_arithmetics
 
 
 def add(x1: BigInt10, x2: BigInt10) -> BigInt10:
@@ -74,7 +74,7 @@ def add_inplace(mut x1: BigInt10, x2: BigInt10) -> None:
 
     # Same sign: add magnitudes in place
     else:
-        decimo.biguint.arithmetics.add_inplace(x1.magnitude, x2.magnitude)
+        biguint_arithmetics.add_inplace(x1.magnitude, x2.magnitude)
 
     return
 
@@ -119,17 +119,13 @@ def subtract(x1: BigInt10, x2: BigInt10) -> BigInt10:
     if comparison_result > 0:  # |x1| > |x2|
         # Subtract smaller from larger
         magnitude = x1.magnitude.copy()
-        decimo.biguint.arithmetics.subtract_no_check_inplace(
-            magnitude, x2.magnitude
-        )
+        biguint_arithmetics.subtract_no_check_inplace(magnitude, x2.magnitude)
         sign = x1.sign
 
     else:  # |x1| < |x2|
         # Subtract larger from smaller and negate the result
         magnitude = x2.magnitude.copy()
-        decimo.biguint.arithmetics.subtract_no_check_inplace(
-            magnitude, x1.magnitude
-        )
+        biguint_arithmetics.subtract_no_check_inplace(magnitude, x1.magnitude)
         sign = not x1.sign
 
     return BigInt10(magnitude^, sign=sign)
@@ -221,7 +217,7 @@ def floor_divide(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
     if x1.sign == x2.sign:
         # Use floor division of the magnitudes
         try:
-            magnitude = decimo.biguint.arithmetics.floor_divide(
+            magnitude = biguint_arithmetics.floor_divide(
                 x1.magnitude, x2.magnitude
             )
         except e:
@@ -235,7 +231,7 @@ def floor_divide(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
     else:
         # Use ceil division of the magnitudes
         try:
-            magnitude = decimo.biguint.arithmetics.ceil_divide(
+            magnitude = biguint_arithmetics.ceil_divide(
                 x1.magnitude, x2.magnitude
             )
         except e:
@@ -264,9 +260,7 @@ def truncate_divide(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
     """
     var magnitude: BigUInt
     try:
-        magnitude = decimo.biguint.arithmetics.floor_divide(
-            x1.magnitude, x2.magnitude
-        )
+        magnitude = biguint_arithmetics.floor_divide(x1.magnitude, x2.magnitude)
     except e:
         raise ZeroDivisionError(
             message="See the above exception.",
@@ -297,7 +291,7 @@ def floor_modulo(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
     if x1.sign == x2.sign:
         # Use floor (truncate) division between magnitudes
         try:
-            magnitude = decimo.biguint.arithmetics.floor_modulo(
+            magnitude = biguint_arithmetics.floor_modulo(
                 x1.magnitude, x2.magnitude
             )
         except e:
@@ -311,7 +305,7 @@ def floor_modulo(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
     else:
         # Use ceil division of the magnitudes
         try:
-            magnitude = decimo.biguint.arithmetics.ceil_modulo(
+            magnitude = biguint_arithmetics.ceil_modulo(
                 x1.magnitude, x2.magnitude
             )
         except e:
@@ -340,9 +334,7 @@ def truncate_modulo(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
     """
     var magnitude: BigUInt
     try:
-        magnitude = decimo.biguint.arithmetics.floor_modulo(
-            x1.magnitude, x2.magnitude
-        )
+        magnitude = biguint_arithmetics.floor_modulo(x1.magnitude, x2.magnitude)
     except e:
         raise ZeroDivisionError(
             message="See the above exception.",

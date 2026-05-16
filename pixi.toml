@@ -62,6 +62,10 @@ testfloat = "pixi run buildgmp && bash tests/test.sh bigfloat"
 t = "clear && pixi run test"
 tf = "clear && pixi run testfloat"
 
+# quick build & run for a single BigFloat-using .mojo file
+# Usage: pixi run bf path/to/file.mojo
+bf = { cmd = "bash examples/run_bigfloat.sh", description = "Build & run a single BigFloat .mojo file (output binary in temp/)" }
+
 # bench
 bench = "pixi run package && bash benches/run_bench.sh"
 

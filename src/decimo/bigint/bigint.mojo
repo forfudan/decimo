@@ -30,12 +30,12 @@ in little-endian order, and a separate sign bit.
 from std.memory import UnsafePointer, memcpy
 from std.sys import size_of
 
-import decimo.bigint.arithmetics
-import decimo.bigint.bitwise
-import decimo.bigint.comparison
-import decimo.bigint.exponential
-import decimo.bigint.number_theory
-import decimo.str
+import decimo.bigint.arithmetics as bigint_arithmetics
+import decimo.bigint.bitwise as bigint_bitwise
+import decimo.bigint.comparison as bigint_comparison
+import decimo.bigint.exponential as bigint_exponential
+import decimo.bigint.number_theory as bigint_number_theory
+import decimo.str as decimo_str
 from decimo.bigint10.bigint10 import BigInt10
 from decimo.biguint.biguint import BigUInt
 from decimo.errors import (
@@ -460,7 +460,7 @@ struct BigInt(
         """
         # Use the shared string parser for format handling
         try:
-            _tuple = decimo.str.parse_numeric_string(value)
+            _tuple = decimo_str.parse_numeric_string(value)
         except e:
             raise ConversionError(
                 function="BigInt.from_string(value: String)",
@@ -959,7 +959,7 @@ struct BigInt(
         Returns:
             The sum of the two values.
         """
-        return decimo.bigint.arithmetics.add(self, other)
+        return bigint_arithmetics.add(self, other)
 
     @always_inline
     def __sub__(self, other: Self) -> Self:
@@ -971,7 +971,7 @@ struct BigInt(
         Returns:
             The difference of the two values.
         """
-        return decimo.bigint.arithmetics.subtract(self, other)
+        return bigint_arithmetics.subtract(self, other)
 
     @always_inline
     def __mul__(self, other: Self) -> Self:
@@ -983,7 +983,7 @@ struct BigInt(
         Returns:
             The product of the two values.
         """
-        return decimo.bigint.arithmetics.multiply(self, other)
+        return bigint_arithmetics.multiply(self, other)
 
     @always_inline
     def __floordiv__(self, other: Self) raises -> Self:
@@ -999,7 +999,7 @@ struct BigInt(
             ZeroDivisionError: If the divisor is zero.
         """
         try:
-            return decimo.bigint.arithmetics.floor_divide(self, other)
+            return bigint_arithmetics.floor_divide(self, other)
         except e:
             raise ZeroDivisionError(
                 message="See the above exception.",
@@ -1021,7 +1021,7 @@ struct BigInt(
             ZeroDivisionError: If the divisor is zero.
         """
         try:
-            return decimo.bigint.arithmetics.floor_modulo(self, other)
+            return bigint_arithmetics.floor_modulo(self, other)
         except e:
             raise ZeroDivisionError(
                 message="See the above exception.",
@@ -1043,7 +1043,7 @@ struct BigInt(
             ZeroDivisionError: If the divisor is zero.
         """
         try:
-            return decimo.bigint.arithmetics.floor_divmod(self, other)
+            return bigint_arithmetics.floor_divmod(self, other)
         except e:
             raise ZeroDivisionError(
                 message="See the above exception.",
@@ -1092,7 +1092,7 @@ struct BigInt(
         Returns:
             The left-shifted value.
         """
-        return decimo.bigint.arithmetics.left_shift(self, shift)
+        return bigint_arithmetics.left_shift(self, shift)
 
     @always_inline
     def __rshift__(self, shift: Int) -> Self:
@@ -1104,7 +1104,7 @@ struct BigInt(
         Returns:
             The right-shifted value.
         """
-        return decimo.bigint.arithmetics.right_shift(self, shift)
+        return bigint_arithmetics.right_shift(self, shift)
 
     # ===------------------------------------------------------------------=== #
     # Basic binary right-side arithmetic operation dunders
@@ -1120,7 +1120,7 @@ struct BigInt(
         Returns:
             The sum of the two values.
         """
-        return decimo.bigint.arithmetics.add(self, other)
+        return bigint_arithmetics.add(self, other)
 
     @always_inline
     def __rsub__(self, other: Self) -> Self:
@@ -1132,7 +1132,7 @@ struct BigInt(
         Returns:
             The difference of the two values.
         """
-        return decimo.bigint.arithmetics.subtract(other, self)
+        return bigint_arithmetics.subtract(other, self)
 
     @always_inline
     def __rmul__(self, other: Self) -> Self:
@@ -1144,7 +1144,7 @@ struct BigInt(
         Returns:
             The product of the two values.
         """
-        return decimo.bigint.arithmetics.multiply(self, other)
+        return bigint_arithmetics.multiply(self, other)
 
     @always_inline
     def __rfloordiv__(self, other: Self) raises -> Self:
@@ -1159,7 +1159,7 @@ struct BigInt(
         Raises:
             ZeroDivisionError: If the divisor is zero.
         """
-        return decimo.bigint.arithmetics.floor_divide(other, self)
+        return bigint_arithmetics.floor_divide(other, self)
 
     @always_inline
     def __rmod__(self, other: Self) raises -> Self:
@@ -1174,7 +1174,7 @@ struct BigInt(
         Raises:
             ZeroDivisionError: If the divisor is zero.
         """
-        return decimo.bigint.arithmetics.floor_modulo(other, self)
+        return bigint_arithmetics.floor_modulo(other, self)
 
     @always_inline
     def __rdivmod__(self, other: Self) raises -> Tuple[Self, Self]:
@@ -1189,7 +1189,7 @@ struct BigInt(
         Raises:
             ZeroDivisionError: If the divisor is zero.
         """
-        return decimo.bigint.arithmetics.floor_divmod(other, self)
+        return bigint_arithmetics.floor_divmod(other, self)
 
     @always_inline
     def __rpow__(self, base: Self) raises -> Self:
@@ -1218,7 +1218,7 @@ struct BigInt(
         Args:
             other: The right-hand side operand.
         """
-        decimo.bigint.arithmetics.add_inplace(self, other)
+        bigint_arithmetics.add_inplace(self, other)
 
     @always_inline
     def __iadd__(mut self, other: Int):
@@ -1227,7 +1227,7 @@ struct BigInt(
         Args:
             other: The right-hand side operand.
         """
-        decimo.bigint.arithmetics.add_int_inplace(self, other)
+        bigint_arithmetics.add_int_inplace(self, other)
 
     @always_inline
     def __isub__(mut self, other: Self):
@@ -1236,7 +1236,7 @@ struct BigInt(
         Args:
             other: The right-hand side operand.
         """
-        decimo.bigint.arithmetics.subtract_inplace(self, other)
+        bigint_arithmetics.subtract_inplace(self, other)
 
     @always_inline
     def __imul__(mut self, other: Self):
@@ -1245,7 +1245,7 @@ struct BigInt(
         Args:
             other: The right-hand side operand.
         """
-        decimo.bigint.arithmetics.multiply_inplace(self, other)
+        bigint_arithmetics.multiply_inplace(self, other)
 
     @always_inline
     def __ifloordiv__(mut self, other: Self) raises:
@@ -1257,7 +1257,7 @@ struct BigInt(
         Raises:
             ZeroDivisionError: If the divisor is zero.
         """
-        decimo.bigint.arithmetics.floor_divide_inplace(self, other)
+        bigint_arithmetics.floor_divide_inplace(self, other)
 
     @always_inline
     def __imod__(mut self, other: Self) raises:
@@ -1269,7 +1269,7 @@ struct BigInt(
         Raises:
             ZeroDivisionError: If the divisor is zero.
         """
-        decimo.bigint.arithmetics.floor_modulo_inplace(self, other)
+        bigint_arithmetics.floor_modulo_inplace(self, other)
 
     @always_inline
     def __ilshift__(mut self, shift: Int):
@@ -1278,7 +1278,7 @@ struct BigInt(
         Args:
             shift: The number of bits to shift left.
         """
-        decimo.bigint.arithmetics.left_shift_inplace(self, shift)
+        bigint_arithmetics.left_shift_inplace(self, shift)
 
     @always_inline
     def __irshift__(mut self, shift: Int):
@@ -1287,7 +1287,7 @@ struct BigInt(
         Args:
             shift: The number of bits to shift right.
         """
-        decimo.bigint.arithmetics.right_shift_inplace(self, shift)
+        bigint_arithmetics.right_shift_inplace(self, shift)
 
     # ===------------------------------------------------------------------=== #
     # Basic binary comparison operation dunders
@@ -1304,7 +1304,7 @@ struct BigInt(
         Returns:
             `True` if self is greater than other, `False` otherwise.
         """
-        return decimo.bigint.comparison.greater(self, other)
+        return bigint_comparison.greater(self, other)
 
     @always_inline
     def __gt__(self, other: Int) -> Bool:
@@ -1316,7 +1316,7 @@ struct BigInt(
         Returns:
             `True` if self is greater than other, `False` otherwise.
         """
-        return decimo.bigint.comparison.greater(self, Self.from_int(other))
+        return bigint_comparison.greater(self, Self.from_int(other))
 
     @always_inline
     def __ge__(self, other: Self) -> Bool:
@@ -1328,7 +1328,7 @@ struct BigInt(
         Returns:
             `True` if self is greater than or equal to other, `False` otherwise.
         """
-        return decimo.bigint.comparison.greater_equal(self, other)
+        return bigint_comparison.greater_equal(self, other)
 
     @always_inline
     def __ge__(self, other: Int) -> Bool:
@@ -1340,9 +1340,7 @@ struct BigInt(
         Returns:
             `True` if self is greater than or equal to other, `False` otherwise.
         """
-        return decimo.bigint.comparison.greater_equal(
-            self, Self.from_int(other)
-        )
+        return bigint_comparison.greater_equal(self, Self.from_int(other))
 
     @always_inline
     def __lt__(self, other: Self) -> Bool:
@@ -1354,7 +1352,7 @@ struct BigInt(
         Returns:
             `True` if self is less than other, `False` otherwise.
         """
-        return decimo.bigint.comparison.less(self, other)
+        return bigint_comparison.less(self, other)
 
     @always_inline
     def __lt__(self, other: Int) -> Bool:
@@ -1366,7 +1364,7 @@ struct BigInt(
         Returns:
             `True` if self is less than other, `False` otherwise.
         """
-        return decimo.bigint.comparison.less(self, Self.from_int(other))
+        return bigint_comparison.less(self, Self.from_int(other))
 
     @always_inline
     def __le__(self, other: Self) -> Bool:
@@ -1378,7 +1376,7 @@ struct BigInt(
         Returns:
             `True` if self is less than or equal to other, `False` otherwise.
         """
-        return decimo.bigint.comparison.less_equal(self, other)
+        return bigint_comparison.less_equal(self, other)
 
     @always_inline
     def __le__(self, other: Int) -> Bool:
@@ -1390,7 +1388,7 @@ struct BigInt(
         Returns:
             `True` if self is less than or equal to other, `False` otherwise.
         """
-        return decimo.bigint.comparison.less_equal(self, Self.from_int(other))
+        return bigint_comparison.less_equal(self, Self.from_int(other))
 
     @always_inline
     def __eq__(self, other: Self) -> Bool:
@@ -1402,7 +1400,7 @@ struct BigInt(
         Returns:
             `True` if the two values are equal, `False` otherwise.
         """
-        return decimo.bigint.comparison.equal(self, other)
+        return bigint_comparison.equal(self, other)
 
     @always_inline
     def __eq__(self, other: Int) -> Bool:
@@ -1414,7 +1412,7 @@ struct BigInt(
         Returns:
             `True` if the two values are equal, `False` otherwise.
         """
-        return decimo.bigint.comparison.equal(self, Self.from_int(other))
+        return bigint_comparison.equal(self, Self.from_int(other))
 
     @always_inline
     def __ne__(self, other: Self) -> Bool:
@@ -1426,7 +1424,7 @@ struct BigInt(
         Returns:
             `True` if the two values are not equal, `False` otherwise.
         """
-        return decimo.bigint.comparison.not_equal(self, other)
+        return bigint_comparison.not_equal(self, other)
 
     @always_inline
     def __ne__(self, other: Int) -> Bool:
@@ -1438,7 +1436,7 @@ struct BigInt(
         Returns:
             `True` if the two values are not equal, `False` otherwise.
         """
-        return decimo.bigint.comparison.not_equal(self, Self.from_int(other))
+        return bigint_comparison.not_equal(self, Self.from_int(other))
 
     # ===------------------------------------------------------------------=== #
     # Mathematical methods that do not implement a trait (not a dunder)
@@ -1455,7 +1453,7 @@ struct BigInt(
         Returns:
             The quotient, truncated toward zero.
         """
-        return decimo.bigint.arithmetics.truncate_divide(self, other)
+        return bigint_arithmetics.truncate_divide(self, other)
 
     @always_inline
     def floor_modulo(self, other: Self) raises -> Self:
@@ -1468,7 +1466,7 @@ struct BigInt(
         Returns:
             The floor remainder with the same sign as the divisor.
         """
-        return decimo.bigint.arithmetics.floor_modulo(self, other)
+        return bigint_arithmetics.floor_modulo(self, other)
 
     @always_inline
     def truncate_modulo(self, other: Self) raises -> Self:
@@ -1481,7 +1479,7 @@ struct BigInt(
         Returns:
             The truncated remainder with the same sign as the dividend.
         """
-        return decimo.bigint.arithmetics.truncate_modulo(self, other)
+        return bigint_arithmetics.truncate_modulo(self, other)
 
     def power(self, exponent: Int) raises -> Self:
         """Raises the BigInt to the power of an integer exponent.
@@ -1496,7 +1494,7 @@ struct BigInt(
             ValueError: If the exponent is negative.
             ValueError: If the exponent is too large (>= 1_000_000_000).
         """
-        return decimo.bigint.arithmetics.power(self, exponent)
+        return bigint_arithmetics.power(self, exponent)
 
     def power(self, exponent: Self) raises -> Self:
         """Raises the BigInt to the power of another BigInt.
@@ -1538,7 +1536,7 @@ struct BigInt(
         Raises:
             Error: If the value is negative.
         """
-        return decimo.bigint.exponential.sqrt(self)
+        return bigint_exponential.sqrt(self)
 
     def isqrt(self) raises -> Self:
         """Returns the integer square root of this BigInt.
@@ -1550,7 +1548,7 @@ struct BigInt(
         Raises:
             Error: If the value is negative.
         """
-        return decimo.bigint.exponential.sqrt(self)
+        return bigint_exponential.sqrt(self)
 
     @always_inline
     def compare_magnitudes(self, other: Self) -> Int8:
@@ -1563,7 +1561,7 @@ struct BigInt(
         Returns:
             1 if |self| > |other|, 0 if equal, -1 if |self| < |other|.
         """
-        return decimo.bigint.comparison.compare_magnitudes(self, other)
+        return bigint_comparison.compare_magnitudes(self, other)
 
     @always_inline
     def compare(self, other: Self) -> Int8:
@@ -1576,7 +1574,7 @@ struct BigInt(
         Returns:
             1 if self > other, 0 if equal, -1 if self < other.
         """
-        return decimo.bigint.comparison.compare(self, other)
+        return bigint_comparison.compare(self, other)
 
     # ===------------------------------------------------------------------=== #
     # Bitwise operations
@@ -1592,7 +1590,7 @@ struct BigInt(
         Returns:
             The bitwise AND of the two values.
         """
-        return decimo.bigint.bitwise.bitwise_and(self, other)
+        return bigint_bitwise.bitwise_and(self, other)
 
     @always_inline
     def __and__(self, other: Int) -> Self:
@@ -1604,7 +1602,7 @@ struct BigInt(
         Returns:
             The bitwise AND of the two values.
         """
-        return decimo.bigint.bitwise.bitwise_and(self, Self(other))
+        return bigint_bitwise.bitwise_and(self, Self(other))
 
     @always_inline
     def __or__(self, other: Self) -> Self:
@@ -1616,7 +1614,7 @@ struct BigInt(
         Returns:
             The bitwise OR of the two values.
         """
-        return decimo.bigint.bitwise.bitwise_or(self, other)
+        return bigint_bitwise.bitwise_or(self, other)
 
     @always_inline
     def __or__(self, other: Int) -> Self:
@@ -1628,7 +1626,7 @@ struct BigInt(
         Returns:
             The bitwise OR of the two values.
         """
-        return decimo.bigint.bitwise.bitwise_or(self, Self(other))
+        return bigint_bitwise.bitwise_or(self, Self(other))
 
     @always_inline
     def __xor__(self, other: Self) -> Self:
@@ -1640,7 +1638,7 @@ struct BigInt(
         Returns:
             The bitwise XOR of the two values.
         """
-        return decimo.bigint.bitwise.bitwise_xor(self, other)
+        return bigint_bitwise.bitwise_xor(self, other)
 
     @always_inline
     def __xor__(self, other: Int) -> Self:
@@ -1652,7 +1650,7 @@ struct BigInt(
         Returns:
             The bitwise XOR of the two values.
         """
-        return decimo.bigint.bitwise.bitwise_xor(self, Self(other))
+        return bigint_bitwise.bitwise_xor(self, Self(other))
 
     @always_inline
     def __invert__(self) -> Self:
@@ -1661,7 +1659,7 @@ struct BigInt(
         Returns:
             The bitwise complement, equal to -(self + 1).
         """
-        return decimo.bigint.bitwise.bitwise_not(self)
+        return bigint_bitwise.bitwise_not(self)
 
     @always_inline
     def __iand__(mut self, other: Self):
@@ -1670,7 +1668,7 @@ struct BigInt(
         Args:
             other: The right-hand side operand.
         """
-        decimo.bigint.bitwise.bitwise_and_inplace(self, other)
+        bigint_bitwise.bitwise_and_inplace(self, other)
 
     @always_inline
     def __ior__(mut self, other: Self):
@@ -1679,7 +1677,7 @@ struct BigInt(
         Args:
             other: The right-hand side operand.
         """
-        decimo.bigint.bitwise.bitwise_or_inplace(self, other)
+        bigint_bitwise.bitwise_or_inplace(self, other)
 
     @always_inline
     def __ixor__(mut self, other: Self):
@@ -1688,7 +1686,7 @@ struct BigInt(
         Args:
             other: The right-hand side operand.
         """
-        decimo.bigint.bitwise.bitwise_xor_inplace(self, other)
+        bigint_bitwise.bitwise_xor_inplace(self, other)
 
     # ===------------------------------------------------------------------=== #
     # Number-theoretic methods
@@ -1704,7 +1702,7 @@ struct BigInt(
         Returns:
             The greatest common divisor of the two values.
         """
-        return decimo.bigint.number_theory.gcd(self, other)
+        return bigint_number_theory.gcd(self, other)
 
     @always_inline
     def extended_gcd(self, other: Self) raises -> Tuple[Self, Self, Self]:
@@ -1721,7 +1719,7 @@ struct BigInt(
         Args:
             other: The second value for the extended GCD computation.
         """
-        return decimo.bigint.number_theory.extended_gcd(self, other)
+        return bigint_number_theory.extended_gcd(self, other)
 
     @always_inline
     def lcm(self, other: Self) raises -> Self:
@@ -1733,7 +1731,7 @@ struct BigInt(
         Returns:
             The least common multiple of the two values.
         """
-        return decimo.bigint.number_theory.lcm(self, other)
+        return bigint_number_theory.lcm(self, other)
 
     @always_inline
     def mod_pow(self, exponent: Self, modulus: Self) raises -> Self:
@@ -1747,7 +1745,7 @@ struct BigInt(
         Returns:
             The result of (self ** exponent) % modulus.
         """
-        return decimo.bigint.number_theory.mod_pow(self, exponent, modulus)
+        return bigint_number_theory.mod_pow(self, exponent, modulus)
 
     @always_inline
     def mod_pow(self, exponent: Int, modulus: Self) raises -> Self:
@@ -1761,7 +1759,7 @@ struct BigInt(
         Returns:
             The result of (self ** exponent) % modulus.
         """
-        return decimo.bigint.number_theory.mod_pow(
+        return bigint_number_theory.mod_pow(
             self, Self.from_int(exponent), modulus
         )
 
@@ -1776,7 +1774,7 @@ struct BigInt(
         Returns:
             The modular multiplicative inverse.
         """
-        return decimo.bigint.number_theory.mod_inverse(self, modulus)
+        return bigint_number_theory.mod_inverse(self, modulus)
 
     # ===------------------------------------------------------------------=== #
     # Instance query methods
@@ -1990,7 +1988,7 @@ struct BigInt(
         for i in range(len(self.words)):
             var label = "word " + String(i) + ":"
             result += label + String(" ") * (col - label.byte_length())
-            result += "0x" + decimo.str.rjust(
+            result += "0x" + decimo_str.rjust(
                 String(hex(self.words[i])[byte=2:]), 8, fillchar="0"
             )
             result += "  (" + String(self.words[i]) + ")\n"
@@ -2334,7 +2332,7 @@ def _dc_from_str_recursive(
     # Use _add_magnitudes_inplace directly to avoid BigInt.__iadd__ overhead
     # (which creates a new BigInt via arithmetics.add).
     var result = high * power_table[level]
-    decimo.bigint.arithmetics._add_magnitudes_inplace(result.words, low.words)
+    bigint_arithmetics._add_magnitudes_inplace(result.words, low.words)
     return result^
 
 
@@ -2560,7 +2558,7 @@ def _dc_to_str_recursive(
         return _magnitude_to_decimal_simple(n.words, eff)
 
     # Divide n by powers[level] = 10^(2^level)
-    var qr = decimo.bigint.arithmetics.floor_divmod(n, power_table[level])
+    var qr = bigint_arithmetics.floor_divmod(n, power_table[level])
     var q = qr[0].copy()
     var r = qr[1].copy()
 

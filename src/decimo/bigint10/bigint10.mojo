@@ -26,9 +26,9 @@ mathematical methods that do not implement a trait.
 from std.memory import UnsafePointer
 from std.python import PythonObject
 
-import decimo.bigint10.arithmetics
-import decimo.bigint10.comparison
-import decimo.biguint.arithmetics
+import decimo.bigint10.arithmetics as bigint10_arithmetics
+import decimo.bigint10.comparison as bigint10_comparison
+import decimo.biguint.arithmetics as biguint_arithmetics
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.biguint.biguint import BigUInt
 from decimo.errors import (
@@ -37,7 +37,7 @@ from decimo.errors import (
     ConversionError,
     ZeroDivisionError,
 )
-import decimo.str
+import decimo.str as decimo_str
 
 
 struct BigInt10(
@@ -351,7 +351,7 @@ struct BigInt10(
     @staticmethod
     def from_string(value: String) raises -> Self:
         """Initializes a BigInt10 from a string representation.
-        The string is normalized with `decimo.str.parse_numeric_string()`.
+        The string is normalized with `decimo_str.parse_numeric_string()`.
 
         Args:
             value: The string representation of the BigInt10.
@@ -363,7 +363,7 @@ struct BigInt10(
             ConversionError: If the string cannot be parsed.
         """
         try:
-            _tuple = decimo.str.parse_numeric_string(value)
+            _tuple = decimo_str.parse_numeric_string(value)
         except e:
             raise ConversionError(
                 function="BigInt10.from_string(value: String)",
@@ -583,7 +583,7 @@ struct BigInt10(
         Returns:
             The absolute value.
         """
-        return decimo.bigint10.arithmetics.absolute(self)
+        return bigint10_arithmetics.absolute(self)
 
     @always_inline
     def __neg__(self) -> Self:
@@ -593,7 +593,7 @@ struct BigInt10(
         Returns:
             The negated value.
         """
-        return decimo.bigint10.arithmetics.negative(self)
+        return bigint10_arithmetics.negative(self)
 
     # ===------------------------------------------------------------------=== #
     # Basic binary arithmetic operation dunders
@@ -611,7 +611,7 @@ struct BigInt10(
         Returns:
             The sum of the two values.
         """
-        return decimo.bigint10.arithmetics.add(self, other)
+        return bigint10_arithmetics.add(self, other)
 
     @always_inline
     def __sub__(self, other: Self) -> Self:
@@ -623,7 +623,7 @@ struct BigInt10(
         Returns:
             The difference of the two values.
         """
-        return decimo.bigint10.arithmetics.subtract(self, other)
+        return bigint10_arithmetics.subtract(self, other)
 
     @always_inline
     def __mul__(self, other: Self) -> Self:
@@ -635,7 +635,7 @@ struct BigInt10(
         Returns:
             The product of the two values.
         """
-        return decimo.bigint10.arithmetics.multiply(self, other)
+        return bigint10_arithmetics.multiply(self, other)
 
     @always_inline
     def __floordiv__(self, other: Self) raises -> Self:
@@ -651,7 +651,7 @@ struct BigInt10(
             ZeroDivisionError: If the divisor is zero.
         """
         try:
-            return decimo.bigint10.arithmetics.floor_divide(self, other)
+            return bigint10_arithmetics.floor_divide(self, other)
         except e:
             raise ZeroDivisionError(
                 message="See the above exception.",
@@ -673,7 +673,7 @@ struct BigInt10(
             ZeroDivisionError: If the divisor is zero.
         """
         try:
-            return decimo.bigint10.arithmetics.floor_modulo(self, other)
+            return bigint10_arithmetics.floor_modulo(self, other)
         except e:
             raise ZeroDivisionError(
                 message="See the above exception.",
@@ -712,7 +712,7 @@ struct BigInt10(
         Returns:
             The sum of the two values.
         """
-        return decimo.bigint10.arithmetics.add(self, other)
+        return bigint10_arithmetics.add(self, other)
 
     @always_inline
     def __rsub__(self, other: Self) -> Self:
@@ -724,7 +724,7 @@ struct BigInt10(
         Returns:
             The difference of the two values.
         """
-        return decimo.bigint10.arithmetics.subtract(other, self)
+        return bigint10_arithmetics.subtract(other, self)
 
     @always_inline
     def __rmul__(self, other: Self) -> Self:
@@ -736,7 +736,7 @@ struct BigInt10(
         Returns:
             The product of the two values.
         """
-        return decimo.bigint10.arithmetics.multiply(self, other)
+        return bigint10_arithmetics.multiply(self, other)
 
     @always_inline
     def __rfloordiv__(self, other: Self) raises -> Self:
@@ -748,7 +748,7 @@ struct BigInt10(
         Returns:
             The floor division quotient.
         """
-        return decimo.bigint10.arithmetics.floor_divide(other, self)
+        return bigint10_arithmetics.floor_divide(other, self)
 
     @always_inline
     def __rmod__(self, other: Self) raises -> Self:
@@ -760,7 +760,7 @@ struct BigInt10(
         Returns:
             The remainder of the floor division.
         """
-        return decimo.bigint10.arithmetics.floor_modulo(other, self)
+        return bigint10_arithmetics.floor_modulo(other, self)
 
     @always_inline
     def __rpow__(self, base: Self) raises -> Self:
@@ -788,7 +788,7 @@ struct BigInt10(
         Args:
             other: The right-hand side operand.
         """
-        decimo.bigint10.arithmetics.add_inplace(self, other)
+        bigint10_arithmetics.add_inplace(self, other)
 
     @always_inline
     def __iadd__(mut self, other: Int):
@@ -799,11 +799,11 @@ struct BigInt10(
         """
         # Optimize the case `i += 1`
         if (self >= 0) and (other >= 0) and (other <= 999_999_999):
-            decimo.biguint.arithmetics.add_by_uint32_inplace(
+            biguint_arithmetics.add_by_uint32_inplace(
                 self.magnitude, UInt32(other)
             )
         else:
-            decimo.bigint10.arithmetics.add_inplace(self, Self(other))
+            bigint10_arithmetics.add_inplace(self, Self(other))
 
     @always_inline
     def __isub__(mut self, other: Self):
@@ -812,7 +812,7 @@ struct BigInt10(
         Args:
             other: The right-hand side operand.
         """
-        self = decimo.bigint10.arithmetics.subtract(self, other)
+        self = bigint10_arithmetics.subtract(self, other)
 
     @always_inline
     def __imul__(mut self, other: Self):
@@ -821,7 +821,7 @@ struct BigInt10(
         Args:
             other: The right-hand side operand.
         """
-        self = decimo.bigint10.arithmetics.multiply(self, other)
+        self = bigint10_arithmetics.multiply(self, other)
 
     @always_inline
     def __ifloordiv__(mut self, other: Self) raises:
@@ -830,7 +830,7 @@ struct BigInt10(
         Args:
             other: The right-hand side operand.
         """
-        self = decimo.bigint10.arithmetics.floor_divide(self, other)
+        self = bigint10_arithmetics.floor_divide(self, other)
 
     @always_inline
     def __imod__(mut self, other: Self) raises:
@@ -839,7 +839,7 @@ struct BigInt10(
         Args:
             other: The right-hand side operand.
         """
-        self = decimo.bigint10.arithmetics.floor_modulo(self, other)
+        self = bigint10_arithmetics.floor_modulo(self, other)
 
     # ===------------------------------------------------------------------=== #
     # Basic binary comparison operation dunders
@@ -856,7 +856,7 @@ struct BigInt10(
         Returns:
             `True` if `self > other`, `False` otherwise.
         """
-        return decimo.bigint10.comparison.greater(self, other)
+        return bigint10_comparison.greater(self, other)
 
     @always_inline
     def __gt__(self, other: Int) -> Bool:
@@ -868,7 +868,7 @@ struct BigInt10(
         Returns:
             `True` if `self > other`, `False` otherwise.
         """
-        return decimo.bigint10.comparison.greater(self, Self.from_int(other))
+        return bigint10_comparison.greater(self, Self.from_int(other))
 
     @always_inline
     def __ge__(self, other: Self) -> Bool:
@@ -880,7 +880,7 @@ struct BigInt10(
         Returns:
             `True` if `self >= other`, `False` otherwise.
         """
-        return decimo.bigint10.comparison.greater_equal(self, other)
+        return bigint10_comparison.greater_equal(self, other)
 
     @always_inline
     def __ge__(self, other: Int) -> Bool:
@@ -892,9 +892,7 @@ struct BigInt10(
         Returns:
             `True` if `self >= other`, `False` otherwise.
         """
-        return decimo.bigint10.comparison.greater_equal(
-            self, Self.from_int(other)
-        )
+        return bigint10_comparison.greater_equal(self, Self.from_int(other))
 
     @always_inline
     def __lt__(self, other: Self) -> Bool:
@@ -906,7 +904,7 @@ struct BigInt10(
         Returns:
             `True` if `self < other`, `False` otherwise.
         """
-        return decimo.bigint10.comparison.less(self, other)
+        return bigint10_comparison.less(self, other)
 
     @always_inline
     def __lt__(self, other: Int) -> Bool:
@@ -918,7 +916,7 @@ struct BigInt10(
         Returns:
             `True` if `self < other`, `False` otherwise.
         """
-        return decimo.bigint10.comparison.less(self, Self.from_int(other))
+        return bigint10_comparison.less(self, Self.from_int(other))
 
     @always_inline
     def __le__(self, other: Self) -> Bool:
@@ -930,7 +928,7 @@ struct BigInt10(
         Returns:
             `True` if `self <= other`, `False` otherwise.
         """
-        return decimo.bigint10.comparison.less_equal(self, other)
+        return bigint10_comparison.less_equal(self, other)
 
     @always_inline
     def __le__(self, other: Int) -> Bool:
@@ -942,7 +940,7 @@ struct BigInt10(
         Returns:
             `True` if `self <= other`, `False` otherwise.
         """
-        return decimo.bigint10.comparison.less_equal(self, Self.from_int(other))
+        return bigint10_comparison.less_equal(self, Self.from_int(other))
 
     @always_inline
     def __eq__(self, other: Self) -> Bool:
@@ -954,7 +952,7 @@ struct BigInt10(
         Returns:
             `True` if `self == other`, `False` otherwise.
         """
-        return decimo.bigint10.comparison.equal(self, other)
+        return bigint10_comparison.equal(self, other)
 
     @always_inline
     def __eq__(self, other: Int) -> Bool:
@@ -966,7 +964,7 @@ struct BigInt10(
         Returns:
             `True` if `self == other`, `False` otherwise.
         """
-        return decimo.bigint10.comparison.equal(self, Self.from_int(other))
+        return bigint10_comparison.equal(self, Self.from_int(other))
 
     @always_inline
     def __ne__(self, other: Self) -> Bool:
@@ -978,7 +976,7 @@ struct BigInt10(
         Returns:
             `True` if `self != other`, `False` otherwise.
         """
-        return decimo.bigint10.comparison.not_equal(self, other)
+        return bigint10_comparison.not_equal(self, other)
 
     @always_inline
     def __ne__(self, other: Int) -> Bool:
@@ -990,7 +988,7 @@ struct BigInt10(
         Returns:
             `True` if `self != other`, `False` otherwise.
         """
-        return decimo.bigint10.comparison.not_equal(self, Self.from_int(other))
+        return bigint10_comparison.not_equal(self, Self.from_int(other))
 
     # ===------------------------------------------------------------------=== #
     # Other dunders
@@ -1022,7 +1020,7 @@ struct BigInt10(
         Returns:
             The floor division quotient.
         """
-        return decimo.bigint10.arithmetics.floor_divide(self, other)
+        return bigint10_arithmetics.floor_divide(self, other)
 
     @always_inline
     def truncate_divide(self, other: Self) raises -> Self:
@@ -1035,7 +1033,7 @@ struct BigInt10(
         Returns:
             The truncated division quotient.
         """
-        return decimo.bigint10.arithmetics.truncate_divide(self, other)
+        return bigint10_arithmetics.truncate_divide(self, other)
 
     @always_inline
     def floor_modulo(self, other: Self) raises -> Self:
@@ -1048,7 +1046,7 @@ struct BigInt10(
         Returns:
             The floor division remainder.
         """
-        return decimo.bigint10.arithmetics.floor_modulo(self, other)
+        return bigint10_arithmetics.floor_modulo(self, other)
 
     @always_inline
     def truncate_modulo(self, other: Self) raises -> Self:
@@ -1061,7 +1059,7 @@ struct BigInt10(
         Returns:
             The truncated division remainder.
         """
-        return decimo.bigint10.arithmetics.truncate_modulo(self, other)
+        return bigint10_arithmetics.truncate_modulo(self, other)
 
     def power(self, exponent: Int) raises -> Self:
         """Raises the BigInt10 to the power of an integer exponent.
@@ -1115,7 +1113,7 @@ struct BigInt10(
         Returns:
             1 if `self` magnitude is greater, -1 if less, 0 if equal.
         """
-        return decimo.bigint10.comparison.compare_magnitudes(self, other)
+        return bigint10_comparison.compare_magnitudes(self, other)
 
     @always_inline
     def compare(self, other: Self) -> Int8:
@@ -1128,7 +1126,7 @@ struct BigInt10(
         Returns:
             1 if `self` is greater, -1 if less, 0 if equal.
         """
-        return decimo.bigint10.comparison.compare(self, other)
+        return bigint10_comparison.compare(self, other)
 
     # ===------------------------------------------------------------------=== #
     # Other methods
@@ -1209,7 +1207,7 @@ struct BigInt10(
             var label = "word " + String(i) + ":"
             result += label + String(" ") * (col - label.byte_length())
             result += (
-                decimo.str.rjust(
+                decimo_str.rjust(
                     String(self.magnitude.words[i]), 9, fillchar="0"
                 )
                 + "\n"

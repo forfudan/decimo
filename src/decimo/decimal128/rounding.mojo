@@ -34,7 +34,7 @@ from std import testing
 from decimo.decimal128.decimal128 import Decimal128
 from decimo.rounding_mode import RoundingMode
 from decimo.errors import OverflowError
-import decimo.decimal128.utility
+import decimo.decimal128.utility as decimal128_utility
 
 # ===------------------------------------------------------------------------===#
 # Rounding
@@ -84,7 +84,7 @@ def round(
         return number
 
     var x_coef = number.coefficient()
-    var ndigits_of_x = decimo.decimal128.utility.number_of_digits(x_coef)
+    var ndigits_of_x = decimal128_utility.number_of_digits(x_coef)
 
     # CASE: If ndigits is larger than the current scale
     # Scale up the coefficient of the number to the desired scale
@@ -112,12 +112,9 @@ def round(
 
         # If the digits of result <= 29, calculate the result by scaling up
         else:
-            var res_coef = (
-                x_coef
-                * decimo.decimal128.utility.power_of_10_unsafe[DType.uint128](
-                    Int(scale_diff)
-                )
-            )
+            var res_coef = x_coef * decimal128_utility.power_of_10_unsafe[
+                DType.uint128
+            ](Int(scale_diff))
 
             # If the digits of result == 29, but the result >= 2^96, raise an error
             if (ndigits_of_x + scale_diff == Decimal128.MAX_NUM_DIGITS) and (
@@ -166,7 +163,7 @@ def round(
             return Decimal128.ZERO()
 
         # Round coefficient by removing trailing digits
-        var res_coef = decimo.decimal128.utility.round_coefficient(
+        var res_coef = decimal128_utility.round_coefficient(
             x_coef,
             ndigits_to_remove=ndigits_to_remove,
             rounding_mode=rounding_mode,
@@ -180,9 +177,9 @@ def round(
 
         # if `ndigits` is negative and `ndigits_to_keep` >= 0, scale up the result
         elif ndigits_to_keep >= 0:
-            res_coef *= decimo.decimal128.utility.power_of_10_unsafe[
-                DType.uint128
-            ](Int(-ndigits))
+            res_coef *= decimal128_utility.power_of_10_unsafe[DType.uint128](
+                Int(-ndigits)
+            )
             return Decimal128.from_uint128(
                 res_coef, scale=UInt32(0), sign=number.is_negative()
             )

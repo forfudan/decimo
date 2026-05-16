@@ -20,7 +20,7 @@ from std import math
 from std.memory import memset_zero
 
 from decimo.biguint.biguint import BigUInt
-import decimo.biguint.arithmetics
+import decimo.biguint.arithmetics as biguint_arithmetics
 
 # ===----------------------------------------------------------------------=== #
 # Square Root
@@ -98,7 +98,7 @@ def sqrt(x: BigUInt) -> BigUInt:
                 quotient = BigUInt.one()
 
             guess += quotient
-            decimo.biguint.arithmetics.floor_divide_by_2_inplace(guess)
+            biguint_arithmetics.floor_divide_by_2_inplace(guess)
 
             if guess == prev_guess:
                 break

@@ -269,7 +269,7 @@ def test_multiline_strings() raises:
     var tbl = doc.get_table("test")
     var ml = tbl["ml"].as_string()
     # The multiline string should contain the newlines
-    assert_true(len(ml) > 0, "multiline string not empty")
+    assert_true(ml.byte_length() > 0, "multiline string not empty")
     print("  PASS  test_multiline_strings")
 
 

@@ -67,7 +67,8 @@ def round(
         return number.extend_precision(precision_diff=-ndigits_to_remove)
     else:  # ndigits_to_remove > 0
         # Remove trailing digits from the number
-        if ndigits_to_remove > number.coefficient.number_of_digits():
+        var ndigits_coefficient = number.coefficient.number_of_digits()
+        if ndigits_to_remove > ndigits_coefficient:
             # All significant digits are removed. For ROUND_DOWN this is
             # always 0. For ROUND_UP (away from zero), any non-zero value
             # rounds to 1 at the target scale. For ROUND_HALF_UP /
@@ -93,22 +94,22 @@ def round(
                 scale=ndigits,
                 sign=number.sign,
             )
-        var coefficient = (
-            number.coefficient.remove_trailing_digits_with_rounding(
-                ndigits=ndigits_to_remove,
-                rounding_mode=rounding_mode,
-                remove_extra_digit_due_to_rounding=False,
-                sign=number.sign,
-            )
-        )
-        return BigDecimal(
-            coefficient=coefficient,
-            scale=ndigits,
+        # Copy once, then mutate in place via the single shared rounding
+        # path. Keeps `round()` (out-of-place public API) and
+        # `round_to_precision_inplace` from drifting in behaviour.
+        var result = number.copy()
+        result.coefficient.remove_trailing_digits_with_rounding_inplace(
+            ndigits_to_remove=ndigits_to_remove,
+            rounding_mode=rounding_mode,
+            remove_extra_digit_due_to_rounding=False,
             sign=number.sign,
+            ndigits_before_removal=ndigits_coefficient,
         )
+        result.scale = ndigits
+        return result^
 
 
-def round_to_precision(
+def round_to_precision_inplace(
     mut number: BigDecimal,
     precision: Int,
     rounding_mode: RoundingMode,
@@ -148,10 +149,11 @@ def round_to_precision(
             return
 
     number.coefficient.remove_trailing_digits_with_rounding_inplace(
-        ndigits=ndigits_to_remove,
+        ndigits_to_remove=ndigits_to_remove,
         rounding_mode=rounding_mode,
         remove_extra_digit_due_to_rounding=False,
         sign=number.sign,
+        ndigits_before_removal=ndigits_coefficient,
     )
     number.scale -= ndigits_to_remove
 
@@ -159,9 +161,10 @@ def round_to_precision(
         number.coefficient.number_of_digits() > precision
     ):
         number.coefficient.remove_trailing_digits_with_rounding_inplace(
-            ndigits=1,
+            ndigits_to_remove=1,
             rounding_mode=RoundingMode.down(),
             remove_extra_digit_due_to_rounding=False,
+            ndigits_before_removal=precision + 1,
         )
         number.scale -= 1
 

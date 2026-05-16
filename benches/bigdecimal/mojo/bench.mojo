@@ -20,7 +20,7 @@ from decimo.bigdecimal.exponential import exp as bd_exp
 from decimo.bigdecimal.exponential import ln as bd_ln
 from decimo.bigdecimal.exponential import root as bd_root
 from decimo.bigdecimal.rounding import round as bd_round
-from decimo.bigdecimal.rounding import round_to_precision
+from decimo.bigdecimal.rounding import round_to_precision_inplace
 from decimo.rounding_mode import RoundingMode
 from decimo.tests import (
     BenchCase,
@@ -93,7 +93,7 @@ def _cmp_3way(read a: BigDecimal, read b: BigDecimal) raises -> String:
 
 def _round_to_prec(var v: BigDecimal, precision: Int) raises -> BigDecimal:
     """Round `v` to `precision` significant digits (HALF_EVEN), in-place."""
-    round_to_precision(
+    round_to_precision_inplace(
         v,
         precision,
         RoundingMode.ROUND_HALF_EVEN,
