@@ -125,7 +125,7 @@ struct MathCache:
         """
         if self._ln2_precision >= precision:
             var result = self._ln2.copy()
-            result.round_to_precision(
+            result.round_to_precision_inplace(
                 precision=precision,
                 rounding_mode=RoundingMode.down(),
                 remove_extra_digit_due_to_rounding=False,
@@ -151,7 +151,7 @@ struct MathCache:
         """
         if self._ln1d25_precision >= precision:
             var result = self._ln1d25.copy()
-            result.round_to_precision(
+            result.round_to_precision_inplace(
                 precision=precision,
                 rounding_mode=RoundingMode.down(),
                 remove_extra_digit_due_to_rounding=False,
@@ -180,7 +180,7 @@ struct MathCache:
         """
         if self._ln10_precision >= precision:
             var result = self._ln10.copy()
-            result.round_to_precision(
+            result.round_to_precision_inplace(
                 precision=precision,
                 rounding_mode=RoundingMode.down(),
                 remove_extra_digit_due_to_rounding=False,
@@ -194,7 +194,7 @@ struct MathCache:
         var ln2 = self.get_ln2(extra)
         var ln1d25 = self.get_ln1d25(extra)
         self._ln10 = ln2.multiply(BigDecimal(3)).add(ln1d25)
-        self._ln10.round_to_precision(
+        self._ln10.round_to_precision_inplace(
             precision=precision,
             rounding_mode=RoundingMode.down(),
             remove_extra_digit_due_to_rounding=False,
@@ -262,7 +262,7 @@ def power(
     if exponent == BigDecimal(BigUInt.one(), 0, False):
         # return base  # x^1 = x
         var result = base.copy()
-        result.round_to_precision(
+        result.round_to_precision_inplace(
             precision,
             rounding_mode=RoundingMode.half_even(),
             remove_extra_digit_due_to_rounding=True,
@@ -295,7 +295,7 @@ def power(
     if base.sign and exponent.is_integer() and exponent.is_odd():
         exp_result.sign = True
 
-    exp_result.round_to_precision(
+    exp_result.round_to_precision_inplace(
         precision,
         rounding_mode=RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -342,7 +342,7 @@ def integer_power(
             # Use inplace multiply
             bigdecimal_arithmetics.multiply_inplace(result, current_power)
             # Round to avoid coefficient explosion
-            result.round_to_precision(
+            result.round_to_precision_inplace(
                 working_precision,
                 rounding_mode=RoundingMode.down(),
                 remove_extra_digit_due_to_rounding=False,
@@ -353,7 +353,7 @@ def integer_power(
         # because we need to copy first — just use regular multiply
         current_power = current_power.multiply(current_power)
         # Round to avoid coefficient explosion
-        current_power.round_to_precision(
+        current_power.round_to_precision_inplace(
             working_precision,
             rounding_mode=RoundingMode.down(),
             remove_extra_digit_due_to_rounding=False,
@@ -368,7 +368,7 @@ def integer_power(
             result, working_precision
         )
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision,
         rounding_mode=RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=False,
@@ -526,7 +526,7 @@ def root(x: BigDecimal, n: BigDecimal, precision: Int) raises -> BigDecimal:
     if x.sign:
         result.sign = True
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision=precision,
         rounding_mode=RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -584,7 +584,7 @@ def integer_root(
     # Special case: n = 1 (1st root is just the number itself)
     if n.is_one():
         var result = x.copy()
-        result.round_to_precision(
+        result.round_to_precision_inplace(
             precision,
             rounding_mode=RoundingMode.half_even(),
             remove_extra_digit_due_to_rounding=True,
@@ -711,7 +711,7 @@ def integer_root(
         # integer_power to produce huge coefficients that trigger BigUInt
         # division edge cases.
         if r.coefficient.number_of_digits() > iter_precision + BUFFER_DIGITS:
-            r.round_to_precision(
+            r.round_to_precision_inplace(
                 precision=iter_precision + BUFFER_DIGITS,
                 rounding_mode=RoundingMode.half_even(),
                 remove_extra_digit_due_to_rounding=True,
@@ -743,14 +743,14 @@ def integer_root(
             if iter_precision >= working_precision:
                 # Final precision reached: compare at target precision
                 var r_rounded = r.copy()
-                r_rounded.round_to_precision(
+                r_rounded.round_to_precision_inplace(
                     precision=precision,
                     rounding_mode=RoundingMode.half_even(),
                     remove_extra_digit_due_to_rounding=True,
                     fill_zeros_to_precision=False,
                 )
                 var r_new_rounded = r_new.copy()
-                r_new_rounded.round_to_precision(
+                r_new_rounded.round_to_precision_inplace(
                     precision=precision,
                     rounding_mode=RoundingMode.half_even(),
                     remove_extra_digit_due_to_rounding=True,
@@ -763,14 +763,14 @@ def integer_root(
                 # Before final precision: detect early convergence (exact results
                 # like cbrt(0.001)=0.1 converge in few iterations at any precision).
                 var r_rounded = r.copy()
-                r_rounded.round_to_precision(
+                r_rounded.round_to_precision_inplace(
                     precision=iter_precision,
                     rounding_mode=RoundingMode.half_even(),
                     remove_extra_digit_due_to_rounding=True,
                     fill_zeros_to_precision=False,
                 )
                 var r_new_rounded = r_new.copy()
-                r_new_rounded.round_to_precision(
+                r_new_rounded.round_to_precision_inplace(
                     precision=iter_precision,
                     rounding_mode=RoundingMode.half_even(),
                     remove_extra_digit_due_to_rounding=True,
@@ -782,7 +782,7 @@ def integer_root(
         r = r_new^
 
     r.sign = result_sign
-    r.round_to_precision(
+    r.round_to_precision_inplace(
         precision=precision,
         rounding_mode=RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -817,7 +817,7 @@ def _integer_root_via_exp_ln(
     var result = exp(ln_divided, working_precision)
     result.sign = result_sign
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision=precision,
         rounding_mode=RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -1101,7 +1101,7 @@ def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
         var ip = prec_schedule[i] + 10
 
         var r_sq = r.multiply(r)
-        r_sq.round_to_precision(
+        r_sq.round_to_precision_inplace(
             precision=ip,
             rounding_mode=RoundingMode.half_up(),
             remove_extra_digit_due_to_rounding=True,
@@ -1109,7 +1109,7 @@ def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
         )
 
         bigdecimal_arithmetics.multiply_inplace(r_sq, c_norm)
-        r_sq.round_to_precision(
+        r_sq.round_to_precision_inplace(
             precision=ip,
             rounding_mode=RoundingMode.half_up(),
             remove_extra_digit_due_to_rounding=True,
@@ -1119,7 +1119,7 @@ def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
         var correction = three.subtract(r_sq)
 
         bigdecimal_arithmetics.multiply_inplace(r, correction)
-        r.round_to_precision(
+        r.round_to_precision_inplace(
             precision=ip,
             rounding_mode=RoundingMode.half_up(),
             remove_extra_digit_due_to_rounding=True,
@@ -1133,7 +1133,7 @@ def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
     result_bd.scale -= norm_shift // 2
 
     # Round to enough digits to get an accurate integer
-    result_bd.round_to_precision(
+    result_bd.round_to_precision_inplace(
         precision=working_digits,
         rounding_mode=RoundingMode.half_up(),
         remove_extra_digit_due_to_rounding=True,
@@ -1309,7 +1309,7 @@ def sqrt_exact(x: BigDecimal, precision: Int) raises -> BigDecimal:
     # `precision` digits this is a no-op, but when the natural digit count
     # exceeds `precision` (e.g. sqrt(10000) at precision=1) it correctly
     # truncates — matching CPython's `_fix(context)` behavior.
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision=precision,
         rounding_mode=RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -1420,7 +1420,7 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
         # r^2 (self-squaring, cannot use multiply_inplace)
         var r_sq = r.multiply(r)
-        r_sq.round_to_precision(
+        r_sq.round_to_precision_inplace(
             precision=ip,
             rounding_mode=RoundingMode.half_up(),
             remove_extra_digit_due_to_rounding=True,
@@ -1429,7 +1429,7 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
         # x_norm * r^2 (inplace to avoid allocation: r_sq becomes x_norm * r^2)
         bigdecimal_arithmetics.multiply_inplace(r_sq, x_norm)
-        r_sq.round_to_precision(
+        r_sq.round_to_precision_inplace(
             precision=ip,
             rounding_mode=RoundingMode.half_up(),
             remove_extra_digit_due_to_rounding=True,
@@ -1441,7 +1441,7 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
         # r * (3 - x_norm * r^2) (inplace)
         bigdecimal_arithmetics.multiply_inplace(r, correction)
-        r.round_to_precision(
+        r.round_to_precision_inplace(
             precision=ip,
             rounding_mode=RoundingMode.half_up(),
             remove_extra_digit_due_to_rounding=True,
@@ -1458,7 +1458,7 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
     result.scale -= shift // 2
 
     # --- Round to desired precision ---
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision=precision,
         rounding_mode=RoundingMode.half_up(),
         remove_extra_digit_due_to_rounding=True,
@@ -1575,7 +1575,7 @@ def sqrt_newton(x: BigDecimal, precision: Int) raises -> BigDecimal:
         new_scale,
         False,
     )
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision=precision,
         rounding_mode=RoundingMode.half_up(),
         remove_extra_digit_due_to_rounding=True,
@@ -1698,16 +1698,14 @@ def sqrt_decimal_approach(x: BigDecimal, precision: Int) raises -> BigDecimal:
         guess = sum_val.true_divide_inexact_by_uint32(2, working_precision)
         iteration_count += 1
 
-    # Round to the desired precision
+    # Round to the desired precision (in-place, no intermediate copy)
     var ndigits_to_remove = guess.coefficient.number_of_digits() - precision
     if ndigits_to_remove > 0:
-        var coefficient = guess.coefficient.copy()
-        coefficient = coefficient.remove_trailing_digits_with_rounding(
+        guess.coefficient.remove_trailing_digits_with_rounding_inplace(
             ndigits_to_remove,
             rounding_mode=RoundingMode.half_up(),
             remove_extra_digit_due_to_rounding=True,
         )
-        guess.coefficient = coefficient^
         guess.scale -= ndigits_to_remove
 
     # Remove trailing zeros for exact results
@@ -1733,7 +1731,7 @@ def sqrt_decimal_approach(x: BigDecimal, precision: Int) raises -> BigDecimal:
             var expected_ndigits_of_result = (
                 x.coefficient.number_of_digits() + 1
             ) // 2
-            guess.round_to_precision(
+            guess.round_to_precision_inplace(
                 precision=expected_ndigits_of_result,
                 rounding_mode=RoundingMode.down(),
                 remove_extra_digit_due_to_rounding=False,
@@ -1860,14 +1858,14 @@ def exp(x: BigDecimal, precision: Int) raises -> BigDecimal:
         # Square result M times: exp(x) = exp(x/2^M)^(2^M)
         for _ in range(m):
             result = result.multiply(result)
-            result.round_to_precision(
+            result.round_to_precision_inplace(
                 precision=working_precision,
                 rounding_mode=RoundingMode.half_up(),
                 remove_extra_digit_due_to_rounding=False,
                 fill_zeros_to_precision=False,
             )
 
-        result.round_to_precision(
+        result.round_to_precision_inplace(
             precision=precision,
             rounding_mode=RoundingMode.half_even(),
             remove_extra_digit_due_to_rounding=False,
@@ -1880,7 +1878,7 @@ def exp(x: BigDecimal, precision: Int) raises -> BigDecimal:
     var working_precision_basic = precision + 9
     var result = exp_taylor_series(x, working_precision_basic)
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision=precision,
         rounding_mode=RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -1928,7 +1926,7 @@ def exp_taylor_series(
         var add_on = x.true_divide_inexact_by_uint32(n, minimum_precision)
         # Use inplace multiply to avoid BigDecimal allocation
         bigdecimal_arithmetics.multiply_inplace(term, add_on)
-        term.round_to_precision(
+        term.round_to_precision_inplace(
             precision=minimum_precision,
             rounding_mode=RoundingMode.half_up(),
             remove_extra_digit_due_to_rounding=False,
@@ -1945,7 +1943,7 @@ def exp_taylor_series(
         if term.adjusted() < -minimum_precision:
             break
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision=minimum_precision,
         rounding_mode=RoundingMode.half_up(),
         remove_extra_digit_due_to_rounding=False,
@@ -2075,7 +2073,7 @@ def ln(
         )
 
     # Round to final precision
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision=precision,
         rounding_mode=RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -2273,7 +2271,7 @@ def ln_series_expansion(
                 term.coefficient.number_of_digits()
                 > working_precision + z_digits
             ):
-                term.round_to_precision(
+                term.round_to_precision_inplace(
                     working_precision,
                     RoundingMode.down(),
                     remove_extra_digit_due_to_rounding=False,
@@ -2294,7 +2292,7 @@ def ln_series_expansion(
             if next_term.adjusted() < -working_precision:
                 break
 
-        result.round_to_precision(
+        result.round_to_precision_inplace(
             precision=working_precision,
             rounding_mode=RoundingMode.down(),
             remove_extra_digit_due_to_rounding=False,
@@ -2310,7 +2308,7 @@ def ln_series_expansion(
 
     # Compute u² (cached for the recurrence)
     var u_squared = u.multiply(u)
-    u_squared.round_to_precision(
+    u_squared.round_to_precision_inplace(
         working_precision,
         RoundingMode.down(),
         remove_extra_digit_due_to_rounding=False,
@@ -2347,7 +2345,7 @@ def ln_series_expansion(
         if term.adjusted() < -working_precision:
             break
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision=working_precision,
         rounding_mode=RoundingMode.down(),
         remove_extra_digit_due_to_rounding=False,
@@ -2398,7 +2396,7 @@ def compute_ln2(working_precision: Int) raises -> BigDecimal:
             90,
             False,
         )
-        result.round_to_precision(
+        result.round_to_precision_inplace(
             precision=working_precision,
             rounding_mode=RoundingMode.down(),
             remove_extra_digit_due_to_rounding=False,
@@ -2441,7 +2439,7 @@ def compute_ln2(working_precision: Int) raises -> BigDecimal:
         if term.adjusted() < -working_precision:
             break
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision=working_precision,
         rounding_mode=RoundingMode.down(),
         remove_extra_digit_due_to_rounding=False,

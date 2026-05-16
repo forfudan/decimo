@@ -177,7 +177,7 @@ def pi(precision: Int) raises -> BigDecimal:
     # we can check if we have a cached value for the requested precision.
     # if precision <= 1024:
     #     var result = PI_1024
-    #     result.round_to_precision(
+    #     result.round_to_precision_inplace(
     #         precision,
     #         RoundingMode.ROUND_HALF_EVEN,
     #         remove_extra_digit_due_to_rounding=True,
@@ -253,7 +253,7 @@ def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
         bdec_10005.sqrt(working_precision)
     ).multiply(sum_series)
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision,
         RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -383,7 +383,7 @@ def pi_machin(precision: Int) raises -> BigDecimal:
     var pi_over_4 = term1.subtract(term2)
     var result = bdec_4.multiply(pi_over_4)
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision,
         RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,

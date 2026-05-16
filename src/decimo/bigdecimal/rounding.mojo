@@ -93,22 +93,21 @@ def round(
                 scale=ndigits,
                 sign=number.sign,
             )
-        var coefficient = (
-            number.coefficient.remove_trailing_digits_with_rounding(
-                ndigits=ndigits_to_remove,
-                rounding_mode=rounding_mode,
-                remove_extra_digit_due_to_rounding=False,
-                sign=number.sign,
-            )
-        )
-        return BigDecimal(
-            coefficient=coefficient,
-            scale=ndigits,
+        # Copy once, then mutate in place via the single shared rounding
+        # path. Keeps `round()` (out-of-place public API) and
+        # `round_to_precision_inplace` from drifting in behaviour.
+        var result = number.copy()
+        result.coefficient.remove_trailing_digits_with_rounding_inplace(
+            ndigits=ndigits_to_remove,
+            rounding_mode=rounding_mode,
+            remove_extra_digit_due_to_rounding=False,
             sign=number.sign,
         )
+        result.scale = ndigits
+        return result^
 
 
-def round_to_precision(
+def round_to_precision_inplace(
     mut number: BigDecimal,
     precision: Int,
     rounding_mode: RoundingMode,

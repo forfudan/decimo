@@ -140,7 +140,7 @@ def sin(x: BigDecimal, precision: Int) raises -> BigDecimal:
     if is_negative:
         result = -result
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision,
         RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -201,7 +201,7 @@ def sin_taylor_series(
         sign *= -1
 
         # Ensure that the result will not explode in size
-        result.round_to_precision(
+        result.round_to_precision_inplace(
             working_precision,
             rounding_mode=RoundingMode.down(),
             remove_extra_digit_due_to_rounding=False,
@@ -291,7 +291,7 @@ def cos_taylor_series(
         sign *= -1
 
         # # Prevent size explosion
-        result.round_to_precision(
+        result.round_to_precision_inplace(
             working_precision,
             rounding_mode=RoundingMode.down(),
             remove_extra_digit_due_to_rounding=False,
@@ -408,7 +408,7 @@ def tan_cot(x: BigDecimal, precision: Int, is_tan: Bool) raises -> BigDecimal:
             sin_x, precision=working_precision
         )
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision,
         RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -544,7 +544,7 @@ def arctan(x: BigDecimal, precision: Int) raises -> BigDecimal:
         else:
             result = half_pi.subtract(arctan_reciprocal)
 
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision,
         RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -605,7 +605,7 @@ def arctan_taylor_series(
             result.subtract_inplace(term_divided)
         sign *= -1
         # Ensure that the result will not explode in size
-        result.round_to_precision(
+        result.round_to_precision_inplace(
             working_precision,
             rounding_mode=RoundingMode.down(),
             remove_extra_digit_due_to_rounding=False,

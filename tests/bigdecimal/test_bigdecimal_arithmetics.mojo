@@ -12,7 +12,7 @@ from std import testing
 
 from decimo import BDec
 from decimo.bigdecimal.arithmetics import add, subtract, multiply
-from decimo.bigdecimal.rounding import round_to_precision
+from decimo.bigdecimal.rounding import round_to_precision_inplace
 from decimo.rounding_mode import RoundingMode
 from decimo.tests import TestCase, parse_file, load_test_cases
 
@@ -153,7 +153,7 @@ def test_bigdecimal_arithmetics_with_precision() raises:
     """Tests `add`/`subtract`/`multiply` with `precision > 0`.
 
     Each precision-arg call must equal `op(x1, x2, precision=0)`
-    followed by an explicit `round_to_precision(..., HALF_EVEN)` on
+    followed by an explicit `round_to_precision_inplace(..., HALF_EVEN)` on
     every input below.
 
     Coverage:
@@ -242,7 +242,7 @@ def test_bigdecimal_arithmetics_with_precision() raises:
 
         # add: precision-arg fast path must equal exact-then-round.
         var add_ref = add(ma, mb, precision=0)
-        round_to_precision(
+        round_to_precision_inplace(
             add_ref,
             PRECISION,
             RoundingMode.ROUND_HALF_EVEN,
@@ -262,7 +262,7 @@ def test_bigdecimal_arithmetics_with_precision() raises:
             count_wrong += 1
 
         var sub_ref = subtract(ma, mb, precision=0)
-        round_to_precision(
+        round_to_precision_inplace(
             sub_ref,
             PRECISION,
             RoundingMode.ROUND_HALF_EVEN,
@@ -282,7 +282,7 @@ def test_bigdecimal_arithmetics_with_precision() raises:
             count_wrong += 1
 
         var mul_ref = multiply(ma, mb, precision=0)
-        round_to_precision(
+        round_to_precision_inplace(
             mul_ref,
             PRECISION,
             RoundingMode.ROUND_HALF_EVEN,

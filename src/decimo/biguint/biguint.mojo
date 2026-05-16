@@ -2205,91 +2205,21 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Rounding can result in an extra digit. Exmaple: remove last 1 digit of
         999 with rounding up results in 100. If
         `remove_extra_digit_due_to_rounding` is True, the result will be 10.
+
+        Thin wrapper around
+        `remove_trailing_digits_with_rounding_inplace`: copies `self`
+        once and delegates to the in-place variant. Keeps a single
+        source of truth for the rounding logic.
         """
-        if ndigits < 0:
-            raise ValueError(
-                function="BigUInt.remove_trailing_digits_with_rounding()",
-                message=(
-                    "The number of digits to remove is negative: "
-                    + String(ndigits)
-                ),
-            )
-        if ndigits == 0:
-            return self.copy()
-        if ndigits > self.number_of_digits():
-            raise ValueError(
-                function="BigUInt.remove_trailing_digits_with_rounding()",
-                message=(
-                    "The number of digits to remove is larger than the "
-                    "number of digits in the BigUInt: "
-                    + String(ndigits)
-                    + " > "
-                    + String(self.number_of_digits())
-                ),
-            )
-
-        # floor_divide_by_power_of_ten is the same as removing the last n digits
-        var result = biguint_arithmetics.floor_divide_by_power_of_ten(
-            self, ndigits
+        var result = self.copy()
+        result.remove_trailing_digits_with_rounding_inplace(
+            ndigits=ndigits,
+            rounding_mode=rounding_mode,
+            remove_extra_digit_due_to_rounding=(
+                remove_extra_digit_due_to_rounding
+            ),
+            sign=sign,
         )
-        var round_up: Bool = False
-
-        # Translate CEILING/FLOOR to UP/DOWN based on sign.
-        # CEILING (toward +inf): positive -> UP, negative -> DOWN
-        # FLOOR (toward -inf): positive -> DOWN, negative -> UP
-        var effective_mode = rounding_mode
-        if rounding_mode == RoundingMode.ceiling():
-            effective_mode = (
-                RoundingMode.up() if not sign else RoundingMode.down()
-            )
-        elif rounding_mode == RoundingMode.floor():
-            effective_mode = (
-                RoundingMode.down() if not sign else RoundingMode.up()
-            )
-
-        if effective_mode == RoundingMode.down():
-            pass
-        elif effective_mode == RoundingMode.up():
-            if self.number_of_trailing_zeros() < ndigits:
-                round_up = True
-        elif effective_mode == RoundingMode.half_up():
-            if self.ith_digit(ndigits - 1) >= 5:
-                round_up = True
-        elif effective_mode == RoundingMode.half_down():
-            var cut_off_digit = self.ith_digit(ndigits - 1)
-            if cut_off_digit > 5:
-                round_up = True
-            elif cut_off_digit == 5:
-                # Round up only if there are non-zero digits beyond the 5
-                if self.number_of_trailing_zeros() < ndigits - 1:
-                    round_up = True
-        elif effective_mode == RoundingMode.half_even():
-            var cut_off_digit = self.ith_digit(ndigits - 1)
-            if cut_off_digit > 5:
-                round_up = True
-            elif cut_off_digit < 5:
-                pass
-            else:  # cut_off_digit == 5
-                if self.number_of_trailing_zeros() < ndigits - 1:
-                    round_up = True
-                else:
-                    round_up = self.ith_digit(ndigits) % 2 == 1
-        # TODO: Remove this fallback once Mojo has proper enum support,
-        # which will make exhaustive matching a compile-time guarantee.
-        else:
-            raise ValueError(
-                function="BigUInt.remove_trailing_digits_with_rounding()",
-                message=("Unknown rounding mode: " + String(rounding_mode)),
-            )
-
-        if round_up:
-            biguint_arithmetics.add_by_uint32_inplace(result, UInt32(1))
-            # Check whether rounding results in extra digit
-            if result.is_power_of_10():
-                if remove_extra_digit_due_to_rounding:
-                    result = biguint_arithmetics.floor_divide_by_power_of_ten(
-                        result, 1
-                    )
         return result^
 
     @always_inline
@@ -2308,7 +2238,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         fresh coefficient buffer. Saves one alloc and one full-buffer
         copy per call, which compounds across every `precision > 0`
         invocation of `add` / `subtract` / `multiply` (each ends in a
-        `round_to_precision` call).
+        `round_to_precision_inplace` call).
 
         Args:
             ndigits: The number of digits to remove.

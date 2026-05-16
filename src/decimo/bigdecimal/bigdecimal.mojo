@@ -30,7 +30,7 @@ from std import testing
 from decimo.errors import ConversionError, ValueError
 from decimo.rounding_mode import RoundingMode
 from decimo.bigdecimal.exponential import MathCache
-from decimo.bigdecimal.rounding import round_to_precision
+from decimo.bigdecimal.rounding import round_to_precision_inplace
 from decimo.bigint10.bigint10 import BigInt10
 import decimo.str as decimo_str
 import decimo.bigdecimal.arithmetics as bigdecimal_arithmetics
@@ -1990,7 +1990,7 @@ struct BigDecimal(
         return bigdecimal_rounding.round(self, ndigits, rounding_mode)
 
     @always_inline
-    def round_to_precision(
+    def round_to_precision_inplace(
         mut self,
         precision: Int,
         rounding_mode: RoundingMode,
@@ -2005,7 +2005,7 @@ struct BigDecimal(
         not the number of decimal places. If you want to round to a
         specific number of decimal places, use `round()` instead.
 
-        See `rounding.round_to_precision()` for more information.
+        See `rounding.round_to_precision_inplace()` for more information.
 
         Args:
             precision: The number of significant digits to round to.
@@ -2013,7 +2013,7 @@ struct BigDecimal(
             remove_extra_digit_due_to_rounding: Whether to remove an extra leading digit caused by rounding up.
             fill_zeros_to_precision: Whether to pad with trailing zeros to reach the target precision.
         """
-        bigdecimal_rounding.round_to_precision(
+        bigdecimal_rounding.round_to_precision_inplace(
             self,
             precision,
             rounding_mode,

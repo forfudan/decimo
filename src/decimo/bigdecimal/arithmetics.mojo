@@ -21,7 +21,7 @@ Implements functions for mathematical operations on BigDecimal objects.
 from std import math
 
 import decimo.biguint.arithmetics as biguint_arithmetics
-from decimo.bigdecimal.rounding import round_to_precision
+from decimo.bigdecimal.rounding import round_to_precision_inplace
 from decimo.errors import ZeroDivisionError
 from decimo.rounding_mode import RoundingMode
 
@@ -61,7 +61,7 @@ def add(
     """
     if precision > 0:
         var result = add(x1, x2, precision=0)
-        round_to_precision(
+        round_to_precision_inplace(
             result,
             precision,
             RoundingMode.ROUND_HALF_EVEN,
@@ -138,7 +138,7 @@ def subtract(
     """
     if precision > 0:
         var result = subtract(x1, x2, precision=0)
-        round_to_precision(
+        round_to_precision_inplace(
             result,
             precision,
             RoundingMode.ROUND_HALF_EVEN,
@@ -217,7 +217,7 @@ def multiply(
     """
     if precision > 0:
         var result = multiply(x1, x2, precision=0)
-        round_to_precision(
+        round_to_precision_inplace(
             result,
             precision,
             RoundingMode.ROUND_HALF_EVEN,
@@ -268,7 +268,7 @@ def multiply_inplace(
     x1.sign = x1.sign != x2.sign
 
     if precision > 0:
-        round_to_precision(
+        round_to_precision_inplace(
             x1,
             precision,
             RoundingMode.ROUND_HALF_EVEN,
@@ -348,7 +348,7 @@ def add_inplace(mut x1: BigDecimal, x2: BigDecimal, precision: Int = 0) raises:
                 x1.sign = False
 
     if precision > 0:
-        round_to_precision(
+        round_to_precision_inplace(
             x1,
             precision,
             RoundingMode.ROUND_HALF_EVEN,
@@ -657,7 +657,7 @@ def true_divide_general(
         scale=scale,
         sign=x.sign != y.sign,
     )
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision,
         RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -722,7 +722,7 @@ def _true_divide_general_truncated(
         scale=scale,
         sign=x.sign != y.sign,
     )
-    result.round_to_precision(
+    result.round_to_precision_inplace(
         precision,
         RoundingMode.half_even(),
         remove_extra_digit_due_to_rounding=True,
@@ -837,7 +837,7 @@ def true_divide_inexact(
     var result_digits = quotient.number_of_digits()
     if result_digits > number_of_significant_digits:
         var digits_to_remove = result_digits - number_of_significant_digits
-        quotient = quotient.remove_trailing_digits_with_rounding(
+        quotient.remove_trailing_digits_with_rounding_inplace(
             digits_to_remove,
             RoundingMode.down(),
             remove_extra_digit_due_to_rounding=False,
@@ -894,7 +894,7 @@ def _true_divide_inexact_truncated(
     var result_digits = quotient.number_of_digits()
     if result_digits > number_of_significant_digits:
         var digits_to_remove = result_digits - number_of_significant_digits
-        quotient = quotient.remove_trailing_digits_with_rounding(
+        quotient.remove_trailing_digits_with_rounding_inplace(
             digits_to_remove,
             RoundingMode.down(),
             remove_extra_digit_due_to_rounding=False,
@@ -967,7 +967,7 @@ def true_divide_inexact_by_uint32(
     var result_digits = quotient.number_of_digits()
     if result_digits > number_of_significant_digits:
         var digits_to_remove = result_digits - number_of_significant_digits
-        quotient = quotient.remove_trailing_digits_with_rounding(
+        quotient.remove_trailing_digits_with_rounding_inplace(
             digits_to_remove,
             RoundingMode.down(),
             remove_extra_digit_due_to_rounding=False,

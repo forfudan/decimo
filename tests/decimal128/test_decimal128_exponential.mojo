@@ -97,7 +97,7 @@ def test_exp_extreme() raises:
     )
     testing.assert_true(exp(Decimal128("20")) > Decimal128("100000000"))
     var result = exp(Decimal128("1.23456789012345678901234567"))
-    testing.assert_true(len(String(result)) > 15)
+    testing.assert_true(String(result).byte_length() > 15)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
