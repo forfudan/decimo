@@ -234,6 +234,9 @@ def expand_value(s: String) raises -> String:
     Returns:
         The expanded string with all patterns resolved.
 
+    Raises:
+        ValueError: If a `{C,N}` pattern contains an invalid integer count.
+
     Examples:
         "42"            → "42"
         "{9,100}"       → "999...9" (100 nines)
@@ -340,6 +343,9 @@ def load_test_cases[
 
     Returns:
         A list of TestCase objects containing the test cases.
+
+    Raises:
+        Error: Propagated from TOML lookup or value expansion.
     """
     var cases_array = toml.get_array_of_tables(table_name)
     var test_cases = List[TestCase]()
@@ -379,6 +385,10 @@ def load_bench_cases(toml_path: String) raises -> List[BenchCase]:
 
     Returns:
         A list of BenchCase objects.
+
+    Raises:
+        ValueError: If the TOML file cannot be parsed.
+        Error: Propagated from TOML lookup or value expansion.
     """
     var doc = parse_file(toml_path)
     var cases_array = doc.get_array_of_tables("cases")
@@ -409,6 +419,9 @@ def load_bench_iterations(toml_path: String) raises -> Int:
 
     Returns:
         The iterations count, defaulting to 1000.
+
+    Raises:
+        ValueError: If the TOML file cannot be parsed.
     """
     var doc = parse_file(toml_path)
     try:
@@ -428,6 +441,9 @@ def load_bench_precision(toml_path: String) raises -> Int:
 
     Returns:
         The precision, defaulting to 36 (BigDecimal default).
+
+    Raises:
+        ValueError: If the TOML file cannot be parsed.
     """
     var doc = parse_file(toml_path)
     try:
@@ -506,6 +522,10 @@ def load_bench_precision_levels(
 
     Returns:
         A list of PrecisionLevel objects, one per table.
+
+    Raises:
+        ValueError: If the TOML file cannot be parsed.
+        Error: Propagated from TOML lookup or value conversion.
     """
     var doc = parse_file(toml_path)
     var levels_array = doc.get_array_of_tables("precision_levels")
@@ -533,6 +553,9 @@ def open_log_file(prefix: String) raises -> PythonObject:
 
     Returns:
         A Python file object opened for writing.
+
+    Raises:
+        Error: If Python interop fails or the log file cannot be created.
     """
     var python = Python.import_module("builtins")
     var datetime = Python.import_module("datetime")
@@ -556,6 +579,9 @@ def log_print(msg: String, log_file: PythonObject) raises:
     Args:
         msg: The message to print.
         log_file: The Python file object to write to.
+
+    Raises:
+        Error: If the underlying Python write/flush call fails.
     """
     print(msg)
     log_file.write(msg + "\n")
@@ -573,6 +599,9 @@ def print_header(title: String, log_file: PythonObject) raises:
     Args:
         title: The benchmark title.
         log_file: The Python file object.
+
+    Raises:
+        Error: If logging or Python interop fails.
     """
     var datetime = Python.import_module("datetime")
     log_print("=== " + title + " ===", log_file)
@@ -612,6 +641,9 @@ def print_summary(
         label: Label for the Mojo implementation (e.g. "BigUInt").
         iterations: Iterations per case.
         log_file: The Python file object.
+
+    Raises:
+        Error: If logging to the Python file object fails.
     """
     if len(speedup_factors) == 0:
         log_print("\nNo valid benchmark cases were completed", log_file)
@@ -667,6 +699,9 @@ def print_summary_dual(
         label2: Label for the second implementation (e.g. "BigInt").
         iterations: Iterations per case.
         log_file: The Python file object.
+
+    Raises:
+        Error: If logging to the Python file object fails.
     """
     if len(sf1) == 0:
         log_print("\nNo valid benchmark cases were completed", log_file)

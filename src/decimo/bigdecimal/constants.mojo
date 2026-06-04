@@ -230,6 +230,9 @@ def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
 
     Returns:
         The value of π to the specified precision.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
 
     var working_precision = precision + 9  # 1 words
@@ -274,6 +277,9 @@ def chudnovsky_split(
 
     Returns:
         A `_RationalBigInt10` representing the partial sum of the Chudnovsky series.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
 
     var bint_1 = BigInt10(1)
@@ -326,6 +332,9 @@ def compute_m_k_rational(k: Int) raises -> _RationalBigInt10:
 
     Returns:
         A `_RationalBigInt10` with numerator (6k)!/(3k)! and denominator (k!)³.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
 
     var bint_1 = BigInt10(1)
@@ -356,6 +365,9 @@ def pi_machin(precision: Int) raises -> BigDecimal:
 
     Returns:
         The value of π to the specified precision.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
 
     var working_precision = precision + 9

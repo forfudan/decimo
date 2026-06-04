@@ -377,6 +377,9 @@ struct TOMLDocument(Copyable, Movable):
 
         Returns:
             The value for `key`, or an empty `TOMLValue` if not found.
+
+        Raises:
+            KeyError: Propagated from the underlying dict access.
         """
         if key in self.root:
             return self.root[key]
@@ -390,6 +393,9 @@ struct TOMLDocument(Copyable, Movable):
 
         Returns:
             A copy of the table's key-value pairs, or an empty dictionary.
+
+        Raises:
+            KeyError: Propagated from the underlying dict access.
         """
         if (
             table_name in self.root
@@ -406,6 +412,9 @@ struct TOMLDocument(Copyable, Movable):
 
         Returns:
             A copy of the array elements, or an empty list.
+
+        Raises:
+            KeyError: Propagated from the underlying dict access.
         """
         if key in self.root and self.root[key].type == TOMLValueType.ARRAY:
             return self.root[key].array_values.copy()
@@ -421,6 +430,9 @@ struct TOMLDocument(Copyable, Movable):
 
         Returns:
             A list of table dictionaries, or an empty list.
+
+        Raises:
+            KeyError: Propagated from the underlying dict access.
         """
         var result = List[Dict[String, TOMLValue]]()
 
@@ -1030,6 +1042,9 @@ def parse_string(input: String) raises -> TOMLDocument:
 
     Returns:
         The parsed `TOMLDocument`.
+
+    Raises:
+        ValueError: If the input is not valid TOML.
     """
     var parser = TOMLParser(input)
     return parser.parse()
@@ -1043,6 +1058,10 @@ def parse_file(file_path: String) raises -> TOMLDocument:
 
     Returns:
         The parsed `TOMLDocument`.
+
+    Raises:
+        Error: If the file cannot be opened or read.
+        ValueError: If the file contents are not valid TOML.
     """
 
     with open(file_path, "r") as file:

@@ -58,6 +58,9 @@ def add(
     - When `precision == 0`, the result is exact and its scale is the
       maximum of the two operands' scales.
     - The result's sign is determined by the signs of the operands.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
     if precision > 0:
         var result = add(x1, x2, precision=0)
@@ -135,6 +138,9 @@ def subtract(
     - When `precision == 0`, the result is exact and its scale is the
       maximum of the two operands' scales.
     - The result's sign is determined by the signs of the operands.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
     if precision > 0:
         var result = subtract(x1, x2, precision=0)
@@ -214,6 +220,9 @@ def multiply(
     - When `precision == 0`, the result is exact and its scale is the
       sum of the two operands' scales (except for zero).
     - The result's sign follows the standard sign rules for multiplication.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
     if precision > 0:
         var result = multiply(x1, x2, precision=0)
@@ -256,6 +265,9 @@ def multiply_inplace(
             result. When `0` (default) the in-place product is exact.
             When `>0` the exact product is computed and then rounded
             in place to `precision` significant digits via HALF_EVEN.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
     if x1.coefficient.is_zero() or x2.coefficient.is_zero():
         x1.coefficient = BigUInt.zero()
@@ -290,6 +302,9 @@ def add_inplace(mut x1: BigDecimal, x2: BigDecimal, precision: Int = 0) raises:
             result. When `0` (default) the in-place sum is exact.
             When `>0` the exact sum is computed and then rounded in
             place to `precision` significant digits via HALF_EVEN.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
     var max_scale = max(x1.scale, x2.scale)
     var scale_factor1 = (max_scale - x1.scale) if x1.scale < max_scale else 0
@@ -372,6 +387,9 @@ def subtract_inplace(
             exact. When `>0` the exact difference is computed and
             then rounded in place to `precision` significant digits
             via HALF_EVEN.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
     # Create a negated view of x2 and use add_inplace
     var neg_x2 = BigDecimal(
@@ -449,6 +467,9 @@ def true_divide_fast(
     This function conduct a quick division that:
     (1) does not round the result to the specified precision.
     (2) does not check the exact division nor remove extra trailing zeros.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
 
     # Yuhao Zhu:
@@ -578,6 +599,9 @@ def true_divide_general(
     This function conduct a division that:
     (1) rounds the result to the specified precision,
     (2) checks the exact division and remove extra trailing zeros.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
 
     # Yuhao Zhu:
@@ -928,6 +952,9 @@ def true_divide_inexact_by_uint32(
 
     Returns:
         The quotient x1 / y with the specified precision.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
     debug_assert[assert_mode="none"](
         y != 0,

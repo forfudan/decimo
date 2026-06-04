@@ -747,6 +747,9 @@ struct BigInt10(
 
         Returns:
             The floor division quotient.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return bigint10_arithmetics.floor_divide(other, self)
 
@@ -759,6 +762,9 @@ struct BigInt10(
 
         Returns:
             The remainder of the floor division.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return bigint10_arithmetics.floor_modulo(other, self)
 
@@ -771,6 +777,10 @@ struct BigInt10(
 
         Returns:
             The result of raising to the given power.
+
+        Raises:
+            OverflowError: If the exponent is too large.
+            ValueError: If the exponent is negative or too large.
         """
         return base.power(self)
 
@@ -829,6 +839,9 @@ struct BigInt10(
 
         Args:
             other: The right-hand side operand.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         self = bigint10_arithmetics.floor_divide(self, other)
 
@@ -838,6 +851,9 @@ struct BigInt10(
 
         Args:
             other: The right-hand side operand.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         self = bigint10_arithmetics.floor_modulo(self, other)
 
@@ -1019,6 +1035,9 @@ struct BigInt10(
 
         Returns:
             The floor division quotient.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return bigint10_arithmetics.floor_divide(self, other)
 
@@ -1032,6 +1051,9 @@ struct BigInt10(
 
         Returns:
             The truncated division quotient.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return bigint10_arithmetics.truncate_divide(self, other)
 
@@ -1045,6 +1067,9 @@ struct BigInt10(
 
         Returns:
             The floor division remainder.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return bigint10_arithmetics.floor_modulo(self, other)
 
@@ -1058,6 +1083,9 @@ struct BigInt10(
 
         Returns:
             The truncated division remainder.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return bigint10_arithmetics.truncate_modulo(self, other)
 
@@ -1177,6 +1205,9 @@ struct BigInt10(
 
         Returns:
             A formatted string showing the internal representation.
+
+        Raises:
+            Error: Propagated from string formatting / write operations.
         """
         # Collect all labels to find max width
         var max_label_len = "number:".byte_length()
@@ -1217,5 +1248,9 @@ struct BigInt10(
         return result^
 
     def print_internal_representation(self) raises:
-        """Prints the internal representation details of a BigInt10."""
+        """Prints the internal representation details of a BigInt10.
+
+        Raises:
+            Error: Propagated from string formatting / write operations.
+        """
         print(self.internal_representation())

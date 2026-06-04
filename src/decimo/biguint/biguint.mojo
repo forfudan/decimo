@@ -126,6 +126,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             A `BigUInt` representing 10 raised to the power of `exponent`.
+
+        Raises:
+            ValueError: If the exponent is negative.
         """
         return biguint_arithmetics.power_of_10(exponent)
 
@@ -1299,6 +1302,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             The sum.
+
+        Raises:
+            Error: Propagated from underlying operations.
         """
         return biguint_arithmetics.add(self, other)
 
@@ -1326,6 +1332,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             The product.
+
+        Raises:
+            Error: Propagated from underlying operations.
         """
         return biguint_arithmetics.multiply(self, other)
 
@@ -1425,6 +1434,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Args:
             other: The operand to multiply by.
+
+        Raises:
+            Error: Propagated from underlying operations.
         """
         self = biguint_arithmetics.multiply(self, other)
 
@@ -1567,6 +1579,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Args:
             other: The operand to add.
+
+        Raises:
+            Error: Propagated from underlying operations.
         """
         biguint_arithmetics.add_inplace(self, other)
 
@@ -1581,6 +1596,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             The quotient.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return biguint_arithmetics.floor_divide(self, other)
 
@@ -1595,6 +1613,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             The quotient.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return biguint_arithmetics.truncate_divide(self, other)
 
@@ -1608,6 +1629,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             The quotient rounded up.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return biguint_arithmetics.ceil_divide(self, other)
 
@@ -1621,6 +1645,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             The remainder.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return biguint_arithmetics.floor_modulo(self, other)
 
@@ -1634,6 +1661,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             The remainder.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return biguint_arithmetics.truncate_modulo(self, other)
 
@@ -1647,6 +1677,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             The remainder.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return biguint_arithmetics.ceil_modulo(self, other)
 
@@ -1660,6 +1693,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         Returns:
             A tuple of (quotient, remainder).
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return biguint_arithmetics.floor_divide_modulo(self, other)
 
@@ -1668,6 +1704,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         """Divides this number by 2 in place.
         See `decimo.biguint.arithmetics.floor_divide_by_2_inplace()`
         for more information.
+
+        Raises:
+            Error: Propagated from underlying operations.
         """
         biguint_arithmetics.floor_divide_by_2_inplace(self)
 

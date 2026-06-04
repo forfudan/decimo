@@ -387,6 +387,9 @@ struct Rational(
 
         Returns:
             The sum.
+
+        Raises:
+            Error: Propagated from underlying BigInt arithmetic.
         """
         var num = (
             self.numerator * other.denominator
@@ -403,6 +406,9 @@ struct Rational(
 
         Returns:
             The difference.
+
+        Raises:
+            Error: Propagated from underlying BigInt arithmetic.
         """
         var num = (
             self.numerator * other.denominator
@@ -423,6 +429,9 @@ struct Rational(
 
         Returns:
             The product.
+
+        Raises:
+            Error: Propagated from underlying BigInt arithmetic.
         """
         # (a/b) * (c/d) = (a*c) / (b*d) = (a/gcd_ad * c/gcd_bc) / (b/gcd_bc * d/gcd_ad)
         var gcd_ad = gcd(self.numerator, other.denominator)

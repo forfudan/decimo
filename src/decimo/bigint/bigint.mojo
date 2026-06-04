@@ -603,6 +603,9 @@ struct BigInt(
 
         Returns:
             The value as a Float64.
+
+        Raises:
+            Error: Propagated from Float64 conversion.
         """
         return Float64(self.to_string())
 
@@ -1452,6 +1455,9 @@ struct BigInt(
 
         Returns:
             The quotient, truncated toward zero.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return bigint_arithmetics.truncate_divide(self, other)
 
@@ -1465,6 +1471,9 @@ struct BigInt(
 
         Returns:
             The floor remainder with the same sign as the divisor.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return bigint_arithmetics.floor_modulo(self, other)
 
@@ -1478,6 +1487,9 @@ struct BigInt(
 
         Returns:
             The truncated remainder with the same sign as the dividend.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return bigint_arithmetics.truncate_modulo(self, other)
 
@@ -1718,6 +1730,9 @@ struct BigInt(
 
         Args:
             other: The second value for the extended GCD computation.
+
+        Raises:
+            Error: Propagated from underlying arithmetic operations.
         """
         return bigint_number_theory.extended_gcd(self, other)
 
@@ -1730,6 +1745,9 @@ struct BigInt(
 
         Returns:
             The least common multiple of the two values.
+
+        Raises:
+            Error: Propagated from underlying arithmetic operations.
         """
         return bigint_number_theory.lcm(self, other)
 
@@ -1744,6 +1762,9 @@ struct BigInt(
 
         Returns:
             The result of (self ** exponent) % modulus.
+
+        Raises:
+            ValueError: If the exponent is negative or the modulus is not positive.
         """
         return bigint_number_theory.mod_pow(self, exponent, modulus)
 
@@ -1758,6 +1779,9 @@ struct BigInt(
 
         Returns:
             The result of (self ** exponent) % modulus.
+
+        Raises:
+            ValueError: If the exponent is negative or the modulus is not positive.
         """
         return bigint_number_theory.mod_pow(
             self, Self.from_int(exponent), modulus
@@ -1773,6 +1797,9 @@ struct BigInt(
 
         Returns:
             The modular multiplicative inverse.
+
+        Raises:
+            ValueError: If the modulus is not positive or the modular inverse does not exist.
         """
         return bigint_number_theory.mod_inverse(self, modulus)
 

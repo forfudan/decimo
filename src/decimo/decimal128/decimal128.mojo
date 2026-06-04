@@ -1580,6 +1580,9 @@ struct Decimal128(
 
         Returns:
             The sum.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
         """
         return decimal128_arithmetics.add(self, other)
 
@@ -1592,6 +1595,9 @@ struct Decimal128(
 
         Returns:
             The difference.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
         """
         return decimal128_arithmetics.subtract(self, other)
 
@@ -1604,6 +1610,9 @@ struct Decimal128(
 
         Returns:
             The product.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
         """
         return decimal128_arithmetics.multiply(self, other)
 
@@ -1616,6 +1625,10 @@ struct Decimal128(
 
         Returns:
             The quotient.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
+            ZeroDivisionError: If the divisor is zero.
         """
         return decimal128_arithmetics.divide(self, other)
 
@@ -1628,6 +1641,10 @@ struct Decimal128(
 
         Returns:
             The truncated quotient.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
+            ZeroDivisionError: If the divisor is zero.
         """
         return decimal128_arithmetics.truncate_divide(self, other)
 
@@ -1640,6 +1657,10 @@ struct Decimal128(
 
         Returns:
             The remainder.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
+            ZeroDivisionError: If the divisor is zero.
         """
         return decimal128_arithmetics.modulo(self, other)
 
@@ -1677,6 +1698,10 @@ struct Decimal128(
 
         Returns:
             The value raised to the given power.
+
+        Raises:
+            ValueError: If the base is negative with a non-integer exponent.
+            OverflowError: If the result overflows Decimal128 capacity.
         """
         return decimal128_exponential.power(self, exponent)
 
@@ -1689,6 +1714,10 @@ struct Decimal128(
 
         Returns:
             The value raised to the given power.
+
+        Raises:
+            ValueError: If the base is zero and the exponent is negative.
+            OverflowError: If the result overflows Decimal128 capacity.
         """
         return decimal128_exponential.power(self, exponent)
 
@@ -1708,6 +1737,9 @@ struct Decimal128(
 
         Returns:
             The sum.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
         """
         return decimal128_arithmetics.add(other, self)
 
@@ -1720,6 +1752,9 @@ struct Decimal128(
 
         Returns:
             The difference.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
         """
         return decimal128_arithmetics.subtract(other, self)
 
@@ -1732,6 +1767,9 @@ struct Decimal128(
 
         Returns:
             The product.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
         """
         return decimal128_arithmetics.multiply(other, self)
 
@@ -1744,6 +1782,10 @@ struct Decimal128(
 
         Returns:
             The quotient.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
+            ZeroDivisionError: If the divisor is zero.
         """
         return decimal128_arithmetics.divide(other, self)
 
@@ -1756,6 +1798,10 @@ struct Decimal128(
 
         Returns:
             The truncated quotient.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
+            ZeroDivisionError: If the divisor is zero.
         """
         return decimal128_arithmetics.truncate_divide(other, self)
 
@@ -1768,6 +1814,10 @@ struct Decimal128(
 
         Returns:
             The remainder.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
+            ZeroDivisionError: If the divisor is zero.
         """
         return decimal128_arithmetics.modulo(other, self)
 
@@ -1784,6 +1834,9 @@ struct Decimal128(
 
         Args:
             other: The right-hand side operand.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
         """
         self = decimal128_arithmetics.add(self, other)
 
@@ -1793,6 +1846,9 @@ struct Decimal128(
 
         Args:
             other: The right-hand side operand.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
         """
         self = decimal128_arithmetics.subtract(self, other)
 
@@ -1802,6 +1858,9 @@ struct Decimal128(
 
         Args:
             other: The right-hand side operand.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
         """
         self = decimal128_arithmetics.multiply(self, other)
 
@@ -1811,6 +1870,10 @@ struct Decimal128(
 
         Args:
             other: The right-hand side operand.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
+            ZeroDivisionError: If the divisor is zero.
         """
         self = decimal128_arithmetics.divide(self, other)
 
@@ -1820,6 +1883,10 @@ struct Decimal128(
 
         Args:
             other: The right-hand side operand.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
+            ZeroDivisionError: If the divisor is zero.
         """
         self = decimal128_arithmetics.truncate_divide(self, other)
 
@@ -1829,6 +1896,10 @@ struct Decimal128(
 
         Args:
             other: The right-hand side operand.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
+            ZeroDivisionError: If the divisor is zero.
         """
         self = decimal128_arithmetics.modulo(self, other)
 
@@ -2059,6 +2130,9 @@ struct Decimal128(
 
         Returns:
             The rounded `Decimal128` value.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
         """
         return decimal128_rounding.round(
             self, ndigits=ndigits, rounding_mode=rounding_mode
@@ -2079,6 +2153,9 @@ struct Decimal128(
 
         Returns:
             The quantized `Decimal128` value.
+
+        Raises:
+            OverflowError: If the result overflows Decimal128 capacity.
         """
         return decimal128_rounding.quantize(self, exp, rounding_mode)
 
@@ -2129,6 +2206,9 @@ struct Decimal128(
 
         Returns:
             The value of e raised to this power.
+
+        Raises:
+            OverflowError: If the exponent is too large.
         """
         return decimal128_exponential.exp(self)
 
@@ -2139,6 +2219,9 @@ struct Decimal128(
 
         Returns:
             The natural logarithm of this value.
+
+        Raises:
+            ValueError: If the value is non-positive.
         """
         return decimal128_exponential.ln(self)
 
@@ -2148,6 +2231,9 @@ struct Decimal128(
 
         Returns:
             The base-10 logarithm of this value.
+
+        Raises:
+            ValueError: If the value is non-positive.
         """
         return decimal128_exponential.log10(self)
 
@@ -2160,6 +2246,9 @@ struct Decimal128(
 
         Returns:
             The logarithm of this value in the given base.
+
+        Raises:
+            ValueError: If the value or base is non-positive, or the base equals 1.
         """
         return decimal128_exponential.log(self, base)
 
@@ -2172,6 +2261,10 @@ struct Decimal128(
 
         Returns:
             The value raised to the given power.
+
+        Raises:
+            ValueError: If the base is zero and the exponent is negative.
+            OverflowError: If the result overflows Decimal128 capacity.
         """
         return decimal128_exponential.power(self, Self(exponent))
 
@@ -2184,6 +2277,10 @@ struct Decimal128(
 
         Returns:
             The value raised to the given power.
+
+        Raises:
+            ValueError: If the base is negative with a non-integer exponent.
+            OverflowError: If the result overflows Decimal128 capacity.
         """
         return decimal128_exponential.power(self, exponent)
 
@@ -2198,6 +2295,9 @@ struct Decimal128(
 
         Returns:
             The n-th root of this value.
+
+        Raises:
+            ValueError: If `n` is non-positive, or `n` is even and the value is negative.
         """
         return decimal128_exponential.root(self, n)
 
@@ -2209,6 +2309,9 @@ struct Decimal128(
 
         Returns:
             The square root of this value.
+
+        Raises:
+            ValueError: If the value is negative.
         """
         return decimal128_exponential.sqrt(self)
 

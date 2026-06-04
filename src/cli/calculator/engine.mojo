@@ -58,6 +58,9 @@ def evaluate_and_print(
         show_expr_on_error: If True, show the expression with a caret
             indicator on error. If False, show only the error message.
         variables: A name→value mapping of user-defined variables.
+
+    Raises:
+        Error: Propagated from tokenization, parsing, or evaluation.
     """
     try:
         var tokens = tokenize(expr, variables)
@@ -189,6 +192,9 @@ def evaluate_and_return(
 
     Returns:
         The evaluated Decimal result.
+
+    Raises:
+        Error: Propagated from tokenization, parsing, or evaluation.
     """
     try:
         var tokens = tokenize(expr, variables)

@@ -13,11 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-#
-# Implements internal utility functions for the Decimal128 type
-# WARNING: These functions are not meant to be used directly by the user.
-#
-# ===----------------------------------------------------------------------=== #
+
+"""Internal utility functions for the Decimal128 type.
+
+WARNING: These functions are implementation details and are not meant to be
+used directly by end users. They support the public Decimal128 API with
+low-level helpers such as bit manipulation, rounding helpers, and
+representation conversions.
+"""
 
 from std.memory import UnsafePointer
 from std import sys
