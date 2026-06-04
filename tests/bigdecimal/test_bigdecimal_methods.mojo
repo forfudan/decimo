@@ -1,6 +1,6 @@
 # Consider incorporating some of the tests to other test files in future
 """
-Tests for BigDecimal utility methods added in v0.8.x:
+Tests for BigDecimal utility methods:
   - is_positive()
   - __rtruediv__()
   - to_scientific_string() / to_eng_string()
@@ -11,7 +11,7 @@ Tests for BigDecimal utility methods added in v0.8.x:
   - same_quantum()
   - scaleb()
   - fma()
-  - to_string_with_separators()
+  - to_string_with_separators().
 """
 
 from std import testing

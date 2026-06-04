@@ -48,10 +48,10 @@ def _csv_quote(s: String) -> String:
 
 
 def _pad(s: String, width: Int) -> String:
-    if len(s) >= width:
+    if s.byte_length() >= width:
         return s
     var out = s
-    var pad = width - len(s)
+    var pad = width - s.byte_length()
     for _ in range(pad):
         out += " "
     return out
