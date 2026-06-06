@@ -348,8 +348,10 @@ def cot(x: BigDecimal, precision: Int) raises -> BigDecimal:
         The cotangent of x with the specified precision.
 
     Raises:
-        Error: Propagated from underlying arithmetic operations (e.g.,
-            division by zero at singularities x = nπ).
+        ValueError: If x is zero (cot(0) is treated as undefined in
+            `tan_cot()`).
+        ZeroDivisionError: At other singularities x = nπ (n != 0) where
+            sin(x) is zero, propagated from the underlying division.
 
     Notes:
 

@@ -2024,7 +2024,8 @@ struct BigDecimal(
             The tangent of this value.
 
         Raises:
-            ValueError: If the tangent is undefined (cosine is zero).
+            ZeroDivisionError: At the singularities x = π/2 + nπ where
+                cos(x) is zero and tan(x) is undefined.
         """
         return bigdecimal_trigonometric.tan(self, precision)
 
@@ -2039,7 +2040,9 @@ struct BigDecimal(
             The cotangent of this value.
 
         Raises:
-            ValueError: If the cotangent is undefined (sine is zero).
+            ValueError: If this value is zero (cot(0) is treated as undefined).
+            ZeroDivisionError: At other singularities x = nπ (n != 0) where
+                sin(x) is zero.
         """
         return bigdecimal_trigonometric.cot(self, precision)
 
@@ -2054,7 +2057,9 @@ struct BigDecimal(
             The cosecant of this value.
 
         Raises:
-            ValueError: If the cosecant is undefined (sine is zero).
+            ValueError: If this value is zero (csc(0) is undefined).
+            ZeroDivisionError: At other singularities x = nπ (n != 0) where
+                sin(x) is zero.
         """
         return bigdecimal_trigonometric.csc(self, precision)
 
@@ -2069,7 +2074,8 @@ struct BigDecimal(
             The secant of this value.
 
         Raises:
-            ValueError: If the secant is undefined (cosine is zero).
+            ZeroDivisionError: At the singularities x = π/2 + nπ where
+                cos(x) is zero and sec(x) is undefined.
         """
         return bigdecimal_trigonometric.sec(self, precision)
 

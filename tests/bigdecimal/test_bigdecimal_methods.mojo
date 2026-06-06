@@ -11,7 +11,9 @@ Tests for BigDecimal utility methods:
   - same_quantum()
   - scaleb()
   - fma()
-  - to_string_with_separators().
+  - to_string_with_separators()
+
+More tests can be added here for other non-arithmetic methods as needed.
 """
 
 from std import testing

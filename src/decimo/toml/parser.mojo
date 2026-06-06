@@ -379,7 +379,8 @@ struct TOMLDocument(Copyable, Movable):
             The value for `key`, or an empty `TOMLValue` if not found.
 
         Raises:
-            KeyError: Propagated from the underlying dict access.
+            Error: Propagated from the underlying dictionary operations.
+                Missing keys are handled gracefully and do not raise.
         """
         if key in self.root:
             return self.root[key]
@@ -395,7 +396,8 @@ struct TOMLDocument(Copyable, Movable):
             A copy of the table's key-value pairs, or an empty dictionary.
 
         Raises:
-            KeyError: Propagated from the underlying dict access.
+            Error: Propagated from the underlying dictionary operations.
+                Missing tables are handled gracefully and do not raise.
         """
         if (
             table_name in self.root
@@ -414,7 +416,8 @@ struct TOMLDocument(Copyable, Movable):
             A copy of the array elements, or an empty list.
 
         Raises:
-            KeyError: Propagated from the underlying dict access.
+            Error: Propagated from the underlying dictionary operations.
+                Missing keys are handled gracefully and do not raise.
         """
         if key in self.root and self.root[key].type == TOMLValueType.ARRAY:
             return self.root[key].array_values.copy()
@@ -432,7 +435,8 @@ struct TOMLDocument(Copyable, Movable):
             A list of table dictionaries, or an empty list.
 
         Raises:
-            KeyError: Propagated from the underlying dict access.
+            Error: Propagated from the underlying dictionary operations.
+                Missing keys are handled gracefully and do not raise.
         """
         var result = List[Dict[String, TOMLValue]]()
 
@@ -1041,10 +1045,14 @@ def parse_string(input: String) raises -> TOMLDocument:
         input: The TOML-formatted string to parse.
 
     Returns:
-        The parsed `TOMLDocument`.
+        The parsed `TOMLDocument`. Note that tokenization or parsing
+        errors that are not explicitly detected may yield a partial
+        document rather than raise.
 
     Raises:
-        ValueError: If the input is not valid TOML.
+        Error: Propagated from the underlying tokenizer or parser when an
+            invalid construct is explicitly detected (e.g. malformed values
+            or unsupported syntax in a recognized position).
     """
     var parser = TOMLParser(input)
     return parser.parse()
@@ -1057,11 +1065,14 @@ def parse_file(file_path: String) raises -> TOMLDocument:
         file_path: The path to the TOML file.
 
     Returns:
-        The parsed `TOMLDocument`.
+        The parsed `TOMLDocument`. Note that tokenization or parsing
+        errors that are not explicitly detected may yield a partial
+        document rather than raise.
 
     Raises:
-        Error: If the file cannot be opened or read.
-        ValueError: If the file contents are not valid TOML.
+        Error: If the file cannot be opened or read, or propagated from
+            the underlying tokenizer/parser when an invalid construct is
+            explicitly detected.
     """
 
     with open(file_path, "r") as file:
