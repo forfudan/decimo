@@ -57,6 +57,9 @@ def round(
 
     Returns:
         A new `BigDecimal` rounded to the specified number of decimal places.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
 
     var ndigits_to_remove = number.scale - ndigits
@@ -133,6 +136,9 @@ def round_to_precision_inplace(
         remove_extra_digit_due_to_rounding: If True, remove a trailing digit if
             the rounding mode result in an extra leading digit.
         fill_zeros_to_precision: If True, fill trailing zeros to the precision.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
 
     var ndigits_coefficient = number.coefficient.number_of_digits()
@@ -238,6 +244,9 @@ def quantize(
     _ = round(y, -2)                     # -> "1E+2" (ndigits=-2)
     ```
     End of examples.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
 
     # Determine the target scale from the exp parameter

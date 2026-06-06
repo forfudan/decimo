@@ -184,6 +184,9 @@ struct BigFloat(Comparable, Movable, Writable):
         Args:
             value: The integer to convert.
             precision: The number of significant decimal digits.
+
+        Raises:
+            ConversionError: If the integer cannot be represented as a BigFloat.
         """
         self = Self(String(value), precision)
 
@@ -195,6 +198,9 @@ struct BigFloat(Comparable, Movable, Writable):
         Args:
             decimal: The `BigDecimal` to convert.
             precision: The number of significant decimal digits.
+
+        Raises:
+            ConversionError: If the BigDecimal string cannot be parsed as a BigFloat.
         """
         self = Self(decimal.to_string(), precision)
 
@@ -597,6 +603,9 @@ struct BigFloat(Comparable, Movable, Writable):
 
         Returns:
             The result of `self` raised to `exponent`.
+
+        Raises:
+            Error: Propagated from `power()`.
         """
         return self.power(exponent)
 

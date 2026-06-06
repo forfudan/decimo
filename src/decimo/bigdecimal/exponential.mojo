@@ -122,6 +122,9 @@ struct MathCache:
 
         Returns:
             The value of ln(2) with at least the specified precision.
+
+        Raises:
+            Error: Propagated from underlying arithmetic and conversion operations.
         """
         if self._ln2_precision >= precision:
             var result = self._ln2.copy()
@@ -148,6 +151,9 @@ struct MathCache:
 
         Returns:
             The value of ln(1.25) with at least the specified precision.
+
+        Raises:
+            Error: Propagated from underlying arithmetic and conversion operations.
         """
         if self._ln1d25_precision >= precision:
             var result = self._ln1d25.copy()
@@ -177,6 +183,9 @@ struct MathCache:
 
         Returns:
             The value of ln(10) with at least the specified precision.
+
+        Raises:
+            Error: Propagated from underlying arithmetic and conversion operations.
         """
         if self._ln10_precision >= precision:
             var result = self._ln10.copy()
@@ -316,6 +325,10 @@ def integer_power(
 
     Returns:
         The result of base^exponent.
+
+    Raises:
+        ZeroDivisionError: If the base is zero and the exponent is negative.
+        Error: Propagated from arithmetic operations.
     """
     var working_precision = precision + 9  # Add buffer digits
     var abs_exp = abs(exponent)
@@ -838,6 +851,9 @@ def is_integer_reciprocal_and_return(
     Returns:
         True if 1/n is an odd integer, False otherwise.
         The integer reciprocal of n.
+
+    Raises:
+        ZeroDivisionError: If n is zero.
     """
     var m = BigDecimal(BigUInt.one(), 0, False).true_divide(
         n, precision=n.coefficient.number_of_digits() + 9
@@ -854,6 +870,9 @@ def is_odd_reciprocal(n: BigDecimal) raises -> Bool:
 
     Returns:
         True if 1/n is an odd integer, False otherwise.
+
+    Raises:
+        ZeroDivisionError: If n is zero.
 
     Notes:
 
@@ -1046,6 +1065,9 @@ def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
 
     Returns:
         The integer square root floor(sqrt(c)).
+
+    Raises:
+        Error: Propagated from arithmetic operations.
     """
     # Convert c to BigDecimal for the reciprocal sqrt approximation
     var c_bd = BigDecimal(c.copy(), 0, False)
@@ -1753,6 +1775,9 @@ def cbrt(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
     Returns:
         The cube root of x with the specified precision.
+
+    Raises:
+        Error: Propagated from integer_root.
     """
 
     result = integer_root(
@@ -1902,6 +1927,9 @@ def exp_taylor_series(
     Returns:
         The natural exponential of x (e^x) to the specified precision with some
         extra digits to ensure accuracy.
+
+    Raises:
+        Error: Propagated from arithmetic operations.
     """
     # Theoretical number of terms needed based on precision
     # For |x| ≤ 1, error after n terms is approximately |x|^(n+1)/(n+1)!
@@ -2227,6 +2255,9 @@ def ln_series_expansion(
     Returns:
         The ln(1+z) computed to the specified working precision.
 
+    Raises:
+        Error: Propagated from arithmetic operations.
+
     Notes:
         The last few digits of result are not accurate as there is no buffer
         for precision. You need to use a larger precision to get the last few
@@ -2365,6 +2396,9 @@ def compute_ln2(working_precision: Int) raises -> BigDecimal:
     Returns:
         The ln(2) computed to the specified precision.
 
+    Raises:
+        Error: Propagated from underlying arithmetic operations.
+
     Notes:
 
     The last few digits of result are not accurate as there is no buffer for
@@ -2458,6 +2492,9 @@ def compute_ln1d25(precision: Int) raises -> BigDecimal:
 
     Returns:
         The ln(1.25) computed to the specified precision.
+
+    Raises:
+        Error: Propagated from ln_series_expansion.
     """
     var z = BigDecimal(BigUInt(raw_words=[25]), 2, False)
     var result = ln_series_expansion(z^, precision)

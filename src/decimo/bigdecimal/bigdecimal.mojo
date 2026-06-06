@@ -208,6 +208,9 @@ struct BigDecimal(
 
         Args:
             value: The string to parse (e.g. "123.456" or "1.23E+5").
+
+        Raises:
+            ValueError: If the string does not represent a valid number.
         """
         # The string is normalized with `decimo.str.parse_numeric_string()`.
         self = Self.from_string(value)
@@ -264,6 +267,9 @@ struct BigDecimal(
 
         Args:
             py: A Python `decimal.Decimal` object.
+
+        Raises:
+            ConversionError: If the conversion from Python Decimal fails.
         """
         self = Self.from_python_decimal(py)
 
@@ -454,6 +460,9 @@ struct BigDecimal(
 
         Returns:
             The BigDecimal representation of the string.
+
+        Raises:
+            ValueError: If the string does not represent a valid number.
         """
         _tuple = decimo_str.parse_numeric_string(value)
         var ref coef: List[UInt8] = _tuple[0]
@@ -632,6 +641,9 @@ struct BigDecimal(
 
         Returns:
             The integer representation, truncating any fractional part.
+
+        Raises:
+            ValueError: If the value cannot be represented as an `Int`.
         """
         return Int(self.to_string())
 
@@ -640,6 +652,9 @@ struct BigDecimal(
 
         Returns:
             The `Float64` representation of this value.
+
+        Raises:
+            ValueError: If the value cannot be parsed as a `Float64`.
         """
         return Float64(self.to_string())
 
@@ -1007,6 +1022,9 @@ struct BigDecimal(
 
         Returns:
             The sum of the two values, rounded to `PRECISION` digits.
+
+        Raises:
+            Error: If the underlying addition or rounding fails.
         """
         return bigdecimal_arithmetics.add(self, other, precision=PRECISION)
 
@@ -1023,6 +1041,9 @@ struct BigDecimal(
         Returns:
             The difference of the two values, rounded to `PRECISION`
             digits.
+
+        Raises:
+            Error: If the underlying subtraction or rounding fails.
         """
         return bigdecimal_arithmetics.subtract(self, other, precision=PRECISION)
 
@@ -1039,6 +1060,9 @@ struct BigDecimal(
         Returns:
             The product of the two values, rounded to `PRECISION`
             digits.
+
+        Raises:
+            Error: If the underlying multiplication or rounding fails.
         """
         return bigdecimal_arithmetics.multiply(self, other, precision=PRECISION)
 
@@ -1051,6 +1075,9 @@ struct BigDecimal(
 
         Returns:
             The quotient of the two values.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return bigdecimal_arithmetics.true_divide(
             self, other, precision=PRECISION
@@ -1066,6 +1093,9 @@ struct BigDecimal(
 
         Returns:
             The integer quotient, truncated toward zero.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return bigdecimal_arithmetics.truncate_divide(self, other)
 
@@ -1079,6 +1109,9 @@ struct BigDecimal(
 
         Returns:
             The remainder after truncated division.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return bigdecimal_arithmetics.truncate_modulo(
             self, other, precision=PRECISION
@@ -1093,6 +1126,12 @@ struct BigDecimal(
 
         Returns:
             This value raised to the given exponent.
+
+        Raises:
+            ValueError: If the operation is mathematically undefined
+                (e.g. negative base with non-integer exponent, or `0**0`
+                in contexts that disallow it).
+            OverflowError: If the result is too large to represent.
         """
         return bigdecimal_exponential.power(self, exponent, precision=PRECISION)
 
@@ -1113,6 +1152,9 @@ struct BigDecimal(
 
         Returns:
             A tuple of `(quotient, remainder)` from truncated division.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         var quotient = bigdecimal_arithmetics.truncate_divide(self, other)
         var remainder = bigdecimal_arithmetics.subtract(
@@ -1130,6 +1172,9 @@ struct BigDecimal(
 
         Returns:
             A tuple of `(quotient, remainder)` from truncated division.
+
+        Raises:
+            ZeroDivisionError: If `self` (the divisor) is zero.
         """
         var quotient = bigdecimal_arithmetics.truncate_divide(other, self)
         var remainder = bigdecimal_arithmetics.subtract(
@@ -1154,6 +1199,9 @@ struct BigDecimal(
 
         Returns:
             The sum of the two values.
+
+        Raises:
+            Error: If the underlying addition or rounding fails.
         """
         return bigdecimal_arithmetics.add(self, other, precision=PRECISION)
 
@@ -1167,6 +1215,9 @@ struct BigDecimal(
 
         Returns:
             The difference `other - self`.
+
+        Raises:
+            Error: If the underlying subtraction or rounding fails.
         """
         return bigdecimal_arithmetics.subtract(other, self, precision=PRECISION)
 
@@ -1180,6 +1231,9 @@ struct BigDecimal(
 
         Returns:
             The product of the two values.
+
+        Raises:
+            Error: If the underlying multiplication or rounding fails.
         """
         return bigdecimal_arithmetics.multiply(self, other, precision=PRECISION)
 
@@ -1192,6 +1246,9 @@ struct BigDecimal(
 
         Returns:
             The integer quotient `other // self`, truncated toward zero.
+
+        Raises:
+            ZeroDivisionError: If `self` (the divisor) is zero.
         """
         return bigdecimal_arithmetics.truncate_divide(other, self)
 
@@ -1204,6 +1261,9 @@ struct BigDecimal(
 
         Returns:
             The remainder `other % self`.
+
+        Raises:
+            ZeroDivisionError: If `self` (the divisor) is zero.
         """
         return bigdecimal_arithmetics.truncate_modulo(
             other, self, precision=PRECISION
@@ -1218,6 +1278,10 @@ struct BigDecimal(
 
         Returns:
             The base raised to the power of self.
+
+        Raises:
+            ValueError: If the operation is mathematically undefined.
+            OverflowError: If the result is too large to represent.
         """
         return bigdecimal_exponential.power(base, self, precision=PRECISION)
 
@@ -1230,6 +1294,9 @@ struct BigDecimal(
 
         Returns:
             The quotient `other / self`.
+
+        Raises:
+            ZeroDivisionError: If `self` (the divisor) is zero.
         """
         return bigdecimal_arithmetics.true_divide(
             other, self, precision=PRECISION
@@ -1251,6 +1318,9 @@ struct BigDecimal(
 
         Args:
             other: The right-hand side operand.
+
+        Raises:
+            Error: If the underlying addition or rounding fails.
         """
         bigdecimal_arithmetics.add_inplace(self, other, precision=PRECISION)
 
@@ -1263,6 +1333,9 @@ struct BigDecimal(
 
         Args:
             other: The right-hand side operand.
+
+        Raises:
+            Error: If the underlying subtraction or rounding fails.
         """
         bigdecimal_arithmetics.subtract_inplace(
             self, other, precision=PRECISION
@@ -1277,6 +1350,9 @@ struct BigDecimal(
 
         Args:
             other: The right-hand side operand.
+
+        Raises:
+            Error: If the underlying multiplication or rounding fails.
         """
         bigdecimal_arithmetics.multiply_inplace(
             self, other, precision=PRECISION
@@ -1288,6 +1364,9 @@ struct BigDecimal(
 
         Args:
             other: The right-hand side operand.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         self = bigdecimal_arithmetics.true_divide(
             self, other, precision=PRECISION
@@ -1299,6 +1378,9 @@ struct BigDecimal(
 
         Args:
             other: The right-hand side operand.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         self = bigdecimal_arithmetics.truncate_divide(self, other)
 
@@ -1308,6 +1390,9 @@ struct BigDecimal(
 
         Args:
             other: The right-hand side operand.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         self = bigdecimal_arithmetics.truncate_modulo(
             self, other, precision=PRECISION
@@ -1442,6 +1527,9 @@ struct BigDecimal(
 
         Returns:
             The ceiling of this value.
+
+        Raises:
+            Error: If the underlying rounding or addition fails.
         """
         if self.scale <= 0:
             return self.copy()
@@ -1462,6 +1550,9 @@ struct BigDecimal(
 
         Returns:
             The floor of this value.
+
+        Raises:
+            Error: If the underlying rounding or subtraction fails.
         """
         if self.scale <= 0:
             return self.copy()
@@ -1482,6 +1573,9 @@ struct BigDecimal(
 
         Returns:
             The truncated integer part of this value.
+
+        Raises:
+            Error: If the underlying rounding operation fails.
         """
         if self.scale <= 0:
             return self.copy()
@@ -1509,6 +1603,9 @@ struct BigDecimal(
 
         Returns:
             The sum of the two values.
+
+        Raises:
+            Error: If the underlying addition or rounding fails.
         """
         return bigdecimal_arithmetics.add(self, other, precision=precision)
 
@@ -1528,6 +1625,9 @@ struct BigDecimal(
 
         Returns:
             The difference of the two values.
+
+        Raises:
+            Error: If the underlying subtraction or rounding fails.
         """
         return bigdecimal_arithmetics.subtract(self, other, precision=precision)
 
@@ -1546,6 +1646,9 @@ struct BigDecimal(
 
         Returns:
             The product of the two values.
+
+        Raises:
+            Error: If the underlying multiplication or rounding fails.
         """
         return bigdecimal_arithmetics.multiply(self, other, precision=precision)
 
@@ -1561,6 +1664,9 @@ struct BigDecimal(
 
         Returns:
             The quotient of the two values.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return bigdecimal_arithmetics.true_divide(
             self, other, precision=precision
@@ -1578,6 +1684,9 @@ struct BigDecimal(
                 rounded HALF_EVEN to `precision` significant digits.
                 Note: this differs from the `+=` operator which always
                 rounds to `PRECISION` (matching Python `decimal.Decimal`).
+
+        Raises:
+            Error: If the underlying addition or rounding fails.
         """
         bigdecimal_arithmetics.add_inplace(self, other, precision)
 
@@ -1594,6 +1703,9 @@ struct BigDecimal(
                 significant digits.
                 Note: this differs from the `-=` operator which always
                 rounds to `PRECISION` (matching Python `decimal.Decimal`).
+
+        Raises:
+            Error: If the underlying subtraction or rounding fails.
         """
         bigdecimal_arithmetics.subtract_inplace(self, other, precision)
 
@@ -1609,6 +1721,9 @@ struct BigDecimal(
                 then rounded HALF_EVEN to `precision` significant digits.
                 Note: this differs from the `*=` operator which always
                 rounds to `PRECISION` (matching Python `decimal.Decimal`).
+
+        Raises:
+            Error: If the underlying multiplication or rounding fails.
         """
         bigdecimal_arithmetics.multiply_inplace(self, other, precision)
 
@@ -1628,6 +1743,9 @@ struct BigDecimal(
 
         Returns:
             1 if self > other, 0 if equal, -1 if self < other.
+
+        Raises:
+            Error: If the underlying comparison fails.
         """
         return bigdecimal_comparison.compare(self, other)
 
@@ -1641,6 +1759,9 @@ struct BigDecimal(
 
         Returns:
             1 if |self| > |other|, 0 if equal, -1 if |self| < |other|.
+
+        Raises:
+            Error: If the underlying comparison fails.
         """
         return bigdecimal_comparison.compare_absolute(self, other)
 
@@ -1655,6 +1776,9 @@ struct BigDecimal(
 
         Returns:
             The larger of the two values.
+
+        Raises:
+            Error: If the underlying comparison fails.
         """
         return bigdecimal_comparison.max(self, other)
 
@@ -1667,6 +1791,9 @@ struct BigDecimal(
 
         Returns:
             The smaller of the two values.
+
+        Raises:
+            Error: If the underlying comparison fails.
         """
         return bigdecimal_comparison.min(self, other)
 
@@ -1682,6 +1809,9 @@ struct BigDecimal(
 
         Returns:
             The value of π to the specified precision.
+
+        Raises:
+            Error: If the underlying computation fails.
         """
         return bigdecimal_constants.pi(precision=precision)
 
@@ -1695,6 +1825,9 @@ struct BigDecimal(
 
         Returns:
             The value of e to the specified precision.
+
+        Raises:
+            Error: If the underlying computation fails.
         """
         return bigdecimal_exponential.exp(
             x=Self(BigUInt.one()), precision=precision
@@ -1711,6 +1844,9 @@ struct BigDecimal(
 
         Returns:
             The value of e raised to the power of self.
+
+        Raises:
+            OverflowError: If the result is too large to represent.
         """
         return bigdecimal_exponential.exp(self, precision)
 
@@ -1723,6 +1859,9 @@ struct BigDecimal(
 
         Returns:
             The natural logarithm (base e) of this value.
+
+        Raises:
+            ValueError: If the value is zero or negative.
         """
         return bigdecimal_exponential.ln(self, precision)
 
@@ -1740,6 +1879,9 @@ struct BigDecimal(
 
         Returns:
             The natural logarithm (base e) of this value.
+
+        Raises:
+            ValueError: If the value is zero or negative.
         """
         return bigdecimal_exponential.ln(self, precision, cache)
 
@@ -1753,6 +1895,10 @@ struct BigDecimal(
 
         Returns:
             The logarithm of this value in the given base.
+
+        Raises:
+            ValueError: If the value or base is zero, negative, or if the
+                base equals one.
         """
         return bigdecimal_exponential.log(self, base, precision)
 
@@ -1765,6 +1911,9 @@ struct BigDecimal(
 
         Returns:
             The base-10 logarithm of this value.
+
+        Raises:
+            ValueError: If the value is zero or negative.
         """
         return bigdecimal_exponential.log10(self, precision)
 
@@ -1778,6 +1927,10 @@ struct BigDecimal(
 
         Returns:
             The nth root of this value.
+
+        Raises:
+            ValueError: If the value is negative for an even root, or if
+                the root degree is invalid.
         """
         return bigdecimal_exponential.root(self, root, precision)
 
@@ -1790,6 +1943,9 @@ struct BigDecimal(
 
         Returns:
             The square root of this value.
+
+        Raises:
+            ValueError: If the value is negative.
         """
         return bigdecimal_exponential.sqrt(self, precision)
 
@@ -1802,6 +1958,9 @@ struct BigDecimal(
 
         Returns:
             The cube root of this value.
+
+        Raises:
+            Error: If the underlying computation fails.
         """
         return bigdecimal_exponential.cbrt(self, precision)
 
@@ -1816,6 +1975,10 @@ struct BigDecimal(
 
         Returns:
             This value raised to the given exponent.
+
+        Raises:
+            ValueError: If the operation is mathematically undefined.
+            OverflowError: If the result is too large to represent.
         """
         return bigdecimal_exponential.power(self, exponent, precision)
 
@@ -1829,6 +1992,9 @@ struct BigDecimal(
 
         Returns:
             The sine of this value.
+
+        Raises:
+            Error: If the underlying computation fails.
         """
         return bigdecimal_trigonometric.sin(self, precision)
 
@@ -1841,6 +2007,9 @@ struct BigDecimal(
 
         Returns:
             The cosine of this value.
+
+        Raises:
+            Error: If the underlying computation fails.
         """
         return bigdecimal_trigonometric.cos(self, precision)
 
@@ -1853,6 +2022,10 @@ struct BigDecimal(
 
         Returns:
             The tangent of this value.
+
+        Raises:
+            ZeroDivisionError: At the singularities x = π/2 + nπ where
+                cos(x) is zero and tan(x) is undefined.
         """
         return bigdecimal_trigonometric.tan(self, precision)
 
@@ -1865,6 +2038,11 @@ struct BigDecimal(
 
         Returns:
             The cotangent of this value.
+
+        Raises:
+            ValueError: If this value is zero (cot(0) is treated as undefined).
+            ZeroDivisionError: At other singularities x = nπ (n != 0) where
+                sin(x) is zero.
         """
         return bigdecimal_trigonometric.cot(self, precision)
 
@@ -1877,6 +2055,11 @@ struct BigDecimal(
 
         Returns:
             The cosecant of this value.
+
+        Raises:
+            ValueError: If this value is zero (csc(0) is undefined).
+            ZeroDivisionError: At other singularities x = nπ (n != 0) where
+                sin(x) is zero.
         """
         return bigdecimal_trigonometric.csc(self, precision)
 
@@ -1889,6 +2072,10 @@ struct BigDecimal(
 
         Returns:
             The secant of this value.
+
+        Raises:
+            ZeroDivisionError: At the singularities x = π/2 + nπ where
+                cos(x) is zero and sec(x) is undefined.
         """
         return bigdecimal_trigonometric.sec(self, precision)
 
@@ -1901,6 +2088,9 @@ struct BigDecimal(
 
         Returns:
             The arctangent of this value in radians.
+
+        Raises:
+            Error: If the underlying computation fails.
         """
         return bigdecimal_trigonometric.arctan(self, precision)
 
@@ -1919,6 +2109,9 @@ struct BigDecimal(
 
         Returns:
             The quotient of the division with the specified significant digits.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return bigdecimal_arithmetics.true_divide_inexact(
             self, other, number_of_significant_digits
@@ -1937,6 +2130,9 @@ struct BigDecimal(
 
         Returns:
             The quotient of dividing this value by the given `UInt32`.
+
+        Raises:
+            ZeroDivisionError: If `y` is zero.
         """
         return bigdecimal_arithmetics.true_divide_inexact_by_uint32(
             self, y, number_of_significant_digits
@@ -1952,6 +2148,9 @@ struct BigDecimal(
 
         Returns:
             The integer quotient, truncated toward zero.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
         """
         return bigdecimal_arithmetics.truncate_divide(self, other)
 
@@ -1985,6 +2184,9 @@ struct BigDecimal(
 
         Returns:
             A new `BigDecimal` rounded to the specified decimal places.
+
+        Raises:
+            Error: If the underlying rounding operation fails.
         """
         return bigdecimal_rounding.round(self, ndigits, rounding_mode)
 
@@ -2011,6 +2213,9 @@ struct BigDecimal(
             rounding_mode: The rounding strategy to use.
             remove_extra_digit_due_to_rounding: Whether to remove an extra leading digit caused by rounding up.
             fill_zeros_to_precision: Whether to pad with trailing zeros to reach the target precision.
+
+        Raises:
+            Error: If the underlying rounding operation fails.
         """
         bigdecimal_rounding.round_to_precision_inplace(
             self,
@@ -2041,6 +2246,9 @@ struct BigDecimal(
         Returns:
             A new BigDecimal with the same value (subject to rounding) and
             the same scale as `exp`.
+
+        Raises:
+            Error: If the underlying rounding operation fails.
 
         Examples:
 
@@ -2088,6 +2296,9 @@ struct BigDecimal(
 
         Returns:
             The exact result of `self * a + b`.
+
+        Raises:
+            Error: If the underlying multiplication or addition fails.
 
         Examples:
 
@@ -2487,6 +2698,9 @@ struct BigDecimal(
 
         Returns:
             True if the integer part is odd, False otherwise.
+
+        Raises:
+            IndexError: If accessing the digit at the truncation position fails.
         """
         if self.scale < 0:
             return False
@@ -2502,6 +2716,9 @@ struct BigDecimal(
 
         Returns:
             True if the value equals 1, False otherwise.
+
+        Raises:
+            IndexError: If accessing the digit at the truncation position fails.
         """
         if self.sign:
             return False
@@ -2541,6 +2758,9 @@ struct BigDecimal(
 
         Returns:
             A new `BigDecimal` with trailing zeros removed.
+
+        Raises:
+            Error: If the underlying division operation fails.
         """
         if self.coefficient.is_zero():
             return Self(BigUInt(raw_words=[0]), 0, False)

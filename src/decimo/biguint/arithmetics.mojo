@@ -2754,6 +2754,9 @@ def floor_divide_burnikel_ziegler(
 
     Returns:
         The quotient of `a` divided by `b`.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
 
     var BLOCK_SIZE_OF_WORDS = cut_off
@@ -2899,6 +2902,9 @@ def floor_divide_two_by_one(
 
     You need to ensure that n is even to continue with the algorithm.
     Otherwise, it will use the schoolbook division algorithm.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
     debug_assert[assert_mode="none"](
         b.words[len(b.words) - 1] >= 500_000_000,
@@ -2966,6 +2972,9 @@ def floor_divide_three_by_two(
     Notes:
 
     a is a BigUInt with 3n words and b is a BigUInt with 2n words.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
 
     var a2a1: BigUInt
@@ -3042,6 +3051,9 @@ def floor_divide_slices_two_by_one(
     bounds_a0 = (bounds_a[0], bounds_a[0] + n // 2)\\
     bounds_b1 = (bounds_b[0] + n // 2, bounds_b[0] + n)\\
     bounds_b0 = (bounds_b[0], bounds_b[0] + n // 2).
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
 
     debug_assert[assert_mode="none"](
@@ -3135,6 +3147,9 @@ def floor_divide_slices_three_by_two(
     bounds_a0 = (bounds_a[0], bounds_a[0] + n)\\
     bounds_b1 = (bounds_b[0] + n, bounds_b[0] + 2 * n)\\
     bounds_b0 = (bounds_b[0], bounds_b[0] + n).
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
     """
 
     # SPECIAL CASE:

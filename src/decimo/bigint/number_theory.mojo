@@ -155,6 +155,9 @@ def extended_gcd(a: BigInt, b: BigInt) raises -> Tuple[BigInt, BigInt, BigInt]:
     Returns:
         A 3-tuple (g, x, y) where g is the non-negative GCD and x, y are
         Bézout coefficients satisfying a * x + b * y = g.
+
+    Raises:
+        Error: Propagated from underlying BigInt arithmetic.
     """
     var a_neg = a.is_negative()
     var b_neg = b.is_negative()
@@ -213,6 +216,9 @@ def lcm(a: BigInt, b: BigInt) raises -> BigInt:
 
     Returns:
         The least common multiple, always >= 0.
+
+    Raises:
+        Error: Propagated from underlying BigInt arithmetic.
     """
     if a.is_zero() or b.is_zero():
         return BigInt(0)

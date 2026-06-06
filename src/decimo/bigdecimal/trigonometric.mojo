@@ -14,9 +14,12 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-# ===----------------------------------------------------------------------=== #
-# Trigonometric functions for BigDecimal
-# ===----------------------------------------------------------------------=== #
+"""Trigonometric functions for BigDecimal.
+
+Provides high-precision implementations of trigonometric and inverse
+trigonometric functions (sin, cos, tan, asin, acos, atan, atan2, etc.)
+operating on the arbitrary-precision BigDecimal type.
+"""
 
 from std import time
 
@@ -41,6 +44,9 @@ def sin(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
     Returns:
         The sine of x with the specified precision.
+
+    Raises:
+        Error: Propagated from underlying arithmetic operations.
 
     Notes:
     This function adopts range reduction for optimal convergence.
@@ -163,6 +169,9 @@ def sin_taylor_series(
         The sine of the input number with the specified precision plus
         some extra digits to ensure accuracy.
 
+    Raises:
+        Error: Propagated from underlying arithmetic operations.
+
     Notes:
 
     Using Taylor series.
@@ -221,6 +230,9 @@ def cos(x: BigDecimal, precision: Int) raises -> BigDecimal:
     Returns:
         The cosine of x with the specified precision.
 
+    Raises:
+        Error: Propagated from underlying arithmetic operations.
+
     Notes:
     This function adopts range reduction for optimal convergence.
     """
@@ -250,6 +262,9 @@ def cos_taylor_series(
     Returns:
         The cosine of the input number with the specified precision plus
         some extra digits to ensure accuracy.
+
+    Raises:
+        Error: Propagated from underlying arithmetic operations.
 
     Notes:
 
@@ -311,6 +326,10 @@ def tan(x: BigDecimal, precision: Int) raises -> BigDecimal:
     Returns:
         The tangent of x with the specified precision.
 
+    Raises:
+        Error: Propagated from underlying arithmetic operations (e.g.,
+            division by zero at singularities x = π/2 + nπ).
+
     Notes:
 
     This function calculates tan(x) = sin(x) / cos(x).
@@ -327,6 +346,12 @@ def cot(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
     Returns:
         The cotangent of x with the specified precision.
+
+    Raises:
+        ValueError: If x is zero (cot(0) is treated as undefined in
+            `tan_cot()`).
+        ZeroDivisionError: At other singularities x = nπ (n != 0) where
+            sin(x) is zero, propagated from the underlying division.
 
     Notes:
 
@@ -456,6 +481,10 @@ def sec(x: BigDecimal, precision: Int) raises -> BigDecimal:
     Returns:
         The secant of x with the specified precision.
 
+    Raises:
+        Error: Propagated from underlying arithmetic operations (e.g.,
+            division by zero when cos(x) = 0 at x = π/2 + nπ).
+
     Notes:
 
     This function calculates sec(x) = 1 / cos(x).
@@ -491,6 +520,9 @@ def arctan(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
     Returns:
         The arctangent of x in radians, in the range (-π/2, π/2).
+
+    Raises:
+        Error: Propagated from underlying arithmetic operations.
     """
 
     comptime BUFFER_DIGITS = 9  # word-length, easy to append and trim
@@ -565,6 +597,9 @@ def arctan_taylor_series(
     Returns:
         The arctangent of the input number with the specified precision plus
         some extra digits to ensure accuracy.
+
+    Raises:
+        Error: Propagated from underlying arithmetic operations.
 
     Notes:
 

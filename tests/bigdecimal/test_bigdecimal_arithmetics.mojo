@@ -1,10 +1,9 @@
 """
 Test BigDecimal arithmetic operations including:
-
-1. addition
-2. subtraction
-3. multiplication
-4. division
+1. addition.
+2. subtraction.
+3. multiplication.
+4. division.
 """
 
 from std.python import Python
