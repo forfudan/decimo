@@ -73,6 +73,13 @@ def add(
         )
         return result^
 
+    # Hot path: same scale and same sign → straight coefficient add.
+    # Skips scale alignment, zero-operand probes, and sign branch entirely.
+    if x1.scale == x2.scale and x1.sign == x2.sign:
+        var coef = x1.coefficient + x2.coefficient
+        return BigDecimal(coefficient=coef^, scale=x1.scale, sign=x1.sign)
+
+    # Cold tail: differing scale and/or differing sign.
     var max_scale = max(x1.scale, x2.scale)
     var scale_factor1 = (max_scale - x1.scale) if x1.scale < max_scale else 0
     var scale_factor2 = (max_scale - x2.scale) if x2.scale < max_scale else 0
@@ -153,6 +160,29 @@ def subtract(
         )
         return result^
 
+    # Hot path: same scale → handle without alignment.
+    # - Different signs: x1 - (-x2) = x1 + x2 (with sign of x1).
+    # - Same sign: subtract smaller magnitude from larger.
+    if x1.scale == x2.scale:
+        if x1.sign != x2.sign:
+            var coef = x1.coefficient + x2.coefficient
+            return BigDecimal(coefficient=coef^, scale=x1.scale, sign=x1.sign)
+        # Same sign: actual subtraction
+        if x1.coefficient > x2.coefficient:
+            var coef = x1.coefficient - x2.coefficient
+            return BigDecimal(coefficient=coef^, scale=x1.scale, sign=x1.sign)
+        elif x2.coefficient > x1.coefficient:
+            var coef = x2.coefficient - x1.coefficient
+            return BigDecimal(
+                coefficient=coef^, scale=x1.scale, sign=not x1.sign
+            )
+        else:
+            # |x1| == |x2|, result is +0
+            return BigDecimal(
+                coefficient=BigUInt.zero(), scale=x1.scale, sign=False
+            )
+
+    # Cold tail: differing scale.
     var max_scale = max(x1.scale, x2.scale)
     var scale_factor1 = (max_scale - x1.scale) if x1.scale < max_scale else 0
     var scale_factor2 = (max_scale - x2.scale) if x2.scale < max_scale else 0

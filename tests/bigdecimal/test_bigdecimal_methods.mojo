@@ -1,6 +1,7 @@
 # Consider incorporating some of the tests to other test files in future
 """
-Tests for BigDecimal utility methods:
+Tests for BigDecimal utility methods.
+
   - is_positive()
   - __rtruediv__()
   - to_scientific_string() / to_eng_string()

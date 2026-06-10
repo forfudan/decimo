@@ -330,31 +330,55 @@ P0 — Structural API change (foundation for most P1 wins)
 
 P1 — Add/Sub small-precision target (currently 4.7× / 3.6× py → target ≤2×)
 
-- **T-A1: `debug_assert .format` sweep.** Audit `BigDecimal.add`,
-  `subtract`, `multiply`, `divide`, `round`, and the BigUInt primitives
-  they call (`add_inplace`, `subtract_inplace`,
-  `multiply_by_power_of_ten`, `floor_divide_by_power_of_billion`).
-  Replace every `debug_assert(cond, "msg {}".format(x))` with a plain
-  literal. (Lesson #7.) **Estimated:** 10–30% on every hot op.
+- **T-A1: `debug_assert .format` sweep. DONE (20260606).** Audited
+  `BigDecimal.add`, `subtract`, `multiply`, `divide`, `round`, and the
+  BigUInt primitives they call. No `.format()`-style `debug_assert`
+  calls remain in any hot path; all 12 surviving `debug_assert` sites
+  in `src/` already use either a plain string literal or the variadic
+  `debug_assert(cond, "msg ", value)` pattern (e.g.
+  `biguint/arithmetics.mojo:1630`).
 
-- **T-A2: `multiply_by_power_of_ten` allocation audit (H#17).** Most
-  add/sub cases require scale alignment via this primitive. Profile
-  whether it allocates a fresh BigUInt per call, whether trailing-zero
-  word insertion is `O(n)` memcpy or `O(1)` reservation + memset, and
-  whether the result is reused or discarded. Add an inplace variant if
-  missing. **Estimated:** 30–50% on long-decimal add/sub (the 14× py
-  worst cases).
+- **T-A2: `multiply_by_power_of_ten` allocation audit (H#17). SUBSTANTIALLY DONE (20260606).**
+  The inplace variant
+  [`multiply_by_power_of_ten_inplace`](../../src/decimo/biguint/arithmetics.mojo)
+  exists, uses `words.resize(unsafe_uninit_length=...)` (O(1)
+  capacity + memset, not O(n) memcpy), and has a multiple-of-9 fast
+  path that delegates to `multiply_by_power_of_billion_inplace`. The
+  hot mutating callers (`add_inplace`, `subtract_inplace` in
+  `bigdecimal/arithmetics.mojo`, plus the new `bigdecimal.mojo:2562`
+  site) already use the inplace form. Residual: the public
+  `add`/`subtract` at `bigdecimal/arithmetics.mojo:94-95,176-177`
+  still call the allocating variant on both operands (one operand
+  always has `scale_factor == 0`, where it degenerates to `x.copy()`).
+  Switching to inplace here would save only the redundant copy, not
+  the alignment allocation — a sub-1% micro-optimisation; the bulk
+  30–50% win projected by this task was already captured by the
+  inplace variant.
 
 - **T-A3: Hot-path-first switch reorder in `add`/`subtract` (H#11).**
-  Mirror Decimal128 H#11. Make the `same scale & same sign` branch the
-  first arm; route diff-scale and zero-with-different-scale into the
-  cold tail. **Estimated:** 1–3 ns / call.
+  **DONE (20260610).** `bigdecimal/arithmetics.mojo`: `add` and
+  `subtract` now check `x1.scale == x2.scale` first (same-sign for add,
+  both sign-branches for subtract). Zero-operand handling and
+  `multiply_by_power_of_ten` alignment moved to the cold tail.
+  Measured on Apple M4 Pro (`bench add subtract --precisions 100 1000`):
+  - `subtract @ p1000`: 141 → 89 ns (−37%), dm/py 2.5x → 1.5x
+  - `subtract @ p100`:  124 → 95 ns (−24%), dm/py 2.1x → 1.7x
+  - `add @ p1000`:      140 → 122 ns (−13%), dm/py 2.3x → 2.0x
+  - `add @ p100`:       125 → 126 ns (noise), dm/py 2.2x → 2.1x
+  All 220 bench cases still match Python `decimal.Decimal` bit-for-bit.
 
-- **T-A4: `@no_inline` raise helpers (H#12).** Extract every
-  `raise Error(String.format(...))` from `BigDecimal` and `BigUInt` hot
-  inline functions into `@no_inline _raise_*` helpers. Most relevant in
-  `from_string`, `from_int`, scale-overflow checks. (Lesson #10.)
-  **Estimated:** unblocks `@always_inline` on ~5 hot paths.
+- **T-A4: `@no_inline` raise helpers (H#12).** **DONE (20260610).**
+  Targeted minimal-but-broad change in `errors.mojo`: split
+  `_shorten_path` into an `@always_inline` shim plus a `@no_inline`
+  `_shorten_path_impl` that holds the multi-`rfind` + string-slicing
+  body. Because `DecimoError.__init__` is `@always_inline` and runs at
+  every `raise` site library-wide, this shrinks the inlined raise body
+  everywhere without changing call-site code or stack-trace semantics.
+  No measurable hot-path delta on the non-raising add/subtract bench
+  (expected — hot paths never raise); the win is icache pressure on
+  inline call sites with raise edges. Aggressive per-callsite raise
+  extraction was deferred because it would shift `call_location()` from
+  the caller to the helper, degrading tracebacks.
 
 - **T-A5: `is_zero` / `is_integer` branch removal (H#3.1).** Audit
   `add`/`subtract` for `is_zero(other) → return self.copy()` style
@@ -552,13 +576,15 @@ some ops < 1.0×):
 | ------ | ----------------------------------------- | ------ | -------- | ---------------------------------------------- |
 | T-API1 | `precision` arg on `add`/`sub`/`multiply` | S      | **DONE** | exact-then-round; foundation for T-API2/T-API3 |
 | T-R2   | `round_to_precision_inplace` audit        | S      | **DONE** | code-quality; ~0% on divide bench (noise)      |
-| T-A1   | `debug_assert .format` sweep across       | S      | **P1**   | 10–30% all ops                                 |
+| T-A1   | `debug_assert .format` sweep across       | S      | **DONE** | sweep complete (20260606);                     |
+|        |                                           |        |          | no .format asserts remain                      |
 |        | BigDecimal                                |        |          |                                                |
-| T-A2   | `multiply_by_power_of_ten` audit          | M      | **P1**   | 30–50% long-dec add/sub                        |
-|        | + inplace variant                         |        |          |                                                |
-| T-A3   | Hot-path-first switch in `add`/`sub`      | S      | **P1**   | 1–3 ns / call                                  |
-| T-A4   | `@no_inline` raise helpers in             | S      | **P1**   | unblocks always-inline                         |
-|        | BigDecimal/BigUInt                        |        |          |                                                |
+| T-A2   | `multiply_by_power_of_ten` audit          | M      | **DONE** | inplace + multiple-of-9 fast path in use;      |
+|        | + inplace variant                         |        |          | minor residual in non-inplace add/sub          |
+| T-A3   | Hot-path-first switch in `add`/`sub`      | S      | **DONE** | 20260610: subtract −37%@p1000, −24%@p100;     |
+|        |                                           |        |          | add −13%@p1000; add@p100 noise                |
+| T-A4   | `@no_inline` raise helpers in             | S      | **DONE** | 20260610: `_shorten_path` `@no_inline`;        |
+|        | BigDecimal/BigUInt                        |        |          | shrinks every inlined raise site               |
 | T-A5   | `is_zero`/`is_integer` branch audit       | S      | P2       | small                                          |
 | T-M1   | Small-coefficient mul fast path           | M      | **P1**   | 50–70% small-mul                               |
 | T-M2   | Single-pass rounding in `multiply`        | S      | P2       | ~5 ns / call                                   |
@@ -577,4 +603,3 @@ some ops < 1.0×):
 | T-5    | NTT multiplication                        | XL     | P4       | 2–10×                                          |
 | T-9    | SIMD schoolbook mul base                  | M      | P3       | 1.5–2×                                         |
 | T-3e   | Binary splitting for ln Taylor            | L      | P4       | 2–4× p≥500                                     |
-

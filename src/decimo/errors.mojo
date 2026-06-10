@@ -82,6 +82,7 @@ comptime RuntimeError = DecimoError[error_type="RuntimeError"]
 failures, missing native libraries)."""
 
 
+@always_inline
 def _shorten_path(full_path: String) -> String:
     """Shorten an absolute file path to a relative path.
 
@@ -100,7 +101,17 @@ def _shorten_path(full_path: String) -> String:
 
     Returns:
         A shortened relative path string.
+
+    Notes:
+
+    Forwards to a `@no_inline` implementation so the multi-`rfind` +
+    string slicing work stays out of every inlined `raise` site.
     """
+    return _shorten_path_implementation(full_path)
+
+
+@no_inline
+def _shorten_path_implementation(full_path: String) -> String:
     var src_idx = full_path.rfind("src/")
     var tests_idx = full_path.rfind("tests/")
     var benches_idx = full_path.rfind("benches/")
