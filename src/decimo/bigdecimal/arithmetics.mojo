@@ -77,7 +77,11 @@ def add(
     # Skips scale alignment, zero-operand probes, and sign branch entirely.
     if x1.scale == x2.scale and x1.sign == x2.sign:
         var coef = x1.coefficient + x2.coefficient
-        return BigDecimal(coefficient=coef^, scale=x1.scale, sign=x1.sign)
+        return BigDecimal(
+            coefficient=coef^,
+            scale=x1.scale,
+            sign=False if coef.is_zero() else x1.sign,
+        )
 
     # Cold tail: differing scale and/or differing sign.
     var max_scale = max(x1.scale, x2.scale)
@@ -166,7 +170,11 @@ def subtract(
     if x1.scale == x2.scale:
         if x1.sign != x2.sign:
             var coef = x1.coefficient + x2.coefficient
-            return BigDecimal(coefficient=coef^, scale=x1.scale, sign=x1.sign)
+            return BigDecimal(
+                coefficient=coef^,
+                scale=x1.scale,
+                sign=False if coef.is_zero() else x1.sign,
+            )
         # Same sign: actual subtraction
         if x1.coefficient > x2.coefficient:
             var coef = x1.coefficient - x2.coefficient

@@ -370,7 +370,7 @@ P1 — Add/Sub small-precision target (currently 4.7× / 3.6× py → target ≤
 - **T-A4: `@no_inline` raise helpers (H#12).** **DONE (20260610).**
   Targeted minimal-but-broad change in `errors.mojo`: split
   `_shorten_path` into an `@always_inline` shim plus a `@no_inline`
-  `_shorten_path_impl` that holds the multi-`rfind` + string-slicing
+  `_shorten_path_implementation` that holds the multi-`rfind` + string-slicing
   body. Because `DecimoError.__init__` is `@always_inline` and runs at
   every `raise` site library-wide, this shrinks the inlined raise body
   everywhere without changing call-site code or stack-trace semantics.
@@ -581,8 +581,8 @@ some ops < 1.0×):
 |        | BigDecimal                                |        |          |                                                |
 | T-A2   | `multiply_by_power_of_ten` audit          | M      | **DONE** | inplace + multiple-of-9 fast path in use;      |
 |        | + inplace variant                         |        |          | minor residual in non-inplace add/sub          |
-| T-A3   | Hot-path-first switch in `add`/`sub`      | S      | **DONE** | 20260610: subtract −37%@p1000, −24%@p100;     |
-|        |                                           |        |          | add −13%@p1000; add@p100 noise                |
+| T-A3   | Hot-path-first switch in `add`/`sub`      | S      | **DONE** | 20260610: subtract −37%@p1000, −24%@p100;      |
+|        |                                           |        |          | add −13%@p1000; add@p100 noise                 |
 | T-A4   | `@no_inline` raise helpers in             | S      | **DONE** | 20260610: `_shorten_path` `@no_inline`;        |
 |        | BigDecimal/BigUInt                        |        |          | shrinks every inlined raise site               |
 | T-A5   | `is_zero`/`is_integer` branch audit       | S      | P2       | small                                          |
