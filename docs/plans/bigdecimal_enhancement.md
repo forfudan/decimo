@@ -380,27 +380,41 @@ P1 — Add/Sub small-precision target (currently 4.7× / 3.6× py → target ≤
   extraction was deferred because it would shift `call_location()` from
   the caller to the helper, degrading tracebacks.
 
-- **T-A5: `is_zero` / `is_integer` branch removal (H#3.1).** Audit
-  `add`/`subtract` for `is_zero(other) → return self.copy()` style
-  early-outs. **For BigDecimal the `is_integer()` probe is a full
-  multi-word `coef % 10^scale`** — strictly more expensive than the
-  Decimal128 bitmask version that was already shown to be a net loss
-  even when triggered. Remove unless benchmarked positive on a
-  realistic input mix. (Lesson #9.)
+- **T-A5: `is_zero` / `is_integer` branch removal (H#3.1).**
+  **DONE — audited, no removal (20260611).** `add`/`subtract` contain no
+  `is_integer()` probes (grep-confirmed), so the expensive multi-word
+  `coef % 10^scale` concern does not apply. The remaining `is_zero()`
+  early-outs (post-T-A3 these live only in the differing-scale cold
+  tail) were benchmarked: removing them regressed the zero-operand
+  cases ~3x — "a + 0" 46 → 132 ns (0.8x → 2.8x py), "a - 0" 44 → 138 ns
+  (0.7x → 2.4x py). `is_zero()` is a cheap single-word probe gating a
+  much cheaper path, so per Lesson #9 ("remove unless benchmarked
+  positive") they are **kept**, now with a comment recording the audit.
 
 P2 — Multiply small-precision (2.3× py → target ≤1.5×)
 
-- **T-M1: Small-coefficient fast path (H#18).** When both operands fit
-  in a single UInt64 (≤ 18 decimal digits) and the result fits in
-  UInt128, bypass the BigUInt Karatsuba dispatch entirely — do one
-  `UInt64 × UInt64 → UInt128` multiply, build a single-word BigUInt,
-  apply scale arithmetic, round. **Estimated:** 50–70% on the small-
-  operand path.
+- **T-M1: Small-coefficient fast path (H#18).** **DISPROVEN — reverted
+  (20260611).** Borrowed from Decimal128 H#4, but the lesson does **not**
+  transfer to BigUInt's base-10⁹ limb representation. A `UInt64 × UInt64
+  → UInt128` product must be converted back into base-10⁹ words, which
+  costs up to four 128-bit `divmod` by 10⁹. A focused micro-bench on
+  2-word × 2-word operands (M4 Pro) measured the UInt128 path at
+  **130 ns/op vs 45.9 ns/op for the existing schoolbook path** — ~3x
+  slower. (Decimal128 stores binary UInt128 natively, so it pays no
+  conversion; BigUInt does.) The single-word UInt32 dispatch already
+  covers 1-word operands optimally, and schoolbook is already optimal
+  for 2-word. This is a Lesson #9 anti-optimisation; no headroom here.
 
-- **T-M2: Single-pass rounding in `multiply` (H#15, Lesson #16).** When
-  the result needs both fit-rounding (coefficient too large) and
-  scale-rounding (combined scale > requested precision), compute the
-  total drop in one shot. (Decimal128 §2.4 saved 5 ns this way.)
+- **T-M2: Single-pass rounding in `multiply` (H#15, Lesson #16).**
+  **DONE — already single-pass; cleaned up (20260611).** BigDecimal has
+  no fixed-width container, so the "fit-rounding + scale-rounding" double
+  pass that motivated the Decimal128 fix does not exist here: the exact
+  product is computed once and rounded once to `precision`. The free
+  `multiply` was tidied to drop the redundant `multiply(x1, x2, 0)`
+  recursion and the duplicate zero probe (BigUInt.multiply already
+  returns a single-word zero), computing the product inline and rounding
+  once. Multiply median improved 90 → 80 ns (1.7x → 1.5x py @ p100,
+  1.8x → 1.7x @ p1000); all 100 multiply cases still match Python.
 
 P3 — Divide all precisions (5× py → target ≤2×)
 
@@ -581,13 +595,13 @@ some ops < 1.0×):
 |        | BigDecimal                                |        |          |                                                |
 | T-A2   | `multiply_by_power_of_ten` audit          | M      | **DONE** | inplace + multiple-of-9 fast path in use;      |
 |        | + inplace variant                         |        |          | minor residual in non-inplace add/sub          |
-| T-A3   | Hot-path-first switch in `add`/`sub`      | S      | **DONE** | 20260610: subtract −37%@p1000, −24%@p100;      |
+| T-A3   | Hot-path-first switch in `add`/`sub`      | S      | **DONE** | subtract −37%@p1000, −24%@p100;                |
 |        |                                           |        |          | add −13%@p1000; add@p100 noise                 |
-| T-A4   | `@no_inline` raise helpers in             | S      | **DONE** | 20260610: `_shorten_path` `@no_inline`;        |
+| T-A4   | `@no_inline` raise helpers in             | S      | **DONE** | `_shorten_path` `@no_inline`;                  |
 |        | BigDecimal/BigUInt                        |        |          | shrinks every inlined raise site               |
-| T-A5   | `is_zero`/`is_integer` branch audit       | S      | P2       | small                                          |
-| T-M1   | Small-coefficient mul fast path           | M      | **P1**   | 50–70% small-mul                               |
-| T-M2   | Single-pass rounding in `multiply`        | S      | P2       | ~5 ns / call                                   |
+| T-A5   | `is_zero`/`is_integer` branch audit       | S      | **DONE** | kept; removal = 3x regression on zero          |
+| T-M1   | Small-coefficient mul fast path           | M      | **NO**   | UInt128 path 130 vs 46 ns (base-10⁹)           |
+| T-M2   | Single-pass rounding in `multiply`        | S      | **DONE** | already single-pass; 90→80 ns                  |
 | T-D1   | Short-divisor fast path in `divide`       | M      | **P1**   | 3–10× short-divisor                            |
 | T-D2   | Trailing-zero strip allocation in divide  | S      | P2       | 5–15%                                          |
 | T-D3   | Reciprocal-Newton divide (legacy Task 2)  | XL     | P3       | 2× large balanced                              |

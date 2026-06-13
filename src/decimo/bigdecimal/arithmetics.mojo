@@ -262,8 +262,16 @@ def multiply(
     Raises:
         Error: If an arithmetic error occurs during computation.
     """
+    # Always compute the exact coefficient product first and then round.
+    # If we first round the operands to the target precision and then multiply,
+    # we may lose accuracy.
+    var result = BigDecimal(
+        coefficient=x1.coefficient * x2.coefficient,
+        scale=x1.scale + x2.scale,
+        sign=x1.sign != x2.sign,
+    )
+
     if precision > 0:
-        var result = multiply(x1, x2, precision=0)
         round_to_precision_inplace(
             result,
             precision,
@@ -271,21 +279,8 @@ def multiply(
             remove_extra_digit_due_to_rounding=False,
             fill_zeros_to_precision=False,
         )
-        return result^
 
-    # Handle zero operands as special cases for efficiency
-    if x1.coefficient.is_zero() or x2.coefficient.is_zero():
-        return BigDecimal(
-            coefficient=BigUInt.zero(),
-            scale=x1.scale + x2.scale,
-            sign=x1.sign != x2.sign,
-        )
-
-    return BigDecimal(
-        coefficient=x1.coefficient * x2.coefficient,
-        scale=x1.scale + x2.scale,
-        sign=x1.sign != x2.sign,
-    )
+    return result^
 
 
 def multiply_inplace(
