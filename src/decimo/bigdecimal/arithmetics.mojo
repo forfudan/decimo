@@ -246,7 +246,7 @@ def multiply(
         x2: The second operand (multiplier).
         precision: Optional target significant-digit precision for the
             result. When `0` (default) the function returns the exact
-            product. When `> 0` the exact product is computed and then
+            product. When `>0` the exact product is computed and then
             rounded to `precision` significant digits via HALF_EVEN.
 
     Returns:
@@ -262,8 +262,9 @@ def multiply(
     Raises:
         Error: If an arithmetic error occurs during computation.
     """
-    # Compute the exact coefficient product to avoid inaccuracy
-    # from rounding or truncation.
+    # Always compute the exact coefficient product first and then round.
+    # If we first round the operands to the target precision and then multiply,
+    # we may lose accuracy.
     var result = BigDecimal(
         coefficient=x1.coefficient * x2.coefficient,
         scale=x1.scale + x2.scale,
