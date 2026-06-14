@@ -481,14 +481,14 @@ struct BigDecimal(
         while end >= 9:
             start = end - 9
             var word: UInt32 = 0
-            for digit in coef[start:end]:
-                word = word * 10 + UInt32(digit)
+            for i in range(start, end):
+                word = word * 10 + UInt32(coef[i])
             coefficient_words.append(word)
             end = start
         if end > 0:
             var word: UInt32 = 0
-            for digit in coef[0:end]:
-                word = word * 10 + UInt32(digit)
+            for i in range(end):
+                word = word * 10 + UInt32(coef[i])
             coefficient_words.append(word)
 
         coefficient = BigUInt(raw_words=coefficient_words^)

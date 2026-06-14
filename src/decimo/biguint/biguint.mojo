@@ -719,14 +719,14 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             while end >= 9:
                 start = end - 9
                 var word: UInt32 = 0
-                for digit in coef[start:end]:
-                    word = word * 10 + UInt32(digit)
+                for i in range(start, end):
+                    word = word * 10 + UInt32(coef[i])
                 result_words.append(word)
                 end = start
             if end > 0:
                 var word: UInt32 = 0
-                for digit in coef[0:end]:
-                    word = word * 10 + UInt32(digit)
+                for i in range(end):
+                    word = word * 10 + UInt32(coef[i])
                 result_words.append(word)
 
             return Self(raw_words=result_words^)
@@ -749,14 +749,14 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             while end >= 9:
                 start = end - 9
                 var word: UInt32 = 0
-                for digit in coef[start:end]:
-                    word = word * 10 + UInt32(digit)
+                for i in range(start, end):
+                    word = word * 10 + UInt32(coef[i])
                 result_words.append(word)
                 end = start
             if end > 0:
                 var word: UInt32 = 0
-                for digit in coef[0:end]:
-                    word = word * 10 + UInt32(digit)
+                for i in range(end):
+                    word = word * 10 + UInt32(coef[i])
                 result_words.append(word)
 
             return Self(raw_words=result_words^)
@@ -1015,15 +1015,69 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             debug_assert(len(self.words) == 1, "There are leading zero words.")
             return String("0")
 
-        var result = String("")
+        var n_words = len(self.words)
 
-        for i in range(len(self.words) - 1, -1, -1):
-            if i == len(self.words) - 1:
-                result += String(self.words[i])
-            else:
-                result += decimo_str.rjust(
-                    String(self.words[i]), width=9, fillchar="0"
-                )
+        var result: String
+        # Short numbers use the naive per-word concatenation: the buffer
+        # path's fixed cost (a `List[UInt8]` allocation plus a UTF-8 `String`
+        # construction) outweighs its per-word savings until ~5 words. The
+        # crossover is from benchmarks (50-digit improves; 25-digit does not).
+        comptime _BUFFER_PATH_MIN_WORDS = 5
+        if n_words == 1:
+            # Single word: the digits are exactly `String(word)`, no padding
+            # or concatenation needed.
+            result = String(self.words[0])
+        elif n_words < _BUFFER_PATH_MIN_WORDS:
+            # Reserve the exact upper-bound capacity (9 digits per word) so the
+            # `+=` concatenations never reallocate.
+            result = String(capacity=9 * n_words)
+            for i in range(n_words - 1, -1, -1):
+                if i == n_words - 1:
+                    result += String(self.words[i])
+                else:
+                    result += decimo_str.rjust(
+                        String(self.words[i]), width=9, fillchar="0"
+                    )
+        else:
+            # Count the digits of the most-significant word (no zero-padding).
+            # It is non-zero because the number is not zero and there are no
+            # leading zero words.
+            var msb = self.words[n_words - 1]
+            var msb_len = 0
+            var t = msb
+            while t > 0:
+                msb_len += 1
+                t //= 10
+
+            # The exact output length is known up-front: every word below the
+            # most significant contributes exactly 9 digits. Allocate a buffer
+            # of that exact size and write digits straight into it via the
+            # pointer (no per-byte `append`, no reallocation, no
+            # over-allocation), then move the buffer into the result `String`.
+            # The tight `//10` loop beats a per-word `String(UInt32)` + memcpy
+            # (benchmarked ~2x slower at 23 words due to per-word allocation
+            # and call overhead).
+            var total_len = (n_words - 1) * 9 + msb_len
+            var buf = List[UInt8](unsafe_uninit_length=total_len)
+            var p = buf.unsafe_ptr()
+            var pos = total_len
+
+            # Least-significant words first: each emits exactly 9 digits,
+            # written right-to-left.
+            for ci in range(n_words - 1):
+                var val = self.words[ci]
+                for _ in range(9):
+                    pos -= 1
+                    p[pos] = UInt8(val % 10) + 48
+                    val //= 10
+
+            # Most-significant word: its `msb_len` digits, right-to-left.
+            for _ in range(msb_len):
+                pos -= 1
+                p[pos] = UInt8(msb % 10) + 48
+                msb //= 10
+
+            result = String(unsafe_from_utf8=buf^)
 
         if line_width > 0:
             var start = 0

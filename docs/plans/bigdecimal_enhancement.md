@@ -136,58 +136,61 @@ kernels (parse/render are precision-insensitive ops).
 
 ## 3. Hypothesis Ledger
 
-| H#  | Hypothesis                                    | Outcome                                                                                                                                               |
-| --- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Asymmetric divide pads quotient unnecessarily | DONE (T1) — 0.11→76× py at 65536w/32768w                                                                                                              |
-| 2   | Balanced divide also wastes work for          | DONE (T2) — quotient near-constant time (8–915× py)                                                                                                   |
-|     | high-precision req                            |                                                                                                                                                       |
-| 3a  | `ln(2)`/`ln(1.25)` recomputed per call        | DONE (T3a) — `MathCache`; 3×–4.5× speedup for repeated `ln()`                                                                                         |
-| 3b  | Per-Taylor-term BigDecimal divide is wasteful | DONE (T3b) — UInt32 divide path; +20–130% near-1 ln                                                                                                   |
-| 3c  | `log10()`/`log()` re-compute `ln(10)`         | DONE (T3c) — cached via `MathCache`                                                                                                                   |
-| 3d  | exp Taylor series too long; weak halving      | DONE (T3d) — $M=\sqrt{3.322p}$; exp 0.4×→2.6× py at p=1000                                                                                            |
-| 3e  | Binary splitting for ln Taylor series         | OPEN — diminishing returns for exp post-T3d;                                                                                                          |
-|     |                                               | ln still O(p) terms                                                                                                                                   |
-| 3f  | `atanh` reformulation for ln (3× fewer terms) | OPEN — easy win; estimated 3× near-1                                                                                                                  |
-| 3g  | AGM-based ln for very high precision          | OPEN — long-term, complex                                                                                                                             |
-| 4   | sqrt via Newton-with-division is slow         | DONE (T4) — reciprocal-Newton + precision doubling;                                                                                                   |
-|     |                                               | 20× improvement                                                                                                                                       |
-| 5   | NTT multiplication for n ≥ 1024 words         | OPEN — single biggest long-term gap vs libmpdec                                                                                                       |
-| 6   | Toom-3 between Karatsuba and NTT              | DONE (T6) — +14–29% for ≥256w                                                                                                                         |
-| 7a  | `integer_root` via direct Newton              | DONE (T7a) — 0.14×→25× py at p=1000 for cbrt                                                                                                          |
-|     | (was exp(ln(x)/n))                            |                                                                                                                                                       |
-| 7b  | Reciprocal-Newton for nth root (no divide)    | OPEN — estimated 1.5–2×                                                                                                                               |
-| 7c  | Rational decomposition $x^{a/b}$              | OPEN — fractional roots still 0.2–0.4× py                                                                                                             |
-|     | → root then power                             |                                                                                                                                                       |
-| 8   | BigDecimal-level inplace ops in Taylor loops  | DONE (T8) — +15–27% exp/ln, +9% sqrt                                                                                                                  |
-| 9   | SIMD schoolbook multiply base                 | OPEN — 1.5–2× constant-factor                                                                                                                         |
-| 10  | `debug_assert(..., "{}".format(...))`         | OPEN — sweep BigUInt + BigDecimal hot paths (Lesson #7)                                                                                               |
-|     | eager allocation                              |                                                                                                                                                       |
-| 11  | Hot-path-first switch reorder in BigDecimal   | OPEN — same-scale & same-sign branch first (Lesson #12)                                                                                               |
-|     | `add`/`sub`                                   |                                                                                                                                                       |
-| 12  | `@no_inline` raise helpers in                 | OPEN — sweep `from_string`, `from_uint32`, etc. (Lesson #10)                                                                                          |
-|     | BigDecimal/BigUInt                            |                                                                                                                                                       |
-| 13  | `from_string` digit batching                  | OPEN — borrowed from decimal128 H#17 follow-up                                                                                                        |
-|     | (UInt64 chunks of 9 or 19)                    |                                                                                                                                                       |
-| 14  | `to_string` `InlineArray` right-aligned       | OPEN — borrowed from decimal128 §2.4                                                                                                                  |
-|     | chunked emit                                  |                                                                                                                                                       |
-| 15  | Single-pass rounding in BigDecimal            | OPEN — borrowed from decimal128 H#16                                                                                                                  |
-|     | `multiply` / `divide`                         |                                                                                                                                                       |
-| 16  | Short-divisor fast path in `divide`           | OPEN — `BigUInt.floor_divide_by_uint32` exists;                                                                                                       |
-|     | (single-word loop)                            | lift to BigDecimal                                                                                                                                    |
-| 17  | Add/sub `multiply_by_power_of_ten` allocates  | OPEN — root cause of 4.7× py on small-precision add                                                                                                   |
-|     | oversized                                     |                                                                                                                                                       |
-| 18  | Small-coefficient mul fast path               | OPEN — borrowed from decimal128 H#4 dispatch-overhead lesson                                                                                          |
-|     | (bypass Karatsuba dispatch)                   |                                                                                                                                                       |
-| 19  | `precision` arg on `add`/`sub`/`multiply`     | DONE (PR #233) — see T-API3                                                                                                                           |
-| 20  | Private functions with `_`; Replace raises    | OPEN — improves runtime performance by avoiding                                                                                                       |
-|     | with debug asserts                            | unnecessary checks                                                                                                                                    |
-| 21  | More inplace variants for `BigUInt`           | OPEN — further reduces allocations and improves performance                                                                                           |
-|     | and `BigDecimal`                              |                                                                                                                                                       |
-| 22  | Zero-copy scale alignment via word-offset     | DISPROVEN — see T-API2                                                                                                                                |
-|     | add/sub                                       |                                                                                                                                                       |
-| 23  | Drop multiply pre-scaling; adjust scale       | OPEN — see T-API2.M                                                                                                                                   |
-|     | on result                                     |                                                                                                                                                       |
-| 24  | `round_to_precision` in-place audit           | DONE (T-R2) — code-quality cleanup; divide bench unchanged (saved allocs lost in noise vs total divide cost; will compound on rounding-dominated ops) |
+| H#  | Hypothesis                                    | Outcome                                                       |
+| --- | --------------------------------------------- | ------------------------------------------------------------- |
+| 1   | Asymmetric divide pads quotient unnecessarily | DONE (T1) — 0.11→76× py at 65536w/32768w                      |
+| 2   | Balanced divide also wastes work for          | DONE (T2) — quotient near-constant time (8–915× py)           |
+|     | high-precision req                            |                                                               |
+| 3a  | `ln(2)`/`ln(1.25)` recomputed per call        | DONE (T3a) — `MathCache`; 3×–4.5× speedup for repeated `ln()` |
+| 3b  | Per-Taylor-term BigDecimal divide is wasteful | DONE (T3b) — UInt32 divide path; +20–130% near-1 ln           |
+| 3c  | `log10()`/`log()` re-compute `ln(10)`         | DONE (T3c) — cached via `MathCache`                           |
+| 3d  | exp Taylor series too long; weak halving      | DONE (T3d) — $M=\sqrt{3.322p}$; exp 0.4×→2.6× py at p=1000    |
+| 3e  | Binary splitting for ln Taylor series         | OPEN — diminishing returns for exp post-T3d;                  |
+|     |                                               | ln still O(p) terms                                           |
+| 3f  | `atanh` reformulation for ln (3× fewer terms) | DONE (T-L1) — hybrid Taylor/atanh in `ln_series_expansion`;   |
+|     |                                               | near-1 already 0.9–1.8× py                                    |
+| 3g  | AGM-based ln for very high precision          | OPEN — long-term, complex                                     |
+| 4   | sqrt via Newton-with-division is slow         | DONE (T4) — reciprocal-Newton + precision doubling;           |
+|     |                                               | 20× improvement                                               |
+| 5   | NTT multiplication for n ≥ 1024 words         | OPEN — single biggest long-term gap vs libmpdec               |
+| 6   | Toom-3 between Karatsuba and NTT              | DONE (T6) — +14–29% for ≥256w                                 |
+| 7a  | `integer_root` via direct Newton              | DONE (T7a) — 0.14×→25× py at p=1000 for cbrt                  |
+|     | (was exp(ln(x)/n))                            |                                                               |
+| 7b  | Reciprocal-Newton for nth root (no divide)    | OPEN — estimated 1.5–2×                                       |
+| 7c  | Rational decomposition $x^{a/b}$              | OPEN — fractional roots still 0.2–0.4× py                     |
+|     | → root then power                             |                                                               |
+| 8   | BigDecimal-level inplace ops in Taylor loops  | DONE (T8) — +15–27% exp/ln, +9% sqrt                          |
+| 9   | SIMD schoolbook multiply base                 | OPEN — 1.5–2× constant-factor                                 |
+| 10  | `debug_assert(..., "{}".format(...))`         | OPEN — sweep BigUInt + BigDecimal hot paths (Lesson #7)       |
+|     | eager allocation                              |                                                               |
+| 11  | Hot-path-first switch reorder in BigDecimal   | OPEN — same-scale & same-sign branch first (Lesson #12)       |
+|     | `add`/`sub`                                   |                                                               |
+| 12  | `@no_inline` raise helpers in                 | OPEN — sweep `from_string`, `from_uint32`, etc. (Lesson #10)  |
+|     | BigDecimal/BigUInt                            |                                                               |
+| 13  | `from_string` digit batching                  | OPEN — borrowed from decimal128 H#17 follow-up                |
+|     | (UInt64 chunks of 9 or 19)                    |                                                               |
+| 14  | `to_string` `InlineArray` right-aligned       | OPEN — borrowed from decimal128 §2.4                          |
+|     | chunked emit                                  |                                                               |
+| 15  | Single-pass rounding in BigDecimal            | OPEN — borrowed from decimal128 H#16                          |
+|     | `multiply` / `divide`                         |                                                               |
+| 16  | Short-divisor fast path in `divide`           | OPEN — `BigUInt.floor_divide_by_uint32` exists;               |
+|     | (single-word loop)                            | lift to BigDecimal                                            |
+| 17  | Add/sub `multiply_by_power_of_ten` allocates  | OPEN — root cause of 4.7× py on small-precision add           |
+|     | oversized                                     |                                                               |
+| 18  | Small-coefficient mul fast path               | OPEN — borrowed from decimal128 H#4 dispatch-overhead lesson  |
+|     | (bypass Karatsuba dispatch)                   |                                                               |
+| 19  | `precision` arg on `add`/`sub`/`multiply`     | DONE (PR #233) — see T-API3                                   |
+| 20  | Private functions with `_`; Replace raises    | OPEN — improves runtime performance by avoiding               |
+|     | with debug asserts                            | unnecessary checks                                            |
+| 21  | More inplace variants for `BigUInt`           | OPEN — further reduces allocations and improves performance   |
+|     | and `BigDecimal`                              |                                                               |
+| 22  | Zero-copy scale alignment via word-offset     | DISPROVEN — see T-API2                                        |
+|     | add/sub                                       |                                                               |
+| 23  | Drop multiply pre-scaling; adjust scale       | OPEN — see T-API2.M                                           |
+|     | on result                                     |                                                               |
+| 24  | `round_to_precision` in-place audit           | DONE (T-R2) — code-quality cleanup; divide bench unchanged    |
+|     |                                               | (saved allocs lost in noise vs total divide cost;             |
+|     |                                               | will compound on rounding-dominated ops)                      |
 
 ## 4. Lessons Learnt (the reusable bits)
 
@@ -418,15 +421,38 @@ P2 — Multiply small-precision (2.3× py → target ≤1.5×)
 
 P3 — Divide all precisions (5× py → target ≤2×)
 
-- **T-D1: Short-divisor fast path (H#16).** When the divisor fits in
-  UInt32 (most "round to N decimal places", "halve", "tenth" cases),
-  call `BigUInt.floor_divide_by_uint32` directly instead of constructing
-  a single-word divisor and entering Burnikel-Ziegler. **Estimated:**
-  3–10× on short-divisor cases.
+- **T-D1: Short-divisor fast path (H#16).** **DONE — already covered by
+  the BigUInt dispatch (20260611).** `BigUInt.floor_divide` (invoked by
+  `//` inside `true_divide_general`) already routes single-word divisors
+  to `floor_divide_by_uint32`, two-word to `_by_uint64`, and ≤4-word to
+  `_by_uint128`; Burnikel-Ziegler is entered only for divisors > 4 words
+  (> 36 digits). So the short-divisor primitive (the actual algorithmic
+  win) is active end-to-end; the §5.1 "full Burnikel-Ziegler even for
+  short divisor" premise is outdated. A dedicated **BigDecimal**-level
+  branch was prototyped (digit-granular buffer + direct
+  `floor_divide_by_uint32` + matching exact/HALF_EVEN handling) and
+  **DISPROVEN — reverted.** A focused micro-bench (M4 Pro, 2M iters) was
+  mixed and net-negative on the common case: 100/4 @p50 dedicated 317 vs
+  general 358 ns (+41), 355/113 @p50 +13, but **1/7 @p100 dedicated 376
+  vs general 303 ns (−73)** and noise elsewhere. Root cause: the
+  digit-granular `multiply_by_power_of_ten(118)` buffer does a partial-
+  word multiply + word insertion, costing more than the general path's
+  word-granular `multiply_by_power_of_billion` (a whole-word zero
+  prepend) — buffer construction outweighs the few saved quotient
+  digits, and high-precision non-terminating quotients (the typical
+  "repeating decimal" divide) regress. No BigDecimal-level headroom.
 
-- **T-D2: Trailing-zero detection allocation.** Profile the
-  `_strip_trailing_zeros` call after every divide. Likely allocates a
-  copy; rewrite to scan in-place and adjust scale.
+- **T-D2: Trailing-zero detection allocation.** **DONE (20260611).**
+  The exact-division branch of `true_divide_general` stripped trailing
+  zeros with the allocating `floor_divide_by_power_of_ten` (the long-
+  standing `# TODO: Make a in-place version of this`). Swapped to the
+  existing `floor_divide_by_power_of_ten_inplace`, eliminating one
+  BigUInt allocation on every terminating divide. A/B micro-bench (M4
+  Pro, 3M iters): 100/4 @p50 388 → 320 ns (−17.5%), 9/1 388 → 303
+  (−21%), 123456/1000 305 → 254 (−17%), 1/8 346 → 292 (−16%); divide
+  still 100% match vs Python. (The truncated-path strip in
+  `_true_divide_general_truncated` keeps its copy — it needs the
+  unmodified `result` for the multiply-back exactness verification.)
 
 - **T-D3: Reciprocal-Newton divide (legacy Task 2).** For balanced
   large operands, invert the divisor once and multiply. `2× mul` per
@@ -435,17 +461,40 @@ P3 — Divide all precisions (5× py → target ≤2×)
 
 P4 — sqrt at p=100 (2.1× py → target ≤1.0×)
 
-- **T-S1: Small-coefficient short-circuit before `fast_isqrt`.** When
-  the coefficient fits in UInt128, use a hardware-friendly integer
-  isqrt (Newton on UInt128) and skip the reciprocal-Newton dance
-  entirely. The 8.6 µs / call at p=100 is dominated by float64 setup +
-  precision doubling overhead that is wasted at this size.
+- **T-S1: Small-coefficient short-circuit before `fast_isqrt`.**
+  **INVALID — already handled, and the premise is false (20260611).**
+  `sqrt_exact` already short-circuits the reciprocal-Newton dance:
+  `if len(c.words) <= 20: n = biguint_exponential.sqrt(c)` (direct
+  integer Newton) else `fast_isqrt`. Two problems with the task as
+  written: (1) at p=100 the coefficient is rescaled so `isqrt(c)` has
+  `prec` (101) digits, making `c` ~202 digits (~23 words) — it never
+  fits UInt128, so a "UInt128 isqrt" cannot apply. (2) The claim that
+  the float64 setup + precision doubling is "wasted" at this size is
+  empirically false: raising the direct-Newton threshold to 30 words so
+  p=100 takes the direct path **regressed** sqrt@p100 from 8,370 →
+  15,125 ns (1.8× → 3.8× py). `fast_isqrt` is the faster choice at ~23
+  words; the existing threshold of 20 is well-tuned. sqrt@p1000 is
+  already 0.7× py.
 
 P5 — ln far-from-1 (4.6×–9.2× py → target ≤2×)
 
-- **T-L1: atanh reformulation (T3f / H#3f).** Replace `ln(1+z)` Taylor
-  with `2·atanh((x-1)/(x+1))`. Series rate goes from 1/2 to 1/9 → 3×
-  fewer terms. Easy implementation; no algorithmic risk.
+- **T-L1: atanh reformulation (T3f / H#3f).** **DONE — already
+  implemented (20260611).** `ln_series_expansion` is a hybrid: it uses
+  `2·atanh(u)` with `u = z/(2+z) = (x-1)/(x+1)` (exactly the T-L1 form,
+  rate u² ≤ 1/9 vs Taylor's |z| ≤ 1/2 → ~3× fewer terms) for `z` with
+  many significant digits, and falls back to direct `ln(1+z)` Taylor
+  for small-coefficient `z`. The benched near-1 cases (T-L1's target)
+  are already at parity: ln(0.99) 0.9× py, ln(1.01) 1.2×, ln(0.9) 1.0×,
+  ln(1.1) 1.8×. The `z_digits`-based threshold is well-tuned: an
+  experiment forcing atanh universally **improved** p100 near-1 ~13%
+  but **regressed p1000 near-1 by 5–6×** (ln(0.99) 626k → 4.10M ns),
+  because at high precision Taylor's O(n·z_digits) small-coefficient
+  multiply beats atanh's O(n²) full multiply despite ~2× more terms.
+  The hybrid correctly prioritises the high-precision Taylor path, so
+  the threshold was left at 10. The residual far-from-1 slowness
+  (ln(10)/ln(100)/ln(0.001) ~400× py) is **T-L2** — fresh
+  `ln(2)`/`ln(1.25)` recomputation per call, blocked on process-wide
+  cache state, not addressable by T-L1.
 
 - **T-L2: Process-wide `ln(10)` cache (workaround for missing global
   vars).** When Mojo gains module-level mutable state, install a
@@ -457,24 +506,46 @@ P5 — ln far-from-1 (4.6×–9.2× py → target ≤2×)
 
 P6 — `from_string` / `to_string` (1.2–1.3× py → target ≤1.0×)
 
-- **T-IO1: Digit batching in `from_string` (H#13).** Accumulate up to
-  9 digits in a UInt32 (or 19 in a UInt64), then
-  `coef = coef * 10^k + batch`. Drops per-digit BigUInt-mul-by-10 to
-  amortised single-word multiply. (Decimal128 H#17 saw 41→22 ns; the
-  arbitrary-precision case will see a larger absolute saving on long
-  inputs.)
+- **T-IO1: Digit batching in `from_string` (H#13).** **DONE — batching
+  already present; slice removed (20260611).** The projected 30–50% win
+  assumed a per-digit `BigUInt`-mul-by-10 loop, but both
+  `BigDecimal.from_string` and `BigUInt.from_string` already accumulate
+  9 digits into a `UInt32` word directly (no BigUInt arithmetic), and
+  `parse_numeric_string` is already a two-pass SIMD parser — so the big
+  win was unavailable. The remaining inefficiency was the per-word
+  `coef[start:end]` slice (a sub-`List` copy per 9-digit chunk),
+  replaced with index iteration `for i in range(start, end)`. A/B
+  micro-bench (M4 Pro, 3M iters): 90-digit int 230 → 222 ns, 90-digit
+  frac 235 → 220 ns, short 141 → 138 ns; cross-language from_string
+  150 → 142 ns (1.4× → 1.2× py), 100% match. Applied to both
+  `from_string` sites.
 
 - **T-IO2: Chunked `to_string` via small staging InlineArray (H#14).**
-  Note: BigDecimal's coefficient is unbounded (up to 100000+ digits in
-  the bench), so the *whole* digit buffer cannot be a fixed-size
-  `InlineArray` — unlike Decimal128 where the 32-byte buffer holds the
-  entire 29-digit max. The applicable adaptation: pre-`reserve` a
-  `String` (or write directly into the `Writer`) sized to the
-  precomputed digit count, then loop `BigUInt // 10^9` outer + `UInt32
-  // 10` inner, staging each 9-digit chunk into a 9-byte `InlineArray`
-  and emitting it as a single `StringSlice` write per chunk. (Lesson
-  #15.) Reduces allocations by a factor of `digits / 9` and avoids
-  per-byte `writer.write`.
+  **DONE (20260611).** `BigUInt.to_string` built the digit string with a
+  per-word `String(UInt32)` + `rjust` + repeated `+=`, which dominated
+  long-number rendering. Rewrote the long-number branch to precompute
+  the exact output length `(n_words - 1) * 9 + msb_digits`, allocate a
+  `List[UInt8](unsafe_uninit_length=...)` of that exact size, and write
+  the digits straight into it through the pointer (no per-byte `append`,
+  no reallocation, no over-allocation), then move it into the result via
+  `String(unsafe_from_utf8=buf^)`. Kept as a **hybrid**: a 5-word
+  crossover (`_BUFFER_PATH_MIN_WORDS`) retains the naive loop for short
+  numbers, where the buffer's fixed `List`+`String` cost otherwise
+  regressed them ~3x (a buffer-only version pushed "Tiny integer" 24 →
+  64 ns — unavoidable even with direct pointer writes). Cross-language
+  bench (M4 Pro): 50-digit 274 → 158 ns, 100-digit fraction 492 → 180
+  (2.5× → 0.8× py), 200-digit 746 → 226 (2.9× → 0.8× py); short cases
+  unchanged; 100% match plus a spot-check on internal-zero-word /
+  trailing-zero / boundary inputs. The exact-size direct-write buffer
+  beat an earlier `append`-based staging variant by a further ~28%
+  on the 200-digit case (312 → 226 ns). Two follow-up ideas
+  were tested: (a) special-casing a single word to a direct `String(word)`
+  (plus a `String(capacity=9*n_words)` reserve for 2–4 words) improved
+  the most common case ~20% (1-word 16.8 → 12.6 ns) and is **kept**;
+  (b) replacing the buffer path's `//10` loop with per-word
+  `String(UInt32)` + `memcpy` was **disproven** — the per-word
+  allocation/call overhead made it ~2x slower at 23 words (167 → 361 ns),
+  so the tight `//10` loop stands.
 
 P7 — `round` (2× py → target ≤1.0×)
 
@@ -602,15 +673,17 @@ some ops < 1.0×):
 | T-A5   | `is_zero`/`is_integer` branch audit       | S      | **DONE** | kept; removal = 3x regression on zero          |
 | T-M1   | Small-coefficient mul fast path           | M      | **NO**   | UInt128 path 130 vs 46 ns (base-10⁹)           |
 | T-M2   | Single-pass rounding in `multiply`        | S      | **DONE** | already single-pass; 90→80 ns                  |
-| T-D1   | Short-divisor fast path in `divide`       | M      | **P1**   | 3–10× short-divisor                            |
-| T-D2   | Trailing-zero strip allocation in divide  | S      | P2       | 5–15%                                          |
+| T-D1   | Short-divisor fast path in `divide`       | M      | **DONE** | already via BigUInt dispatch                   |
+| T-D2   | Trailing-zero strip allocation in divide  | S      | **DONE** | inplace strip; −16–21% exact-divide            |
 | T-D3   | Reciprocal-Newton divide (legacy Task 2)  | XL     | P3       | 2× large balanced                              |
-| T-S1   | Small-coef short-circuit in `sqrt` p=100  | S      | P2       | ~50% at p=100                                  |
-| T-L1   | atanh reformulation for ln (T3f)          | M      | **P1**   | 3× ln near-1                                   |
+| T-S1   | Small-coef short-circuit in `sqrt` p=100  | S      | **NO**   | already short-circuits                         |
+| T-L1   | atanh reformulation for ln (T3f)          | M      | **DONE** | already a hybrid; near-1 0.9–1.8× py           |
 | T-L2   | Process-wide ln(10) cache recipe          | S      | P3       | doc                                            |
 | T-L3   | AGM ln for p ≥ 1000 (T3g)                 | XL     | P4       | 10–50× p≥1000                                  |
-| T-IO1  | `from_string` digit batching              | M      | P2       | 30–50%                                         |
-| T-IO2  | `to_string` right-aligned InlineArray     | M      | P2       | 20–40%                                         |
+| T-IO1  | `from_string` digit batching              | M      | **DONE** | batching already present;                      |
+|        |                                           |        |          | slice removed, 1.4×→1.2×                       |
+| T-IO2  | `to_string` right-aligned InlineArray     | M      | **DONE** | hybrid exact-size direct-write;                |
+|        |                                           |        |          | long 2.5–2.9×→0.8×                             |
 | T-R1   | `round` `.format` sweep                   | S      | P2       | small                                          |
 | T-7b   | Reciprocal-Newton nth root                | M      | P3       | 1.5–2×                                         |
 | T-7c   | Rational $x^{a/b}$ decomposition          | S      | P2       | 5–10× frac roots                               |

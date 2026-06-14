@@ -476,7 +476,11 @@ def true_divide(
         )
 
     # For other cases, we use `true_divide_general()` to handle the division
-    # Note that this functiona already considers extra buffer digits
+    # Note that this function already considers extra buffer digits.
+    # Single-word / two-word / ≤4-word divisors are already routed by
+    # `BigUInt.floor_divide` (called via `//`) to `floor_divide_by_uint32`
+    # / `_by_uint64` / `_by_uint128`, so the short-divisor fast path
+    # is active end-to-end here without a dedicated BigDecimal branch.
     return true_divide_general(x, y, precision)
 
 
@@ -702,8 +706,7 @@ def true_divide_general(
         var num_digits_to_remove = min(
             extra_digits, coef.number_of_trailing_zeros()
         )
-        # TODO: Make a in-place version of this
-        coef = biguint_arithmetics.floor_divide_by_power_of_ten(
+        biguint_arithmetics.floor_divide_by_power_of_ten_inplace(
             coef, num_digits_to_remove
         )
         extra_digits -= num_digits_to_remove
