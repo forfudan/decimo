@@ -521,16 +521,31 @@ P6 — `from_string` / `to_string` (1.2–1.3× py → target ≤1.0×)
   `from_string` sites.
 
 - **T-IO2: Chunked `to_string` via small staging InlineArray (H#14).**
-  Note: BigDecimal's coefficient is unbounded (up to 100000+ digits in
-  the bench), so the *whole* digit buffer cannot be a fixed-size
-  `InlineArray` — unlike Decimal128 where the 32-byte buffer holds the
-  entire 29-digit max. The applicable adaptation: pre-`reserve` a
-  `String` (or write directly into the `Writer`) sized to the
-  precomputed digit count, then loop `BigUInt // 10^9` outer + `UInt32
-  // 10` inner, staging each 9-digit chunk into a 9-byte `InlineArray`
-  and emitting it as a single `StringSlice` write per chunk. (Lesson
-  #15.) Reduces allocations by a factor of `digits / 9` and avoids
-  per-byte `writer.write`.
+  **DONE (20260611).** `BigUInt.to_string` built the digit string with a
+  per-word `String(UInt32)` + `rjust` + repeated `+=`, which dominated
+  long-number rendering. Rewrote the long-number branch to precompute
+  the exact output length `(n_words - 1) * 9 + msb_digits`, allocate a
+  `List[UInt8](unsafe_uninit_length=...)` of that exact size, and write
+  the digits straight into it through the pointer (no per-byte `append`,
+  no reallocation, no over-allocation), then move it into the result via
+  `String(unsafe_from_utf8=buf^)`. Kept as a **hybrid**: a 5-word
+  crossover (`_BUFFER_PATH_MIN_WORDS`) retains the naive loop for short
+  numbers, where the buffer's fixed `List`+`String` cost otherwise
+  regressed them ~3x (a buffer-only version pushed "Tiny integer" 24 →
+  64 ns — unavoidable even with direct pointer writes). Cross-language
+  bench (M4 Pro): 50-digit 274 → 158 ns, 100-digit fraction 492 → 180
+  (2.5× → 0.8× py), 200-digit 746 → 226 (2.9× → 0.8× py); short cases
+  unchanged; 100% match plus a spot-check on internal-zero-word /
+  trailing-zero / boundary inputs. The exact-size direct-write buffer
+  beat an earlier `append`-based staging variant by a further ~28%
+  on the 200-digit case (312 → 226 ns). Two follow-up ideas
+  were tested: (a) special-casing a single word to a direct `String(word)`
+  (plus a `String(capacity=9*n_words)` reserve for 2–4 words) improved
+  the most common case ~20% (1-word 16.8 → 12.6 ns) and is **kept**;
+  (b) replacing the buffer path's `//10` loop with per-word
+  `String(UInt32)` + `memcpy` was **disproven** — the per-word
+  allocation/call overhead made it ~2x slower at 23 words (167 → 361 ns),
+  so the tight `//10` loop stands.
 
 P7 — `round` (2× py → target ≤1.0×)
 
@@ -667,7 +682,8 @@ some ops < 1.0×):
 | T-L3   | AGM ln for p ≥ 1000 (T3g)                 | XL     | P4       | 10–50× p≥1000                                  |
 | T-IO1  | `from_string` digit batching              | M      | **DONE** | batching already present;                      |
 |        |                                           |        |          | slice removed, 1.4×→1.2×                       |
-| T-IO2  | `to_string` right-aligned InlineArray     | M      | P2       | 20–40%                                         |
+| T-IO2  | `to_string` right-aligned InlineArray     | M      | **DONE** | hybrid exact-size direct-write;                |
+|        |                                           |        |          | long 2.5–2.9×→0.8×                             |
 | T-R1   | `round` `.format` sweep                   | S      | P2       | small                                          |
 | T-7b   | Reciprocal-Newton nth root                | M      | P3       | 1.5–2×                                         |
 | T-7c   | Rational $x^{a/b}$ decomposition          | S      | P2       | 5–10× frac roots                               |
