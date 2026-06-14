@@ -461,11 +461,20 @@ P3 — Divide all precisions (5× py → target ≤2×)
 
 P4 — sqrt at p=100 (2.1× py → target ≤1.0×)
 
-- **T-S1: Small-coefficient short-circuit before `fast_isqrt`.** When
-  the coefficient fits in UInt128, use a hardware-friendly integer
-  isqrt (Newton on UInt128) and skip the reciprocal-Newton dance
-  entirely. The 8.6 µs / call at p=100 is dominated by float64 setup +
-  precision doubling overhead that is wasted at this size.
+- **T-S1: Small-coefficient short-circuit before `fast_isqrt`.**
+  **INVALID — already handled, and the premise is false (20260611).**
+  `sqrt_exact` already short-circuits the reciprocal-Newton dance:
+  `if len(c.words) <= 20: n = biguint_exponential.sqrt(c)` (direct
+  integer Newton) else `fast_isqrt`. Two problems with the task as
+  written: (1) at p=100 the coefficient is rescaled so `isqrt(c)` has
+  `prec` (101) digits, making `c` ~202 digits (~23 words) — it never
+  fits UInt128, so a "UInt128 isqrt" cannot apply. (2) The claim that
+  the float64 setup + precision doubling is "wasted" at this size is
+  empirically false: raising the direct-Newton threshold to 30 words so
+  p=100 takes the direct path **regressed** sqrt@p100 from 8,370 →
+  15,125 ns (1.8× → 3.8× py). `fast_isqrt` is the faster choice at ~23
+  words; the existing threshold of 20 is well-tuned. sqrt@p1000 is
+  already 0.7× py.
 
 P5 — ln far-from-1 (4.6×–9.2× py → target ≤2×)
 
@@ -497,12 +506,19 @@ P5 — ln far-from-1 (4.6×–9.2× py → target ≤2×)
 
 P6 — `from_string` / `to_string` (1.2–1.3× py → target ≤1.0×)
 
-- **T-IO1: Digit batching in `from_string` (H#13).** Accumulate up to
-  9 digits in a UInt32 (or 19 in a UInt64), then
-  `coef = coef * 10^k + batch`. Drops per-digit BigUInt-mul-by-10 to
-  amortised single-word multiply. (Decimal128 H#17 saw 41→22 ns; the
-  arbitrary-precision case will see a larger absolute saving on long
-  inputs.)
+- **T-IO1: Digit batching in `from_string` (H#13).** **DONE — batching
+  already present; slice removed (20260611).** The projected 30–50% win
+  assumed a per-digit `BigUInt`-mul-by-10 loop, but both
+  `BigDecimal.from_string` and `BigUInt.from_string` already accumulate
+  9 digits into a `UInt32` word directly (no BigUInt arithmetic), and
+  `parse_numeric_string` is already a two-pass SIMD parser — so the big
+  win was unavailable. The remaining inefficiency was the per-word
+  `coef[start:end]` slice (a sub-`List` copy per 9-digit chunk),
+  replaced with index iteration `for i in range(start, end)`. A/B
+  micro-bench (M4 Pro, 3M iters): 90-digit int 230 → 222 ns, 90-digit
+  frac 235 → 220 ns, short 141 → 138 ns; cross-language from_string
+  150 → 142 ns (1.4× → 1.2× py), 100% match. Applied to both
+  `from_string` sites.
 
 - **T-IO2: Chunked `to_string` via small staging InlineArray (H#14).**
   Note: BigDecimal's coefficient is unbounded (up to 100000+ digits in
@@ -645,11 +661,12 @@ some ops < 1.0×):
 | T-D1   | Short-divisor fast path in `divide`       | M      | **DONE** | already via BigUInt dispatch                   |
 | T-D2   | Trailing-zero strip allocation in divide  | S      | **DONE** | inplace strip; −16–21% exact-divide            |
 | T-D3   | Reciprocal-Newton divide (legacy Task 2)  | XL     | P3       | 2× large balanced                              |
-| T-S1   | Small-coef short-circuit in `sqrt` p=100  | S      | P2       | ~50% at p=100                                  |
+| T-S1   | Small-coef short-circuit in `sqrt` p=100  | S      | **NO**   | already short-circuits                         |
 | T-L1   | atanh reformulation for ln (T3f)          | M      | **DONE** | already a hybrid; near-1 0.9–1.8× py           |
 | T-L2   | Process-wide ln(10) cache recipe          | S      | P3       | doc                                            |
 | T-L3   | AGM ln for p ≥ 1000 (T3g)                 | XL     | P4       | 10–50× p≥1000                                  |
-| T-IO1  | `from_string` digit batching              | M      | P2       | 30–50%                                         |
+| T-IO1  | `from_string` digit batching              | M      | **DONE** | batching already present;                      |
+|        |                                           |        |          | slice removed, 1.4×→1.2×                       |
 | T-IO2  | `to_string` right-aligned InlineArray     | M      | P2       | 20–40%                                         |
 | T-R1   | `round` `.format` sweep                   | S      | P2       | small                                          |
 | T-7b   | Reciprocal-Newton nth root                | M      | P3       | 1.5–2×                                         |

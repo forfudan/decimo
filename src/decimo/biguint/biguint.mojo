@@ -719,14 +719,14 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             while end >= 9:
                 start = end - 9
                 var word: UInt32 = 0
-                for digit in coef[start:end]:
-                    word = word * 10 + UInt32(digit)
+                for i in range(start, end):
+                    word = word * 10 + UInt32(coef[i])
                 result_words.append(word)
                 end = start
             if end > 0:
                 var word: UInt32 = 0
-                for digit in coef[0:end]:
-                    word = word * 10 + UInt32(digit)
+                for i in range(end):
+                    word = word * 10 + UInt32(coef[i])
                 result_words.append(word)
 
             return Self(raw_words=result_words^)
@@ -749,14 +749,14 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             while end >= 9:
                 start = end - 9
                 var word: UInt32 = 0
-                for digit in coef[start:end]:
-                    word = word * 10 + UInt32(digit)
+                for i in range(start, end):
+                    word = word * 10 + UInt32(coef[i])
                 result_words.append(word)
                 end = start
             if end > 0:
                 var word: UInt32 = 0
-                for digit in coef[0:end]:
-                    word = word * 10 + UInt32(digit)
+                for i in range(end):
+                    word = word * 10 + UInt32(coef[i])
                 result_words.append(word)
 
             return Self(raw_words=result_words^)
