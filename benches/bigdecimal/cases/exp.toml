@@ -1,7 +1,6 @@
 [config]
-precision = 50
-# iterations are auto-tuned per case targeting ~50ms total
-iterations = 200
+iterations = 50
+precision = 1000
 
 [[cases]]
 a = "0"

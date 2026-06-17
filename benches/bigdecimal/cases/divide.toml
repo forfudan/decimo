@@ -343,3 +343,20 @@ name = "Division 65536 words / 2048 words"
 a = "{123456789,1024}.{123456789,1024}"
 b = "{987654321,512}.{987654321,512}"
 name = "Division 65536 words / 1024 words"
+
+# === LARGE BALANCED DIVIDE TESTS (deferred-carry B-Z range) ===
+# Divisor large enough that Burnikel-Ziegler's internal multiplies cross the
+# deferred-carry threshold, but small enough to avoid the precision-truncation
+# fast path at precision >= 1000 (needed_divisor_words ~ ceil(p/9)+6). At
+# precision 100 these still truncate; the deferred-carry effect shows at
+# p>=1000.
+
+[[cases]]
+a = "{142857,100}"
+b = "{271828,50}"
+name = "Div 600-digit / 300-digit (~67w / ~34w)"
+
+[[cases]]
+a = "{142857,200}"
+b = "{271828,100}"
+name = "Div 1200-digit / 600-digit (~134w / ~67w)"

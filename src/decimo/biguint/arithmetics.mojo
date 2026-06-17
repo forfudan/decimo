@@ -33,10 +33,27 @@ from decimo.rounding_mode import RoundingMode
 
 comptime CUTOFF_KARATSUBA = 64
 """The cutoff number of words for using Karatsuba multiplication."""
-comptime CUTOFF_TOOM3 = 128
-"""The cutoff number of words for using Toom-3 multiplication."""
+comptime CUTOFF_TOOM3 = 256
+"""The cutoff number of words for using Toom-3 multiplication.
+
+NOTE: Karatsuba is used for `CUTOFF_KARATSUBA < max_words <= CUTOFF_TOOM3`.
+"""
 comptime CUTOFF_BURNIKEL_ZIEGLER = 32
 """The cutoff number of words for using Burnikel-Ziegler division."""
+comptime CUTOFF_DEFERRED_CARRY_PRODUCT = 200
+"""Threshold for switching the schoolbook inner loop to deferred-carry
+accumulation.
+
+NOTE: unlike `CUTOFF_KARATSUBA` / `CUTOFF_TOOM3`, which are
+word counts, this is a product `n_words_x * n_words_y` (the number of
+single-word partial products). It is therefore reached *within* the schoolbook
+range (`max_words <= CUTOFF_KARATSUBA` = 64): two ~15-word operands give a
+product of 225 >= 200, and a 64x64 multiply gives 4096. So the deferred-carry
+path runs for the ~15-64 word band directly and for the Karatsuba / Toom-3
+recursion base cases (whose sub-multiplies are <= 64 words). Below this product
+the per-step-carry loop is faster (the accumulator + final-normalization
+overhead dominates).
+"""
 
 # ===----------------------------------------------------------------------=== #
 # List of functions in this module:
@@ -56,7 +73,7 @@ comptime CUTOFF_BURNIKEL_ZIEGLER = 32
 # subtract_by_uint32_inplace(x: BigUInt, y: UInt32) -> None
 #
 # multiply(x1: BigUInt, x2: BigUInt) -> BigUInt
-# multiply_slices_school(x: BigUInt, y: BigUInt, start_x: Int, end_x: Int, start_y: Int, end_y: Int) -> BigUInt
+# multiply_slices_schoolbook(x: BigUInt, y: BigUInt, start_x: Int, end_x: Int, start_y: Int, end_y: Int) -> BigUInt
 # multiply_slices_karatsuba(x: BigUInt, y: BigUInt, start_x: Int, end_x: Int, start_y: Int, end_y: Int, cutoff_number_of_words: Int) -> BigUInt
 # multiply_slices_toom3(x: BigUInt, y: BigUInt, bounds_x: Tuple[Int, Int], bounds_y: Tuple[Int, Int]) -> BigUInt
 # multiply_by_uint32_inplace(x: BigUInt, y: UInt32) -> None
@@ -66,7 +83,7 @@ comptime CUTOFF_BURNIKEL_ZIEGLER = 32
 # exact_divide_by_3_inplace(mut x: BigUInt)
 #
 # floor_divide(x1: BigUInt, x2: BigUInt) -> BigUInt
-# floor_divide_school(x1: BigUInt, x2: BigUInt) -> BigUInt
+# floor_divide_schoolbook(x1: BigUInt, x2: BigUInt) -> BigUInt
 # floor_divide_estimate_quotient(x1: BigUInt, x2: BigUInt, j: Int, m: Int) -> UInt64
 # floor_divide_by_single_word_inplace(x1: BigUInt, x2: BigUInt) -> None
 # floor_divide_by_double_words_inplace(x1: BigUInt, x2: BigUInt) -> None
@@ -494,10 +511,10 @@ def subtract(x: BigUInt, y: BigUInt) raises -> BigUInt:
     # Below is a school method for subtraction.
     # You go from the least significant word to the most significant word.
     #
-    # return subtract_school(x, y)
+    # return subtract_schoolbook(x, y)
 
 
-def subtract_school(x: BigUInt, y: BigUInt) raises -> BigUInt:
+def subtract_schoolbook(x: BigUInt, y: BigUInt) raises -> BigUInt:
     """Returns the difference of two unsigned integers using the school method.
 
     Args:
@@ -520,7 +537,7 @@ def subtract_school(x: BigUInt, y: BigUInt) raises -> BigUInt:
     # If the subtrahend is zero, return the minuend
     if y.is_zero():
         debug_assert[assert_mode="none"](
-            len(y.words) == 1, "subtract_school(): leading zero words"
+            len(y.words) == 1, "subtract_schoolbook(): leading zero words"
         )
         return x.copy()
 
@@ -531,7 +548,7 @@ def subtract_school(x: BigUInt, y: BigUInt) raises -> BigUInt:
         return BigUInt.zero()  # Return zero
     if comparison_result < 0:
         raise OverflowError(
-            function="subtract_school()",
+            function="subtract_schoolbook()",
             message=(
                 "biguint.arithmetics.subtract(): Result is negative due to"
                 " x < y"
@@ -866,11 +883,11 @@ def multiply(x: BigUInt, y: BigUInt) -> BigUInt:
     # Use school multiplication for small numbers
     var max_words = max(len(x.words), len(y.words))
     if max_words <= CUTOFF_KARATSUBA:
-        # return multiply_slices_school (x, y)
-        return multiply_slices_school(
+        # return multiply_slices_schoolbook (x, y)
+        return multiply_slices_schoolbook(
             x, y, (0, len(x.words)), (0, len(y.words))
         )
-        # multiply_slices_school can also takes in x, y, and indices
+        # multiply_slices_schoolbook can also takes in x, y, and indices
 
     # CASE 2
     # Use Toom-3 multiplication for very large numbers
@@ -916,9 +933,9 @@ def multiply_slices(
     # Use school multiplication for small numbers
     var max_words = max(n_words_x_slice, n_words_y_slice)
     if max_words <= CUTOFF_KARATSUBA:
-        # return multiply_slices_school (x, y)
-        return multiply_slices_school(x, y, bounds_x, bounds_y)
-        # multiply_slices_school can also takes in x, y, and indices
+        # return multiply_slices_schoolbook (x, y)
+        return multiply_slices_schoolbook(x, y, bounds_x, bounds_y)
+        # multiply_slices_schoolbook can also takes in x, y, and indices
 
     # CASE 2
     # Use Toom-3 multiplication for very large numbers
@@ -933,13 +950,13 @@ def multiply_slices(
         )
 
 
-def multiply_slices_school(
+def multiply_slices_schoolbook(
     read x: BigUInt,
     read y: BigUInt,
     bounds_x: Tuple[Int, Int],
     bounds_y: Tuple[Int, Int],
 ) -> BigUInt:
-    """Multiplies two BigUInt slices using the school method.
+    """Multiplies two BigUInt slices using the schoolbook method.
 
     Args:
         x: The first BigUInt operand (multiplicand).
@@ -975,6 +992,16 @@ def multiply_slices_school(
             var result = BigUInt.from_slice(x, (bounds_x[0], bounds_x[1]))
             multiply_by_uint32_inplace(result, y_word)
             return result^
+
+    # Deferred-carry multiply for larger slices: accumulate column
+    # sums in a UInt64 buffer and normalize the base-10^9 carry only
+    # periodically, doing ~8x fewer div/mods than the per-step-carry loop
+    # below. The gate is a PRODUCT (n_x * n_y), not a word count, so it is
+    # reached for both operands >= ~15 words (within the <=64-word schoolbook
+    # range) and for the Karatsuba/Toom-3 recursion base cases. Below the
+    # crossover the buffer + final-normalization overhead loses.
+    if n_words_x_slice * n_words_y_slice >= CUTOFF_DEFERRED_CARRY_PRODUCT:
+        return multiply_slices_deferred_carry(x, y, bounds_x, bounds_y)
 
     # The max number of words in the result is the sum of the words in the operands
     var max_result_len = n_words_x_slice + n_words_y_slice
@@ -1022,6 +1049,105 @@ def multiply_slices_school(
     return result^
 
 
+def multiply_slices_deferred_carry(
+    read x: BigUInt,
+    read y: BigUInt,
+    bounds_x: Tuple[Int, Int],
+    bounds_y: Tuple[Int, Int],
+) -> BigUInt:
+    """Multiplies two BigUInt slices using deferred-carry accumulation.
+
+    Args:
+        x: The first BigUInt operand (multiplicand).
+        y: The second BigUInt operand (multiplier).
+        bounds_x: A tuple containing the start and end indices of the slice in x.
+        bounds_y: A tuple containing the start and end indices of the slice in y.
+
+    Returns:
+        The product of the two BigUInt slices.
+
+    Notes:
+
+    Unlike `multiply_slices_schoolbook`, which performs a base-10^9 carry
+    normalization (`% BASE` and `// BASE`) on every inner-loop step
+    (`n_x * n_y` divisions), this accumulates each partial product into a
+    `UInt64` column buffer and normalizes only every `SAFE_ROWS` rows, plus
+    once at the end. That reduces the division count to roughly
+    `n_x * n_y / SAFE_ROWS`, which dominates the runtime for larger slices.
+
+    This is the deferred-carry / column-accumulation idea behind
+    product-scanning multiplication (also known in the literature as "Comba
+    multiplication"): P. G. Comba, "Exponentiation cribs", IBM Systems
+    Journal 29(4), 1990, pp. 526-538; see also Koc, Acar & Kaliski,
+    "Analyzing and comparing Montgomery multiplication algorithms", IEEE
+    Micro 16(3), 1996, for the operand-scanning vs product-scanning contrast.
+    Here the accumulator is a base-10^9 `UInt64` column buffer rather than a
+    binary one, and carries are deferred in batches of `SAFE_ROWS` rows for
+    overflow safety.
+
+    Overflow safety: each partial product `x_i * y_j` is `< (10^9)^2 = 10^18`,
+    and at most `SAFE_ROWS = 15` rows accumulate into any column between
+    normalizations, so each accumulator stays below `15 * 10^18 < 2^64 - 1`.
+    Caller (`multiply_slices_schoolbook`) only routes here above the benchmarked
+    product crossover, and never with a single-word slice.
+    """
+    var start_x = bounds_x[0]
+    var start_y = bounds_y[0]
+    var n_words_x_slice = bounds_x[1] - start_x
+    var n_words_y_slice = bounds_y[1] - start_y
+
+    comptime SAFE_ROWS = 15
+
+    var total = n_words_x_slice + n_words_y_slice
+    var acc = List[UInt64](unsafe_uninit_length=total)
+    var ap = acc.unsafe_ptr()
+    memset_zero(ptr=ap, count=total)
+
+    var xp = x.words.unsafe_ptr()
+    var yp = y.words.unsafe_ptr()
+
+    var rows_since_norm = 0
+    var top = 0  # highest accumulator index touched + 1
+
+    for i in range(n_words_x_slice):
+        var xi = UInt64(xp[start_x + i])
+        if xi == 0:
+            continue
+        for j in range(n_words_y_slice):
+            ap[i + j] += xi * UInt64(yp[start_y + j])
+        if i + n_words_y_slice > top:
+            top = i + n_words_y_slice
+        rows_since_norm += 1
+        if rows_since_norm == SAFE_ROWS:
+            # Propagate base-10^9 carries across the touched range.
+            var carry: UInt64 = 0
+            for k in range(top):
+                var v = ap[k] + carry
+                ap[k] = v % UInt64(BigUInt.BASE)
+                carry = v // UInt64(BigUInt.BASE)
+            var kk = top
+            while carry > 0:
+                var v = ap[kk] + carry
+                ap[kk] = v % UInt64(BigUInt.BASE)
+                carry = v // UInt64(BigUInt.BASE)
+                kk += 1
+                if kk > top:
+                    top = kk
+            rows_since_norm = 0
+
+    # Final normalization into base-10^9 words.
+    var result = BigUInt(unsafe_uninit_length=total)
+    var rp = result.words.unsafe_ptr()
+    var carry: UInt64 = 0
+    for k in range(total):
+        var v = ap[k] + carry
+        rp[k] = UInt32(v % UInt64(BigUInt.BASE))
+        carry = v // UInt64(BigUInt.BASE)
+
+    result.remove_leading_empty_words()
+    return result^
+
+
 def multiply_slices_karatsuba(
     read x: BigUInt,
     read y: BigUInt,
@@ -1064,16 +1190,16 @@ def multiply_slices_karatsuba(
     # we can use school multiplication because this is only one loop
     # No need to split the long number into two parts
     if n_words_x_slice == 1 or n_words_y_slice == 1:
-        return multiply_slices_school(x, y, bounds_x, bounds_y)
+        return multiply_slices_schoolbook(x, y, bounds_x, bounds_y)
 
     # CASE 2:
     # The allocation cost is too high for small numbers to use Karatsuba
     # Use school multiplication for small numbers
     var n_words_max = max(n_words_x_slice, n_words_y_slice)
     if n_words_max <= cutoff_number_of_words:
-        # return multiply_slices_school (x, y)
-        return multiply_slices_school(x, y, bounds_x, bounds_y)
-        # multiply_slices_school can also takes in x, y, and indices
+        # return multiply_slices_schoolbook (x, y)
+        return multiply_slices_schoolbook(x, y, bounds_x, bounds_y)
+        # multiply_slices_schoolbook can also takes in x, y, and indices
 
     # Otherwise, use Karatsuba
 
@@ -1909,7 +2035,7 @@ def exact_divide_by_3_inplace(mut x: BigUInt):
 # ===----------------------------------------------------------------------=== #
 # Division Algorithms
 # floor_divide
-# floor_divide_school
+# floor_divide_schoolbook
 # floor_divide_burnikel_ziegler
 # ===----------------------------------------------------------------------=== #
 
@@ -2023,21 +2149,21 @@ def floor_divide(x: BigUInt, y: BigUInt) raises -> BigUInt:
 
         if ndigits_to_shift == 0:
             # No normalization needed, just use the general division algorithm
-            return floor_divide_school(x, y)
+            return floor_divide_schoolbook(x, y)
         else:
             # Normalize the divisor and dividend
             var normalized_x = multiply_by_power_of_ten(x, ndigits_to_shift)
             var normalized_y = multiply_by_power_of_ten(y, ndigits_to_shift)
-            return floor_divide_school(normalized_x, normalized_y)
+            return floor_divide_schoolbook(normalized_x, normalized_y)
 
     # CASE: division of very, very large numbers
     # Use the Burnikel-Ziegler division algorithm
     return floor_divide_burnikel_ziegler(x, y, cut_off=CUTOFF_BURNIKEL_ZIEGLER)
 
 
-# TODO: Implement a `floor_divide_slices_school()` function that
+# TODO: Implement a `floor_divide_slices_schoolbook()` function that
 # can be used for slices of BigUInt numbers.
-def floor_divide_school(x: BigUInt, y: BigUInt) raises -> BigUInt:
+def floor_divide_schoolbook(x: BigUInt, y: BigUInt) raises -> BigUInt:
     """**[PRIVATE]** General schoolbook division algorithm for BigInt10 numbers.
 
     Args:
@@ -2912,7 +3038,7 @@ def floor_divide_two_by_one(
     )
 
     if (n & 1 == 1) or (n <= cut_off):
-        var q = floor_divide_school(a, b)
+        var q = floor_divide_schoolbook(a, b)
         var r = a - q * b
         return (q^, r^)
 
@@ -3072,7 +3198,7 @@ def floor_divide_slices_two_by_one(
         # algorithm.
         var a_slice = BigUInt.from_slice(a, bounds_a)
         var b_slice = BigUInt.from_slice(b, bounds_b)
-        var q = floor_divide_school(a_slice, b_slice)
+        var q = floor_divide_schoolbook(a_slice, b_slice)
         # r = a_slice - q * b_slice
         # We use inplace subtraction to avoid copying
         a_slice -= multiply_slices(q, b, (0, len(q.words)), bounds_b)

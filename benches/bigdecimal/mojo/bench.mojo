@@ -64,7 +64,7 @@ def _parse_round_param(b: String) raises -> Tuple[Int, RoundingMode]:
     if idx < 0:
         raise Error("round case missing '|' in b field: " + b)
     var ndigits = atol(String(b[byte=0:idx]))
-    var mode_str = String(b[byte = idx + 1 : len(b)])
+    var mode_str = String(b[byte = idx + 1 : b.byte_length()])
     if mode_str == "ROUND_DOWN":
         return Tuple[Int, RoundingMode](ndigits, RoundingMode.ROUND_DOWN)
     if mode_str == "ROUND_UP":
@@ -120,8 +120,8 @@ def _emit(v: BigDecimal) raises -> String:
         var coef_digits = v.coefficient.number_of_digits()
         var sign_chars = 1 if v.sign else 0
         var expected_total = coef_digits + (-v.scale) + sign_chars
-        if len(s) < expected_total:
-            var pad = expected_total - len(s)
+        if s.byte_length() < expected_total:
+            var pad = expected_total - s.byte_length()
             for _ in range(pad):
                 s += "0"
     return s^
@@ -215,7 +215,7 @@ def _time_kernel(
         return
     if op == "comparison":
         var s = _cmp_3way(a, b)
-        keep(len(s))
+        keep(s.byte_length())
         return
     if op == "from_string":
         var v = BigDecimal(a_str)
@@ -224,7 +224,7 @@ def _time_kernel(
         return
     if op == "to_string":
         var s = a.to_string(force_plain=True)
-        keep(len(s))
+        keep(s.byte_length())
         return
     if op == "sqrt":
         var r = bd_sqrt(a, precision)
@@ -341,10 +341,10 @@ def _bench_case(
 
 
 def _pad(s: String, w: Int) -> String:
-    if len(s) >= w:
+    if s.byte_length() >= w:
         return s
     var out = s
-    for _ in range(w - len(s)):
+    for _ in range(w - s.byte_length()):
         out += " "
     return out
 
@@ -406,7 +406,9 @@ def main() raises:
         var pair = _bench_case(op, bc, iter_hint, precision)
         var result = pair[0]
         var per = pair[1]
-        var rs = result if len(result) <= 34 else String(result[byte=0:34])
+        var rs = result if result.byte_length() <= 34 else String(
+            result[byte=0:34]
+        )
         print(_pad(bc.name, 44), _pad(rs, 36), per)
         log.write(
             ts
