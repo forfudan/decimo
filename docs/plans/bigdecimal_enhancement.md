@@ -804,3 +804,5 @@ some ops < 1.0×):
 | T-9    | SIMD schoolbook mul base                  | M      | **DONE** | deferred-carry (product-scanning);             |
 |        |                                           |        |          | Definitely worth bringing it to `BigInt` too   |
 | T-3e   | Binary splitting for ln Taylor            | L      | P4       | 2–4× p≥500                                     |
+| T-P1   | Use pointer than list indexing            | M      | P4       | Use `UnsafePointer` for loops;                 |
+|        |                                           |        |          | Similar to `multiply_slices_deferred_carry`.   |
