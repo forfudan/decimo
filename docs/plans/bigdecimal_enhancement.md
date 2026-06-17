@@ -275,6 +275,28 @@ because the lesson generalises to the variable-length case unchanged.
     when both constraints are independent.** Re-round must use the
     **original** value, not the already-rounded one.
 
+17. **In hot O(n²) loops over `List` buffers, hoist a raw data pointer
+    once (`var p = some_list.unsafe_ptr()`) and index through `p`
+    instead of through `some_list[i]`.** A `List` access reloads the
+    `_data` field from the List struct on every element access (the
+    compiler usually cannot prove `_data` is loop-invariant), whereas a
+    hoisted pointer stays in a register, saving one memory load per
+    iteration. Measured **~8% at 64-word operands** in
+    `multiply_slices_deferred_carry` (20260616), and this is *not* a
+    bounds-check effect — under `-D ASSERT=none` the `List.__getitem__`
+    bounds check (`debug_assert[assert_mode="safe"]`) is already compiled
+    out, and `List.unsafe_get`/`unsafe_set` measured identical to plain
+    `[]` there. Safety preconditions: the buffer must not be resized
+    while the pointer is live (only element-mutated) and indices must be
+    provably in-bounds. The owner does **not** need a manual lifetime
+    extension — `List.unsafe_ptr()` returns an origin-parameterized
+    `UnsafePointer` tied to the List's origin, so Mojo's lifetime
+    tracking keeps the List alive for as long as the pointer is used
+    (verified 20260616). **Worth auditing other hot O(n²)/O(n·m)
+    kernels** — schoolbook multiply (`multiply_slices_schoolbook`), the
+    SIMD add/subtract inner loops, Karatsuba/Toom-3 combine steps, and
+    divide normalization — where the same ~8% could compound.
+
 ## 5. Open Items / Future Improvements
 
 ### 5.1 Worst-case ratios still > 1.5× python (latest sweep 2026-05-01, post-T-API1)

@@ -1097,52 +1097,72 @@ def multiply_slices_deferred_carry(
     var n_words_y_slice = bounds_y[1] - start_y
 
     comptime SAFE_ROWS = 15
+    comptime BASE = UInt64(BigUInt.BASE)
 
-    var total = n_words_x_slice + n_words_y_slice
-    var acc = List[UInt64](unsafe_uninit_length=total)
-    var ap = acc.unsafe_ptr()
-    memset_zero(ptr=ap, count=total)
+    var result_length = n_words_x_slice + n_words_y_slice
 
-    var xp = x.words.unsafe_ptr()
-    var yp = y.words.unsafe_ptr()
+    # Column accumulator: `column_sums[k]` holds the running sum of every
+    # partial product `x_i * y_j` with `i + j == k`, before the base-10^9
+    # carries are propagated.
+    #
+    # The inner multiply loop is O(n^2). I use raw data pointer for each
+    # of the three buffers it touches and index through those, so the compiler
+    # keeps each buffer's base address in a register for the whole loop instead
+    # reload that List's `_data` field on every element access. That
+    # reload is the bottleneck in the indexed form (measured ~8% slower at
+    # 64-word operands under `-D ASSERT=none`).
+    #
+    # Memory safety: the three buffers all outlive this loop and are never
+    # resized inside it. `x` / `y` are borrowed (`read`, owned by the caller),
+    # and `column_sums` is only element-mutated (never appended). `List.
+    # unsafe_ptr()` returns an origin-parameterized `UnsafePointer` tied to the
+    # List's origin, so Mojo's lifetime tracking keeps `column_sums` alive for
+    # as long as `column_sums_ptr` is used (including the final pass below).
+    # Every index is provably in-bounds:
+    # `start_x + i < bounds_x[1] <= len(x.words)`,
+    # `start_y + j < bounds_y[1] <= len(y.words)`, and the column index
+    # `i + j < result_length` (likewise the carry index `k`).
+    var column_sums = List[UInt64](length=result_length, fill=0)
+    var column_sums_ptr = column_sums.unsafe_ptr()
+    var x_words_ptr = x.words.unsafe_ptr()
+    var y_words_ptr = y.words.unsafe_ptr()
 
-    var rows_since_norm = 0
-    var top = 0  # highest accumulator index touched + 1
+    var rows_since_normalization = 0
+    var highest_column = 0  # highest accumulator index touched + 1
 
     for i in range(n_words_x_slice):
-        var xi = UInt64(xp[start_x + i])
-        if xi == 0:
+        var x_word = UInt64(x_words_ptr[start_x + i])
+        if x_word == 0:
             continue
         for j in range(n_words_y_slice):
-            ap[i + j] += xi * UInt64(yp[start_y + j])
-        if i + n_words_y_slice > top:
-            top = i + n_words_y_slice
-        rows_since_norm += 1
-        if rows_since_norm == SAFE_ROWS:
+            column_sums_ptr[i + j] += x_word * UInt64(y_words_ptr[start_y + j])
+        if i + n_words_y_slice > highest_column:
+            highest_column = i + n_words_y_slice
+        rows_since_normalization += 1
+        if rows_since_normalization == SAFE_ROWS:
             # Propagate base-10^9 carries across the touched range.
             var carry: UInt64 = 0
-            for k in range(top):
-                var v = ap[k] + carry
-                ap[k] = v % UInt64(BigUInt.BASE)
-                carry = v // UInt64(BigUInt.BASE)
-            var kk = top
+            for k in range(highest_column):
+                var column_value = column_sums_ptr[k] + carry
+                column_sums_ptr[k] = column_value % BASE
+                carry = column_value // BASE
+            var k = highest_column
             while carry > 0:
-                var v = ap[kk] + carry
-                ap[kk] = v % UInt64(BigUInt.BASE)
-                carry = v // UInt64(BigUInt.BASE)
-                kk += 1
-                if kk > top:
-                    top = kk
-            rows_since_norm = 0
+                var column_value = column_sums_ptr[k] + carry
+                column_sums_ptr[k] = column_value % BASE
+                carry = column_value // BASE
+                k += 1
+                if k > highest_column:
+                    highest_column = k
+            rows_since_normalization = 0
 
-    # Final normalization into base-10^9 words.
-    var result = BigUInt(unsafe_uninit_length=total)
-    var rp = result.words.unsafe_ptr()
+    # Final normalization into base-10^9 result words.
+    var result = BigUInt(uninitialized_capacity=result_length)
     var carry: UInt64 = 0
-    for k in range(total):
-        var v = ap[k] + carry
-        rp[k] = UInt32(v % UInt64(BigUInt.BASE))
-        carry = v // UInt64(BigUInt.BASE)
+    for k in range(result_length):
+        var column_value = column_sums_ptr[k] + carry
+        result.words.append(UInt32(column_value % BASE))
+        carry = column_value // BASE
 
     result.remove_leading_empty_words()
     return result^
