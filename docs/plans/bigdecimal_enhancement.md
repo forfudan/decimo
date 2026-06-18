@@ -145,8 +145,8 @@ kernels (parse/render are precision-insensitive ops).
 | 3b  | Per-Taylor-term BigDecimal divide is wasteful | DONE (T3b) — UInt32 divide path; +20–130% near-1 ln           |
 | 3c  | `log10()`/`log()` re-compute `ln(10)`         | DONE (T3c) — cached via `MathCache`                           |
 | 3d  | exp Taylor series too long; weak halving      | DONE (T3d) — $M=\sqrt{3.322p}$; exp 0.4×→2.6× py at p=1000    |
-| 3e  | Binary splitting for ln Taylor series         | OPEN — diminishing returns for exp post-T3d;                  |
-|     |                                               | ln still O(p) terms                                           |
+| 3e  | Binary splitting for ln Taylor series         | GOAL met by T-3e (exact-reciprocal divide, NOT binary         |
+|     |                                               | splitting); ln 3–21× p>=1000. Binary splitting → §5.3         |
 | 3f  | `atanh` reformulation for ln (3× fewer terms) | DONE (T-L1) — hybrid Taylor/atanh in `ln_series_expansion`;   |
 |     |                                               | near-1 already 0.9–1.8× py                                    |
 | 3g  | AGM-based ln for very high precision          | OPEN — long-term, complex                                     |
@@ -159,7 +159,7 @@ kernels (parse/render are precision-insensitive ops).
 | 7b  | Reciprocal-Newton for nth root (no divide)    | DEFERRED (T-7b) — break-even at current mul speed             |
 |     |                                               | (div ~2.7× mul); root already 0.2× py                         |
 | 8   | BigDecimal-level inplace ops in Taylor loops  | DONE (T8) — +15–27% exp/ln, +9% sqrt                          |
-| 9   | SIMD schoolbook multiply base                 | DONE (T-9) — deferred-carry (product-scanning);               |
+| 9   | deferred-carry schoolbook multiply            | DONE (T-9) — deferred-carry (product-scanning);               |
 |     |                                               | 32w 2×, 48w 2.4×, 64w 2.9× faster                             |
 | 10  | `debug_assert(..., "{}".format(...))`         | OPEN — sweep BigUInt + BigDecimal hot paths (Lesson #7)       |
 |     | eager allocation                              |                                                               |
@@ -191,8 +191,8 @@ kernels (parse/render are precision-insensitive ops).
 | 24  | `round_to_precision` in-place audit           | DONE (T-R2) — code-quality cleanup; divide bench unchanged    |
 |     |                                               | (saved allocs lost in noise vs total divide cost;             |
 |     |                                               | will compound on rounding-dominated ops)                      |
-| 25  | Data-pointer over list indexing across        | OPEN — see T-U1 (cross-kernel BigUInt hot-loop sweep)         |
-|     | BigUInt hot kernels                           |                                                               |
+| 25  | Data-pointer over list indexing across        | DONE (T-U1) — only the two-buffer divide kernel won (4-8%)    |
+|     | BigUInt hot kernels                           | at ≥256w; single-pass O(n) loops within noise, reverted       |
 
 ## 4. Lessons Learnt (the reusable bits)
 
@@ -294,10 +294,17 @@ because the lesson generalises to the variable-length case unchanged.
     extension — `List.unsafe_ptr()` returns an origin-parameterized
     `UnsafePointer` tied to the List's origin, so Mojo's lifetime
     tracking keeps the List alive for as long as the pointer is used
-    (verified 20260616). **Worth auditing other hot O(n²)/O(n·m)
-    kernels** — schoolbook multiply (`multiply_slices_schoolbook`), the
-    SIMD add/subtract inner loops, Karatsuba/Toom-3 combine steps, and
-    divide normalization — where the same ~8% could compound.
+    (verified 20260616). **The win scales with the number of `List._data`
+    reloads removed per iteration.** A T-U1 sweep (20260618) confirmed this:
+    hoisting helps in O(n²) inner loops (`multiply_slices_deferred_carry`,
+    ~8%) and in single-pass loops that touch **two or more** buffers per
+    element (`floor_divide_by_uint32` reads `x` and writes `result` →
+    +4-8% at ≥256 words). It does **not** clear the ≥3% bar for
+    single-buffer single-pass O(n) loops (`multiply_by_uint32_inplace`,
+    `floor_divide_by_uint32_inplace`, `multiply_by_power_of_ten_inplace`):
+    those are arithmetic-bound (the base-10⁹ `% / //` dominates), the one
+    saved address reload is hidden, and the variants even regressed small
+    operands — so they were reverted.
 
 ## 5. Open Items / Future Improvements
 
@@ -496,23 +503,31 @@ P2 — Multiply small-precision (2.3× py → target ≤1.5×)
   −4.2% @192w, −2% @224w, neutral at 256w and ≥384w; biguint/bigint
   suites still pass (0 failures).
 
-- **T-U1: Cross-kernel data-pointer (H#25). OPEN.**
-  Extend Lesson #17 beyond `multiply_slices_deferred_carry` by auditing
-  BigUInt hot loops that still perform repeated `List` indexing in
-  O(n²) / O(n·m) kernels. Candidate set from code inspection (20260618):
-  `add_by_biguint_inplace` carry propagation loop,
-  `multiply_by_uint32_inplace`,
-  `multiply_by_power_of_ten_inplace` partial-word multiply loop,
-  `floor_divide_by_uint32` and `floor_divide_by_uint32_inplace`, and
-  Burnikel-Ziegler normalization/correction loops with dense `words[i]`
-  traffic.
-  Execution plan: for each candidate, build a minimal A/B variant
-  (`unsafe_ptr` vs current indexing), run focused micro-benches
-  plus the standard cross-language suite, and keep only changes with
-  stable gains (target ≥3% median) and no small-input regressions.
-  Safety constraints: keep owner Lists alive for pointer lifetime,
-  never resize while pointer is live, and document in-bounds invariants
-  at each pointerized loop.
+- **T-U1: Cross-kernel data-pointer (H#25).**
+  A/B-benched the hoisted-`unsafe_ptr` vs `List[i]` indexing form of every
+  candidate single-word BigUInt kernel, both as isolated loops
+  (`local/bench_tu1.mojo`) and in-situ on the real struct-field functions
+  (`local/bench_tu1_insitu.mojo`), best-of-7 at 4-1024 words under
+  `-O3 -g0 -D ASSERT=none`.
+  **Kept:** `floor_divide_by_uint32` — its inner loop reads `x.words[i]` *and*
+  writes `result.words[i]` every iteration, so the indexed form reloads **two**
+  `List._data` fields per element; hoisting both pointers is a stable **+4-8%**
+  at >=256 words across 3 runs with no small-input regression (the small-n path
+  is allocation-bound, so it stays neutral). This is the same mechanism as
+  `multiply_slices_deferred_carry` (Lesson #17), amplified by two buffers.
+  **Reverted (no stable win / small-input regressions):**
+  `multiply_by_uint32_inplace` (mixed; -3..-8% at 16-64w),
+  `floor_divide_by_uint32_inplace` (single buffer; +3% only at large n,
+  -5..-10% at 4-8w),
+  `multiply_by_power_of_ten_inplace` (clear -5..-11% at 8-16w, the common
+  BigDecimal scale-align size). These are all **single-buffer single-pass**
+  O(n) loops that are arithmetic-bound (the base-10^9 `% / //` dominates), so
+  removing one address reload per element does not clear the >=3% bar.
+  **Takeaway:** pointer hoisting pays off when an iteration touches *multiple*
+  List buffers (>=2 `_data` reloads/element) or runs an O(n^2) inner loop;
+  for single-buffer O(n) passes the div/mod hides the saved load. Correctness:
+  BigUInt (incl. random truncate-divide vs Python), BigInt, and BigDecimal
+  arithmetic suites all pass; package builds clean.
 
 P3 — Divide all precisions (5× py → target ≤2×)
 
@@ -617,8 +632,63 @@ P5 — ln far-from-1 (4.6×–9.2× py → target ≤2×)
   code. Nothing actionable until the language gains global mutable
   state.
 
-- **T-L3: AGM ln (T3g / H#3g).** Long-term, only worth implementing
-  alongside or after NTT (Task 5).
+- **T-3e: Faster ln constant series (H#3e). DONE (20260618).** The
+  cached constants `ln(2)` and `ln(1.25)` drive every far-from-1 `ln`
+  (range reduction uses `ln(x) = ln(m) + a·ln(2) + b·ln(1.25)`).
+  `compute_ln2` evaluated `ln(2) = 2·Σ (1/3)^(2k+1)/(2k+1)` with a *full*
+  per-term multiply `term *= x²` where `x = 1/3` was built as a
+  full-precision `0.333…` — i.e. an O(M(n)) Karatsuba multiply every one
+  of the ~p iterations, giving super-quadratic O(p·M(p)) scaling
+  (measured p=100→67µs, p=500→2.5ms, p=1000→16.9ms, p=2000→147ms).
+  **Key insight:** `x = 1/3` is an *exact reciprocal*, so `x² = 1/9`
+  exactly and `term *= x²` is just a divide by 9 — an O(n) single-word
+  divide. Folding the `1/9` and the `1/(2k+1)` factors into one divide
+  by `9·(k+2)` (and applying `×k` at the coefficient level) makes each
+  iteration O(n), so the whole series is O(p·n) = O(p²/9), and it is also
+  *more* accurate (exact `1/9` vs a truncated `0.111…` multiplier).
+  Measured `compute_ln2` (M4 Pro, best-of-5): p=100 67→34µs (2.0×),
+  p=200 253→97µs (2.6×), p=500 2.52ms→445µs (5.7×), p=1000
+  16.9ms→1.81ms (9.3×), p=2000 147ms→6.9ms (**21×**). The same trick
+  applies to `ln(1.25) = 2·atanh(1/9)` (since `(1+1/9)/(1−1/9) = 1.25`):
+  `compute_ln1d25` was rewritten from the generic
+  `ln_series_expansion(0.25)` Taylor path to a dedicated atanh(1/9)
+  loop with `x² = 1/81` → divide by `81·(k+2)`. The atanh form also needs
+  ~3× fewer terms than the `z = 0.25` Taylor series. Measured: p=100
+  73→17µs (4.3×), p=200 187→51µs (3.7×), p=500 736→230µs (3.2×), p=1000
+  2.75ms→868µs (3.2×), p=2000 10.3ms→3.4ms (3.0×). Correctness: both
+  constants verified prefix-correct vs reference, and the full
+  BigDecimal suite (arithmetics, exponential, exponential_toml, methods,
+  rounding, trigonometric — which exercise `ln`/`log`/`log10` vs Python)
+  passes with 0 failures. **This is not the textbook "binary splitting"**
+  (which would target a generic rational hypergeometric series via a
+  product tree of big integers, with a better O(M(p)·log p) asymptotic);
+  the exact-reciprocal divide captures the bulk of the win here for far
+  less code and risk, because both constant arguments happen to be unit
+  fractions (`1/3`, `1/9`). Full binary splitting remains a future
+  option if the constants ever dominate at very high precision.
+
+- **T-L3: AGM ln (T3g / H#3g). DEFERRED — gated on NTT; assessed during
+  the P4 sweep (20260618).** AGM-based `ln` converges quadratically
+  (~log₂p iterations) but each iteration costs a full-precision multiply
+  **plus a sqrt** (itself reciprocal-Newton = several multiplies), so the
+  per-iteration constant is heavy. By the same cost-model logic that
+  deferred T-D3 (reciprocal-Newton divide), AGM only overtakes the
+  current series-based `ln` once multiplication is much cheaper than it
+  is under Karatsuba/Toom-3 — i.e. after NTT (T-5). Until then it would
+  regress the practical precisions. Correctly gated on T-5; left
+  deferred. (The far-from-1 `ln` cost it targeted is in any case now
+  largely addressed by T-3e, which removed the dominant constant-series
+  cost.)
+
+- **T-5: NTT multiplication. Assessed during the P4 sweep — valid but
+  out of scope for an incremental change (20260618).** NTT is the single
+  biggest long-term item and the enabler for T-D3 / T-L3 / T-7b. It is
+  beneficial only for very large operands (≳1024 words ≈ 9000+ digits),
+  i.e. the p≥10000 tail. Implementing a correct base-10⁹ NTT (prime
+  selection, forward/inverse transforms, CRT recombination, carry
+  handling) is a multi-session XL effort with substantial correctness
+  risk and is not a safe single-pass edit; it remains tracked in §5.3 as
+  dedicated future work rather than something to land inline.
 
 P6 — `from_string` / `to_string` (1.2–1.3× py → target ≤1.0×)
 
@@ -719,7 +789,8 @@ P7 — `round` (2× py → target ≤1.0×)
 | --- | --------------------------------------------------------------- | ------ |
 | 5   | NTT multiplication (≥1024 words). Closes the gap with libmpdec  | XL     |
 | 9   | SIMD-optimised schoolbook mul kernel                            | M      |
-| 3e  | Binary splitting for ln Taylor series                           | L      |
+| 3e  | Full binary splitting for ln (generic rational series).         |        |
+|     | Bulk already captured by T-3e exact-reciprocal divide.          | L      |
 | 3g  | AGM-based ln for p ≥ 1000                                       | XL     |
 | 7b  | Reciprocal-Newton for nth root                                  | M      |
 | 7c  | Rational $x^{a/b}$ decomposition                                | S      |
@@ -812,7 +883,8 @@ some ops < 1.0×):
 | T-L1   | atanh reformulation for ln (T3f)          | M      | **DONE** | already a hybrid; near-1 0.9–1.8× py           |
 | T-L2   | Process-wide ln(10) cache recipe          | S      | **DONE** | `MathCache` (ln2/ln1.25/ln10) + recipe exist;  |
 |        |                                           |        |          | auto-cache blocked on Mojo                     |
-| T-L3   | AGM ln for p ≥ 1000 (T3g)                 | XL     | P4       | 10–50× p≥1000                                  |
+| T-L3   | AGM ln for p ≥ 1000 (T3g)                 | XL     | **WAIT** | gated on NTT (heavy per-iter sqrt);            |
+|        |                                           |        |          | far-from-1 ln now addressed by T-3e            |
 | T-IO1  | `from_string` digit batching              | M      | **DONE** | batching already present;                      |
 |        |                                           |        |          | slice removed, 1.4×→1.2×                       |
 | T-IO2  | `to_string` right-aligned InlineArray     | M      | **DONE** | hybrid exact-size direct-write;                |
@@ -820,9 +892,9 @@ some ops < 1.0×):
 | T-R1   | `round` `.format` sweep                   | S      | **NO**   | no `.format` asserts in round; great           |
 | T-7b   | Reciprocal-Newton nth root                | M      | **WAIT** | break-even at current mul speed                |
 |        |                                           |        |          | (div ~2.7× mul); root already 0.2× py          |
-| T-5    | NTT multiplication                        | XL     | P4       | 2–10×                                          |
-| T-9    | SIMD schoolbook mul base                  | M      | **DONE** | deferred-carry (product-scanning);             |
+| T-5    | NTT multiplication                        | XL     | **WAIT** | valid; multi-session XL, tracked in §5.3       |
+| T-9    | deferred-carry schoolbook mul             | M      | **DONE** | deferred-carry (product-scanning);             |
 |        |                                           |        |          | Definitely worth bringing it to `BigInt` too   |
-| T-3e   | Binary splitting for ln Taylor            | L      | P4       | 2–4× p≥500                                     |
-| T-U1   | Use pointers rather than list indexing    | M      | P4       | Use `UnsafePointer` for loops;                 |
-|        |                                           |        |          | Similar to `multiply_slices_deferred_carry`.   |
+| T-3e   | Faster ln constant series                 | L      | **DONE** | exact-reciprocal divide; ln(2) 9–21×,          |
+|        |                                           |        |          | ln(1.25) 3–4× at p≥1000                        |
+| T-U1   | Use pointers rather than list indexing    | M      | **DONE** | kept 2-buffer divide (+4-8% >=256w)            |

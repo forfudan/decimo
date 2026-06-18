@@ -2456,21 +2456,24 @@ def compute_ln2(working_precision: Int) raises -> BigDecimal:
     )  # First term: 2*(1/3)
     var k: UInt32 = 1
 
-    # Cache x² to avoid recomputing each iteration (was term * x * x)
-    var x_squared = x.multiply(x)
-
     # Add terms: 2*(x + x³/3 + x⁵/5 + ...)
     # Series: term_k = 2 * x^(2k-1) * 1 * 3 * 5 * ... * (2k-3) / (1 * 3 * 5 * ... * (2k-1))
     # Recurrence: term_{k+1} = term_k * x² * k / (k+2)
+    #
+    # `x` is a finite-precision decimal approximation to 1/3. Because 1/3 is a
+    # unit fraction, the x² factor is the rational 1/9, which we apply as a
+    # single UInt32 divide by 9 (rounded once to the target precision) instead
+    # of an O(M(n)) BigDecimal multiply by a pre-truncated 0.111…. We fold the
+    # 1/9 and the 1/(k+2) factors into one divide by 9*(k+2), and apply the *k
+    # factor at the coefficient level — so each iteration is O(n), and the
+    # divide also avoids compounding the truncation error of an approximate x².
     for _ in range(1, max_terms):
         result.add_inplace(term)
         var new_k = k + 2
-        # Use O(n) single-word division instead of full BigDecimal div
-        # Use cached x_squared with inplace multiply, and uint32 multiply for k
-        bigdecimal_arithmetics.multiply_inplace(term, x_squared)
-        term = term.true_divide_inexact_by_uint32(new_k, working_precision)
         # Multiply by k using coefficient-level UInt32 multiply (avoids BigDecimal alloc)
         biguint_arithmetics.multiply_by_uint32_inplace(term.coefficient, k)
+        # term *= 1/9 * 1/(k+2): one O(n) single-word divide by 9*(k+2)
+        term = term.true_divide_inexact_by_uint32(9 * new_k, working_precision)
         k = new_k
         if term.adjusted() < -working_precision:
             break
@@ -2494,8 +2497,55 @@ def compute_ln1d25(precision: Int) raises -> BigDecimal:
         The ln(1.25) computed to the specified precision.
 
     Raises:
-        Error: Propagated from ln_series_expansion.
+        Error: Propagated from underlying arithmetic operations.
+
+    Notes:
+
+    The last few digits of result are not accurate as there is no buffer for
+    precision. You need to use a larger precision to get the last few digits
+    accurate.
     """
-    var z = BigDecimal(BigUInt(raw_words=[25]), 2, False)
-    var result = ln_series_expansion(z^, precision)
+    # ln(1.25) = 2*atanh(1/9), since (1 + 1/9)/(1 - 1/9) = (10/9)/(8/9) = 1.25.
+    # So ln(1.25) = 2*(1/9 + (1/9)³/3 + (1/9)⁵/5 + ...).
+    # As in compute_ln2, `x` is a finite-precision decimal approximation to 1/9.
+    # Because 1/9 is a unit fraction, the x² factor is the rational 1/81, which
+    # we apply as a single UInt32 divide by 81 (rounded once to the target
+    # precision) instead of an O(M(n)) BigDecimal multiply. We fold the 1/81 and
+    # the 1/(2k+1) factors into one divide by 81*(k+2) and apply the *k factor
+    # at the coefficient level, so each iteration is O(n).
+    var working_precision = precision
+    var max_terms = Int(Float64(working_precision) * 1.2) + 10
+
+    var number_of_words = working_precision // 9 + 1
+    var words = List[UInt32](capacity=number_of_words)
+    for _ in range(number_of_words):
+        words.append(UInt32(111_111_111))
+    var x = BigDecimal(
+        BigUInt(raw_words=words^), number_of_words * 9, False
+    )  # x = 1/9
+
+    var result = BigDecimal(BigUInt.zero(), 0, False)
+    var term = x.multiply(
+        BigDecimal(BigUInt(raw_words=[2]), 0, False)
+    )  # First term: 2*(1/9)
+    var k: UInt32 = 1
+
+    # Recurrence: term_{k+1} = term_k * x² * k / (k+2), with x² = 1/81.
+    for _ in range(1, max_terms):
+        result.add_inplace(term)
+        var new_k = k + 2
+        # Multiply by k using coefficient-level UInt32 multiply (avoids BigDecimal alloc)
+        biguint_arithmetics.multiply_by_uint32_inplace(term.coefficient, k)
+        # term *= 1/81 * 1/(k+2): one O(n) single-word divide by 81*(k+2)
+        term = term.true_divide_inexact_by_uint32(81 * new_k, working_precision)
+        k = new_k
+        if term.adjusted() < -working_precision:
+            break
+
+    result.round_to_precision_inplace(
+        precision=working_precision,
+        rounding_mode=RoundingMode.down(),
+        remove_extra_digit_due_to_rounding=False,
+        fill_zeros_to_precision=False,
+    )
     return result^
