@@ -1,6 +1,6 @@
 [config]
-precision = 50
-iterations = 200
+iterations = 10 # ln is much more expensive
+precision = 1000 
 
 [[cases]]
 a = "1"

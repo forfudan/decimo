@@ -305,7 +305,7 @@ Implemented Karatsuba O(n^1.585) in `_multiply_magnitudes_karatsuba()` with:
 - **Pointer-based inner loops:** `_data` pointer access in schoolbook avoids bounds checking
 - **Offset-based assembly:** `_add_at_offset_inplace(a, b, offset)` replaces the
   expensive `shift_left_words + add` pattern, eliminating O(n) memory copies
-- **Slice-based sub-operations:** `_multiply_magnitudes_school(a, a_start, a_end, b, b_start, b_end)`
+- **Slice-based sub-operations:** `_multiply_magnitudes_schoolbook(a, a_start, a_end, b, b_start, b_end)`
   avoids creating sub-lists for Karatsuba's recursive calls
 
 **Result:** 10000-digit multiply: 745 µs → 195 µs (**3.8× internal speedup**).

@@ -270,3 +270,29 @@ name = "Volume calc (partial - length * width)"
 a = "123.456789"
 b = "1000"
 name = "Scale calc (multiplying by factor)"
+
+# === LARGE-COEFFICIENT TESTS (deferred-carry multiply range) ===
+# These multiply coefficients of >= ~130 digits, so the product crosses the
+# deferred-carry threshold (n_x * n_y >= 200 base-10^9 words). The
+# smaller cases above stay on the scalar schoolbook inner loop. Operand size
+# (not the rounding `precision`) is what drives the multiply cost here.
+
+[[cases]]
+a = "{142857,25}"
+b = "{271828,25}"
+name = "Mul 150-digit x 150-digit (~17w)"
+
+[[cases]]
+a = "{142857,75}"
+b = "{271828,75}"
+name = "Mul 450-digit x 450-digit (~50w)"
+
+[[cases]]
+a = "{142857,150}"
+b = "{271828,150}"
+name = "Mul 900-digit x 900-digit (~100w)"
+
+[[cases]]
+a = "{142857,15}"
+b = "{271828,150}"
+name = "Mul 90-digit x 900-digit (rectangular)"

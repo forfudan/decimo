@@ -205,7 +205,7 @@ def _multiply_magnitudes(a: List[UInt32], b: List[UInt32]) -> List[UInt32]:
     # Dispatch based on size
     var len_max = max(len_a, len_b)
     if len_max <= CUTOFF_KARATSUBA:
-        return _multiply_magnitudes_school(a, 0, len_a, b, 0, len_b)
+        return _multiply_magnitudes_schoolbook(a, 0, len_a, b, 0, len_b)
     else:
         return _multiply_magnitudes_karatsuba(a, 0, len_a, b, 0, len_b)
 
@@ -257,7 +257,7 @@ def _multiply_magnitude_by_word(
     return result^
 
 
-def _multiply_magnitudes_school(
+def _multiply_magnitudes_schoolbook(
     read a: List[UInt32],
     a_start: Int,
     a_end: Int,
@@ -365,7 +365,9 @@ def _multiply_magnitudes_karatsuba(
 
     var len_max = max(len_a, len_b)
     if len_max <= CUTOFF_KARATSUBA:
-        return _multiply_magnitudes_school(a, a_start, a_end, b, b_start, b_end)
+        return _multiply_magnitudes_schoolbook(
+            a, a_start, a_end, b, b_start, b_end
+        )
 
     # Split point: half of the larger operand
     var m = len_max // 2
@@ -1097,7 +1099,9 @@ def _multiply_magnitudes_slices(
         return _multiply_magnitude_by_word(a, a_start, a_end, b[b_start])
     var len_max = max(len_a, len_b)
     if len_max <= CUTOFF_KARATSUBA:
-        return _multiply_magnitudes_school(a, a_start, a_end, b, b_start, b_end)
+        return _multiply_magnitudes_schoolbook(
+            a, a_start, a_end, b, b_start, b_end
+        )
     return _multiply_magnitudes_karatsuba(a, a_start, a_end, b, b_start, b_end)
 
 

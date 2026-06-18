@@ -150,3 +150,21 @@ a = "1{0,10}"
 b = "1{0,10}"
 description = "Very large multiplication"
 expected = "1{0,20}"
+
+[[multiplication_tests]]
+a = "1{0,117}"
+b = "1{0,117}"
+description = "Near deferred-carry cutoff: 14w x 14w stays scalar schoolbook"
+expected = "1{0,234}"
+
+[[multiplication_tests]]
+a = "1{0,126}"
+b = "1{0,117}"
+description = "Cross deferred-carry cutoff: 15w x 14w uses deferred-carry"
+expected = "1{0,243}"
+
+[[multiplication_tests]]
+a = "{9,576}"
+b = "{9,576}"
+description = "64w x 64w all-nines stress (deferred-carry schoolbook base)"
+expected = "{9,575}8{0,575}1"
