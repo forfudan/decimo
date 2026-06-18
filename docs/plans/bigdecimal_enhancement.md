@@ -191,6 +191,8 @@ kernels (parse/render are precision-insensitive ops).
 | 24  | `round_to_precision` in-place audit           | DONE (T-R2) — code-quality cleanup; divide bench unchanged    |
 |     |                                               | (saved allocs lost in noise vs total divide cost;             |
 |     |                                               | will compound on rounding-dominated ops)                      |
+| 25  | Data-pointer over list indexing across        | OPEN — see T-U1 (cross-kernel BigUInt hot-loop sweep)         |
+|     | BigUInt hot kernels                           |                                                               |
 
 ## 4. Lessons Learnt (the reusable bits)
 
@@ -493,6 +495,24 @@ P2 — Multiply small-precision (2.3× py → target ≤1.5×)
   the usual ratio): dispatcher before/after shows multiply −7.6% @150w,
   −4.2% @192w, −2% @224w, neutral at 256w and ≥384w; biguint/bigint
   suites still pass (0 failures).
+
+- **T-U1: Cross-kernel data-pointer (H#25). OPEN.**
+  Extend Lesson #17 beyond `multiply_slices_deferred_carry` by auditing
+  BigUInt hot loops that still perform repeated `List` indexing in
+  O(n²) / O(n·m) kernels. Candidate set from code inspection (20260618):
+  `add_by_biguint_inplace` carry propagation loop,
+  `multiply_by_uint32_inplace`,
+  `multiply_by_power_of_ten_inplace` partial-word multiply loop,
+  `floor_divide_by_uint32` and `floor_divide_by_uint32_inplace`, and
+  Burnikel-Ziegler normalization/correction loops with dense `words[i]`
+  traffic.
+  Execution plan: for each candidate, build a minimal A/B variant
+  (`unsafe_ptr` vs current indexing), run focused micro-benches
+  plus the standard cross-language suite, and keep only changes with
+  stable gains (target ≥3% median) and no small-input regressions.
+  Safety constraints: keep owner Lists alive for pointer lifetime,
+  never resize while pointer is live, and document in-bounds invariants
+  at each pointerized loop.
 
 P3 — Divide all precisions (5× py → target ≤2×)
 
@@ -804,5 +824,5 @@ some ops < 1.0×):
 | T-9    | SIMD schoolbook mul base                  | M      | **DONE** | deferred-carry (product-scanning);             |
 |        |                                           |        |          | Definitely worth bringing it to `BigInt` too   |
 | T-3e   | Binary splitting for ln Taylor            | L      | P4       | 2–4× p≥500                                     |
-| T-P1   | Use pointer than list indexing            | M      | P4       | Use `UnsafePointer` for loops;                 |
+| T-U1   | Use pointers rather than list indexing    | M      | P4       | Use `UnsafePointer` for loops;                 |
 |        |                                           |        |          | Similar to `multiply_slices_deferred_carry`.   |

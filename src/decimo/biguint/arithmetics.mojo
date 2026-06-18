@@ -841,8 +841,8 @@ def multiply(x: BigUInt, y: BigUInt) -> BigUInt:
     Notes:
         This function uses a three-tier dispatch based on operand size:
         schoolbook multiplication for small numbers (≤64 words), Karatsuba
-        multiplication for medium numbers (64–128 words), and Toom-3
-        multiplication for large numbers (>128 words).
+        multiplication for medium numbers (65–256 words), and Toom-3
+        multiplication for large numbers (>256 words).
     """
 
     debug_assert[assert_mode="none"](
@@ -887,7 +887,7 @@ def multiply(x: BigUInt, y: BigUInt) -> BigUInt:
         return multiply_slices_schoolbook(
             x, y, (0, len(x.words)), (0, len(y.words))
         )
-        # multiply_slices_schoolbook can also takes in x, y, and indices
+        # multiply_slices_schoolbook can also take x, y, and indices
 
     # CASE 2
     # Use Toom-3 multiplication for very large numbers
@@ -922,8 +922,8 @@ def multiply_slices(
     Notes:
         This function uses a three-tier dispatch based on operand size:
         schoolbook multiplication for small numbers (≤64 words), Karatsuba
-        multiplication for medium numbers (64–128 words), and Toom-3
-        multiplication for large numbers (>128 words).
+        multiplication for medium numbers (65–256 words), and Toom-3
+        multiplication for large numbers (>256 words).
     """
     n_words_x_slice = bounds_x[1] - bounds_x[0]
     n_words_y_slice = bounds_y[1] - bounds_y[0]
@@ -935,7 +935,7 @@ def multiply_slices(
     if max_words <= CUTOFF_KARATSUBA:
         # return multiply_slices_schoolbook (x, y)
         return multiply_slices_schoolbook(x, y, bounds_x, bounds_y)
-        # multiply_slices_schoolbook can also takes in x, y, and indices
+        # multiply_slices_schoolbook can also take x, y, and indices
 
     # CASE 2
     # Use Toom-3 multiplication for very large numbers
