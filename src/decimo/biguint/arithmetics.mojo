@@ -2393,6 +2393,14 @@ def floor_divide_by_uint32(x: BigUInt, y: UInt32) -> BigUInt:
         y != 0, "biguint.arithmetics.floor_divide_by_uint32(): Division by zero"
     )
 
+    # Single-word dividend: O(1) exact result. This also guards the pointer
+    # hoisting below — for a one-word `x` with `x.words[0] < y` the quotient is
+    # 0, and without this path `result` would be built with zero words, making
+    # `result.words.unsafe_ptr()` operate on an empty buffer and returning a
+    # BigUInt that violates the non-empty-words invariant.
+    if len(x.words) == 1:
+        return BigUInt.from_uint32_unsafe(x.words[0] // y)
+
     # Most significant word of the dividend
     var dividend = UInt64(x.words[len(x.words) - 1] // y)
     var carry = UInt64(x.words[len(x.words) - 1] % y)

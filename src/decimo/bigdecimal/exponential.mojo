@@ -2460,12 +2460,13 @@ def compute_ln2(working_precision: Int) raises -> BigDecimal:
     # Series: term_k = 2 * x^(2k-1) * 1 * 3 * 5 * ... * (2k-3) / (1 * 3 * 5 * ... * (2k-1))
     # Recurrence: term_{k+1} = term_k * x² * k / (k+2)
     #
-    # Since x = 1/3 exactly, x² = 1/9 exactly, so multiplying by x² is just a
-    # division by 9 — an O(n) single-word divide instead of an O(M(n)) full
-    # multiply by a truncated 0.111…. We fold the 1/9 and the 1/(k+2) factors
-    # into a single divide by 9*(k+2), and apply the *k factor at the
-    # coefficient level. This turns each iteration from O(M(n)) into O(n) and
-    # is also slightly more accurate (exact 1/9 vs a truncated multiplier).
+    # `x` is a finite-precision decimal approximation to 1/3. Because 1/3 is a
+    # unit fraction, the x² factor is the rational 1/9, which we apply as a
+    # single UInt32 divide by 9 (rounded once to the target precision) instead
+    # of an O(M(n)) BigDecimal multiply by a pre-truncated 0.111…. We fold the
+    # 1/9 and the 1/(k+2) factors into one divide by 9*(k+2), and apply the *k
+    # factor at the coefficient level — so each iteration is O(n), and the
+    # divide also avoids compounding the truncation error of an approximate x².
     for _ in range(1, max_terms):
         result.add_inplace(term)
         var new_k = k + 2
@@ -2506,10 +2507,11 @@ def compute_ln1d25(precision: Int) raises -> BigDecimal:
     """
     # ln(1.25) = 2*atanh(1/9), since (1 + 1/9)/(1 - 1/9) = (10/9)/(8/9) = 1.25.
     # So ln(1.25) = 2*(1/9 + (1/9)³/3 + (1/9)⁵/5 + ...).
-    # As in compute_ln2, x = 1/9 is an exact reciprocal, so x² = 1/81 and
-    # multiplying a term by x² is just a divide by 81 — an O(n) single-word
-    # divide instead of an O(M(n)) full multiply. We fold the 1/81 and the
-    # 1/(2k+1) factors into a single divide by 81*(k+2) and apply the *k factor
+    # As in compute_ln2, `x` is a finite-precision decimal approximation to 1/9.
+    # Because 1/9 is a unit fraction, the x² factor is the rational 1/81, which
+    # we apply as a single UInt32 divide by 81 (rounded once to the target
+    # precision) instead of an O(M(n)) BigDecimal multiply. We fold the 1/81 and
+    # the 1/(2k+1) factors into one divide by 81*(k+2) and apply the *k factor
     # at the coefficient level, so each iteration is O(n).
     var working_precision = precision
     var max_terms = Int(Float64(working_precision) * 1.2) + 10
