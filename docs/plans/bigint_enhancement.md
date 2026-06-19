@@ -18,7 +18,7 @@ base-10^9 integer) and `BigUInt` are out of scope here.
 
 | Library           | Limb | Mul algorithm tier         | Div algorithm  | Sqrt                    |
 | ----------------- | ---- | -------------------------- | -------------- | ----------------------- |
-| decimo BigInt     | 2^32 | School  Kara               | Knuth-D → B-Z  | Newton → prec-doubling  |
+| decimo BigInt     | 2^32 | School → Kara              | Knuth-D → B-Z  | Newton → prec-doubling  |
 | Py `int` (C)      | 2^30 | School → Kara              | Knuth (school) | prec-doubling (`isqrt`) |
 | Rust `num-bigint` | 2^64 | School → Kara → Toom-3     | Knuth (school) | Newton                  |
 | Java `BigInteger` | 2^32 | School → Kara → Toom-3     | Knuth → B-Z    | Newton                  |
@@ -39,22 +39,22 @@ ASSERT=none`), DCE-guarded (`keep`/`black_box`), best-of-N auto-tuned to
 decimo÷rust (**< 1.00 = decimo faster**). 230 cases, 100% decimo-vs-Python
 agreement.
 
-| op           |   dm |   py |   rs | dm/py | dm/rs | dominant cost                                  |
-| ------------ | ---: | ---: | ---: | ----: | ----: | ---------------------------------------------- |
-| add          |   48 |   31 |   41 |  1.5× |  1.2× | small-operand constant overhead                |
-| multiply     |   50 |   42 |   31 |  1.2× |  1.6× | no Toom-3 / no SIMD partial products vs Rust   |
-| floor_divide |  230 |   59 |   41 |  3.9× |  5.6× | **Knuth-D base-case overhead (worst op)**      |
-| power        |  340 |  160 |  297 |  2.1× |  1.2× | square-and-multiply per-op overhead            |
-| shift        |   42 |   39 |   26 |  1.1× |  1.6× | result-buffer allocation                       |
-| sqrt         |  580 |  373 |  564 |  1.5× |  1.0× | medium-size division overhead (tied to divide) |
-| from_string  |  990 |  786 |  407 |  1.3× |  2.4× | base-10→base-2^32 conversion (O(n²) medium)    |
-| to_string    |  893 |  266 |  350 |  3.4× |  2.6× | O(n²) repeated `/10^9` at 50–1000 digits       |
+| op           |   dm |   py |   rs | dm/py | dm/rs | dominant cost                                 |
+| ------------ | ---: | ---: | ---: | ----: | ----: | --------------------------------------------- |
+| add          |   48 |   31 |   41 |  1.5× |  1.2× | small-operand constant overhead               |
+| multiply     |   50 |   42 |   31 |  1.2× |  1.6× | no Toom-3, no SIMD partial products vs Rust   |
+| floor_divide |  230 |   59 |   41 |  3.9× |  5.6× | **per-call allocations (the worst op)**       |
+| power        |  340 |  160 |  297 |  2.1× |  1.2× | square-and-multiply per-op overhead           |
+| shift        |   42 |   39 |   26 |  1.1× |  1.6× | result-buffer allocation                      |
+| sqrt         |  580 |  373 |  564 |  1.5× |  1.0× | medium-size division overhead                 |
+| from_string  |  990 |  786 |  407 |  1.3× |  2.4× | base-10 → base-2^32 conversion (O(n²) medium) |
+| to_string    |  893 |  266 |  350 |  3.4× |  2.6× | O(n²) repeated `/10^9` at 50–1000 digits      |
 
-> **Methodology note.** These supersede the 2026-02-20 per-op numbers
-> (which reported decimo *faster* than Python). That harness discarded
-> results (`_ = a + b`) with no DCE guard, timed a single pass, and ran on
-> different hardware — its absolute ratios are not comparable. **Treat the
-> 2026-06-19 figures as the baseline.** Ratios fluctuate ±10–20% run to run.
+> **Methodology note.** These numbers replace the 2026-02-20 per-op
+> figures, which reported decimo *faster* than Python. That harness threw
+> the result away (`_ = a + b`) with no DCE guard, timed a single pass, and
+> ran on different hardware, so its ratios are not comparable. Treat the
+> 2026-06-19 figures as the baseline. They fluctuate ±10–20% run to run.
 
 ## 3. Change History — Done
 
@@ -101,13 +101,15 @@ unchanged for the variable-length signed case.
    base case is what made it a net win (PR2). Any new D&C kernel must follow
    the same no-copy-until-base-case discipline.
 
-   3a. **Limb width is a first-order cost, not a detail.** The 5.6× Rust
-   floor_divide gap (2026-06-19 research) is mostly because `num-bigint`
-   uses base-2^64 limbs (`u64`/`u128`) on 64-bit targets while decimo uses
-   base-2^32 (`UInt32`/`UInt64`). Same algorithm (Knuth D), but half the
-   limbs ⇒ ~4× fewer O(m·n) base-case steps and wider per-step arithmetic.
-   Before attributing a cross-language gap to micro-constants, account for
-   the limb-count ratio first (T-W1).
+   3a. **A cross-language gap is usually decimo's own overhead, not the
+   limb width.** When I first saw the 5.6× Rust floor_divide gap I blamed
+   the representation (decimo is base-2^32, num-bigint is base-2^64). The
+   benchmark says otherwise. Python uses base-2^30 limbs, even narrower
+   than decimo's, and still divides 3.9× faster; sqrt is multiply- and
+   divide-heavy yet already at parity with Rust. So a wider limb is not why
+   decimo trails. Look for the real cost first: redundant copies, per-call
+   allocations, branches in the inner loop. Only reach for the limb width
+   once those are gone (T-W1).
 
 4. **`debug_assert` does NOT lazy-evaluate its message** under `-D
    ASSERT=none`; a `String.format(...)` argument still allocates in the hot
@@ -168,6 +170,35 @@ the Rust gap on **every** op, not just divide.
   prototype divide + multiply first to confirm the ~2–4× before committing
   the whole type. Until then, the per-op tasks below recover the
   *implementation* constants that are independent of limb width.
+
+  **Feasibility (probed 2026-06-19, Mojo ==v1.0.0b1).** A Rust-`cfg_digit!`
+  analogue compiles and runs. Mojo rejects a ternary directly on the
+  *types* (`UInt64 if is_64bit() else UInt32` → "AnyStruct[UInt64] not
+  compatible with AnyStruct[UInt32]"), but a ternary on `DType` *values*
+  is accepted, so the target-selected digit is one comptime block:
+
+  ```mojo
+  comptime DIGIT_DT: DType = DType.uint64 if is_64bit() else DType.uint32
+  comptime DOUBLE_DT: DType = DType.uint128 if is_64bit() else DType.uint64
+  comptime BigDigit = Scalar[DIGIT_DT]          # UInt64 on 64-bit
+  comptime DoubleBigDigit = Scalar[DOUBLE_DT]   # UInt128 on 64-bit
+  comptime BITS: Int = 64 if is_64bit() else 32
+  ```
+
+  `UInt128` `*` / `//` / `%` / `>>` / `&` all work (the `u128÷u64` Knuth-D
+  trial-divide is software-emulated on arm64 but correct — same as
+  num-bigint). The *aliasing* is trivial; the *migration* is a
+  medium-large mechanical refactor because base-2^32 is hard-coded
+  throughout `src/decimo/bigint/`: the `List[UInt32]` field and every
+  signature, the literals `1 << 32` / `0xFFFF_FFFF` / `>> 32` (→
+  `BASE`/`MASK`/`BITS`), the `4×UInt32` NEON SIMD width, `_count_leading_zeros`,
+  the base-10↔base-2^k `from_string`/`to_string` chunking + power tables
+  (9 vs 19 decimal digits per limb — the trickiest part), and `BigInt10`
+  bit-layout interop. **Maybe a good path:** first introduce the
+  `BigDigit`/`DoubleBigDigit`/`BITS`/`BASE`/`MASK` aliases and replace all
+  literals *while keeping `DIGIT_DT = uint32`* (pure, fully-testable
+  refactor with zero behaviour change), then flip to `uint64` and fix the
+  base-conversion + SIMD fallout behind the green test suite.
 
 ### floor_divide / truncate_divide (3.9× py, 5.6× rs → target ≤1.5×)
 
