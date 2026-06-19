@@ -101,6 +101,14 @@ unchanged for the variable-length signed case.
    base case is what made it a net win (PR2). Any new D&C kernel must follow
    the same no-copy-until-base-case discipline.
 
+   3a. **Limb width is a first-order cost, not a detail.** The 5.6× Rust
+   floor_divide gap (2026-06-19 research) is mostly because `num-bigint`
+   uses base-2^64 limbs (`u64`/`u128`) on 64-bit targets while decimo uses
+   base-2^32 (`UInt32`/`UInt64`). Same algorithm (Knuth D), but half the
+   limbs ⇒ ~4× fewer O(m·n) base-case steps and wider per-step arithmetic.
+   Before attributing a cross-language gap to micro-constants, account for
+   the limb-count ratio first (T-W1).
+
 4. **`debug_assert` does NOT lazy-evaluate its message** under `-D
    ASSERT=none`; a `String.format(...)` argument still allocates in the hot
    loop. Use plain string literals (or the variadic `debug_assert(cond,
@@ -128,28 +136,61 @@ unchanged for the variable-length signed case.
 9. **Reciprocal-Newton divide only wins once multiplication is much
    cheaper than division** (the NTT regime). With Karatsuba, a B-Z divide is
    ~2–3× a same-size multiply, so a reciprocal-Newton rewrite would be a
-   *regression* today — gate it behind Toom-3/NTT (H#1).
+   *regression* today — gate it behind Toom-3/NTT (T-M1).
 
 ## 5. Open Items / Future Improvements (priority ordered)
 
 Each task is justified by §2 and a lesson in §4.
 
+### Cross-op: base-2^32 vs base-2^64 limb width (the dominant gap vs Rust)
+
+Research into the 5.6× floor_divide gap traced the bulk of
+the decimo↔Rust difference to a **representation** choice, not a missing
+algorithm. `decimo.BigInt` stores base-2^32 limbs (`UInt32`, `UInt64`
+intermediates); `num-bigint` on a 64-bit target stores base-2^64 limbs
+(`BigDigit = u64`, `DoubleBigDigit = u128`, selected by its `cfg_digit!`
+macro). For the same integer, num-bigint therefore holds **half the
+limbs**, so:
+
+- **Schoolbook multiply / Knuth-D divide are O(m·n)** in the base case →
+  **~4× fewer inner iterations** at base-2^64.
+- Each Knuth-D quotient digit is one `u128 ÷ u64` trial-divide (num-bigint)
+  vs decimo's narrower `u64 ÷ u32`; each multiply-subtract limb is one
+  `u64 × u64 → u128` vs decimo's `u32 × u32 → u64` over twice as many limbs.
+- add/sub touch half as many words too — part of the 1.2× add gap.
+
+This is the single highest-leverage *and* highest-cost item; it underlies
+the Rust gap on **every** op, not just divide.
+
+- **T-W1: migrate `BigInt` limbs to base-2^64 (`UInt64` + `UInt128`
+  intermediates).** Mojo has `UInt128`, so the kernels (add/sub/mul/div,
+  shift, parse/format) can be re-expressed at double width. XL change —
+  prototype divide + multiply first to confirm the ~2–4× before committing
+  the whole type. Until then, the per-op tasks below recover the
+  *implementation* constants that are independent of limb width.
+
 ### floor_divide / truncate_divide (3.9× py, 5.6× rs → target ≤1.5×)
 
-The single biggest gap. B-Z is only entered above 64 words; the 1–64-word
-band (the common case, and every sqrt inner iteration) runs the Knuth-D
-base case, whose per-call setup (normalise, estimate-correct loop) dominates
-at small sizes.
+The single biggest per-op gap. Both decimo and num-bigint use the **same**
+algorithm (Knuth Algorithm D, TAOCP 4.3.1) below the B-Z cutoff (64 words);
+the gap is limb width (T-W1, ~4× of it) plus these decimo-side constants on
+the small-operand worst cases (`a // b` where the result is tiny):
 
-- **T-D1: Knuth-D base-case overhead audit.** Profile the ≤64-word path
-  and reorder so the single-/double-word divisor fast paths are reached
-  with the fewest branches (Lesson #5). Rust's plain schoolbook divide is
-  5.6× faster here, so the headroom is in constants, not the algorithm.
-- **T-D4: Pointer hoisting in the divide inner loop.** Hoist data pointers
-  in the estimate / multiply-subtract inner loops (Lesson #7 — two buffers,
-  so it clears the bar) of the Knuth-D base case.
+- **T-D1: kill redundant divide allocations.** `floor_divide` calls
+  `result[0].copy()` / `result[1].copy()` on the quotient and remainder
+  the divmod tuple **already owns** (two needless `List[UInt32]` allocs),
+  then the negative-floor branch allocates again via
+  `_add_magnitudes(q, 1)`. Move out of the tuple and increment in place.
+  Knuth-D itself also allocates normalized copies (`_shift_left_words(a)`,
+  `_shift_left_words(b)`) every call — fold the shift into the base case.
+- **T-D4: hot inner-loop micro-overhead.** The Knuth-D multiply-subtract
+  loop re-evaluates `len(u)` and `idx < len(u)` **every** iteration and
+  takes a branchy manual borrow (`if u[idx] >= prod_lo … else …`).
+  num-bigint iterates slices (`a.iter_mut().zip(b)`) with a branchless
+  offset-carry trick. Hoist `len(u)` and the data pointers out of the loop
+  (Lesson #7 — two buffers) and adopt the offset-carry borrow.
 - **T-D2: Lower `CUTOFF_BURNIKEL_ZIEGLER` re-tune.** Re-measure 32/48/64
-  now that the base case is faster; the medium band may benefit from earlier
+  once the base case is faster; the medium band may benefit from earlier
   B-Z entry.
 - **T-D3: Reciprocal/Barrett divide.** DEFERRED — not beneficial before
   Toom-3/NTT (Lesson #9).
@@ -170,7 +211,7 @@ place).
 
 - **T-M1: Toom-3 multiplication.** Rust's Toom-3 is what makes it 1.6×
   faster at scale; decimo stops at Karatsuba. Port Toom-3 above
-  ~256 words (the BigDecimal/BigUInt cutoff ratio) — see H#1.
+  ~256 words (the BigDecimal/BigUInt cutoff ratio) — see T-M1.
 - **T-M2: SIMD partial-product accumulation** in the schoolbook base case
   (NEON `4×UInt32`), the base for both Karatsuba and a future Toom-3. This
   (not Comba) is the base-2^32 analogue of the BigDecimal multiply win
@@ -192,7 +233,7 @@ place).
 
 - **T-F1: from_string base conversion.** O(n²) base-10→base-2^32 in the
   50–10000-digit band; lower the D&C entry threshold after T-M1 (D&C uses
-  multiply). > 20000-digit gap closes only with Toom-3/NTT (H#1).
+  multiply). > 20000-digit gap closes only with Toom-3/NTT (T-M1).
 - **T-SH1: shift allocation.** Extreme shifts (`1 << 100000`) are
   allocation-bound; pre-size the result buffer with
   `resize(unsafe_uninit_length=…)` (O(1) capacity + memset) instead of
@@ -200,12 +241,13 @@ place).
 
 ### Execution plan
 
-| Label | Hypothesis                                            | Status                                         |
-| ----- | ----------------------------------------------------- | ---------------------------------------------- |
-| T-M1  | Toom-3 (then NTT) multiply for ≥256 / extreme words   | OPEN — unlocks mul, from_str, divide-via-recip |
-| T-D1  | Knuth-D base-case constants dominate small/medium div | OPEN — Rust schoolbook 5.6× faster             |
-| T-D4  | Pointer hoisting in divide inner loop                 | OPEN — Lesson #7 (two buffers)                 |
-| T-M2  | SIMD partial-product accumulation in schoolbook base  | OPEN — T-M2 (base-2^32 analogue of Comba)      |
-| T-P1  | `square()` exploiting symmetry for power inner loop   | OPEN — T-P1                                    |
-| T-T1  | Lower D&C entry thresholds once divide is faster      | OPEN — T-T1, T-F1, T-D2                        |
-| T-D3  | Reciprocal-Newton divide                              | DEFERRED — needs H#1 (Lesson #9)               |
+| Label | Hypothesis                                             | Status                                         |
+| ----- | ------------------------------------------------------ | ---------------------------------------------- |
+| T-W1  | Base-2^64 limbs (`UInt64`+`UInt128`)                   | OPEN — dominant cross-op gap vs Rust (~2–4×)   |
+| T-M1  | Toom-3 (then NTT) multiply for ≥256 / extreme words    | OPEN — unlocks mul, from_str, divide-via-recip |
+| T-D1  | Redundant `.copy()` / normalize allocs in floor_divide | OPEN — small-operand worst cases               |
+| T-D4  | Knuth-D inner-loop bounds/borrow overhead vs slices    | OPEN — Lesson #7 (two buffers) + offset-carry  |
+| T-M2  | SIMD partial-product accumulation in schoolbook base   | OPEN — base-2^32 analogue of Comba             |
+| T-P1  | `square()` exploiting symmetry for power inner loop    | OPEN                                           |
+| T-T1  | Lower D&C entry thresholds once divide is faster       | OPEN — also T-F1, T-D2                         |
+| T-D3  | Reciprocal-Newton divide                               | DEFERRED — needs T-M1/T-W1 (Lesson #9)         |
