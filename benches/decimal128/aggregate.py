@@ -8,7 +8,7 @@ case_name, and emits:
     2. Per-op detail tables (rows = test cases, columns = languages)
     3. Result-equivalence summary (per-op match rate)
 
-Output goes to <reports-dir>/dec128_report_{ts}.md by default.
+Output goes to <reports-dir>/dec128_report_utc_{ts}.md by default.
 
 Usage:
     python3 aggregate.py --logs-dir logs --reports-dir reports \\
@@ -199,7 +199,7 @@ def main() -> int:
     ap.add_argument(
         "--out",
         default=None,
-        help="Override report path (default: <reports-dir>/dec128_report_<ts>.md)",
+        help="Override report path (default: <reports-dir>/dec128_report_utc_<ts>.md)",
     )
     args = ap.parse_args()
 
@@ -218,7 +218,7 @@ def main() -> int:
     else:
         offset_str = "UTC"
     header_ts = f"{now_local.strftime('%Y-%m-%d %H:%M:%S')} ({offset_str})"
-    out_path = args.out or os.path.join(args.reports_dir, f"dec128_report_{ts}.md")
+    out_path = args.out or os.path.join(args.reports_dir, f"dec128_report_utc_{ts}.md")
 
     lang_label = {
         "mojo": "decimo",

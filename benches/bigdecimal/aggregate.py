@@ -328,7 +328,9 @@ def main() -> int:
     offset = now_local.strftime("%z")
     offset_str = f"UTC{offset[:3]}:{offset[3:]}" if len(offset) == 5 else "UTC"
     header_ts = f"{now_local.strftime('%Y-%m-%d %H:%M:%S')} ({offset_str})"
-    out_path = args.out or os.path.join(args.reports_dir, f"bigdecimal_report_{ts}.md")
+    out_path = args.out or os.path.join(
+        args.reports_dir, f"bigdecimal_report_utc_{ts}.md"
+    )
 
     log_index = discover_logs(args.logs_dir)
     records: dict[str, dict[int, dict[str, dict[str, dict[str, str]]]]] = {}

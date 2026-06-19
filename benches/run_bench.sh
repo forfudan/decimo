@@ -22,7 +22,7 @@ if [[ -z "$TYPE" ]]; then
     echo "Usage: pixi run bench <type> [operation]"
     echo ""
     echo "Types:"
-    echo "  bigint   (int)        BigInt benchmarks (BigInt10 vs BigInt vs Python int)"
+    echo "  bigint   (int)        BigInt benchmarks (decimo vs Python int vs Rust num-bigint)"
     echo "  biguint  (uint)       BigUInt benchmarks (BigUInt vs Python int)"
     echo "  decimal128 (dec128)   Decimal128 benchmarks (Decimal128 vs Python decimal)"
     echo "  bigdecimal (dec)      BigDecimal benchmarks (BigDecimal vs Python decimal)"
@@ -82,6 +82,23 @@ fi
 # Extra args after OP are forwarded verbatim to run_all.sh (e.g.
 # `pixi run bench dec add --precisions 100 1000`).
 if [[ "$TYPE" == "bigdecimal" ]]; then
+    shift  # drop TYPE
+    if [[ -z "$OP" ]]; then
+        exec bash "$DIR/run_all.sh"
+    else
+        shift  # drop OP
+        exec bash "$DIR/run_all.sh" --ops "$OP" "$@"
+    fi
+fi
+
+# --- bigint: cross-language pipeline (decimo + python + rust) ---
+# When OP is empty, run the full op set across all available languages and
+# produce a timestamped report under benches/bigint/reports/. The Rust
+# (num-bigint) harness is built and run only if `cargo` is on PATH;
+# otherwise the pipeline runs with the available languages. When OP is
+# given, restrict the run to that single op via --ops. Extra args after OP
+# are forwarded verbatim to run_all.sh.
+if [[ "$TYPE" == "bigint" ]]; then
     shift  # drop TYPE
     if [[ -z "$OP" ]]; then
         exec bash "$DIR/run_all.sh"

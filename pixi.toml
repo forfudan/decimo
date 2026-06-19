@@ -64,7 +64,7 @@ tf = "clear && pixi run testfloat"
 
 # quick build & run for a single BigFloat-using .mojo file
 # Usage: pixi run bf path/to/file.mojo
-bf = { cmd = "bash examples/run_bigfloat.sh", description = "Build & run a single BigFloat .mojo file (output binary in temp/)" }
+bf = {cmd = "bash examples/run_bigfloat.sh", description = "Build & run a single BigFloat .mojo file (output binary in temp/)"}
 
 # bench
 bench = "pixi run package && bash benches/run_bench.sh"
@@ -73,8 +73,8 @@ bench = "pixi run package && bash benches/run_bench.sh"
 bdec_debug = """clear && pixi run package && cd benches/bigdecimal \
 &&pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \
 &&pixi run clean"""
-bint_debug = """clear && pixi run package && cd benches/bigint \
-&&pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \
+bint_debug = """clear && pixi run package && cd benches/bigint/mojo \
+&&pixi run mojo run -I ../../../src -D ASSERT=all bench.mojo --op add && cd ../../.. \
 &&pixi run clean"""
 buint_debug = """clear && pixi run package && cd benches/biguint \
 &&pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \

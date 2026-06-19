@@ -1,0 +1,11 @@
+# local
+logs/
+reports/
+cases.cache/
+
+# build artifacts
+mojo/bench
+
+# Rust build output
+rust/target/
+rust/Cargo.lock
