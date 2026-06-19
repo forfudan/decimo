@@ -140,145 +140,161 @@ unchanged for the variable-length signed case.
    ~2–3× a same-size multiply, so a reciprocal-Newton rewrite would be a
    *regression* today — gate it behind Toom-3/NTT (T-M1).
 
-## 5. Open Items / Future Improvements (priority ordered)
+## 5. Open Items
 
-Each task is justified by §2 and a lesson in §4.
+Worked in priority order. There is one real outlier, floor_divide; the
+rest are smaller. The limb-width question sits at the end, because the
+benchmark shows it is not why decimo trails today.
 
-### Cross-op: base-2^32 vs base-2^64 limb width (the dominant gap vs Rust)
+### floor_divide / truncate_divide — the outlier (3.9× py, 5.6× rs)
 
-Research into the 5.6× floor_divide gap traced the bulk of
-the decimo↔Rust difference to a **representation** choice, not a missing
-algorithm. `decimo.BigInt` stores base-2^32 limbs (`UInt32`, `UInt64`
-intermediates); `num-bigint` on a 64-bit target stores base-2^64 limbs
-(`BigDigit = u64`, `DoubleBigDigit = u128`, selected by its `cfg_digit!`
-macro). For the same integer, num-bigint therefore holds **half the
-limbs**, so:
+floor_divide is the only op that trails badly. add and multiply are within
+1.2–1.5×, but divide is 3.9× Python and 5.6× Rust. Two facts rule out the
+easy explanations:
 
-- **Schoolbook multiply / Knuth-D divide are O(m·n)** in the base case →
-  **~4× fewer inner iterations** at base-2^64.
-- Each Knuth-D quotient digit is one `u128 ÷ u64` trial-divide (num-bigint)
-  vs decimo's narrower `u64 ÷ u32`; each multiply-subtract limb is one
-  `u64 × u64 → u128` vs decimo's `u32 × u32 → u64` over twice as many limbs.
-- add/sub touch half as many words too — part of the 1.2× add gap.
+- It is not the algorithm. decimo and num-bigint both run Knuth Algorithm D
+  below the Burnikel-Ziegler cutoff (64 words).
+- It is not the limb width. Python's `int` uses base-2^30 limbs, narrower
+  than decimo's base-2^32, and still divides 3.9× faster. A wider limb
+  would help Python, not decimo.
 
-This is the single highest-leverage *and* highest-cost item; it underlies
-the Rust gap on **every** op, not just divide.
+The cause is decimo's per-call overhead on small and medium operands. A
+small divide such as `-7 // 2` does three or four heap allocations in
+decimo and almost none in Python or Rust:
 
-- **T-W1: migrate `BigInt` limbs to base-2^64 (`UInt64` + `UInt128`
-  intermediates).** Mojo has `UInt128`, so the kernels (add/sub/mul/div,
-  shift, parse/format) can be re-expressed at double width. XL change —
-  prototype divide + multiply first to confirm the ~2–4× before committing
-  the whole type. Until then, the per-op tasks below recover the
-  *implementation* constants that are independent of limb width.
+- `floor_divide` copies the quotient and remainder out of the divmod tuple
+  with `.copy()`, two allocations it does not need, then allocates a third
+  time through `_add_magnitudes(q, 1)` on the negative-floor branch.
+- `_divmod_magnitudes` normalises both operands with `_shift_left_words` on
+  every multi-word call, two more allocations, even when the operands are
+  tiny.
+- The Knuth-D inner loop recomputes `len(u)` and re-checks `idx < len(u)`
+  on every step and takes a branchy manual borrow. num-bigint walks a slice
+  with a branchless offset-carry.
 
-  **Feasibility (probed 2026-06-19, Mojo ==v1.0.0b1).** A Rust-`cfg_digit!`
-  analogue compiles and runs. Mojo rejects a ternary directly on the
-  *types* (`UInt64 if is_64bit() else UInt32` → "AnyStruct[UInt64] not
-  compatible with AnyStruct[UInt32]"), but a ternary on `DType` *values*
-  is accepted, so the target-selected digit is one comptime block:
+**T-D1 — remove the redundant allocations.** Move the quotient and
+remainder out of the divmod tuple instead of copying them. Increment in
+place on the negative-floor branch. Fold the Knuth-D normalisation shift
+into the base case so it stops allocating two fresh buffers per call.
 
-  ```mojo
-  comptime DIGIT_DT: DType = DType.uint64 if is_64bit() else DType.uint32
-  comptime DOUBLE_DT: DType = DType.uint128 if is_64bit() else DType.uint64
-  comptime BigDigit = Scalar[DIGIT_DT]          # UInt64 on 64-bit
-  comptime DoubleBigDigit = Scalar[DOUBLE_DT]   # UInt128 on 64-bit
-  comptime BITS: Int = 64 if is_64bit() else 32
-  ```
+**T-D2 — tighten the inner loop.** Hoist `len(u)` and the `u`/`v` data
+pointers out of the multiply-subtract loop (Lesson 7, two buffers) and
+replace the manual borrow with num-bigint's branchless offset-carry.
 
-  `UInt128` `*` / `//` / `%` / `>>` / `&` all work (the `u128÷u64` Knuth-D
-  trial-divide is software-emulated on arm64 but correct — same as
-  num-bigint). The *aliasing* is trivial; the *migration* is a
-  medium-large mechanical refactor because base-2^32 is hard-coded
-  throughout `src/decimo/bigint/`: the `List[UInt32]` field and every
-  signature, the literals `1 << 32` / `0xFFFF_FFFF` / `>> 32` (→
-  `BASE`/`MASK`/`BITS`), the `4×UInt32` NEON SIMD width, `_count_leading_zeros`,
-  the base-10↔base-2^k `from_string`/`to_string` chunking + power tables
-  (9 vs 19 decimal digits per limb — the trickiest part), and `BigInt10`
-  bit-layout interop. **Maybe a good path:** first introduce the
-  `BigDigit`/`DoubleBigDigit`/`BITS`/`BASE`/`MASK` aliases and replace all
-  literals *while keeping `DIGIT_DT = uint32`* (pure, fully-testable
-  refactor with zero behaviour change), then flip to `uint64` and fix the
-  base-conversion + SIMD fallout behind the green test suite.
+**T-D3 — re-tune `CUTOFF_BURNIKEL_ZIEGLER`.** Re-measure 32/48/64 once the
+base case is cheaper. The 2n-by-n / 4n-by-n / 8n-by-n slowdown already
+noted for `BigUInt` in `todo.md` may share this root and should be checked
+together.
 
-### floor_divide / truncate_divide (3.9× py, 5.6× rs → target ≤1.5×)
+**T-D4 — reciprocal / Barrett divide. Deferred.** Not worth it before
+Toom-3 (Lesson 9).
 
-The single biggest per-op gap. Both decimo and num-bigint use the **same**
-algorithm (Knuth Algorithm D, TAOCP 4.3.1) below the B-Z cutoff (64 words);
-the gap is limb width (T-W1, ~4× of it) plus these decimo-side constants on
-the small-operand worst cases (`a // b` where the result is tiny):
+### to_string, 50–1000 digits (3.4× py)
 
-- **T-D1: kill redundant divide allocations.** `floor_divide` calls
-  `result[0].copy()` / `result[1].copy()` on the quotient and remainder
-  the divmod tuple **already owns** (two needless `List[UInt32]` allocs),
-  then the negative-floor branch allocates again via
-  `_add_magnitudes(q, 1)`. Move out of the tuple and increment in place.
-  Knuth-D itself also allocates normalized copies (`_shift_left_words(a)`,
-  `_shift_left_words(b)`) every call — fold the shift into the base case.
-- **T-D4: hot inner-loop micro-overhead.** The Knuth-D multiply-subtract
-  loop re-evaluates `len(u)` and `idx < len(u)` **every** iteration and
-  takes a branchy manual borrow (`if u[idx] >= prod_lo … else …`).
-  num-bigint iterates slices (`a.iter_mut().zip(b)`) with a branchless
-  offset-carry trick. Hoist `len(u)` and the data pointers out of the loop
-  (Lesson #7 — two buffers) and adopt the offset-carry borrow.
-- **T-D2: Lower `CUTOFF_BURNIKEL_ZIEGLER` re-tune.** Re-measure 32/48/64
-  once the base case is faster; the medium band may benefit from earlier
-  B-Z entry.
-- **T-D3: Reciprocal/Barrett divide.** DEFERRED — not beneficial before
-  Toom-3/NTT (Lesson #9).
+The 1- and 2-word fast paths and the D&C path above 128 words are done. The
+50–1000-digit band still runs the O(n²) simple path of repeated division by
+10^9, with the `InlineArray` chunked emit already in place.
 
-### to_string medium sizes (3.4× py → target ≤1.5×)
+**T-T1 — lower the D&C entry threshold** once divide is cheaper (D&C is
+gated on divide cost). Re-measure entry = 64 / 96.
 
-Fast paths (≤2 words) and D&C (≥128 words) are done; the 50–1000-digit band
-still runs the O(n²) simple path (`InlineArray` chunked emit already in
-place).
+**T-T2 — wider radix per chunk.** Batching the repeated `/10^9` into a
+larger radix only helps if it avoids the software-emulated 128-bit divide.
+PR4d rejected 10^18 chunks for exactly this reason; re-verify on current
+hardware before trying again.
 
-- **T-T1: Lower the D&C entry threshold** once T-D1 makes the recursive
-  divisions cheaper (D&C is gated on divide cost). Re-measure entry=64/96.
-- **T-T2: Batch the repeated `/10^9` with a wider radix** only if it does
-  not hit the UInt128-divide-is-software-emulated trap (PR4d rejected 10^18
-  chunks for exactly this reason — re-verify on current hardware).
+### multiply (1.2× py, 1.6× rs)
 
-### multiply (1.2× py, 1.6× rs → target ≤1.0×)
+decimo stops at Karatsuba; num-bigint adds Toom-3, which is what makes it
+1.6× faster on large operands.
 
-- **T-M1: Toom-3 multiplication.** Rust's Toom-3 is what makes it 1.6×
-  faster at scale; decimo stops at Karatsuba. Port Toom-3 above
-  ~256 words (the BigDecimal/BigUInt cutoff ratio) — see T-M1.
-- **T-M2: SIMD partial-product accumulation** in the schoolbook base case
-  (NEON `4×UInt32`), the base for both Karatsuba and a future Toom-3. This
-  (not Comba) is the base-2^32 analogue of the BigDecimal multiply win
-  (Lesson #2).
+**T-M1 — Toom-3 multiplication.** Add a Toom-3 tier above ~256 words, the
+same cutoff ratio used in BigDecimal / BigUInt.
 
-### power (2.1× py → target ≤1.2×) and add (1.5× py)
+**T-M2 — SIMD partial-product accumulation** in the schoolbook base case
+(NEON 4×UInt32), which is the base for both Karatsuba and a future Toom-3.
+This is the base-2^32 analogue of the BigDecimal multiply win; note that
+the base-10^9 Comba trick itself does not transfer (Lesson 2).
 
-- **T-P1: square-and-multiply overhead.** General (non-2^N) power is
-  bottlenecked by per-multiply temporaries; route the inner loop through
-  `multiply_inplace` and the squaring through a dedicated `square()` that
-  exploits symmetry (~2× fewer partial products). The 2^N shift fast path is
-  already excellent (Rust loses to it).
-- **T-A1: add/sub small-operand constant overhead.** Apply Lesson #5 (hot
-  path first: same-length same-sign branch first) and audit for stray
-  `debug_assert .format` (Lesson #4). SIMD add is already present; the gap is
-  dispatch, not the kernel.
+### power (2.1× py) and add (1.5× py)
 
-### from_string / shift (compiled-peer gap)
+**T-P1 — power inner loop.** General (non-2^N) power pays for a fresh
+temporary on every multiply. Route the loop through `multiply_inplace` and
+add a dedicated `square()` that exploits symmetry, roughly half the partial
+products. The 2^N shift fast path is already excellent; Rust loses to it.
 
-- **T-F1: from_string base conversion.** O(n²) base-10→base-2^32 in the
-  50–10000-digit band; lower the D&C entry threshold after T-M1 (D&C uses
-  multiply). > 20000-digit gap closes only with Toom-3/NTT (T-M1).
-- **T-SH1: shift allocation.** Extreme shifts (`1 << 100000`) are
-  allocation-bound; pre-size the result buffer with
-  `resize(unsafe_uninit_length=…)` (O(1) capacity + memset) instead of
-  growth.
+**T-A1 — add/sub dispatch.** SIMD add is already in place, so the
+small-operand gap is dispatch, not the kernel. Put the same-length
+same-sign case first (Lesson 5) and check for any stray
+`debug_assert .format` (Lesson 4).
 
-### Execution plan
+### from_string and shift
 
-| Label | Hypothesis                                             | Status                                         |
-| ----- | ------------------------------------------------------ | ---------------------------------------------- |
-| T-W1  | Base-2^64 limbs (`UInt64`+`UInt128`)                   | OPEN — dominant cross-op gap vs Rust (~2–4×)   |
-| T-M1  | Toom-3 (then NTT) multiply for ≥256 / extreme words    | OPEN — unlocks mul, from_str, divide-via-recip |
-| T-D1  | Redundant `.copy()` / normalize allocs in floor_divide | OPEN — small-operand worst cases               |
-| T-D4  | Knuth-D inner-loop bounds/borrow overhead vs slices    | OPEN — Lesson #7 (two buffers) + offset-carry  |
-| T-M2  | SIMD partial-product accumulation in schoolbook base   | OPEN — base-2^32 analogue of Comba             |
-| T-P1  | `square()` exploiting symmetry for power inner loop    | OPEN                                           |
-| T-T1  | Lower D&C entry thresholds once divide is faster       | OPEN — also T-F1, T-D2                         |
-| T-D3  | Reciprocal-Newton divide                               | DEFERRED — needs T-M1/T-W1 (Lesson #9)         |
+**T-F1 — from_string base conversion.** The 50–10000-digit band runs an
+O(n²) base-10 → base-2^32 conversion. Lower the D&C entry threshold once
+multiply is faster; the 20000-digit-and-up gap only closes with Toom-3
+(T-M1).
+
+**T-SH1 — shift allocation.** Extreme shifts such as `1 << 100000` are
+allocation-bound. Pre-size the result buffer with
+`resize(unsafe_uninit_length=…)` (O(1) capacity plus memset) instead of
+letting it grow.
+
+### A bigger bet: base-2^64 limbs (unproven, not the first lever)
+
+num-bigint stores base-2^64 limbs on 64-bit targets; decimo stores
+base-2^32. For the same number num-bigint holds half the limbs, so its
+schoolbook multiply and Knuth-D base case run over half the words. This is
+worth keeping in mind for the large-operand multiply and from_string cases.
+
+It is not why decimo trails today, and I want to be clear about that. sqrt
+is multiply- and divide-heavy yet already sits at parity with Rust (1.0×),
+and Python beats decimo at divide with even narrower limbs. So I treat a
+wider limb as a later, large bet, and only after the per-call overhead
+above is gone.
+
+Feasibility (probed 2026-06-19, Mojo v1.0.0b1). The Rust `cfg_digit!` idea
+ports. Mojo rejects a ternary on the types themselves
+(`UInt64 if is_64bit() else UInt32`), but a ternary on `DType` values is
+accepted, so one comptime block selects the limb per target:
+
+```mojo
+comptime BASE_DT: DType = DType.uint64 if is_64bit() else DType.uint32
+comptime DOUBLE_DT: DType = DType.uint128 if is_64bit() else DType.uint64
+comptime BigBase = Scalar[BASE_DT]          # UInt64 on 64-bit
+comptime DoubleBigBase = Scalar[DOUBLE_DT]  # UInt128 on 64-bit
+comptime BITS: Int = 64 if is_64bit() else 32
+```
+
+`UInt128` `*`, `//`, `%`, `>>`, `&` all compute correctly; the `u128 ÷ u64`
+divide is software-emulated on arm64 but gives the right answer, same as
+num-bigint. The aliasing is trivial. The migration is not: base-2^32 is
+hard-coded across `src/decimo/bigint/` — the `List[UInt32]` field and every
+signature, the `1 << 32` / `0xFFFF_FFFF` / `>> 32` literals, the 4×UInt32
+NEON width, `_count_leading_zeros`, the base-10 ↔ base-2^k chunking in
+`from_string` / `to_string` (9 vs 19 digits per limb, the hard part), and
+`BigInt10` bit-layout interop. If I do it, I will first introduce
+`BigBase` / `DoubleBigBase` / `BITS` / `BASE` / `MASK` and replace every
+literal while keeping the limb at uint32, a pure and testable refactor with
+no behaviour change, then flip to uint64 and fix the base-conversion and
+SIMD fallout behind the test suite.
+
+**T-W1 — base-2^64 limbs. Open, low priority, unproven.**
+
+### Plan
+
+| Label | Item                                             | Status                                |
+| ----- | ------------------------------------------------ | ------------------------------------- |
+| T-D1  | Remove redundant `.copy()` /                     | OPEN — the floor_divide outlier (P0)  |
+|       | normalise allocs in divide                       |                                       |
+| T-D2  | Hoist Knuth-D inner loop;                        | OPEN — Lesson 7 (two buffers)         |
+|       | branchless offset-carry                          |                                       |
+| T-D3  | Re-tune `CUTOFF_BURNIKEL_ZIEGLER`                | OPEN — pair with the BigUInt todo     |
+| T-T1  | Lower to_string D&C entry threshold              | OPEN — after T-D1 / T-D2              |
+| T-M1  | Toom-3 multiply above ~256 words                 | OPEN — unblocks multiply, from_string |
+| T-M2  | SIMD partial-product accumulation in school base | OPEN                                  |
+| T-P1  | `square()` plus inplace loop for power           | OPEN                                  |
+| T-A1  | add/sub dispatch reorder                         | OPEN                                  |
+| T-SH1 | Pre-size the shift result buffer                 | OPEN                                  |
+| T-W1  | Base-2^64 limbs                                  | OPEN — unproven, low priority         |
+| T-D4  | Reciprocal-Newton divide                         | DEFERRED — needs Toom-3 (Lesson 9)    |
