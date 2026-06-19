@@ -141,12 +141,13 @@ band (the common case, and every sqrt inner iteration) runs the Knuth-D
 base case, whose per-call setup (normalise, estimate-correct loop) dominates
 at small sizes.
 
-- **T-D1: Knuth-D base-case overhead audit.** Profile the ≤64-word path;
-  hoist data pointers in the estimate/multiply-subtract inner loops
-  (Lesson #7 — two buffers), and reorder so the single-/double-word divisor
-  fast paths are reached with the fewest branches (Lesson #5). Rust's plain
-  schoolbook divide is 5.6× faster here, so the headroom is in constants,
-  not the algorithm.
+- **T-D1: Knuth-D base-case overhead audit.** Profile the ≤64-word path
+  and reorder so the single-/double-word divisor fast paths are reached
+  with the fewest branches (Lesson #5). Rust's plain schoolbook divide is
+  5.6× faster here, so the headroom is in constants, not the algorithm.
+- **T-D4: Pointer hoisting in the divide inner loop.** Hoist data pointers
+  in the estimate / multiply-subtract inner loops (Lesson #7 — two buffers,
+  so it clears the bar) of the Knuth-D base case.
 - **T-D2: Lower `CUTOFF_BURNIKEL_ZIEGLER` re-tune.** Re-measure 32/48/64
   now that the base case is faster; the medium band may benefit from earlier
   B-Z entry.
@@ -202,8 +203,8 @@ place).
 | Label | Hypothesis                                            | Status                                         |
 | ----- | ----------------------------------------------------- | ---------------------------------------------- |
 | T-M1  | Toom-3 (then NTT) multiply for ≥256 / extreme words   | OPEN — unlocks mul, from_str, divide-via-recip |
-| T-D1  | Knuth-D base-case constants dominate small/medium div | OPEN — T-D1; Rust schoolbook 5.6× faster       |
-| T-D1  | Pointer hoisting in inner loop                        | OPEN — T-D1 (Lesson #7, two buffers)           |
+| T-D1  | Knuth-D base-case constants dominate small/medium div | OPEN — Rust schoolbook 5.6× faster             |
+| T-D4  | Pointer hoisting in divide inner loop                 | OPEN — Lesson #7 (two buffers)                 |
 | T-M2  | SIMD partial-product accumulation in schoolbook base  | OPEN — T-M2 (base-2^32 analogue of Comba)      |
 | T-P1  | `square()` exploiting symmetry for power inner loop   | OPEN — T-P1                                    |
 | T-T1  | Lower D&C entry thresholds once divide is faster      | OPEN — T-T1, T-F1, T-D2                        |

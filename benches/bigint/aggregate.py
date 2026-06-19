@@ -18,10 +18,6 @@ from __future__ import annotations
 import argparse
 import csv
 import glob
-
-# Result strings can run into tens of thousands of characters (e.g.
-# 50000-digit from_string cases). Raise the CSV field limit accordingly.
-csv.field_size_limit(10_000_000)
 import os
 import platform
 import re
@@ -30,6 +26,11 @@ import statistics
 import subprocess
 import sys
 from datetime import datetime, timezone
+
+# Result strings can run into tens of thousands of characters (e.g.
+# 50000-digit from_string cases). Raise the CSV field limit accordingly.
+csv.field_size_limit(10_000_000)
+
 
 LANGS_DEFAULT = ["mojo", "python", "rust"]
 LANG_LABEL = {"mojo": "decimo", "python": "python", "rust": "rust"}
@@ -315,9 +316,11 @@ def main() -> int:
         "",
         "All timing columns (`decimo`, `python`, `rust`) are **ns / iter**.",
         "Each per-op timings table has a single correctness column,",
-        "`match py` (vs Python `int`), comparing integer values. A case is",
-        "listed in the `DIFF` block if `decimo` disagrees with the Python",
-        "oracle.",
+        "`match py` (vs Python `int`), comparing integer values: `OK` when",
+        "`decimo` equals the Python oracle, `DIFF` when it disagrees, and",
+        "`N/A` when either the `decimo` or `python` row is missing (so",
+        "correctness was not checked). Only real `DIFF` cases are listed in",
+        "the DIFF block.",
         "",
         f"Ratio columns: `dm/{ratio_short.get('python')}` = decimo ÷ python, "
         f"`dm/{ratio_short.get('rust')}` = decimo ÷ rust "
@@ -370,7 +373,9 @@ def main() -> int:
             lang for lang in ratio_pairs if lang in per_lang and "mojo" in per_lang
         ]
 
-        case_records: list[tuple[str, bool, dict[str, dict[str, str]]]] = []
+        # `py_match` is tri-state: True (OK), False (DIFF), or None
+        # (N/A — not checked because a `mojo` or `python` row is missing).
+        case_records: list[tuple[str, bool | None, dict[str, dict[str, str]]]] = []
         for case in case_orders[op]:
             recs = {
                 lang: per_lang.get(lang, {}).get(case, {}) for lang in present_langs
@@ -378,7 +383,7 @@ def main() -> int:
             mojo_val = recs.get("mojo", {}).get("result")
             py_val = recs.get("python", {}).get("result")
             if mojo_val is None or py_val is None:
-                py_match = False
+                py_match = None
             else:
                 py_match = _values_equal(mojo_val, py_val)
             case_records.append((case, py_match, recs))
@@ -390,7 +395,12 @@ def main() -> int:
             time_header.append(f"dm/{ratio_short.get(lang, lang)}")
         time_body: list[list[str]] = []
         for case, py_match, recs in case_records:
-            py_cell = "OK" if py_match else "DIFF"
+            if py_match is None:
+                py_cell = "N/A"
+            elif py_match:
+                py_cell = "OK"
+            else:
+                py_cell = "DIFF"
             row = [_short_name(case), py_cell]
             for lang in present_langs:
                 row.append(
@@ -404,9 +414,11 @@ def main() -> int:
         lines.extend(render_aligned_table(time_header, time_body))
         lines.append("")
 
-        # A case is shown in the DIFF block iff decimo disagrees with the
-        # Python oracle.
-        diffs = [t for t in case_records if not t[1]]
+        # A case is shown in the DIFF block iff decimo genuinely disagrees
+        # with the Python oracle (`py_match is False`). Cases that were not
+        # checked (`py_match is None`, e.g. a harness was skipped) are
+        # excluded — they are not mismatches.
+        diffs = [t for t in case_records if t[1] is False]
         if diffs:
             lines.append(
                 f"<details><summary>{len(diffs)} DIFF case(s) at "
@@ -436,23 +448,26 @@ def main() -> int:
     # ----- Section 3: agreement summary -----
     lines.append("## 3. decimo-vs-python agreement summary")
     lines.append("")
-    eq_header = ["op", "total", "matched", "mismatched", "match %"]
+    eq_header = ["op", "checked", "matched", "mismatched", "match %"]
     eq_rows: list[list[str]] = []
     for op in args.ops:
-        total = len(case_orders[op])
+        # Only count cases where BOTH `mojo` and `python` results are
+        # present; cases missing either side were not checked and must not
+        # inflate the mismatch count. `match %` is `-` when nothing was
+        # checked (e.g. the Python harness was skipped).
+        checked = 0
         matched = 0
         for case in case_orders[op]:
             per_lang = records[op]
             mojo_val = per_lang.get("mojo", {}).get(case, {}).get("result")
             py_val = per_lang.get("python", {}).get(case, {}).get("result")
-            if (
-                mojo_val is not None
-                and py_val is not None
-                and _values_equal(mojo_val, py_val)
-            ):
+            if mojo_val is None or py_val is None:
+                continue
+            checked += 1
+            if _values_equal(mojo_val, py_val):
                 matched += 1
-        pct = f"{(100.0 * matched / total):.1f}%" if total else "-"
-        eq_rows.append([op, str(total), str(matched), str(total - matched), pct])
+        pct = f"{(100.0 * matched / checked):.1f}%" if checked else "-"
+        eq_rows.append([op, str(checked), str(matched), str(checked - matched), pct])
     lines.extend(render_aligned_table(eq_header, eq_rows))
 
     report = "\n".join(lines) + "\n"

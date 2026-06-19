@@ -17,7 +17,6 @@
 
 use num_bigint::BigInt;
 use num_integer::Integer;
-use num_integer::Roots;
 use num_traits::Pow;
 use serde::Deserialize;
 use std::env;
@@ -145,11 +144,13 @@ fn compute_result(op: &str, da: &BigInt, db: &BigInt, exp: u32, shift: usize, a:
 fn run_op(op: &str, a: &str, b: &str, iter_hint: u64) -> (String, f64) {
     let da = BigInt::from_str(a).expect("from_str a");
     // `b` is the second operand (add/multiply/floor_divide) or a small
-    // integer (power exponent / shift count). Unary ops ignore it.
+    // integer (power exponent / shift count). Unary ops leave it empty.
+    // Fail fast on a malformed non-empty operand, consistent with `a`, so
+    // bad case data cannot masquerade as a valid benchmark run.
     let db = if b.is_empty() {
         BigInt::from(0)
     } else {
-        BigInt::from_str(b).unwrap_or_else(|_| BigInt::from(0))
+        BigInt::from_str(b).expect("from_str b")
     };
     let exp: u32 = if op == "power" {
         b.parse::<u32>().expect("power exponent")

@@ -3,7 +3,7 @@
 # timestamped markdown report under reports/.
 #
 # Raw per-language CSV logs land in   logs/{lang}_{op}_{ts}.csv
-# Aggregated markdown report lands in reports/bigint_report_{ts}.md
+# Aggregated markdown report lands in reports/bigint_report_utc_{ts}.md
 #
 # BigInt is exact: there is NO precision parameter.
 #
