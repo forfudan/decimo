@@ -273,11 +273,22 @@ hard-coded across `src/decimo/bigint/` — the `List[UInt32]` field and every
 signature, the `1 << 32` / `0xFFFF_FFFF` / `>> 32` literals, the 4×UInt32
 NEON width, `_count_leading_zeros`, the base-10 ↔ base-2^k chunking in
 `from_string` / `to_string` (9 vs 19 digits per limb, the hard part), and
-`BigInt10` bit-layout interop. If I do it, I will first introduce
-`BigBase` / `DoubleBigBase` / `BITS` / `BASE` / `MASK` and replace every
-literal while keeping the limb at uint32, a pure and testable refactor with
-no behaviour change, then flip to uint64 and fix the base-conversion and
-SIMD fallout behind the test suite.
+`BigInt10` bit-layout interop. One place actually gets *simpler*:
+`from_integral_scalar` today branches per input dtype
+(uint8/16/32/64/128/256, signed variants) only because the word extraction
+is hard-coded to 32 bits. With a `BITS`-parametric limb it collapses to one
+generic peel loop over `N_LIMBS = ceil(bitwidthof(dtype) / BITS)`,
+`@parameter for`-unrolled, that works for any input dtype and either limb
+width. The one care point is the input-width == limb-width boundary (e.g.
+a `UInt64` input with 64-bit limbs): guard the mask with `~0` and skip the
+final `>> BITS` so it never shifts by the full width, and take the
+magnitude via an unsigned negate so `Int.MIN` does not overflow. Probed
+2026-06-19: the loop compiles and gives correct limbs for `u8`, `u64`,
+`u128`, and negative `i64` at both `BITS = 32` and `BITS = 64`. If I do the
+migration, I will first introduce `BigBase` / `DoubleBigBase` / `BITS` /
+`BASE` / `MASK` and replace every literal while keeping the limb at uint32,
+a pure and testable refactor with no behaviour change, then flip to uint64
+and fix the base-conversion and SIMD fallout behind the test suite.
 
 **T-W1 — base-2^64 limbs. Open, low priority, unproven.**
 
