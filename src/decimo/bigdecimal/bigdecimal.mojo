@@ -37,6 +37,7 @@ import decimo.bigdecimal.comparison as bigdecimal_comparison
 import decimo.bigdecimal.constants as bigdecimal_constants
 import decimo.bigdecimal.exponential as bigdecimal_exponential
 import decimo.bigdecimal.rounding as bigdecimal_rounding
+import decimo.bigdecimal.special as bigdecimal_special
 import decimo.bigdecimal.trigonometric as bigdecimal_trigonometric
 import decimo.biguint.arithmetics as biguint_arithmetics
 
@@ -194,7 +195,7 @@ struct BigDecimal(
 
     @implicit
     def __init__(out self, value: BigInt10):
-        """Constructs a BigDecimal from a big integer.
+        """Constructs a BigDecimal from a base-10 big integer.
 
         Args:
             value: The `BigInt10` to convert.
@@ -1849,6 +1850,23 @@ struct BigDecimal(
             OverflowError: If the result is too large to represent.
         """
         return bigdecimal_exponential.exp(self, precision)
+
+    def factorial(self, precision: Int = 0) raises -> Self:
+        """Returns the factorial of this value (`self!`).
+
+        Args:
+            precision: Significant digits for the result. `0` (the default)
+                computes the exact factorial with no rounding. A positive
+                value rounds intermediate products to keep the computation
+                bounded and returns `precision` correct significant digits.
+
+        Returns:
+            `self!` (`0! == 1`). Exact when `precision == 0`.
+
+        Raises:
+            ValueError: If `self` is negative or larger than 10^9.
+        """
+        return bigdecimal_special.factorial(self, precision)
 
     @always_inline
     def ln(self, precision: Int = PRECISION) raises -> Self:
