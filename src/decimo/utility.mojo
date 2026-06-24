@@ -52,4 +52,7 @@ def unsigned_counterpart[dtype: DType]() -> DType where dtype.is_integral():
     else:
         # Already unsigned: uint8 / uint16 / uint32 / uint64 / uint128 /
         # uint256 and the platform-sized `uint` are their own counterpart.
+        comptime assert (
+            dtype.is_unsigned()
+        ), "unsigned_counterpart: unexpected signed integral dtype"
         return dtype

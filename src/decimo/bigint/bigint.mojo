@@ -288,7 +288,7 @@ struct BigInt(
             sign = value < 0
 
         # Keep the magnitude in an unsigned word of the same width.
-        # The unsigned counterpart is always larger than the signed type.
+        # The unsigned counterpart has the same bit width, just a larger range.
         comptime unsigned_dtype = unsigned_counterpart[dtype]()
         var magnitude: Scalar[unsigned_dtype]
 
@@ -300,13 +300,13 @@ struct BigInt(
         # SIGNED_MAX + 1 + |SIGNED_MIN| - |x|
         # = SIGNED_MAX + 1 + (SIGNED_MAX + 1) + x
         # = 2 * SIGNED_MAX + 2 + x
-        # So UNSIGNED 0 - (bit polistion of SIGNED x)
+        # So UNSIGNED 0 - (bit position of SIGNED x)
         # = UNSIGNED_MAX + 1 - (2 * SIGNED_MAX + 2 + x)
         # = UNSIGNED_MAX + 1 - 2 * (UNSIGNED_MAX - 1) / 2 - 2 -x
         # = UNSIGNED_MAX + 1 - UNSIGNED_MAX + 1 - 2 - x
         # = - x
         # = |x|
-        # Yes, it is the magnitide of the signed negative value x.
+        # Yes, it is the magnitude of the signed negative value x.
         comptime if dtype.is_signed():
             if sign:
                 magnitude = Scalar[unsigned_dtype](0) - Scalar[unsigned_dtype](
@@ -318,8 +318,8 @@ struct BigInt(
             magnitude = Scalar[unsigned_dtype](value)
 
         # Split the magnitude into base-2^32 words, least significant first.
-        # `BITS_PER_WORD` is the only thing tied to the word size, so if we
-        # want to use a wider word, e.g., UInt64, it is a one-line change.
+        # The peeling loop below is parameterized by `BITS_PER_WORD` for
+        # future extension to other word sizes (e.g. 64-bit words).
         comptime value_bits = size_of[Scalar[unsigned_dtype]]() * 8
         comptime number_of_words = (
             value_bits + Self.BITS_PER_WORD - 1
@@ -327,7 +327,9 @@ struct BigInt(
         var words = List[UInt32](capacity=number_of_words)
 
         comptime for i in range(number_of_words):
-            words.append(UInt32(magnitude))
+            words.append(
+                UInt32(magnitude & Scalar[unsigned_dtype](Self.WORD_MAX))
+            )
 
             comptime if i < number_of_words - 1:  # No need after reading the last word
                 magnitude >>= (
