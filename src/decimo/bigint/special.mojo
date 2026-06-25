@@ -92,7 +92,7 @@ def product_range(low: Int, high: Int) -> BigInt:
         return BigInt(low)
     if high == low + 1:
         return BigInt(low) * BigInt(high)
-    var mid = (low + high) // 2
+    var mid = low + (high - low) // 2
     return product_range(low, mid) * product_range(mid + 1, high)
 
 
@@ -126,6 +126,11 @@ def permutation(x: BigInt, k: Int) raises -> BigInt:
     if k > FACTORIAL_MAX_INPUT:
         raise ValueError(
             message="Permutation k is too large to compute (must be <= 10^6).",
+            function="permutation()",
+        )
+    if x > BigInt(Int.MAX):
+        raise ValueError(
+            message="Permutation n is too large to fit in an Int.",
             function="permutation()",
         )
     var n = Int(x)

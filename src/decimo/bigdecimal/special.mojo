@@ -120,7 +120,7 @@ def product_range(low: Int, high: Int) raises -> BigDecimal:
         return BigDecimal(low)
     if high == low + 1:
         return BigDecimal(low).multiply(BigDecimal(high))
-    var mid = (low + high) // 2
+    var mid = low + (high - low) // 2
     return product_range(low, mid).multiply(product_range(mid + 1, high))
 
 
@@ -164,6 +164,11 @@ def permutation(x: BigDecimal, k: Int, precision: Int = 0) raises -> BigDecimal:
             message="Permutation k is too large to compute (must be <= 10^6).",
             function="permutation()",
         )
+    if x > BigDecimal(Int.MAX):
+        raise ValueError(
+            message="Permutation n is too large to fit in an Int.",
+            function="permutation()",
+        )
     var n = Int(x.truncate())
     if k > n:
         return BigDecimal(0)
@@ -171,7 +176,7 @@ def permutation(x: BigDecimal, k: Int, precision: Int = 0) raises -> BigDecimal:
         return product_range(n - k + 1, n)
 
     var working_precision = (
-        precision + String(k).byte_length() + FACTORIAL_GUARD_DIGITS
+        precision + String(n).byte_length() + FACTORIAL_GUARD_DIGITS
     )
     var result = BigDecimal(1)
     for i in range(n - k + 1, n + 1):
