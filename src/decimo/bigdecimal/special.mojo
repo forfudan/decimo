@@ -82,11 +82,11 @@ def factorial(x: BigDecimal, precision: Int = 0) raises -> BigDecimal:
     # fractional part (e.g. "5.00") convert cleanly to `Int`.
     var n = Int(x.truncate())
     if precision <= 0:
-        # Exact: full-width products, no rounding.
-        var result = BigDecimal(1)
-        for i in range(2, n + 1):
-            result = result.multiply(BigDecimal(i))
-        return result^
+        # Exact: balanced binary splitting (same idea as BigInt) is much
+        # faster than a left-to-right running product for large `n`.
+        if n < 2:
+            return BigDecimal(1)
+        return product_range(2, n)
 
     # Rounded: keep every product at `precision + guard` significant digits,
     # where the guard also grows with the number of digits in `n`. Round the
@@ -96,5 +96,84 @@ def factorial(x: BigDecimal, precision: Int = 0) raises -> BigDecimal:
     )
     var result = BigDecimal(1)
     for i in range(2, n + 1):
+        result = result.multiply(BigDecimal(i), working_precision)
+    return result.multiply(BigDecimal(1), precision)
+
+
+def product_range(low: Int, high: Int) raises -> BigDecimal:
+    """Returns the exact product of the consecutive integers in `[low, high]`.
+
+    The range is inclusive; an empty range (`low > high`) returns 1. Uses
+    balanced binary splitting with exact multiplication (`precision=0`), so
+    each multiplication stays between operands of similar size.
+
+    Args:
+        low: The first integer in the range.
+        high: The last integer in the range.
+
+    Returns:
+        `low * (low + 1) * ... * high` (1 when the range is empty).
+    """
+    if low > high:
+        return BigDecimal(1)
+    if low == high:
+        return BigDecimal(low)
+    if high == low + 1:
+        return BigDecimal(low).multiply(BigDecimal(high))
+    var mid = (low + high) // 2
+    return product_range(low, mid).multiply(product_range(mid + 1, high))
+
+
+def permutation(x: BigDecimal, k: Int, precision: Int = 0) raises -> BigDecimal:
+    """Calculates the number of `k`-permutations of `n = x` items.
+
+    `P(n, k) = n! / (n - k)!`. The result is exact when `precision == 0`; a
+    positive `precision` rounds the intermediate products and returns
+    `precision` significant digits.
+
+    Args:
+        x: The number of items `n` (a non-negative integer value).
+        k: The number of ordered positions to fill (non-negative).
+        precision: Significant digits for the result (`0` = exact).
+
+    Returns:
+        `P(n, k)`. Returns 0 when `k > n` (no such arrangement exists);
+        `P(n, 0) == 1`.
+
+    Raises:
+        ValueError: If `x` is not an integer, `x` or `k` is negative, or `k`
+            is larger than `FACTORIAL_MAX_INPUT` (10^6).
+    """
+    if not x.is_integer():
+        raise ValueError(
+            message="Permutation is only defined for integer values of n.",
+            function="permutation()",
+        )
+    if x < BigDecimal(0):
+        raise ValueError(
+            message="Permutation is not defined for a negative n.",
+            function="permutation()",
+        )
+    if k < 0:
+        raise ValueError(
+            message="Permutation is not defined for a negative k.",
+            function="permutation()",
+        )
+    if k > FACTORIAL_MAX_INPUT:
+        raise ValueError(
+            message="Permutation k is too large to compute (must be <= 10^6).",
+            function="permutation()",
+        )
+    var n = Int(x.truncate())
+    if k > n:
+        return BigDecimal(0)
+    if precision <= 0:
+        return product_range(n - k + 1, n)
+
+    var working_precision = (
+        precision + String(k).byte_length() + FACTORIAL_GUARD_DIGITS
+    )
+    var result = BigDecimal(1)
+    for i in range(n - k + 1, n + 1):
         result = result.multiply(BigDecimal(i), working_precision)
     return result.multiply(BigDecimal(1), precision)
