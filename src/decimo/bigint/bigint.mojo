@@ -35,6 +35,7 @@ import decimo.bigint.bitwise as bigint_bitwise
 import decimo.bigint.comparison as bigint_comparison
 import decimo.bigint.exponential as bigint_exponential
 import decimo.bigint.number_theory as bigint_number_theory
+import decimo.bigint.special as bigint_special
 import decimo.str as decimo_str
 from decimo.bigint10.bigint10 import BigInt10
 from decimo.biguint.biguint import BigUInt
@@ -219,6 +220,9 @@ struct BigInt(
     # Constructing methods that are not dunders
     # ===------------------------------------------------------------------=== #
 
+    # IMPORTANT:
+    # This function will be removed in the future when `Int` type is
+    # a comptime alias of `SIMD[DType.int, 1]`.
     @staticmethod
     def from_int(value: Int) -> Self:
         """Creates a BigInt from a Mojo Int.
@@ -1466,6 +1470,17 @@ struct BigInt(
             Error: If the value is negative.
         """
         return bigint_exponential.sqrt(self)
+
+    def factorial(self) raises -> Self:
+        """Returns the factorial of this value.
+
+        Returns:
+            `self!` (`0! == 1`).
+
+        Raises:
+            ValueError: If `self` is negative or larger than 10^6.
+        """
+        return bigint_special.factorial(self)
 
     @always_inline
     def compare_magnitudes(self, other: Self) -> Int8:

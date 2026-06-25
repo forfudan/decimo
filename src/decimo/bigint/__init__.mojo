@@ -29,4 +29,6 @@ Modules:
 - bitwise: AND, OR, XOR, NOT (Python two's complement semantics)
 - comparison: compare, greater, less, equal
 - exponential: sqrt, isqrt
+- number_theory: gcd, extended_gcd, lcm, mod_pow, mod_inverse
+- special: factorial (and future special functions)
 """
