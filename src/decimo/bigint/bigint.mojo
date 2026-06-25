@@ -1478,7 +1478,7 @@ struct BigInt(
             `self!` (`0! == 1`).
 
         Raises:
-            ValueError: If `self` is negative or larger than 10^9.
+            ValueError: If `self` is negative or larger than 10^6.
         """
         return bigint_special.factorial(self)
 

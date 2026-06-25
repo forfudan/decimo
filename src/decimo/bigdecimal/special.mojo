@@ -28,12 +28,12 @@ from decimo.errors import ValueError
 # that accumulates over the `n` intermediate products.
 comptime FACTORIAL_GUARD_DIGITS = 9  # word size
 
-# Largest argument accepted by `factorial`. 10^9 already needs ~10^9
-# multiplications and produces a result with billions of digits, so anything
-# beyond it is computationally infeasible. The cap also keeps the value within
-# Mojo's `Int` range, so an out-of-range argument raises a clear error
-# instead of an `Int` overflow.
-comptime FACTORIAL_MAX_INPUT = 1_000_000_000
+# Largest argument accepted by `factorial`. Even 10^6 already needs ~10^6
+# multiplications, so anything beyond it is impractical with the simple
+# iterative product. The cap also keeps the value within Mojo's `Int` range,
+# so an out-of-range argument raises a clear error instead of an `Int`
+# overflow. (A faster algorithm, e.g. binary splitting, could lift this.)
+comptime FACTORIAL_MAX_INPUT = 1_000_000
 
 
 def factorial(x: BigDecimal, precision: Int = 0) raises -> BigDecimal:
@@ -52,14 +52,19 @@ def factorial(x: BigDecimal, precision: Int = 0) raises -> BigDecimal:
         Exact when `precision == 0`.
 
     Raises:
-        ValueError: If `x` is negative or larger than `FACTORIAL_MAX_INPUT`
-            (10^9).
+        ValueError: If `x` is not an integer, is negative, or is larger than
+            `FACTORIAL_MAX_INPUT` (10^6).
 
     Notes:
 
     The value must currently fit in a Mojo `Int`. Arbitrarily large
     arguments will be supported later.
     """
+    if not x.is_integer():
+        raise ValueError(
+            message="Factorial is only defined for integer values.",
+            function="factorial()",
+        )
     if x < BigDecimal(0):
         raise ValueError(
             message="Factorial is not defined for negative numbers.",
@@ -68,12 +73,14 @@ def factorial(x: BigDecimal, precision: Int = 0) raises -> BigDecimal:
     if x > BigDecimal(FACTORIAL_MAX_INPUT):
         raise ValueError(
             message=(
-                "Factorial argument is too large to compute (must be <= 10^9)."
+                "Factorial argument is too large to compute (must be <= 10^6)."
             ),
             function="factorial()",
         )
 
-    var n = Int(x)
+    # `truncate` gives a scale-0 BigDecimal, so integer values written with a
+    # fractional part (e.g. "5.00") convert cleanly to `Int`.
+    var n = Int(x.truncate())
     if precision <= 0:
         # Exact: full-width products, no rounding.
         var result = BigDecimal(1)

@@ -1567,10 +1567,10 @@ struct BigDecimal(
         return truncated^
 
     def __trunc__(self) raises -> Self:
-        """Returns self truncated toward zero (removes fractional part).
+        """Returns self truncated toward zero (removes the fractional part).
 
-        Equivalent to `math.trunc()` in Python. Returns a BigDecimal
-        with scale 0.
+        Equivalent to `math.trunc()` in Python; delegates to `truncate()`.
+        Returns a BigDecimal with scale 0.
 
         Returns:
             The truncated integer part of this value.
@@ -1578,11 +1578,7 @@ struct BigDecimal(
         Raises:
             Error: If the underlying rounding operation fails.
         """
-        if self.scale <= 0:
-            return self.copy()
-        return bigdecimal_rounding.round(
-            self, ndigits=0, rounding_mode=RoundingMode.down()
-        )
+        return self.truncate()
 
     # ===------------------------------------------------------------------=== #
     # Basic arithmetic operation without dunders
@@ -1864,7 +1860,8 @@ struct BigDecimal(
             `self!` (`0! == 1`). Exact when `precision == 0`.
 
         Raises:
-            ValueError: If `self` is negative or larger than 10^9.
+            ValueError: If `self` is not an integer, is negative, or is
+                larger than 10^6.
         """
         return bigdecimal_special.factorial(self, precision)
 
@@ -2326,6 +2323,23 @@ struct BigDecimal(
         ```
         """
         return self * a + b
+
+    def truncate(self) raises -> Self:
+        """Returns self truncated toward zero (removes the fractional part).
+
+        Returns a BigDecimal with scale 0.
+
+        Returns:
+            The truncated integer part of this value.
+
+        Raises:
+            Error: If the underlying rounding operation fails.
+        """
+        if self.scale <= 0:
+            return self.copy()
+        return bigdecimal_rounding.round(
+            self, ndigits=0, rounding_mode=RoundingMode.down()
+        )
 
     # ===------------------------------------------------------------------=== #
     # Other methods

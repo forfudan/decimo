@@ -23,12 +23,12 @@
 from decimo.bigint.bigint import BigInt
 from decimo.errors import ValueError
 
-# Largest argument accepted by `factorial`. 10^9 already needs ~10^9
-# multiplications and produces a result with billions of digits, so anything
-# beyond it is computationally infeasible. The cap also keeps the value within
-# Mojo's `Int` range, so an out-of-range argument raises a clear error
-# instead of an `Int` overflow.
-comptime FACTORIAL_MAX_INPUT = 1_000_000_000
+# Largest argument accepted by `factorial`. Even 10^6 already needs ~10^6
+# multiplications, so anything beyond it is impractical with the simple
+# iterative product. The cap also keeps the value within Mojo's `Int` range,
+# so an out-of-range argument raises a clear error instead of an `Int`
+# overflow. (A faster algorithm, e.g. binary splitting, could lift this.)
+comptime FACTORIAL_MAX_INPUT = 1_000_000
 
 
 def factorial(x: BigInt) raises -> BigInt:
@@ -42,7 +42,7 @@ def factorial(x: BigInt) raises -> BigInt:
 
     Raises:
         ValueError: If `x` is negative or larger than `FACTORIAL_MAX_INPUT`
-            (10^9).
+            (10^6).
 
     Notes:
 
@@ -57,7 +57,7 @@ def factorial(x: BigInt) raises -> BigInt:
     if x > BigInt(FACTORIAL_MAX_INPUT):
         raise ValueError(
             message=(
-                "Factorial argument is too large to compute (must be <= 10^9)."
+                "Factorial argument is too large to compute (must be <= 10^6)."
             ),
             function="factorial()",
         )
