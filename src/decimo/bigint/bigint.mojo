@@ -1482,6 +1482,23 @@ struct BigInt(
         """
         return bigint_special.factorial(self)
 
+    def permutation(self, k: Int) raises -> Self:
+        """Returns the number of `k`-permutations of `self` items.
+
+        `P(n, k) = n! / (n - k)!`, where `n = self`.
+
+        Args:
+            k: The number of ordered positions to fill (non-negative).
+
+        Returns:
+            `P(self, k)`; 0 when `k > self`, and `P(self, 0) == 1`.
+
+        Raises:
+            ValueError: If `self` or `k` is negative, or `k` is larger
+                than 10^6.
+        """
+        return bigint_special.permutation(self, k)
+
     @always_inline
     def compare_magnitudes(self, other: Self) -> Int8:
         """Compares the magnitudes (absolute values) of two BigInt numbers.

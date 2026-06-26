@@ -61,5 +61,17 @@ def test_factorial_too_large_raises() raises:
     testing.assert_true(raised, "factorial above the cap should raise")
 
 
+def test_permutation() raises:
+    """Test permutation P(n, k) exact."""
+    testing.assert_equal(String(BigDecimal(10).permutation(3)), "720")
+    testing.assert_equal(String(BigDecimal(5).permutation(0)), "1")
+    testing.assert_equal(String(BigDecimal(5).permutation(7)), "0")  # k > n
+
+
+def test_permutation_rounded() raises:
+    """Test permutation rounded mode."""
+    testing.assert_equal(String(BigDecimal(10).permutation(3, 2)), "7.2E+2")
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()

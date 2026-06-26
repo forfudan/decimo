@@ -43,5 +43,24 @@ def test_factorial_too_large_raises() raises:
     testing.assert_true(raised, "factorial above the cap should raise")
 
 
+def test_permutation() raises:
+    """Test permutation P(n, k)."""
+    testing.assert_equal(String(BigInt(10).permutation(3)), "720")
+    testing.assert_equal(String(BigInt(5).permutation(5)), "120")  # P(n,n)=n!
+    testing.assert_equal(String(BigInt(5).permutation(0)), "1")
+    testing.assert_equal(String(BigInt(5).permutation(7)), "0")  # k > n
+    testing.assert_equal(String(BigInt(100).permutation(2)), "9900")
+
+
+def test_permutation_negative_k_raises() raises:
+    """Test that a negative k raises."""
+    var raised = False
+    try:
+        _ = BigInt(5).permutation(-1)
+    except:
+        raised = True
+    testing.assert_true(raised, "permutation with negative k should raise")
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()

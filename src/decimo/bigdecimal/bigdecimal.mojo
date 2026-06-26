@@ -1865,6 +1865,26 @@ struct BigDecimal(
         """
         return bigdecimal_special.factorial(self, precision)
 
+    def permutation(self, k: Int, precision: Int = 0) raises -> Self:
+        """Returns the number of `k`-permutations of `self` items.
+
+        `P(n, k) = n! / (n - k)!`, where `n = self`. Exact when
+        `precision == 0`; a positive `precision` returns that many
+        significant digits.
+
+        Args:
+            k: The number of ordered positions to fill (non-negative).
+            precision: Significant digits for the result (`0` = exact).
+
+        Returns:
+            `P(self, k)`; 0 when `k > self`, and `P(self, 0) == 1`.
+
+        Raises:
+            ValueError: If `self` is not an integer, `self` or `k` is
+                negative, or `k` is larger than 10^6.
+        """
+        return bigdecimal_special.permutation(self, k, precision)
+
     @always_inline
     def ln(self, precision: Int = PRECISION) raises -> Self:
         """Returns the natural logarithm of the BigDecimal number.
