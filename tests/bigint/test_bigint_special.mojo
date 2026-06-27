@@ -23,6 +23,15 @@ def test_factorial_large() raises:
     )
 
 
+def test_factorial_crosses_leaf_cutoff() raises:
+    """Test factorial large enough to exercise the binary-split branch."""
+    # 40 > the 32-factor leaf cutoff, so this splits and recombines.
+    testing.assert_equal(
+        String(BigInt(40).factorial()),
+        "815915283247897734345611269596115894272000000000",
+    )
+
+
 def test_factorial_negative_raises() raises:
     """Test that a negative argument raises."""
     var raised = False
@@ -60,6 +69,22 @@ def test_permutation_negative_k_raises() raises:
     except:
         raised = True
     testing.assert_true(raised, "permutation with negative k should raise")
+
+
+def test_permutation_large_n() raises:
+    """Test permutation with a large n that still fits in one word."""
+    # n = 70000 (< 2^32), k = 2 -> 70000 * 69999.
+    testing.assert_equal(String(BigInt(70000).permutation(2)), "4899930000")
+
+
+def test_permutation_n_too_large_raises() raises:
+    """Test that an n above 2^32 - 1 raises."""
+    var raised = False
+    try:
+        _ = BigInt(4_294_967_296).permutation(2)  # 2^32, above WORD_MAX
+    except:
+        raised = True
+    testing.assert_true(raised, "permutation with n > 2^32 - 1 should raise")
 
 
 def main() raises:
