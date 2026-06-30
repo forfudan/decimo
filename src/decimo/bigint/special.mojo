@@ -79,7 +79,7 @@ def factorial(x: BigInt) raises -> BigInt:
     return product_range(2, n)
 
 
-def product_range(low: Int, high: Int) -> BigInt:
+def product_range(low: Int, high: Int) raises -> BigInt:
     """Returns the product of the consecutive integers in `[low, high]`.
 
     The range is inclusive; an empty range (`low > high`) returns 1. Large
@@ -90,18 +90,33 @@ def product_range(low: Int, high: Int) -> BigInt:
     the way down.
 
     Args:
-        low: The first integer in the range.
-        high: The last integer in the range.
+        low: The first integer in the range (must be `>= 0`).
+        high: The last integer in the range (must be `<= 2^32 - 1` so every
+            factor fits in a single word).
 
     Returns:
         `low * (low + 1) * ... * high` (1 when the range is empty).
+
+    Raises:
+        ValueError: If the range is non-empty and `low < 0` or
+            `high > 2^32 - 1`, since the leaf multiplies cast each factor to a
+            single word.
     """
     if low > high:
         return BigInt.one()
-    if high - low < PRODUCT_RANGE_LEAF_CUTOFF:
-        # `low` fits in a single word (callers cap it at WORD_MAX) and each
-        # factor adds at most one word, so reserve the result up front to
-        # avoid reallocating while it grows.
+    if low < 0 or high > Int(BigInt.WORD_MAX):
+        raise ValueError(
+            message=(
+                "product_range bounds must satisfy 0 <= low <= high <= 2^32 -"
+                " 1."
+            ),
+            function="product_range()",
+        )
+    # `high - low + 1` is the number of factors; accumulate the leaf directly
+    # once that count is within the cutoff. `low` and every factor fit in a
+    # single word (checked above), and each multiply adds at most one word, so
+    # reserve the result up front to avoid reallocating while it grows.
+    if high - low + 1 <= PRODUCT_RANGE_LEAF_CUTOFF:
         var result = BigInt(uninitialized_capacity=high - low + 2)
         result.words.append(UInt32(low))
         for factor in range(low + 1, high + 1):

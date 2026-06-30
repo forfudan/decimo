@@ -4,6 +4,8 @@
 
 from std import testing
 from decimo.bigint.bigint import BigInt
+from decimo.bigint.arithmetics import multiply_by_word_inplace
+from decimo.bigint.special import product_range
 
 
 def test_factorial_basic() raises:
@@ -85,6 +87,41 @@ def test_permutation_n_too_large_raises() raises:
     except:
         raised = True
     testing.assert_true(raised, "permutation with n > 2^32 - 1 should raise")
+
+
+def test_multiply_by_word_inplace_zero_and_one() raises:
+    """word == 1 is a no-op; word == 0 yields a canonical zero."""
+    var x = BigInt(12345)
+    multiply_by_word_inplace(x, 1)
+    testing.assert_equal(String(x), "12345")
+    multiply_by_word_inplace(x, 0)
+    testing.assert_equal(String(x), "0")
+    # Zero times any word stays zero.
+    multiply_by_word_inplace(x, 7)
+    testing.assert_equal(String(x), "0")
+
+
+def test_multiply_by_word_inplace_preserves_sign() raises:
+    """The sign is preserved when scaling a negative value."""
+    var x = BigInt(-6)
+    multiply_by_word_inplace(x, 7)
+    testing.assert_equal(String(x), "-42")
+
+
+def test_product_range_out_of_bounds_raises() raises:
+    """product_range rejects bounds that don't fit in a single word."""
+    var raised = False
+    try:
+        _ = product_range(1, 4_294_967_296)  # high = 2^32 > WORD_MAX
+    except:
+        raised = True
+    testing.assert_true(raised, "product_range high > 2^32-1 should raise")
+    raised = False
+    try:
+        _ = product_range(-1, 5)
+    except:
+        raised = True
+    testing.assert_true(raised, "product_range low < 0 should raise")
 
 
 def main() raises:
