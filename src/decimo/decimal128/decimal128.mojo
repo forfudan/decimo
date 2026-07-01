@@ -23,7 +23,7 @@ operation dunders, and other dunders that implement traits, as well as
 mathematical methods that do not implement a trait.
 """
 
-from std.memory import UnsafePointer
+from std.memory import Span, UnsafePointer
 from std.hashlib.hasher import Hasher
 
 import decimo.decimal128.arithmetics as decimal128_arithmetics
@@ -1136,8 +1136,9 @@ struct Decimal128(
         if scale == 0:
             writer.write(
                 StringSlice(
-                    ptr=buf.unsafe_ptr() + pos,
-                    length=n_digits,
+                    unsafe_from_utf8=Span(
+                        ptr=buf.unsafe_ptr() + pos, length=n_digits
+                    )
                 )
             )
         elif scale >= n_digits:
@@ -1154,23 +1155,26 @@ struct Decimal128(
             writer.write("0.")
             writer.write(
                 StringSlice(
-                    ptr=buf.unsafe_ptr() + frac_start,
-                    length=scale,
+                    unsafe_from_utf8=Span(
+                        ptr=buf.unsafe_ptr() + frac_start, length=scale
+                    )
                 )
             )
         else:
             var int_len = n_digits - scale
             writer.write(
                 StringSlice(
-                    ptr=buf.unsafe_ptr() + pos,
-                    length=int_len,
+                    unsafe_from_utf8=Span(
+                        ptr=buf.unsafe_ptr() + pos, length=int_len
+                    )
                 )
             )
             writer.write(".")
             writer.write(
                 StringSlice(
-                    ptr=buf.unsafe_ptr() + pos + int_len,
-                    length=scale,
+                    unsafe_from_utf8=Span(
+                        ptr=buf.unsafe_ptr() + pos + int_len, length=scale
+                    )
                 )
             )
 

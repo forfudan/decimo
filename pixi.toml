@@ -9,8 +9,8 @@ readme = "README.md"
 version = "0.10.0"
 
 [dependencies]
-argmojo = ">=0.6.0,<0.7" # CLI argument parsing for the Decimo calculator
-mojo = ">=1.0.0b1,<2" # Mojo language compiler and runtime
+argmojo = ">=0.7,<0.8" # CLI argument parsing for the Decimo calculator
+mojo = ">=1.0.0b2,<2" # Mojo language compiler and runtime
 python = ">=3.13" # For Python bindings and tests
 python-build = ">=0.2.0" # Build PyPI wheel (`pixi run wheel`)
 ruff = ">=0.15.0" # Python code formatter
@@ -27,7 +27,7 @@ format = """pixi run mojo format ./src \
 
 # doc
 # Note: the CLI calculator doc step uses `-I tests` (the prebuilt
-# `decimo.mojopkg`) instead of `-I src`. Mojo 1.0.0b1's `mojo doc` cannot
+# `decimo.mojoc`) instead of `-I src`. Mojo's `mojo doc` cannot
 # resolve `decimo.X.Y.foo`-style qualified references when re-traversing
 # the source tree via `-I src`. Loading the pre-built package via
 # `-I tests` sidesteps that regression. The `package` task below is
@@ -40,15 +40,15 @@ p = "clear && pixi run package"
 package = """pixi run format \
 &&pixi run package_decimo \
 &&pixi run doc"""
-package_decimo = """pixi run mojo package src/decimo \
-&&cp decimo.mojopkg tests/ \
-&&cp decimo.mojopkg benches/ \
-&&rm decimo.mojopkg"""
+package_decimo = """pixi run mojo precompile src/decimo -o decimo.mojoc \
+&&cp decimo.mojoc tests/ \
+&&cp decimo.mojoc benches/ \
+&&rm decimo.mojoc"""
 
 # clean the package files in tests folder
 c = "clear && pixi run clean"
-clean = """rm tests/decimo.mojopkg && \
-rm benches/decimo.mojopkg"""
+clean = """rm tests/decimo.mojoc && \
+rm benches/decimo.mojoc"""
 
 # gmp/mpfr wrapper (compile C wrapper — no MPFR needed at build time)
 bgmp = "clear && pixi run buildgmp"
@@ -96,21 +96,21 @@ bcli = "clear && pixi run buildcli"
 # step is needed. We still package decimo into temp/ so the CLI build
 # (and downstream `testcli`) can use `-I temp`.
 buildcli = """mkdir -p temp \
-&& pixi run mojo package src/decimo -o temp/decimo.mojopkg \
+&& pixi run mojo precompile src/decimo -o temp/decimo.mojoc \
 && pixi run mojo build -I temp -I src/cli -o decimo src/cli/main.mojo"""
 # Uncomment the following lines if we build the CLI package with a
 # local clone of argmojo (e.g. when conda argmojo is unavailable):
 # buildcli = """pixi run fetch \
 # && mkdir -p temp \
-# && pixi run mojo package src/decimo -o temp/decimo.mojopkg \
-# && pixi run mojo package temp/argmojo/src/argmojo -o temp/argmojo.mojopkg \
+# && pixi run mojo precompile src/decimo -o temp/decimo.mojoc \
+# && pixi run mojo precompile temp/argmojo/src/argmojo -o temp/argmojo.mojoc \
 # && pixi run mojo build -I temp -I src/cli -o decimo src/cli/main.mojo"""
 tcli = "clear && pixi run test cli"
-testcli = "pixi run buildcli && cp temp/decimo.mojopkg tests/ && bash tests/test.sh cli"
+testcli = "pixi run buildcli && cp temp/decimo.mojoc tests/ && bash tests/test.sh cli"
 
 # python bindings (mojo4py)
 bpy = "clear && pixi run buildpy"
-buildpy = """pixi run mojo package src/decimo -o tests/decimo.mojopkg \
+buildpy = """pixi run mojo precompile src/decimo -o tests/decimo.mojoc \
 && pixi run mojo build python/decimo_module.mojo \
 --emit shared-lib -I tests -o python/src/decimo/_decimo.so"""
 testpy = "pixi run buildpy && pixi run python python/tests/test_decimo.py"
@@ -121,7 +121,6 @@ wheel = "cd python && pixi run python -m build --wheel"
 # All task
 all = """pixi run format \
 &&pixi run package \
-&&pixi run doc \
 &&pixi run test \
 &&pixi run buildcli \
 &&pixi run testcli \

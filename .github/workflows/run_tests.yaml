@@ -15,9 +15,9 @@ defaults:
     shell: bash
 
 # The `build` job is the gate: format check, doc generation, and the
-# `decimo.mojopkg` build all run once. The package is uploaded as an
+# `decimo.mojoc` build all run once. The package is uploaded as an
 # artifact so downstream test jobs can download it instead of rebuilding
-# (saves ~30s of `mojo package` per job × 10 jobs). The pixi environment
+# (saves ~30s of `mojo precompile` per job × 10 jobs). The pixi environment
 # is cached by `prefix-dev/setup-pixi@v0.9.5`, so test jobs no longer
 # `curl | sh` and `pixi install` from scratch.
 
@@ -41,7 +41,7 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             echo "=== build attempt $attempt ==="
-            if pixi run mojo package src/decimo; then
+            if pixi run mojo precompile src/decimo; then
               echo "=== build succeeded on attempt $attempt ==="
               break
             fi
@@ -52,13 +52,13 @@ jobs:
             echo "=== build crashed, retrying in 5s... ==="
             sleep 5
           done
-      - name: Stage decimo.mojopkg next to tests
+      - name: Stage decimo.mojoc next to tests
         # `pixi run doc` documents `src/cli/calculator`, which imports
-        # `decimo.*`. Mojo 1.0.0b1 cannot resolve those qualified
+        # `decimo.*`. Mojo cannot resolve those qualified
         # references when re-traversing the source tree via `-I src`,
         # so the doc task uses `-I tests` against the prebuilt
-        # `decimo.mojopkg`. Stage it here before invoking doc.
-        run: cp decimo.mojopkg tests/
+        # `decimo.mojoc`. Stage it here before invoking doc.
+        run: cp decimo.mojoc tests/
       - name: Generate docs (with retry for Mojo compiler intermittent crashes)
         run: |
           for attempt in 1 2 3; do
@@ -74,13 +74,13 @@ jobs:
             echo "=== doc crashed, retrying in 5s... ==="
             sleep 5
           done
-      - name: Verify decimo.mojopkg was produced
-        run: test -f decimo.mojopkg
-      - name: Upload decimo.mojopkg artifact
+      - name: Verify decimo.mojoc was produced
+        run: test -f decimo.mojoc
+      - name: Upload decimo.mojoc artifact
         uses: actions/upload-artifact@v4
         with:
-          name: decimo-mojopkg
-          path: decimo.mojopkg
+          name: decimo-mojoc
+          path: decimo.mojoc
           retention-days: 1
           if-no-files-found: error
 
@@ -287,7 +287,7 @@ jobs:
           done
 
   # ── Test: CLI ────────────────────────────────────────────────────────────────
-  # The CLI test needs a freshly built binary, not the .mojopkg, so we
+  # The CLI test needs a freshly built binary, not the .mojoc, so we
   # invoke `pixi run buildcli` here. Uses cached pixi env (no curl install,
   # no second `pixi install` from scratch).
   test-cli:
@@ -316,13 +316,13 @@ jobs:
             echo "=== build crashed, retrying in 5s... ==="
             sleep 5
           done
-      - name: Stage decimo.mojopkg next to tests
+      - name: Stage decimo.mojoc next to tests
         # `tests/test.sh run_cli` and `run_bigfloat` use `-I tests` to load
-        # the prebuilt `decimo.mojopkg` (Mojo 1.0.0b1's `mojo run/build`
+        # the prebuilt `decimo.mojoc` (Mojo's `mojo run/build`
         # cannot resolve `decimo.X.Y.foo` qualified references when
         # re-traversing source via `-I src`). `pixi run buildcli` produces
-        # the package at `temp/decimo.mojopkg`, so stage a copy here.
-        run: cp temp/decimo.mojopkg tests/
+        # the package at `temp/decimo.mojoc`, so stage a copy here.
+        run: cp temp/decimo.mojoc tests/
       - name: Run tests (with retry for Mojo compiler intermittent crashes)
         run: |
           for attempt in 1 2 3; do

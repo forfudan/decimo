@@ -1,5 +1,5 @@
 name: Setup Decimo with Pixi
-description: Install pixi (cached), activate the Mojo environment, and download the prebuilt decimo.mojopkg artifact into tests/.
+description: Install pixi (cached), activate the Mojo environment, and download the prebuilt decimo.mojoc artifact into tests/.
 
 runs:
   using: composite
@@ -7,11 +7,11 @@ runs:
     - uses: prefix-dev/setup-pixi@v0.9.5
       with:
         activate-environment: true
-    - name: Download decimo.mojopkg artifact
+    - name: Download decimo.mojoc artifact
       uses: actions/download-artifact@v4
       with:
-        name: decimo-mojopkg
+        name: decimo-mojoc
         path: .
     - name: Stage package next to tests
       shell: bash
-      run: cp decimo.mojopkg tests/
+      run: cp decimo.mojoc tests/

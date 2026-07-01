@@ -29,19 +29,19 @@ set -eo pipefail
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$REPO_ROOT"
 
-# ── Preflight: ensure tests/decimo.mojopkg exists ───────────────────────────
+# ── Preflight: ensure tests/decimo.mojoc exists ─────────────────────────────
 # All Mojo test invocations below use `-I tests` to pick up the prebuilt
-# `decimo.mojopkg` (Mojo 1.0.0b1's `mojo run` cannot resolve
-# `decimo.X.Y.foo` qualified references when re-traversing source via
-# `-I src`). On a fresh checkout the package may not exist yet, so build
-# it on demand. CI normally stages a prebuilt artifact via the
-# `setup-decimo` action, in which case this is a no-op.
+# `decimo.mojoc` (`mojo run` cannot resolve `decimo.X.Y.foo` qualified
+# references when re-traversing source via `-I src`). On a fresh checkout the
+# package may not exist yet, so build it on demand. CI normally stages a
+# prebuilt artifact via the `setup-decimo` action, in which case this is a
+# no-op.
 ensure_decimo_mojopkg() {
-    if [[ -f tests/decimo.mojopkg ]]; then
+    if [[ -f tests/decimo.mojoc ]]; then
         return 0
     fi
-    echo "tests/decimo.mojopkg not found; building it now..."
-    pixi run mojo package src/decimo -o tests/decimo.mojopkg
+    echo "tests/decimo.mojoc not found; building it now..."
+    pixi run mojo precompile src/decimo -o tests/decimo.mojoc
 }
 
 # ── Suite definitions ────────────────────────────────────────────────────────
