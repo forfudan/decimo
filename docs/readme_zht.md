@@ -68,18 +68,20 @@ channels = ["https://conda.modular.com/max", "https://repo.prefix.dev/modular-co
 
 下表總結了包版本及其對應的 Mojo 版本：
 
-| 包名       | 版本   | Mojo 版本     | 包管理器 |
-| ---------- | ------ | ------------- | -------- |
-| `decimojo` | v0.1.0 | ==25.1        | magic    |
-| `decimojo` | v0.2.0 | ==25.2        | magic    |
-| `decimojo` | v0.3.0 | ==25.2        | magic    |
-| `decimojo` | v0.3.1 | >=25.2, <25.4 | pixi     |
-| `decimojo` | v0.4.x | ==25.4        | pixi     |
-| `decimojo` | v0.5.0 | ==25.5        | pixi     |
-| `decimojo` | v0.6.0 | ==0.25.7      | pixi     |
-| `decimojo` | v0.7.0 | ==0.26.1      | pixi     |
-| `decimo`   | v0.8.0 | ==0.26.1      | pixi     |
-| `decimo`   | v0.9.0 | ==0.26.2      | pixi     |
+| 包名       | 版本    | Mojo 版本     | 包管理器 |
+| ---------- | ------- | ------------- | -------- |
+| `decimojo` | v0.1.0  | ==25.1        | magic    |
+| `decimojo` | v0.2.0  | ==25.2        | magic    |
+| `decimojo` | v0.3.0  | ==25.2        | magic    |
+| `decimojo` | v0.3.1  | >=25.2, <25.4 | pixi     |
+| `decimojo` | v0.4.x  | ==25.4        | pixi     |
+| `decimojo` | v0.5.0  | ==25.5        | pixi     |
+| `decimojo` | v0.6.0  | ==0.25.7      | pixi     |
+| `decimojo` | v0.7.0  | ==0.26.1      | pixi     |
+| `decimo`   | v0.8.0  | ==0.26.1      | pixi     |
+| `decimo`   | v0.9.0  | ==0.26.2      | pixi     |
+| `decimo`   | v0.10.0 | ==1.0.0b1     | pixi     |
+| `decimo`   | v0.11.0 | ==1.0.0b2     | pixi     |
 
 ## 快速開始
 
