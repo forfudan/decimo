@@ -401,7 +401,7 @@ Bug reports and feature requests are welcome! If you encounter issues, please [f
 ```text
 decimo/
 ├── src/                          # All source code
-│   ├── decimo/                   # Core library (mojo precompile)
+│   ├── decimo/                   # Core library (mojo pre-compiled package)
 │   │   ├── bigdecimal/           #   Arbitrary-precision decimal (Decimal)
 │   │   ├── bigint/               #   Arbitrary-precision signed integer (Integer)
 │   │   ├── bigint10/             #   Base-10 signed integer (BigInt10)
@@ -410,7 +410,7 @@ decimo/
 │   │   └── ...                   #   Shared utilities (str, errors, rounding)
 │   └── cli/                      # CLI calculator application
 │       ├── main.mojo             #   Entry point (ArgMojo CLI)
-│       └── calculator/           #   Calculator engine (mojo precompile)
+│       └── calculator/           #   Calculator engine (mojo pre-compiled package)
 │           ├── tokenizer.mojo    #     Lexer: expression → tokens
 │           ├── parser.mojo       #     Shunting-yard: infix → RPN
 │           └── evaluator.mojo    #     RPN evaluator using Decimal

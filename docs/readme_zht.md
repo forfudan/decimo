@@ -59,7 +59,7 @@ channels = ["https://conda.modular.com/max", "https://repo.prefix.dev/modular-co
 1. 在您項目的 `mojoproject.toml` 文件中，添加以下依賴：
 
     ```toml
-    decimo = "==0.9.0"
+    decimo = "==0.11.0"
     ```
 
     然後運行 `pixi install` 來下載並安裝包。
