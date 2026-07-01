@@ -1889,6 +1889,40 @@ def multiply_inplace(mut x: BigInt, read other: BigInt):
     x.sign = x.sign != other.sign
 
 
+def multiply_by_word_inplace(mut x: BigInt, word: UInt32):
+    """Multiplies a BigInt in place by a single UInt32 word.
+
+    Only the magnitude is scaled; the sign is preserved (a zero result is
+    normalized to non-negative). Unlike `_multiply_magnitude_by_word`, no new
+    list is allocated, which makes this cheap to call repeatedly (e.g.
+    accumulating a product of small factors).
+
+    Args:
+        x: The accumulator (modified in-place).
+        word: The single-word multiplier.
+    """
+    # Keep the magnitude non-empty so the BigInt invariant holds even if an
+    # uninitialized value is passed in.
+    if len(x.words) == 0:
+        x.words.append(UInt32(0))
+    if word == 0:
+        # Anything times zero is zero, in canonical single-word form.
+        x.words.clear()
+        x.words.append(UInt32(0))
+        x.sign = False
+        return
+    if word == 1:
+        return
+    var multiplier = UInt64(word)
+    var carry: UInt64 = 0
+    for j in range(len(x.words)):
+        var product = UInt64(x.words[j]) * multiplier + carry
+        x.words[j] = UInt32(product & BigInt.WORD_MASK)
+        carry = product >> BigInt.BITS_PER_WORD
+    if carry != 0:
+        x.words.append(UInt32(carry))
+
+
 def left_shift_inplace(mut x: BigInt, shift: Int):
     """Performs x <<= shift by mutating x.words directly.
 

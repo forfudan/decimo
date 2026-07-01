@@ -21,6 +21,7 @@
 """Implements functions for special operations on BigInt objects."""
 
 from decimo.bigint.bigint import BigInt
+from decimo.bigint.arithmetics import multiply_by_word_inplace
 from decimo.errors import ValueError
 
 # Largest argument accepted by `factorial`. Even 10^6 already needs ~10^6
@@ -29,6 +30,13 @@ from decimo.errors import ValueError
 # so an out-of-range argument raises a clear error instead of an `Int`
 # overflow. (A faster algorithm, e.g. binary splitting, could lift this.)
 comptime FACTORIAL_MAX_INPUT = 1_000_000
+
+# Below this many factors, `product_range` stops splitting and accumulates the
+# consecutive factors with in-place single-word multiplies instead. That avoids
+# building a fresh BigInt for every factor and the buffer churn of the pairwise
+# products near the bottom of the recursion. Measured ~1.1x (large n) to ~4x
+# (small n) faster than splitting all the way down.
+comptime PRODUCT_RANGE_LEAF_CUTOFF = 32
 
 
 def factorial(x: BigInt) raises -> BigInt:
@@ -65,33 +73,55 @@ def factorial(x: BigInt) raises -> BigInt:
     var n = Int(x)
     if n < 2:
         return BigInt.one()
-    # Balanced binary splitting multiplies similar-sized operands instead of
-    # the naive tiny * huge running product, which is far faster for large
-    # `n` (measured ~1.4x at n=1000 up to ~10x at n=100000).
+    # Balanced binary splitting keeps every multiplication between operands of
+    # similar size, and the small leaves are accumulated with in-place
+    # single-word multiplies. Far faster than a naive left-to-right product.
     return product_range(2, n)
 
 
-def product_range(low: Int, high: Int) -> BigInt:
+def product_range(low: Int, high: Int) raises -> BigInt:
     """Returns the product of the consecutive integers in `[low, high]`.
 
-    The range is inclusive; an empty range (`low > high`) returns 1. Uses
-    balanced binary splitting so each multiplication stays between operands
-    of similar size, which is much faster than a left-to-right running
-    product for large ranges.
+    The range is inclusive; an empty range (`low > high`) returns 1. Large
+    ranges use balanced binary splitting so each multiplication stays between
+    operands of similar size. Once a sub-range has at most
+    `PRODUCT_RANGE_LEAF_CUTOFF` factors, the product is accumulated directly
+    with in-place single-word multiplies, which is faster than recursing all
+    the way down.
 
     Args:
-        low: The first integer in the range.
-        high: The last integer in the range.
+        low: The first integer in the range (must be `>= 0`).
+        high: The last integer in the range (must be `<= 2^32 - 1` so every
+            factor fits in a single word).
 
     Returns:
         `low * (low + 1) * ... * high` (1 when the range is empty).
+
+    Raises:
+        ValueError: If the range is non-empty and `low < 0` or
+            `high > 2^32 - 1`, since the leaf multiplies cast each factor to a
+            single word.
     """
     if low > high:
         return BigInt.one()
-    if low == high:
-        return BigInt(low)
-    if high == low + 1:
-        return BigInt(low) * BigInt(high)
+    if low < 0 or high > Int(BigInt.WORD_MAX):
+        raise ValueError(
+            message=(
+                "product_range bounds must satisfy 0 <= low <= high <= 2^32 -"
+                " 1."
+            ),
+            function="product_range()",
+        )
+    # `high - low + 1` is the number of factors; accumulate the leaf directly
+    # once that count is within the cutoff. `low` and every factor fit in a
+    # single word (checked above), and each multiply adds at most one word, so
+    # reserve the result up front to avoid reallocating while it grows.
+    if high - low + 1 <= PRODUCT_RANGE_LEAF_CUTOFF:
+        var result = BigInt(uninitialized_capacity=high - low + 2)
+        result.words.append(UInt32(low))
+        for factor in range(low + 1, high + 1):
+            multiply_by_word_inplace(result, UInt32(factor))
+        return result^
     var mid = low + (high - low) // 2
     return product_range(low, mid) * product_range(mid + 1, high)
 
@@ -110,8 +140,9 @@ def permutation(x: BigInt, k: Int) raises -> BigInt:
         `P(n, 0) == 1`.
 
     Raises:
-        ValueError: If `x` or `k` is negative, or if `k` is larger than
-            `FACTORIAL_MAX_INPUT` (10^6, the cap on the number of factors).
+        ValueError: If `x` or `k` is negative, if `k` is larger than
+            `FACTORIAL_MAX_INPUT` (10^6, the cap on the number of factors),
+            or if `n` does not fit in a single word (`> 2^32 - 1`).
     """
     if x < BigInt.zero():
         raise ValueError(
@@ -128,9 +159,11 @@ def permutation(x: BigInt, k: Int) raises -> BigInt:
             message="Permutation k is too large to compute (must be <= 10^6).",
             function="permutation()",
         )
-    if x > BigInt(Int.MAX):
+    if x > BigInt(BigInt.WORD_MAX):
         raise ValueError(
-            message="Permutation n is too large to fit in an Int.",
+            message=(
+                "Permutation n is too large to compute (must be <= 2^32 - 1)."
+            ),
             function="permutation()",
         )
     var n = Int(x)

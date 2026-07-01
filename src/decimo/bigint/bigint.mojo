@@ -1494,8 +1494,8 @@ struct BigInt(
             `P(self, k)`; 0 when `k > self`, and `P(self, 0) == 1`.
 
         Raises:
-            ValueError: If `self` or `k` is negative, or `k` is larger
-                than 10^6.
+            ValueError: If `self` or `k` is negative, if `k` is larger than
+                10^6, or if `self` is larger than `2^32 - 1`.
         """
         return bigint_special.permutation(self, k)
 
