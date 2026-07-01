@@ -10,8 +10,9 @@
 .magic
 magic.lock
 
-# mojopkg files
+# mojo pre-compiled files
 *.mojopkg
+*.mojoc
 
 # Editor environments
 .vscode

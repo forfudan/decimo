@@ -30,6 +30,7 @@ from decimo.errors import ValueError
 # so an out-of-range argument raises a clear error instead of an `Int`
 # overflow. (A faster algorithm, e.g. binary splitting, could lift this.)
 comptime FACTORIAL_MAX_INPUT = 1_000_000
+"""The largest argument accepted by `factorial` (10^6)."""
 
 # Below this many factors, `product_range` stops splitting and accumulates the
 # consecutive factors with in-place single-word multiplies instead. That avoids
@@ -37,6 +38,7 @@ comptime FACTORIAL_MAX_INPUT = 1_000_000
 # products near the bottom of the recursion. Measured ~1.1x (large n) to ~4x
 # (small n) faster than splitting all the way down.
 comptime PRODUCT_RANGE_LEAF_CUTOFF = 32
+"""Maximum factors in a `product_range` leaf before it binary-splits."""
 
 
 def factorial(x: BigInt) raises -> BigInt:

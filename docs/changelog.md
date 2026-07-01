@@ -4,6 +4,12 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 
 ## Unreleased
 
+1. **Migrated the codebase to Mojo v1.0.0b2.** Bumped the Pixi `mojo`
+   dependency to `>=1.0.0b2` and `argmojo` to `0.7.0`. Switched packaging
+   from the deprecated `mojo package` / `.mojopkg` to `mojo precompile` /
+   `.mojoc` across Pixi tasks, CI workflows, and helper scripts, and
+   updated the `Decimal128` string formatter to the
+   `StringSlice(unsafe_from_utf8=Span(...))` constructor (PR #257).
 1. **Renamed `BigDecimal` rounding APIs to `*_inplace`.**
    The free function `decimo.bigdecimal.rounding.round_to_precision` and
    the `BigDecimal.round_to_precision` method were renamed to

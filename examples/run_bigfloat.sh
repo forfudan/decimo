@@ -8,7 +8,7 @@
 #
 # What it does:
 #   1. Ensures the GMP/MPFR C wrapper (libdecimo_gmp_wrapper) is built.
-#   2. Ensures tests/decimo.mojopkg is available (built on demand).
+#   2. Ensures tests/decimo.mojoc is available (built on demand).
 #   3. Builds <file.mojo> with `-I tests`, debug info, and ASSERT=all,
 #      linking against the C wrapper. Output binary goes to temp/<name>.
 #   4. Executes the binary with DYLD_LIBRARY_PATH / LD_LIBRARY_PATH set
@@ -43,10 +43,10 @@ if [[ ! -f "$WRAPPER_LIB" ]]; then
     bash "$WRAPPER_DIR/build_gmp_wrapper.sh"
 fi
 
-# 2. Ensure decimo.mojopkg exists for `-I tests`.
-if [[ ! -f tests/decimo.mojopkg ]]; then
-    echo "==> Building tests/decimo.mojopkg..."
-    pixi run mojo package src/decimo -o tests/decimo.mojopkg
+# 2. Ensure decimo.mojoc exists for `-I tests`.
+if [[ ! -f tests/decimo.mojoc ]]; then
+    echo "==> Building tests/decimo.mojoc..."
+    pixi run mojo precompile src/decimo -o tests/decimo.mojoc
 fi
 
 # 3. Build the user's .mojo file into temp/<basename>.

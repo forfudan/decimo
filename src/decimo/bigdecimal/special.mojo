@@ -27,6 +27,7 @@ from decimo.errors import ValueError
 # requested precision and the digit count of `n`. Covers the rounding error
 # that accumulates over the `n` intermediate products.
 comptime FACTORIAL_GUARD_DIGITS = 9  # word size
+"""Extra guard digits carried during a rounded `factorial`."""
 
 # Largest argument accepted by `factorial`. Even 10^6 already needs ~10^6
 # multiplications, so anything beyond it is impractical with the simple
@@ -34,6 +35,7 @@ comptime FACTORIAL_GUARD_DIGITS = 9  # word size
 # so an out-of-range argument raises a clear error instead of an `Int`
 # overflow. (A faster algorithm, e.g. binary splitting, could lift this.)
 comptime FACTORIAL_MAX_INPUT = 1_000_000
+"""The largest argument accepted by `factorial` (10^6)."""
 
 
 def factorial(x: BigDecimal, precision: Int = 0) raises -> BigDecimal:
@@ -113,6 +115,9 @@ def product_range(low: Int, high: Int) raises -> BigDecimal:
 
     Returns:
         `low * (low + 1) * ... * high` (1 when the range is empty).
+
+    Raises:
+        Error: Propagated from an intermediate `BigDecimal` multiplication.
     """
     if low > high:
         return BigDecimal(1)
