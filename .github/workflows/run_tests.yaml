@@ -41,7 +41,7 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             echo "=== build attempt $attempt ==="
-            if pixi run mojo precompile src/decimo; then
+            if pixi run mojo precompile src/decimo -o decimo.mojoc; then
               echo "=== build succeeded on attempt $attempt ==="
               break
             fi

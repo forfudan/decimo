@@ -109,8 +109,7 @@ def test_multiply_by_word_inplace_preserves_sign() raises:
 
 
 def test_product_range_out_of_bounds_raises() raises:
-    """Tests that product_range rejects bounds that don't fit in a single word.
-    """
+    """Tests that product_range rejects out-of-range bounds."""
     var raised = False
     try:
         _ = product_range(1, 4_294_967_296)  # high = 2^32 > WORD_MAX

@@ -400,7 +400,7 @@ Bug reports and feature requests are welcome! If you encounter issues, please [f
 ```text
 decimo/
 ├── src/                          # All source code
-│   ├── decimo/                   # Core library (mojo package)
+│   ├── decimo/                   # Core library (mojo precompile)
 │   │   ├── bigdecimal/           #   Arbitrary-precision decimal (Decimal)
 │   │   ├── bigint/               #   Arbitrary-precision signed integer (Integer)
 │   │   ├── bigint10/             #   Base-10 signed integer (BigInt10)
@@ -409,7 +409,7 @@ decimo/
 │   │   └── ...                   #   Shared utilities (str, errors, rounding)
 │   └── cli/                      # CLI calculator application
 │       ├── main.mojo             #   Entry point (ArgMojo CLI)
-│       └── calculator/           #   Calculator engine (mojo package)
+│       └── calculator/           #   Calculator engine (mojo precompile)
 │           ├── tokenizer.mojo    #     Lexer: expression → tokens
 │           ├── parser.mojo       #     Shunting-yard: infix → RPN
 │           └── evaluator.mojo    #     RPN evaluator using Decimal
@@ -425,7 +425,7 @@ decimo/
 └── pixi.toml                     # Project configuration and tasks
 ```
 
-`src/decimo/` is a Mojo package — it is compiled with `mojo package` and can be imported by external projects. The TOML parser (`decimo.toml`) is included as a subpackage. `src/cli/` is an application that consumes the `decimo` package and compiles to a standalone binary via `mojo build`.
+`src/decimo/` is a Mojo package — it is compiled with `mojo precompile` and can be imported by external projects. The TOML parser (`decimo.toml`) is included as a subpackage. `src/cli/` is an application that consumes the `decimo` package and compiles to a standalone binary via `mojo build`.
 
 ## Tests and benches
 

@@ -12,7 +12,7 @@
 
 Modular has introduced a beta mechanism that allows Mojo code to be exposed as a standard CPython extension module (`.so` / `.dylib`). This means a Python user can write `import decimo` and get access to Mojo-native `Decimal128`, `BigDecimal`, `BigInt`, and `BigUint` types at near-native speed, without rewriting anything in Python.
 
-**Feasibility verdict: Possible but non-trivial.** The main (no surprise) blocker is that decimo is a *packaged* Mojo library (`.mojopkg`), not a single `.mojo` file. The Mojo importer hook (the easy dev-time path) does not support custom import paths for non-stdlib Mojo packages. The `.so` build path (the distribution path) works fine. This means the developer workflow is slightly more manual, but distribution is fully viable.
+**Feasibility verdict: Possible but non-trivial.** The main (no surprise) blocker is that decimo is a *packaged* Mojo library (`.mojoc`), not a single `.mojo` file. The Mojo importer hook (the easy dev-time path) does not support custom import paths for non-stdlib Mojo packages. The `.so` build path (the distribution path) works fine. This means the developer workflow is slightly more manual, but distribution is fully viable.
 
 ---
 
@@ -25,7 +25,7 @@ Modular has introduced a beta mechanism that allows Mojo code to be exposed as a
 | **Source import hook** | `import mojo.importer` in Python, then `import mojo_module` (auto-compiles `.mojo` → `.so` into `__mojocache__/`) | Dev prototyping with single-file modules only |
 | **Pre-built `.so`**    | `mojo build mojo_module.mojo --emit shared-lib -o mojo_module.so`                                                 | Production, packages with dependencies, CI/CD |
 
-For decimo, **only the pre-built `.so` path is viable** because the binding code will `import decimo` (the `.mojopkg`), and the importer hook cannot resolve that path.
+For decimo, **only the pre-built `.so` path is viable** because the binding code will `import decimo` (the `.mojoc`), and the importer hook cannot resolve that path.
 
 ### 2.2 The Binding Pattern
 
@@ -183,7 +183,7 @@ tpy     = "clear && pixi run testpy"
 wheel   = "cd python && pixi run python -m build --wheel"
 ```
 
-- `pixi run buildpy` — compiles the Mojo binding directly into the installable package at `python/src/decimo/_decimo.so`. No need to pre-package `decimo.mojopkg`; the `-I src` flag resolves `import decimo` to `src/decimo/`.
+- `pixi run buildpy` — compiles the Mojo binding directly into the installable package at `python/src/decimo/_decimo.so`. No need to pre-package `decimo.mojoc`; the `-I src` flag resolves `import decimo` to `src/decimo/`.
 - `pixi run testpy` — builds then runs the Python test suite.
 - `pixi run wheel` — produces a pure-Python placeholder wheel in `python/dist/` (no `.so` included); suitable for PyPI name reservation.
 

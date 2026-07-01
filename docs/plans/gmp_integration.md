@@ -813,8 +813,8 @@ Link against whichever is present. The stub library lets Decimo compile and run 
 
 **Phase 1 (immediate)**: Use **Option A** — compile-time feature flag. Build two package variants:
 
-- `decimo.mojopkg` — native only (default)
-- `decimo_gmp.mojopkg` — with GMP backend
+- `decimo.mojoc` — native only (default)
+- `decimo_gmp.mojoc` — with GMP backend
 
 **Phase 2 (when Mojo matures)**: Migrate to **Option B** with `DLHandle` when available, enabling true runtime detection.
 
@@ -1132,7 +1132,7 @@ build-gmp-wrapper = """
 
 package-with-gmp = { depends-on = ["build-gmp-wrapper"] }
 package-with-gmp.cmd = """
-    mojo package src/decimo -o decimo.mojopkg && \
+    mojo precompile src/decimo -o decimo.mojoc && \
     cp src/decimo/gmp/libgmp_wrapper.dylib .
 """
 ```

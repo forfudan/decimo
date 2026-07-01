@@ -764,7 +764,7 @@ def number_of_bits[dtype: DType, //](var value: Scalar[dtype]) -> Int:
 # up to 58, which is the maximum number of digits we need to handle for
 # Dec128 coefficients.
 #
-# TODO: Currently, this won't work when you create a mojopkg to use.
+# TODO: Currently, this won't work when you create a .mojoc package to use.
 # When Mojo supports module-level variables, this part can be used.
 # ===----------------------------------------------------------------------=== #
 
