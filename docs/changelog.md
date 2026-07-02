@@ -2,32 +2,42 @@
 
 This is a list of changes for the Decimo package (formerly DeciMojo).
 
-## Unreleased
+## 20260701 (v0.11.0)
 
-1. **Migrated the codebase to Mojo v1.0.0b2.** Bumped the Pixi `mojo`
-   dependency to `>=1.0.0b2` and `argmojo` to `0.7.0`. Switched packaging
-   from the deprecated `mojo package` / `.mojopkg` to `mojo precompile` /
-   `.mojoc` across Pixi tasks, CI workflows, and helper scripts, and
-   updated the `Decimal128` string formatter to the
-   `StringSlice(unsafe_from_utf8=Span(...))` constructor (PR #257).
-1. **Renamed `BigDecimal` rounding APIs to `*_inplace`.**
-   The free function `decimo.bigdecimal.rounding.round_to_precision` and
-   the `BigDecimal.round_to_precision` method were renamed to
-   `round_to_precision_inplace` to make their mutating semantics
-   explicit. Callers must update import and call sites. The
-   out-of-place, Python-compatible `BigDecimal.round(ndigits=...)` API
-   is unchanged. See PR #245 / roadmap task T-R2.
-1. Routed `round_to_precision` through a fully in-place path, removing
-   one `BigUInt` allocation + buffer copy from 6 call sites in
-   `bigdecimal/arithmetics.mojo` (3 × `divide`) and
-   `bigdecimal/exponential.mojo`. The out-of-place
-   `BigUInt.remove_trailing_digits_with_rounding` is now a thin
-   `copy + inplace` wrapper (~110 LOC removed). Added an optional
-   `ndigits_before_removal` hint parameter so callers that already know
-   `self.number_of_digits()` skip the redundant inner pass.
-   Measured impact on `divide` (p = 100 / 1000 / 10000) is within ±1 %
-   run-to-run noise; the cleanup is kept for code quality and will
-   compound on future rounding-dominated fast paths.
+Decimo v0.11.0 retargets the codebase to **Mojo v1.0.0b2**, adds the `factorial()` and `permutation()` functions to `BigInt` and `BigDecimal`, and includes a series of performance improvements for `BigDecimal` and `BigUInt` arithmetic. It also renames the `BigDecimal` `round_to_precision` APIs to `*_inplace`, which is a breaking change for code that calls them directly.
+
+### ⭐️ New in v0.11.0
+
+**Number-theoretic functions:**
+
+1. **`factorial()`** for `BigInt` and `BigDecimal` — a standalone function in the new `special` modules and an instance method on both types. `BigDecimal.factorial(precision=0)` returns the exact value by default and a rounded value when a positive `precision` is given. The exact path uses balanced binary splitting (`product_range`) with in-place single-word multiplication at the recursion leaves, which is much faster than a naive running product for large arguments (PR #254, #255, #256).
+1. **`permutation()`** — the number of `k`-permutations of `n`, `P(n, k) = n! / (n − k)!`, likewise provided as a `special`-module function and as a method on `BigInt` / `BigDecimal` (with optional rounding for `BigDecimal`). For `BigInt`, `n` is restricted to a single word (PR #255).
+
+### 🦋 Changed in v0.11.0
+
+**Mojo v1.0.0b2 migration** (PR #257):
+
+1. Retarget the codebase to **Mojo v1.0.0b2**, and bump the Pixi dependencies to `mojo >=1.0.0b2` and `argmojo 0.7.0`.
+1. Switch packaging from the deprecated `mojo package` / `.mojopkg` to `mojo precompile` / `.mojoc` across the Pixi tasks, CI workflows, and helper scripts.
+1. Update the `Decimal128` string formatter to the `StringSlice(unsafe_from_utf8=Span(...))` constructor, replacing the deprecated `StringSlice(ptr=, length=)` form.
+
+**BigDecimal — rounding API rename:**
+
+1. The free function `round_to_precision` and the matching `BigDecimal` method are renamed to **`round_to_precision_inplace`**, which makes their mutating semantics explicit, and now run through an allocation-free in-place path. The out-of-place, Python-compatible `BigDecimal.round(ndigits=...)` is unchanged. Code that calls the renamed APIs must update its import and call sites (PR #245).
+
+**Performance:**
+
+1. **`BigDecimal` addition / subtraction** — a same-scale fast path avoids the scale-alignment work when both operands share a scale (and, for `add`, a sign) (PR #247).
+1. **`BigDecimal` multiplication** — compute the exact coefficient product in a single pass and round only afterwards when a precision is requested, removing a recursive call and a duplicated zero fast-path (PR #248).
+1. **`BigDecimal` division and string conversion** — fewer allocations in `divide`, `from_string` parsing, and `to_string` rendering, through in-place batching and an exact-size output buffer (PR #249).
+1. **`BigUInt` multiplication** — a deferred-carry (product-scanning) schoolbook path is selected once the operand size crosses a threshold; the Toom-3 cutoff is retuned and the "school" helpers are renamed to "schoolbook" (PR #250).
+1. **Logarithm constants** — `compute_ln2` and `compute_ln1d25` fold their series factor into a single `UInt32` division per term, and `BigUInt.floor_divide_by_uint32` hoists its buffer pointers out of the inner loop (PR #251).
+
+**Code quality and tooling:**
+
+1. **`BigInt.from_integral_scalar()`** is simplified into one generic word-peeling loop over any integral scalar type, backed by a new `unsigned_counterpart` type helper (PR #253).
+1. The **`BigInt` benchmarks** are refactored into a cross-language harness that compares `decimo.BigInt` against Python `int` and Rust `num-bigint`, with a Markdown report aggregator (PR #252).
+1. **Documentation** — added `Raises:` sections across the public API, replaced banner-style header comments with module docstrings, and introduced local import aliases in place of fully-qualified references (PR #245, #246).
 
 ## 20260514 (v0.10.0)
 
