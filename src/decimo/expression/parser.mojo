@@ -15,7 +15,7 @@
 # ===----------------------------------------------------------------------=== #
 
 """
-Shunting-Yard parser for the Decimo CLI calculator.
+Shunting-Yard parser for the Decimo expression engine.
 
 Converts infix token lists to Reverse Polish Notation (RPN).
 """

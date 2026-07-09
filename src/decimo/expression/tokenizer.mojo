@@ -15,13 +15,13 @@
 # ===----------------------------------------------------------------------=== #
 
 """
-Tokenizer for the Decimo CLI calculator.
+Tokenizer for the Decimo expression engine.
 
 Converts an expression string into a list of tokens for the parser.
 """
 
 from std.collections import Dict
-from decimo import Decimal
+from ..bigdecimal.bigdecimal import Decimal
 
 # ===----------------------------------------------------------------------=== #
 # Token kinds
@@ -269,8 +269,8 @@ def tokenize(
     while i < n:
         var c = ptr[i]
 
-        # Skip whitespace (space, tab)
-        if c == 32 or c == 9:
+        # Skip whitespace (space, tab, newline, carriage return)
+        if c == 32 or c == 9 or c == 10 or c == 13:
             i += 1
             continue
 

@@ -3,10 +3,13 @@
 from std import testing
 from std.collections import Dict
 
-from calculator import evaluate
-from calculator.tokenizer import tokenize
-from calculator.parser import parse_to_rpn
-from calculator.evaluator import evaluate_rpn, final_round
+from decimo.expression import (
+    evaluate,
+    tokenize,
+    parse_to_rpn,
+    evaluate_rpn,
+    final_round,
+)
 from decimo import Decimal
 from decimo.rounding_mode import RoundingMode
 

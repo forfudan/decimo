@@ -57,3 +57,6 @@ from .rounding_mode import (
 
 # Core functions
 from .bigint.number_theory import gcd, lcm, extended_gcd, mod_inverse, mod_pow
+
+# Expression engine (high-level: `eval`; mid-level: `decimo.expression`)
+from .expression import eval, evaluate

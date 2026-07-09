@@ -2,6 +2,16 @@
 
 This is a list of changes for the Decimo package (formerly DeciMojo).
 
+## Unreleased
+
+### ⭐️ New
+
+**Expression engine (`decimo.expression`):**
+
+1. The arithmetic-expression engine (tokenizer, shunting-yard parser, and RPN evaluator) that previously lived inside the CLI is now a first-class part of the core library under `decimo/expression/`. Users can evaluate a string in one call with the new high-level API `decimo.eval(expr, precision=50, variables={}, rounding_mode=...)`, e.g. `decimo.eval("100 + e * pi")`. Advanced users can import the individual stages via `from decimo.expression import tokenize, parse_to_rpn, evaluate_rpn`. `eval` optionally accepts a `variables` map so expressions can reference externally supplied named values (e.g. `eval("x^2 + y", variables=vars)`). `decimo.evaluate` is kept as an alias.
+1. The CLI now re-uses this shared engine instead of its own copy, eliminating duplicated logic. Its presentation layer (`display`, `io`, `repl`, `settings`, `engine`) stays in the CLI.
+1. The expression tokenizer now treats newline (`\n`) and carriage return (`\r`) as whitespace, so `eval` accepts strings with leading/trailing/embedded line breaks (e.g. triple-quoted expressions).
+
 ## 20260701 (v0.11.0)
 
 Decimo v0.11.0 retargets the codebase to **Mojo v1.0.0b2**, adds the `factorial()` and `permutation()` functions to `BigInt` and `BigDecimal`, and includes a series of performance improvements for `BigDecimal` and `BigUInt` arithmetic. It also renames the `BigDecimal` `round_to_precision` APIs to `*_inplace`, which is a breaking change for code that calls them directly.

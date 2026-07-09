@@ -15,25 +15,33 @@
 # ===----------------------------------------------------------------------=== #
 
 """
-Calculator engine for the Decimo CLI.
+Decimo expression engine.
 
-Provides tokenizer, parser (shunting-yard), and evaluator (RPN) for
-arbitrary-precision arithmetic expressions.
+Parses and evaluates arbitrary-precision arithmetic expressions such as
+`"100 + e * pi"` or `"sqrt(2) + 1/3"` using BigDecimal arithmetic.
+
+High-level API — evaluate a string in one call:
 
 ```mojo
-from calculator import evaluate
-var result = evaluate("100 * 12 - 23/17", precision=50)
+from decimo import eval
+
+var r = eval("100 + e * pi", precision=50)
+```
+
+Mid-level API — import the individual stages (tokenizer, parser,
+evaluator) for advanced use:
+
+```mojo
+from decimo.expression import tokenize, parse_to_rpn, evaluate_rpn
+
+var rpn = parse_to_rpn(tokenize("1 + 2 * 3")^)
+var value = evaluate_rpn(rpn^, precision=50)
 ```
 """
 
-from decimo.expression import (
+from .tokenizer import (
     Token,
     tokenize,
-    parse_to_rpn,
-    evaluate_rpn,
-    final_round,
-    eval,
-    evaluate,
     is_known_function,
     is_known_constant,
     is_alpha_or_underscore,
@@ -52,26 +60,5 @@ from decimo.expression import (
     TOKEN_COMMA,
     TOKEN_VARIABLE,
 )
-from .engine import (
-    evaluate_and_print,
-    evaluate_and_return,
-    display_calc_error,
-    pad_to_precision,
-)
-from .display import print_error, print_warning, print_hint, write_prompt
-from .io import (
-    stdin_is_tty,
-    stdout_is_tty,
-    read_line,
-    read_stdin,
-    split_into_lines,
-    strip_comment,
-    is_blank,
-    is_comment_or_blank,
-    strip,
-    filter_expression_lines,
-    read_file_text,
-    file_exists,
-)
-from .repl import run_repl
-from .settings import Settings, parse_settings, split_inline_settings
+from .parser import parse_to_rpn
+from .evaluator import evaluate_rpn, final_round, eval, evaluate

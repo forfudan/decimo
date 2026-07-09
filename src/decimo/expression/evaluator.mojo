@@ -15,13 +15,13 @@
 # ===----------------------------------------------------------------------=== #
 
 """
-RPN evaluator for the Decimo CLI calculator.
+RPN evaluator for the Decimo expression engine.
 
 Evaluates a Reverse Polish Notation token list using BigDecimal arithmetic.
 """
 
-from decimo import Decimal
-from decimo.rounding_mode import RoundingMode
+from ..bigdecimal.bigdecimal import Decimal
+from ..rounding_mode import RoundingMode
 from std.collections import Dict
 
 from .tokenizer import (
@@ -359,20 +359,45 @@ def final_round(
     return result^
 
 
-def evaluate(
+def eval(
     expr: String,
     precision: Int = 50,
+    variables: Dict[String, Decimal] = Dict[String, Decimal](),
     rounding_mode: RoundingMode = RoundingMode.half_even(),
 ) raises -> Decimal:
     """Evaluate a math expression string and return a BigDecimal result.
 
-    This is the main entry point for the calculator engine.
-    It tokenizes, parses (shunting-yard), and evaluates (RPN) the expression.
-    The result is rounded to `precision` significant digits.
+    This is the high-level entry point for the Decimo expression engine.
+    It tokenizes, parses (shunting-yard), and evaluates (RPN) the
+    expression, then rounds the result to `precision` significant digits.
+
+    ```mojo
+    from decimo import eval
+
+    var r = eval("100 + e * pi")          # default precision = 50
+    var q = eval("1/3", precision=100)    # 100 significant digits
+    ```
+
+    User-defined values can be injected via `variables`, letting an
+    expression reference named quantities supplied from outside:
+
+    ```mojo
+    from std.collections import Dict
+    from decimo import eval, Decimal
+
+    var vars = Dict[String, Decimal]()
+    vars["x"] = Decimal.from_string("10")
+    vars["y"] = Decimal.from_string("3")
+    var r = eval("x^2 + y", variables=vars)   # -> 103
+    ```
 
     Args:
         expr: The math expression to evaluate (e.g. "100 * 12 - 23/17").
         precision: The number of significant digits (default: 50).
+        variables: Optional name->value mapping of user-defined variables.
+            Identifiers matching a key resolve to the given value; unknown
+            identifiers (other than built-in constants `pi`/`e` and the
+            supported functions) raise an error.
         rounding_mode: The rounding mode for the final result
             (default: half_even).
 
@@ -384,7 +409,33 @@ def evaluate(
             evaluated (e.g., syntax error, unknown identifier, division
             by zero, domain error in a math function).
     """
-    var tokens = tokenize(expr)
+    var tokens = tokenize(expr, variables)
     var rpn = parse_to_rpn(tokens^)
-    var result = evaluate_rpn(rpn^, precision)
+    var result = evaluate_rpn(rpn^, precision, variables)
     return final_round(result, precision, rounding_mode)
+
+
+def evaluate(
+    expr: String,
+    precision: Int = 50,
+    variables: Dict[String, Decimal] = Dict[String, Decimal](),
+    rounding_mode: RoundingMode = RoundingMode.half_even(),
+) raises -> Decimal:
+    """Alias of `eval` kept for backwards compatibility.
+
+    See `eval` for the full description and examples.
+
+    Args:
+        expr: The math expression to evaluate.
+        precision: The number of significant digits (default: 50).
+        variables: Optional name->value mapping of user-defined variables.
+        rounding_mode: The rounding mode for the final result
+            (default: half_even).
+
+    Returns:
+        The result as a BigDecimal, rounded to `precision` significant digits.
+
+    Raises:
+        Error: If the expression cannot be tokenized, parsed, or evaluated.
+    """
+    return eval(expr, precision, variables, rounding_mode)
