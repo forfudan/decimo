@@ -7,8 +7,7 @@ negative sqrt, etc.).
 
 from std import testing
 
-from calculator import evaluate
-from calculator.tokenizer import tokenize
+from decimo.expression import evaluate, tokenize
 
 
 # ===----------------------------------------------------------------------=== #

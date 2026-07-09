@@ -4,7 +4,7 @@ from std import testing
 from std.collections import Dict
 from decimo import Decimal
 
-from calculator.tokenizer import (
+from decimo.expression import (
     Token,
     tokenize,
     TOKEN_NUMBER,

@@ -43,7 +43,7 @@ from .display import print_error, format_about
 from .engine import evaluate_and_return
 from .io import strip, is_comment_or_blank
 from .settings import Settings, parse_settings, split_inline_settings, to_lower
-from .tokenizer import (
+from decimo.expression import (
     is_alpha_or_underscore,
     is_alnum_or_underscore,
     is_known_function,

@@ -2,7 +2,7 @@
 
 from std import testing
 
-from calculator.tokenizer import (
+from decimo.expression import (
     Token,
     tokenize,
     TOKEN_NUMBER,
@@ -15,9 +15,8 @@ from calculator.tokenizer import (
     TOKEN_FUNC,
     TOKEN_CONST,
     TOKEN_COMMA,
+    parse_to_rpn,
 )
-from calculator.parser import parse_to_rpn
-
 
 # ===----------------------------------------------------------------------=== #
 # Helper: convert token list to a compact string for easy assertion

@@ -25,6 +25,7 @@ from decimo.prelude import *
 ```
 """
 
+import decimo
 import decimo as dm
 from decimo.decimal128.decimal128 import Decimal128, Dec128
 from decimo.bigdecimal.bigdecimal import BigDecimal, BDec, Decimal

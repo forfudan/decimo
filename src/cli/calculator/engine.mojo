@@ -25,9 +25,7 @@ used by both one-shot/pipe/file modes (main.mojo) and the interactive REPL
 from decimo import Decimal
 from decimo.rounding_mode import RoundingMode
 from std.collections import Dict
-from .tokenizer import tokenize
-from .parser import parse_to_rpn
-from .evaluator import evaluate_rpn, final_round
+from decimo.expression import tokenize, parse_to_rpn, evaluate_rpn, final_round
 from .display import print_error
 
 
