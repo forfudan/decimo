@@ -23,7 +23,8 @@ operation dunders, and other dunders that implement traits, as well as
 mathematical methods that do not implement a trait.
 """
 
-from std.memory import Span, UnsafePointer
+from std.collections import Span
+from std.memory import UnsafePointer
 from std.hashlib.hasher import Hasher
 
 import decimo.decimal128.arithmetics as decimal128_arithmetics
@@ -2871,7 +2872,7 @@ struct Decimal128(
 
         var col = max_label_len + 4  # 4 spaces after longest label
 
-        def pad(label: String) {read col} -> String:
+        def pad(label: String) {imm col} -> String:
             return label + String(" ") * (col - label.byte_length())
 
         var sep_line = String("-") * (col + 30)

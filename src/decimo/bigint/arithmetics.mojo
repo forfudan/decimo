@@ -33,7 +33,7 @@ Algorithms:
   (< CUTOFF_BURNIKEL_ZIEGLER words). Single-word fast path for UInt32 divisors.
 """
 
-from std.memory import memcpy, memset_zero
+from std.memory import unsafe_memcpy, memset_zero
 
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.comparison import compare_magnitudes
@@ -95,10 +95,10 @@ def _add_magnitudes(a: List[UInt32], b: List[UInt32]) -> List[UInt32]:
 
 def _add_magnitudes_into(
     mut result: List[UInt32],
-    read a: List[UInt32],
+    imm a: List[UInt32],
     a_start: Int,
     a_end: Int,
-    read b: List[UInt32],
+    imm b: List[UInt32],
     b_start: Int,
     b_end: Int,
 ):
@@ -211,7 +211,7 @@ def _multiply_magnitudes(a: List[UInt32], b: List[UInt32]) -> List[UInt32]:
 
 
 def _multiply_magnitude_by_word(
-    read a: List[UInt32], a_start: Int, a_end: Int, w: UInt32
+    imm a: List[UInt32], a_start: Int, a_end: Int, w: UInt32
 ) -> List[UInt32]:
     """Multiplies a magnitude slice by a single UInt32 word.
 
@@ -239,13 +239,13 @@ def _multiply_magnitude_by_word(
 
     var carry: UInt64 = 0
     var w64 = UInt64(w)
-    var ap = a._data + a_start
+    var ap = a._data.unsafe_offset(a_start)
     var rp = result._data
     for i in range(len_a):
-        var product = UInt64(ap[i]) * w64 + carry
-        rp[i] = UInt32(product & 0xFFFF_FFFF)
+        var product = UInt64(ap[unsafe_offset=i]) * w64 + carry
+        rp[unsafe_offset=i] = UInt32(product & 0xFFFF_FFFF)
         carry = product >> 32
-    rp[len_a] = UInt32(carry)
+    rp[unsafe_offset=len_a] = UInt32(carry)
 
     # Strip leading zeros
     var rlen = len_a + 1
@@ -258,10 +258,10 @@ def _multiply_magnitude_by_word(
 
 
 def _multiply_magnitudes_schoolbook(
-    read a: List[UInt32],
+    imm a: List[UInt32],
     a_start: Int,
     a_end: Int,
-    read b: List[UInt32],
+    imm b: List[UInt32],
     b_start: Int,
     b_end: Int,
 ) -> List[UInt32]:
@@ -299,14 +299,18 @@ def _multiply_magnitudes_schoolbook(
         if ai == 0:
             continue
         var carry: UInt64 = 0
-        var rp = result._data + i
-        var bp = b._data + b_start
+        var rp = result._data.unsafe_offset(i)
+        var bp = b._data.unsafe_offset(b_start)
         for j in range(len_b):
-            var product = ai * UInt64(bp[j]) + UInt64(rp[j]) + carry
-            rp[j] = UInt32(product & 0xFFFF_FFFF)
+            var product = (
+                ai * UInt64(bp[unsafe_offset=j])
+                + UInt64(rp[unsafe_offset=j])
+                + carry
+            )
+            rp[unsafe_offset=j] = UInt32(product & 0xFFFF_FFFF)
             carry = product >> 32
         if carry > 0:
-            rp[len_b] = UInt32(carry)
+            rp[unsafe_offset=len_b] = UInt32(carry)
 
     # Strip leading zeros
     while result_len > 1 and result[result_len - 1] == 0:
@@ -318,10 +322,10 @@ def _multiply_magnitudes_schoolbook(
 
 
 def _multiply_magnitudes_karatsuba(
-    read a: List[UInt32],
+    imm a: List[UInt32],
     a_start: Int,
     a_end: Int,
-    read b: List[UInt32],
+    imm b: List[UInt32],
     b_start: Int,
     b_end: Int,
 ) -> List[UInt32]:
@@ -472,10 +476,10 @@ def _multiply_magnitudes_karatsuba(
 
 
 def _add_slices(
-    read a: List[UInt32],
+    imm a: List[UInt32],
     a_start: Int,
     a_end: Int,
-    read b: List[UInt32],
+    imm b: List[UInt32],
     b_start: Int,
     b_end: Int,
 ) -> List[UInt32]:
@@ -503,18 +507,18 @@ def _add_slices(
     result[len_max] = UInt32(0)
 
     var carry: UInt64 = 0
-    var ap = a._data + a_start
-    var bp = b._data + b_start
+    var ap = a._data.unsafe_offset(a_start)
+    var bp = b._data.unsafe_offset(b_start)
     var rp = result._data
     for i in range(len_max):
-        var ai: UInt64 = UInt64(ap[i]) if i < len_a else 0
-        var bi: UInt64 = UInt64(bp[i]) if i < len_b else 0
+        var ai: UInt64 = UInt64(ap[unsafe_offset=i]) if i < len_a else 0
+        var bi: UInt64 = UInt64(bp[unsafe_offset=i]) if i < len_b else 0
         var s = ai + bi + carry
-        rp[i] = UInt32(s & 0xFFFF_FFFF)
+        rp[unsafe_offset=i] = UInt32(s & 0xFFFF_FFFF)
         carry = s >> 32
 
     if carry > 0:
-        rp[len_max] = UInt32(carry)
+        rp[unsafe_offset=len_max] = UInt32(carry)
     else:
         while len(result) > len_max:
             result.shrink(len(result) - 1)
@@ -522,7 +526,7 @@ def _add_slices(
     return result^
 
 
-def _add_magnitudes_inplace(mut a: List[UInt32], read b: List[UInt32]):
+def _add_magnitudes_inplace(mut a: List[UInt32], imm b: List[UInt32]):
     """Adds magnitude b into a in-place: a += b.
 
     Grows a if needed to accommodate the sum.
@@ -565,7 +569,7 @@ def _add_magnitudes_inplace(mut a: List[UInt32], read b: List[UInt32]):
 
 
 def _add_at_offset_inplace(
-    mut a: List[UInt32], read b: List[UInt32], offset: Int
+    mut a: List[UInt32], imm b: List[UInt32], offset: Int
 ):
     """Adds magnitude b into a at a word offset: a[offset:] += b.
 
@@ -579,11 +583,13 @@ def _add_at_offset_inplace(
     """
     var len_b = len(b)
     var carry: UInt64 = 0
-    var ap = a._data + offset
+    var ap = a._data.unsafe_offset(offset)
     var bp = b._data
     for i in range(len_b):
-        var s = UInt64(ap[i]) + UInt64(bp[i]) + carry
-        ap[i] = UInt32(s & 0xFFFF_FFFF)
+        var s = (
+            UInt64(ap[unsafe_offset=i]) + UInt64(bp[unsafe_offset=i]) + carry
+        )
+        ap[unsafe_offset=i] = UInt32(s & 0xFFFF_FFFF)
         carry = s >> 32
     # Propagate remaining carry
     var j = len_b
@@ -594,7 +600,7 @@ def _add_at_offset_inplace(
         j += 1
 
 
-def _subtract_magnitudes_inplace(mut a: List[UInt32], read b: List[UInt32]):
+def _subtract_magnitudes_inplace(mut a: List[UInt32], imm b: List[UInt32]):
     """Subtracts magnitude b from a in-place: a -= b.
 
     Assumes a >= b. Used by Karatsuba where this is guaranteed by construction.
@@ -610,15 +616,15 @@ def _subtract_magnitudes_inplace(mut a: List[UInt32], read b: List[UInt32]):
     var ap = a._data
     var bp = b._data
     for i in range(len_a):
-        var ai = UInt64(ap[i])
-        var bi: UInt64 = UInt64(bp[i]) if i < len_b else 0
+        var ai = UInt64(ap[unsafe_offset=i])
+        var bi: UInt64 = UInt64(bp[unsafe_offset=i]) if i < len_b else 0
         var diff = ai - bi - borrow
         if ai < bi + borrow:
             diff += BigInt.BASE
             borrow = 1
         else:
             borrow = 0
-        ap[i] = UInt32(diff & 0xFFFF_FFFF)
+        ap[unsafe_offset=i] = UInt32(diff & 0xFFFF_FFFF)
 
     # Strip leading zeros
     while len(a) > 1 and a[len(a) - 1] == 0:
@@ -650,7 +656,7 @@ def _shift_left_words_inplace(mut a: List[UInt32], n: Int):
     # (destination is always at higher address, so backward is overlap-safe)
     var p = a._data
     for i in range(old_len - 1, -1, -1):
-        p[i + n] = p[i]
+        p[unsafe_offset=i + n] = p[unsafe_offset=i]
 
     # Fill the first n words with zeros
     memset_zero(ptr=a._data, count=n)
@@ -995,7 +1001,9 @@ def _get_words_slice(a: List[UInt32], start: Int, end: Int) -> List[UInt32]:
     var len_slice = actual_end - start
     var result = List[UInt32](capacity=len_slice)
     result.resize(unsafe_uninit_length=len_slice)
-    memcpy(dest=result._data, src=a._data + start, count=len_slice)
+    unsafe_memcpy(
+        dest=result._data, src=a._data.unsafe_offset(start), count=len_slice
+    )
     # Strip leading zeros
     while len(result) > 1 and result[len(result) - 1] == 0:
         result.shrink(len(result) - 1)
@@ -1021,7 +1029,7 @@ def _is_zero_in_range(a: List[UInt32], start: Int, end: Int) -> Bool:
 
 
 def _add_from_slice_inplace(
-    mut a: List[UInt32], read b: List[UInt32], b_start: Int, b_end: Int
+    mut a: List[UInt32], imm b: List[UInt32], b_start: Int, b_end: Int
 ):
     """Adds b[b_start:b_end] into a in-place: a += b[b_start:b_end].
 
@@ -1068,10 +1076,10 @@ def _add_from_slice_inplace(
 
 
 def _multiply_magnitudes_slices(
-    read a: List[UInt32],
+    imm a: List[UInt32],
     a_start: Int,
     a_end: Int,
-    read b: List[UInt32],
+    imm b: List[UInt32],
     b_start: Int,
     b_end: Int,
 ) -> List[UInt32]:
@@ -1115,10 +1123,10 @@ def _decrement_inplace(mut a: List[UInt32]):
 
 
 def _divmod_knuth_d_from_slices(
-    read a: List[UInt32],
+    imm a: List[UInt32],
     a_start: Int,
     a_end: Int,
-    read b: List[UInt32],
+    imm b: List[UInt32],
     b_start: Int,
     b_end: Int,
 ) raises -> Tuple[List[UInt32], List[UInt32]]:
@@ -1195,7 +1203,9 @@ def _divmod_knuth_d_from_slices(
     var m = len_a_eff - n
     var u = List[UInt32](capacity=len_a_eff + 1)
     u.resize(unsafe_uninit_length=len_a_eff)
-    memcpy(dest=u._data, src=a._data + a_start, count=len_a_eff)
+    unsafe_memcpy(
+        dest=u._data, src=a._data.unsafe_offset(a_start), count=len_a_eff
+    )
     # Ensure u has an extra leading word
     if len(u) <= m + n:
         u.append(UInt32(0))
@@ -1681,9 +1691,7 @@ def multiply(x1: BigInt, x2: BigInt) -> BigInt:
 # ===----------------------------------------------------------------------=== #
 
 
-def _compare_magnitudes_words(
-    read a: List[UInt32], read b: List[UInt32]
-) -> Int8:
+def _compare_magnitudes_words(imm a: List[UInt32], imm b: List[UInt32]) -> Int8:
     """Compares the magnitudes of two word lists.
 
     Returns:
@@ -1699,7 +1707,7 @@ def _compare_magnitudes_words(
     return 0
 
 
-def add_inplace(mut x: BigInt, read other: BigInt):
+def add_inplace(mut x: BigInt, imm other: BigInt):
     """Performs x += other by mutating x.words directly.
 
     Avoids allocating a new BigInt. Uses the existing _add_magnitudes_inplace
@@ -1815,7 +1823,7 @@ def add_int_inplace(mut x: BigInt, value: Int):
             x.sign = other_sign
 
 
-def subtract_inplace(mut x: BigInt, read other: BigInt):
+def subtract_inplace(mut x: BigInt, imm other: BigInt):
     """Performs x -= other by mutating x.words directly.
 
     Avoids allocating a new BigInt. Leverages the relationship:
@@ -1862,7 +1870,7 @@ def subtract_inplace(mut x: BigInt, read other: BigInt):
             x.sign = effective_other_sign
 
 
-def multiply_inplace(mut x: BigInt, read other: BigInt):
+def multiply_inplace(mut x: BigInt, imm other: BigInt):
     """Performs x *= other by computing the product and moving the result
     into x.words.
 
@@ -2059,7 +2067,7 @@ def right_shift_inplace(mut x: BigInt, shift: Int):
     x._normalize()
 
 
-def floor_divide_inplace(mut x: BigInt, read other: BigInt) raises:
+def floor_divide_inplace(mut x: BigInt, imm other: BigInt) raises:
     """Performs x //= other by computing the quotient and moving the result
     into x.words.
 
@@ -2109,7 +2117,7 @@ def floor_divide_inplace(mut x: BigInt, read other: BigInt) raises:
     x._normalize()
 
 
-def floor_modulo_inplace(mut x: BigInt, read other: BigInt) raises:
+def floor_modulo_inplace(mut x: BigInt, imm other: BigInt) raises:
     """Performs x %= other by computing the remainder and moving the result
     into x.words.
 

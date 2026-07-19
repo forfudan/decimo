@@ -27,7 +27,7 @@ for the Decimo library. It uses base-2^32 representation with UInt32 words
 in little-endian order, and a separate sign bit.
 """
 
-from std.memory import UnsafePointer, memcpy
+from std.memory import UnsafePointer, unsafe_memcpy
 from std.sys import size_of
 
 import decimo.bigint.arithmetics as bigint_arithmetics
@@ -2153,20 +2153,20 @@ def _from_decimal_digits_simple(
 
     # ---- Fast path: ≤ 9 digits → single UInt32 word, no allocation ----
     if digit_count <= 9:
-        var dp = digits._data + start
-        var val: UInt32 = UInt32(dp[0])
+        var dp = digits._data.unsafe_offset(start)
+        var val: UInt32 = UInt32(dp[])
         for j in range(1, digit_count):
-            val = val * 10 + UInt32(dp[j])
+            val = val * 10 + UInt32(dp[unsafe_offset=j])
         var result = BigInt()
         result.words[0] = val
         return result^
 
     # ---- Fast path: 10–19 digits → parse into UInt64, at most 2 words ----
     if digit_count <= 19:
-        var dp = digits._data + start
-        var val: UInt64 = UInt64(dp[0])
+        var dp = digits._data.unsafe_offset(start)
+        var val: UInt64 = UInt64(dp[])
         for j in range(1, digit_count):
-            val = val * 10 + UInt64(dp[j])
+            val = val * 10 + UInt64(dp[unsafe_offset=j])
         var result = BigInt()
         result.words[0] = UInt32(val & 0xFFFF_FFFF)
         var high_word = UInt32(val >> 32)
@@ -2191,13 +2191,13 @@ def _from_decimal_digits_simple(
     if first_chunk == 0:
         first_chunk = 9
 
-    var dp = digits._data + start
-    var chunk_val: UInt32 = UInt32(dp[0])
+    var dp = digits._data.unsafe_offset(start)
+    var chunk_val: UInt32 = UInt32(dp[])
     for j in range(1, first_chunk):
-        chunk_val = chunk_val * 10 + UInt32(dp[j])
-    dp += first_chunk
+        chunk_val = chunk_val * 10 + UInt32(dp[unsafe_offset=j])
+    dp = dp.unsafe_offset(first_chunk)
 
-    wp[0] = chunk_val
+    wp[] = chunk_val
     var word_count: Int = 1
     var remaining = digit_count - first_chunk
 
@@ -2206,20 +2206,20 @@ def _from_decimal_digits_simple(
 
     while remaining > 0:
         # Parse 9 digit values → UInt32 chunk
-        var cv: UInt32 = UInt32(dp[0])
+        var cv: UInt32 = UInt32(dp[])
         for j in range(1, 9):
-            cv = cv * 10 + UInt32(dp[j])
-        dp += 9
+            cv = cv * 10 + UInt32(dp[unsafe_offset=j])
+        dp = dp.unsafe_offset(9)
         remaining -= 9
 
         # Fused multiply-add: result = result * 10^9 + cv  (single O(n) pass)
         var carry: UInt64 = UInt64(cv)
         for k in range(word_count):
-            var product = UInt64(wp[k]) * MUL9 + carry
-            wp[k] = UInt32(product & 0xFFFF_FFFF)
+            var product = UInt64(wp[unsafe_offset=k]) * MUL9 + carry
+            wp[unsafe_offset=k] = UInt32(product & 0xFFFF_FFFF)
             carry = product >> 32
         if carry > 0:
-            wp[word_count] = UInt32(carry)
+            wp[unsafe_offset=word_count] = UInt32(carry)
             word_count += 1
 
     # Trim pre-allocated words to the actual live word count.

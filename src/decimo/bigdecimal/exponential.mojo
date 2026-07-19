@@ -18,11 +18,12 @@
 
 from std import math
 
-import decimo.bigdecimal.arithmetics as bigdecimal_arithmetics
+from decimo.biguint.biguint import BigUInt
 import decimo.biguint.arithmetics as biguint_arithmetics
 import decimo.biguint.exponential as biguint_exponential
 import decimo.decimal128.utility as decimal128_utility
 from decimo.bigdecimal.bigdecimal import BigDecimal
+import decimo.bigdecimal.arithmetics as bigdecimal_arithmetics
 from decimo.errors import ValueError, OverflowError, ZeroDivisionError
 from decimo.rounding_mode import RoundingMode
 

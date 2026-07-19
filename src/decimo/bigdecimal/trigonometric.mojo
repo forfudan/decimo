@@ -23,6 +23,7 @@ operating on the arbitrary-precision BigDecimal type.
 
 from std import time
 
+from decimo.biguint.biguint import BigUInt
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.errors import ValueError
 from decimo.rounding_mode import RoundingMode

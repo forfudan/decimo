@@ -20,6 +20,7 @@
 
 """Implements functions for special operations on Decimal128 objects."""
 
+from decimo.decimal128.decimal128 import Decimal128
 from decimo.errors import ValueError, OverflowError
 
 

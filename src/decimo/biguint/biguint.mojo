@@ -23,7 +23,7 @@ operation dunders, and other dunders that implement traits, as well as
 mathematical methods that do not implement a trait.
 """
 
-from std.memory import UnsafePointer, memcpy, memcmp
+from std.memory import UnsafePointer, unsafe_memcpy, memcmp
 
 from decimo.bigint10.bigint10 import BigInt10
 import decimo.biguint.arithmetics as biguint_arithmetics
@@ -37,6 +37,7 @@ from decimo.errors import (
     ZeroDivisionError,
 )
 import decimo.str as decimo_str
+from decimo.rounding_mode import RoundingMode
 
 # Type aliases
 comptime BUInt = BigUInt
@@ -440,9 +441,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         # Now we can safely copy the words
         result = BigUInt(unsafe_uninit_length=n_words)
-        memcpy(
+        unsafe_memcpy(
             dest=result.words._data,
-            src=value.words._data + start_index,
+            src=value.words._data.unsafe_offset(start_index),
             count=n_words,
         )
         result.remove_leading_empty_words()
@@ -1598,28 +1599,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
     # ===------------------------------------------------------------------=== #
     # Other dunders
     # ===------------------------------------------------------------------=== #
-
-    def __merge_with__[other_type: type_of(BigInt10)](self) -> BigInt10:
-        """Merges this BigUInt with a BigInt10 into a BigInt10.
-
-        Parameters:
-            other_type: The target type.
-
-        Returns:
-            A BigInt10 value.
-        """
-        return BigInt10(self)
-
-    def __merge_with__[other_type: type_of(BigDecimal)](self) -> BigDecimal:
-        """Merges this BigUInt with a BigDecimal into a BigDecimal.
-
-        Parameters:
-            other_type: The target type.
-
-        Returns:
-            A BigDecimal value.
-        """
-        return BigDecimal(self)
 
     # ===------------------------------------------------------------------=== #
     # Mathematical methods that do not implement a trait (not a dunder)

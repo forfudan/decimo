@@ -404,7 +404,7 @@ def parse_numeric_string(
 
         def convert_fast[
             simd_width: Int
-        ](i: Int) {mut coef, read value_bytes, read extract_start}:
+        ](i: Int) {mut coef, imm value_bytes, imm extract_start}:
             coef.unsafe_ptr().store[width=simd_width](
                 i,
                 value_bytes.unsafe_ptr().load[width=simd_width](
@@ -427,7 +427,7 @@ def parse_numeric_string(
 
             def convert_before[
                 simd_width: Int
-            ](i: Int) {mut coef, read value_bytes, read extract_start}:
+            ](i: Int) {mut coef, imm value_bytes, imm extract_start}:
                 coef.unsafe_ptr().store[width=simd_width](
                     i,
                     value_bytes.unsafe_ptr().load[width=simd_width](
@@ -445,9 +445,9 @@ def parse_numeric_string(
                 simd_width: Int
             ](i: Int) {
                 mut coef,
-                read value_bytes,
-                read decimal_point_pos,
-                read before_count,
+                imm value_bytes,
+                imm decimal_point_pos,
+                imm before_count,
             }:
                 coef.unsafe_ptr().store[width=simd_width](
                     before_count + i,

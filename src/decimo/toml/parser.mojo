@@ -34,7 +34,7 @@ from decimo.errors import ValueError
 from .tokenizer import Token, TokenType, Tokenizer
 
 
-struct TOMLValue(Copyable, ImplicitlyCopyable, Movable):
+struct TOMLValue(Copyable, ImplicitlyDeletable, Movable):
     """Represents a value in the TOML document."""
 
     var type: TOMLValueType
@@ -47,9 +47,9 @@ struct TOMLValue(Copyable, ImplicitlyCopyable, Movable):
     """The float content when type is `FLOAT`."""
     var bool_value: Bool
     """The boolean content when type is `BOOLEAN`."""
-    var array_values: List[TOMLValue]
+    var array_values: List[Self]
     """The array elements when type is `ARRAY`."""
-    var table_values: Dict[String, TOMLValue]
+    var table_values: Dict[String, Self]
     """The key-value pairs when type is `TABLE`."""
 
     def __init__(out self):
@@ -59,8 +59,8 @@ struct TOMLValue(Copyable, ImplicitlyCopyable, Movable):
         self.int_value = 0
         self.float_value = 0.0
         self.bool_value = False
-        self.array_values = List[TOMLValue]()
-        self.table_values = Dict[String, TOMLValue]()
+        self.array_values = List[Self]()
+        self.table_values = Dict[String, Self]()
 
     def __init__(out self, string_value: String):
         """Initialize a string TOML value.
@@ -131,6 +131,11 @@ struct TOMLValue(Copyable, ImplicitlyCopyable, Movable):
         self.bool_value = copy.bool_value
         self.array_values = copy.array_values.copy()
         self.table_values = copy.table_values.copy()
+
+    def __del__(deinit self):
+        """Destructor to clean up resources."""
+        self.array_values.clear()
+        self.table_values.clear()
 
     def is_table(self) -> Bool:
         """Checks if this value is a table.
@@ -383,7 +388,7 @@ struct TOMLDocument(Copyable, Movable):
                 Missing keys are handled gracefully and do not raise.
         """
         if key in self.root:
-            return self.root[key]
+            return self.root[key].copy()
         return TOMLValue()
 
     def get_table(self, table_name: String) raises -> Dict[String, TOMLValue]:
@@ -441,7 +446,7 @@ struct TOMLDocument(Copyable, Movable):
         var result = List[Dict[String, TOMLValue]]()
 
         if key in self.root:
-            var value = self.root[key]
+            var value = self.root[key].copy()
             if value.type == TOMLValueType.ARRAY:
                 for table_value in value.array_values:
                     if table_value.type == TOMLValueType.TABLE:

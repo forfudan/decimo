@@ -41,6 +41,7 @@ import decimo.bigdecimal.exponential as bigdecimal_exponential
 import decimo.bigdecimal.rounding as bigdecimal_rounding
 import decimo.bigdecimal.special as bigdecimal_special
 import decimo.bigdecimal.trigonometric as bigdecimal_trigonometric
+from decimo.biguint.biguint import BigUInt
 import decimo.biguint.arithmetics as biguint_arithmetics
 
 # Type aliases for the arbitrary-precision decimal type.
