@@ -17,7 +17,7 @@
 """Implements exponential functions for the BigUInt type."""
 
 from std import math
-from std.memory import memset_zero
+from std.memory import unsafe_memset_zero
 
 from decimo.biguint.biguint import BigUInt
 import decimo.biguint.arithmetics as biguint_arithmetics
@@ -187,7 +187,7 @@ def sqrt_initial_guess(x: BigUInt) -> BigUInt:
         nsw = 999_999_999
 
     result = BigUInt(unsafe_uninit_length=n_words + 1)
-    memset_zero(ptr=result.words._data, count=n_words + 1)
+    unsafe_memset_zero(ptr=result.words._data, count=n_words + 1)
     # Boundary checks are not needed here because len(x.words) > 2
     result.words.unsafe_set(n_words, msw_sqrt)
     result.words.unsafe_set(

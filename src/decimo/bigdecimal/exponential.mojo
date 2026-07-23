@@ -471,7 +471,7 @@ def root(x: BigDecimal, n: BigDecimal, precision: Int) raises -> BigDecimal:
             return result^
         _tuple = is_integer_reciprocal_and_return(n)
         var is_integer_reciprocal: Bool = _tuple[0]
-        var ref integer_reciprocal: BigDecimal = _tuple[1]
+        ref integer_reciprocal: BigDecimal = _tuple[1]
         if is_integer_reciprocal:
             # If m = 1/n is an integer, use integer_root
             var result = integer_power(x, integer_reciprocal, precision)

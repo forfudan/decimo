@@ -1138,7 +1138,7 @@ struct Decimal128(
             writer.write(
                 StringSlice(
                     unsafe_from_utf8=Span(
-                        ptr=buf.unsafe_ptr() + pos, length=n_digits
+                        unsafe_ptr=buf.unsafe_ptr() + pos, length=n_digits
                     )
                 )
             )
@@ -1157,7 +1157,7 @@ struct Decimal128(
             writer.write(
                 StringSlice(
                     unsafe_from_utf8=Span(
-                        ptr=buf.unsafe_ptr() + frac_start, length=scale
+                        unsafe_ptr=buf.unsafe_ptr() + frac_start, length=scale
                     )
                 )
             )
@@ -1166,7 +1166,7 @@ struct Decimal128(
             writer.write(
                 StringSlice(
                     unsafe_from_utf8=Span(
-                        ptr=buf.unsafe_ptr() + pos, length=int_len
+                        unsafe_ptr=buf.unsafe_ptr() + pos, length=int_len
                     )
                 )
             )
@@ -1174,7 +1174,8 @@ struct Decimal128(
             writer.write(
                 StringSlice(
                     unsafe_from_utf8=Span(
-                        ptr=buf.unsafe_ptr() + pos + int_len, length=scale
+                        unsafe_ptr=buf.unsafe_ptr() + pos + int_len,
+                        length=scale,
                     )
                 )
             )

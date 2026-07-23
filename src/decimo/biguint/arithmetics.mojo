@@ -20,7 +20,7 @@ Implements basic arithmetic functions for the BigUInt type.
 
 from std.algorithm import vectorize
 from std import math
-from std.memory import unsafe_memcpy, memset_zero
+from std.memory import unsafe_memcpy, unsafe_memset_zero
 
 from decimo.biguint.biguint import BigUInt
 import decimo.biguint.comparison as biguint_comparison
@@ -1008,7 +1008,7 @@ def multiply_slices_schoolbook(
     # Allocate the result of zero words with the maximum length
     # The leading zeros need to be removed before returning the result
     var result = BigUInt(unsafe_uninit_length=max_result_len)
-    memset_zero(ptr=result.words._data, count=max_result_len)
+    unsafe_memset_zero(ptr=result.words._data, count=max_result_len)
 
     # Perform the multiplication word by word (from least significant to most significant)
     # x = x[start_x] + x[start_x + 1] * 10^9
@@ -1628,7 +1628,7 @@ def multiply_slices_toom3(
     # Maximum result length: nx + ny words (product of two numbers).
     var result_len = nx + ny
     var result = BigUInt(unsafe_uninit_length=result_len)
-    memset_zero(ptr=result.words._data, count=result_len)
+    unsafe_memset_zero(ptr=result.words._data, count=result_len)
 
     # Helper: add a BigUInt value at a word offset into result
     @parameter
@@ -1959,7 +1959,7 @@ def multiply_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
 
     var res = BigUInt(unsafe_uninit_length=len(x.words) + n)
     # Fill the first n words with zeros
-    memset_zero(ptr=res.words._data, count=n)
+    unsafe_memset_zero(ptr=res.words._data, count=n)
     # Copy the original words to the end of the new list
     unsafe_memcpy(
         dest=res.words._data.unsafe_offset(n),

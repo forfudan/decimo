@@ -382,7 +382,7 @@ struct BigInt(
                     + String(e)
                 ),
             )
-        var ref coef: List[UInt8] = _tuple[0]
+        ref coef: List[UInt8] = _tuple[0]
         var scale: Int = _tuple[1]
         var sign: Bool = _tuple[2]
 

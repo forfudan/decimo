@@ -33,7 +33,7 @@ Algorithms:
   (< CUTOFF_BURNIKEL_ZIEGLER words). Single-word fast path for UInt32 divisors.
 """
 
-from std.memory import unsafe_memcpy, memset_zero
+from std.memory import unsafe_memcpy, unsafe_memset_zero
 
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.comparison import compare_magnitudes
@@ -292,7 +292,7 @@ def _multiply_magnitudes_schoolbook(
     var result_len = len_a + len_b
     var result = List[UInt32](capacity=result_len)
     result.resize(unsafe_uninit_length=result_len)
-    memset_zero(ptr=result._data, count=result_len)
+    unsafe_memset_zero(ptr=result._data, count=result_len)
 
     for i in range(len_a):
         var ai = UInt64(a[a_start + i])
@@ -389,7 +389,7 @@ def _multiply_magnitudes_karatsuba(
         var rlen = len_a + len_b
         var result = List[UInt32](capacity=rlen)
         result.resize(unsafe_uninit_length=rlen)
-        memset_zero(ptr=result._data, count=rlen)
+        unsafe_memset_zero(ptr=result._data, count=rlen)
         _add_at_offset_inplace(result, z0, 0)
         _add_at_offset_inplace(result, z1, m)
         while rlen > 1 and result[rlen - 1] == 0:
@@ -409,7 +409,7 @@ def _multiply_magnitudes_karatsuba(
         var rlen = len_a + len_b
         var result = List[UInt32](capacity=rlen)
         result.resize(unsafe_uninit_length=rlen)
-        memset_zero(ptr=result._data, count=rlen)
+        unsafe_memset_zero(ptr=result._data, count=rlen)
         _add_at_offset_inplace(result, z0, 0)
         _add_at_offset_inplace(result, z1, m)
         while rlen > 1 and result[rlen - 1] == 0:
@@ -452,7 +452,7 @@ def _multiply_magnitudes_karatsuba(
     var result_len = len_a + len_b
     var result = List[UInt32](capacity=result_len)
     result.resize(unsafe_uninit_length=result_len)
-    memset_zero(ptr=result._data, count=result_len)
+    unsafe_memset_zero(ptr=result._data, count=result_len)
 
     # Add z0 at offset 0
     _add_at_offset_inplace(result, z0, 0)
@@ -659,7 +659,7 @@ def _shift_left_words_inplace(mut a: List[UInt32], n: Int):
         p[unsafe_offset=i + n] = p[unsafe_offset=i]
 
     # Fill the first n words with zeros
-    memset_zero(ptr=a._data, count=n)
+    unsafe_memset_zero(ptr=a._data, count=n)
 
 
 def _divmod_single_word(
@@ -1212,7 +1212,7 @@ def _divmod_knuth_d_from_slices(
 
     var quotient = List[UInt32](capacity=m + 1)
     quotient.resize(unsafe_uninit_length=m + 1)
-    memset_zero(ptr=quotient._data, count=m + 1)
+    unsafe_memset_zero(ptr=quotient._data, count=m + 1)
 
     # v_n_minus_1 and v_n_minus_2 read directly from b via offset
     var v_n_minus_1 = UInt64(b[b_start + n - 1])
@@ -1359,7 +1359,7 @@ def _divmod_burnikel_ziegler(
     var q_total_words = (t - 1) * n
     var quotient = List[UInt32](capacity=q_total_words + 1)
     quotient.resize(unsafe_uninit_length=q_total_words)
-    memset_zero(ptr=quotient._data, count=q_total_words)
+    unsafe_memset_zero(ptr=quotient._data, count=q_total_words)
 
     # First iteration: divide top 2n words by norm_b.
     var result_pair = _bz_two_by_one_slices(

@@ -152,7 +152,7 @@ def split_into_lines(text: String) -> List[String]:
         var last = String(text[byte=start:text_len])
         # Strip trailing \r if present
         if last.byte_length() > 0 and last[byte=last.byte_length() - 1] == "\r":
-            last = String(last[byte = 0 : last.byte_length() - 1])
+            last.resize(last.byte_length() - 1)
         if last.byte_length() > 0:
             lines.append(last)
 

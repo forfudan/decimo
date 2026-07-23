@@ -374,7 +374,7 @@ struct BigInt10(
                     + String(e)
                 ),
             )
-        var ref coef: List[UInt8] = _tuple[0]
+        ref coef: List[UInt8] = _tuple[0]
         var sign: Bool = _tuple[2]
 
         # Check if the number is zero
