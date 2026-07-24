@@ -59,25 +59,25 @@ comptime _CLR_FUNC_NAME = _YELLOW  # Function name
 comptime _CLR_MSG_TEXT = _BOLD  # Error message text
 comptime _CLR_CHAIN_MSG = _DIM  # Chained error separator message
 
-comptime OverflowError = DecimoError[error_type="OverflowError"]
+comptime OverflowError = BaseError[error_type="OverflowError"]
 """Type for overflow errors in Decimo."""
 
-comptime IndexError = DecimoError[error_type="IndexError"]
+comptime IndexError = BaseError[error_type="IndexError"]
 """Type for index errors in Decimo."""
 
-comptime KeyError = DecimoError[error_type="KeyError"]
+comptime KeyError = BaseError[error_type="KeyError"]
 """Type for key errors in Decimo."""
 
-comptime ValueError = DecimoError[error_type="ValueError"]
+comptime ValueError = BaseError[error_type="ValueError"]
 """Type for value errors in Decimo."""
 
-comptime ZeroDivisionError = DecimoError[error_type="ZeroDivisionError"]
+comptime ZeroDivisionError = BaseError[error_type="ZeroDivisionError"]
 """Type for divided-by-zero errors in Decimo."""
 
-comptime ConversionError = DecimoError[error_type="ConversionError"]
+comptime ConversionError = BaseError[error_type="ConversionError"]
 """Type for conversion errors in Decimo."""
 
-comptime RuntimeError = DecimoError[error_type="RuntimeError"]
+comptime RuntimeError = BaseError[error_type="RuntimeError"]
 """Type for runtime infrastructure errors in Decimo (e.g., resource allocation
 failures, missing native libraries)."""
 
@@ -133,7 +133,7 @@ def _shorten_path_implementation(full_path: String) -> String:
     return full_path
 
 
-struct DecimoError[error_type: StringLiteral = "DecimoError"](Writable):
+struct BaseError[error_type: StringLiteral = "BaseError"](Writable):
     """Base type for all Decimo errors.
 
     The error message format mimics Python's traceback:
@@ -172,7 +172,7 @@ struct DecimoError[error_type: StringLiteral = "DecimoError"](Writable):
         function: String,
         previous_error: Optional[Error] = None,
     ):
-        """Creates a new `DecimoError` with auto-captured file and line.
+        """Creates a new `BaseError` with auto-captured file and line.
 
         File name and line number are automatically captured from the call site.
 
@@ -213,7 +213,7 @@ struct DecimoError[error_type: StringLiteral = "DecimoError"](Writable):
 
         Traceback (most recent call last):
           File "./src/decimo/bigint/bigint.mojo", line 20, in outer_function
-        DecimoError: outer error message
+        BaseError: outer error message
         ```
 
         Parameters:
