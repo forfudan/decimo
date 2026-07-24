@@ -2328,7 +2328,7 @@ def floor_divide_estimate_quotient(
     var numerator: UInt128
     var base_index = index_of_word + len(divisor.words) - 2
 
-    # Ensure we don't imm beyond bounds
+    # Ensure we don't read beyond bounds
     if base_index + 2 < len(dividend.words):
         # We can safely load 3 words: r0, r1, r2
         numerator = (
@@ -2756,7 +2756,7 @@ def floor_divide_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
 
     if word_shift > 0:
         # Forward shift is safe: dst index < src index, dst[i] is
-        # written before src[i+1] is imm.
+        # written before src[i+1] is read.
         var keep = len(x.words) - word_shift
         for i in range(keep):
             x.words[i] = x.words[i + word_shift]
@@ -2881,7 +2881,7 @@ def floor_divide_by_power_of_billion_inplace(mut x: BigUInt, n: Int):
         return
 
     # Forward shift is safe: dst index < src index, dst[i] is written
-    # before src[i+1] is imm.
+    # before src[i+1] is read.
     for i in range(keep):
         x.words[i] = x.words[i + n]
     x.words.shrink(keep)
