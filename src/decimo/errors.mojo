@@ -59,6 +59,9 @@ comptime _CLR_FUNC_NAME = _YELLOW  # Function name
 comptime _CLR_MSG_TEXT = _BOLD  # Error message text
 comptime _CLR_CHAIN_MSG = _DIM  # Chained error separator message
 
+comptime DecimoError = BaseError[error_type="DecimoError"]
+"""Type for general erros in Decimo."""
+
 comptime OverflowError = BaseError[error_type="OverflowError"]
 """Type for overflow errors in Decimo."""
 
