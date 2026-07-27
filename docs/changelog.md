@@ -2,7 +2,9 @@
 
 This is a list of changes for the Decimo package (formerly DeciMojo).
 
-## Unreleased
+## Unreleased (v0.12.0)
+
+Decimo v0.12.0 retargets the codebase to **Mojo v1.0.0**.
 
 ### ⭐️ New
 
