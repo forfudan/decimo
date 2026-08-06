@@ -58,5 +58,9 @@ from .rounding_mode import (
 # Core functions
 from .bigint.number_theory import gcd, lcm, extended_gcd, mod_inverse, mod_pow
 
+# Numeral systems (high-level: the `to_chinese()` methods; mid-level:
+# `decimo.numerals`)
+from .numerals.chinese import ChineseNumeralStyle
+
 # Expression engine (high-level: `eval`; mid-level: `decimo.expression`)
 from .expression import eval, evaluate

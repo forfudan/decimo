@@ -17,11 +17,15 @@
 #   biguint     buint uint      → BigUint tests
 #   bigint10    bint10 int10    → BigInt10 tests
 #   decimal128  dec128 d128     → Decimal128 tests
+#   rational    rat   frac      → Rational number tests
+#   expression  expr  eval      → Expression engine tests
+#   numerals    numeral chinese → Numeral system tests
 #   bigfloat    bfloat float    → BigFloat tests (requires MPFR)
 #   toml                        → TOML parser tests
 #   cli                         → CLI calculator tests
 #   python      py              → Python binding tests
-#   decimo      core            → All core suites (bigdecimal+bigint+biguint+bigint10+decimal128)
+#   decimo      core            → All core suites (bigdecimal+bigint+biguint+bigint10+
+#                                 decimal128+rational+expression+numerals)
 #   all                         → Everything (decimo + toml + cli)
 
 set -eo pipefail
@@ -77,6 +81,7 @@ run_bigint10()    { run_mojo_suite bigint10; }
 run_decimal128()  { run_mojo_suite decimal128; }
 run_rational()    { run_mojo_suite rational; }
 run_expression()  { run_mojo_suite expression; }
+run_numerals()    { run_mojo_suite numerals; }
 run_toml()        { run_mojo_suite toml; }
 
 run_bigfloat() {
@@ -326,6 +331,7 @@ run_decimo() {
     run_decimal128
     run_rational
     run_expression
+    run_numerals
 }
 
 run_all() {
@@ -347,6 +353,7 @@ resolve() {
         decimal128|dec128|d128)   echo "run_decimal128" ;;
         rational|rat|frac)        echo "run_rational" ;;
         expression|expr|eval)     echo "run_expression" ;;
+        numerals|numeral|chinese) echo "run_numerals" ;;
         bigfloat|bfloat|float)    echo "run_bigfloat" ;;
         toml)                     echo "run_toml" ;;
         cli)                      echo "run_cli" ;;
@@ -369,6 +376,7 @@ list_suites() {
     printf "  %-28s %s\n" "decimal128, dec128, d128"    "Decimal128 tests"
     printf "  %-28s %s\n" "rational, rat, frac"         "Rational number tests"
     printf "  %-28s %s\n" "expression, expr, eval"      "Expression engine tests"
+    printf "  %-28s %s\n" "numerals, numeral, chinese"  "Numeral system tests"
     printf "  %-28s %s\n" "bigfloat, bfloat, float"     "BigFloat tests (requires MPFR)"
     printf "  %-28s %s\n" "toml"                        "TOML parser tests"
     printf "  %-28s %s\n" "cli"                         "CLI calculator tests"

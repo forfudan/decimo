@@ -15,6 +15,7 @@ python = ">=3.13" # For Python bindings and tests
 python-build = ">=0.2.0" # Build PyPI wheel (`pixi run wheel`)
 ruff = ">=0.15.0" # Python code formatter
 twine = ">=6.2.0" # Upload wheel to PyPI (`twine upload dist/*`)
+pre-commit = ">=4.6.1,<5"
 
 [tasks]
 # format the code

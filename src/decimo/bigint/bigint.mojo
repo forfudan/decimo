@@ -37,6 +37,8 @@ import decimo.bigint.exponential as bigint_exponential
 import decimo.bigint.number_theory as bigint_number_theory
 import decimo.bigint.special as bigint_special
 import decimo.str as decimo_str
+import decimo.numerals.chinese as decimo_chinese
+from decimo.numerals.chinese import ChineseNumeralStyle
 from decimo.bigint10.bigint10 import BigInt10
 from decimo.biguint.biguint import BigUInt
 from decimo.utility import unsigned_counterpart
@@ -713,6 +715,53 @@ struct BigInt(
         if self.sign:
             return String("-") + formatted
         return formatted^
+
+    def to_chinese(
+        self,
+        style: ChineseNumeralStyle = ChineseNumeralStyle.simplified(),
+        max_digits: Int = decimo_chinese.MAX_CHINESE_NUMERAL_DIGITS,
+    ) raises -> String:
+        """Returns the number written in Chinese numerals.
+
+        The digits are read with the 十/百/千/万 units within each section of
+        eight digits, and the sections are joined by 亿, which multiplies
+        everything read before it.  See `decimo.numerals.chinese` for the
+        details of the magnitude system.
+
+        Args:
+            style: The numeral style to render with.  Defaults to the everyday
+                simplified-Chinese style; `ChineseNumeralStyle` also offers
+                financial (大写) and traditional (繁体) presets.
+            max_digits: The largest number of digits the reading may write out.
+                Values with more digits than this -- `factorial(10000)`, say --
+                raise instead, since their reading is far past anything usable.
+                Pass `0` to lift the cap.
+
+        Examples:
+
+        ```console
+        BigInt("15").to_chinese()           -> 十五
+        BigInt("-100000001").to_chinese()   -> 负一亿零一
+        BigInt("123456789").to_chinese()    -> 一亿二千三百四十五万六千七百八十九
+        BigInt("1050").to_chinese(
+            ChineseNumeralStyle.simplified_financial()
+        )                                   -> 壹仟零伍拾
+        ```
+        End of examples.
+
+        Returns:
+            The Chinese reading of the number.
+
+        Raises:
+            ValueError: If the number cannot be rendered as a decimal string,
+                or has more than `max_digits` digits.
+        """
+        decimo_chinese._check_digit_budget(
+            self.number_of_digits(), 0, max_digits, "BigInt.to_chinese()"
+        )
+        return decimo_chinese.decimal_string_to_chinese(
+            self.to_string(), style, max_digits
+        )
 
     def to_hex_string(self) -> String:
         """Returns a hexadecimal string representation of the BigInt.
