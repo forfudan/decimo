@@ -234,6 +234,31 @@ jobs:
             sleep 5
           done
 
+  # ── Test: Numeral systems ─────────────────────────────────────────────────
+  test-numerals:
+    name: Test Numerals
+    needs: build
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-decimo
+      - name: Run tests (with retry for Mojo compiler intermittent crashes)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== test attempt $attempt ==="
+            if bash tests/test.sh numerals; then
+              echo "=== tests passed on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== tests failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== test run crashed, retrying in 5s... ==="
+            sleep 5
+          done
+
   # ── Test: BigFloat ─────────────────────────────────────────────────────────
   test-bigfloat:
     name: Test BigFloat

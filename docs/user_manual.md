@@ -41,6 +41,7 @@ from decimo.prelude import *
   - [Decimal Query Methods](#decimal-query-methods)
   - [Python Interoperability](#python-interoperability)
   - [A note on result exponents (`Decimal` and `Dec128`)](#a-note-on-result-exponents-decimal-and-dec128)
+  - [Chinese Numerals](#chinese-numerals)
   - [Appendix A — Import Paths](#appendix-a--import-paths)
   - [Appendix B — Traits Implemented](#appendix-b--traits-implemented)
   - [Appendix C — Complete API Tables](#appendix-c--complete-api-tables)
@@ -370,6 +371,7 @@ print(mod_inverse(BInt(3), BInt(7)))      # 5
 | `x.to_hex_string()`                | `"0x1A2B3C"`        |
 | `x.to_binary_string()`             | `"0b110101"`        |
 | `x.to_string(line_width=20)`       | Multi-line output   |
+| `x.to_chinese()`                   | `"十五"`            |
 
 #### Numeric conversions <!-- omit from toc -->
 
@@ -383,6 +385,15 @@ print(mod_inverse(BInt(3), BInt(7)))      # 5
 var x = BInt("123456789012345678901234567890")
 print(x.to_string_with_separators())  # 123_456_789_012_345_678_901_234_567_890
 print(x.to_hex_string())              # 0x...
+```
+
+`to_chinese()` writes the number in Chinese numerals; see
+[Chinese Numerals](#chinese-numerals) for the reading rules and the available
+styles.
+
+```mojo
+print(BInt(15).to_chinese())          # 十五
+print(BInt("123456789").to_chinese()) # 一亿二千三百四十五万六千七百八十九
 ```
 
 ### Query Methods
@@ -862,6 +873,14 @@ x.to_eng_string()                      # to_string(engineering=True)
 x.to_string_with_separators("_")       # to_string(delimiter="_")
 ```
 
+`to_chinese()` writes the number in Chinese numerals; see
+[Chinese Numerals](#chinese-numerals) for the reading rules and the available
+styles.
+
+```mojo
+print(Decimal("1050.07").to_chinese())  # 一千零五十点零七
+```
+
 #### `repr()` <!-- omit from toc -->
 
 ```mojo
@@ -962,6 +981,101 @@ scale of the operands and pads exact divide quotients with trailing
 zeros to the operand-scale difference. If you need rust_decimal-style
 output, call `.quantize(...)` or `.normalize()` explicitly.
 
+### Chinese Numerals
+
+Both `BInt` and `Decimal` can write themselves in Chinese numerals with
+`to_chinese()`:
+
+```mojo
+print(BInt(15).to_chinese())                    # 十五
+print(Decimal("1050.07").to_chinese())          # 一千零五十点零七
+print(Decimal("-100000001").to_chinese())       # 负一亿零一
+```
+
+The conversion works on the decimal *string* of the number rather than on a
+particular numeric type, so it is not limited by any integer width. The
+string-level entry point is available directly if you need it:
+
+```mojo
+from decimo.numerals import decimal_string_to_chinese
+
+print(decimal_string_to_chinese("1050.07"))     # 一千零五十点零七
+```
+
+#### Reading rules <!-- omit from toc -->
+
+The integer part is split into sections of eight digits, counted from the
+decimal point. Within a section the digits take the 十/百/千 units, and the
+upper four take 万. Sections are joined by 亿, which **multiplies everything
+read before it** rather than labelling one section:
+
+```mojo
+print(BInt("1234567890123").to_chinese())
+# 一万二千三百四十五亿六千七百八十九万零一百二十三  (12345亿 + 6789万 + 123)
+```
+
+Because 亿 is a multiplier, each further 亿 raises the magnitude by another
+10^8 — 亿亿 is 10^16, 亿亿亿 is 10^24 — so arbitrarily large integers are
+readable without the rarely-agreed-upon 兆/京/垓 units:
+
+```mojo
+print(BInt("10000000000000000").to_chinese())   # 一亿亿
+print(BInt("10000000000000005").to_chinese())   # 一亿亿零五
+```
+
+Runs of zeros collapse into a single 零, and a leading 一十 is shortened to 十
+(`BInt(15)` is 十五, not 一十五). The fractional part is read digit by digit
+after 点, zeros included, so the written precision survives the conversion:
+
+```mojo
+print(Decimal("1.50").to_chinese())             # 一点五零 (not 一点五)
+print(Decimal("2.000").to_chinese())            # 二点零零零
+```
+
+#### Styles <!-- omit from toc -->
+
+The character tables are supplied by `ChineseNumeralStyle`, which ships with
+four presets:
+
+| Preset                    | Digits | Units    | 10^4 / 10^8 | Point | Example for `1050` |
+| ------------------------- | ------ | -------- | ----------- | ----- | ------------------ |
+| `simplified()` (default)  | 一二三 | 十百千   | 万 / 亿     | 点    | `一千零五十`       |
+| `simplified_financial()`  | 壹贰叁 | 拾佰仟   | 万 / 亿     | 点    | `壹仟零伍拾`       |
+| `traditional()`           | 一二三 | 十百千   | 萬 / 億     | 點    | `一千零五十`       |
+| `traditional_financial()` | 壹貳參 | 拾佰仟   | 萬 / 億     | 點    | `壹仟零伍拾`       |
+
+```mojo
+from decimo import ChineseNumeralStyle
+
+print(Decimal("1050.07").to_chinese(ChineseNumeralStyle.simplified_financial()))
+# 壹仟零伍拾点零柒
+print(Decimal("1050.07").to_chinese(ChineseNumeralStyle.traditional()))
+# 一千零五十點零七
+```
+
+The financial (大写) styles keep the leading 一十 rather than shortening it,
+since dropping a digit on a cheque would make the amount easier to tamper
+with. A custom style can be built from the same constructor if you need a
+table the presets do not cover.
+
+#### Digit budget <!-- omit from toc -->
+
+A reading is always written out in full, so its cost is set by the *written*
+length of the number, not by how compactly the value was given —
+`Decimal("1E+1000000000")` is a few characters of input and a billion digits
+of output. Conversions therefore take a `max_digits` budget, defaulting to
+`MAX_CHINESE_NUMERAL_DIGITS` (10 000), and raise a `ValueError` past it. The
+check happens before the digits are expanded, so an absurd magnitude costs
+nothing:
+
+```mojo
+_ = Decimal("1E+1000000000").to_chinese()          # raises ValueError
+_ = BInt("1" + String("0") * 20000).to_chinese()   # raises ValueError
+
+# Raise or lift the cap when a very long reading really is what you want:
+print(Decimal("1E+20000").to_chinese(max_digits=0))
+```
+
 ### Appendix A — Import Paths
 
 ```mojo
@@ -978,6 +1092,14 @@ from decimo import RoundingMode
 
 # Number-theory free functions
 from decimo import gcd, lcm, extended_gcd, mod_pow, mod_inverse
+
+# Chinese numerals: the style presets are re-exported at the top level, the
+# string-level engine lives in the `decimo.numerals` sub-package
+from decimo import ChineseNumeralStyle
+from decimo.numerals import (
+    decimal_string_to_chinese,
+    MAX_CHINESE_NUMERAL_DIGITS,
+)
 ```
 
 ### Appendix B — Traits Implemented

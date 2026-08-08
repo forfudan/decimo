@@ -29,9 +29,11 @@ from std import testing
 
 from decimo.errors import ConversionError, ValueError
 from decimo.rounding_mode import RoundingMode
+from decimo.numerals.chinese import ChineseNumeralStyle
 from decimo.bigdecimal.exponential import MathCache
 from decimo.bigint10.bigint10 import BigInt10
 import decimo.str as decimo_str
+import decimo.numerals.chinese as decimo_chinese
 import decimo.bigdecimal.arithmetics as bigdecimal_arithmetics
 import decimo.bigdecimal.comparison as bigdecimal_comparison
 import decimo.bigdecimal.constants as bigdecimal_constants
@@ -949,6 +951,60 @@ struct BigDecimal(
             The number formatted with digit-group separators.
         """
         return self.to_string(delimiter=separator)
+
+    def to_chinese(
+        self,
+        style: ChineseNumeralStyle = ChineseNumeralStyle.simplified(),
+        max_digits: Int = decimo_chinese.MAX_CHINESE_NUMERAL_DIGITS,
+    ) raises -> String:
+        """Returns the number written in Chinese numerals.
+
+        The integer part is read with the 十/百/千/万 units within each section
+        of eight digits, and the sections are joined by 亿, which multiplies
+        everything read before it.  The fractional part is read digit by digit
+        after 点, zeros included, so the written precision is preserved.  See
+        `decimo.numerals.chinese` for the details of the magnitude system.
+
+        Args:
+            style: The numeral style to render with.  Defaults to the everyday
+                simplified-Chinese style; `ChineseNumeralStyle` also offers
+                financial (大写) and traditional (繁体) presets.
+            max_digits: The largest number of digits the reading may write out.
+                The reading is always in plain notation, so a compact value
+                such as `BigDecimal("1E+1000000000")` would otherwise expand
+                into a billion digits.  The budget is checked before the plain
+                string is built.  Pass `0` to lift the cap.
+
+        Examples:
+
+        ```console
+        BigDecimal("1050.07").to_chinese()      -> 一千零五十点零七
+        BigDecimal("-100000001").to_chinese()   -> 负一亿零一
+        BigDecimal("1.50").to_chinese()         -> 一点五零
+        BigDecimal("1050.07").to_chinese(
+            ChineseNumeralStyle.simplified_financial()
+        )                                       -> 壹仟零伍拾点零柒
+        ```
+        End of examples.
+
+        Returns:
+            The Chinese reading of the number.
+
+        Raises:
+            ValueError: If the number cannot be rendered as a plain decimal
+                string, or needs more than `max_digits` digits to write out.
+        """
+        # Checked up front: `force_plain=True` on a value with a large positive
+        # exponent would materialize the whole expansion before we ever see it.
+        decimo_chinese._check_digit_budget(
+            self.coefficient.number_of_digits(),
+            self.scale,
+            max_digits,
+            "BigDecimal.to_chinese()",
+        )
+        return decimo_chinese.decimal_string_to_chinese(
+            self.to_string(force_plain=True), style, max_digits
+        )
 
     # ===------------------------------------------------------------------=== #
     # Basic unary operation dunders
