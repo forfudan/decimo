@@ -410,9 +410,9 @@ struct Tokenizer:
         - Multi-line basic strings (triple double quotes)
         - Multi-line literal strings (triple single quotes)
         """
-        start_line = self.position.line
-        start_column = self.position.column
-        quote_char = self.current_char
+        var start_line = self.position.line
+        var start_column = self.position.column
+        var quote_char = self.current_char
 
         # Check for multi-line string (triple quotes)
         var is_multiline = False
@@ -599,8 +599,8 @@ struct Tokenizer:
         - Scientific notation: 1e10, 1.5e-3, 6.022E+23
         - Float: 3.14
         """
-        start_line = self.position.line
-        start_column = self.position.column
+        var start_line = self.position.line
+        var start_column = self.position.column
         var result = sign
         var is_float = False
 
@@ -682,9 +682,9 @@ struct Tokenizer:
 
     def _read_key(mut self) -> Token:
         """Read a key identifier."""
-        start_line = self.position.line
-        start_column = self.position.column
-        result = String("")
+        var start_line = self.position.line
+        var start_column = self.position.column
+        var result = String("")
 
         while self.current_char and (
             self.current_char.is_ascii_digit()
@@ -719,7 +719,7 @@ struct Tokenizer:
         if self.current_char == "\r":
             # Check for CRLF
             if self._get_char(self.position.index + 1) == "\n":
-                token = Token(
+                var token = Token(
                     TokenType.NEWLINE,
                     "\r\n",
                     self.position.line,
@@ -729,7 +729,7 @@ struct Tokenizer:
                 self._advance()  # Skip \n
                 return token^
             else:
-                token = Token(
+                var token = Token(
                     TokenType.NEWLINE,
                     "\r",
                     self.position.line,
@@ -738,7 +738,7 @@ struct Tokenizer:
                 self._advance()
                 return token^
         elif self.current_char == "\n":
-            token = Token(
+            var token = Token(
                 TokenType.NEWLINE,
                 "\n",
                 self.position.line,
@@ -748,21 +748,21 @@ struct Tokenizer:
             return token^
 
         if self.current_char == "=":
-            token = Token(
+            var token = Token(
                 TokenType.EQUAL, "=", self.position.line, self.position.column
             )
             self._advance()
             return token^
 
         if self.current_char == ",":
-            token = Token(
+            var token = Token(
                 TokenType.COMMA, ",", self.position.line, self.position.column
             )
             self._advance()
             return token^
 
         if self.current_char == ".":
-            token = Token(
+            var token = Token(
                 TokenType.DOT, ".", self.position.line, self.position.column
             )
             self._advance()
@@ -772,7 +772,7 @@ struct Tokenizer:
             # Check if next char is also [
             if self._get_char(self.position.index + 1) == "[":
                 # This is an array of tables start
-                token = Token(
+                var token = Token(
                     TokenType.ARRAY_OF_TABLES_START,
                     "[[",
                     self.position.line,
@@ -783,7 +783,7 @@ struct Tokenizer:
                 return token^
             else:
                 # Regular table start
-                token = Token(
+                var token = Token(
                     TokenType.TABLE_START,
                     "[",
                     self.position.line,
@@ -793,7 +793,7 @@ struct Tokenizer:
                 return token^
 
         if self.current_char == "]":
-            token = Token(
+            var token = Token(
                 TokenType.ARRAY_END,
                 "]",
                 self.position.line,
@@ -803,7 +803,7 @@ struct Tokenizer:
             return token^
 
         if self.current_char == "{":
-            token = Token(
+            var token = Token(
                 TokenType.INLINE_TABLE_START,
                 "{",
                 self.position.line,
@@ -813,7 +813,7 @@ struct Tokenizer:
             return token^
 
         if self.current_char == "}":
-            token = Token(
+            var token = Token(
                 TokenType.INLINE_TABLE_END,
                 "}",
                 self.position.line,
@@ -871,7 +871,7 @@ struct Tokenizer:
             return self._read_key()
 
         # Unrecognized character
-        token = Token(
+        var token = Token(
             TokenType.ERROR,
             "Unexpected character: " + self.current_char,
             self.position.line,

@@ -34,7 +34,7 @@ from decimo.errors import ValueError
 from .tokenizer import Token, TokenType, Tokenizer
 
 
-struct TOMLValue(Copyable, ImplicitlyDeletable, Movable):
+struct TOMLValue(Copyable, Deinitable, Movable):
     """Represents a value in the TOML document."""
 
     var type: TOMLValueType
@@ -132,7 +132,7 @@ struct TOMLValue(Copyable, ImplicitlyDeletable, Movable):
         self.array_values = copy.array_values.copy()
         self.table_values = copy.table_values.copy()
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         """Destructor to clean up resources."""
         self.array_values.clear()
         self.table_values.clear()
@@ -1080,6 +1080,7 @@ def parse_file(file_path: String) raises -> TOMLDocument:
             explicitly detected.
     """
 
+    var content: String
     with open(file_path, "r") as file:
         content = file.read()
 

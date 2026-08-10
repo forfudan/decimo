@@ -27,7 +27,7 @@ def test_bigdecimal_exponential() raises:
     # -------------------------------------------------------
 
     test_cases = load_test_cases(toml, "sqrt_tests")
-    count_wrong = 0
+    var count_wrong = 0
     for test_case in test_cases:
         var result = BDec(test_case.a).sqrt(precision=28)
         var mojo_str = String(result)

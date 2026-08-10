@@ -128,8 +128,8 @@ struct TermIOS(Copyable, Movable):
     def __init__(out self, *, copy: Self):
         self._buf = copy._buf.copy()
 
-    def __init__(out self, *, deinit take: Self):
-        self._buf = take._buf^
+    def __init__(out self, *, deinit move: Self):
+        self._buf = move._buf^
 
     def copy(self) -> Self:
         """Returns an explicit copy."""

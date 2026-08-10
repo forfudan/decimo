@@ -23,7 +23,7 @@ operation dunders, and other dunders that implement traits, as well as
 mathematical methods that do not implement a trait.
 """
 
-from std.memory import UnsafePointer
+from std.memory import Pointer
 from std.python import PythonObject
 from std import testing
 
@@ -468,7 +468,7 @@ struct BigDecimal(
         Raises:
             ValueError: If the string does not represent a valid number.
         """
-        _tuple = decimo_str.parse_numeric_string(value)
+        var _tuple = decimo_str.parse_numeric_string(value)
         ref coef: List[UInt8] = _tuple[0]
         var scale: Int = _tuple[1]
         var sign: Bool = _tuple[2]
@@ -478,7 +478,7 @@ struct BigDecimal(
         if number_of_digits % 9 != 0:
             number_of_words += 1
 
-        coefficient_words = List[UInt32](capacity=number_of_words)
+        var coefficient_words = List[UInt32](capacity=number_of_words)
 
         var end: Int = number_of_digits
         var start: Int
@@ -495,7 +495,7 @@ struct BigDecimal(
                 word = word * 10 + UInt32(coef[i])
             coefficient_words.append(word)
 
-        coefficient = BigUInt(raw_words=coefficient_words^)
+        var coefficient = BigUInt(raw_words=coefficient_words^)
 
         return Self(coefficient=coefficient^, scale=scale, sign=sign)
 
@@ -758,15 +758,15 @@ struct BigDecimal(
 
             # Strip trailing zeros (artifacts of working precision)
             var coef = coefficient_string
-            var cb = StringSlice(coef).as_bytes()
-            var clen = len(cb)
-            var cptr = cb.unsafe_ptr()
-            while clen > 1 and cptr[clen - 1] == 48:  # '0'
+            var coef_byte = StringSlice(coef).as_bytes()
+            var clen = len(coef_byte)
+            var cptr = coef_byte.unsafe_ptr()
+            while clen > 1 and cptr[unsafe_offset=clen - 1] == 48:  # '0'
                 clen -= 1
             if clen < num_digits:
                 var trimmed = List[UInt8](capacity=clen)
                 for i in range(clen):
-                    trimmed.append(cptr[i])
+                    trimmed.append(cptr[unsafe_offset=i])
                 coef = String(unsafe_from_utf8=trimmed^)
 
             # Zero-pad the right side if fewer sig-digits than lead_digits
@@ -799,15 +799,17 @@ struct BigDecimal(
             # preserve all digits so that __str__ stays round-trip safe.
             var coef = coefficient_string
             if scientific:
-                var cb = StringSlice(coef).as_bytes()
-                var clen = len(cb)
-                var cptr = cb.unsafe_ptr()
-                while clen > 1 and cptr[clen - 1] == 48:  # ord('0')
+                var coef_byte = StringSlice(coef).as_bytes()
+                var clen = len(coef_byte)
+                var cptr = coef_byte.unsafe_ptr()
+                while (
+                    clen > 1 and cptr[unsafe_offset=clen - 1] == 48
+                ):  # ord('0')
                     clen -= 1
                 if clen < num_digits:
                     var trimmed = List[UInt8](capacity=clen)
                     for i in range(clen):
-                        trimmed.append(cptr[i])
+                        trimmed.append(cptr[unsafe_offset=i])
                     coef = String(unsafe_from_utf8=trimmed^)
             result += coef[byte=0]
             if coef.byte_length() > 1:
@@ -2489,12 +2491,12 @@ struct BigDecimal(
         instead of a `Tuple[int]` for better performance in Mojo.
         """
         var coef_str = self.coefficient.to_string()
-        var cb = StringSlice(coef_str).as_bytes()
-        var n = len(cb)
-        var ptr = cb.unsafe_ptr()
+        var coef_byte = StringSlice(coef_str).as_bytes()
+        var n = len(coef_byte)
+        var ptr = coef_byte.unsafe_ptr()
         var digits = List[UInt8](capacity=n)
         for i in range(n):
-            digits.append(ptr[i] - 48)  # 48 == ord('0')
+            digits.append(ptr[unsafe_offset=i] - 48)  # 48 == ord('0')
         return (self.sign, digits^, -self.scale)
 
     @always_inline
@@ -2881,7 +2883,9 @@ struct BigDecimal(
             number_of_digits_to_remove % 9
         )
 
-        words = List[UInt32](self.coefficient.words[number_of_words_to_remove:])
+        var words = List[UInt32](
+            self.coefficient.words[number_of_words_to_remove:]
+        )
         var coefficient = BigUInt(raw_words=words^)
 
         if number_of_remaining_digits_to_remove == 0:
@@ -2984,20 +2988,20 @@ def _insert_digit_separators(s: String, delimiter: String) -> String:
 
     # Locate optional leading minus (ASCII 45)
     var start = 0
-    if n > 0 and ptr[0] == 45:
+    if n > 0 and ptr[unsafe_offset=0] == 45:
         start = 1
 
     # Locate optional exponent suffix 'E' (ASCII 69)
     var e_pos = n  # points past end if no 'E'
     for i in range(start, n):
-        if ptr[i] == 69:
+        if ptr[unsafe_offset=i] == 69:
             e_pos = i
             break
 
     # Locate optional decimal point '.' (ASCII 46) within the mantissa
     var dot_pos = -1
     for i in range(start, e_pos):
-        if ptr[i] == 46:
+        if ptr[unsafe_offset=i] == 46:
             dot_pos = i
             break
 

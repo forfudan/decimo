@@ -111,16 +111,16 @@ struct TestCase(Copyable, Movable, Writable):
         self.expected = copy.expected
         self.description = copy.description
 
-    def __init__(out self, *, deinit take: Self):
+    def __init__(out self, *, deinit move: Self):
         """Moves a `TestCase` into a new instance.
 
         Args:
-            take: The instance to move from.
+            move: The instance to move from.
         """
-        self.a = take.a^
-        self.b = take.b^
-        self.expected = take.expected^
-        self.description = take.description^
+        self.a = move.a^
+        self.b = move.b^
+        self.expected = move.expected^
+        self.description = move.description^
 
     def write_to[T: Writer](self, mut writer: T):
         """Writes a formatted representation of the test case to a writer.
@@ -183,16 +183,16 @@ struct BenchCase(Copyable, Movable, Writable):
         self.b = copy.b
         self.c = copy.c
 
-    def __init__(out self, *, deinit take: Self):
+    def __init__(out self, *, deinit move: Self):
         """Moves a `BenchCase` into a new instance.
 
         Args:
-            take: The instance to move from.
+            move: The instance to move from.
         """
-        self.name = take.name^
-        self.a = take.a^
-        self.b = take.b^
-        self.c = take.c^
+        self.name = move.name^
+        self.a = move.a^
+        self.b = move.b^
+        self.c = move.c^
 
     def write_to[T: Writer](self, mut writer: T):
         """Writes a formatted representation of the benchmark case to a writer.
@@ -491,14 +491,14 @@ struct PrecisionLevel(Copyable, Movable):
         self.precision = copy.precision
         self.iterations = copy.iterations
 
-    def __init__(out self, *, deinit take: Self):
+    def __init__(out self, *, deinit move: Self):
         """Moves a `PrecisionLevel` into a new instance.
 
         Args:
-            take: The instance to move from.
+            move: The instance to move from.
         """
-        self.precision = take.precision
-        self.iterations = take.iterations
+        self.precision = move.precision
+        self.iterations = move.iterations
 
 
 def load_bench_precision_levels(

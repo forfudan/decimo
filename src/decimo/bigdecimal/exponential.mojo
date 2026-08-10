@@ -469,7 +469,7 @@ def root(x: BigDecimal, n: BigDecimal, precision: Int) raises -> BigDecimal:
             var result = integer_root(x, n, precision)
             _strip_trailing_fractional_zeros(result)
             return result^
-        _tuple = is_integer_reciprocal_and_return(n)
+        var _tuple = is_integer_reciprocal_and_return(n)
         var is_integer_reciprocal: Bool = _tuple[0]
         ref integer_reciprocal: BigDecimal = _tuple[1]
         if is_integer_reciprocal:
@@ -485,7 +485,7 @@ def root(x: BigDecimal, n: BigDecimal, precision: Int) raises -> BigDecimal:
         # Only for non-negative x: fractional roots of negative numbers
         # are disallowed (consistent with Python Decimal behavior).
         if not x.sign:
-            _rtuple = _rational_root_decomposition(n)
+            var _rtuple = _rational_root_decomposition(n)
             var is_rational: Bool = _rtuple[0]
             var root_order: Int = _rtuple[1]
             var power_order: Int = _rtuple[2]
@@ -1781,7 +1781,7 @@ def cbrt(x: BigDecimal, precision: Int) raises -> BigDecimal:
         Error: Propagated from integer_root.
     """
 
-    result = integer_root(
+    var result = integer_root(
         x,
         BigDecimal(coefficient=BigUInt(raw_words=[3]), scale=0, sign=False),
         precision,

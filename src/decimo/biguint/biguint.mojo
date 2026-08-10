@@ -23,7 +23,7 @@ operation dunders, and other dunders that implement traits, as well as
 mathematical methods that do not implement a trait.
 """
 
-from std.memory import UnsafePointer, unsafe_memcpy, memcmp
+from std.memory import Pointer, unsafe_memcpy, memcmp
 
 from decimo.bigint10.bigint10 import BigInt10
 import decimo.biguint.arithmetics as biguint_arithmetics
@@ -440,7 +440,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             return Self()
 
         # Now we can safely copy the words
-        result = BigUInt(unsafe_uninit_length=n_words)
+        var result = BigUInt(unsafe_uninit_length=n_words)
         unsafe_memcpy(
             dest=result.words._data,
             src=value.words._data.unsafe_offset(start_index),
@@ -658,7 +658,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         Returns:
             The BigUInt representation of the string.
         """
-        _tuple = decimo_str.parse_numeric_string(value)
+        var _tuple = decimo_str.parse_numeric_string(value)
         ref coef: List[UInt8] = _tuple[0]
         var scale: Int = _tuple[1]
         var sign: Bool = _tuple[2]
@@ -865,15 +865,23 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             )
 
         if len(self.words) == 1:
-            return self.words.unsafe_ptr().load[width=1]().cast[DType.uint64]()
+            return (
+                self.words.unsafe_ptr()
+                .unsafe_load[width=1]()
+                .cast[DType.uint64]()
+            )
         elif len(self.words) == 2:
             return (
-                self.words.unsafe_ptr().load[width=2]().cast[DType.uint64]()
+                self.words.unsafe_ptr()
+                .unsafe_load[width=2]()
+                .cast[DType.uint64]()
                 * SIMD[DType.uint64, 2](1, 1_000_000_000)
             ).reduce_add()
         else:
             return (
-                self.words.unsafe_ptr().load[width=4]().cast[DType.uint64]()
+                self.words.unsafe_ptr()
+                .unsafe_load[width=4]()
+                .cast[DType.uint64]()
                 * SIMD[DType.uint64, 4](
                     1,
                     1_000_000_000,
@@ -892,10 +900,16 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             The `UInt64` representation of the first two words.
         """
         if len(self.words) == 1:
-            return self.words.unsafe_ptr().load[width=1]().cast[DType.uint64]()
+            return (
+                self.words.unsafe_ptr()
+                .unsafe_load[width=1]()
+                .cast[DType.uint64]()
+            )
         else:  # len(self.words) == 2
             return (
-                self.words.unsafe_ptr().load[width=2]().cast[DType.uint64]()
+                self.words.unsafe_ptr()
+                .unsafe_load[width=2]()
+                .cast[DType.uint64]()
                 * SIMD[DType.uint64, 2](1, 1_000_000_000)
             ).reduce_add()
 
@@ -922,23 +936,31 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
 
         if len(self.words) == 1:
             result = (
-                self.words.unsafe_ptr().load[width=1]().cast[DType.uint128]()
+                self.words.unsafe_ptr()
+                .unsafe_load[width=1]()
+                .cast[DType.uint128]()
             )
         elif len(self.words) == 2:
             result = (
-                self.words.unsafe_ptr().load[width=2]().cast[DType.uint128]()
+                self.words.unsafe_ptr()
+                .unsafe_load[width=2]()
+                .cast[DType.uint128]()
                 * SIMD[DType.uint128, 2](1, 1_000_000_000)
             ).reduce_add()
         elif len(self.words) == 3:
             result = (
-                self.words.unsafe_ptr().load[width=4]().cast[DType.uint128]()
+                self.words.unsafe_ptr()
+                .unsafe_load[width=4]()
+                .cast[DType.uint128]()
                 * SIMD[DType.uint128, 4](
                     1, 1_000_000_000, 1_000_000_000_000_000_000, 0
                 )
             ).reduce_add()
         elif len(self.words) == 4:
             result = (
-                self.words.unsafe_ptr().load[width=4]().cast[DType.uint128]()
+                self.words.unsafe_ptr()
+                .unsafe_load[width=4]()
+                .cast[DType.uint128]()
                 * SIMD[DType.uint128, 4](
                     1,
                     1_000_000_000,
@@ -948,7 +970,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             ).reduce_add()
         else:
             result = (
-                self.words.unsafe_ptr().load[width=8]().cast[DType.uint128]()
+                self.words.unsafe_ptr()
+                .unsafe_load[width=8]()
+                .cast[DType.uint128]()
                 * SIMD[DType.uint128, 8](
                     1,
                     1_000_000_000,
@@ -974,22 +998,32 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         """
 
         if len(self.words) == 1:
-            return self.words.unsafe_ptr().load[width=1]().cast[DType.uint128]()
+            return (
+                self.words.unsafe_ptr()
+                .unsafe_load[width=1]()
+                .cast[DType.uint128]()
+            )
         elif len(self.words) == 2:
             return (
-                self.words.unsafe_ptr().load[width=2]().cast[DType.uint128]()
+                self.words.unsafe_ptr()
+                .unsafe_load[width=2]()
+                .cast[DType.uint128]()
                 * SIMD[DType.uint128, 2](1, 1_000_000_000)
             ).reduce_add()
         elif len(self.words) == 3:
             return (
-                self.words.unsafe_ptr().load[width=4]().cast[DType.uint128]()
+                self.words.unsafe_ptr()
+                .unsafe_load[width=4]()
+                .cast[DType.uint128]()
                 * SIMD[DType.uint128, 4](
                     1, 1_000_000_000, 1_000_000_000_000_000_000, 0
                 )
             ).reduce_add()
         else:  # len(self.words) == 4
             return (
-                self.words.unsafe_ptr().load[width=4]().cast[DType.uint128]()
+                self.words.unsafe_ptr()
+                .unsafe_load[width=4]()
+                .cast[DType.uint128]()
                 * SIMD[DType.uint128, 4](
                     1,
                     1_000_000_000,
@@ -1069,13 +1103,13 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
                 var val = self.words[ci]
                 for _ in range(9):
                     pos -= 1
-                    p[pos] = UInt8(val % 10) + 48
+                    p[unsafe_offset=pos] = UInt8(val % 10) + 48
                     val //= 10
 
             # Most-significant word: its `msb_len` digits, right-to-left.
             for _ in range(msb_len):
                 pos -= 1
-                p[pos] = UInt8(msb % 10) + 48
+                p[unsafe_offset=pos] = UInt8(msb % 10) + 48
                 msb //= 10
 
             result = String(unsafe_from_utf8=buf^)

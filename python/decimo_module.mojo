@@ -22,7 +22,7 @@ from decimo import BigDecimal
 
 
 @export
-def PyInit__decimo() -> PythonObject:
+def PyInit__decimo() abi("C") -> PythonObject:
     try:
         var m = PythonModuleBuilder("_decimo")
         _ = (

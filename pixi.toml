@@ -33,8 +33,12 @@ format = """pixi run mojo format ./src \
 # the source tree via `-I src`. Loading the pre-built package via
 # `-I tests` sidesteps that regression. The `package` task below is
 # therefore reordered so `package_decimo` runs before `doc`.
+# `-I src/cli` resolves `limo` from source. Without it the step silently
+# fell back to the stale `limo.mojopkg` left at the repo root, which the
+# 1.1 compiler now rejects ("missing version information"); source also
+# takes precedence over that legacy artifact, so it can be deleted.
 doc = """pixi run mojo doc --diagnose-missing-doc-strings src/decimo > /dev/null \
-&& pixi run mojo doc --diagnose-missing-doc-strings -I tests src/cli/calculator > /dev/null"""
+&& pixi run mojo doc --diagnose-missing-doc-strings -I tests -I src/cli src/cli/calculator > /dev/null"""
 
 # compile the package
 p = "clear && pixi run package"

@@ -36,7 +36,7 @@ def test_biguint_sqrt() raises:
 
     test_cases = load_test_cases[unary=True](toml, "sqrt_tests")
     assert_true(len(test_cases) > 0, "No sqrt test cases found")
-    count_wrong = 0
+    var count_wrong = 0
     for test_case in test_cases:
         var result = BigUInt(test_case.a).sqrt()
         var mojo_str = String(result)
@@ -66,6 +66,8 @@ def test_biguint_sqrt_random_numbers_against_python() raises:
     _set_max_str_digits(25000)
 
     var number_a: String
+    var decimo_result: String
+    var python_result: String
 
     for _test_case in range(10):
         number_a = String("")

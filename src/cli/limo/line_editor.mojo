@@ -98,9 +98,9 @@ struct LineEditor(Movable):
         self._history = List[String]()
         self._max_history = max_history if max_history >= 0 else 0
 
-    def __init__(out self, *, deinit take: Self):
-        self._history = take._history^
-        self._max_history = take._max_history
+    def __init__(out self, *, deinit move: Self):
+        self._history = move._history^
+        self._max_history = move._max_history
 
     def read_line(mut self, prompt: String) raises -> Optional[String]:
         """Displays a prompt and reads a line with full editing support.

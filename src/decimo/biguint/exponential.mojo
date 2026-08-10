@@ -57,7 +57,9 @@ def sqrt(x: BigUInt) -> BigUInt:
         var res = UInt32(
             math.sqrt(
                 (
-                    x.words.unsafe_ptr().load[width=2]().cast[DType.uint64]()
+                    x.words.unsafe_ptr()
+                    .unsafe_load[width=2]()
+                    .cast[DType.uint64]()
                     * SIMD[DType.uint64, 2](1, 1_000_000_000)
                 ).reduce_add()
             )
@@ -171,7 +173,7 @@ def sqrt_initial_guess(x: BigUInt) -> BigUInt:
             math.sqrt(
                 (
                     x.words.unsafe_ptr()
-                    .load[width=2](len(x.words) - 2)
+                    .unsafe_load[width=2](len(x.words) - 2)
                     .cast[DType.uint64]()
                     * SIMD[DType.uint64, 2](1, 1_000_000_000)
                 ).reduce_add()
@@ -186,7 +188,7 @@ def sqrt_initial_guess(x: BigUInt) -> BigUInt:
     if nsw > 999_999_999:  # Cap at max word value
         nsw = 999_999_999
 
-    result = BigUInt(unsafe_uninit_length=n_words + 1)
+    var result = BigUInt(unsafe_uninit_length=n_words + 1)
     unsafe_memset_zero(ptr=result.words._data, count=n_words + 1)
     # Boundary checks are not needed here because len(x.words) > 2
     result.words.unsafe_set(n_words, msw_sqrt)

@@ -23,7 +23,7 @@ operation dunders, and other dunders that implement traits, as well as
 mathematical methods that do not implement a trait.
 """
 
-from std.memory import UnsafePointer
+from std.memory import Pointer
 from std.python import PythonObject
 
 import decimo.bigint10.arithmetics as bigint10_arithmetics
@@ -362,6 +362,7 @@ struct BigInt10(
         Raises:
             ConversionError: If the string cannot be parsed.
         """
+        var _tuple: Tuple[List[UInt8], Int, Bool]
         try:
             _tuple = decimo_str.parse_numeric_string(value)
         except e:
@@ -381,7 +382,7 @@ struct BigInt10(
         if len(coef) == 1 and coef[0] == UInt8(0):
             return Self(UInt32(0), sign=False)
 
-        magnitude = BigUInt.from_string(value, ignore_sign=True)
+        var magnitude = BigUInt.from_string(value, ignore_sign=True)
 
         return Self(magnitude=magnitude^, sign=sign)
 

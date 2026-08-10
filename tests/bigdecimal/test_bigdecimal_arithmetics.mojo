@@ -36,7 +36,7 @@ def test_bigdecimal_arithmetics() raises:
     # -------------------------------------------------------
 
     test_cases = load_test_cases(toml, "addition_tests")
-    count_wrong = 0
+    var count_wrong = 0
     for test_case in test_cases:
         var result = BDec(test_case.a).add(BDec(test_case.b))
         var mojo_str = String(result)

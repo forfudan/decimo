@@ -27,7 +27,7 @@ for the Decimo library. It uses base-2^32 representation with UInt32 words
 in little-endian order, and a separate sign bit.
 """
 
-from std.memory import UnsafePointer, unsafe_memcpy
+from std.memory import Pointer, unsafe_memcpy
 from std.sys import size_of
 
 import decimo.bigint.arithmetics as bigint_arithmetics
@@ -370,6 +370,7 @@ struct BigInt(
             ConversionError: If the string cannot be parsed as an integer.
         """
         # Use the shared string parser for format handling
+        var _tuple: Tuple[List[UInt8], Int, Bool]
         try:
             _tuple = decimo_str.parse_numeric_string(value)
         except e:
@@ -2420,11 +2421,11 @@ def _magnitude_to_decimal_simple(words: List[UInt32], eff_words: Int) -> String:
     while div_len > 0:
         var remainder: UInt64 = 0
         for i in range(div_len - 1, -1, -1):
-            var temp = (remainder << 32) + UInt64(dp[i])
-            dp[i] = UInt32(temp // _DECIMAL_CHUNK_BASE)
+            var temp = (remainder << 32) + UInt64(dp[unsafe_offset=i])
+            dp[unsafe_offset=i] = UInt32(temp // _DECIMAL_CHUNK_BASE)
             remainder = temp % _DECIMAL_CHUNK_BASE
 
-        while div_len > 0 and dp[div_len - 1] == 0:
+        while div_len > 0 and dp[unsafe_offset=div_len - 1] == 0:
             div_len -= 1
 
         chunks.append(UInt32(remainder))
@@ -2439,7 +2440,7 @@ def _magnitude_to_decimal_simple(words: List[UInt32], eff_words: Int) -> String:
 
     # Most-significant chunk: no zero-padding.
     var msb = Int(chunks[num_chunks - 1])
-    var msb_digits = InlineArray[UInt8, 10](fill=0)
+    var msb_digits = Array[UInt8, 10](fill=0)
     var msb_len = 0
     if msb == 0:
         buf.append(48)  # '0'
@@ -2455,7 +2456,7 @@ def _magnitude_to_decimal_simple(words: List[UInt32], eff_words: Int) -> String:
     # Remaining chunks: zero-padded to exactly 9 digits.
     for ci in range(num_chunks - 2, -1, -1):
         var val = Int(chunks[ci])
-        var digits9 = InlineArray[UInt8, 9](fill=48)  # pre-fill '0'
+        var digits9 = Array[UInt8, 9](fill=48)  # pre-fill '0'
         for d in range(9):
             digits9[8 - d] = UInt8(val % 10) + 48
             val //= 10
@@ -2592,12 +2593,12 @@ def _dc_to_str_recursive(
     var buf = List[UInt8](capacity=total_len)
     # Copy high_str bytes
     for i in range(high_str.byte_length()):
-        buf.append(high_str.unsafe_ptr()[i])
+        buf.append(high_str.unsafe_ptr()[unsafe_offset=i])
     # Write zero padding
     for _ in range(padding):
         buf.append(48)  # ASCII '0'
     # Copy low_str bytes
     for i in range(low_str.byte_length()):
-        buf.append(low_str.unsafe_ptr()[i])
+        buf.append(low_str.unsafe_ptr()[unsafe_offset=i])
 
     return String(unsafe_from_utf8=buf^)

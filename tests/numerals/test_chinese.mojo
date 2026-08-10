@@ -261,7 +261,7 @@ def test_traditional_financial_style() raises:
 
 def test_custom_style() raises:
     """A hand-built style works like the presets."""
-    var digits: InlineArray[StaticString, 10] = [
+    var digits: Array[StaticString, 10] = [
         "0",
         "1",
         "2",
@@ -273,7 +273,7 @@ def test_custom_style() raises:
         "8",
         "9",
     ]
-    var units: InlineArray[StaticString, 3] = ["T", "H", "K"]
+    var units: Array[StaticString, 3] = ["T", "H", "K"]
     var style = ChineseNumeralStyle(digits, units, "W", "Y", ".", "-", False)
     testing.assert_equal(decimal_string_to_chinese("10001.5", style), "1W01.5")
 

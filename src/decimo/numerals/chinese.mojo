@@ -146,10 +146,10 @@ struct ChineseNumeralStyle(Copyable, ImplicitlyCopyable, Movable):
     ```
     """
 
-    var digits: InlineArray[StaticString, 10]
+    var digits: Array[StaticString, 10]
     """The words for the digits 0 to 9, e.g. 零一二三四五六七八九.
     Entry 0 doubles as the zero-filler word inserted between groups."""
-    var units: InlineArray[StaticString, 3]
+    var units: Array[StaticString, 3]
     """The intra-group units in ascending order: 十, 百, 千."""
     var wan: StaticString
     """The 10^4 word (万 / 萬)."""
@@ -167,8 +167,8 @@ struct ChineseNumeralStyle(Copyable, ImplicitlyCopyable, Movable):
 
     def __init__(
         out self,
-        digits: InlineArray[StaticString, 10],
-        units: InlineArray[StaticString, 3],
+        digits: Array[StaticString, 10],
+        units: Array[StaticString, 3],
         wan: StaticString,
         yi: StaticString,
         point: StaticString,
@@ -186,13 +186,33 @@ struct ChineseNumeralStyle(Copyable, ImplicitlyCopyable, Movable):
             negative_sign: The negative-sign word.
             simplify_leading_ten: Whether a leading 一十 becomes 十.
         """
-        self.digits = digits
-        self.units = units
+        self.digits = digits.copy()
+        self.units = units.copy()
         self.wan = wan
         self.yi = yi
         self.point = point
         self.negative_sign = negative_sign
         self.simplify_leading_ten = simplify_leading_ten
+
+    def __init__(out self, *, copy: Self):
+        """Copies a numeral style.
+
+        Args:
+            copy: The style to copy from.
+
+        Notes:
+
+            Mojo 1.1 dropped `Array`'s `ImplicitlyCopyable` conformance, so a
+            struct holding one can no longer synthesise its implicit copy
+            constructor. Writing it out by hand restores the conformance.
+        """
+        self.digits = copy.digits.copy()
+        self.units = copy.units.copy()
+        self.wan = copy.wan
+        self.yi = copy.yi
+        self.point = copy.point
+        self.negative_sign = copy.negative_sign
+        self.simplify_leading_ten = copy.simplify_leading_ten
 
     @staticmethod
     def simplified() -> Self:
@@ -201,7 +221,7 @@ struct ChineseNumeralStyle(Copyable, ImplicitlyCopyable, Movable):
         Returns:
             The 简体小写 numeral style.
         """
-        var digits: InlineArray[StaticString, 10] = [
+        var digits: Array[StaticString, 10] = [
             "零",
             "一",
             "二",
@@ -213,7 +233,7 @@ struct ChineseNumeralStyle(Copyable, ImplicitlyCopyable, Movable):
             "八",
             "九",
         ]
-        var units: InlineArray[StaticString, 3] = ["十", "百", "千"]
+        var units: Array[StaticString, 3] = ["十", "百", "千"]
         return Self(digits, units, "万", "亿", "点", "负", True)
 
     @staticmethod
@@ -225,7 +245,7 @@ struct ChineseNumeralStyle(Copyable, ImplicitlyCopyable, Movable):
         Returns:
             The 简体大写 numeral style.
         """
-        var digits: InlineArray[StaticString, 10] = [
+        var digits: Array[StaticString, 10] = [
             "零",
             "壹",
             "贰",
@@ -237,7 +257,7 @@ struct ChineseNumeralStyle(Copyable, ImplicitlyCopyable, Movable):
             "捌",
             "玖",
         ]
-        var units: InlineArray[StaticString, 3] = ["拾", "佰", "仟"]
+        var units: Array[StaticString, 3] = ["拾", "佰", "仟"]
         return Self(digits, units, "万", "亿", "点", "负", False)
 
     @staticmethod
@@ -247,7 +267,7 @@ struct ChineseNumeralStyle(Copyable, ImplicitlyCopyable, Movable):
         Returns:
             The 繁體小寫 numeral style.
         """
-        var digits: InlineArray[StaticString, 10] = [
+        var digits: Array[StaticString, 10] = [
             "零",
             "一",
             "二",
@@ -259,7 +279,7 @@ struct ChineseNumeralStyle(Copyable, ImplicitlyCopyable, Movable):
             "八",
             "九",
         ]
-        var units: InlineArray[StaticString, 3] = ["十", "百", "千"]
+        var units: Array[StaticString, 3] = ["十", "百", "千"]
         return Self(digits, units, "萬", "億", "點", "負", True)
 
     @staticmethod
@@ -269,7 +289,7 @@ struct ChineseNumeralStyle(Copyable, ImplicitlyCopyable, Movable):
         Returns:
             The 繁體大寫 numeral style.
         """
-        var digits: InlineArray[StaticString, 10] = [
+        var digits: Array[StaticString, 10] = [
             "零",
             "壹",
             "貳",
@@ -281,12 +301,12 @@ struct ChineseNumeralStyle(Copyable, ImplicitlyCopyable, Movable):
             "捌",
             "玖",
         ]
-        var units: InlineArray[StaticString, 3] = ["拾", "佰", "仟"]
+        var units: Array[StaticString, 3] = ["拾", "佰", "仟"]
         return Self(digits, units, "萬", "億", "點", "負", False)
 
 
 def _chinese_group_to_string(
-    group: InlineArray[UInt8, 4], style: ChineseNumeralStyle
+    group: Array[UInt8, 4], style: ChineseNumeralStyle
 ) -> String:
     """Reads one group of four digits (0..9999) with the 十/百/千 units.
 
@@ -324,7 +344,7 @@ def _chinese_group_to_string(
 
 
 def _chinese_section_to_string(
-    section: InlineArray[UInt8, 8], style: ChineseNumeralStyle
+    section: Array[UInt8, 8], style: ChineseNumeralStyle
 ) -> String:
     """Reads one section of eight digits (0..99999999) with 十/百/千 and 万.
 
@@ -341,8 +361,8 @@ def _chinese_section_to_string(
     Returns:
         The reading of the section, e.g. `4560_0007` -> 四千五百六十万零七.
     """
-    var upper = InlineArray[UInt8, 4](fill=0)
-    var lower = InlineArray[UInt8, 4](fill=0)
+    var upper = Array[UInt8, 4](fill=0)
+    var lower = Array[UInt8, 4](fill=0)
     var upper_is_zero = True
     var lower_is_zero = True
 
@@ -399,7 +419,7 @@ def _integer_digits_to_chinese(
     var pending_zero = False
 
     for section_index in range(num_sections):
-        var section = InlineArray[UInt8, 8](fill=0)
+        var section = Array[UInt8, 8](fill=0)
         var is_zero_section = True
         for i in range(8):
             var position = section_index * 8 + i - padding
@@ -439,7 +459,8 @@ def _integer_digits_to_chinese(
     if style.simplify_leading_ten:
         var leading_ten = String(style.digits[1]) + style.units[0]
         if result.startswith(leading_ten):
-            result = String(result[byte = style.digits[1].byte_length() :])
+            var trimmed = String(result[byte = style.digits[1].byte_length() :])
+            result = trimmed^
 
     return result^
 
@@ -491,7 +512,7 @@ def decimal_string_to_chinese(
     """
 
     var parsed = parse_numeric_string(value)
-    var ref coefficient: List[UInt8] = parsed[0]
+    ref coefficient = parsed[0]
     var scale: Int = parsed[1]
     var sign: Bool = parsed[2]
     var num_digits = len(coefficient)

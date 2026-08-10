@@ -22,10 +22,11 @@ low-level helpers such as bit manipulation, rounding helpers, and
 representation conversions.
 """
 
-from std.memory import UnsafePointer
+from std.memory import Pointer
 from std import sys
 from std import time
 from std.bit import bit_width
+from std.builtin.globals import global_constant
 
 from decimo.decimal128.decimal128 import Decimal128
 from decimo.rounding_mode import RoundingMode
@@ -61,7 +62,7 @@ def bitcast[dtype: DType](dec: Decimal128) -> Scalar[dtype]:
     ), "must be uint128 or uint256"
 
     # Bitcast the Decimal128 to the desired Mojo scalar type
-    var result = UnsafePointer(to=dec).bitcast[Scalar[dtype]]().load()
+    var result = Pointer(to=dec).unsafe_bitcast[Scalar[dtype]]().unsafe_load()
     # Mask out the bits in flags
     result &= Scalar[dtype](0xFFFFFFFF_FFFFFFFF_FFFFFFFF)
     return result
@@ -839,6 +840,138 @@ def number_of_bits[dtype: DType, //](var value: Scalar[dtype]) -> Int:
 #     return _power_of_10_as_uint256_cache[n]
 
 
+# ===----------------------------------------------------------------------=== #
+# Power-of-10 lookup tables
+#
+# Yuhao's notes:
+# The tables are module-level `comptime` `Array`s.  A `comptime` value has no
+# runtime memory location, so reading one with a *runtime* index needs an
+# explicit bridge into runtime code.  Mojo offers three:
+#
+#   1. `materialize[TABLE]()[n]` - the compiler's own fix-it.  It creates the
+#      storage *per use site*, so under `@always_inline` LLVM often rebuilds
+#      the whole table on the stack with immediate stores before the single
+#      indexed load.
+#   2. A `comptime for` over the index that binds the selected entry as a
+#      `comptime` value and returns it immediately.  The loop is unrolled at
+#      compile time and folds into a jump table of immediates - no memory
+#      traffic, but the code grows linearly with the table.
+#   3. `global_constant[TABLE]()` - emits the table once into static storage
+#      (rodata) for the whole program and hands back a `ref` to it.  One
+#      indexed load, no per-call-site setup, no code growth.  This is the
+#      one to use; (1) and (2) only existed because it was not available.
+#
+# Measured with a standalone microbenchmark on osx-arm64.
+# `global_constant` wins everywhere.
+# ===----------------------------------------------------------------------=== #
+
+
+comptime _POWER_OF_10_U128: Array[UInt128, 39] = [
+    1,
+    10,
+    100,
+    1000,
+    10000,
+    100000,
+    1000000,
+    10000000,
+    100000000,
+    1000000000,
+    10000000000,
+    100000000000,
+    1000000000000,
+    10000000000000,
+    100000000000000,
+    1000000000000000,
+    10000000000000000,
+    100000000000000000,
+    1000000000000000000,
+    10000000000000000000,
+    100000000000000000000,
+    1000000000000000000000,
+    10000000000000000000000,
+    100000000000000000000000,
+    1000000000000000000000000,
+    10000000000000000000000000,
+    100000000000000000000000000,
+    1000000000000000000000000000,
+    10000000000000000000000000000,
+    100000000000000000000000000000,
+    1000000000000000000000000000000,
+    10000000000000000000000000000000,
+    100000000000000000000000000000000,
+    1000000000000000000000000000000000,
+    10000000000000000000000000000000000,
+    100000000000000000000000000000000000,
+    1000000000000000000000000000000000000,
+    10000000000000000000000000000000000000,
+    100000000000000000000000000000000000000,
+]
+
+
+comptime _POWER_OF_10_U256: Array[UInt256, 59] = [
+    1,
+    10,
+    100,
+    1000,
+    10000,
+    100000,
+    1000000,
+    10000000,
+    100000000,
+    1000000000,
+    10000000000,
+    100000000000,
+    1000000000000,
+    10000000000000,
+    100000000000000,
+    1000000000000000,
+    10000000000000000,
+    100000000000000000,
+    1000000000000000000,
+    10000000000000000000,
+    100000000000000000000,
+    1000000000000000000000,
+    10000000000000000000000,
+    100000000000000000000000,
+    1000000000000000000000000,
+    10000000000000000000000000,
+    100000000000000000000000000,
+    1000000000000000000000000000,
+    10000000000000000000000000000,
+    100000000000000000000000000000,
+    1000000000000000000000000000000,
+    10000000000000000000000000000000,
+    100000000000000000000000000000000,
+    1000000000000000000000000000000000,
+    10000000000000000000000000000000000,
+    100000000000000000000000000000000000,
+    1000000000000000000000000000000000000,
+    10000000000000000000000000000000000000,
+    100000000000000000000000000000000000000,
+    1000000000000000000000000000000000000000,
+    10000000000000000000000000000000000000000,
+    100000000000000000000000000000000000000000,
+    1000000000000000000000000000000000000000000,
+    10000000000000000000000000000000000000000000,
+    100000000000000000000000000000000000000000000,
+    1000000000000000000000000000000000000000000000,
+    10000000000000000000000000000000000000000000000,
+    100000000000000000000000000000000000000000000000,
+    1000000000000000000000000000000000000000000000000,
+    10000000000000000000000000000000000000000000000000,
+    100000000000000000000000000000000000000000000000000,
+    1000000000000000000000000000000000000000000000000000,
+    10000000000000000000000000000000000000000000000000000,
+    100000000000000000000000000000000000000000000000000000,
+    1000000000000000000000000000000000000000000000000000000,
+    10000000000000000000000000000000000000000000000000000000,
+    100000000000000000000000000000000000000000000000000000000,
+    1000000000000000000000000000000000000000000000000000000000,
+    10000000000000000000000000000000000000000000000000000000000,
+]
+
+
 @always_inline
 def power_of_10[
     dtype: DType
@@ -846,7 +979,7 @@ def power_of_10[
     dtype == DType.uint128 or dtype == DType.uint256
 ):
     """
-    Returns 10^n via a balanced bisect if/else search.
+    Returns 10^n via a single indexed load from a program-lifetime table.
 
     Parameters:
         dtype: The Mojo scalar type to calculate the power of 10 for.
@@ -863,442 +996,32 @@ def power_of_10[
     Notes:
 
         **WARNING**: The bound on `n` is only checked when `debug_assert`
-        is enabled. Callers must guarantee `n <= 38` for `uint128` and
-        `n <= 58` for `uint256`.
+        is enabled. Callers must guarantee `0 <= n <= 38` for `uint128`
+        and `0 <= n <= 58` for `uint256`. An out-of-range `n` reads past
+        the table and returns garbage in release builds.
 
-        Implementation is a balanced binary-search if/else tree (depth
-        ~5 for uint128, ~6 for uint256). Each leaf returns a comptime
-        literal which the compiler materialises with `mov`/`movk`
-        immediates. No memory traffic. Does not depend on the
-        `comptime InlineArray` -> stack-rebuild path.
+        Implementation: `global_constant` places the table in static
+        read-only storage once for the whole program; the lookup is one
+        `adrp`/`ldr` pair, independent of table size. This replaced a
+        balanced bisect if/else tree of comptime literals, which was
+        ~18x slower for `uint128` and ~23x slower for `uint256`. See the
+        notes above the tables.
     """
 
     comptime if dtype == DType.uint128:
         # 10^38 ~= 1e38 < 2^128 ~= 3.4e38, so 10^38 is the largest power
         # of 10 representable in UInt128.
-        debug_assert(n <= 38, "power_of_10[uint128]: n must be <= 38")
-        if n < 14:
-            if n < 7:
-                if n < 3:
-                    if n < 1:
-                        return 1
-                    else:
-                        if n == 1:
-                            return 10
-                        else:
-                            return 100
-                else:
-                    if n < 5:
-                        if n == 3:
-                            return 1000
-                        else:
-                            return 10000
-                    else:
-                        if n == 5:
-                            return 100000
-                        else:
-                            return 1000000
-            else:
-                if n < 10:
-                    if n < 8:
-                        return 10000000
-                    else:
-                        if n == 8:
-                            return 100000000
-                        else:
-                            return 1000000000
-                else:
-                    if n < 12:
-                        if n == 10:
-                            return 10000000000
-                        else:
-                            return 100000000000
-                    else:
-                        if n == 12:
-                            return 1000000000000
-                        else:
-                            return 10000000000000
-        else:
-            if n < 21:
-                if n < 17:
-                    if n < 15:
-                        return 100000000000000
-                    else:
-                        if n == 15:
-                            return 1000000000000000
-                        else:
-                            return 10000000000000000
-                else:
-                    if n < 19:
-                        if n == 17:
-                            return 100000000000000000
-                        else:
-                            return 1000000000000000000
-                    else:
-                        if n == 19:
-                            return 10000000000000000000
-                        else:
-                            return 100000000000000000000
-            else:
-                if n < 29:
-                    if n < 25:
-                        if n < 23:
-                            if n == 21:
-                                return 1000000000000000000000
-                            else:
-                                return 10000000000000000000000
-                        else:
-                            if n == 23:
-                                return 100000000000000000000000
-                            else:
-                                return 1000000000000000000000000
-                    else:
-                        if n < 27:
-                            if n == 25:
-                                return 10000000000000000000000000
-                            else:
-                                return 100000000000000000000000000
-                        else:
-                            if n == 27:
-                                return 1000000000000000000000000000
-                            else:
-                                return 10000000000000000000000000000
-                else:
-                    # n in 29..38
-                    if n < 33:
-                        if n < 31:
-                            if n == 29:
-                                return 100000000000000000000000000000
-                            else:
-                                return 1000000000000000000000000000000
-                        else:
-                            if n == 31:
-                                return 10000000000000000000000000000000
-                            else:
-                                return 100000000000000000000000000000000
-                    else:
-                        if n < 36:
-                            if n < 34:
-                                return 1000000000000000000000000000000000
-                            else:
-                                if n == 34:
-                                    return 10000000000000000000000000000000000
-                                else:
-                                    return 100000000000000000000000000000000000
-                        else:
-                            if n < 38:
-                                if n == 36:
-                                    return 1000000000000000000000000000000000000
-                                else:
-                                    return (
-                                        10000000000000000000000000000000000000
-                                    )
-                            else:
-                                return 100000000000000000000000000000000000000
+        debug_assert(
+            n >= 0 and n <= 38, "power_of_10[uint128]: n must be in 0..38"
+        )
+        ref table = global_constant[_POWER_OF_10_U128]()
+        return rebind[Scalar[dtype]](table[n])
     else:
-        debug_assert(n <= 58, "power_of_10[uint256]: n must be <= 58")
-        if n < 29:
-            if n < 14:
-                if n < 7:
-                    if n < 3:
-                        if n < 1:
-                            return 1
-                        else:
-                            if n == 1:
-                                return 10
-                            else:
-                                return 100
-                    else:
-                        if n < 5:
-                            if n == 3:
-                                return 1000
-                            else:
-                                return 10000
-                        else:
-                            if n == 5:
-                                return 100000
-                            else:
-                                return 1000000
-                else:
-                    if n < 10:
-                        if n < 8:
-                            return 10000000
-                        else:
-                            if n == 8:
-                                return 100000000
-                            else:
-                                return 1000000000
-                    else:
-                        if n < 12:
-                            if n == 10:
-                                return 10000000000
-                            else:
-                                return 100000000000
-                        else:
-                            if n == 12:
-                                return 1000000000000
-                            else:
-                                return 10000000000000
-            else:
-                if n < 21:
-                    if n < 17:
-                        if n < 15:
-                            return 100000000000000
-                        else:
-                            if n == 15:
-                                return 1000000000000000
-                            else:
-                                return 10000000000000000
-                    else:
-                        if n < 19:
-                            if n == 17:
-                                return 100000000000000000
-                            else:
-                                return 1000000000000000000
-                        else:
-                            if n == 19:
-                                return 10000000000000000000
-                            else:
-                                return 100000000000000000000
-                else:
-                    if n < 25:
-                        if n < 23:
-                            if n == 21:
-                                return 1000000000000000000000
-                            else:
-                                return 10000000000000000000000
-                        else:
-                            if n == 23:
-                                return 100000000000000000000000
-                            else:
-                                return 1000000000000000000000000
-                    else:
-                        if n < 27:
-                            if n == 25:
-                                return 10000000000000000000000000
-                            else:
-                                return 100000000000000000000000000
-                        else:
-                            if n == 27:
-                                return 1000000000000000000000000000
-                            else:
-                                return 10000000000000000000000000000
-        else:
-            if n < 44:
-                if n < 36:
-                    if n < 32:
-                        if n < 30:
-                            return 100000000000000000000000000000
-                        else:
-                            if n == 30:
-                                return 1000000000000000000000000000000
-                            else:
-                                return 10000000000000000000000000000000
-                    else:
-                        if n < 34:
-                            if n == 32:
-                                return 100000000000000000000000000000000
-                            else:
-                                return 1000000000000000000000000000000000
-                        else:
-                            if n == 34:
-                                return 10000000000000000000000000000000000
-                            else:
-                                return 100000000000000000000000000000000000
-                else:
-                    if n < 40:
-                        if n < 38:
-                            if n == 36:
-                                return 1000000000000000000000000000000000000
-                            else:
-                                return 10000000000000000000000000000000000000
-                        else:
-                            if n == 38:
-                                return 100000000000000000000000000000000000000
-                            else:
-                                return 1000000000000000000000000000000000000000
-                    else:
-                        if n < 42:
-                            if n == 40:
-                                return 10000000000000000000000000000000000000000
-                            else:
-                                return (
-                                    100000000000000000000000000000000000000000
-                                )
-                        else:
-                            if n == 42:
-                                return (
-                                    1000000000000000000000000000000000000000000
-                                )
-                            else:
-                                return (
-                                    10000000000000000000000000000000000000000000
-                                )
-            else:
-                if n < 51:
-                    if n < 47:
-                        if n < 45:
-                            return 100000000000000000000000000000000000000000000
-                        else:
-                            if n == 45:
-                                return 1000000000000000000000000000000000000000000000
-                            else:
-                                return 10000000000000000000000000000000000000000000000
-                    else:
-                        if n < 49:
-                            if n == 47:
-                                return 100000000000000000000000000000000000000000000000
-                            else:
-                                return 1000000000000000000000000000000000000000000000000
-                        else:
-                            if n == 49:
-                                return 10000000000000000000000000000000000000000000000000
-                            else:
-                                return 100000000000000000000000000000000000000000000000000
-                else:
-                    if n < 55:
-                        if n < 53:
-                            if n == 51:
-                                return 1000000000000000000000000000000000000000000000000000
-                            else:
-                                return 10000000000000000000000000000000000000000000000000000
-                        else:
-                            if n == 53:
-                                return 100000000000000000000000000000000000000000000000000000
-                            else:
-                                return 1000000000000000000000000000000000000000000000000000000
-                    else:
-                        if n < 57:
-                            if n == 55:
-                                return 10000000000000000000000000000000000000000000000000000000
-                            else:
-                                return 100000000000000000000000000000000000000000000000000000000
-                        else:
-                            if n == 57:
-                                return 1000000000000000000000000000000000000000000000000000000000
-                            else:
-                                return 10000000000000000000000000000000000000000000000000000000000
-
-
-# ===----------------------------------------------------------------------=== #
-# `power_of_10_unsafe` - high-performance variant using string-literal rodata
-#
-# Yuhao's notes:
-# Each entry is laid out as a contiguous little-endian byte sequence inside a
-# `StringLiteral`. `StringLiteral.unsafe_ptr().bitcast[Scalar[dtype]]()[n]`
-# yields the n-th power of 10 with a single indexed load - no stack
-# materialisation, no per-call-site `comptime InlineArray` rebuild.
-#
-# Why not just use this in `power_of_10`? Because the bitcast trick is a
-# workaround for Mojo's lack of module-level cached variables; it is not
-# elegant Mojo. When Mojo grows real module-level variables, this entire
-# section can be replaced with a single shared `var POWER_OF_10_U128 =
-# InlineArray[UInt128, 29](...)` and `power_of_10` can call into it
-# directly. Until then, hot paths that need every nanosecond use
-# `power_of_10_unsafe`; the public `power_of_10` keeps the elegant
-# bisect implementation.
-#
-# Total rodata cost: 30 * 16 + 59 * 32 = 2 368 bytes.
-# ===----------------------------------------------------------------------=== #
-
-
-comptime _POWER_OF_10_U128 = InlineArray[UInt128, 30](
-    UInt128(1),
-    UInt128(10),
-    UInt128(100),
-    UInt128(1000),
-    UInt128(10000),
-    UInt128(100000),
-    UInt128(1000000),
-    UInt128(10000000),
-    UInt128(100000000),
-    UInt128(1000000000),
-    UInt128(10000000000),
-    UInt128(100000000000),
-    UInt128(1000000000000),
-    UInt128(10000000000000),
-    UInt128(100000000000000),
-    UInt128(1000000000000000),
-    UInt128(10000000000000000),
-    UInt128(100000000000000000),
-    UInt128(1000000000000000000),
-    UInt128(10000000000000000000),
-    UInt128(100000000000000000000),
-    UInt128(1000000000000000000000),
-    UInt128(10000000000000000000000),
-    UInt128(100000000000000000000000),
-    UInt128(1000000000000000000000000),
-    UInt128(10000000000000000000000000),
-    UInt128(100000000000000000000000000),
-    UInt128(1000000000000000000000000000),
-    UInt128(10000000000000000000000000000),
-    UInt128(100000000000000000000000000000),
-    __list_literal__=None,
-)
-
-
-comptime _POWER_OF_10_U256 = InlineArray[UInt256, 59](
-    UInt256(1),
-    UInt256(10),
-    UInt256(100),
-    UInt256(1000),
-    UInt256(10000),
-    UInt256(100000),
-    UInt256(1000000),
-    UInt256(10000000),
-    UInt256(100000000),
-    UInt256(1000000000),
-    UInt256(10000000000),
-    UInt256(100000000000),
-    UInt256(1000000000000),
-    UInt256(10000000000000),
-    UInt256(100000000000000),
-    UInt256(1000000000000000),
-    UInt256(10000000000000000),
-    UInt256(100000000000000000),
-    UInt256(1000000000000000000),
-    UInt256(10000000000000000000),
-    UInt256(100000000000000000000),
-    UInt256(1000000000000000000000),
-    UInt256(10000000000000000000000),
-    UInt256(100000000000000000000000),
-    UInt256(1000000000000000000000000),
-    UInt256(10000000000000000000000000),
-    UInt256(100000000000000000000000000),
-    UInt256(1000000000000000000000000000),
-    UInt256(10000000000000000000000000000),
-    UInt256(100000000000000000000000000000),
-    UInt256(1000000000000000000000000000000),
-    UInt256(10000000000000000000000000000000),
-    UInt256(100000000000000000000000000000000),
-    UInt256(1000000000000000000000000000000000),
-    UInt256(10000000000000000000000000000000000),
-    UInt256(100000000000000000000000000000000000),
-    UInt256(1000000000000000000000000000000000000),
-    UInt256(10000000000000000000000000000000000000),
-    UInt256(100000000000000000000000000000000000000),
-    UInt256(1000000000000000000000000000000000000000),
-    UInt256(10000000000000000000000000000000000000000),
-    UInt256(100000000000000000000000000000000000000000),
-    UInt256(1000000000000000000000000000000000000000000),
-    UInt256(10000000000000000000000000000000000000000000),
-    UInt256(100000000000000000000000000000000000000000000),
-    UInt256(1000000000000000000000000000000000000000000000),
-    UInt256(10000000000000000000000000000000000000000000000),
-    UInt256(100000000000000000000000000000000000000000000000),
-    UInt256(1000000000000000000000000000000000000000000000000),
-    UInt256(10000000000000000000000000000000000000000000000000),
-    UInt256(100000000000000000000000000000000000000000000000000),
-    UInt256(1000000000000000000000000000000000000000000000000000),
-    UInt256(10000000000000000000000000000000000000000000000000000),
-    UInt256(100000000000000000000000000000000000000000000000000000),
-    UInt256(1000000000000000000000000000000000000000000000000000000),
-    UInt256(10000000000000000000000000000000000000000000000000000000),
-    UInt256(100000000000000000000000000000000000000000000000000000000),
-    UInt256(1000000000000000000000000000000000000000000000000000000000),
-    UInt256(10000000000000000000000000000000000000000000000000000000000),
-    __list_literal__=None,
-)
+        debug_assert(
+            n >= 0 and n <= 58, "power_of_10[uint256]: n must be in 0..58"
+        )
+        ref table = global_constant[_POWER_OF_10_U256]()
+        return rebind[Scalar[dtype]](table[n])
 
 
 @always_inline
@@ -1308,7 +1031,7 @@ def power_of_10_unsafe[
     dtype == DType.uint128 or dtype == DType.uint256
 ):
     """
-    Returns 10^n via a single indexed load from a comptime InlineArray table.
+    Returns 10^n via a single indexed load, with a narrower documented range.
 
     Parameters:
         dtype: The Mojo scalar type to calculate the power of 10 for. Must be
@@ -1326,30 +1049,29 @@ def power_of_10_unsafe[
     Notes:
 
         **WARNING**: This function performs **no runtime bounds check** in
-        release builds (`-D ASSERT=none`). Out-of-range `n` will index
-        past the end of the table and return arbitrary bits. Callers must
-        guarantee `0 <= n <= 29` for `uint128` and `0 <= n <= 58` for
-        `uint256`. A `debug_assert` catches violations in debug builds
-        (`-D ASSERT=all`); use `power_of_10` (asserted, raises) when you
-        cannot prove `n` is in range.
+        release builds (`-D ASSERT=none`). Callers must guarantee
+        `0 <= n <= 29` for `uint128` and `0 <= n <= 58` for `uint256`. A
+        `debug_assert` catches violations in debug builds
+        (`-D ASSERT=all`). An out-of-range `n` reads past the table and
+        returns garbage; earlier revisions returned `0`, which was never
+        a contract - do not rely on either.
 
-        Implementation: the entries live in module-level `comptime`
-        `InlineArray` tables (`_POWER_OF_10_U128`, `_POWER_OF_10_U256`)
-        materialised once at compile time. Indexing into a `comptime`
-        InlineArray compiles to a single load from rodata; no stack
-        materialisation, no allocation, no per-call-site rebuild. The
-        `rebind[Scalar[dtype]]` is a zero-cost type bridge from the
-        table's concrete element type (`UInt128`/`UInt256`) to the
-        caller-requested `Scalar[dtype]`.
+        This is now the same single indexed load as `power_of_10`; the
+        two differ only in the documented range they assert (`0..29` here
+        versus `0..38` there for `uint128`). The stricter assert is kept
+        because most `Decimal128` call sites can prove `n <= 29` and want
+        the tighter debug-build check. The historical performance gap
+        between the two is gone - both compile to the same single load.
 
         Migration note: this used to read from a packed `StringLiteral`
         rodata blob via `unsafe_ptr().bitcast[Scalar[dtype]]().load[
         alignment=1](n)`. Mojo 1.0.0b1 changed `StringLiteral` to
         always-UTF-8-encode arbitrary byte literals (e.g. `\\x9a` became
-        the 2-byte sequence `[0xC2, 0x9A]`), corrupting the blob. The
-        `comptime InlineArray` approach is both safer (no manual byte
-        layout) and the elegant target form once Mojo gets full
-        module-level variable support.
+        the 2-byte sequence `[0xC2, 0x9A]`), corrupting the blob. Mojo
+        1.1 then renamed `InlineArray` to `Array` and dropped its
+        `ImplicitlyCopyable` conformance, forcing a `materialize` /
+        `comptime for` workaround until `global_constant` arrived and
+        restored the original single-load-from-rodata behaviour.
     """
 
     comptime if dtype == DType.uint128:
@@ -1361,13 +1083,15 @@ def power_of_10_unsafe[
             n >= 0 and n <= 29,
             "power_of_10_unsafe[uint128]: n out of range, must be 0..29",
         )
-        return rebind[Scalar[dtype]](_POWER_OF_10_U128[n])
+        ref table = global_constant[_POWER_OF_10_U128]()
+        return rebind[Scalar[dtype]](table[n])
     else:
         debug_assert(
             n >= 0 and n <= 58,
             "power_of_10_unsafe[uint256]: n out of range, must be 0..58",
         )
-        return rebind[Scalar[dtype]](_POWER_OF_10_U256[n])
+        ref table = global_constant[_POWER_OF_10_U256]()
+        return rebind[Scalar[dtype]](table[n])
 
 
 # ===----------------------------------------------------------------------=== #
@@ -1448,134 +1172,74 @@ def _mulhi_u256(a: UInt256, b: UInt256) -> UInt256:
 #       m   = -((-(1 << (N+ell))) // d)        # ceil
 #       mp  = m - (1 << N)
 #       blob.extend(mp.to_bytes(32, "little"))
-comptime _GM_RECIPROCAL = InlineArray[UInt256, 30](
-    UInt256(0),  # k=0 unused
-    UInt256(
-        69475253542389717254142591005212744711961990799384338423674550404747877783962
-    ),  # k=1
-    UInt256(
-        32421784986448534718599875802432614198915595706379357931048123522215676299183
-    ),  # k=2
-    UInt256(
-        2779010141695588690165703640208509788478479631975373536946982016189915111359
-    ),  # k=3
-    UInt256(
-        73921669769102659158407716829546360373527558210544936082789721630651741962136
-    ),  # k=4
-    UInt256(
-        35978917967818888242011976461899506728168049635307836058340260502938767641721
-    ),  # k=5
-    UInt256(
-        5624716526791871508895384167782023811880442775118156038780691600768388185390
-    ),  # k=6
-    UInt256(
-        78474799985256711668375205673663982810970699239573388085723656965977298880585
-    ),  # k=7
-    UInt256(
-        39621422140742130249985967537193604678122562458530597660687408771199213176481
-    ),  # k=8
-    UInt256(
-        8538719865130465115274577028017302171844053033696365320658410215376744613198
-    ),  # k=9
-    UInt256(
-        83137205326598461438581914250040428186912475653298522936728006749350669165078
-    ),  # k=10
-    UInt256(
-        43351346413815530066151334398294760978875983589510705541490888597897909404075
-    ),  # k=11
-    UInt256(
-        11522659283589184968206870516898227212446789938480451625301194076735701595273
-    ),  # k=12
-    UInt256(
-        87911508396132413203273583832249908251876854700953061024156460927525000336398
-    ),  # k=13
-    UInt256(
-        47170788869442691477904670064062345030847486827634336011433651940437374341131
-    ),  # k=14
-    UInt256(
-        14578213248090914097609539049512294454023992528979356001255404750767273544918
-    ),  # k=15
-    UInt256(
-        92800394739335179810317853484432415838400378845751308025683198005975515455830
-    ),  # k=16
-    UInt256(
-        51081897944004904763540085785808351100066306143472933612655041603197786436677
-    ),  # k=17
-    UInt256(
-        17707100507740684726117871626909099309399047981650234082232516480975603221355
-    ),  # k=18
-    UInt256(
-        97806614354774812815931185608267303607000467570024712955246576774308842938129
-    ),  # k=19
-    UInt256(
-        55086873636356611168030751484876261314946377122891657556305744617864448422516
-    ),  # k=20
-    UInt256(
-        20911081061622049849710404186163427481303104765185213237153078892708932810025
-    ),  # k=21
-    UInt256(
-        102932983240984997013679237703074228682046958423680679603119476633082170280002
-    ),  # k=22
-    UInt256(
-        59187968745324758526229193160721801374983569805816430874604064504883110296015
-    ),  # k=23
-    UInt256(
-        24191957148796567736269157526839859529332858911525031891791734802323862308825
-    ),  # k=24
-    UInt256(
-        108182384980464225632173243048156519958894565057824389450541326088466057478081
-    ),  # k=25
-    UInt256(
-        63387490136908141421024397436787634396461655113131398752541544069190220054477
-    ),  # k=26
-    UInt256(
-        27551574262063274052105320947692525946515327157377006194141718453769550115595
-    ),  # k=27
-    UInt256(
-        113557772361690955737511104521520786226386514251187548334301299930779157968913
-    ),  # k=28
-    UInt256(
-        67687800041889525505294686615479047410455214467821925859549523143040700447143
-    ),  # k=29
-    __list_literal__=None,
-)
+comptime _GM_RECIPROCAL: Array[UInt256, 30] = [
+    0,  # k=0 unused
+    69475253542389717254142591005212744711961990799384338423674550404747877783962,  # k=1
+    32421784986448534718599875802432614198915595706379357931048123522215676299183,  # k=2
+    2779010141695588690165703640208509788478479631975373536946982016189915111359,  # k=3
+    73921669769102659158407716829546360373527558210544936082789721630651741962136,  # k=4
+    35978917967818888242011976461899506728168049635307836058340260502938767641721,  # k=5
+    5624716526791871508895384167782023811880442775118156038780691600768388185390,  # k=6
+    78474799985256711668375205673663982810970699239573388085723656965977298880585,  # k=7
+    39621422140742130249985967537193604678122562458530597660687408771199213176481,  # k=8
+    8538719865130465115274577028017302171844053033696365320658410215376744613198,  # k=9
+    83137205326598461438581914250040428186912475653298522936728006749350669165078,  # k=10
+    43351346413815530066151334398294760978875983589510705541490888597897909404075,  # k=11
+    11522659283589184968206870516898227212446789938480451625301194076735701595273,  # k=12
+    87911508396132413203273583832249908251876854700953061024156460927525000336398,  # k=13
+    47170788869442691477904670064062345030847486827634336011433651940437374341131,  # k=14
+    14578213248090914097609539049512294454023992528979356001255404750767273544918,  # k=15
+    92800394739335179810317853484432415838400378845751308025683198005975515455830,  # k=16
+    51081897944004904763540085785808351100066306143472933612655041603197786436677,  # k=17
+    17707100507740684726117871626909099309399047981650234082232516480975603221355,  # k=18
+    97806614354774812815931185608267303607000467570024712955246576774308842938129,  # k=19
+    55086873636356611168030751484876261314946377122891657556305744617864448422516,  # k=20
+    20911081061622049849710404186163427481303104765185213237153078892708932810025,  # k=21
+    102932983240984997013679237703074228682046958423680679603119476633082170280002,  # k=22
+    59187968745324758526229193160721801374983569805816430874604064504883110296015,  # k=23
+    24191957148796567736269157526839859529332858911525031891791734802323862308825,  # k=24
+    108182384980464225632173243048156519958894565057824389450541326088466057478081,  # k=25
+    63387490136908141421024397436787634396461655113131398752541544069190220054477,  # k=26
+    27551574262063274052105320947692525946515327157377006194141718453769550115595,  # k=27
+    113557772361690955737511104521520786226386514251187548334301299930779157968913,  # k=28
+    67687800041889525505294686615479047410455214467821925859549523143040700447143,  # k=29
+]
 
 
 # Per-`k` shift amount (`ell - 1`), 30 entries (index 0 unused).
 # Same offline generation; max value is 96 (k=29), comfortably ≤ 255.
-comptime _GM_SHIFT = InlineArray[UInt8, 30](
-    UInt8(0),  # k=0 unused
-    UInt8(3),  # k=1
-    UInt8(6),  # k=2
-    UInt8(9),  # k=3
-    UInt8(13),  # k=4
-    UInt8(16),  # k=5
-    UInt8(19),  # k=6
-    UInt8(23),  # k=7
-    UInt8(26),  # k=8
-    UInt8(29),  # k=9
-    UInt8(33),  # k=10
-    UInt8(36),  # k=11
-    UInt8(39),  # k=12
-    UInt8(43),  # k=13
-    UInt8(46),  # k=14
-    UInt8(49),  # k=15
-    UInt8(53),  # k=16
-    UInt8(56),  # k=17
-    UInt8(59),  # k=18
-    UInt8(63),  # k=19
-    UInt8(66),  # k=20
-    UInt8(69),  # k=21
-    UInt8(73),  # k=22
-    UInt8(76),  # k=23
-    UInt8(79),  # k=24
-    UInt8(83),  # k=25
-    UInt8(86),  # k=26
-    UInt8(89),  # k=27
-    UInt8(93),  # k=28
-    UInt8(96),  # k=29
-    __list_literal__=None,
-)
+comptime _GM_SHIFT: Array[UInt8, 30] = [
+    0,  # k=0 unused
+    3,  # k=1
+    6,  # k=2
+    9,  # k=3
+    13,  # k=4
+    16,  # k=5
+    19,  # k=6
+    23,  # k=7
+    26,  # k=8
+    29,  # k=9
+    33,  # k=10
+    36,  # k=11
+    39,  # k=12
+    43,  # k=13
+    46,  # k=14
+    49,  # k=15
+    53,  # k=16
+    56,  # k=17
+    59,  # k=18
+    63,  # k=19
+    66,  # k=20
+    69,  # k=21
+    73,  # k=22
+    76,  # k=23
+    79,  # k=24
+    83,  # k=25
+    86,  # k=26
+    89,  # k=27
+    93,  # k=28
+    96,  # k=29
+]
 
 
 @always_inline
@@ -1602,14 +1266,19 @@ def udiv_u256_by_pow10_gm(value: UInt256, k: Int) -> UInt256:
         Algorithm: Granlund-Möller saturating reciprocal (Hacker's
         Delight §10-9). The 256-bit reciprocal `m'` and shift amount
         `ell - 1` for each `d = 10^k` are precomputed in the
-        `_GM_RECIPROCAL_BLOB` and `_GM_SHIFT_BLOB` rodata blobs.
+        `_GM_RECIPROCAL` and `_GM_SHIFT` tables, which
+        `global_constant` places in program-lifetime rodata.
     """
-    # Direct InlineArray load (Mojo 1.0.0b1: StringLiteral now UTF-8
-    # encodes `\xNN` escapes for `NN >= 0x80`, which corrupted the old
-    # rodata blob layout; module-level `comptime InlineArray` is now
-    # supported and provides the same single-load semantics).
-    var mp = _GM_RECIPROCAL[k]
-    var shift = Int(_GM_SHIFT[k])
+    # `global_constant` emits each table once into program-lifetime rodata
+    # and hands back a `ref`, so this is two indexed loads with no
+    # per-call-site setup. `materialize` rebuilt the 30 x UInt256
+    # reciprocal table on the stack at every inlined site: 19.05 ns/call
+    # for the whole divider versus 3.93 ns here (osx-arm64, release
+    # build). See the notes above the power-of-10 tables.
+    ref reciprocals = global_constant[_GM_RECIPROCAL]()
+    ref shifts = global_constant[_GM_SHIFT]()
+    var mp = reciprocals[k]
+    var shift = Int(shifts[k])
     var t1 = _mulhi_u256(mp, value)
     var t = ((value - t1) >> 1) + t1
     return t >> UInt256(shift)

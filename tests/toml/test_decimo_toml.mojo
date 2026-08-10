@@ -115,9 +115,9 @@ key = "value"
     )
     var a = doc.get("a")
     assert_true(a.is_table(), "dotted header a is table")
-    var b = a.as_table()["b"]
+    ref b = a.as_table()["b"]
     assert_true(b.is_table(), "dotted header b is table")
-    var c = b.as_table()["c"]
+    ref c = b.as_table()["c"]
     assert_true(c.is_table(), "dotted header c is table")
     assert_true(c.as_table()["key"].as_string() == "value", "dotted header val")
     print("  PASS  test_dotted_table_headers")

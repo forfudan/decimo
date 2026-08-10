@@ -75,15 +75,13 @@ def mpfrw_clear(handle: Int32):
 # ===----------------------------------------------------------------------=== #
 # String conversion
 #
-# C returns malloc'd char* which Mojo can't represent as UnsafePointer[c_char]
+# C returns malloc'd char* which Mojo can't represent as Pointer[c_char]
 # in return position (origin parameter can't be inferred). So we pass raw
-# addresses as Int and reconstruct UnsafePointer at the call site.
+# addresses as Int and reconstruct Pointer at the call site.
 # ===----------------------------------------------------------------------=== #
 
 
-def mpfrw_set_str(
-    handle: Int32, s: UnsafePointer[c_char, _], length: Int32
-) -> Int32:
+def mpfrw_set_str(handle: Int32, s: Pointer[c_char, _], length: Int32) -> Int32:
     """Sets the MPFR handle value from a decimal string.
 
     Args:
@@ -126,7 +124,7 @@ def mpfrw_free_str(addr: Int):
 
 
 def mpfrw_get_raw_digits(
-    handle: Int32, digits: Int32, out_exp: UnsafePointer[Int, _]
+    handle: Int32, digits: Int32, out_exp: Pointer[Int, _]
 ) -> Int:
     """Exports MPFR value as raw digit string via mpfr_get_str.
 

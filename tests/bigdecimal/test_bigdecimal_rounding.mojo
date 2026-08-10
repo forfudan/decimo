@@ -27,7 +27,7 @@ def test_bigdecimal_rounding() raises:
 
     pydecimal.getcontext().rounding = pydecimal.ROUND_DOWN
     test_cases = load_test_cases(toml, "round_down_tests")
-    count_wrong = 0
+    var count_wrong = 0
     for test_case in test_cases:
         var precision = Int(test_case.b)
         var result = BDec(test_case.a).round(precision, RoundingMode.down())
