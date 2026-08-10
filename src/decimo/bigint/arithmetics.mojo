@@ -93,6 +93,36 @@ def _add_magnitudes(a: List[UInt32], b: List[UInt32]) -> List[UInt32]:
     return result^
 
 
+def _add_magnitudes(a: List[UInt32], b: UInt32) -> List[UInt32]:
+    """Adds a single-word magnitude to a magnitude: a + b.
+
+    Overload of the two-list version for the common `a + small` case. It
+    avoids heap-allocating a one-element list for `b` and drops the
+    per-word bounds test that the general version needs.
+
+    Args:
+        a: The magnitude (little-endian UInt32 words).
+        b: The single-word value to add.
+
+    Returns:
+        The sum magnitude as a new word list.
+    """
+    var len_a = len(a)
+    var result = List[UInt32](capacity=len_a + 1)
+    result.resize(unsafe_uninit_length=len_a)
+
+    var carry = UInt64(b)
+    for i in range(len_a):
+        var s = UInt64(a[i]) + carry
+        result[i] = UInt32(s & 0xFFFF_FFFF)
+        carry = s >> 32
+
+    if carry > 0:
+        result.append(UInt32(carry))
+
+    return result^
+
+
 def _add_magnitudes_into(
     mut result: List[UInt32],
     imm a: List[UInt32],
@@ -566,6 +596,38 @@ def _add_magnitudes_inplace(mut a: List[UInt32], imm b: List[UInt32]):
             alen -= 1
         while len(a) > alen:
             a.shrink(len(a) - 1)
+
+
+def _add_magnitudes_inplace(mut a: List[UInt32], b: UInt32):
+    """Adds a single-word magnitude into a in-place: a += b.
+
+    Overload of the two-list version for the common `a += small` case. Beyond
+    skipping the one-element list allocation, it stops as soon as the carry is
+    absorbed instead of walking all of `a`.
+
+    Args:
+        a: The accumulator magnitude (modified in-place).
+        b: The single-word value to add.
+    """
+    var len_a = len(a)
+    var carry = UInt64(b)
+    var i = 0
+    while carry > 0 and i < len_a:
+        var s = UInt64(a[i]) + carry
+        a[i] = UInt32(s & 0xFFFF_FFFF)
+        carry = s >> 32
+        i += 1
+
+    if carry > 0:
+        a.append(UInt32(carry))
+        return
+
+    # Trim trailing zero words, matching the two-list overload.
+    var alen = len(a)
+    while alen > 1 and a[alen - 1] == 0:
+        alen -= 1
+    while len(a) > alen:
+        a.shrink(len(a) - 1)
 
 
 def _add_at_offset_inplace(
@@ -2109,8 +2171,7 @@ def floor_divide_inplace(mut x: BigInt, imm other: BigInt) raises:
             x.sign = not q_is_zero
         else:
             # Non-exact: floor division rounds away from zero for negative
-            var one_word: List[UInt32] = [UInt32(1)]
-            _add_magnitudes_inplace(q_words, one_word)
+            _add_magnitudes_inplace(q_words, UInt32(1))
             x.words = q_words^
             x.sign = True
 
@@ -2205,8 +2266,7 @@ def floor_divide(x1: BigInt, x2: BigInt) raises -> BigInt:
         else:
             # Non-exact: floor division rounds away from zero for negative
             # results, so quotient = -(|q| + 1)
-            var one_word: List[UInt32] = [UInt32(1)]
-            var q_plus_one = _add_magnitudes(q_words, one_word)
+            var q_plus_one = _add_magnitudes(q_words, UInt32(1))
             return BigInt(raw_words=q_plus_one^, sign=True)
 
 
@@ -2358,8 +2418,7 @@ def floor_divmod(x1: BigInt, x2: BigInt) raises -> Tuple[BigInt, BigInt]:
             return (BigInt(raw_words=q_words^, sign=not q_is_zero), BigInt())
         else:
             # floor_div rounds toward negative infinity, mod has sign of divisor
-            var one_word: List[UInt32] = [UInt32(1)]
-            var q_plus_one = _add_magnitudes(q_words, one_word)
+            var q_plus_one = _add_magnitudes(q_words, UInt32(1))
             var adjusted = _subtract_magnitudes(x2.words, r_words)
             return (
                 BigInt(raw_words=q_plus_one^, sign=True),
