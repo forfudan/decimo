@@ -20,6 +20,7 @@
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.errors import ValueError
 from decimo.bigint10.bigint10 import BigInt10
+from decimo.biguint.biguint import BigUInt
 from decimo.rounding_mode import RoundingMode
 import decimo.bigdecimal.trigonometric as bigdecimal_trigonometric
 

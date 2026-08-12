@@ -23,7 +23,8 @@ operation dunders, and other dunders that implement traits, as well as
 mathematical methods that do not implement a trait.
 """
 
-from std.memory import Span, UnsafePointer
+from std.collections import Span
+from std.memory import Pointer
 from std.hashlib.hasher import Hasher
 
 import decimo.decimal128.arithmetics as decimal128_arithmetics
@@ -622,7 +623,7 @@ struct Decimal128(
         if scale > UInt32(Self.MAX_SCALE):
             Self._raise_from_uint128_scale_too_large(scale)
 
-        var result = UnsafePointer(to=value).bitcast[Decimal128]()[]
+        var result = Pointer(to=value).unsafe_bitcast[Decimal128]()[]
         result.flags |= (scale << Self.SCALE_SHIFT) & Self.SCALE_MASK
         result.flags |= UInt32(sign) << 31
 
@@ -951,7 +952,9 @@ struct Decimal128(
             )
 
         # Extract binary exponent using IEEE 754 bit manipulation
-        var bits: UInt64 = UnsafePointer(to=abs_value).bitcast[UInt64]().load()
+        var bits: UInt64 = (
+            Pointer(to=abs_value).unsafe_bitcast[UInt64]().unsafe_load()
+        )
         var biased_exponent: Int = Int((bits >> 52) & 0x7FF)
 
         # print("DEBUG: biased_exponent = ", biased_exponent)
@@ -1109,7 +1112,7 @@ struct Decimal128(
         comptime BUF_SIZE = 32
         comptime ZERO_ASCII = UInt8(48)
         comptime TEN9: UInt128 = 1_000_000_000
-        var buf = InlineArray[UInt8, BUF_SIZE](uninitialized=True)
+        var buf = Array[UInt8, BUF_SIZE](uninitialized=True)
         var pos = BUF_SIZE
 
         while coef >= TEN9:
@@ -1119,13 +1122,17 @@ struct Decimal128(
             # Always emit 9 digits because there are more above.
             for _ in range(9):
                 pos -= 1
-                buf.unsafe_ptr()[pos] = UInt8(r32 % UInt32(10)) + ZERO_ASCII
+                buf.unsafe_ptr()[unsafe_offset=pos] = (
+                    UInt8(r32 % UInt32(10)) + ZERO_ASCII
+                )
                 r32 //= UInt32(10)
 
         var top = UInt32(coef)
         while top > 0:
             pos -= 1
-            buf.unsafe_ptr()[pos] = UInt8(top % UInt32(10)) + ZERO_ASCII
+            buf.unsafe_ptr()[unsafe_offset=pos] = (
+                UInt8(top % UInt32(10)) + ZERO_ASCII
+            )
             top //= UInt32(10)
 
         var n_digits = BUF_SIZE - pos
@@ -1137,7 +1144,8 @@ struct Decimal128(
             writer.write(
                 StringSlice(
                     unsafe_from_utf8=Span(
-                        ptr=buf.unsafe_ptr() + pos, length=n_digits
+                        unsafe_ptr=buf.unsafe_ptr().unsafe_offset(pos),
+                        length=n_digits,
                     )
                 )
             )
@@ -1149,14 +1157,15 @@ struct Decimal128(
             # BUF_SIZE = 32, so the prefix always fits.)
             var zeros_count = scale - n_digits
             var frac_start = pos - zeros_count
-            var p = buf.unsafe_ptr() + frac_start
+            var p = buf.unsafe_ptr().unsafe_offset(frac_start)
             for i in range(zeros_count):
-                p[i] = ZERO_ASCII
+                p[unsafe_offset=i] = ZERO_ASCII
             writer.write("0.")
             writer.write(
                 StringSlice(
                     unsafe_from_utf8=Span(
-                        ptr=buf.unsafe_ptr() + frac_start, length=scale
+                        unsafe_ptr=buf.unsafe_ptr().unsafe_offset(frac_start),
+                        length=scale,
                     )
                 )
             )
@@ -1165,7 +1174,8 @@ struct Decimal128(
             writer.write(
                 StringSlice(
                     unsafe_from_utf8=Span(
-                        ptr=buf.unsafe_ptr() + pos, length=int_len
+                        unsafe_ptr=buf.unsafe_ptr().unsafe_offset(pos),
+                        length=int_len,
                     )
                 )
             )
@@ -1173,7 +1183,10 @@ struct Decimal128(
             writer.write(
                 StringSlice(
                     unsafe_from_utf8=Span(
-                        ptr=buf.unsafe_ptr() + pos + int_len, length=scale
+                        unsafe_ptr=buf.unsafe_ptr().unsafe_offset(
+                            pos + int_len
+                        ),
+                        length=scale,
                     )
                 )
             )
@@ -2871,7 +2884,7 @@ struct Decimal128(
 
         var col = max_label_len + 4  # 4 spaces after longest label
 
-        def pad(label: String) {read col} -> String:
+        def pad(label: String) {imm col} -> String:
             return label + String(" ") * (col - label.byte_length())
 
         var sep_line = String("-") * (col + 30)
@@ -3102,21 +3115,21 @@ def _insert_digit_separators(s: String, delimiter: String) -> String:
 
     # Locate optional leading minus (ASCII 45).
     var start = 0
-    if n > 0 and ptr[0] == 45:
+    if n > 0 and ptr[unsafe_offset=0] == 45:
         start = 1
 
     # Locate optional exponent suffix 'E' (ASCII 69); it bounds the
     # mantissa so the exponent itself is left untouched.
     var e_pos = n
     for i in range(start, n):
-        if ptr[i] == 69:
+        if ptr[unsafe_offset=i] == 69:
             e_pos = i
             break
 
     # Locate optional decimal point '.' (ASCII 46) within the mantissa.
     var dot_pos = -1
     for i in range(start, e_pos):
-        if ptr[i] == 46:
+        if ptr[unsafe_offset=i] == 46:
             dot_pos = i
             break
 

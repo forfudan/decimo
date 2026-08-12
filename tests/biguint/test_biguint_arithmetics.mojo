@@ -41,7 +41,7 @@ def test_biguint_arithmetics() raises:
 
     test_cases = load_test_cases(toml, "addition_tests")
     assert_true(len(test_cases) > 0, "No addition test cases found")
-    count_wrong = 0
+    var count_wrong = 0
     for test_case in test_cases:
         var result = BigUInt(test_case.a) + BigUInt(test_case.b)
         var mojo_str = String(result)
@@ -170,7 +170,7 @@ def test_biguint_truncate_divide() raises:
 
     test_cases = load_test_cases(toml, "truncate_divide_tests")
     assert_true(len(test_cases) > 0, "No truncate division test cases found")
-    count_wrong = 0
+    var count_wrong = 0
     for test_case in test_cases:
         var result = BigUInt(test_case.a) // BigUInt(test_case.b)
         var mojo_str = String(result)
@@ -200,6 +200,8 @@ def test_biguint_truncate_divide_random_numbers_against_python() raises:
 
     var number_a: String
     var number_b: String
+    var decimo_result: String
+    var python_result: String
 
     for _test_case in range(10):
         number_a = String("")

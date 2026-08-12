@@ -9,8 +9,12 @@ readme = "README.md"
 version = "0.11.0"
 
 [dependencies]
-argmojo = ">=0.7,<0.8" # CLI argument parsing for the Decimo calculator
-mojo = ">=1.0.0b2,<2" # Mojo language compiler and runtime
+# CLI argument parsing for the Decimo calculator. The modular-community
+# channel does not ship 0.8.0 yet; until it does, `pixi run buildcli`
+# falls back to the pinned upstream commit (see src/cli/ensure_argmojo.sh).
+# Uncomment this line once the package is available:
+# argmojo = ">=0.8.0,<0.9.0"
+mojo = ">=1.0.0,<1.1.0" # Mojo language compiler and runtime
 python = ">=3.13" # For Python bindings and tests
 python-build = ">=0.2.0" # Build PyPI wheel (`pixi run wheel`)
 ruff = ">=0.15.0" # Python code formatter
@@ -19,12 +23,13 @@ pre-commit = ">=4.6.1,<5"
 
 [tasks]
 # format the code
-format = """pixi run mojo format ./src \
-&&pixi run mojo format ./python \
-&&pixi run mojo format ./benches \
-&&pixi run mojo format ./tests \
-&&pixi run mojo format ./docs \
-&&pixi run ruff format ./python"""
+format = """pixi run clean \
+&& pixi run mojo format ./src \
+&& pixi run mojo format ./python \
+&& pixi run mojo format ./benches \
+&& pixi run mojo format ./tests \
+&& pixi run mojo format ./docs \
+&& pixi run ruff format ./python"""
 
 # doc
 # Note: the CLI calculator doc step uses `-I tests` (the prebuilt
@@ -33,8 +38,12 @@ format = """pixi run mojo format ./src \
 # the source tree via `-I src`. Loading the pre-built package via
 # `-I tests` sidesteps that regression. The `package` task below is
 # therefore reordered so `package_decimo` runs before `doc`.
+# `-I src/cli` resolves `limo` from source. Without it the step silently
+# fell back to the stale `limo.mojopkg` left at the repo root, which the
+# 1.1 compiler now rejects ("missing version information"); source also
+# takes precedence over that legacy artifact, so it can be deleted.
 doc = """pixi run mojo doc --diagnose-missing-doc-strings src/decimo > /dev/null \
-&& pixi run mojo doc --diagnose-missing-doc-strings -I tests src/cli/calculator > /dev/null"""
+&& pixi run mojo doc --diagnose-missing-doc-strings -I tests -I src/cli src/cli/calculator > /dev/null"""
 
 # compile the package
 p = "clear && pixi run package"
@@ -48,8 +57,9 @@ package_decimo = """pixi run mojo precompile src/decimo -o decimo.mojoc \
 
 # clean the package files in tests folder
 c = "clear && pixi run clean"
-clean = """rm tests/decimo.mojoc && \
-rm benches/decimo.mojoc"""
+# `-f`: `clean` runs first inside `format` (and hence `all`), so it must not
+# fail when the artifacts are absent (fresh checkout, or after a previous run).
+clean = "rm -f tests/decimo.mojoc benches/decimo.mojoc"
 
 # gmp/mpfr wrapper (compile C wrapper — no MPFR needed at build time)
 bgmp = "clear && pixi run buildgmp"
@@ -84,28 +94,22 @@ dec_debug = """clear && pixi run package && cd benches/decimal128 \
 &&pixi run mojo run -I ../ -D ASSERT=all bench.mojo && cd ../.. \
 &&pixi run clean"""
 
-# Fetch argmojo source code for CLI calculator
-# Only do this when necessary
-# (kept for fallback if conda argmojo becomes unavailable for some platform)
-# fetch = """git clone https://github.com/forfudan/argmojo.git temp/argmojo 2>/dev/null || true \
-# &&cd temp/argmojo && git fetch --all --tags --prune 2>/dev/null \
-# && git checkout fc06e173e3c335f449df13859560bb40a2d4d872 2>/dev/null"""
+# Resolve argmojo for the CLI calculator: use the conda package if the
+# environment provides one, otherwise clone + precompile the pinned upstream
+# commit (release v0.8.0) into temp/argmojo.mojoc.
+# Overrides: DECIMO_ARGMOJO=conda|git, ARGMOJO_COMMIT=<sha>
+argmojo = "bash src/cli/ensure_argmojo.sh"
 
 # cli calculator
 bcli = "clear && pixi run buildcli"
-# argmojo is provided by the conda dependency, so no temp/argmojo build
-# step is needed. We still package decimo into temp/ so the CLI build
-# (and downstream `testcli`) can use `-I temp`.
-buildcli = """mkdir -p temp \
+# `pixi run argmojo` picks the conda package when it is installed and
+# otherwise drops temp/argmojo.mojoc from the pinned upstream commit. Either
+# way decimo is packaged into temp/ as well, so the CLI build (and downstream
+# `testcli`) only needs `-I temp`.
+buildcli = """pixi run argmojo \
+&& mkdir -p temp \
 && pixi run mojo precompile src/decimo -o temp/decimo.mojoc \
 && pixi run mojo build -I temp -I src/cli -o decimo src/cli/main.mojo"""
-# Uncomment the following lines if we build the CLI package with a
-# local clone of argmojo (e.g. when conda argmojo is unavailable):
-# buildcli = """pixi run fetch \
-# && mkdir -p temp \
-# && pixi run mojo precompile src/decimo -o temp/decimo.mojoc \
-# && pixi run mojo precompile temp/argmojo/src/argmojo -o temp/argmojo.mojoc \
-# && pixi run mojo build -I temp -I src/cli -o decimo src/cli/main.mojo"""
 tcli = "clear && pixi run test cli"
 testcli = "pixi run buildcli && cp temp/decimo.mojoc tests/ && bash tests/test.sh cli"
 

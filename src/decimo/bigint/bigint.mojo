@@ -27,7 +27,8 @@ for the Decimo library. It uses base-2^32 representation with UInt32 words
 in little-endian order, and a separate sign bit.
 """
 
-from std.memory import UnsafePointer, memcpy
+from std.bit import bit_width, pop_count
+from std.memory import Pointer, unsafe_memcpy
 from std.sys import size_of
 
 import decimo.bigint.arithmetics as bigint_arithmetics
@@ -185,15 +186,6 @@ struct BigInt(
             self.words = raw_words^
             self.sign = sign
 
-    @implicit
-    def __init__(out self, value: Int):
-        """Initializes a BigInt from an Int.
-
-        Args:
-            value: The integer value.
-        """
-        self = Self.from_int(value)
-
     def __init__(out self, value: String) raises:
         """Initializes a BigInt from a decimal string representation.
 
@@ -221,46 +213,6 @@ struct BigInt(
     # ===------------------------------------------------------------------=== #
     # Constructing methods that are not dunders
     # ===------------------------------------------------------------------=== #
-
-    # IMPORTANT:
-    # This function will be removed in the future when `Int` type is
-    # a comptime alias of `SIMD[DType.int, 1]`.
-    @staticmethod
-    def from_int(value: Int) -> Self:
-        """Creates a BigInt from a Mojo Int.
-
-        Args:
-            value: The integer value.
-
-        Returns:
-            The BigInt representation.
-        """
-        if value == 0:
-            return Self()
-
-        var sign: Bool
-        var magnitude: UInt
-
-        if value < 0:
-            sign = True
-            magnitude = UInt(0) - UInt(value)
-        else:
-            sign = False
-            magnitude = UInt(value)
-
-        comptime if size_of[Int]() == 4:
-            # 32-bit platform: magnitude fits in 1 word
-            return Self(raw_words=[UInt32(magnitude)], sign=sign)
-        elif size_of[Int]() == 8:
-            # 64-bit platform: at most 2 words
-            var words = List[UInt32](capacity=2)
-            words.append(UInt32(magnitude & 0xFFFF_FFFF))
-            var hi = UInt32(magnitude >> 32)
-            if hi != 0:
-                words.append(hi)
-            return Self(raw_words=words^, sign=sign)
-        else:
-            comptime assert False, "unsupported platform Int size"
 
     @staticmethod
     def from_integral_scalar[
@@ -370,6 +322,7 @@ struct BigInt(
             ConversionError: If the string cannot be parsed as an integer.
         """
         # Use the shared string parser for format handling
+        var _tuple: Tuple[List[UInt8], Int, Bool]
         try:
             _tuple = decimo_str.parse_numeric_string(value)
         except e:
@@ -382,7 +335,7 @@ struct BigInt(
                     + String(e)
                 ),
             )
-        var ref coef: List[UInt8] = _tuple[0]
+        ref coef: List[UInt8] = _tuple[0]
         var scale: Int = _tuple[1]
         var sign: Bool = _tuple[2]
 
@@ -1268,7 +1221,7 @@ struct BigInt(
         return bigint_comparison.greater(self, other)
 
     @always_inline
-    def __gt__(self, other: Int) -> Bool:
+    def __gt__(self, other: Scalar) -> Bool where other.dtype.is_integral():
         """Returns True if self > other.
 
         Args:
@@ -1277,7 +1230,7 @@ struct BigInt(
         Returns:
             `True` if self is greater than other, `False` otherwise.
         """
-        return bigint_comparison.greater(self, Self.from_int(other))
+        return bigint_comparison.greater(self, Self.from_integral_scalar(other))
 
     @always_inline
     def __ge__(self, other: Self) -> Bool:
@@ -1292,7 +1245,7 @@ struct BigInt(
         return bigint_comparison.greater_equal(self, other)
 
     @always_inline
-    def __ge__(self, other: Int) -> Bool:
+    def __ge__(self, other: Scalar) -> Bool where other.dtype.is_integral():
         """Returns True if self >= other.
 
         Args:
@@ -1301,7 +1254,9 @@ struct BigInt(
         Returns:
             `True` if self is greater than or equal to other, `False` otherwise.
         """
-        return bigint_comparison.greater_equal(self, Self.from_int(other))
+        return bigint_comparison.greater_equal(
+            self, Self.from_integral_scalar(other)
+        )
 
     @always_inline
     def __lt__(self, other: Self) -> Bool:
@@ -1316,7 +1271,7 @@ struct BigInt(
         return bigint_comparison.less(self, other)
 
     @always_inline
-    def __lt__(self, other: Int) -> Bool:
+    def __lt__(self, other: Scalar) -> Bool where other.dtype.is_integral():
         """Returns True if self < other.
 
         Args:
@@ -1325,7 +1280,7 @@ struct BigInt(
         Returns:
             `True` if self is less than other, `False` otherwise.
         """
-        return bigint_comparison.less(self, Self.from_int(other))
+        return bigint_comparison.less(self, Self.from_integral_scalar(other))
 
     @always_inline
     def __le__(self, other: Self) -> Bool:
@@ -1340,7 +1295,7 @@ struct BigInt(
         return bigint_comparison.less_equal(self, other)
 
     @always_inline
-    def __le__(self, other: Int) -> Bool:
+    def __le__(self, other: Scalar) -> Bool where other.dtype.is_integral():
         """Returns True if self <= other.
 
         Args:
@@ -1349,7 +1304,9 @@ struct BigInt(
         Returns:
             `True` if self is less than or equal to other, `False` otherwise.
         """
-        return bigint_comparison.less_equal(self, Self.from_int(other))
+        return bigint_comparison.less_equal(
+            self, Self.from_integral_scalar(other)
+        )
 
     @always_inline
     def __eq__(self, other: Self) -> Bool:
@@ -1364,7 +1321,7 @@ struct BigInt(
         return bigint_comparison.equal(self, other)
 
     @always_inline
-    def __eq__(self, other: Int) -> Bool:
+    def __eq__(self, other: Scalar) -> Bool where other.dtype.is_integral():
         """Returns True if self == other.
 
         Args:
@@ -1373,7 +1330,7 @@ struct BigInt(
         Returns:
             `True` if the two values are equal, `False` otherwise.
         """
-        return bigint_comparison.equal(self, Self.from_int(other))
+        return bigint_comparison.equal(self, Self.from_integral_scalar(other))
 
     @always_inline
     def __ne__(self, other: Self) -> Bool:
@@ -1388,7 +1345,7 @@ struct BigInt(
         return bigint_comparison.not_equal(self, other)
 
     @always_inline
-    def __ne__(self, other: Int) -> Bool:
+    def __ne__(self, other: Scalar) -> Bool where other.dtype.is_integral():
         """Returns True if self != other.
 
         Args:
@@ -1397,7 +1354,9 @@ struct BigInt(
         Returns:
             `True` if the two values are not equal, `False` otherwise.
         """
-        return bigint_comparison.not_equal(self, Self.from_int(other))
+        return bigint_comparison.not_equal(
+            self, Self.from_integral_scalar(other)
+        )
 
     # ===------------------------------------------------------------------=== #
     # Mathematical methods that do not implement a trait (not a dunder)
@@ -1591,8 +1550,8 @@ struct BigInt(
         return bigint_bitwise.bitwise_and(self, other)
 
     @always_inline
-    def __and__(self, other: Int) -> Self:
-        """Returns self & other where other is an Int.
+    def __and__(self, other: Scalar) -> Self where other.dtype.is_integral():
+        """Returns self & other where other is an integral scalar.
 
         Args:
             other: The right-hand side operand.
@@ -1615,8 +1574,8 @@ struct BigInt(
         return bigint_bitwise.bitwise_or(self, other)
 
     @always_inline
-    def __or__(self, other: Int) -> Self:
-        """Returns self | other where other is an Int.
+    def __or__(self, other: Scalar) -> Self where other.dtype.is_integral():
+        """Returns self | other where other is an integral scalar.
 
         Args:
             other: The right-hand side operand.
@@ -1639,8 +1598,8 @@ struct BigInt(
         return bigint_bitwise.bitwise_xor(self, other)
 
     @always_inline
-    def __xor__(self, other: Int) -> Self:
-        """Returns self ^ other where other is an Int.
+    def __xor__(self, other: Scalar) -> Self where other.dtype.is_integral():
+        """Returns self ^ other where other is an integral scalar.
 
         Args:
             other: The right-hand side operand.
@@ -1770,7 +1729,7 @@ struct BigInt(
             ValueError: If the exponent is negative or the modulus is not positive.
         """
         return bigint_number_theory.mod_pow(
-            self, Self.from_int(exponent), modulus
+            self, Self.from_integral_scalar(exponent), modulus
         )
 
     @always_inline
@@ -1854,14 +1813,9 @@ struct BigInt(
         var n_words = len(self.words)
         var msw = self.words[n_words - 1]
 
-        # Count bits in the most significant word
-        var bits_in_msw = 32
-        var probe: UInt32 = 1 << 31
-        while probe != 0 and (msw & probe) == 0:
-            bits_in_msw -= 1
-            probe >>= 1
-
-        return (n_words - 1) * 32 + bits_in_msw
+        # `std.bit.bit_width` lowers to a hardware `clz`, replacing the
+        # bit-at-a-time probe loop.
+        return (n_words - 1) * 32 + Int(bit_width(msw))
 
     def bit_count(self) -> Int:
         """Returns the number of ones in the binary representation of the
@@ -1880,13 +1834,11 @@ struct BigInt(
         BigInt(0).bit_count()    # 0
         ```
         """
+        # `std.bit.pop_count` lowers to a single `cnt` instruction, making
+        # this O(words) instead of O(set bits).
         var count = 0
         for i in range(len(self.words)):
-            var w = self.words[i]
-            # Kernighan's bit-counting trick
-            while w != 0:
-                w &= w - 1
-                count += 1
+            count += Int(pop_count(self.words[i]))
         return count
 
     def number_of_words(self) -> Int:
@@ -2153,20 +2105,20 @@ def _from_decimal_digits_simple(
 
     # ---- Fast path: ≤ 9 digits → single UInt32 word, no allocation ----
     if digit_count <= 9:
-        var dp = digits._data + start
-        var val: UInt32 = UInt32(dp[0])
+        var dp = digits._data.unsafe_offset(start)
+        var val: UInt32 = UInt32(dp[])
         for j in range(1, digit_count):
-            val = val * 10 + UInt32(dp[j])
+            val = val * 10 + UInt32(dp[unsafe_offset=j])
         var result = BigInt()
         result.words[0] = val
         return result^
 
     # ---- Fast path: 10–19 digits → parse into UInt64, at most 2 words ----
     if digit_count <= 19:
-        var dp = digits._data + start
-        var val: UInt64 = UInt64(dp[0])
+        var dp = digits._data.unsafe_offset(start)
+        var val: UInt64 = UInt64(dp[])
         for j in range(1, digit_count):
-            val = val * 10 + UInt64(dp[j])
+            val = val * 10 + UInt64(dp[unsafe_offset=j])
         var result = BigInt()
         result.words[0] = UInt32(val & 0xFFFF_FFFF)
         var high_word = UInt32(val >> 32)
@@ -2191,13 +2143,13 @@ def _from_decimal_digits_simple(
     if first_chunk == 0:
         first_chunk = 9
 
-    var dp = digits._data + start
-    var chunk_val: UInt32 = UInt32(dp[0])
+    var dp = digits._data.unsafe_offset(start)
+    var chunk_val: UInt32 = UInt32(dp[])
     for j in range(1, first_chunk):
-        chunk_val = chunk_val * 10 + UInt32(dp[j])
-    dp += first_chunk
+        chunk_val = chunk_val * 10 + UInt32(dp[unsafe_offset=j])
+    dp = dp.unsafe_offset(first_chunk)
 
-    wp[0] = chunk_val
+    wp[] = chunk_val
     var word_count: Int = 1
     var remaining = digit_count - first_chunk
 
@@ -2206,20 +2158,20 @@ def _from_decimal_digits_simple(
 
     while remaining > 0:
         # Parse 9 digit values → UInt32 chunk
-        var cv: UInt32 = UInt32(dp[0])
+        var cv: UInt32 = UInt32(dp[])
         for j in range(1, 9):
-            cv = cv * 10 + UInt32(dp[j])
-        dp += 9
+            cv = cv * 10 + UInt32(dp[unsafe_offset=j])
+        dp = dp.unsafe_offset(9)
         remaining -= 9
 
         # Fused multiply-add: result = result * 10^9 + cv  (single O(n) pass)
         var carry: UInt64 = UInt64(cv)
         for k in range(word_count):
-            var product = UInt64(wp[k]) * MUL9 + carry
-            wp[k] = UInt32(product & 0xFFFF_FFFF)
+            var product = UInt64(wp[unsafe_offset=k]) * MUL9 + carry
+            wp[unsafe_offset=k] = UInt32(product & 0xFFFF_FFFF)
             carry = product >> 32
         if carry > 0:
-            wp[word_count] = UInt32(carry)
+            wp[unsafe_offset=word_count] = UInt32(carry)
             word_count += 1
 
     # Trim pre-allocated words to the actual live word count.
@@ -2420,11 +2372,11 @@ def _magnitude_to_decimal_simple(words: List[UInt32], eff_words: Int) -> String:
     while div_len > 0:
         var remainder: UInt64 = 0
         for i in range(div_len - 1, -1, -1):
-            var temp = (remainder << 32) + UInt64(dp[i])
-            dp[i] = UInt32(temp // _DECIMAL_CHUNK_BASE)
+            var temp = (remainder << 32) + UInt64(dp[unsafe_offset=i])
+            dp[unsafe_offset=i] = UInt32(temp // _DECIMAL_CHUNK_BASE)
             remainder = temp % _DECIMAL_CHUNK_BASE
 
-        while div_len > 0 and dp[div_len - 1] == 0:
+        while div_len > 0 and dp[unsafe_offset=div_len - 1] == 0:
             div_len -= 1
 
         chunks.append(UInt32(remainder))
@@ -2439,7 +2391,7 @@ def _magnitude_to_decimal_simple(words: List[UInt32], eff_words: Int) -> String:
 
     # Most-significant chunk: no zero-padding.
     var msb = Int(chunks[num_chunks - 1])
-    var msb_digits = InlineArray[UInt8, 10](fill=0)
+    var msb_digits = Array[UInt8, 10](fill=0)
     var msb_len = 0
     if msb == 0:
         buf.append(48)  # '0'
@@ -2455,7 +2407,7 @@ def _magnitude_to_decimal_simple(words: List[UInt32], eff_words: Int) -> String:
     # Remaining chunks: zero-padded to exactly 9 digits.
     for ci in range(num_chunks - 2, -1, -1):
         var val = Int(chunks[ci])
-        var digits9 = InlineArray[UInt8, 9](fill=48)  # pre-fill '0'
+        var digits9 = Array[UInt8, 9](fill=48)  # pre-fill '0'
         for d in range(9):
             digits9[8 - d] = UInt8(val % 10) + 48
             val //= 10
@@ -2592,12 +2544,12 @@ def _dc_to_str_recursive(
     var buf = List[UInt8](capacity=total_len)
     # Copy high_str bytes
     for i in range(high_str.byte_length()):
-        buf.append(high_str.unsafe_ptr()[i])
+        buf.append(high_str.unsafe_ptr()[unsafe_offset=i])
     # Write zero padding
     for _ in range(padding):
         buf.append(48)  # ASCII '0'
     # Copy low_str bytes
     for i in range(low_str.byte_length()):
-        buf.append(low_str.unsafe_ptr()[i])
+        buf.append(low_str.unsafe_ptr()[unsafe_offset=i])
 
     return String(unsafe_from_utf8=buf^)

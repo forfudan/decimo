@@ -34,7 +34,7 @@ Design:
 """
 
 from std.ffi import external_call, c_char
-from std.memory import UnsafePointer
+from std.memory import Pointer
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.biguint.biguint import BigUInt
@@ -168,7 +168,7 @@ struct BigFloat(Comparable, Movable, Writable):
         var s_bytes = value.as_bytes()
         var result_code = mpfrw_set_str(
             self.handle,
-            s_bytes.unsafe_ptr().bitcast[c_char](),
+            s_bytes.unsafe_ptr().unsafe_bitcast[c_char](),
             Int32(len(s_bytes)),
         )
         if result_code != 0:
@@ -218,16 +218,16 @@ struct BigFloat(Comparable, Movable, Writable):
     # Lifecycle
     # ===------------------------------------------------------------------=== #
 
-    def __init__(out self, *, deinit take: Self):
+    def __init__(out self, *, deinit move: Self):
         """Moves a BigFloat, transferring handle ownership.
 
         Args:
-            take: The instance to move from.
+            move: The instance to move from.
         """
-        self.handle = take.handle
-        self.precision = take.precision
+        self.handle = move.handle
+        self.precision = move.precision
 
-    def __del__(deinit self):
+    def __deinit__(deinit self):
         """Frees the MPFR handle."""
         if self.handle >= 0:
             mpfrw_clear(self.handle)
@@ -335,7 +335,7 @@ struct BigFloat(Comparable, Movable, Writable):
         # Meaning: value = 0.<digits> × 10^exp.
         var exp = Int(0)
         var address = mpfrw_get_raw_digits(
-            self.handle, Int32(d), UnsafePointer(to=exp)
+            self.handle, Int32(d), Pointer(to=exp)
         )
         if address == 0:
             raise ConversionError(
@@ -357,7 +357,7 @@ struct BigFloat(Comparable, Movable, Writable):
         # Detect sign (negative values have '-' prefix from MPFR).
         var sign = False
         var digit_start = 0
-        if n > 0 and ptr[0] == ASCII_MINUS:
+        if n > 0 and ptr[unsafe_offset=0] == ASCII_MINUS:
             sign = True
             digit_start = 1
 
@@ -377,13 +377,17 @@ struct BigFloat(Comparable, Movable, Writable):
             var start = end - 9
             var word: UInt32 = 0
             for j in range(start, end):
-                word = word * 10 + UInt32(ptr[digit_start + j] - ASCII_ZERO)
+                word = word * 10 + UInt32(
+                    ptr[unsafe_offset=digit_start + j] - ASCII_ZERO
+                )
             words.append(word)
             end = start
         if end > 0:
             var word: UInt32 = 0
             for j in range(0, end):
-                word = word * 10 + UInt32(ptr[digit_start + j] - ASCII_ZERO)
+                word = word * 10 + UInt32(
+                    ptr[unsafe_offset=digit_start + j] - ASCII_ZERO
+                )
             words.append(word)
 
         var coefficient = BigUInt(raw_words=words^)

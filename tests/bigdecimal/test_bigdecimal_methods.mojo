@@ -101,8 +101,8 @@ def test_rtruediv_negative() raises:
 
 def test_rtruediv_symmetry() raises:
     """Verify a / b == b.__rtruediv__(a) for various pairs."""
-    var as_: List[String] = ["10", "1", "100", "-5"]
-    var bs: List[String] = ["3", "7", "6", "2"]
+    var as_ = ["10", "1", "100", "-5"]
+    var bs = ["3", "7", "6", "2"]
     for i in range(len(as_)):
         var a = BigDecimal(as_[i])
         var b = BigDecimal(bs[i])
@@ -186,7 +186,7 @@ def test_to_eng_string_negative() raises:
 def test_to_eng_string_is_alias() raises:
     """Verify to_eng_string() returns the same as to_string(engineering=True).
     """
-    var values: List[String] = ["123456.789", "0.00123", "-9.99E+10", "0"]
+    var values = ["123456.789", "0.00123", "-9.99E+10", "0"]
     for i in range(len(values)):
         var d = BigDecimal(values[i])
         testing.assert_equal(
@@ -199,7 +199,7 @@ def test_to_eng_string_is_alias() raises:
 def test_to_scientific_string_is_alias() raises:
     """Verify to_scientific_string() returns the same as to_string(scientific=True).
     """
-    var values: List[String] = ["123456.789", "0.00123", "-9.99E+10", "0"]
+    var values = ["123456.789", "0.00123", "-9.99E+10", "0"]
     for i in range(len(values)):
         var d = BigDecimal(values[i])
         testing.assert_equal(
@@ -345,7 +345,7 @@ def test_as_tuple_zero() raises:
 
 def test_as_tuple_reconstruct() raises:
     """Round-trip: reconstruct BigDecimal from (sign, digits, exponent)."""
-    var values: List[String] = ["123.456", "-0.001", "12345", "0"]
+    var values = ["123.456", "-0.001", "12345", "0"]
     for vi in range(len(values)):
         var d = BigDecimal(values[vi])
         var t = d.as_tuple()

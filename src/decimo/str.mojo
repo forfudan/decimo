@@ -200,7 +200,7 @@ def parse_numeric_string(
     var last_was_separator: Bool = False
 
     for i in range(n):
-        var c = ptr[i]
+        var c = ptr[unsafe_offset=i]
 
         # Check digits first (most common case for performance)
         if c >= 48 and c <= 57:  # '0'-'9'
@@ -334,7 +334,7 @@ def parse_numeric_string(
 
     if exponent_pos != -1:
         for i in range(exponent_pos + 1, n):
-            var c = ptr[i]
+            var c = ptr[unsafe_offset=i]
             if c >= 48 and c <= 57:
                 raw_exponent = raw_exponent * 10 + Int(c - 48)
             elif c == 45:
@@ -404,10 +404,10 @@ def parse_numeric_string(
 
         def convert_fast[
             simd_width: Int
-        ](i: Int) {mut coef, read value_bytes, read extract_start}:
-            coef.unsafe_ptr().store[width=simd_width](
+        ](i: Int) {mut coef, imm value_bytes, imm extract_start}:
+            coef.unsafe_ptr().unsafe_store[width=simd_width](
                 i,
-                value_bytes.unsafe_ptr().load[width=simd_width](
+                value_bytes.unsafe_ptr().unsafe_load[width=simd_width](
                     extract_start + i
                 )
                 - SIMD[DType.uint8, simd_width](48),
@@ -427,10 +427,10 @@ def parse_numeric_string(
 
             def convert_before[
                 simd_width: Int
-            ](i: Int) {mut coef, read value_bytes, read extract_start}:
-                coef.unsafe_ptr().store[width=simd_width](
+            ](i: Int) {mut coef, imm value_bytes, imm extract_start}:
+                coef.unsafe_ptr().unsafe_store[width=simd_width](
                     i,
-                    value_bytes.unsafe_ptr().load[width=simd_width](
+                    value_bytes.unsafe_ptr().unsafe_load[width=simd_width](
                         extract_start + i
                     )
                     - SIMD[DType.uint8, simd_width](48),
@@ -445,13 +445,13 @@ def parse_numeric_string(
                 simd_width: Int
             ](i: Int) {
                 mut coef,
-                read value_bytes,
-                read decimal_point_pos,
-                read before_count,
+                imm value_bytes,
+                imm decimal_point_pos,
+                imm before_count,
             }:
-                coef.unsafe_ptr().store[width=simd_width](
+                coef.unsafe_ptr().unsafe_store[width=simd_width](
                     before_count + i,
-                    value_bytes.unsafe_ptr().load[width=simd_width](
+                    value_bytes.unsafe_ptr().unsafe_load[width=simd_width](
                         decimal_point_pos + 1 + i
                     )
                     - SIMD[DType.uint8, simd_width](48),
@@ -464,7 +464,7 @@ def parse_numeric_string(
         # Separators (commas, underscores, spaces) present in the range.
         # Extract digit bytes one by one.
         for i in range(extract_start, extract_end):
-            var c = ptr[i]
+            var c = ptr[unsafe_offset=i]
             if c >= 48 and c <= 57:
                 coef.append(c - 48)
 

@@ -20,7 +20,7 @@ def run_test[
     # print("------------------------------------------------------")
     # print("Testing BigDecimal ", msg, "...", sep="")
     var test_cases = load_test_cases(toml, table_name)
-    count_wrong = 0
+    var count_wrong = 0
     for test_case in test_cases:
         var _bdec = BigDecimal(test_case.a)
         var result = func(_bdec, 50)

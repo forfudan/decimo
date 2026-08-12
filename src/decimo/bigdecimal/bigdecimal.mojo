@@ -23,7 +23,7 @@ operation dunders, and other dunders that implement traits, as well as
 mathematical methods that do not implement a trait.
 """
 
-from std.memory import UnsafePointer
+from std.memory import Pointer
 from std.python import PythonObject
 from std import testing
 
@@ -41,6 +41,7 @@ import decimo.bigdecimal.exponential as bigdecimal_exponential
 import decimo.bigdecimal.rounding as bigdecimal_rounding
 import decimo.bigdecimal.special as bigdecimal_special
 import decimo.bigdecimal.trigonometric as bigdecimal_trigonometric
+from decimo.biguint.biguint import BigUInt
 import decimo.biguint.arithmetics as biguint_arithmetics
 
 # Type aliases for the arbitrary-precision decimal type.
@@ -219,26 +220,6 @@ struct BigDecimal(
         self = Self.from_string(value)
 
     @implicit
-    def __init__(out self, value: Int):
-        """Constructs a BigDecimal from an `Int` object.
-        See `from_int()` for more information.
-
-        Args:
-            value: The integer to convert.
-        """
-        self = Self.from_int(value)
-
-    @implicit
-    def __init__(out self, value: UInt):
-        """Constructs a BigDecimal from an `UInt` object.
-        See `from_uint()` for more information.
-
-        Args:
-            value: The unsigned integer to convert.
-        """
-        self = Self.from_uint(value)
-
-    @implicit
     def __init__[dtype: DType, //](out self, value: SIMD[dtype, 1]):
         """Constructs a BigDecimal from an integral scalar.
         This includes all SIMD integral types, such as Int8, Int16, UInt32, etc.
@@ -278,8 +259,8 @@ struct BigDecimal(
 
     # ===------------------------------------------------------------------=== #
     # Constructing methods that are not dunders
-    # from_int(value: Int) -> Self
-    # from_scalar(value: Scalar) -> Self
+    # from_integral_scalar[dtype: DType](value: Scalar[dtype]) -> Self
+    # from_float[dtype: DType](value: Scalar[dtype]) -> Self
     # from_string(value: String) -> Self
     # ===------------------------------------------------------------------=== #
 
@@ -323,64 +304,6 @@ struct BigDecimal(
             A `BigDecimal` constructed from the raw components.
         """
         return Self(BigUInt(raw_words=[word]), scale, sign)
-
-    @staticmethod
-    def from_int(value: Int) -> Self:
-        """Creates a BigDecimal from an integer.
-
-        Args:
-            value: The integer to convert.
-
-        Returns:
-            A `BigDecimal` representing the given integer.
-        """
-        if value == 0:
-            return Self(coefficient=BigUInt.zero(), scale=0, sign=False)
-
-        var words = List[UInt32](capacity=2)
-        var sign: Bool
-        var remainder: Int
-        var quotient: Int
-        var is_min: Bool = False
-        if value < 0:
-            sign = True
-            # Handle the case of Int.MIN due to asymmetry of Int.MIN and Int.MAX
-            if value == Int.MIN:
-                is_min = True
-                remainder = Int.MAX
-            else:
-                remainder = -value
-        else:
-            sign = False
-            remainder = value
-
-        while remainder != 0:
-            quotient = remainder // 1_000_000_000
-            remainder = remainder % 1_000_000_000
-            words.append(UInt32(remainder))
-            remainder = quotient
-
-        if is_min:
-            words[0] += 1
-
-        return Self(coefficient=BigUInt(raw_words=words^), scale=0, sign=sign)
-
-    # TODO: This method is no longer needed as UInt is now an alias for SIMD.
-    @staticmethod
-    def from_uint(value: UInt) -> Self:
-        """Creates a BigDecimal from an unsigned integer.
-
-        Args:
-            value: The unsigned integer to convert.
-
-        Returns:
-            A `BigDecimal` representing the given unsigned integer.
-        """
-        return Self(
-            coefficient=BigUInt.from_unsigned_integral_scalar(value),
-            scale=0,
-            sign=False,
-        )
 
     @staticmethod
     def from_integral_scalar[dtype: DType, //](value: SIMD[dtype, 1]) -> Self:
@@ -467,8 +390,8 @@ struct BigDecimal(
         Raises:
             ValueError: If the string does not represent a valid number.
         """
-        _tuple = decimo_str.parse_numeric_string(value)
-        var ref coef: List[UInt8] = _tuple[0]
+        var _tuple = decimo_str.parse_numeric_string(value)
+        ref coef: List[UInt8] = _tuple[0]
         var scale: Int = _tuple[1]
         var sign: Bool = _tuple[2]
 
@@ -477,7 +400,7 @@ struct BigDecimal(
         if number_of_digits % 9 != 0:
             number_of_words += 1
 
-        coefficient_words = List[UInt32](capacity=number_of_words)
+        var coefficient_words = List[UInt32](capacity=number_of_words)
 
         var end: Int = number_of_digits
         var start: Int
@@ -494,7 +417,7 @@ struct BigDecimal(
                 word = word * 10 + UInt32(coef[i])
             coefficient_words.append(word)
 
-        coefficient = BigUInt(raw_words=coefficient_words^)
+        var coefficient = BigUInt(raw_words=coefficient_words^)
 
         return Self(coefficient=coefficient^, scale=scale, sign=sign)
 
@@ -757,15 +680,15 @@ struct BigDecimal(
 
             # Strip trailing zeros (artifacts of working precision)
             var coef = coefficient_string
-            var cb = StringSlice(coef).as_bytes()
-            var clen = len(cb)
-            var cptr = cb.unsafe_ptr()
-            while clen > 1 and cptr[clen - 1] == 48:  # '0'
+            var coef_byte = StringSlice(coef).as_bytes()
+            var clen = len(coef_byte)
+            var cptr = coef_byte.unsafe_ptr()
+            while clen > 1 and cptr[unsafe_offset=clen - 1] == 48:  # '0'
                 clen -= 1
             if clen < num_digits:
                 var trimmed = List[UInt8](capacity=clen)
                 for i in range(clen):
-                    trimmed.append(cptr[i])
+                    trimmed.append(cptr[unsafe_offset=i])
                 coef = String(unsafe_from_utf8=trimmed^)
 
             # Zero-pad the right side if fewer sig-digits than lead_digits
@@ -798,15 +721,17 @@ struct BigDecimal(
             # preserve all digits so that __str__ stays round-trip safe.
             var coef = coefficient_string
             if scientific:
-                var cb = StringSlice(coef).as_bytes()
-                var clen = len(cb)
-                var cptr = cb.unsafe_ptr()
-                while clen > 1 and cptr[clen - 1] == 48:  # ord('0')
+                var coef_byte = StringSlice(coef).as_bytes()
+                var clen = len(coef_byte)
+                var cptr = coef_byte.unsafe_ptr()
+                while (
+                    clen > 1 and cptr[unsafe_offset=clen - 1] == 48
+                ):  # ord('0')
                     clen -= 1
                 if clen < num_digits:
                     var trimmed = List[UInt8](capacity=clen)
                     for i in range(clen):
-                        trimmed.append(cptr[i])
+                        trimmed.append(cptr[unsafe_offset=i])
                     coef = String(unsafe_from_utf8=trimmed^)
             result += coef[byte=0]
             if coef.byte_length() > 1:
@@ -2488,12 +2413,12 @@ struct BigDecimal(
         instead of a `Tuple[int]` for better performance in Mojo.
         """
         var coef_str = self.coefficient.to_string()
-        var cb = StringSlice(coef_str).as_bytes()
-        var n = len(cb)
-        var ptr = cb.unsafe_ptr()
+        var coef_byte = StringSlice(coef_str).as_bytes()
+        var n = len(coef_byte)
+        var ptr = coef_byte.unsafe_ptr()
         var digits = List[UInt8](capacity=n)
         for i in range(n):
-            digits.append(ptr[i] - 48)  # 48 == ord('0')
+            digits.append(ptr[unsafe_offset=i] - 48)  # 48 == ord('0')
         return (self.sign, digits^, -self.scale)
 
     @always_inline
@@ -2880,7 +2805,9 @@ struct BigDecimal(
             number_of_digits_to_remove % 9
         )
 
-        words = List[UInt32](self.coefficient.words[number_of_words_to_remove:])
+        var words = List[UInt32](
+            self.coefficient.words[number_of_words_to_remove:]
+        )
         var coefficient = BigUInt(raw_words=words^)
 
         if number_of_remaining_digits_to_remove == 0:
@@ -2983,20 +2910,20 @@ def _insert_digit_separators(s: String, delimiter: String) -> String:
 
     # Locate optional leading minus (ASCII 45)
     var start = 0
-    if n > 0 and ptr[0] == 45:
+    if n > 0 and ptr[unsafe_offset=0] == 45:
         start = 1
 
     # Locate optional exponent suffix 'E' (ASCII 69)
     var e_pos = n  # points past end if no 'E'
     for i in range(start, n):
-        if ptr[i] == 69:
+        if ptr[unsafe_offset=i] == 69:
             e_pos = i
             break
 
     # Locate optional decimal point '.' (ASCII 46) within the mantissa
     var dot_pos = -1
     for i in range(start, e_pos):
-        if ptr[i] == 46:
+        if ptr[unsafe_offset=i] == 46:
             dot_pos = i
             break
 

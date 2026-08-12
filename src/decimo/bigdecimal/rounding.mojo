@@ -18,6 +18,7 @@
 Implements functions for mathematical operations on Decimal objects.
 """
 
+from decimo.biguint.biguint import BigUInt
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.rounding_mode import RoundingMode
 

@@ -40,7 +40,7 @@ def test_bigint10_arithmetics() raises:
     # -------------------------------------------------------
 
     test_cases = load_test_cases(toml, "addition_tests")
-    count_wrong = 0
+    var count_wrong = 0
     for test_case in test_cases:
         var result = BigInt10(test_case.a) + BigInt10(test_case.b)
         var mojo_str = String(result)
@@ -151,7 +151,7 @@ def test_bigint10_multiply() raises:
     # -------------------------------------------------------
 
     test_cases = load_test_cases(toml, "multiplication_tests")
-    count_wrong = 0
+    var count_wrong = 0
     for test_case in test_cases:
         var result = BigInt10(test_case.a) * BigInt10(test_case.b)
         var mojo_str = String(result)
@@ -184,7 +184,7 @@ def test_bigint10_floor_divide() raises:
     # -------------------------------------------------------
 
     test_cases = load_test_cases(toml, "floor_divide_tests")
-    count_wrong = 0
+    var count_wrong = 0
     for test_case in test_cases:
         var result = BigInt10(test_case.a) // BigInt10(test_case.b)
         var mojo_str = String(result)
@@ -218,7 +218,7 @@ def test_bigint10_truncate_divide() raises:
     # -------------------------------------------------------
 
     test_cases = load_test_cases(toml, "truncate_divide_tests")
-    count_wrong = 0
+    var count_wrong = 0
     for test_case in test_cases:
         var result = BigInt10(test_case.a).truncate_divide(
             BigInt10(test_case.b)

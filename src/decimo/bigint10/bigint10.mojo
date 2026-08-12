@@ -23,7 +23,7 @@ operation dunders, and other dunders that implement traits, as well as
 mathematical methods that do not implement a trait.
 """
 
-from std.memory import UnsafePointer
+from std.memory import Pointer
 from std.python import PythonObject
 
 import decimo.bigint10.arithmetics as bigint10_arithmetics
@@ -170,18 +170,6 @@ struct BigInt10(
                 previous_error=e^,
             )
 
-    # TODO: If Mojo makes Int type an alias of SIMD[DType.index, 1],
-    # we can remove this method.
-    @implicit
-    def __init__(out self, value: Int):
-        """Initializes a BigInt10 from an `Int` object.
-        See `from_int()` for more information.
-
-        Args:
-            value: The integer value to convert.
-        """
-        self = Self.from_int(value)
-
     @implicit
     def __init__(out self, value: Scalar):
         """Constructs a BigInt10 from an integral scalar.
@@ -210,7 +198,7 @@ struct BigInt10(
     # Constructing methods that are not dunders
     #
     # from_words(*words: UInt32, sign: Bool) -> Self
-    # from_int(value: Int) -> Self
+    # from_integral_scalar[dtype: DType](value: Scalar[dtype]) -> Self
     # from_string(value: String) -> Self
     # ===------------------------------------------------------------------=== #
 
@@ -280,47 +268,6 @@ struct BigInt10(
         return Self(BigUInt(raw_words=list_of_words^), sign)
 
     @staticmethod
-    def from_int(value: Int) -> Self:
-        """Creates a BigInt10 from an integer.
-
-        Args:
-            value: The integer value to convert.
-
-        Returns:
-            A new `BigInt10` from the given integer.
-        """
-        if value == 0:
-            return Self()
-
-        var words = List[UInt32](capacity=2)
-        var sign: Bool
-        var remainder: Int
-        var quotient: Int
-        var is_min: Bool = False
-        if value < 0:
-            sign = True
-            # Handle the case of Int.MIN due to asymmetry of Int.MIN and Int.MAX
-            if value == Int.MIN:
-                is_min = True
-                remainder = Int.MAX
-            else:
-                remainder = -value
-        else:
-            sign = False
-            remainder = value
-
-        while remainder != 0:
-            quotient = remainder // BigUInt.BASE
-            remainder = remainder % BigUInt.BASE
-            words.append(UInt32(remainder))
-            remainder = quotient
-
-        if is_min:
-            words[0] += 1
-
-        return Self(BigUInt(raw_words=words^), sign)
-
-    @staticmethod
     def from_integral_scalar[dtype: DType, //](value: SIMD[dtype, 1]) -> Self:
         """Initializes a BigInt10 from an integral scalar.
         This includes all SIMD integral types, such as Int8, Int16, UInt32, etc.
@@ -362,6 +309,7 @@ struct BigInt10(
         Raises:
             ConversionError: If the string cannot be parsed.
         """
+        var _tuple: Tuple[List[UInt8], Int, Bool]
         try:
             _tuple = decimo_str.parse_numeric_string(value)
         except e:
@@ -374,14 +322,14 @@ struct BigInt10(
                     + String(e)
                 ),
             )
-        var ref coef: List[UInt8] = _tuple[0]
+        ref coef: List[UInt8] = _tuple[0]
         var sign: Bool = _tuple[2]
 
         # Check if the number is zero
         if len(coef) == 1 and coef[0] == UInt8(0):
             return Self(UInt32(0), sign=False)
 
-        magnitude = BigUInt.from_string(value, ignore_sign=True)
+        var magnitude = BigUInt.from_string(value, ignore_sign=True)
 
         return Self(magnitude=magnitude^, sign=sign)
 
@@ -875,7 +823,7 @@ struct BigInt10(
         return bigint10_comparison.greater(self, other)
 
     @always_inline
-    def __gt__(self, other: Int) -> Bool:
+    def __gt__(self, other: Scalar) -> Bool where other.dtype.is_integral():
         """Checks if this value is greater than `other`.
 
         Args:
@@ -884,7 +832,9 @@ struct BigInt10(
         Returns:
             `True` if `self > other`, `False` otherwise.
         """
-        return bigint10_comparison.greater(self, Self.from_int(other))
+        return bigint10_comparison.greater(
+            self, Self.from_integral_scalar(other)
+        )
 
     @always_inline
     def __ge__(self, other: Self) -> Bool:
@@ -899,7 +849,7 @@ struct BigInt10(
         return bigint10_comparison.greater_equal(self, other)
 
     @always_inline
-    def __ge__(self, other: Int) -> Bool:
+    def __ge__(self, other: Scalar) -> Bool where other.dtype.is_integral():
         """Checks if this value is greater than or equal to `other`.
 
         Args:
@@ -908,7 +858,9 @@ struct BigInt10(
         Returns:
             `True` if `self >= other`, `False` otherwise.
         """
-        return bigint10_comparison.greater_equal(self, Self.from_int(other))
+        return bigint10_comparison.greater_equal(
+            self, Self.from_integral_scalar(other)
+        )
 
     @always_inline
     def __lt__(self, other: Self) -> Bool:
@@ -923,7 +875,7 @@ struct BigInt10(
         return bigint10_comparison.less(self, other)
 
     @always_inline
-    def __lt__(self, other: Int) -> Bool:
+    def __lt__(self, other: Scalar) -> Bool where other.dtype.is_integral():
         """Checks if this value is less than `other`.
 
         Args:
@@ -932,7 +884,7 @@ struct BigInt10(
         Returns:
             `True` if `self < other`, `False` otherwise.
         """
-        return bigint10_comparison.less(self, Self.from_int(other))
+        return bigint10_comparison.less(self, Self.from_integral_scalar(other))
 
     @always_inline
     def __le__(self, other: Self) -> Bool:
@@ -947,7 +899,7 @@ struct BigInt10(
         return bigint10_comparison.less_equal(self, other)
 
     @always_inline
-    def __le__(self, other: Int) -> Bool:
+    def __le__(self, other: Scalar) -> Bool where other.dtype.is_integral():
         """Checks if this value is less than or equal to `other`.
 
         Args:
@@ -956,7 +908,9 @@ struct BigInt10(
         Returns:
             `True` if `self <= other`, `False` otherwise.
         """
-        return bigint10_comparison.less_equal(self, Self.from_int(other))
+        return bigint10_comparison.less_equal(
+            self, Self.from_integral_scalar(other)
+        )
 
     @always_inline
     def __eq__(self, other: Self) -> Bool:
@@ -971,7 +925,7 @@ struct BigInt10(
         return bigint10_comparison.equal(self, other)
 
     @always_inline
-    def __eq__(self, other: Int) -> Bool:
+    def __eq__(self, other: Scalar) -> Bool where other.dtype.is_integral():
         """Checks if this value is equal to `other`.
 
         Args:
@@ -980,7 +934,7 @@ struct BigInt10(
         Returns:
             `True` if `self == other`, `False` otherwise.
         """
-        return bigint10_comparison.equal(self, Self.from_int(other))
+        return bigint10_comparison.equal(self, Self.from_integral_scalar(other))
 
     @always_inline
     def __ne__(self, other: Self) -> Bool:
@@ -995,7 +949,7 @@ struct BigInt10(
         return bigint10_comparison.not_equal(self, other)
 
     @always_inline
-    def __ne__(self, other: Int) -> Bool:
+    def __ne__(self, other: Scalar) -> Bool where other.dtype.is_integral():
         """Checks if this value is not equal to `other`.
 
         Args:
@@ -1004,7 +958,9 @@ struct BigInt10(
         Returns:
             `True` if `self != other`, `False` otherwise.
         """
-        return bigint10_comparison.not_equal(self, Self.from_int(other))
+        return bigint10_comparison.not_equal(
+            self, Self.from_integral_scalar(other)
+        )
 
     # ===------------------------------------------------------------------=== #
     # Other dunders

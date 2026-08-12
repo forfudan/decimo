@@ -23,6 +23,7 @@ operating on the arbitrary-precision BigDecimal type.
 
 from std import time
 
+from decimo.biguint.biguint import BigUInt
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.errors import ValueError
 from decimo.rounding_mode import RoundingMode
@@ -424,14 +425,11 @@ def tan_cot(x: BigDecimal, precision: Int, is_tan: Bool) raises -> BigDecimal:
     # cot(x) = cos(x) / sin(x)
     var sin_x: BigDecimal = sin(x_reduced, precision=working_precision)
     var cos_x: BigDecimal = cos(x_reduced, precision=working_precision)
+    var result: BigDecimal
     if is_tan:
-        result: BigDecimal = sin_x.true_divide(
-            cos_x, precision=working_precision
-        )
+        result = sin_x.true_divide(cos_x, precision=working_precision)
     else:
-        result: BigDecimal = cos_x.true_divide(
-            sin_x, precision=working_precision
-        )
+        result = cos_x.true_divide(sin_x, precision=working_precision)
 
     result.round_to_precision_inplace(
         precision,
@@ -528,9 +526,11 @@ def arctan(x: BigDecimal, precision: Int) raises -> BigDecimal:
     comptime BUFFER_DIGITS = 9  # word-length, easy to append and trim
     var working_precision = precision + BUFFER_DIGITS
 
-    bdec_1 = BigDecimal.from_raw_components(UInt32(1), scale=0, sign=False)
-    bdec_2 = BigDecimal.from_raw_components(UInt32(2), scale=0, sign=False)
-    bdec_0d5 = BigDecimal.from_raw_components(UInt32(5), scale=1, sign=False)
+    var bdec_1 = BigDecimal.from_raw_components(UInt32(1), scale=0, sign=False)
+    var bdec_2 = BigDecimal.from_raw_components(UInt32(2), scale=0, sign=False)
+    var bdec_0d5 = BigDecimal.from_raw_components(
+        UInt32(5), scale=1, sign=False
+    )
 
     var result: BigDecimal
 

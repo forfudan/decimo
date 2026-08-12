@@ -82,7 +82,7 @@ def _parse_round_param(b: String) raises -> Tuple[Int, RoundingMode]:
     raise Error("unknown rounding mode: " + mode_str)
 
 
-def _cmp_3way(read a: BigDecimal, read b: BigDecimal) raises -> String:
+def _cmp_3way(imm a: BigDecimal, imm b: BigDecimal) raises -> String:
     """Stable, cross-language 3-way comparison: returns "-1", "0", or "1"."""
     if a < b:
         return String("-1")
@@ -129,8 +129,8 @@ def _emit(v: BigDecimal) raises -> String:
 
 def _result_for(
     op: String,
-    read a: BigDecimal,
-    read b: BigDecimal,
+    imm a: BigDecimal,
+    imm b: BigDecimal,
     a_str: String,
     b_str: String,
     precision: Int,
@@ -173,8 +173,8 @@ def _result_for(
 
 def _time_kernel(
     op: String,
-    read a: BigDecimal,
-    read b: BigDecimal,
+    imm a: BigDecimal,
+    imm b: BigDecimal,
     a_str: String,
     b_str: String,
     precision: Int,
@@ -190,7 +190,7 @@ def _time_kernel(
     IS the operation under measurement, so those paths keep their
     natural shape (parse → BigDecimal, render → String).
 
-    Operands `a` / `b` are taken as `read` (borrowed) so no per-iter
+    Operands `a` / `b` are taken as `imm` (borrowed) so no per-iter
     deep copy of the heap-backed BigUInt occurs.
     """
     if op == "add":
@@ -305,9 +305,9 @@ def _bench_case(
     #   - arithmetic / sqrt / exp / ln: as-is (sqrt/exp/ln are unary)
     #   - root:         b is the root index n
     if op == "round" or op == "from_string" or op == "to_string":
-        b = BigDecimal.from_int(0)
+        b = BigDecimal.from_integral_scalar(0)
     elif bc.b == "":
-        b = BigDecimal.from_int(0)
+        b = BigDecimal.from_integral_scalar(0)
     else:
         b = BigDecimal(bc.b)
 

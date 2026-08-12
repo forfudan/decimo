@@ -27,7 +27,7 @@ def test_bigdecimal_exponential() raises:
     # -------------------------------------------------------
 
     test_cases = load_test_cases(toml, "sqrt_tests")
-    count_wrong = 0
+    var count_wrong = 0
     for test_case in test_cases:
         var result = BDec(test_case.a).sqrt(precision=28)
         var mojo_str = String(result)
@@ -86,7 +86,7 @@ def test_sqrt_multi_precision() raises:
     var pydecimal = Python.import_module("decimal")
 
     # Inputs: perfect squares, decimal perfect squares, irrationals, sci notation
-    var inputs: List[String] = [
+    var inputs = [
         "0",
         "1",
         "4",
@@ -109,7 +109,7 @@ def test_sqrt_multi_precision() raises:
         "1E-100",
     ]
 
-    var precisions: List[Int] = [1, 2, 3, 5, 10, 28, 50]
+    var precisions = [1, 2, 3, 5, 10, 28, 50]
 
     var count_wrong = 0
     for i in range(len(inputs)):

@@ -128,8 +128,8 @@ struct TermIOS(Copyable, Movable):
     def __init__(out self, *, copy: Self):
         self._buf = copy._buf.copy()
 
-    def __init__(out self, *, deinit take: Self):
-        self._buf = take._buf^
+    def __init__(out self, *, deinit move: Self):
+        self._buf = move._buf^
 
     def copy(self) -> Self:
         """Returns an explicit copy."""
@@ -244,12 +244,12 @@ struct TermIOS(Copyable, Movable):
 # be identical.  Using `Int` everywhere (= i64 on 64-bit platforms) is the
 # common convention adopted by argmojo; limo follows suit.
 #
-# Exemptions: `isatty` and `write` are already declared inside the Mojo
-# stdlib with their own signatures (`Int32 -> Int32` for `isatty`, a
-# variadic-ish form for `write`); using `Int` for those names produces an
-# "existing function with conflicting signature" lowering error.  We keep
-# the stdlib's declared types for those two symbols and use the `Int`
-# convention for every other libc function we call directly.
+# Exemptions: `isatty`, `write` and `read` are already declared inside the
+# Mojo stdlib with their own signatures (`Int32 -> Int32` for `isatty`, a
+# variadic-ish form for `write` and `read`); using `Int` for those names
+# produces an "existing function with conflicting signature" lowering error.
+# We keep the stdlib's declared types for those three symbols and use the
+# `Int` convention for every other libc function we call directly.
 #
 # Reference: https://github.com/forfudan/argmojo — see src/argmojo/utils.mojo
 # for the canonical FFI signatures.
@@ -349,12 +349,13 @@ def read_byte() raises -> UInt8:
     """Reads a single byte from stdin (blocking).
 
     Requires raw mode to be active for byte-at-a-time reads.
-    Uses `read(2)` with the same `[Int, Int, Int, Int]` signature as argmojo
-    so that the LLVM declarations are identical and cannot conflict.
+    Uses `read(2)` without explicit argument types, like `write` below: the
+    Mojo stdlib already declares `read`, so spelling out the argument types
+    produces a conflicting LLVM declaration.
     """
     var buf = List[UInt8](length=1, fill=0)
-    var bytes_read = external_call["read", Int, Int, Int, Int](
-        Int(STDIN_FILENO), Int(buf.unsafe_ptr()), 1
+    var bytes_read = external_call["read", Int](
+        Int(STDIN_FILENO), buf.unsafe_ptr(), UInt(1)
     )
     if bytes_read <= 0:
         raise Error("read failed (EOF)")

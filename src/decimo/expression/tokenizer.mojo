@@ -94,15 +94,15 @@ struct Token(Copyable, ImplicitlyCopyable, Movable):
         self.value = copy.value
         self.position = copy.position
 
-    def __init__(out self, *, deinit take: Self):
+    def __init__(out self, *, deinit move: Self):
         """Move-constructs a Token.
 
         Args:
-            take: The token to move from.
+            move: The token to move from.
         """
-        self.kind = take.kind
-        self.value = take.value^
-        self.position = take.position
+        self.kind = move.kind
+        self.value = move.value^
+        self.position = move.position
 
     def is_operator(self) -> Bool:
         """Returns True if this token is a binary or unary operator.
@@ -267,7 +267,7 @@ def tokenize(
     var i = 0
 
     while i < n:
-        var c = ptr[i]
+        var c = ptr[unsafe_offset=i]
 
         # Skip whitespace (space, tab, newline, carriage return)
         if c == 32 or c == 9 or c == 10 or c == 13:
@@ -280,7 +280,7 @@ def tokenize(
             var has_dot = c == 46
             i += 1
             while i < n:
-                var cc = ptr[i]
+                var cc = ptr[unsafe_offset=i]
                 if cc >= 48 and cc <= 57:
                     i += 1
                 elif cc == 46 and not has_dot:
@@ -291,7 +291,7 @@ def tokenize(
             # Build the number string from the byte range
             var num_bytes = List[UInt8](capacity=i - start)
             for j in range(start, i):
-                num_bytes.append(ptr[j])
+                num_bytes.append(ptr[unsafe_offset=j])
             tokens.append(
                 Token(
                     TOKEN_NUMBER,
@@ -305,11 +305,11 @@ def tokenize(
         if is_alpha_or_underscore(c):
             var start = i
             i += 1
-            while i < n and is_alnum_or_underscore(ptr[i]):
+            while i < n and is_alnum_or_underscore(ptr[unsafe_offset=i]):
                 i += 1
             var id_bytes = List[UInt8](capacity=i - start)
             for j in range(start, i):
-                id_bytes.append(ptr[j])
+                id_bytes.append(ptr[unsafe_offset=j])
             var name = String(unsafe_from_utf8=id_bytes^)
 
             # Check if it is a known constant
@@ -367,7 +367,7 @@ def tokenize(
 
         if c == 42:  # '*'
             # Support '**' as an alias for '^'
-            if i + 1 < n and ptr[i + 1] == 42:
+            if i + 1 < n and ptr[unsafe_offset=i + 1] == 42:
                 tokens.append(Token(TOKEN_CARET, "^", position=i))
                 i += 2
             else:

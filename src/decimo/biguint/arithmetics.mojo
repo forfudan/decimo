@@ -20,7 +20,7 @@ Implements basic arithmetic functions for the BigUInt type.
 
 from std.algorithm import vectorize
 from std import math
-from std.memory import memcpy, memset_zero
+from std.memory import unsafe_memcpy, unsafe_memset_zero
 
 from decimo.biguint.biguint import BigUInt
 import decimo.biguint.comparison as biguint_comparison
@@ -241,8 +241,8 @@ def add_slices(
     `add_slices_simd()` to handle the addition of the two BigUInt slices.
     """
 
-    n_words_x_slice = bounds_x[1] - bounds_x[0]
-    n_words_y_slice = bounds_y[1] - bounds_y[0]
+    var n_words_x_slice = bounds_x[1] - bounds_x[0]
+    var n_words_y_slice = bounds_y[1] - bounds_y[0]
 
     # Short circuit cases
     if n_words_x_slice == 1:
@@ -317,11 +317,13 @@ def add_slices_simd(
 
     def vector_add[
         simd_width: Int
-    ](i: Int) {mut result, read x, read y, read bounds_x, read bounds_y}:
-        result.words.unsafe_ptr().store[width=simd_width](
+    ](i: Int) {mut result, imm x, imm y, imm bounds_x, imm bounds_y}:
+        result.words.unsafe_ptr().unsafe_store[width=simd_width](
             i,
-            x.words.unsafe_ptr().load[width=simd_width](i + bounds_x[0])
-            + y.words.unsafe_ptr().load[width=simd_width](i + bounds_y[0]),
+            x.words.unsafe_ptr().unsafe_load[width=simd_width](i + bounds_x[0])
+            + y.words.unsafe_ptr().unsafe_load[width=simd_width](
+                i + bounds_y[0]
+            ),
         )
 
     vectorize[BigUInt.VECTOR_WIDTH](
@@ -347,13 +349,15 @@ def add_slices_simd(
     def vector_copy_rest_from_longer[
         simd_width: Int
     ](i: Int) {
-        mut result, read longer, read n_words_shorter_slice, read longer_start
+        mut result, imm longer, imm n_words_shorter_slice, imm longer_start
     }:
-        result.words.unsafe_ptr().store[width=simd_width](
+        result.words.unsafe_ptr().unsafe_store[width=simd_width](
             n_words_shorter_slice + i,
             longer[]
             .words.unsafe_ptr()
-            .load[width=simd_width](longer_start + n_words_shorter_slice + i),
+            .unsafe_load[width=simd_width](
+                longer_start + n_words_shorter_slice + i
+            ),
         )
 
     vectorize[BigUInt.VECTOR_WIDTH](
@@ -397,13 +401,13 @@ def add_inplace(mut x: BigUInt, y: BigUInt) -> None:
 
     # Normal cases
     if len(x.words) < len(y.words):
-        x.words.resize(new_size=len(y.words), value=UInt32(0))
+        x.words.resize(length=len(y.words), fill=UInt32(0))
 
-    def vector_add[simd_width: Int](i: Int) {mut x, read y}:
-        x.words.unsafe_ptr().store[width=simd_width](
+    def vector_add[simd_width: Int](i: Int) {mut x, imm y}:
+        x.words.unsafe_ptr().unsafe_store[width=simd_width](
             i,
-            x.words.unsafe_ptr().load[width=simd_width](i)
-            + y.words.unsafe_ptr().load[width=simd_width](i),
+            x.words.unsafe_ptr().unsafe_load[width=simd_width](i)
+            + y.words.unsafe_ptr().unsafe_load[width=simd_width](i),
         )
 
     vectorize[BigUInt.VECTOR_WIDTH](len(y.words), vector_add)
@@ -447,13 +451,15 @@ def add_by_slice_inplace(
 
     # Normal cases
     if len(x.words) < n_words_y_slice:
-        x.words.resize(new_size=n_words_y_slice, value=UInt32(0))
+        x.words.resize(length=n_words_y_slice, fill=UInt32(0))
 
-    def vector_add[simd_width: Int](i: Int) {mut x, read y, read bounds_y}:
-        x.words.unsafe_ptr().store[width=simd_width](
+    def vector_add[simd_width: Int](i: Int) {mut x, imm y, imm bounds_y}:
+        x.words.unsafe_ptr().unsafe_store[width=simd_width](
             i,
-            x.words.unsafe_ptr().load[width=simd_width](i)
-            + y.words.unsafe_ptr().load[width=simd_width](i + bounds_y[0]),
+            x.words.unsafe_ptr().unsafe_load[width=simd_width](i)
+            + y.words.unsafe_ptr().unsafe_load[width=simd_width](
+                i + bounds_y[0]
+            ),
         )
 
     vectorize[BigUInt.VECTOR_WIDTH](n_words_y_slice, vector_add)
@@ -656,19 +662,21 @@ def subtract_simd(x: BigUInt, y: BigUInt) raises -> BigUInt:
     # This will first subtract the words in parallel and then handle the borrows.
     # Note that there will be potential overflow in the subtraction,
     # but we will take advantage of that.
-    def vector_subtract[simd_width: Int](i: Int) {mut result, read x, read y}:
-        result.words.unsafe_ptr().store[width=simd_width](
+    def vector_subtract[simd_width: Int](i: Int) {mut result, imm x, imm y}:
+        result.words.unsafe_ptr().unsafe_store[width=simd_width](
             i,
-            x.words.unsafe_ptr().load[width=simd_width](i)
-            - y.words.unsafe_ptr().load[width=simd_width](i),
+            x.words.unsafe_ptr().unsafe_load[width=simd_width](i)
+            - y.words.unsafe_ptr().unsafe_load[width=simd_width](i),
         )
 
     vectorize[BigUInt.VECTOR_WIDTH](len(y.words), vector_subtract)
 
-    def vector_copy_rest[simd_width: Int](i: Int) {mut result, read x, read y}:
-        result.words.unsafe_ptr().store[width=simd_width](
+    def vector_copy_rest[simd_width: Int](i: Int) {mut result, imm x, imm y}:
+        result.words.unsafe_ptr().unsafe_store[width=simd_width](
             len(y.words) + i,
-            x.words.unsafe_ptr().load[width=simd_width](len(y.words) + i),
+            x.words.unsafe_ptr().unsafe_load[width=simd_width](
+                len(y.words) + i
+            ),
         )
 
     vectorize[BigUInt.VECTOR_WIDTH](
@@ -722,11 +730,11 @@ def subtract_inplace(mut x: BigUInt, y: BigUInt) raises -> None:
 
     # Note that len(x.words) >= len(y.words) here
     # Use SIMD operations to subtract the words in parallel.
-    def vector_subtract[simd_width: Int](i: Int) {mut x, read y}:
-        x.words.unsafe_ptr().store[width=simd_width](
+    def vector_subtract[simd_width: Int](i: Int) {mut x, imm y}:
+        x.words.unsafe_ptr().unsafe_store[width=simd_width](
             i,
-            x.words.unsafe_ptr().load[width=simd_width](i)
-            - y.words.unsafe_ptr().load[width=simd_width](i),
+            x.words.unsafe_ptr().unsafe_load[width=simd_width](i)
+            - y.words.unsafe_ptr().unsafe_load[width=simd_width](i),
         )
 
     vectorize[BigUInt.VECTOR_WIDTH](len(y.words), vector_subtract)
@@ -762,11 +770,11 @@ def subtract_no_check_inplace(mut x: BigUInt, y: BigUInt) -> None:
     # Underflow checks are skipped here, so we assume x >= y
     # Note that len(x.words) >= len(y.words) under this assumption
 
-    def vector_subtract[simd_width: Int](i: Int) {mut x, read y}:
-        x.words.unsafe_ptr().store[width=simd_width](
+    def vector_subtract[simd_width: Int](i: Int) {mut x, imm y}:
+        x.words.unsafe_ptr().unsafe_store[width=simd_width](
             i,
-            x.words.unsafe_ptr().load[width=simd_width](i)
-            - y.words.unsafe_ptr().load[width=simd_width](i),
+            x.words.unsafe_ptr().unsafe_load[width=simd_width](i)
+            - y.words.unsafe_ptr().unsafe_load[width=simd_width](i),
         )
 
     vectorize[BigUInt.VECTOR_WIDTH](len(y.words), vector_subtract)
@@ -925,8 +933,8 @@ def multiply_slices(
         multiplication for medium numbers (65–256 words), and Toom-3
         multiplication for large numbers (>256 words).
     """
-    n_words_x_slice = bounds_x[1] - bounds_x[0]
-    n_words_y_slice = bounds_y[1] - bounds_y[0]
+    var n_words_x_slice = bounds_x[1] - bounds_x[0]
+    var n_words_y_slice = bounds_y[1] - bounds_y[0]
 
     # CASE 1
     # The allocation cost is too high for small numbers to use Karatsuba
@@ -951,8 +959,8 @@ def multiply_slices(
 
 
 def multiply_slices_schoolbook(
-    read x: BigUInt,
-    read y: BigUInt,
+    imm x: BigUInt,
+    imm y: BigUInt,
     bounds_x: Tuple[Int, Int],
     bounds_y: Tuple[Int, Int],
 ) -> BigUInt:
@@ -968,8 +976,8 @@ def multiply_slices_schoolbook(
         The product of the two BigUInt slices.
     """
 
-    n_words_x_slice = bounds_x[1] - bounds_x[0]
-    n_words_y_slice = bounds_y[1] - bounds_y[0]
+    var n_words_x_slice = bounds_x[1] - bounds_x[0]
+    var n_words_y_slice = bounds_y[1] - bounds_y[0]
 
     # CASE: One of the operands is zero or one
     if n_words_x_slice == 1:
@@ -1008,7 +1016,7 @@ def multiply_slices_schoolbook(
     # Allocate the result of zero words with the maximum length
     # The leading zeros need to be removed before returning the result
     var result = BigUInt(unsafe_uninit_length=max_result_len)
-    memset_zero(ptr=result.words._data, count=max_result_len)
+    unsafe_memset_zero(ptr=result.words._data, count=max_result_len)
 
     # Perform the multiplication word by word (from least significant to most significant)
     # x = x[start_x] + x[start_x + 1] * 10^9
@@ -1050,8 +1058,8 @@ def multiply_slices_schoolbook(
 
 
 def multiply_slices_deferred_carry(
-    read x: BigUInt,
-    read y: BigUInt,
+    imm x: BigUInt,
+    imm y: BigUInt,
     bounds_x: Tuple[Int, Int],
     bounds_y: Tuple[Int, Int],
 ) -> BigUInt:
@@ -1113,7 +1121,7 @@ def multiply_slices_deferred_carry(
     # 64-word operands under `-D ASSERT=none`).
     #
     # Memory safety: the three buffers all outlive this loop and are never
-    # resized inside it. `x` / `y` are borrowed (`read`, owned by the caller),
+    # resized inside it. `x` / `y` are borrowed (`imm`, owned by the caller),
     # and `column_sums` is only element-mutated (never appended). `List.
     # unsafe_ptr()` returns an origin-parameterized `UnsafePointer` tied to the
     # List's origin, so Mojo's lifetime tracking keeps `column_sums` alive for
@@ -1131,11 +1139,13 @@ def multiply_slices_deferred_carry(
     var highest_column = 0  # highest accumulator index touched + 1
 
     for i in range(n_words_x_slice):
-        var x_word = UInt64(x_words_ptr[start_x + i])
+        var x_word = UInt64(x_words_ptr[unsafe_offset=start_x + i])
         if x_word == 0:
             continue
         for j in range(n_words_y_slice):
-            column_sums_ptr[i + j] += x_word * UInt64(y_words_ptr[start_y + j])
+            column_sums_ptr[unsafe_offset=i + j] += x_word * UInt64(
+                y_words_ptr[unsafe_offset=start_y + j]
+            )
         if i + n_words_y_slice > highest_column:
             highest_column = i + n_words_y_slice
         rows_since_normalization += 1
@@ -1143,13 +1153,13 @@ def multiply_slices_deferred_carry(
             # Propagate base-10^9 carries across the touched range.
             var carry: UInt64 = 0
             for k in range(highest_column):
-                var column_value = column_sums_ptr[k] + carry
-                column_sums_ptr[k] = column_value % BASE
+                var column_value = column_sums_ptr[unsafe_offset=k] + carry
+                column_sums_ptr[unsafe_offset=k] = column_value % BASE
                 carry = column_value // BASE
             var k = highest_column
             while carry > 0:
-                var column_value = column_sums_ptr[k] + carry
-                column_sums_ptr[k] = column_value % BASE
+                var column_value = column_sums_ptr[unsafe_offset=k] + carry
+                column_sums_ptr[unsafe_offset=k] = column_value % BASE
                 carry = column_value // BASE
                 k += 1
                 if k > highest_column:
@@ -1160,7 +1170,7 @@ def multiply_slices_deferred_carry(
     var result = BigUInt(uninitialized_capacity=result_length)
     var carry: UInt64 = 0
     for k in range(result_length):
-        var column_value = column_sums_ptr[k] + carry
+        var column_value = column_sums_ptr[unsafe_offset=k] + carry
         result.words.append(UInt32(column_value % BASE))
         carry = column_value // BASE
 
@@ -1169,8 +1179,8 @@ def multiply_slices_deferred_carry(
 
 
 def multiply_slices_karatsuba(
-    read x: BigUInt,
-    read y: BigUInt,
+    imm x: BigUInt,
+    imm y: BigUInt,
     bounds_x: Tuple[Int, Int],
     bounds_y: Tuple[Int, Int],
     cutoff_number_of_words: Int,
@@ -1350,8 +1360,8 @@ def multiply_slices_karatsuba(
 
 
 def multiply_slices_toom3(
-    read x: BigUInt,
-    read y: BigUInt,
+    imm x: BigUInt,
+    imm y: BigUInt,
     bounds_x: Tuple[Int, Int],
     bounds_y: Tuple[Int, Int],
 ) -> BigUInt:
@@ -1628,7 +1638,7 @@ def multiply_slices_toom3(
     # Maximum result length: nx + ny words (product of two numbers).
     var result_len = nx + ny
     var result = BigUInt(unsafe_uninit_length=result_len)
-    memset_zero(ptr=result.words._data, count=result_len)
+    unsafe_memset_zero(ptr=result.words._data, count=result_len)
 
     # Helper: add a BigUInt value at a word offset into result
     @parameter
@@ -1723,8 +1733,8 @@ def multiply_by_uint32_le_4_inplace(mut x: BigUInt, y: UInt32):
     # y is 2, we can just shift the digits of each word to the left by 1
     def vector_multiply_by_2[simd_width: Int](i: Int) {mut x}:
         """Shifts the digits of each word to the left by 1."""
-        x.words.unsafe_ptr().store[width=simd_width](
-            i, x.words.unsafe_ptr().load[width=simd_width](i) << 1
+        x.words.unsafe_ptr().unsafe_store[width=simd_width](
+            i, x.words.unsafe_ptr().unsafe_load[width=simd_width](i) << 1
         )
 
     if y == 2:
@@ -1735,8 +1745,8 @@ def multiply_by_uint32_le_4_inplace(mut x: BigUInt, y: UInt32):
     # y is 3, we can just multiply the digits of each word by 3
     def vector_multiply_by_3[simd_width: Int](i: Int) {mut x}:
         """Multiplies the digits of each word by 3."""
-        x.words.unsafe_ptr().store[width=simd_width](
-            i, x.words.unsafe_ptr().load[width=simd_width](i) * 3
+        x.words.unsafe_ptr().unsafe_store[width=simd_width](
+            i, x.words.unsafe_ptr().unsafe_load[width=simd_width](i) * 3
         )
 
     if y == 3:
@@ -1747,8 +1757,8 @@ def multiply_by_uint32_le_4_inplace(mut x: BigUInt, y: UInt32):
     # y is 4, we can just shift the digits of each word to the left by 2
     def vector_multiply_by_4[simd_width: Int](i: Int) {mut x}:
         """Shifts the digits of each word to the left by 2."""
-        x.words.unsafe_ptr().store[width=simd_width](
-            i, x.words.unsafe_ptr().load[width=simd_width](i) << 2
+        x.words.unsafe_ptr().unsafe_store[width=simd_width](
+            i, x.words.unsafe_ptr().unsafe_load[width=simd_width](i) << 2
         )
 
     if y == 4:
@@ -1876,7 +1886,7 @@ def multiply_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
         # For example, if n = 10, we add two words
         # The most significant word may not be used
         # We need to make sure that it is initialized to zero finally
-        x_original_length = len(x.words)
+        var x_original_length = len(x.words)
         x.words.resize(
             unsafe_uninit_length=len(x.words) + number_of_zero_words + 1
         )  # New length = original length + number of zero words + 1
@@ -1959,9 +1969,13 @@ def multiply_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
 
     var res = BigUInt(unsafe_uninit_length=len(x.words) + n)
     # Fill the first n words with zeros
-    memset_zero(ptr=res.words._data, count=n)
+    unsafe_memset_zero(ptr=res.words._data, count=n)
     # Copy the original words to the end of the new list
-    memcpy(dest=res.words._data + n, src=x.words._data, count=len(x.words))
+    unsafe_memcpy(
+        dest=res.words._data.unsafe_offset(n),
+        src=x.words._data,
+        count=len(x.words),
+    )
 
     res.remove_leading_empty_words()
     return res^
@@ -2329,7 +2343,7 @@ def floor_divide_estimate_quotient(
         # We can safely load 3 words: r0, r1, r2
         numerator = (
             dividend.words.unsafe_ptr()
-            .load[width=4](base_index)
+            .unsafe_load[width=4](base_index)
             .cast[DType.uint128]()
             * SIMD[DType.uint128, 4](
                 1, 1_000_000_000, 1_000_000_000_000_000_000, 0
@@ -2339,7 +2353,7 @@ def floor_divide_estimate_quotient(
         # We can safely load 2 words: r0, r1 (r2 = 0)
         numerator = (
             dividend.words.unsafe_ptr()
-            .load[width=2](base_index)
+            .unsafe_load[width=2](base_index)
             .cast[DType.uint128]()
             * SIMD[DType.uint128, 2](1, 1_000_000_000)
         ).reduce_add()
@@ -2359,7 +2373,7 @@ def floor_divide_estimate_quotient(
     )
     denominator = (
         divisor.words.unsafe_ptr()
-        .load[width=2](len(divisor.words) - 2)
+        .unsafe_load[width=2](len(divisor.words) - 2)
         .cast[DType.uint128]()
         * SIMD[DType.uint128, 2](1, 1_000_000_000)
     ).reduce_add()
@@ -2425,8 +2439,8 @@ def floor_divide_by_uint32(x: BigUInt, y: UInt32) -> BigUInt:
     var x_ptr = x.words.unsafe_ptr()
     var res_ptr = result.words.unsafe_ptr()
     for i in range(len(x.words) - 2, -1, -1):
-        dividend = carry * UInt64(BigUInt.BASE) + UInt64(x_ptr[i])
-        res_ptr[i] = UInt32(dividend // y_uint64)
+        dividend = carry * UInt64(BigUInt.BASE) + UInt64(x_ptr[unsafe_offset=i])
+        res_ptr[unsafe_offset=i] = UInt32(dividend // y_uint64)
         carry = dividend % y_uint64
 
     debug_assert[assert_mode="none"](
@@ -2502,7 +2516,9 @@ def floor_divide_by_uint64(x: BigUInt, y: UInt64) -> BigUInt:
         var dividend = (
             carry * UInt128(1_000_000_000_000_000_000)
             + (
-                x.words.unsafe_ptr().load[width=2](i - 1).cast[DType.uint128]()
+                x.words.unsafe_ptr()
+                .unsafe_load[width=2](i - 1)
+                .cast[DType.uint128]()
                 * SIMD[DType.uint128, 2](1, 1_000_000_000)
             ).reduce_add()
         )
@@ -2538,7 +2554,9 @@ def floor_divide_by_uint64_inplace(mut x: BigUInt, y: UInt64) -> None:
         var dividend = (
             carry * UInt128(1_000_000_000_000_000_000)
             + (
-                x.words.unsafe_ptr().load[width=2](i - 1).cast[DType.uint128]()
+                x.words.unsafe_ptr()
+                .unsafe_load[width=2](i - 1)
+                .cast[DType.uint128]()
                 * SIMD[DType.uint128, 2](1, 1_000_000_000)
             ).reduce_add()
         )
@@ -2577,7 +2595,7 @@ def floor_divide_by_uint128(x: BigUInt, y: UInt128) -> BigUInt:
         carry = UInt256(
             (
                 x.words.unsafe_ptr()
-                .load[width=2](len(x.words) - 2)
+                .unsafe_load[width=2](len(x.words) - 2)
                 .cast[DType.uint64]()
                 * SIMD[DType.uint64, 2](1, 1_000_000_000)
             ).reduce_add()
@@ -2587,7 +2605,7 @@ def floor_divide_by_uint128(x: BigUInt, y: UInt128) -> BigUInt:
         carry = UInt256(
             (
                 x.words.unsafe_ptr()
-                .load[width=4](len(x.words) - 3)
+                .unsafe_load[width=4](len(x.words) - 3)
                 .cast[DType.uint128]()
                 * SIMD[DType.uint128, 4](
                     1, 1_000_000_000, 1_000_000_000_000_000_000, 0
@@ -2602,7 +2620,9 @@ def floor_divide_by_uint128(x: BigUInt, y: UInt128) -> BigUInt:
         var dividend = (
             carry * UInt256(1_000_000_000_000_000_000_000_000_000_000_000_000)
             + (
-                x.words.unsafe_ptr().load[width=4](i - 3).cast[DType.uint256]()
+                x.words.unsafe_ptr()
+                .unsafe_load[width=4](i - 3)
+                .cast[DType.uint256]()
                 * SIMD[DType.uint256, 4](
                     1,
                     1_000_000_000,
@@ -2699,9 +2719,9 @@ def floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
     # Drop the low `word_shift` words via memcpy, then sub-word shift.
     var keep = len(x.words) - word_shift
     var result = BigUInt(unsafe_uninit_length=keep)
-    memcpy(
+    unsafe_memcpy(
         dest=result.words._data,
-        src=x.words._data + word_shift,
+        src=x.words._data.unsafe_offset(word_shift),
         count=keep,
     )
     _shift_right_by_decimal_digits_inplace(result, digit_shift)
@@ -2835,9 +2855,9 @@ def floor_divide_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
         return BigUInt.zero()
     else:
         var result = BigUInt(unsafe_uninit_length=n_words_of_result)
-        memcpy(
+        unsafe_memcpy(
             dest=result.words._data,
-            src=x.words._data + n,
+            src=x.words._data.unsafe_offset(n),
             count=n_words_of_result,
         )
         return result^
@@ -3010,7 +3030,7 @@ def floor_divide_burnikel_ziegler(
             # The first iteration, we can use the slize of normalized_a
             # TODO: Refine this when Mojo support move values of unpacked tuples
             # https://github.com/modular/modular/issues/5330
-            _tuple = floor_divide_slices_two_by_one(
+            var _tuple = floor_divide_slices_two_by_one(
                 normalized_a,
                 normalized_b,
                 bounds_a=((t - 2) * n, len(normalized_a.words)),
@@ -3021,7 +3041,7 @@ def floor_divide_burnikel_ziegler(
             q = _tuple[0].copy()
             z = _tuple[1].copy()
         else:
-            _tuple = floor_divide_slices_two_by_one(
+            var _tuple = floor_divide_slices_two_by_one(
                 z,
                 normalized_b,
                 bounds_a=(0, len(z.words)),
@@ -3091,7 +3111,7 @@ def floor_divide_two_by_one(
         var b1 = BigUInt.from_slice(b, bounds=(n // 2, n))
 
         # TODO: Refine this when Mojo support move values of unpacked tuples
-        _tuple = floor_divide_three_by_two(
+        var _tuple = floor_divide_three_by_two(
             a3, a2, a1, b1, b0, n // 2, cut_off
         )  # q is q1
         var q = _tuple[0].copy()
@@ -3154,7 +3174,7 @@ def floor_divide_three_by_two(
         multiply_by_power_of_billion_inplace(a2a1, n)
         a2a1 += a1
     # TODO: Refine this when Mojo support move values of unpacked tuples
-    _tuple = floor_divide_two_by_one(a2a1, b1, n, cut_off)
+    var _tuple = floor_divide_two_by_one(a2a1, b1, n, cut_off)
     var q = _tuple[0].copy()
     ref c = _tuple[1]  # c is the carry
     var d = q * b0
@@ -3250,7 +3270,7 @@ def floor_divide_slices_two_by_one(
         # We just need to use three-by-two division once: a2a1a0 // b1b0
         # Note that the condition must be short-circuited to avoid slicing
         # an empty BigUInt.
-        _tuple = floor_divide_slices_three_by_two(
+        var _tuple = floor_divide_slices_three_by_two(
             a, b, bounds_a, bounds_b, n // 2, cut_off
         )
         # _tuple = (q, r)
@@ -3261,7 +3281,7 @@ def floor_divide_slices_two_by_one(
 
         # We use the most significant three parts of the dividend
         # a3a2a1 // b1b0
-        _tuple = floor_divide_slices_three_by_two(
+        var _tuple = floor_divide_slices_three_by_two(
             a, b, bounds_a1a3, bounds_b, n // 2, cut_off
         )
         var q = _tuple[0].copy()  # q is q1
@@ -3340,7 +3360,7 @@ def floor_divide_slices_three_by_two(
     var bounds_b1 = (bounds_b[0] + n, bounds_b[1])
     var bounds_b0 = (bounds_b[0], bounds_b[0] + n)
 
-    _tuple = floor_divide_slices_two_by_one(
+    var _tuple = floor_divide_slices_two_by_one(
         a, b, bounds_a2a1, bounds_b1, n, cut_off
     )
     var q = _tuple[0].copy()
@@ -3948,6 +3968,7 @@ def calculate_ndigits_for_normalization(msw: UInt32) -> Int:
     This is a helper function for division algorithms.
     The normalized word should be as close to BASE as possible.
     """
+    var ndigits: Int
     if msw < 10_000:
         if msw < 100:
             if msw < 10:
@@ -3989,11 +4010,15 @@ def to_uint64_with_2_words(a: BigUInt, bounds_x: Tuple[Int, Int]) -> UInt64:
     var n_words = bounds_x[1] - bounds_x[0]
     if n_words == 1:
         return (
-            a.words.unsafe_ptr().load[width=1](bounds_x[0]).cast[DType.uint64]()
+            a.words.unsafe_ptr()
+            .unsafe_load[width=1](bounds_x[0])
+            .cast[DType.uint64]()
         )
     else:
         return (
-            a.words.unsafe_ptr().load[width=2](bounds_x[0]).cast[DType.uint64]()
+            a.words.unsafe_ptr()
+            .unsafe_load[width=2](bounds_x[0])
+            .cast[DType.uint64]()
             * SIMD[DType.uint64, 2](1, 1_000_000_000)
         ).reduce_add()
 
@@ -4012,13 +4037,13 @@ def to_uint128_with_2_words(a: BigUInt, bounds_x: Tuple[Int, Int]) -> UInt128:
     if n_words == 1:
         return (
             a.words.unsafe_ptr()
-            .load[width=1](bounds_x[0])
+            .unsafe_load[width=1](bounds_x[0])
             .cast[DType.uint128]()
         )
     else:
         return (
             a.words.unsafe_ptr()
-            .load[width=2](bounds_x[0])
+            .unsafe_load[width=2](bounds_x[0])
             .cast[DType.uint128]()
             * SIMD[DType.uint128, 2](1, 1_000_000_000)
         ).reduce_add()
@@ -4038,20 +4063,20 @@ def to_uint128_with_4_words(a: BigUInt, bounds_x: Tuple[Int, Int]) -> UInt128:
     if n_words == 1:
         return (
             a.words.unsafe_ptr()
-            .load[width=1](bounds_x[0])
+            .unsafe_load[width=1](bounds_x[0])
             .cast[DType.uint128]()
         )
     elif n_words == 2:
         return (
             a.words.unsafe_ptr()
-            .load[width=2](bounds_x[0])
+            .unsafe_load[width=2](bounds_x[0])
             .cast[DType.uint128]()
             * SIMD[DType.uint128, 2](1, 1_000_000_000)
         ).reduce_add()
     elif n_words == 3:
         return (
             a.words.unsafe_ptr()
-            .load[width=4](bounds_x[0])
+            .unsafe_load[width=4](bounds_x[0])
             .cast[DType.uint128]()
             * SIMD[DType.uint128, 4](
                 1, 1_000_000_000, 1_000_000_000_000_000_000, 0
@@ -4060,7 +4085,7 @@ def to_uint128_with_4_words(a: BigUInt, bounds_x: Tuple[Int, Int]) -> UInt128:
     else:  # len(self.words) == 4
         return (
             a.words.unsafe_ptr()
-            .load[width=4](bounds_x[0])
+            .unsafe_load[width=4](bounds_x[0])
             .cast[DType.uint128]()
             * SIMD[DType.uint128, 4](
                 1,

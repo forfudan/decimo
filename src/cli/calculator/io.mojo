@@ -152,7 +152,7 @@ def split_into_lines(text: String) -> List[String]:
         var last = String(text[byte=start:text_len])
         # Strip trailing \r if present
         if last.byte_length() > 0 and last[byte=last.byte_length() - 1] == "\r":
-            last = String(last[byte = 0 : last.byte_length() - 1])
+            last.resize(last.byte_length() - 1)
         if last.byte_length() > 0:
             lines.append(last)
 
@@ -189,7 +189,7 @@ def strip_comment(line: String) -> String:
     var ptr = bytes.unsafe_ptr()
 
     for i in range(n):
-        if ptr[i] == 35:  # '#'
+        if ptr[unsafe_offset=i] == 35:  # '#'
             if i == 0:
                 return String("")
             return String(line[byte=0:i])
@@ -218,7 +218,7 @@ def is_blank(line: String) -> Bool:
     var ptr = bytes.unsafe_ptr()
 
     for i in range(n):
-        var c = ptr[i]
+        var c = ptr[unsafe_offset=i]
         if c != 32 and c != 9:  # not space, not tab
             return False
 
@@ -259,14 +259,14 @@ def strip(s: String) -> String:
     var end = s.byte_length()
 
     while start < end:
-        var c = ptr[start]
+        var c = ptr[unsafe_offset=start]
         # space=32, tab=9, \r=13, \n=10
         if c != 32 and c != 9 and c != 13 and c != 10:
             break
         start += 1
 
     while end > start:
-        var c = ptr[end - 1]
+        var c = ptr[unsafe_offset=end - 1]
         if c != 32 and c != 9 and c != 13 and c != 10:
             break
         end -= 1

@@ -18,11 +18,12 @@
 
 from std import math
 
-import decimo.bigdecimal.arithmetics as bigdecimal_arithmetics
+from decimo.biguint.biguint import BigUInt
 import decimo.biguint.arithmetics as biguint_arithmetics
 import decimo.biguint.exponential as biguint_exponential
 import decimo.decimal128.utility as decimal128_utility
 from decimo.bigdecimal.bigdecimal import BigDecimal
+import decimo.bigdecimal.arithmetics as bigdecimal_arithmetics
 from decimo.errors import ValueError, OverflowError, ZeroDivisionError
 from decimo.rounding_mode import RoundingMode
 
@@ -468,9 +469,9 @@ def root(x: BigDecimal, n: BigDecimal, precision: Int) raises -> BigDecimal:
             var result = integer_root(x, n, precision)
             _strip_trailing_fractional_zeros(result)
             return result^
-        _tuple = is_integer_reciprocal_and_return(n)
+        var _tuple = is_integer_reciprocal_and_return(n)
         var is_integer_reciprocal: Bool = _tuple[0]
-        var ref integer_reciprocal: BigDecimal = _tuple[1]
+        ref integer_reciprocal: BigDecimal = _tuple[1]
         if is_integer_reciprocal:
             # If m = 1/n is an integer, use integer_root
             var result = integer_power(x, integer_reciprocal, precision)
@@ -484,7 +485,7 @@ def root(x: BigDecimal, n: BigDecimal, precision: Int) raises -> BigDecimal:
         # Only for non-negative x: fractional roots of negative numbers
         # are disallowed (consistent with Python Decimal behavior).
         if not x.sign:
-            _rtuple = _rational_root_decomposition(n)
+            var _rtuple = _rational_root_decomposition(n)
             var is_rational: Bool = _rtuple[0]
             var root_order: Int = _rtuple[1]
             var power_order: Int = _rtuple[2]
@@ -691,8 +692,8 @@ def integer_root(
     var r = BigDecimal(String(guess_f64))
 
     # BigDecimal constants
-    var n_bd = BigDecimal.from_int(n_int)
-    var n_minus_1_bd = BigDecimal.from_int(n_int - 1)
+    var n_bd = BigDecimal.from_integral_scalar(n_int)
+    var n_minus_1_bd = BigDecimal.from_integral_scalar(n_int - 1)
     var n_minus_1_int = n_int - 1
 
     # Newton's method with precision doubling
@@ -1696,7 +1697,7 @@ def sqrt_decimal_approach(x: BigDecimal, precision: Int) raises -> BigDecimal:
     if odd_ndigits_frac_part:
         value = value * UInt128(10)
     var sqrt_value = decimal128_utility.sqrt(value)
-    var sqrt_value_biguint = BigUInt.from_unsigned_integral_scalar(sqrt_value)
+    var sqrt_value_biguint = BigUInt.from_integral_scalar(sqrt_value)
     guess = BigDecimal(
         sqrt_value_biguint,
         sqrt_value_biguint.number_of_digits() - ndigits_int_part_sqrt,
@@ -1780,7 +1781,7 @@ def cbrt(x: BigDecimal, precision: Int) raises -> BigDecimal:
         Error: Propagated from integer_root.
     """
 
-    result = integer_root(
+    var result = integer_root(
         x,
         BigDecimal(coefficient=BigUInt(raw_words=[3]), scale=0, sign=False),
         precision,
@@ -2094,12 +2095,14 @@ def ln(
     if combined_ln2_factor != 0:
         var ln2 = cache.get_ln2(working_precision)
         result.add_inplace(
-            ln2.multiply(BigDecimal.from_int(combined_ln2_factor))
+            ln2.multiply(BigDecimal.from_integral_scalar(combined_ln2_factor))
         )
     if combined_ln1d25_factor != 0:
         var ln1d25 = cache.get_ln1d25(working_precision)
         result.add_inplace(
-            ln1d25.multiply(BigDecimal.from_int(combined_ln1d25_factor))
+            ln1d25.multiply(
+                BigDecimal.from_integral_scalar(combined_ln1d25_factor)
+            )
         )
 
     # Round to final precision
@@ -2214,7 +2217,7 @@ def log10(x: BigDecimal, precision: Int) raises -> BigDecimal:
     if x.coefficient.is_power_of_10():
         # If x = 10^n, return n
         var power = x.coefficient.number_of_trailing_zeros() - x.scale
-        return BigDecimal.from_int(power)
+        return BigDecimal.from_integral_scalar(power)
 
     # Special case for x = 1
     if (

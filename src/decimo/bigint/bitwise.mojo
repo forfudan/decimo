@@ -184,9 +184,7 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
 # ===----------------------------------------------------------------------=== #
 
 
-def _binary_bitwise_op_inplace[
-    op: StringLiteral
-](mut a: BigInt, read b: BigInt):
+def _binary_bitwise_op_inplace[op: StringLiteral](mut a: BigInt, imm b: BigInt):
     """Performs a word-by-word binary bitwise operation on `a` in-place.
 
     Computes the result word list and moves it into a.words, avoiding
@@ -424,7 +422,7 @@ def bitwise_not(x: BigInt) -> BigInt:
 # ===----------------------------------------------------------------------=== #
 
 
-def bitwise_and_inplace(mut a: BigInt, read b: BigInt):
+def bitwise_and_inplace(mut a: BigInt, imm b: BigInt):
     """Performs `a &= b` in-place using Python-compatible two's complement semantics.
 
     Args:
@@ -434,7 +432,7 @@ def bitwise_and_inplace(mut a: BigInt, read b: BigInt):
     _binary_bitwise_op_inplace["and"](a, b)
 
 
-def bitwise_or_inplace(mut a: BigInt, read b: BigInt):
+def bitwise_or_inplace(mut a: BigInt, imm b: BigInt):
     """Performs `a |= b` in-place using Python-compatible two's complement semantics.
 
     Args:
@@ -444,7 +442,7 @@ def bitwise_or_inplace(mut a: BigInt, read b: BigInt):
     _binary_bitwise_op_inplace["or"](a, b)
 
 
-def bitwise_xor_inplace(mut a: BigInt, read b: BigInt):
+def bitwise_xor_inplace(mut a: BigInt, imm b: BigInt):
     """Performs `a ^= b` in-place using Python-compatible two's complement semantics.
 
     Args:

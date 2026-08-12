@@ -21,6 +21,7 @@ from std import testing
 from std import time
 
 from decimo.errors import ValueError, OverflowError, ZeroDivisionError
+from decimo.decimal128.decimal128 import Decimal128
 import decimo.decimal128.constants as decimal128_constants
 import decimo.decimal128.special as decimal128_special
 import decimo.decimal128.utility as decimal128_utility

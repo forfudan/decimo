@@ -56,8 +56,8 @@ def _csv_quote(s: String) -> String:
 
 def _result_for(
     op: String,
-    read a: BigInt,
-    read b: BigInt,
+    imm a: BigInt,
+    imm b: BigInt,
     a_str: String,
     b_int: Int,
 ) raises -> String:
@@ -86,8 +86,8 @@ def _result_for(
 
 def _time_kernel(
     op: String,
-    read a: BigInt,
-    read b: BigInt,
+    imm a: BigInt,
+    imm b: BigInt,
     a_str: String,
     b_int: Int,
 ) raises:
@@ -100,7 +100,7 @@ def _time_kernel(
     `sign`) to prevent dead-code elimination while keeping the keep cost
     negligible versus the op.
 
-    Operands `a` / `b` are taken as `read` (borrowed) so no per-iter
+    Operands `a` / `b` are taken as `imm` (borrowed) so no per-iter
     deep copy of the heap-backed word list occurs.
     """
     if op == "add":
@@ -192,10 +192,10 @@ def _bench_case(
     var b: BigInt
     var b_int: Int = 0
     if op == "power" or op == "shift":
-        b = BigInt.from_int(0)
+        b = BigInt.from_integral_scalar(0)
         b_int = Int(BigInt(bc.b))
     elif op == "sqrt" or op == "from_string" or op == "to_string" or bc.b == "":
-        b = BigInt.from_int(0)
+        b = BigInt.from_integral_scalar(0)
     else:
         b = BigInt(bc.b)
 

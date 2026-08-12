@@ -236,7 +236,7 @@ struct Rational(
         Returns:
             The string representation.
         """
-        return String.write(self)
+        return String(self)
 
     @no_inline
     def __repr__(self) -> String:
