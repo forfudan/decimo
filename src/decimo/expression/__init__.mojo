@@ -34,7 +34,7 @@ evaluator) for advanced use:
 ```mojo
 from decimo.expression import tokenize, parse_to_rpn, evaluate_rpn
 
-var rpn = parse_to_rpn(tokenize("1 + 2 * 3")^)
+var rpn = parse_to_rpn(tokenize("1 + 2 * 3"))
 var value = evaluate_rpn(rpn^, precision=50)
 ```
 """

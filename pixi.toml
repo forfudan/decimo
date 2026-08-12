@@ -6,7 +6,7 @@ license = "Apache-2.0"
 name = "decimo"
 platforms = ["osx-arm64", "linux-64"]
 readme = "README.md"
-version = "0.11.0"
+version = "0.12.0"
 
 [dependencies]
 # CLI argument parsing for the Decimo calculator. The modular-community

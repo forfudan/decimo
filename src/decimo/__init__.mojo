@@ -24,7 +24,7 @@ from decimo import Decimal, BInt, RoundingMode
 ```
 """
 
-comptime DECIMO_VERSION = "0.10.0"
+comptime DECIMO_VERSION = "0.12.0"
 """Canonical semantic version of the Decimo library (no leading `v`).
 
 Keep in sync with `pixi.toml`'s `[project].version`.  This is the single
@@ -34,7 +34,7 @@ should use `DECIMO_VERSION_TAG`.
 """
 
 comptime DECIMO_VERSION_TAG = "v" + DECIMO_VERSION
-"""Display version of the Decimo library, prefixed with `v` (e.g. `v0.10.0`).
+"""Display version of the Decimo library, prefixed with `v` (e.g. `v0.12.0`).
 """
 
 # Core types
