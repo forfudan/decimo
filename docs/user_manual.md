@@ -42,6 +42,7 @@ from decimo.prelude import *
   - [Python Interoperability](#python-interoperability)
   - [A note on result exponents (`Decimal` and `Dec128`)](#a-note-on-result-exponents-decimal-and-dec128)
   - [Chinese Numerals](#chinese-numerals)
+  - [Expression Engine](#expression-engine)
   - [Appendix A — Import Paths](#appendix-a--import-paths)
   - [Appendix B — Traits Implemented](#appendix-b--traits-implemented)
   - [Appendix C — Complete API Tables](#appendix-c--complete-api-tables)
@@ -63,7 +64,7 @@ pixi add decimo
 Or add it manually to `pixi.toml`:
 
 ```toml
-decimo = "==0.11.0"
+decimo = "==0.12.0"
 ```
 
 Then run `pixi install`.
@@ -1070,6 +1071,90 @@ _ = BInt("1" + String("0") * 20000).to_chinese()   # raises ValueError
 print(Decimal("1E+20000").to_chinese(max_digits=0))
 ```
 
+### Expression Engine
+
+`eval()` takes an arithmetic expression as a string and works it out with
+`Decimal` arithmetic. It is the same engine that drives the `decimo` CLI
+calculator:
+
+```mojo
+from decimo import eval
+
+print(eval("100 + e * pi"))
+# 108.53973422267356706546355086954657449503488853577
+print(eval("sqrt(2) + 1/3", precision=30))
+# 1.74754689570642838213502205754
+```
+
+The result is rounded to `precision` significant digits, 50 by default, with
+`rounding_mode`, half-even by default:
+
+```mojo
+print(eval("1/3", precision=20))
+# 0.33333333333333333333
+print(eval("1/3", precision=5, rounding_mode=ROUND_CEILING))
+# 0.33334
+```
+
+#### What you can write <!-- omit from toc -->
+
+The operators are `+`, `-`, `*`, `/`, `^` (power), a unary minus, and
+parentheses. The constants are `pi` and `e`. The functions are `sqrt`, `cbrt`,
+`root(x, n)`, `ln`, `log(x, base)`, `log10`, `exp`, `sin`, `cos`, `tan`, `cot`,
+`csc`, and `abs`.
+
+Names are case-sensitive: `pi` is the constant, `PI` is an unknown identifier.
+(The CLI lower-cases each line before it reaches the engine, which is why `PI`
+works there but not here.) Line breaks count as whitespace, so an expression
+can span several lines:
+
+```mojo
+print(eval("""
+    100 + 2 * 3
+"""))                                           # 106
+```
+
+#### Variables <!-- omit from toc -->
+
+Pass a `Dict` and the expression can refer to your own values. Any identifier
+that is not a built-in constant or function is looked up there:
+
+```mojo
+from std.collections import Dict
+
+var vars = Dict[String, Decimal]()
+vars["x"] = Decimal.from_string("10")
+vars["y"] = Decimal.from_string("3")
+print(eval("x^2 + y", variables=vars))          # 103
+```
+
+#### Errors <!-- omit from toc -->
+
+A syntax error, an unknown name, a division by zero, or a domain error raises,
+and the message says where in the expression it went wrong:
+
+```mojo
+try:
+    _ = eval("1 / 0")
+except e:
+    print(e)      # Error at position 2: division by zero
+```
+
+#### The individual stages <!-- omit from toc -->
+
+`eval()` tokenizes, parses to reverse Polish notation, and evaluates. The three
+stages are exported as well, in case you want to look at the tokens or the RPN
+form:
+
+```mojo
+from decimo.expression import tokenize, parse_to_rpn, evaluate_rpn
+
+var rpn = parse_to_rpn(tokenize("1 + 2 * 3"))
+print(evaluate_rpn(rpn^, precision=50))         # 7
+```
+
+`evaluate()` is an alias of `eval()`.
+
 ### Appendix A — Import Paths
 
 ```mojo
@@ -1094,6 +1179,11 @@ from decimo.numerals import (
     decimal_string_to_chinese,
     MAX_CHINESE_NUMERAL_DIGITS,
 )
+
+# Expression engine: `eval` at the top level, the individual stages in the
+# `decimo.expression` sub-package
+from decimo import eval
+from decimo.expression import tokenize, parse_to_rpn, evaluate_rpn
 ```
 
 ### Appendix B — Traits Implemented

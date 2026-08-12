@@ -2,24 +2,44 @@
 
 This is a list of changes for the Decimo package (formerly DeciMojo).
 
-## Unreleased (v0.12.0)
+## 20260812 (v0.12.0)
 
-Decimo v0.12.0 retargets the codebase to **Mojo v1.0.0**.
+Decimo v0.12.0 retargets the codebase to **Mojo v1.0.0**, promotes the CLI's expression evaluator to a first-class part of the library (`decimo.eval()`), and adds Chinese numeral output for `BigInt` and `BigDecimal`. The `from_int()` and `from_uint()` factory methods are removed, which is a breaking change for code that calls them directly.
 
-### ⭐️ New
+### ⭐️ New in v0.12.0
 
-**Expression engine (`decimo.expression`):**
+**Expression engine (`decimo.expression`)** (PR #259):
 
-1. The arithmetic-expression engine (tokenizer, shunting-yard parser, and RPN evaluator) that previously lived inside the CLI is now a first-class part of the core library under `decimo/expression/`. Users can evaluate a string in one call with the new high-level API `decimo.eval(expr, precision=50, variables={}, rounding_mode=...)`, e.g. `decimo.eval("100 + e * pi")`. Advanced users can import the individual stages via `from decimo.expression import tokenize, parse_to_rpn, evaluate_rpn`. `eval` optionally accepts a `variables` map so expressions can reference externally supplied named values (e.g. `eval("x^2 + y", variables=vars)`). `decimo.evaluate` is kept as an alias.
-1. The CLI now re-uses this shared engine instead of its own copy, eliminating duplicated logic. Its presentation layer (`display`, `io`, `repl`, `settings`, `engine`) stays in the CLI.
-1. The expression tokenizer now treats newline (`\n`) and carriage return (`\r`) as whitespace, so `eval` accepts strings with leading/trailing/embedded line breaks (e.g. triple-quoted expressions).
+1. The tokenizer, shunting-yard parser, and RPN evaluator that used to live inside the CLI now sit in the core library under `decimo/expression/`. A string can be evaluated in one call with **`decimo.eval(expr, precision=50, variables=..., rounding_mode=...)`**, e.g. `decimo.eval("100 + e * pi")`. The individual stages are still available via `from decimo.expression import tokenize, parse_to_rpn, evaluate_rpn`, and `decimo.evaluate` is kept as an alias of `eval`.
+1. `eval()` takes an optional **`variables`** map, so an expression can refer to named values supplied by the caller, e.g. `eval("x^2 + y", variables=vars)`.
+1. The tokenizer treats `\n` and `\r` as whitespace, so multi-line (e.g. triple-quoted) expressions are accepted.
+1. The CLI re-uses this shared engine instead of its own copy. Its presentation layer (`display`, `io`, `repl`, `settings`, `engine`) stays in the CLI, and the engine tests move from `tests/cli/` to `tests/expression/`.
 
-**Chinese numerals (`decimo.numerals`):**
+**Chinese numerals (`decimo.numerals`)** (PR #262):
 
-1. New sub-package **`decimo.numerals`** hosts conversions to non-Latin numeral systems. Each module there renders a decimal *string* rather than a particular numeric type, so the conversions are shared by every Decimo type and are not limited by any integer width.
-1. New **`decimal_string_to_chinese()`** in `decimo.numerals.chinese`, plus the **`BigDecimal.to_chinese()`** and **`BigInt.to_chinese()`** methods, write a number in Chinese numerals, e.g. `BigDecimal("1050.07").to_chinese()` gives `一千零五十点零七`. The integer part is split into sections of eight digits that are read with the 十/百/千/万 units and joined by 亿, which multiplies everything read before it — so `1234567890123` gives `一万二千三百四十五亿六千七百八十九万零一百二十三` and each further 亿 raises the magnitude by another 10^8 (亿亿 is 10^16). Integers of arbitrary length are therefore supported without relying on the rarely-agreed-upon 兆/京/垓 units. Runs of zeros collapse into a single 零, a leading 一十 is shortened to 十, and the fractional part is read digit by digit after 点 so the written precision is preserved (`1.50` gives `一点五零`).
+1. New sub-package **`decimo.numerals`** hosts conversions to non-Latin numeral systems. Each module renders a decimal *string* rather than a particular numeric type, so the conversions are shared by every Decimo type and are not limited by any integer width.
+1. New **`decimal_string_to_chinese()`**, plus the **`BigInt.to_chinese()`** and **`BigDecimal.to_chinese()`** methods, write a number in Chinese numerals — `BigDecimal("1050.07").to_chinese()` gives `一千零五十点零七`. The integer part is split into sections of eight digits, read with the 十/百/千/万 units and joined by 亿, which multiplies everything read before it: `1234567890123` gives `一万二千三百四十五亿六千七百八十九万零一百二十三`, and each further 亿 raises the magnitude by another 10^8 (亿亿 is 10^16). Integers of any length are therefore supported without relying on the rarely-agreed-upon 兆/京/垓 units. Runs of zeros collapse into a single 零, a leading 一十 is shortened to 十, and the fractional part is read digit by digit after 点 so the written precision is preserved (`1.50` gives `一点五零`).
 1. A reading is always written out in full, so its cost follows the *written* length of the number rather than the length of the input — `BigDecimal("1E+1000000000")` is a few characters that would expand into a billion digits. All three conversions therefore take a **`max_digits`** budget, defaulting to **`MAX_CHINESE_NUMERAL_DIGITS`** (10 000), and raise a `ValueError` past it. The budget is checked before the digits are expanded, so an absurd magnitude is rejected at no cost; pass `max_digits=0` to lift the cap.
 1. The rendering is table-driven through the new **`ChineseNumeralStyle`** struct, which ships with the `simplified()`, `simplified_financial()` (大写: 壹贰叁 / 拾佰仟), `traditional()` (繁體: 萬億點負), and `traditional_financial()` presets; custom tables can be supplied as well.
+
+### 🦋 Changed in v0.12.0
+
+**Mojo v1.0.0 migration** (PR #260):
+
+1. Retarget the codebase to **Mojo v1.0.0** and bump the Pixi dependency to `mojo >=1.0.0,<1.1.0`.
+1. **`from_int()` and `from_uint()` are removed** from `BigInt`, `BigUInt`, `BigInt10`, and `BigDecimal`, along with their separate `Int` / `UInt` constructors: `Int` is now an integral scalar, so the generic `from_integral_scalar()` path covers it (and `BigUInt` gains one). `BInt(42)` and `Decimal(42)` are unaffected; direct calls to `from_int()` / `from_uint()` must switch to `from_integral_scalar()`.
+1. The power-of-10 lookup tables are emitted once into static storage with `global_constant` instead of being rebuilt at every call site (the alternatives, `materialize` and a `comptime for`, cost either stack traffic or code size). Fixed-size tables and temporaries switch from `List` to `Array` / `InlineArray`, and slice operations in `BigInt` take `ImmSpan` instead of copying.
+1. `Decimal128` bitcasting moves from `UnsafePointer` to `Pointer(to=).unsafe_bitcast()`.
+1. **Build tasks**: `pixi run argmojo` (new `src/cli/ensure_argmojo.sh`) resolves ArgMojo from the conda package when it is available and otherwise clones and precompiles the pinned upstream v0.8.0 commit into `temp/`, so `pixi run buildcli` works while modular-community catches up. `pixi run clean` no longer fails on a fresh checkout, and `pixi run doc` resolves `limo` from source.
+
+**Errors** (PR #261):
+
+1. The base error type `DecimoError` is renamed to **`BaseError`**, which reads better now that every concrete type (`ValueError`, `OverflowError`, …) is derived from it. `DecimoError` remains as a derived alias, so existing code keeps working.
+
+**Documentation and CI:**
+
+1. The user manual gains an **Expression Engine** section covering `eval()`, the supported syntax, variables, and the individual stages. The README's project-structure tree is brought up to date, and `docs/readme_unreleased.md` — a duplicate of the README — is removed.
+1. CI gains a **`test-expression`** job, since those tests no longer run as part of the CLI suite.
 
 ## 20260701 (v0.11.0)
 
