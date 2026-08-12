@@ -192,10 +192,10 @@ def _bench_case(
     var b: BigInt
     var b_int: Int = 0
     if op == "power" or op == "shift":
-        b = BigInt.from_int(0)
+        b = BigInt.from_integral_scalar(0)
         b_int = Int(BigInt(bc.b))
     elif op == "sqrt" or op == "from_string" or op == "to_string" or bc.b == "":
-        b = BigInt.from_int(0)
+        b = BigInt.from_integral_scalar(0)
     else:
         b = BigInt(bc.b)
 

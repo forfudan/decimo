@@ -1,6 +1,6 @@
 [workspace]
 authors = ["ZHU Yuhao (朱宇浩) <dr.yuhao.zhu@outlook.com>"]
-channels = ["https://conda.modular.com/max-nightly", "https://conda.modular.com/max", "https://repo.prefix.dev/modular-community", "conda-forge"]
+channels = ["https://conda.modular.com/max", "https://repo.prefix.dev/modular-community", "conda-forge"]
 description = "An arbitrary-precision decimal and integer library for Mojo"
 license = "Apache-2.0"
 name = "decimo"
@@ -10,7 +10,7 @@ version = "0.11.0"
 
 [dependencies]
 # argmojo = ">=0.7,<0.8" # CLI argument parsing for the Decimo calculator
-mojo = "*" # Mojo language compiler and runtime
+mojo = ">=1.0.0,<1.1.0" # Mojo language compiler and runtime
 python = ">=3.13" # For Python bindings and tests
 python-build = ">=0.2.0" # Build PyPI wheel (`pixi run wheel`)
 ruff = ">=0.15.0" # Python code formatter
@@ -19,12 +19,13 @@ pre-commit = ">=4.6.1,<5"
 
 [tasks]
 # format the code
-format = """pixi run mojo format ./src \
-&&pixi run mojo format ./python \
-&&pixi run mojo format ./benches \
-&&pixi run mojo format ./tests \
-&&pixi run mojo format ./docs \
-&&pixi run ruff format ./python"""
+format = """pixi run clean \
+&& pixi run mojo format ./src \
+&& pixi run mojo format ./python \
+&& pixi run mojo format ./benches \
+&& pixi run mojo format ./tests \
+&& pixi run mojo format ./docs \
+&& pixi run ruff format ./python"""
 
 # doc
 # Note: the CLI calculator doc step uses `-I tests` (the prebuilt

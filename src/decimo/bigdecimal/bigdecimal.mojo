@@ -220,26 +220,6 @@ struct BigDecimal(
         self = Self.from_string(value)
 
     @implicit
-    def __init__(out self, value: Int):
-        """Constructs a BigDecimal from an `Int` object.
-        See `from_int()` for more information.
-
-        Args:
-            value: The integer to convert.
-        """
-        self = Self.from_int(value)
-
-    @implicit
-    def __init__(out self, value: UInt):
-        """Constructs a BigDecimal from an `UInt` object.
-        See `from_uint()` for more information.
-
-        Args:
-            value: The unsigned integer to convert.
-        """
-        self = Self.from_uint(value)
-
-    @implicit
     def __init__[dtype: DType, //](out self, value: SIMD[dtype, 1]):
         """Constructs a BigDecimal from an integral scalar.
         This includes all SIMD integral types, such as Int8, Int16, UInt32, etc.
@@ -279,8 +259,8 @@ struct BigDecimal(
 
     # ===------------------------------------------------------------------=== #
     # Constructing methods that are not dunders
-    # from_int(value: Int) -> Self
-    # from_scalar(value: Scalar) -> Self
+    # from_integral_scalar[dtype: DType](value: Scalar[dtype]) -> Self
+    # from_float[dtype: DType](value: Scalar[dtype]) -> Self
     # from_string(value: String) -> Self
     # ===------------------------------------------------------------------=== #
 
@@ -324,64 +304,6 @@ struct BigDecimal(
             A `BigDecimal` constructed from the raw components.
         """
         return Self(BigUInt(raw_words=[word]), scale, sign)
-
-    @staticmethod
-    def from_int(value: Int) -> Self:
-        """Creates a BigDecimal from an integer.
-
-        Args:
-            value: The integer to convert.
-
-        Returns:
-            A `BigDecimal` representing the given integer.
-        """
-        if value == 0:
-            return Self(coefficient=BigUInt.zero(), scale=0, sign=False)
-
-        var words = List[UInt32](capacity=2)
-        var sign: Bool
-        var remainder: Int
-        var quotient: Int
-        var is_min: Bool = False
-        if value < 0:
-            sign = True
-            # Handle the case of Int.MIN due to asymmetry of Int.MIN and Int.MAX
-            if value == Int.MIN:
-                is_min = True
-                remainder = Int.MAX
-            else:
-                remainder = -value
-        else:
-            sign = False
-            remainder = value
-
-        while remainder != 0:
-            quotient = remainder // 1_000_000_000
-            remainder = remainder % 1_000_000_000
-            words.append(UInt32(remainder))
-            remainder = quotient
-
-        if is_min:
-            words[0] += 1
-
-        return Self(coefficient=BigUInt(raw_words=words^), scale=0, sign=sign)
-
-    # TODO: This method is no longer needed as UInt is now an alias for SIMD.
-    @staticmethod
-    def from_uint(value: UInt) -> Self:
-        """Creates a BigDecimal from an unsigned integer.
-
-        Args:
-            value: The unsigned integer to convert.
-
-        Returns:
-            A `BigDecimal` representing the given unsigned integer.
-        """
-        return Self(
-            coefficient=BigUInt.from_unsigned_integral_scalar(value),
-            scale=0,
-            sign=False,
-        )
 
     @staticmethod
     def from_integral_scalar[dtype: DType, //](value: SIMD[dtype, 1]) -> Self:

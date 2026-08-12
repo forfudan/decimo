@@ -305,9 +305,9 @@ def _bench_case(
     #   - arithmetic / sqrt / exp / ln: as-is (sqrt/exp/ln are unary)
     #   - root:         b is the root index n
     if op == "round" or op == "from_string" or op == "to_string":
-        b = BigDecimal.from_int(0)
+        b = BigDecimal.from_integral_scalar(0)
     elif bc.b == "":
-        b = BigDecimal.from_int(0)
+        b = BigDecimal.from_integral_scalar(0)
     else:
         b = BigDecimal(bc.b)
 

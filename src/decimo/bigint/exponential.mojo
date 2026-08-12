@@ -300,7 +300,7 @@ def sqrt(x: BigInt) raises -> BigInt:
             guess -= 1
         while (guess + 1) * (guess + 1) <= val:
             guess += 1
-        return BigInt.from_int(Int(guess))
+        return BigInt.from_integral_scalar(Int(guess))
 
     # Special case: two words — compute via UInt64 sqrt
     if len(x.words) == 2:

@@ -150,10 +150,8 @@ Accepts any integral scalar type (`Int8` through `Int256`, `UInt8` through `UInt
 | Constructor                        | Description                           |
 | ---------------------------------- | ------------------------------------- |
 | `BInt()`                           | Zero                                  |
-| `BInt(value: Int)`                 | From `Int` (implicit)                 |
 | `BInt(value: String)`              | From decimal string (raises)          |
-| `BInt(value: Scalar)`              | From integral scalar (implicit)       |
-| `BInt.from_int(value)`             | Explicit factory from `Int`           |
+| `BInt(value: Scalar)`              | From any integral scalar (implicit)   |
 | `BInt.from_integral_scalar(value)` | From any integral scalar type         |
 | `BInt.from_string(value)`          | Explicit factory from string (raises) |
 | `BInt.from_bigint10(value)`        | Convert from `BigInt10`               |
@@ -554,13 +552,9 @@ var b = Decimal(py=py_dec)  # Alternative keyword-only syntax
 | Constructor                           | Description                     |
 | ------------------------------------- | ------------------------------- |
 | `Decimal()`                           | Zero                            |
-| `Decimal(value: Int)`                 | From `Int` (implicit)           |
-| `Decimal(value: UInt)`                | From `UInt` (implicit)          |
 | `Decimal(value: String)`              | From string (raises)            |
-| `Decimal(value: Scalar)`              | From integral scalar (implicit) |
+| `Decimal(value: Scalar)`              | From any integral scalar (impl) |
 | `Decimal(py=py_obj)`                  | From Python `Decimal` (raises)  |
-| `Decimal.from_int(value)`             | Explicit factory from `Int`     |
-| `Decimal.from_uint(value)`            | Explicit factory from `UInt`    |
 | `Decimal.from_integral_scalar(value)` | From any integral scalar type   |
 | `Decimal.from_float(value)`           | From floating-point (raises)    |
 | `Decimal.from_string(value)`          | Explicit factory from string    |
@@ -1037,12 +1031,12 @@ print(Decimal("2.000").to_chinese())            # 二点零零零
 The character tables are supplied by `ChineseNumeralStyle`, which ships with
 four presets:
 
-| Preset                    | Digits | Units    | 10^4 / 10^8 | Point | Example for `1050` |
-| ------------------------- | ------ | -------- | ----------- | ----- | ------------------ |
-| `simplified()` (default)  | 一二三 | 十百千   | 万 / 亿     | 点    | `一千零五十`       |
-| `simplified_financial()`  | 壹贰叁 | 拾佰仟   | 万 / 亿     | 点    | `壹仟零伍拾`       |
-| `traditional()`           | 一二三 | 十百千   | 萬 / 億     | 點    | `一千零五十`       |
-| `traditional_financial()` | 壹貳參 | 拾佰仟   | 萬 / 億     | 點    | `壹仟零伍拾`       |
+| Preset                    | Digits | Units  | 10^4 / 10^8 | Point | Example for `1050` |
+| ------------------------- | ------ | ------ | ----------- | ----- | ------------------ |
+| `simplified()` (default)  | 一二三 | 十百千 | 万 / 亿     | 点    | `一千零五十`       |
+| `simplified_financial()`  | 壹贰叁 | 拾佰仟 | 万 / 亿     | 点    | `壹仟零伍拾`       |
+| `traditional()`           | 一二三 | 十百千 | 萬 / 億     | 點    | `一千零五十`       |
+| `traditional_financial()` | 壹貳參 | 拾佰仟 | 萬 / 億     | 點    | `壹仟零伍拾`       |
 
 ```mojo
 from decimo import ChineseNumeralStyle

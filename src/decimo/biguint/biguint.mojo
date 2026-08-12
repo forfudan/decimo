@@ -24,6 +24,7 @@ mathematical methods that do not implement a trait.
 """
 
 from std.memory import Pointer, unsafe_memcpy, memcmp
+from std.sys import size_of
 
 from decimo.bigint10.bigint10 import BigInt10
 import decimo.biguint.arithmetics as biguint_arithmetics
@@ -38,6 +39,7 @@ from decimo.errors import (
 )
 import decimo.str as decimo_str
 from decimo.rounding_mode import RoundingMode
+from decimo.utility import unsigned_counterpart
 
 # Type aliases
 comptime BUInt = BigUInt
@@ -240,36 +242,26 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         else:
             self.words = raw_words^
 
-    # TODO: If Mojo makes Int type an alias of SIMD[DType.index, 1],
-    # we can remove this method.
-    def __init__(out self, value: Int) raises:
-        """Initializes a BigUInt from an `Int`.
-        See `from_int()` for more information.
+    @implicit
+    def __init__(
+        out self, value: Scalar
+    ) raises where value.dtype.is_integral():
+        """Initializes a BigUInt from any integral scalar.
+        This includes all SIMD integral types, both unsigned (UInt8, UInt32,
+        UInt64, ...) and signed (Int8, Int32, Int64, the platform-sized `Int`,
+        ...). Signed values must be non-negative.
+        See `from_integral_scalar()` for more information.
+
+        Constraints:
+            The dtype of the scalar must be integral.
 
         Args:
-            value: The integer to initialize the `BigUInt` from.
+            value: The integral scalar to initialize the `BigUInt` from.
 
         Raises:
-            ConversionError: If the value is negative.
+            OverflowError: If the value is negative.
         """
-        try:
-            self = Self.from_int(value)
-        except e:
-            raise ConversionError(
-                message="See the above exception.",
-                function="BigUInt.__init__(value: Int)",
-                previous_error=e^,
-            )
-
-    @implicit
-    def __init__(out self, value: Scalar):
-        """Initializes a BigUInt from an unsigned integral scalar.
-        See `from_unsigned_integral_scalar()` for more information.
-
-        Args:
-            value: The unsigned integral scalar to initialize the `BigUInt` from.
-        """
-        self = Self.from_unsigned_integral_scalar(value)
+        self = Self.from_integral_scalar(value)
 
     def __init__(out self, value: String, *, ignore_sign: Bool = False) raises:
         """Initializes a BigUInt from a string representation.
@@ -300,8 +292,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
     #
     # from_list(var words: List[UInt32]) -> Self
     # from_words(*words: UInt32) -> Self
-    # from_int(value: Int) -> Self
+    # from_integral_scalar[dtype: DType](value: Scalar[dtype]) -> Self
     # from_unsigned_integral_scalar[dtype: DType](value: Scalar[dtype]) -> Self
+    # from_absolute_integral_scalar[dtype: DType](value: Scalar[dtype]) -> Self
     # from_string(value: String) -> Self
     # ===------------------------------------------------------------------=== #
 
@@ -450,44 +443,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
         return result^
 
     @staticmethod
-    def from_int(value: Int) raises -> Self:
-        """Creates a BigUInt from an integer.
-
-        Args:
-            value: The integer value to be converted to BigUInt.
-
-        Returns:
-            The BigUInt representation of the integer value.
-
-        Raises:
-            OverflowError: If the value is negative.
-        """
-        if value == 0:
-            return Self()
-
-        if value < 0:
-            raise OverflowError(
-                function="BigUInt.from_int(value: Int)",
-                message=(
-                    "The input value "
-                    + String(value)
-                    + " is negative and is not compatible with BigUInt."
-                ),
-            )
-
-        var list_of_words = List[UInt32]()
-        var remainder: Int = value
-        var quotient: Int
-
-        while remainder != 0:
-            quotient = remainder // 1_000_000_000
-            remainder = remainder % 1_000_000_000
-            list_of_words.append(UInt32(remainder))
-            remainder = quotient
-
-        return Self(raw_words=list_of_words^)
-
-    @staticmethod
     def from_uint32_unsafe(unsafe_value: UInt32) -> Self:
         """Creates a BigUInt from a `UInt32` object without checking the value.
 
@@ -498,6 +453,60 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             A single-word `BigUInt` containing the given value.
         """
         return Self(raw_words=[unsafe_value])
+
+    @staticmethod
+    def from_integral_scalar[
+        dtype: DType, //
+    ](value: SIMD[dtype, 1]) raises -> Self where dtype.is_integral():
+        """Initializes a BigUInt from any integral scalar.
+        This includes all SIMD integral types, both unsigned (UInt8, UInt16,
+        UInt32, UInt64, UInt128, UInt256 and the platform-sized `UInt`) and
+        signed (Int8, Int16, Int32, Int64, Int128, Int256 and the
+        platform-sized `Int`). Signed values must be non-negative.
+
+        Constraints:
+            The dtype must be integral.
+
+        Args:
+            value: The Scalar value to be converted to BigUInt.
+
+        Returns:
+            The BigUInt representation of the Scalar value.
+
+        Raises:
+            OverflowError: If the value is negative.
+
+        Notes:
+            This is the general entry point and the one backing
+            `BigUInt(value)`. It has to be able to raise, because a signed
+            scalar can be negative. Code that already holds an unsigned scalar,
+            and that cannot or does not want to raise, should call
+            `from_unsigned_integral_scalar()` directly instead.
+
+        Parameters:
+            dtype: The scalar data type, must be integral.
+        """
+
+        # Reject negatives. For an unsigned dtype this branch does not exist
+        # at all, so nothing is added to the unsigned path.
+        comptime if dtype.is_signed():
+            if value < 0:
+                raise OverflowError(
+                    function="BigUInt.from_integral_scalar()",
+                    message=(
+                        "The input value "
+                        + String(value)
+                        + " is negative and is not compatible with BigUInt."
+                    ),
+                )
+
+        # The value is now known to be non-negative, so move it into an
+        # unsigned word of the same width and hand it to the unsigned path.
+        # Casting to the unsigned counterpart rather than to a fixed type keeps
+        # the full range, so `Int.MIN`-style asymmetry never has to be
+        # special-cased.
+        comptime unsigned_dtype = unsigned_counterpart[dtype]()
+        return Self.from_unsigned_integral_scalar(Scalar[unsigned_dtype](value))
 
     @staticmethod
     def from_unsigned_integral_scalar[
@@ -517,39 +526,41 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
             The BigUInt representation of the Scalar value.
 
         Notes:
-            This method can handle generic unsigned integral scalar types. For
-            scalars whose width is smaller than 32 bits, we can directly convert
-            them to UInt32 and initialize the BigUInt with one word. For scalars
-            whose width is larger than and equal to 32 bits, we can repeatedly
-            divide the value by 1_000_000_000 and take the remainder as the
-            words of the BigUInt. Because the dtype is unsigned, we don't need
-            to worry about negative values.
-            - UInt8, UInt16: directly convert to UInt32.
-            - UInt32: Check whether one word or two words are needed.
-            - UInt64, UInt128, etc: repeatedly divide by 1_000_000_000.
-            - UIndex (UInt): repeatedly divide by 1_000_000_000.
+            An unsigned scalar can never be out of range for a BigUInt, so this
+            method cannot fail and is not marked `raises`. That is why it is
+            kept alongside the general `from_integral_scalar()`: it is the
+            entry point usable from non-raising code, such as the single-word
+            fast paths in `decimo.biguint.arithmetics`.
+
+            Scalars narrower than a base-10^9 word always fit in one word and
+            are converted directly. A 32-bit scalar needs one word or two,
+            decided by a comparison. Wider scalars are peeled one word at a
+            time by repeated division by 10^9; the number of words this can
+            produce is known at compile time from the scalar width, so the word
+            list is allocated exactly once and never grows.
 
         Parameters:
             dtype: The scalar data type, must be integral and unsigned.
         """
 
-        # Only allow unsigned integral types
         comptime assert (
             dtype.is_integral() and dtype.is_unsigned()
         ), "dtype must be unsigned integral."
 
-        # Evaluate the conditions at compile time.
-        # UInt8 and UInt16 can be directly converted to UInt32.
-        comptime if (dtype == DType.uint8) or (dtype == DType.uint16):
+        comptime value_bits = size_of[Scalar[dtype]]() * 8
+
+        # 8- and 16-bit scalars are at most 65_535 < 10^9, so one word always
+        # suffices and no division is needed.
+        comptime if value_bits <= 16:
             return Self(raw_words=[UInt32(value)])
 
-        # UInt32 is special, so we have a separate method for it.
-        comptime if dtype == DType.uint32:
-            if value <= 999_999_999:
-                # One word is enough
+        # A 32-bit scalar needs one word or two, decided by a comparison that
+        # is cheaper than the general division loop. This is a hot path: the
+        # single-word `add` fast paths land here.
+        elif value_bits == 32:
+            if value <= Self.BASE_MAX:
                 return Self(raw_words=[UInt32(value)])
             else:
-                # Two words are needed
                 return Self(
                     raw_words=[
                         UInt32(value) % UInt32(Self.BASE),
@@ -557,20 +568,30 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
                     ]
                 )
 
-        if value == 0:
-            return Self()
+        else:
+            if value == 0:
+                return Self()
 
-        var list_of_words = List[UInt32]()
-        var remainder: Scalar[dtype] = value
-        var quotient: Scalar[dtype]
+            # Upper bound on the number of base-10^9 words, evaluated at
+            # compile time so that the list is allocated once and never grows.
+            # A `w`-bit unsigned value has at most `floor(w * log10(2)) + 1`
+            # decimal digits; 30103/100000 is log10(2) rounded up, which is
+            # exact for every width in use (up to 256 bits).
+            comptime decimal_digits = value_bits * 30103 // 100000 + 1
+            comptime number_of_words = (
+                decimal_digits + 8
+            ) // 9  # Trick to round up division by the 9 digits per word
 
-        while remainder != 0:
-            quotient = remainder // Self.BASE
-            remainder = remainder % Self.BASE
-            list_of_words.append(UInt32(remainder))
-            remainder = quotient
+            var words = List[UInt32](capacity=number_of_words)
+            var remainder: Scalar[dtype] = value
+            var quotient: Scalar[dtype]
 
-        return Self(raw_words=list_of_words^)
+            while remainder != 0:
+                quotient = remainder // Self.BASE
+                words.append(UInt32(remainder % Self.BASE))
+                remainder = quotient
+
+            return Self(raw_words=words^)
 
     @staticmethod
     def from_absolute_integral_scalar[

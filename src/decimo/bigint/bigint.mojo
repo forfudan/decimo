@@ -27,6 +27,7 @@ for the Decimo library. It uses base-2^32 representation with UInt32 words
 in little-endian order, and a separate sign bit.
 """
 
+from std.bit import bit_width, pop_count
 from std.memory import Pointer, unsafe_memcpy
 from std.sys import size_of
 
@@ -185,15 +186,6 @@ struct BigInt(
             self.words = raw_words^
             self.sign = sign
 
-    @implicit
-    def __init__(out self, value: Int):
-        """Initializes a BigInt from an Int.
-
-        Args:
-            value: The integer value.
-        """
-        self = Self.from_int(value)
-
     def __init__(out self, value: String) raises:
         """Initializes a BigInt from a decimal string representation.
 
@@ -221,46 +213,6 @@ struct BigInt(
     # ===------------------------------------------------------------------=== #
     # Constructing methods that are not dunders
     # ===------------------------------------------------------------------=== #
-
-    # IMPORTANT:
-    # This function will be removed in the future when `Int` type is
-    # a comptime alias of `SIMD[DType.int, 1]`.
-    @staticmethod
-    def from_int(value: Int) -> Self:
-        """Creates a BigInt from a Mojo Int.
-
-        Args:
-            value: The integer value.
-
-        Returns:
-            The BigInt representation.
-        """
-        if value == 0:
-            return Self()
-
-        var sign: Bool
-        var magnitude: UInt
-
-        if value < 0:
-            sign = True
-            magnitude = UInt(0) - UInt(value)
-        else:
-            sign = False
-            magnitude = UInt(value)
-
-        comptime if size_of[Int]() == 4:
-            # 32-bit platform: magnitude fits in 1 word
-            return Self(raw_words=[UInt32(magnitude)], sign=sign)
-        elif size_of[Int]() == 8:
-            # 64-bit platform: at most 2 words
-            var words = List[UInt32](capacity=2)
-            words.append(UInt32(magnitude & 0xFFFF_FFFF))
-            var hi = UInt32(magnitude >> 32)
-            if hi != 0:
-                words.append(hi)
-            return Self(raw_words=words^, sign=sign)
-        else:
-            comptime assert False, "unsupported platform Int size"
 
     @staticmethod
     def from_integral_scalar[
@@ -1269,7 +1221,7 @@ struct BigInt(
         return bigint_comparison.greater(self, other)
 
     @always_inline
-    def __gt__(self, other: Int) -> Bool:
+    def __gt__(self, other: Scalar) -> Bool where other.dtype.is_integral():
         """Returns True if self > other.
 
         Args:
@@ -1278,7 +1230,7 @@ struct BigInt(
         Returns:
             `True` if self is greater than other, `False` otherwise.
         """
-        return bigint_comparison.greater(self, Self.from_int(other))
+        return bigint_comparison.greater(self, Self.from_integral_scalar(other))
 
     @always_inline
     def __ge__(self, other: Self) -> Bool:
@@ -1293,7 +1245,7 @@ struct BigInt(
         return bigint_comparison.greater_equal(self, other)
 
     @always_inline
-    def __ge__(self, other: Int) -> Bool:
+    def __ge__(self, other: Scalar) -> Bool where other.dtype.is_integral():
         """Returns True if self >= other.
 
         Args:
@@ -1302,7 +1254,9 @@ struct BigInt(
         Returns:
             `True` if self is greater than or equal to other, `False` otherwise.
         """
-        return bigint_comparison.greater_equal(self, Self.from_int(other))
+        return bigint_comparison.greater_equal(
+            self, Self.from_integral_scalar(other)
+        )
 
     @always_inline
     def __lt__(self, other: Self) -> Bool:
@@ -1317,7 +1271,7 @@ struct BigInt(
         return bigint_comparison.less(self, other)
 
     @always_inline
-    def __lt__(self, other: Int) -> Bool:
+    def __lt__(self, other: Scalar) -> Bool where other.dtype.is_integral():
         """Returns True if self < other.
 
         Args:
@@ -1326,7 +1280,7 @@ struct BigInt(
         Returns:
             `True` if self is less than other, `False` otherwise.
         """
-        return bigint_comparison.less(self, Self.from_int(other))
+        return bigint_comparison.less(self, Self.from_integral_scalar(other))
 
     @always_inline
     def __le__(self, other: Self) -> Bool:
@@ -1341,7 +1295,7 @@ struct BigInt(
         return bigint_comparison.less_equal(self, other)
 
     @always_inline
-    def __le__(self, other: Int) -> Bool:
+    def __le__(self, other: Scalar) -> Bool where other.dtype.is_integral():
         """Returns True if self <= other.
 
         Args:
@@ -1350,7 +1304,9 @@ struct BigInt(
         Returns:
             `True` if self is less than or equal to other, `False` otherwise.
         """
-        return bigint_comparison.less_equal(self, Self.from_int(other))
+        return bigint_comparison.less_equal(
+            self, Self.from_integral_scalar(other)
+        )
 
     @always_inline
     def __eq__(self, other: Self) -> Bool:
@@ -1365,7 +1321,7 @@ struct BigInt(
         return bigint_comparison.equal(self, other)
 
     @always_inline
-    def __eq__(self, other: Int) -> Bool:
+    def __eq__(self, other: Scalar) -> Bool where other.dtype.is_integral():
         """Returns True if self == other.
 
         Args:
@@ -1374,7 +1330,7 @@ struct BigInt(
         Returns:
             `True` if the two values are equal, `False` otherwise.
         """
-        return bigint_comparison.equal(self, Self.from_int(other))
+        return bigint_comparison.equal(self, Self.from_integral_scalar(other))
 
     @always_inline
     def __ne__(self, other: Self) -> Bool:
@@ -1389,7 +1345,7 @@ struct BigInt(
         return bigint_comparison.not_equal(self, other)
 
     @always_inline
-    def __ne__(self, other: Int) -> Bool:
+    def __ne__(self, other: Scalar) -> Bool where other.dtype.is_integral():
         """Returns True if self != other.
 
         Args:
@@ -1398,7 +1354,9 @@ struct BigInt(
         Returns:
             `True` if the two values are not equal, `False` otherwise.
         """
-        return bigint_comparison.not_equal(self, Self.from_int(other))
+        return bigint_comparison.not_equal(
+            self, Self.from_integral_scalar(other)
+        )
 
     # ===------------------------------------------------------------------=== #
     # Mathematical methods that do not implement a trait (not a dunder)
@@ -1592,8 +1550,8 @@ struct BigInt(
         return bigint_bitwise.bitwise_and(self, other)
 
     @always_inline
-    def __and__(self, other: Int) -> Self:
-        """Returns self & other where other is an Int.
+    def __and__(self, other: Scalar) -> Self where other.dtype.is_integral():
+        """Returns self & other where other is an integral scalar.
 
         Args:
             other: The right-hand side operand.
@@ -1616,8 +1574,8 @@ struct BigInt(
         return bigint_bitwise.bitwise_or(self, other)
 
     @always_inline
-    def __or__(self, other: Int) -> Self:
-        """Returns self | other where other is an Int.
+    def __or__(self, other: Scalar) -> Self where other.dtype.is_integral():
+        """Returns self | other where other is an integral scalar.
 
         Args:
             other: The right-hand side operand.
@@ -1640,8 +1598,8 @@ struct BigInt(
         return bigint_bitwise.bitwise_xor(self, other)
 
     @always_inline
-    def __xor__(self, other: Int) -> Self:
-        """Returns self ^ other where other is an Int.
+    def __xor__(self, other: Scalar) -> Self where other.dtype.is_integral():
+        """Returns self ^ other where other is an integral scalar.
 
         Args:
             other: The right-hand side operand.
@@ -1771,7 +1729,7 @@ struct BigInt(
             ValueError: If the exponent is negative or the modulus is not positive.
         """
         return bigint_number_theory.mod_pow(
-            self, Self.from_int(exponent), modulus
+            self, Self.from_integral_scalar(exponent), modulus
         )
 
     @always_inline
@@ -1855,14 +1813,9 @@ struct BigInt(
         var n_words = len(self.words)
         var msw = self.words[n_words - 1]
 
-        # Count bits in the most significant word
-        var bits_in_msw = 32
-        var probe: UInt32 = 1 << 31
-        while probe != 0 and (msw & probe) == 0:
-            bits_in_msw -= 1
-            probe >>= 1
-
-        return (n_words - 1) * 32 + bits_in_msw
+        # `std.bit.bit_width` lowers to a hardware `clz`, replacing the
+        # bit-at-a-time probe loop.
+        return (n_words - 1) * 32 + Int(bit_width(msw))
 
     def bit_count(self) -> Int:
         """Returns the number of ones in the binary representation of the
@@ -1881,13 +1834,11 @@ struct BigInt(
         BigInt(0).bit_count()    # 0
         ```
         """
+        # `std.bit.pop_count` lowers to a single `cnt` instruction, making
+        # this O(words) instead of O(set bits).
         var count = 0
         for i in range(len(self.words)):
-            var w = self.words[i]
-            # Kernighan's bit-counting trick
-            while w != 0:
-                w &= w - 1
-                count += 1
+            count += Int(pop_count(self.words[i]))
         return count
 
     def number_of_words(self) -> Int:

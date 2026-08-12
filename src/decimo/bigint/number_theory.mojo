@@ -20,6 +20,8 @@ Provides greatest common divisor (GCD), extended GCD, least common multiple
 (LCM), modular exponentiation, and modular multiplicative inverse.
 """
 
+from std.bit import count_trailing_zeros
+
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.comparison import compare_magnitudes
 from decimo.bigint.arithmetics import (
@@ -61,14 +63,9 @@ def _count_trailing_zeros(words: List[UInt32]) -> Int:
     if i == n:
         return 0  # Value is zero
 
-    # Count trailing zeros in the first non-zero word
-    var word = words[i]
-    var bits = 0
-    while (word & 1) == 0:
-        word >>= 1
-        bits += 1
-
-    return i * 32 + bits
+    # `std.bit.count_trailing_zeros` lowers to `rbit`+`clz` on arm64,
+    # replacing the bit-at-a-time shift loop.
+    return i * 32 + Int(count_trailing_zeros(words[i]))
 
 
 # ===----------------------------------------------------------------------=== #
