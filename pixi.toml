@@ -57,8 +57,9 @@ package_decimo = """pixi run mojo precompile src/decimo -o decimo.mojoc \
 
 # clean the package files in tests folder
 c = "clear && pixi run clean"
-clean = """rm tests/decimo.mojoc && \
-rm benches/decimo.mojoc"""
+# `-f`: `clean` runs first inside `format` (and hence `all`), so it must not
+# fail when the artifacts are absent (fresh checkout, or after a previous run).
+clean = "rm -f tests/decimo.mojoc benches/decimo.mojoc"
 
 # gmp/mpfr wrapper (compile C wrapper — no MPFR needed at build time)
 bgmp = "clear && pixi run buildgmp"
