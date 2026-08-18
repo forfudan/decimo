@@ -14,3 +14,15 @@ repos:
         language: system
         files: '\.py$'
         stages: [pre-commit]
+
+      # Wraps Markdown prose at 80 columns (rules + reflow config in
+      # rumdl.toml). `exclude` is repeated here because an explicit path on
+      # the command line overrides the `exclude` list in rumdl.toml, and
+      # pre-commit always passes staged files explicitly.
+      - id: rumdl
+        name: rumdl
+        entry: pixi run rumdl fmt
+        language: system
+        files: '\.md$'
+        exclude: '^docs/readme_zht\.md$'
+        stages: [pre-commit]

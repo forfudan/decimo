@@ -1,6 +1,7 @@
 # Decimo — User Manual <!-- omit from toc -->
 
-> Comprehensive guide to using the Decimo arbitrary-precision arithmetic library in Mojo.
+> Comprehensive guide to using the Decimo arbitrary-precision arithmetic library
+> in Mojo.
 
 All code examples below assume that you have imported the prelude at the top of
 your Mojo file:
@@ -49,7 +50,9 @@ from decimo.prelude import *
 
 ## Installation
 
-Decimo is available in the [modular-community](https://repo.prefix.dev/modular-community) package repository. Add it to your `channels` list in `pixi.toml`:
+Decimo is available in the
+[modular-community](https://repo.prefix.dev/modular-community) package
+repository. Add it to your `channels` list in `pixi.toml`:
 
 ```toml
 channels = ["https://conda.modular.com/max", "https://repo.prefix.dev/modular-community", "conda-forge"]
@@ -95,7 +98,10 @@ def main() raises:
 
 ### Overview
 
-`BigInt` (aliases `BInt`, `Integer`) is an arbitrary-precision signed integer type — the Mojo-native equivalent of Python's `int`. It supports unlimited-precision integer arithmetic, bitwise operations, and number-theoretic functions.
+`BigInt` (aliases `BInt`, `Integer`) is an arbitrary-precision signed integer
+type — the Mojo-native equivalent of Python's `int`. It supports
+unlimited-precision integer arithmetic, bitwise operations, and number-theoretic
+functions.
 
 | Property          | Value                        |
 | ----------------- | ---------------------------- |
@@ -121,7 +127,8 @@ var y = BInt(-100)
 var z: BInt = 42        # Implicit conversion from Int
 ```
 
-The constructor is marked `@implicit`, so Mojo can automatically convert `Int` to `BInt` where expected.
+The constructor is marked `@implicit`, so Mojo can automatically convert `Int`
+to `BInt` where expected.
 
 #### From `String` <!-- omit from toc -->
 
@@ -134,7 +141,9 @@ var e = BInt("1.23e5")                # Scientific notation (= 123000)
 var f = BInt("1991_10,18")            # Mixed separators (= 19911018)
 ```
 
-> **Note:** The string must represent an integer. `BInt("1.5")` raises an error. Scientific notation like `"1.23e5"` is accepted only if the result is an integer.
+> **Note:** The string must represent an integer. `BInt("1.5")` raises an error.
+> Scientific notation like `"1.23e5"` is accepted only if the result is an
+> integer.
 
 #### From `Scalar` (any integral SIMD type) <!-- omit from toc -->
 
@@ -144,7 +153,8 @@ var y = BInt(Int64(-5))
 var z: BInt = UInt32(99)     # Implicit conversion
 ```
 
-Accepts any integral scalar type (`Int8` through `Int256`, `UInt8` through `UInt256`, etc.).
+Accepts any integral scalar type (`Int8` through `Int256`, `UInt8` through
+`UInt256`, etc.).
 
 #### Summary of constructors <!-- omit from toc -->
 
@@ -159,7 +169,8 @@ Accepts any integral scalar type (`Int8` through `Int256`, `UInt8` through `UInt
 
 #### Unsafe constructors <!-- omit from toc -->
 
-These constructors skip validation for performance-sensitive code. The caller must ensure the data is valid.
+These constructors skip validation for performance-sensitive code. The caller
+must ensure the data is valid.
 
 | Constructor                               | Description                               |
 | ----------------------------------------- | ----------------------------------------- |
@@ -192,7 +203,8 @@ These constructors skip validation for performance-sensitive code. The caller mu
 
 #### In-place operators <!-- omit from toc -->
 
-`+=`, `-=`, `*=`, `//=`, `%=`, `<<=`, `>>=` are all supported and perform true in-place mutation to reduce memory allocation.
+`+=`, `-=`, `*=`, `//=`, `%=`, `<<=`, `>>=` are all supported and perform true
+in-place mutation to reduce memory allocation.
 
 ```mojo
 var a = BInt("12345678901234567890")
@@ -231,7 +243,8 @@ print(a.truncate_modulo(b))      #  1
 
 ### Comparison
 
-All six comparison operators (`==`, `!=`, `>`, `>=`, `<`, `<=`) are supported. Each accepts both `BInt` and `Int` as the right operand.
+All six comparison operators (`==`, `!=`, `>`, `>=`, `<`, `<=`) are supported.
+Each accepts both `BInt` and `Int` as the right operand.
 
 ```mojo
 var a = BInt("12345678901234567890")
@@ -249,7 +262,8 @@ a.compare_magnitudes(b)   # Compares |a| vs |b|
 
 ### Bitwise Operations
 
-All bitwise operations follow **Python's two's complement semantics** for negative numbers.
+All bitwise operations follow **Python's two's complement semantics** for
+negative numbers.
 
 | Operator | Description                  |
 | -------- | ---------------------------- |
@@ -258,7 +272,8 @@ All bitwise operations follow **Python's two's complement semantics** for negati
 | `a ^ b`  | Bitwise XOR                  |
 | `~a`     | Bitwise NOT: $~x = -(x + 1)$ |
 
-Each accepts both `BInt` and `Int` as the right operand. In-place variants (`&=`, `|=`, `^=`) are also available.
+Each accepts both `BInt` and `Int` as the right operand. In-place variants
+(`&=`, `|=`, `^=`) are also available.
 
 ```mojo
 var a = BInt(0b1100)
@@ -294,7 +309,8 @@ print(BInt(2).power(100))    # 2^100
 print(BInt(2) ** 100)         # Same via ** operator
 ```
 
-Both `power(exponent: Int)` and `power(exponent: BigInt)` are supported. The exponent must be non-negative.
+Both `power(exponent: Int)` and `power(exponent: BigInt)` are supported. The
+exponent must be non-negative.
 
 #### Integer square root <!-- omit from toc -->
 
@@ -308,7 +324,8 @@ Raises if the value is negative.
 
 ### Number Theory
 
-All number-theory operations are available as both **instance methods** and **free functions**:
+All number-theory operations are available as both **instance methods** and
+**free functions**:
 
 ```mojo
 from decimo import BInt, gcd, lcm, extended_gcd, mod_pow, mod_inverse
@@ -431,7 +448,10 @@ print(x.is_positive())      # True
 
 ### Overview — Decimal
 
-`Decimal` is an arbitrary-precision decimal type — the Mojo-native equivalent of Python's `decimal.Decimal`. It can represent numbers with unlimited digits and decimal places, making it suitable for financial modeling, scientific computing, and applications where floating-point errors are unacceptable.
+`Decimal` is an arbitrary-precision decimal type — the Mojo-native equivalent of
+Python's `decimal.Decimal`. It can represent numbers with unlimited digits and
+decimal places, making it suitable for financial modeling, scientific computing,
+and applications where floating-point errors are unacceptable.
 
 | Property          | Value                                   |
 | ----------------- | --------------------------------------- |
@@ -441,14 +461,25 @@ print(x.is_positive())      # True
 | Default precision | 28 significant digits                   |
 | Python equivalent | `decimal.Decimal`                       |
 
-`Decimal`, `BigDecimal`, and `BDec` are all the same type. We recommend `Decimal` for consistency with Python's `decimal.Decimal`.
+`Decimal`, `BigDecimal`, and `BDec` are all the same type. We recommend
+`Decimal` for consistency with Python's `decimal.Decimal`.
 
 ### How Precision Works
 
-- The default precision is **28** significant digits, matching Python's `decimal` module.
-- **Operators** `+` `-` `*` `+=` `-=` `*=` (and reflected `__radd__` / `__rsub__` / `__rmul__`) round their result HALF_EVEN to the default precision (28 significant digits), matching Python `decimal.Decimal` default-context arithmetic.
-- **Methods** `.add(other)` / `.subtract(other)` / `.multiply(other)` (and the in-place variants `.add_inplace(other)` / `.subtract_inplace(other)` / `.multiply_inplace(other)`) take an optional `precision: Int = 0` argument. The default `precision=0` returns the **exact, unrounded** result; passing `precision > 0` rounds HALF_EVEN to that many significant digits.
-- **Division** and **mathematical functions** (`sqrt`, `ln`, `exp`, etc.) accept an optional `precision` parameter specifying the number of **significant digits** in the result.
+- The default precision is **28** significant digits, matching Python's
+  `decimal` module.
+- **Operators** `+` `-` `*` `+=` `-=` `*=` (and reflected `__radd__` /
+  `__rsub__` / `__rmul__`) round their result HALF_EVEN to the default precision
+  (28 significant digits), matching Python `decimal.Decimal` default-context
+  arithmetic.
+- **Methods** `.add(other)` / `.subtract(other)` / `.multiply(other)` (and the
+  in-place variants `.add_inplace(other)` / `.subtract_inplace(other)` /
+  `.multiply_inplace(other)`) take an optional `precision: Int = 0` argument.
+  The default `precision=0` returns the **exact, unrounded** result; passing
+  `precision > 0` rounds HALF_EVEN to that many significant digits.
+- **Division** and **mathematical functions** (`sqrt`, `ln`, `exp`, etc.) accept
+  an optional `precision` parameter specifying the number of
+  **significant digits** in the result.
 
 ```mojo
 var a = Decimal("999999999999999999999999999999")  # 30 nines
@@ -472,15 +503,20 @@ print(x.sqrt(precision=100))   # 100 significant digits
 print(x.sqrt(precision=1000))  # 1000 significant digits
 ```
 
-> **Note:** The default precision of 28 will be configurable globally in a future version when Mojo supports global variables.
+> **Note:** The default precision of 28 will be configurable globally in a
+> future version when Mojo supports global variables.
 
 ### Construction — Decimal
 
-Decimal can be constructed from various types of input using the `Decimal()` constructor or factory methods. Among these, the most common way is from a **string representation** of the decimal number, which is the most accurate way to create a Decimal without any precision loss.
+Decimal can be constructed from various types of input using the `Decimal()`
+constructor or factory methods. Among these, the most common way is from a
+**string representation** of the decimal number, which is the most accurate way
+to create a Decimal without any precision loss.
 
 #### From `String` (Decimal) <!-- omit from toc -->
 
-It is highly recommended to construct `Decimal` from a string. Please consider using this method whenever possible.
+It is highly recommended to construct `Decimal` from a string. Please consider
+using this method whenever possible.
 
 ```mojo
 var a = Decimal("123456789.123456789")  # Basic decimal string
@@ -498,7 +534,9 @@ var y = Decimal()    # Default constructor creates zero, same as Decimal("0")
 
 #### From `Int` (Decimal) <!-- omit from toc -->
 
-Although you can construct a `Decimal` from an `Int` directly, it is still risky if the `Int` is so large that it exceeds the maximum value of `Int` (which is 2^63-1).
+Although you can construct a `Decimal` from an `Int` directly, it is still risky
+if the `Int` is so large that it exceeds the maximum value of `Int` (which is
+2^63-1).
 
 ```mojo
 # These work
@@ -517,17 +555,25 @@ var x = Decimal(Int64(123456789))
 var y = Decimal(UInt128(99999999999999))
 ```
 
-Works with all integral SIMD types. **Floating-point scalars are rejected at compile time** — use `from_float()` instead.
+Works with all integral SIMD types.
+**Floating-point scalars are rejected at compile time** — use `from_float()`
+instead.
 
 #### From floating-point — `from_float()` <!-- omit from toc -->
 
-When constructing a `Decimal` from a floating-point number, the number is first converted to its string representation and then parsed as a `Decimal`.
+When constructing a `Decimal` from a floating-point number, the number is first
+converted to its string representation and then parsed as a `Decimal`.
 
-Note that not all decimal numbers can be represented exactly as binary floating-point. You may lose precision without awareness.
+Note that not all decimal numbers can be represented exactly as binary
+floating-point. You may lose precision without awareness.
 
-To make the conversion from float to `Decimal` more explicit so that you are aware of the potential precision issues, the `Decimal()` constructor does not accept floating-point numbers directly. Instead, to create a `Decimal` from a float, you must use the `from_float()` factory method.
+To make the conversion from float to `Decimal` more explicit so that you are
+aware of the potential precision issues, the `Decimal()` constructor does not
+accept floating-point numbers directly. Instead, to create a `Decimal` from a
+float, you must use the `from_float()` factory method.
 
-Consider never using `Decimal.from_float()` in performance-sensitive code, but use string construction instead.
+Consider never using `Decimal.from_float()` in performance-sensitive code, but
+use string construction instead.
 
 ```mojo
 var x = Decimal.from_float(3.14159)
@@ -536,7 +582,8 @@ var y = Decimal.from_float(Float64(2.71828))
 
 #### From Python — `from_python_decimal()` <!-- omit from toc -->
 
-You can always safely construct a `Decimal` from a Python `decimal.Decimal` using the `from_python_decimal()` method without worrying about precision loss.
+You can always safely construct a `Decimal` from a Python `decimal.Decimal`
+using the `from_python_decimal()` method without worrying about precision loss.
 
 ```mojo
 from python import Python
@@ -563,7 +610,8 @@ var b = Decimal(py=py_dec)  # Alternative keyword-only syntax
 
 #### Unsafe Decimal constructors <!-- omit from toc -->
 
-These constructors skip validation for performance-sensitive code. The caller must ensure the data is valid.
+These constructors skip validation for performance-sensitive code. The caller
+must ensure the data is valid.
 
 | Constructor                                               | Description                            |
 | --------------------------------------------------------- | -------------------------------------- |
@@ -573,7 +621,8 @@ These constructors skip validation for performance-sensitive code. The caller mu
 
 ### Decimal Arithmetic
 
-Addition, subtraction, and multiplication are always **exact** (no precision loss).
+Addition, subtraction, and multiplication are always **exact** (no precision
+loss).
 
 | Expression    | Description                           | Exact?               |
 | ------------- | ------------------------------------- | -------------------- |
@@ -593,7 +642,8 @@ var c = Decimal("3.14") + 1        # Int → Decimal
 var d = Decimal("100") * UInt(8)   # UInt → Decimal
 ```
 
-In-place operators (`+=`, `-=`, `*=`) perform true in-place mutation for reduced allocation.
+In-place operators (`+=`, `-=`, `*=`) perform true in-place mutation for reduced
+allocation.
 
 ```mojo
 var a = Decimal("123456789.123456789")
@@ -605,7 +655,8 @@ print(a * b)   # 152415787654.32099750190521
 
 ### Division Methods
 
-Division is the primary operation where precision matters. Decimo provides several variants:
+Division is the primary operation where precision matters. Decimo provides
+several variants:
 
 #### `true_divide()` — recommended for decimal division <!-- omit from toc -->
 
@@ -672,7 +723,8 @@ print(round(Decimal("123.456"), 2))  # 123.46
 
 #### `quantize()` — match scale of another decimal <!-- omit from toc -->
 
-Adjusts the scale (number of decimal places) to match the scale of `exp`. The actual value of `exp` is ignored — only its scale matters.
+Adjusts the scale (number of decimal places) to match the scale of `exp`. The
+actual value of `exp` is ignored — only its scale matters.
 
 ```mojo
 var x = Decimal("1.2345")
@@ -726,7 +778,8 @@ print(x.round(0, ROUND_FLOOR))      # 2
 
 ### Mathematical Functions — Roots and Powers
 
-All mathematical functions accept an optional `precision` parameter (default=28).
+All mathematical functions accept an optional `precision` parameter
+(default=28).
 
 #### Square root <!-- omit from toc -->
 
@@ -772,7 +825,8 @@ print(Decimal("10").exp(precision=50))   # e^10 to 50 digits
 print(Decimal("10").ln(precision=50))    # ln(10) to 50 digits
 ```
 
-For repeated calls, a `MathCache` can be used to avoid recomputing cached constants:
+For repeated calls, a `MathCache` can be used to avoid recomputing cached
+constants:
 
 ```mojo
 from decimo.bigdecimal.exponential import MathCache
@@ -798,7 +852,8 @@ print(Decimal("2").log10(precision=50))
 
 ### Mathematical Functions — Trigonometric
 
-All trigonometric functions take inputs in **radians** and accept an optional `precision` parameter.
+All trigonometric functions take inputs in **radians** and accept an optional
+`precision` parameter.
 
 #### Basic functions <!-- omit from toc -->
 
@@ -858,7 +913,8 @@ print(x.to_string(line_width=20))                 # Multi-line output
 print(x.to_string(force_plain=True))              # Suppress auto-scientific notation
 ```
 
-Default output follows CPython's `Decimal.__str__()` rules: plain notation when feasible, scientific notation when there would be more than 6 leading zeros.
+Default output follows CPython's `Decimal.__str__()` rules: plain notation when
+feasible, scientific notation when there would be more than 6 leading zeros.
 
 Convenience aliases:
 

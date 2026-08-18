@@ -4,10 +4,20 @@
 > Author: Yuhao Zhu  
 > Scope: A new integer type with 2^32-based internal representation
 
-> [!Note]
-> COMPLETED: The new `BigInt2` implementation is completed and renamed to `BInt`. The old `BigInt` is renamed to `BigInt10` and will be hidden from users in the future.
+> [!Note] COMPLETED: The new `BigInt2` implementation is completed and renamed
+> to `BInt`. The old `BigInt` is renamed to `BigInt10` and will be hidden from
+> users in the future.
 
-The current `BigInt10` is based on `BigUInt` which uses a decimal representation with a base of 10^9. This design choice is to re-use the same data structure for the buffers of `BigInt10` (as we implemented `BigUInt` initially for `BigDecimal`). However, when users use `BigInt10` for general integer arithmetic, a binary representation with a base of 2^32 (or 2^64) would be more efficient. Thus, it is nice to have a separate binary implementation of `BigInt2` as the core integer type, while keeping the current decimal implementation of `BigInt10` for some special use cases (e.g., as a intermediate type when printing `BigInt2`). The `BigUInt` will continue to serve as the base type for `BigDecimal`.
+The current `BigInt10` is based on `BigUInt` which uses a decimal representation
+with a base of 10^9. This design choice is to re-use the same data structure for
+the buffers of `BigInt10` (as we implemented `BigUInt` initially for
+`BigDecimal`). However, when users use `BigInt10` for general integer
+arithmetic, a binary representation with a base of 2^32 (or 2^64) would be more
+efficient. Thus, it is nice to have a separate binary implementation of
+`BigInt2` as the core integer type, while keeping the current decimal
+implementation of `BigInt10` for some special use cases (e.g., as a intermediate
+type when printing `BigInt2`). The `BigUInt` will continue to serve as the base
+type for `BigDecimal`.
 
 ## Type system and renaming plan
 
@@ -30,16 +40,21 @@ In the future, we will have:
 | `BigUInt`    | `BUInt`           | Decimal，as base type for `BigDecimal`, hidden from users | 10^9                    |
 | `Decimal128` | `Dec128`          | Decimal，128-bit fixed precision                          | -                       |
 
-Current `BigInt10` and `BigUInt` are implemented based on 10^9 decimal representation. `BigUInt` will continue to serve as the base type for `BigDecimal`.
+Current `BigInt10` and `BigUInt` are implemented based on 10^9 decimal
+representation. `BigUInt` will continue to serve as the base type for
+`BigDecimal`.
 
-At the same time, we will develop a new binary implementation of `BigInt2` as the core integer type.
+At the same time, we will develop a new binary implementation of `BigInt2` as
+the core integer type.
 
 Once `BigInt2` is stable and performs well, we will proceed with renaming:
 
 - `BigInt` will be renamed to `BigInt10`
 - The alias `BInt` will be assigned to `BigInt2` (binary implementation)
 
-Then `BigInt10` and `BigUInt` will be hidden from users, leaving only `BigInt2` (binary implementation) and `BigDecimal` (decimal implementation) exposed to users.
+Then `BigInt10` and `BigUInt` will be hidden from users, leaving only `BigInt2`
+(binary implementation) and `BigDecimal` (decimal implementation) exposed to
+users.
 
 ## The size of limbs
 

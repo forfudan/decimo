@@ -24,7 +24,8 @@ If the upstream license texts change, replace the affected file with
 a fresh plain-text snapshot fetched from the canonical source:
 
 - Modular Community License: <https://www.modular.com/legal/community>
-- GCC Runtime Library Exception 3.1: <https://www.gnu.org/licenses/gcc-exception-3.1.html>
+- GCC Runtime Library Exception 3.1:
+  <https://www.gnu.org/licenses/gcc-exception-3.1.html>
 
 Then bump the relevant version/date noted at the top of the file and
 trigger a new release build.

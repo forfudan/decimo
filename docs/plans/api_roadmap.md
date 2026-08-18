@@ -6,20 +6,31 @@
 
 ## Summary
 
-The functional core of Decimo is solid after a series of optimizations and improvements. Now I am back to think about the API surface and usability. My main goal is to provide Pythonistas a familiar and intuitive experience when using Decimo types, while incorporating some new and modern features that leverage the strengths of the Mojo programming language (note that it is a static language).
+The functional core of Decimo is solid after a series of optimizations and
+improvements. Now I am back to think about the API surface and usability. My
+main goal is to provide Pythonistas a familiar and intuitive experience when
+using Decimo types, while incorporating some new and modern features that
+leverage the strengths of the Mojo programming language (note that it is a
+static language).
 
 The main areas for further improvement are:
 
 1. **API consistency across types** — naming, method availability, field access
-2. **Python compatibility gaps** — missing dunders and named methods that Python users expect  
+2. **Python compatibility gaps** — missing dunders and named methods that Python
+   users expect  
 3. **Modern ergonomics** — method-based API already started, needs completion
 4. **Missing RoundingMode variants** — 4 of 8 Python modes absent
 
-Note that `Decimal128` is not among the priority at this stage because it is a fixed-width type and is not a big number. For the release of v0.8 or v0.9, I should focus only on `BigDecimal` and `BigInt` because they have direct Python counterparties. For `BigUInt`, the priority is lower because it is not directly exposed to users.
+Note that `Decimal128` is not among the priority at this stage because it is a
+fixed-width type and is not a big number. For the release of v0.8 or v0.9, I
+should focus only on `BigDecimal` and `BigInt` because they have direct Python
+counterparties. For `BigUInt`, the priority is lower because it is not directly
+exposed to users.
 
 ## Part I: Cross-Type Consistency Issues
 
-These inconsistencies will confuse users who use both types in the same codebase.
+These inconsistencies will confuse users who use both types in the same
+codebase.
 
 ### 1.1 Naming: Free Function Inconsistencies
 
@@ -31,7 +42,9 @@ These inconsistencies will confuse users who use both types in the same codebase
 
 ### 1.2 Field Access vs Method Access
 
-BigDecimal exposes internal state via direct field access (`self.scale`, `self.coefficient`, `self.sign`). Consider adding accessor methods for a cleaner public API:
+BigDecimal exposes internal state via direct field access (`self.scale`,
+`self.coefficient`, `self.sign`). Consider adding accessor methods for a cleaner
+public API:
 
 | What        | Current (BigDecimal)            | Recommendation                                                          |
 | ----------- | ------------------------------- | ----------------------------------------------------------------------- |
@@ -172,19 +185,23 @@ These are the gaps vs Python's `decimal.Decimal`, prioritized by user impact.
 
 ## Part V: Ergonomic Improvements (Static Language Features)
 
-These go beyond Python compatibility — they make the API feel native to a static language.
+These go beyond Python compatibility — they make the API feel native to a static
+language.
 
 ### 5.1 Method-Based API (Already Started — Complete It)
 
-BigDecimal already has method-based math: `x.sqrt()`, `x.exp()`, `x.ln()`, `x.sin()` etc.
+BigDecimal already has method-based math: `x.sqrt()`, `x.exp()`, `x.ln()`,
+`x.sin()` etc.
 
 **Gaps to fill:**
 
-- BigDecimal: ensure all free functions have method counterparts (e.g., `truncate_modulo` is free def only)
+- BigDecimal: ensure all free functions have method counterparts (e.g.,
+  `truncate_modulo` is free def only)
 
 ### 5.2 Fluent / Chainable API
 
-Currently methods return new values (immutable style), which is good. But some things to consider:
+Currently methods return new values (immutable style), which is good. But some
+things to consider:
 
 ```mojo
 # This already works:
@@ -194,7 +211,8 @@ var result = x.sqrt().round(2)
 var result = a.add(b).multiply(c)  # ← NOT currently possible, no add() instance method for BigDecimal
 ```
 
-Consider adding `add()`, `sub()`, `mul()`, `div()` as instance method aliases for chaining:
+Consider adding `add()`, `sub()`, `mul()`, `div()` as instance method aliases
+for chaining:
 
 ```mojo
 # Python-like (already works):
@@ -218,9 +236,13 @@ var y = x.with_precision(6)                # keep 6 significant digits
 
 ### 5.4 Operator Overloads with `Int` (BigDecimal)
 
-Mojo's `@implicit` decorator on `BigDecimal.__init__(out self, value: Int)` handles this automatically. `BigDecimal("1.5") + 1` already works — the `Int` is implicitly converted to `BigDecimal` before the operator is called. No explicit `Int` overloads needed.
+Mojo's `@implicit` decorator on `BigDecimal.__init__(out self, value: Int)`
+handles this automatically. `BigDecimal("1.5") + 1` already works — the `Int` is
+implicitly converted to `BigDecimal` before the operator is called. No explicit
+`Int` overloads needed.
 
-Thus, we can clean the `Int` operator overloads from the API, since they are redundant with the implicit conversion.
+Thus, we can clean the `Int` operator overloads from the API, since they are
+redundant with the implicit conversion.
 
 ### 5.5 Named Constructors for Common Patterns
 
@@ -264,24 +286,35 @@ x.is_close(y, rel_tol=BigDecimal("1e-9"))
 
 ### ✓ Tier 1: Completed
 
-1. ✓ **Naming cleanup** — removed old aliases `equals`/`not_equals`/`less_than`/`greater_than`/`less_than_or_equal`/`greater_than_or_equal` from BigDecimal `comparison.mojo`
+1. ✓ **Naming cleanup** — removed old aliases
+   `equals`/`not_equals`/`less_than`/`greater_than`/`less_than_or_equal`/`greater_than_or_equal`
+   from BigDecimal `comparison.mojo`
 2. ✓ **`__rtruediv__()`** on BigDecimal — `1 / some_decimal` now works
 3. ✓ **`is_positive()`** on BigDecimal
-4. ✓ **`number_of_digits()`** on BigDecimal (`number_of_significant_digits()` removed — identical behavior, not a Python API)
+4. ✓ **`number_of_digits()`** on BigDecimal (`number_of_significant_digits()`
+   removed — identical behavior, not a Python API)
 5. ✓ **`to_scientific_string()`** and **`to_eng_string()`** on BigDecimal
 
 ### Tier 2: Important (Remaining)
 
-1. ✓ **`as_tuple()`** on BigDecimal — returns `(sign: Bool, digits: List[UInt8], exponent: Int)` matching Python's `DecimalTuple`
+1. ✓ **`as_tuple()`** on BigDecimal — returns
+   `(sign: Bool, digits: List[UInt8], exponent: Int)` matching Python's
+   `DecimalTuple`
 2. ✓ **`copy_abs()` / `copy_negate()` / `copy_sign(other)`** on BigDecimal
-3. ✓ **`adjusted()`** on BigDecimal — renamed from `exponent()` to match Python's `Decimal.adjusted()`
+3. ✓ **`adjusted()`** on BigDecimal — renamed from `exponent()` to match
+   Python's `Decimal.adjusted()`
 4. ✓ **`same_quantum(other)`** on BigDecimal
 5. ✓ **`ROUND_HALF_DOWN`** rounding mode
-6. ✓ **`scaleb(n)`** on BigDecimal — adjusts scale by `n` (O(1), no coefficient change)
-7. ✓ **`bit_count()`** on BigInt — popcount (Kernighan's algorithm over UInt32 words)
-8. ✓ **`__float__()`** on BigInt — `float(n)` via `Float64(String(self))`; `FloatableRaising` trait added
-9. ✓ **`fma(a, b)`** on BigDecimal — `self * a + b` (exact, no intermediate rounding)
-10. ✓ **`to_string_with_separators()`** on BigDecimal — alias for `to_string(delimiter=...)`
+6. ✓ **`scaleb(n)`** on BigDecimal — adjusts scale by `n` (O(1), no coefficient
+   change)
+7. ✓ **`bit_count()`** on BigInt — popcount (Kernighan's algorithm over UInt32
+   words)
+8. ✓ **`__float__()`** on BigInt — `float(n)` via `Float64(String(self))`;
+   `FloatableRaising` trait added
+9. ✓ **`fma(a, b)`** on BigDecimal — `self * a + b` (exact, no intermediate
+   rounding)
+10. ✓ **`to_string_with_separators()`** on BigDecimal — alias for
+    `to_string(delimiter=...)`
 
 ### Tier 3: Nice-to-Have (Remaining)
 
@@ -291,7 +324,8 @@ x.is_close(y, rel_tol=BigDecimal("1e-9"))
 4. `from_fraction(num, den, precision)` on BigDecimal
 5. `to_bytes()` / `from_bytes()` on BigInt
 6. `to_integral_value()` / `remainder_near()` on BigDecimal
-7. Method aliases for chaining (`add()`, `sub()`, `mul()`, `div()`) on BigDecimal
+7. Method aliases for chaining (`add()`, `sub()`, `mul()`, `div()`) on
+   BigDecimal
 8. `__hash__()` when Mojo's Hashable trait matures
 
 ### Tier 4: Completeness (Low urgency)

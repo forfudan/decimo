@@ -1,6 +1,7 @@
 # Decimo CLI Calculator — User Manual <!-- omit from toc -->
 
-> `decimo` — A native arbitrary-precision command-line calculator powered by Decimo and ArgMojo.
+> `decimo` — A native arbitrary-precision command-line calculator powered by
+> Decimo and ArgMojo.
 
 - [Overview](#overview)
 - [Installation](#installation)
@@ -48,10 +49,13 @@
 `decimo` is a command-line calculator that supports:
 
 - **Arbitrary-precision arithmetic** — no limit on the number of digits.
-- **High-precision mathematical functions** — `sqrt`, `ln`, `exp`, `sin`, `cos`, `tan`, and more.
+- **High-precision mathematical functions** — `sqrt`, `ln`, `exp`, `sin`, `cos`,
+  `tan`, and more.
 - **Mathematical constants** — `pi` and `e` to any number of digits.
-- **Output formatting** — scientific, engineering, digit separators, trailing zero padding.
-- **Multiple rounding modes** — half-even (banker's), half-up, half-down, up, down, ceiling, floor.
+- **Output formatting** — scientific, engineering, digit separators, trailing
+  zero padding.
+- **Multiple rounding modes** — half-even (banker's), half-up, half-down, up,
+  down, ceiling, floor.
 
 It compiles to a **single native binary** with zero runtime dependencies.
 
@@ -103,7 +107,9 @@ decimo "2^256"
 - **Negative expressions:** `-3*pi`, `-3*pi*(sin(1))`
 - **Unary minus:** `2 * -3`, `sqrt(-1 + 2)`
 
-Negative numbers and many expressions starting with `-` can be passed directly as the positional argument. See [Negative Expressions](#negative-expressions) for details.
+Negative numbers and many expressions starting with `-` can be passed directly
+as the positional argument. See [Negative Expressions](#negative-expressions)
+for details.
 
 ### Operators
 
@@ -117,7 +123,8 @@ Negative numbers and many expressions starting with `-` can be passed directly a
 | `**`     | Power (alias)  | `2 ** 10`     | `1024`      |
 | `(`, `)` | Grouping       | `(2 + 3) * 4` | `20`        |
 
-> **Note:** Division always produces a decimal result. `7 / 2` gives `3.5`, not `3`.
+> **Note:** Division always produces a decimal result. `7 / 2` gives `3.5`, not
+> `3`.
 
 ### Operator Precedence
 
@@ -130,11 +137,13 @@ From lowest to highest:
 |     3      | `^` / `**` |     Right     |
 |  4 (high)  | unary `-`  |     Right     |
 
-Right-associativity of `^` means `2^3^2` = `2^(3^2)` = `2^9` = `512`, not `(2^3)^2` = `64`.
+Right-associativity of `^` means `2^3^2` = `2^(3^2)` = `2^9` = `512`, not
+`(2^3)^2` = `64`.
 
 ### Functions
 
-All functions use the CLI's precision setting (default 50, configurable with `-P`).
+All functions use the CLI's precision setting (default 50, configurable with
+`-P`).
 
 **Single-argument functions:**
 
@@ -215,9 +224,13 @@ decimo "123456789 * 987654321" -E
 
 ### Pad to Precision (`--pad`)
 
-Pad trailing zeros so the fractional part has exactly `precision` digits after the decimal point.
+Pad trailing zeros so the fractional part has exactly `precision` digits after
+the decimal point.
 
-When used together with `--precision`, the `precision` value is treated as the number of fractional digits for padding purposes, not as a strict limit on total significant digits. As a result, the formatted number can have more than `precision` significant digits.
+When used together with `--precision`, the `precision` value is treated as the
+number of fractional digits for padding purposes, not as a strict limit on total
+significant digits. As a result, the formatted number can have more than
+`precision` significant digits.
 
 ```bash
 decimo "1.5" --pad -P 10
@@ -238,7 +251,8 @@ decimo "pi" -P 30 --delimiter _
 
 ### Rounding Mode (`--rounding-mode`, `-R`)
 
-Choose how the final result is rounded. Default: **half-even** (banker's rounding).
+Choose how the final result is rounded. Default: **half-even** (banker's
+rounding).
 
 | Mode        | Description                         |
 | ----------- | ----------------------------------- |
@@ -259,7 +273,8 @@ decimo "1/6" -P 5 -R up            # 0.16667
 
 ## Input Modes
 
-`decimo` accepts input in four ways: a single expression on the command line, piped stdin, a file, or an interactive REPL session.
+`decimo` accepts input in four ways: a single expression on the command line,
+piped stdin, a file, or an interactive REPL session.
 
 | Mode       | Invocation              | When used                                          |
 | ---------- | ----------------------- | -------------------------------------------------- |
@@ -276,11 +291,13 @@ Pass a single expression as the positional argument:
 decimo "1/3" -P 100
 ```
 
-This is the most common usage. See [Expression Syntax](#expression-syntax) for what you can write.
+This is the most common usage. See [Expression Syntax](#expression-syntax) for
+what you can write.
 
 ### Pipe Mode (stdin)
 
-When no positional argument is provided and stdin is piped, `decimo` reads all of stdin and evaluates each non-empty, non-comment line:
+When no positional argument is provided and stdin is piped, `decimo` reads all
+of stdin and evaluates each non-empty, non-comment line:
 
 ```bash
 # Single expression
@@ -299,13 +316,16 @@ printf '# constants\npi\n\ne' | decimo -P 10
 # → 2.718281828
 ```
 
-All CLI options (`-P`, `-S`, `-E`, `--delimiter`, `-R`, `--pad`) apply to every line.
+All CLI options (`-P`, `-S`, `-E`, `--delimiter`, `-R`, `--pad`) apply to every
+line.
 
-If any expression fails, `decimo` prints the error for that line, continues evaluating the remaining lines, and exits with code 1.
+If any expression fails, `decimo` prints the error for that line, continues
+evaluating the remaining lines, and exits with code 1.
 
 ### File Mode (`-F`)
 
-Use the `-F` (or `--file`) flag to evaluate expressions from a file, one per line:
+Use the `-F` (or `--file`) flag to evaluate expressions from a file, one per
+line:
 
 ```bash
 decimo -F expressions.dm -P 50
@@ -327,13 +347,17 @@ sqrt(2)
 ln(10)
 ```
 
-Comments start with `#`. Inline comments are also supported (e.g. `1+2 # add`). Leading whitespace before `#` is allowed. Blank lines and whitespace-only lines are skipped.
+Comments start with `#`. Inline comments are also supported (e.g. `1+2 # add`).
+Leading whitespace before `#` is allowed. Blank lines and whitespace-only lines
+are skipped.
 
-If the specified file does not exist or cannot be read, `decimo` reports an error and exits.
+If the specified file does not exist or cannot be read, `decimo` reports an
+error and exits.
 
 ### Interactive REPL
 
-When invoked with no expression and stdin is a TTY, `decimo` launches an interactive session:
+When invoked with no expression and stdin is a TTY, `decimo` launches an
+interactive session:
 
 ```sh
 $ decimo
@@ -351,13 +375,15 @@ decimo> x ^ 2
 decimo> :q
 ```
 
-**All input is case-insensitive** — `PI`, `Sqrt`, `SIN` are equivalent to `pi`, `sqrt`, `sin`.
+**All input is case-insensitive** — `PI`, `Sqrt`, `SIN` are equivalent to `pi`,
+`sqrt`, `sin`.
 
 #### Variables
 
 - `ans` — automatically holds the result of the last successful evaluation.
 - `name = expr` — assigns the result of `expr` to a user-defined variable.
-- Protected names (`pi`, `e`, `ans`, function names) cannot be used as variable names.
+- Protected names (`pi`, `e`, `ans`, function names) cannot be used as variable
+  names.
 
 #### Settings commands (prefix with `:`)
 
@@ -375,7 +401,8 @@ decimo> :q
 
 #### Inline temp settings
 
-Append `:<settings>` to an expression to override settings for that single evaluation:
+Append `:<settings>` to an expression to override settings for that single
+evaluation:
 
 ```sh
 decimo> sqrt(2):p 100
@@ -397,7 +424,8 @@ Type `:q`, `exit`, `quit`, or press Ctrl-D.
 
 ### Quoting Expressions
 
-The shell interprets `*`, `(`, `)`, and other characters before `decimo` sees them. **Always wrap expressions in quotes:**
+The shell interprets `*`, `(`, `)`, and other characters before `decimo` sees
+them. **Always wrap expressions in quotes:**
 
 ```bash
 # ✓ Correct: quoted
@@ -409,7 +437,8 @@ decimo 2 * (3 + 4)
 
 ### Negative Expressions
 
-Most expressions starting with a hyphen (`-`) are treated as positional arguments, not as option flags:
+Most expressions starting with a hyphen (`-`) are treated as positional
+arguments, not as option flags:
 
 ```bash
 # Negative number
@@ -429,7 +458,8 @@ decimo -P 10 "-3*pi"
 decimo "-3*pi" -P 10
 ```
 
-Because all short option names are uppercase (`-P`, `-S`, `-E`, `-R`), expressions like `-e`, `-sin(1)`, and `-pi` are never mistaken for flags:
+Because all short option names are uppercase (`-P`, `-S`, `-E`, `-R`),
+expressions like `-e`, `-sin(1)`, and `-pi` are never mistaken for flags:
 
 ```bash
 # Euler's number, negated
@@ -471,7 +501,8 @@ decimo 2*(3+4)
 
 ### Shell Completions
 
-`decimo` can generate completion scripts for **Bash**, **Zsh**, and **Fish**. Tab-completion will suggest option names, rounding mode values, and file paths.
+`decimo` can generate completion scripts for **Bash**, **Zsh**, and **Fish**.
+Tab-completion will suggest option names, rounding mode values, and file paths.
 
 **Zsh** — add to `~/.zshrc`:
 
@@ -493,11 +524,16 @@ decimo --completions fish | source
 decimo --completions fish > ~/.config/fish/completions/decimo.fish
 ```
 
-After reloading your shell, pressing Tab after `decimo -` will show all available options, and pressing Tab after `--rounding-mode` will list the seven available modes.
+After reloading your shell, pressing Tab after `decimo -` will show all
+available options, and pressing Tab after `--rounding-mode` will list the seven
+available modes.
 
 ## Performance
 
-`decimo` compiles to a single native binary. For most expressions, end-to-end latency is dominated by process startup rather than computation. The benchmark suite verifies both **correctness** (results agree with `bc` and `python3` to 15 significant digits) and **performance** (wall-clock timing).
+`decimo` compiles to a single native binary. For most expressions, end-to-end
+latency is dominated by process startup rather than computation. The benchmark
+suite verifies both **correctness** (results agree with `bc` and `python3` to 15
+significant digits) and **performance** (wall-clock timing).
 
 Typical latencies (measured on Apple M1 Max, macOS):
 
@@ -513,9 +549,13 @@ Typical latencies (measured on Apple M1 Max, macOS):
 | `pi`                |   1000    |   ~49 ms |  ~13 ms |    ~40 ms |   ✓   |
 | pipe: 5 mixed exprs |    50     |    ~8 ms |     N/A |       N/A |       |
 
-Tokenizer and parser overhead is negligible — trivial (`1+1`) and moderate (`sqrt(2)`) expressions complete in ~5 ms. Computation time only becomes visible for expensive operations at very high precision (e.g., computing π to 1000 digits).
+Tokenizer and parser overhead is negligible — trivial (`1+1`) and moderate
+(`sqrt(2)`) expressions complete in ~5 ms. Computation time only becomes visible
+for expensive operations at very high precision (e.g., computing π to 1000
+digits).
 
-`decimo` is **3–4× faster than `python3`** and comparable to `bc` (a lightweight BSD utility).
+`decimo` is **3–4× faster than `python3`** and comparable to `bc` (a lightweight
+BSD utility).
 
 To run the full benchmark (correctness + performance, all 3 tools):
 

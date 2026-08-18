@@ -35,8 +35,9 @@
 
 Limo (**li**ne + **mo**jo) is a minimal, zero-dependency line-editing library
 that gives the decimo REPL arrow-key navigation, Emacs-style keyboard shortcuts,
-and input history. It is inspired by [linenoise](https://github.com/antirez/linenoise)
-(a ~1,100-line C line editor by Salvatore Sanfilippo) and adapted from
+and input history. It is inspired by
+[linenoise](https://github.com/antirez/linenoise) (a ~1,100-line C line editor
+by Salvatore Sanfilippo) and adapted from
 [termo](https://github.com/forfudan/termo) (a Mojo terminal control library by
 the same author).
 
@@ -48,7 +49,8 @@ into its own standalone repository.
 
 - **Minimal** — two modules plus an `__init__`, under 900 lines total.
 - **No dependencies** — only uses Mojo's standard library and libc FFI calls.
-- **Focused** — single-line editing only. No multi-line, no TUI, no screen buffer.
+- **Focused** — single-line editing only. No multi-line, no TUI, no screen
+  buffer.
 - **Reusable** — any Mojo CLI tool could import limo for interactive input.
 
 ## Quick Start
@@ -119,13 +121,14 @@ the next two sections give you the essential background.
 ### Background: What Is a Terminal Driver?
 
 When you type in a terminal app (Terminal.app, iTerm2, etc.), your keystrokes
-don't go directly to your program. They pass through a component in the OS kernel
-called the **terminal driver** (also called the "tty driver" or "line discipline").
+don't go directly to your program. They pass through a component in the OS
+kernel called the **terminal driver** (also called the "tty driver" or "line
+discipline").
 
-The terminal driver sits between the physical input (keyboard) and your program's
-stdin. It can buffer input, echo characters, interpret special keys (Ctrl+C to
-kill, Ctrl+Z to suspend), and do newline/carriage-return translation — all before
-your program ever sees a byte.
+The terminal driver sits between the physical input (keyboard) and your
+program's stdin. It can buffer input, echo characters, interpret special keys
+(Ctrl+C to kill, Ctrl+Z to suspend), and do newline/carriage-return translation
+— all before your program ever sees a byte.
 
 ```txt
 ┌──────────┐     ┌──────────────────┐     ┌──────────────┐
@@ -251,7 +254,8 @@ The termios struct contains an array called `c_cc[]` (control characters) with
 20 entries. Each entry configures a different aspect of terminal behavior. The
 two we care about:
 
-- **VMIN = 1** means "a read() call should return after receiving at least 1 byte."
+- **VMIN = 1** means "a read() call should return after receiving at least 1
+  byte."
 - **VTIME = 0** means "no timeout — wait indefinitely for that byte."
 
 Together, these give us **blocking single-byte reads**: the program waits until
@@ -309,19 +313,20 @@ The private FFI functions in terminal.mojo (all prefixed with `_`):
 
 ### FFI Signature Convention (Alignment with argmojo)
 
-Limo calls three POSIX C functions via `external_call`: `tcgetattr`, `tcsetattr`,
-and `read`. The **argmojo** package ([forfudan/argmojo](https://github.com/forfudan/argmojo))
-also calls the same three C functions in its `utils.mojo` for interactive password
-input.
+Limo calls three POSIX C functions via `external_call`: `tcgetattr`,
+`tcsetattr`, and `read`. The **argmojo** package
+([forfudan/argmojo](https://github.com/forfudan/argmojo)) also calls the same
+three C functions in its `utils.mojo` for interactive password input.
 
 In Mojo, `external_call["func_name", ReturnType, ArgType1, ArgType2, ...]`
-generates an LLVM IR declaration for the named C function. When two Mojo packages
-both call `external_call` with the **same C function name**, LLVM merges them
-into a single declaration — so the type lists **must** be identical. If package A
-declares `tcgetattr(Int32, UnsafePointer) -> Int32` and package B declares
-`tcgetattr(Int, Int) -> Int`, LLVM sees two conflicting declarations for the same
-global symbol `@tcgetattr` and refuses to compile. Mojo namespaces are irrelevant
-here — `external_call` bypasses them and produces a flat C-level symbol.
+generates an LLVM IR declaration for the named C function. When two Mojo
+packages both call `external_call` with the **same C function name**, LLVM
+merges them into a single declaration — so the type lists **must** be identical.
+If package A declares `tcgetattr(Int32, UnsafePointer) -> Int32` and package B
+declares `tcgetattr(Int, Int) -> Int`, LLVM sees two conflicting declarations
+for the same global symbol `@tcgetattr` and refuses to compile. Mojo namespaces
+are irrelevant here — `external_call` bypasses them and produces a flat C-level
+symbol.
 
 The solution is simple: **use the same signature as argmojo**. Both libraries
 pass all integer and pointer arguments as `Int` (which is `i64` on 64-bit
@@ -350,7 +355,8 @@ These are the public functions that `line_editor.mojo` uses to manage raw mode:
 The main entry point for raw mode. Here's what it does step by step:
 
 1. Checks that stdin is actually a terminal (not a pipe or file).
-2. Creates an empty `TermIOS` and asks the OS to fill it with the current settings.
+2. Creates an empty `TermIOS` and asks the OS to fill it with the current
+   settings.
 3. Makes a copy of those original settings.
 4. Calls `make_raw()` on the copy to configure it for raw mode.
 5. Applies the raw settings to the terminal.
@@ -358,13 +364,13 @@ The main entry point for raw mode. Here's what it does step by step:
 
 **`disable_raw_mode(original_settings) raises`**
 
-Restores the terminal to the given settings. Called when everything went well and
-we can propagate errors normally.
+Restores the terminal to the given settings. Called when everything went well
+and we can propagate errors normally.
 
 **`disable_raw_mode_nothrow(original_settings)`**
 
-Same as above, but doesn't raise on error — it silently ignores failures. This is
-used at the end of `read_line()` where we *must* restore the terminal even if
+Same as above, but doesn't raise on error — it silently ignores failures. This
+is used at the end of `read_line()` where we *must* restore the terminal even if
 something else went wrong. (If the terminal gets stuck in raw mode, the user's
 shell becomes unusable — no echo, no line buffering, no Ctrl+C.)
 
@@ -586,8 +592,8 @@ Up/Down arrow:
   only stores it once).
 - History is capped at `max_history` entries (default 1000). When the cap is
   exceeded, the oldest entry is removed.
-- History is currently in-memory only — it is lost when the REPL exits. File-based
-  history persistence is planned for Phase 2.
+- History is currently in-memory only — it is lost when the REPL exits.
+  File-based history persistence is planned for Phase 2.
 
 ## Integration with Decimo REPL
 

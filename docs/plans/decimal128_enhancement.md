@@ -5,8 +5,8 @@
 > **Mojo Version**: >=0.26.2
 > **Status**: Fully executed as of 2026-05-06
 >
-> 子曰：工欲善其事，必先利其器。
-> Confucius said: If a craftsman wants to do good work, he must first sharpen his tools.
+> 子曰：工欲善其事，必先利其器。 Confucius said: If a craftsman wants to do good
+> work, he must first sharpen his tools.
 
 This document tracks the Decimal128 audit started on 2026-04-08 and the
 performance work that followed. It is the single source of truth for the

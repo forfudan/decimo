@@ -5,32 +5,45 @@
 > Scope: A new integer type with 2^32-based internal representation
 
 > [!IMPORTANT]
-> For v0.8.0, Tasks 1✓, 2✓, 3✓, 4✓, 5✓, 6✓, 7✓, 8✓ are the priority to be competitive at all sizes. Task 9 will be left for future optimization of extreme sizes (50000+ digits).
+> For v0.8.0, Tasks 1✓, 2✓, 3✓, 4✓, 5✓, 6✓, 7✓, 8✓ are the priority to be
+> competitive at all sizes. Task 9 will be left for future optimization of
+> extreme sizes (50000+ digits).
 
-> **Benchmark location:** `benches/bigint/` (unified folder for BigInt10 vs BigInt2
-> comparisons). Run with `pixi run bint` (interactive) or `pixi run bench bigint <op>`.
-> BigUInt-only benchmarks remain in `benches/biguint/`.
+> **Benchmark location:** `benches/bigint/` (unified folder for BigInt10 vs
+> BigInt2 comparisons). Run with `pixi run bint` (interactive) or
+> `pixi run bench bigint <op>`. BigUInt-only benchmarks remain in
+> `benches/biguint/`.
 
 ## Benchmark Summary (2026-02-20, macOS arm64, Apple Silicon)
 
-All benchmarks compare **BigInt2** (base-2^32) against **BigInt10/BigUInt** (base-10^9)
-and **Python int** (CPython 3.13, GMP-backed). Speedup = Python time / Mojo time.
-Values >1× mean faster than Python; <1× mean slower than Python.
+All benchmarks compare **BigInt2** (base-2^32) against **BigInt10/BigUInt**
+(base-10^9) and **Python int** (CPython 3.13, GMP-backed). Speedup = Python time
+/ Mojo time. Values >1× mean faster than Python; <1× mean slower than Python.
 
 **Key optimizations applied:**
 
-- ✓ **PR0**: Fixed sqrt correctness bug (Newton converges from above + precision-doubling algorithm)
-- ✓ **PR1**: Karatsuba multiplication (O(n^1.585)) with pointer-based inner loops and offset-based assembly
-- ✓ **PR2**: Slice-based Burnikel-Ziegler division (sub-quadratic, cutoff=64 words)
-- ✓ **PR3**: Divide-and-conquer to_string base conversion (leverages B-Z division)
-- ✓ **PR4a**: SIMD-optimized `parse_numeric_string` (two-pass architecture + `vectorize`-based digit extraction)
-- ✓ **PR4b**: Divide-and-conquer from_string base conversion (entry at >10000 digits)
-- ✓ **PR4c**: from_string micro-optimizations (fast paths, pre-allocation, raw pointers, balanced D&C split)
-- ✓ **PR4d**: to_string micro-optimizations (fast paths for 1–2 words, `unsafe_ptr()`, byte buffer output)
+- ✓ **PR0**: Fixed sqrt correctness bug (Newton converges from above +
+  precision-doubling algorithm)
+- ✓ **PR1**: Karatsuba multiplication (O(n^1.585)) with pointer-based inner
+  loops and offset-based assembly
+- ✓ **PR2**: Slice-based Burnikel-Ziegler division (sub-quadratic, cutoff=64
+  words)
+- ✓ **PR3**: Divide-and-conquer to_string base conversion (leverages B-Z
+  division)
+- ✓ **PR4a**: SIMD-optimized `parse_numeric_string` (two-pass architecture +
+  `vectorize`-based digit extraction)
+- ✓ **PR4b**: Divide-and-conquer from_string base conversion (entry at >10000
+  digits)
+- ✓ **PR4c**: from_string micro-optimizations (fast paths, pre-allocation, raw
+  pointers, balanced D&C split)
+- ✓ **PR4d**: to_string micro-optimizations (fast paths for 1–2 words,
+  `unsafe_ptr()`, byte buffer output)
 - ✓ **PR5**: True in-place arithmetic operations (all 11 `__i*__` dunders)
-- ✓ **PR6**: Bitwise operations (AND, OR, XOR, NOT) with two's complement semantics
+- ✓ **PR6**: Bitwise operations (AND, OR, XOR, NOT) with two's complement
+  semantics
 - ✓ **PR7**: GCD, extended GCD, LCM, modular exponentiation, modular inverse
-- ✓ **PR8**: Reassigned `BInt` alias from `BigInt10` → `BigInt` (formerly `BigInt2`)
+- ✓ **PR8**: Reassigned `BInt` alias from `BigInt10` → `BigInt` (formerly
+  `BigInt2`)
 
 ### Overall Results (Average Across All Cases)
 
@@ -46,14 +59,16 @@ Values >1× mean faster than Python; <1× mean slower than Python.
 | **from_string**  |     **1.42×**     |           6.57×            |    ~0.2× slower     |
 | **to_string**    |     **6.03×**     |         **9.74×**          |    ~0.6× slower     |
 
-★ Power average dominated by 2^N shift fast path (up to 140×). General cases: 0.65–0.94×.
+★ Power average dominated by 2^N shift fast path (up to 140×). General cases:
+0.65–0.94×.
 
 ### Key Findings
 
 1. **Multiplication is now fast at ALL sizes.** With Karatsuba (O(n^1.585)) and
    pointer-based inner loops, BigInt2 beats Python even at 10000×10000 digits
-   (1.34×). Previously 0.36× with schoolbook-only. The Karatsuba threshold is
-   48 words (~460 digits), with three asymmetric cases handling unequal operand sizes.
+   (1.34×). Previously 0.36× with schoolbook-only. The Karatsuba threshold is 48
+   words (~460 digits), with three asymmetric cases handling unequal operand
+   sizes.
 
 2. **Power has a 2^N fast path.** Base-2 powers use left_shift instead of
    multiply, giving 5–140× speedup. For 2^32768 (~9864 digits): BigInt2 340 ns
@@ -168,7 +183,8 @@ Average across 62 benchmark cases: **1.14× Python**.
 
 - 2^N cases: 3.4–140× (uses left_shift, O(1) per bit instead of multiplies)
 - Small general (result <200 digits): 0.78–0.94× (competitive with Python)
-- Large general (result >1000 digits): 0.65–0.80× (per-multiply overhead accumulates)
+- Large general (result >1000 digits): 0.65–0.80× (per-multiply overhead
+  accumulates)
 - Eliminating the wasted final squaring gave a modest boost across all cases
 - BigInt2 always beats BigInt10 for power (BigInt10 averages 0.58×)
 
@@ -192,11 +208,15 @@ Average across 62 benchmark cases: **1.14× Python**.
 **Key observations:**
 
 - Small (≤2 words): Hardware sqrt, 5–6.5× Python
-- Medium (20–500 digits): Newton's method, 0.12–0.24× (division overhead dominates each iteration)
-- Large (1000+ digits): Precision-doubling algorithm, approaching and surpassing Python
+- Medium (20–500 digits): Newton's method, 0.12–0.24× (division overhead
+  dominates each iteration)
+- Large (1000+ digits): Precision-doubling algorithm, approaching and surpassing
+  Python
 - The crossover to beating Python is at ~2000 digits
-- BigUInt is extremely slow at all sizes >50 digits (schoolbook division in its Newton iterations)
-- Fixing division (PR2) would dramatically improve the medium-size sqrt performance
+- BigUInt is extremely slow at all sizes >50 digits (schoolbook division in its
+  Newton iterations)
+- Fixing division (PR2) would dramatically improve the medium-size sqrt
+  performance
 
 **from_string by size** (re-benchmarked with SIMD `parse_numeric_string`):
 
@@ -218,9 +238,10 @@ Average across 62 benchmark cases: **1.14× Python**.
 
 **Average BigInt2 vs Python:** 1.42× → **1.57×** (14 cases, +11%)
 
-The SIMD optimization of `parse_numeric_string` provides the most visible benefit
-at small sizes (2–9 digits, +10–27%) where parsing is a large fraction of total
-time. At large sizes (1000+), the O(n²) base-10 → base-2^32 conversion dominates.
+The SIMD optimization of `parse_numeric_string` provides the most visible
+benefit at small sizes (2–9 digits, +10–27%) where parsing is a large fraction
+of total time. At large sizes (1000+), the O(n²) base-10 → base-2^32 conversion
+dominates.
 
 **to_string by size:**
 
@@ -238,10 +259,10 @@ time. At large sizes (1000+), the O(n²) base-10 → base-2^32 conversion domina
 | 5000 digits  |     **1.38×**     |    0.6×     |       24.4×        |
 | 10000 digits |     **1.17×**     |    0.4×     |       34.5×        |
 
-**PR4d gains:** Fast paths for 1-word and 2-word values give 15–29× at ≤20 digits.
-D&C base conversion (PR3) makes 2000+ digits beat Python. Medium range (100–1000)
-remains 0.57–0.79×, limited by O(n²) repeated division in the simple path.
-BigInt10's to_string advantage grows with size (trivial in base-10^9).
+**PR4d gains:** Fast paths for 1-word and 2-word values give 15–29× at ≤20
+digits. D&C base conversion (PR3) makes 2000+ digits beat Python. Medium range
+(100–1000) remains 0.57–0.79×, limited by O(n²) repeated division in the simple
+path. BigInt10's to_string advantage grows with size (trivial in base-10^9).
 
 **Left Shift by size:**
 
@@ -283,8 +304,9 @@ underestimate, allowing convergence to the wrong quadratic residue.
    Each iteration at precision p does a division of size 2p, so total work is
    O(M(n)) instead of O(M(n) * log n).
 
-**Verification:** All 16 sqrt benchmark cases produce correct results. Separately
-tested correctness up to 5000 digits with `sqrt(n)^2 <= n < (sqrt(n)+1)^2`.
+**Verification:** All 16 sqrt benchmark cases produce correct results.
+Separately tested correctness up to 5000 digits with
+`sqrt(n)^2 <= n < (sqrt(n)+1)^2`.
 
 ---
 
@@ -292,21 +314,23 @@ tested correctness up to 5000 digits with `sqrt(n)^2 <= n < (sqrt(n)+1)^2`.
 
 ### ✓ PR 0 (BUGFIX): Fix BigInt2 sqrt correctness — DONE
 
-Fixed with overestimate-based Newton's method + CPython precision-doubling algorithm.
-See "Resolved Bugs" section above.
+Fixed with overestimate-based Newton's method + CPython precision-doubling
+algorithm. See "Resolved Bugs" section above.
 
 ### ✓ PR 1: Karatsuba Multiplication — DONE
 
 Implemented Karatsuba O(n^1.585) in `_multiply_magnitudes_karatsuba()` with:
 
 - **Threshold:** CUTOFF_KARATSUBA = 48 words (~460 digits)
-- **Three Karatsuba cases:** normal (balanced), asymmetric Case 1 (a shorter), and
-  asymmetric Case 2 (b shorter)
-- **Pointer-based inner loops:** `_data` pointer access in schoolbook avoids bounds checking
+- **Three Karatsuba cases:** normal (balanced), asymmetric Case 1 (a shorter),
+  and asymmetric Case 2 (b shorter)
+- **Pointer-based inner loops:** `_data` pointer access in schoolbook avoids
+  bounds checking
 - **Offset-based assembly:** `_add_at_offset_inplace(a, b, offset)` replaces the
   expensive `shift_left_words + add` pattern, eliminating O(n) memory copies
-- **Slice-based sub-operations:** `_multiply_magnitudes_schoolbook(a, a_start, a_end, b, b_start, b_end)`
-  avoids creating sub-lists for Karatsuba's recursive calls
+- **Slice-based sub-operations:**
+  `_multiply_magnitudes_schoolbook(a, a_start, a_end, b, b_start, b_end)` avoids
+  creating sub-lists for Karatsuba's recursive calls
 
 **Result:** 10000-digit multiply: 745 µs → 195 µs (**3.8× internal speedup**).
 BigInt2 now beats Python at ALL multiplication sizes.
@@ -318,11 +342,11 @@ BigInt2 now beats Python at ALL multiplication sizes.
 **Priority: HIGHEST** — The most impactful remaining optimization
 
 **Current:** `_divmod_magnitudes()` uses Knuth's Algorithm D (schoolbook).
-BigInt2 is barely faster than Python at medium sizes and slower at 10000 digits (0.88×).
-Division is the bottleneck for:
+BigInt2 is barely faster than Python at medium sizes and slower at 10000 digits
+(0.88×). Division is the bottleneck for:
 
-- **Sqrt medium sizes** (20–500 digits): per-iteration division overhead makes BigInt2
-  0.12–0.24× Python despite correct algorithm
+- **Sqrt medium sizes** (20–500 digits): per-iteration division overhead makes
+  BigInt2 0.12–0.24× Python despite correct algorithm
 - **Power at scale** (99^2500 = 0.65×): many multiplies done correctly, but the
   occasional division in Newton's method slows sqrt
 - **to_string** (O(n²) repeated division by 10^9)
@@ -339,23 +363,25 @@ recursion depth, confirming the algorithm IS faster — the implementation just
 needs to minimize allocations.
 
 **Second attempt (slice-based B-Z): ✓ DONE.** Rewrote B-Z following BigUInt's
-proven approach — passes `(list, start, end)` bounds through the recursion instead
-of materializing sub-lists. Key optimizations:
+proven approach — passes `(list, start, end)` bounds through the recursion
+instead of materializing sub-lists. Key optimizations:
 
-1. **Slice-based recursion**: `_bz_two_by_one_slices` and `_bz_three_by_two_slices`
-   pass bounds through to avoid copying until the Knuth D base case.
-2. **Prenormalized base case**: `_divmod_knuth_d_from_slices` operates directly on
-   pre-normalized slices, reads divisor via pointer offset (no v copy), reducing
-   copies from 5 to 1 per base case call.
-3. **Minimal padding**: Instead of rounding divisor to 2^k × cutoff (97% waste for
-   520 words → 1024), rounds to the next even number. The recursion handles odd
-   sizes by falling through to the base case.
+1. **Slice-based recursion**: `_bz_two_by_one_slices` and
+   `_bz_three_by_two_slices` pass bounds through to avoid copying until the
+   Knuth D base case.
+2. **Prenormalized base case**: `_divmod_knuth_d_from_slices` operates directly
+   on pre-normalized slices, reads divisor via pointer offset (no v copy),
+   reducing copies from 5 to 1 per base case call.
+3. **Minimal padding**: Instead of rounding divisor to 2^k × cutoff (97% waste
+   for 520 words → 1024), rounds to the next even number. The recursion handles
+   odd sizes by falling through to the base case.
 4. **Optimized `_shift_left_words_inplace`**: backward pointer copy instead of
    temp buffer allocation.
 5. **Pre-allocated quotient**: top-level uses `_add_at_offset_inplace` to place
    each quotient digit, avoiding expensive repeated `_shift_left_words_inplace`.
-6. **Helper functions**: `_add_from_slice_inplace`, `_multiply_magnitudes_slices`,
-   `_is_zero_in_range`, `_decrement_inplace` — all avoid unnecessary copies.
+6. **Helper functions**: `_add_from_slice_inplace`,
+   `_multiply_magnitudes_slices`, `_is_zero_in_range`, `_decrement_inplace` —
+   all avoid unnecessary copies.
 
 **Cutoff tuning**: `CUTOFF_BURNIKEL_ZIEGLER = 64` (words) gave the best results.
 Tested 32, 64, and 128. Cutoff=32 triggered B-Z too early (overhead > gain for
@@ -373,8 +399,9 @@ Tested 32, 64, and 128. Cutoff=32 triggered B-Z too early (overhead > gain for
 | 5000 dig / 2500 dig  | —                      | ~1.8× (B-Z, was 0.84×)       |
 | 10000 dig / 5000 dig | 0.88×                  | **~1.4×** (B-Z, was 0.77×)   |
 
-**Average across 62 test cases: ~1.14× Python** (dominated by small-number constant
-overhead). For B-Z cases (divisor > 600 digits): consistently 1.2–1.8× Python.
+**Average across 62 test cases: ~1.14× Python** (dominated by small-number
+constant overhead). For B-Z cases (divisor > 600 digits): consistently 1.2–1.8×
+Python.
 
 **Status: ✓ Complete.** All 60 tests pass, B-Z dispatch enabled, code merged.
 
@@ -388,7 +415,8 @@ overhead). For B-Z cases (divisor > 600 digits): consistently 1.2–1.8× Python
 
 ### PR 3: Optimized to_string (Divide-and-Conquer Base Conversion)
 
-**Priority: HIGH** — BigInt2's biggest weakness vs BigInt10 (31.5× gap at 10000 digits)
+**Priority: HIGH** — BigInt2's biggest weakness vs BigInt10 (31.5× gap at 10000
+digits)
 
 **Status: ✓ DONE** (2026-02-21)
 
@@ -438,18 +466,22 @@ routines. See PR4d for micro-optimizations that partially close this gap.
 
 Rewrote the string-to-digit-array parser in `str.mojo` with:
 
-- **Two-pass architecture:** Pass 1 scans structure (sign, decimal point, exponent,
-  separators) with position tracking. Pass 2 extracts digit values via SIMD.
+- **Two-pass architecture:** Pass 1 scans structure (sign, decimal point,
+  exponent, separators) with position tracking. Pass 2 extracts digit values via
+  SIMD.
 - **Three extraction paths:**
   - **Fast path** (pure digits): `vectorize[16]()` processes 16 bytes at a time,
     subtracting `ord("0")` via SIMD `load`/`store` on `List[UInt8]._data`
-  - **Medium path** (digits + decimal point): two `vectorize` calls around the `.`
+  - **Medium path** (digits + decimal point): two `vectorize` calls around the
+    `.`
   - **Slow path** (with `_` separators): byte-by-byte extraction
-- **`vectorize` with `unified` capture:** Uses `unified {mut coef, read value_bytes}`
-  for proper Mojo origin tracking instead of manual SIMD width cascades
+- **`vectorize` with `unified` capture:** Uses
+  `unified {mut coef, read value_bytes}` for proper Mojo origin tracking instead
+  of manual SIMD width cascades
 
-**Result:** BigInt2 from_string average 1.42× → **1.57×** (+11%). Best improvement
-at small sizes: 2 digits 3.8→4.2× (+10%), 9 digits 2.67→3.40× (+27%).
+**Result:** BigInt2 from_string average 1.42× → **1.57×** (+11%). Best
+improvement at small sizes: 2 digits 3.8→4.2× (+10%), 9 digits 2.67→3.40×
+(+27%).
 
 #### ✓ PR 4b: Divide-and-Conquer Base Conversion — DONE
 
@@ -529,9 +561,10 @@ Optimized `_magnitude_to_decimal_simple` and the D&C string-building path:
 - **`div_len` tracking**: tracks the number of significant words in the dividend
   via a local variable, shrinking the division loop naturally instead of calling
   `shrink()` or scanning for leading zeros after each division pass
-- **Byte buffer output**: extracts 9 digits per chunk into an `InlineArray[UInt8, 9]`
-  on the stack, appends to a `List[UInt8]` buffer, then constructs the final
-  string with `String(unsafe_from_utf8=buf^)` — avoids all string concatenation
+- **Byte buffer output**: extracts 9 digits per chunk into an
+  `InlineArray[UInt8, 9]` on the stack, appends to a `List[UInt8]` buffer, then
+  constructs the final string with `String(unsafe_from_utf8=buf^)` — avoids all
+  string concatenation
 
 **D&C path optimizations:**
 
@@ -546,8 +579,8 @@ Optimized `_magnitude_to_decimal_simple` and the D&C string-building path:
 - **UInt128 chunks with 10^18 divisor**: 128-bit division/modulo is software-
   emulated on ARM64 (no hardware instruction). Made medium numbers 2× SLOWER.
 - **Lower D&C thresholds (entry=24, base=8)**: D&C overhead (power table
-  computation + BigInt2 division) exceeded simple-path cost for 500–10000 digits.
-  Restored original thresholds (entry=128, base=64).
+  computation + BigInt2 division) exceeded simple-path cost for 500–10000
+  digits. Restored original thresholds (entry=128, base=64).
 
 **Result (to_string speedup vs Python `str(int_value)`):**
 
@@ -575,7 +608,8 @@ for 50–10000 digits improved from 0.54× to **0.91×** (+69%).
 
 **Priority: MEDIUM-HIGH** — Performance infrastructure that benefits all callers
 
-**Status:** All 11 `__i*__` dunders now call true in-place functions. Fully tested.
+**Status:** All 11 `__i*__` dunders now call true in-place functions. Fully
+tested.
 
 **Previous state:** All augmented assignment operators (`+=`, `-=`, `*=`, `//=`,
 `%=`, `<<=`, `>>=`, `&=`, `|=`, `^=`) created a new BigInt2 and replaced `self`:
@@ -604,14 +638,15 @@ def __iadd__(mut self, other: Self):
 **Phase 2 — Shifts, division, bitwise (arithmetics.mojo + bitwise.mojo):**
 
 - `left_shift_inplace(mut x, shift)` — builds shifted word list and moves into x
-- `right_shift_inplace(mut x, shift)` — shifts words in-place, truncates, handles
-  arithmetic right shift for negative numbers (round toward -∞)
+- `right_shift_inplace(mut x, shift)` — shifts words in-place, truncates,
+  handles arithmetic right shift for negative numbers (round toward -∞)
 - `floor_divide_inplace(mut x, other)` — computes `_divmod_magnitudes`, moves
   quotient words into x with correct sign/rounding
 - `floor_modulo_inplace(mut x, other)` — computes `_divmod_magnitudes`, moves
   remainder words into x with correct sign adjustment
-- `bitwise_and_inplace(mut a, b)` — parametric `_binary_bitwise_op_inplace["and"]`.
-  Non-negative fast path: AND in-place, truncate to `min_len`
+- `bitwise_and_inplace(mut a, b)` — parametric
+  `_binary_bitwise_op_inplace["and"]`. Non-negative fast path: AND in-place,
+  truncate to `min_len`
 - `bitwise_or_inplace(mut a, b)` — extend a if shorter, OR in-place
 - `bitwise_xor_inplace(mut a, b)` — extend a if shorter, XOR in-place
 
@@ -653,12 +688,15 @@ def __iadd__(mut self, other: Self):
 
 - Created `bitwise.mojo` module with parametric `_binary_bitwise_op[op]` helper
 - Python-compatible two's complement semantics for negative numbers
-- Fast path for both non-negative operands (direct word-by-word, no TC conversion)
+- Fast path for both non-negative operands (direct word-by-word, no TC
+  conversion)
 - General path: inline TC conversion (subtract 1 from magnitude, bitwise NOT)
-- Dunders: `__and__`, `__or__`, `__xor__`, `__invert__`, `__iand__`, `__ior__`, `__ixor__`
+- Dunders: `__and__`, `__or__`, `__xor__`, `__invert__`, `__iand__`, `__ior__`,
+  `__ixor__`
 - Each binary op has `(Self, Self)` and `(Self, Int)` overloads
 - 31 tests: NOT, AND, OR, XOR (positive/negative/mixed), augmented assignment,
-  De Morgan's laws, commutativity, identities, word-boundary values, Python cross-checks
+  De Morgan's laws, commutativity, identities, word-boundary values, Python
+  cross-checks
 
 ---
 
@@ -688,11 +726,13 @@ def __iadd__(mut self, other: Self):
 
 **Testing:** 31 tests covering:
 
-- GCD: zero/basic/negative/commutativity/powers-of-two/large-coprime/common-factor
+- GCD:
+  zero/basic/negative/commutativity/powers-of-two/large-coprime/common-factor
 - Extended GCD: known coefficients, Bézout identity verification, zero/negative
   inputs, multiple input pairs
 - LCM: basic/zero/negative, `gcd * lcm = |a*b|` property
-- mod_pow: basic/edge/Fermat's little theorem/large exponents/negative base/errors
+- mod_pow: basic/edge/Fermat's little theorem/large exponents/negative
+  base/errors
 - mod_inverse: known inverses, roundtrip `a * inv(a) ≡ 1`, non-existence errors
 
 ---
@@ -701,7 +741,8 @@ def __iadd__(mut self, other: Self):
 
 **Priority: LOW** → **Completed** (commit `73e527e`, PR #154)
 
-**Prerequisite:** PRs 2–3 complete ✓, BigInt2 faster than BigInt10 in most operations ✓.
+**Prerequisite:** PRs 2–3 complete ✓, BigInt2 faster than BigInt10 in most
+operations ✓.
 
 Renamed `BigInt2` → `BigInt` and bound the `BInt` alias to it. The old `BigInt`
 was renamed to `BigInt10` (commit `a77d2b4`, PR #143) earlier in the process.
