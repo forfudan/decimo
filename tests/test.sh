@@ -20,12 +20,13 @@
 #   rational    rat   frac      → Rational number tests
 #   expression  expr  eval      → Expression engine tests
 #   numerals    numeral chinese → Numeral system tests
+#   numeric     num             → Numeric trait conformance tests
 #   bigfloat    bfloat float    → BigFloat tests (requires MPFR)
 #   toml                        → TOML parser tests
 #   cli                         → CLI calculator tests
 #   python      py              → Python binding tests
 #   decimo      core            → All core suites (bigdecimal+bigint+biguint+bigint10+
-#                                 decimal128+rational+expression+numerals)
+#                                 decimal128+rational+expression+numerals+numeric)
 #   all                         → Everything (decimo + toml + cli)
 
 set -eo pipefail
@@ -82,6 +83,7 @@ run_decimal128()  { run_mojo_suite decimal128; }
 run_rational()    { run_mojo_suite rational; }
 run_expression()  { run_mojo_suite expression; }
 run_numerals()    { run_mojo_suite numerals; }
+run_numeric()     { run_mojo_suite numeric; }
 run_toml()        { run_mojo_suite toml; }
 
 run_bigfloat() {
@@ -332,6 +334,7 @@ run_decimo() {
     run_rational
     run_expression
     run_numerals
+    run_numeric
 }
 
 run_all() {
@@ -354,6 +357,7 @@ resolve() {
         rational|rat|frac)        echo "run_rational" ;;
         expression|expr|eval)     echo "run_expression" ;;
         numerals|numeral|chinese) echo "run_numerals" ;;
+        numeric|num)              echo "run_numeric" ;;
         bigfloat|bfloat|float)    echo "run_bigfloat" ;;
         toml)                     echo "run_toml" ;;
         cli)                      echo "run_cli" ;;
@@ -377,11 +381,12 @@ list_suites() {
     printf "  %-28s %s\n" "rational, rat, frac"         "Rational number tests"
     printf "  %-28s %s\n" "expression, expr, eval"      "Expression engine tests"
     printf "  %-28s %s\n" "numerals, numeral, chinese"  "Numeral system tests"
+    printf "  %-28s %s\n" "numeric, num"                "Numeric trait conformance tests"
     printf "  %-28s %s\n" "bigfloat, bfloat, float"     "BigFloat tests (requires MPFR)"
     printf "  %-28s %s\n" "toml"                        "TOML parser tests"
     printf "  %-28s %s\n" "cli"                         "CLI calculator tests"
     printf "  %-28s %s\n" "python, py"                  "Python binding tests"
-    printf "  %-28s %s\n" "decimo, core"                "All core suites (bdec+bint+buint+bint10+dec128+rational+expression)"
+    printf "  %-28s %s\n" "decimo, core"                "All core suites (bdec+bint+buint+bint10+dec128+rational+expression+numeric)"
     printf "  %-28s %s\n" "all"                         "Everything (decimo + toml + cli)"
 }
 
