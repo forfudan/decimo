@@ -17,8 +17,6 @@ environments:
     - url: https://conda.modular.com/max/
     - url: https://repo.prefix.dev/modular-community/
     - url: https://conda.anaconda.org/conda-forge/
-    indexes:
-    - https://pypi.org/simple
     packages:
       linux-64:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
@@ -129,7 +127,6 @@ environments:
       - conda: https://conda.modular.com/max/noarch/mblack-26.5.0-release.conda
       - conda: https://conda.modular.com/max/noarch/mojo-python-1.0.0-release.conda
       - conda: https://repo.prefix.dev/modular-community/linux-64/argmojo-0.8.0-hb0f4dca_0.conda
-      - pypi: https://files.pythonhosted.org/packages/fe/79/a78ace23655d2ae7b4fce4a4c5c7529e37cb5e3d59af4cf07c7387c694bc/rumdl-0.2.55-py3-none-manylinux_2_28_x86_64.whl
       osx-arm64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/backports-1.0-pyhd8ed1ab_5.conda
@@ -224,7 +221,6 @@ environments:
       - conda: https://conda.modular.com/max/osx-arm64/mojo-1.0.0-release.conda
       - conda: https://conda.modular.com/max/osx-arm64/mojo-compiler-1.0.0-release.conda
       - conda: https://repo.prefix.dev/modular-community/osx-arm64/argmojo-0.8.0-h60d57d3_0.conda
-      - pypi: https://files.pythonhosted.org/packages/34/63/635d3ee438095e0a05f2f718dd8f18f98ee0e696f883a1511872c56f36aa/rumdl-0.2.55-py3-none-macosx_11_0_arm64.whl
 packages:
 - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
   build_number: 20
@@ -2258,13 +2254,3 @@ packages:
   run_exports: {}
   size: 578364
   timestamp: 1786789656749
-- pypi: https://files.pythonhosted.org/packages/34/63/635d3ee438095e0a05f2f718dd8f18f98ee0e696f883a1511872c56f36aa/rumdl-0.2.55-py3-none-macosx_11_0_arm64.whl
-  name: rumdl
-  version: 0.2.55
-  sha256: 0454838fa02c9bd65336e39e54b98cf3d8e0e06e46090a01fa6690da7f9548d5
-  requires_python: '>=3.9'
-- pypi: https://files.pythonhosted.org/packages/fe/79/a78ace23655d2ae7b4fce4a4c5c7529e37cb5e3d59af4cf07c7387c694bc/rumdl-0.2.55-py3-none-manylinux_2_28_x86_64.whl
-  name: rumdl
-  version: 0.2.55
-  sha256: 728d31674bdf3c898a2d42ca8d52144b1d2f9c6a40570c412600982cdedd3548
-  requires_python: '>=3.9'

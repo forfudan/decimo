@@ -21,11 +21,6 @@ ruff = ">=0.15.0" # Python code formatter
 twine = ">=6.2.0" # Upload wheel to PyPI (`twine upload dist/*`)
 pre-commit = ">=4.6.1,<5"
 
-[pypi-dependencies]
-# Markdown line-length formatter (`pixi run formatmd`). Not published on
-# conda-forge, hence the pypi table.
-rumdl = ">=0.2.55"
-
 [tasks]
 # format the code
 format = """pixi run clean \
@@ -34,11 +29,7 @@ format = """pixi run clean \
 && pixi run mojo format ./benches \
 && pixi run mojo format ./tests \
 && pixi run mojo format ./docs \
-&& pixi run ruff format ./python \
-&& pixi run formatmd"""
-
-# wrap Markdown prose at 80 columns (config in rumdl.toml)
-formatmd = "pixi run rumdl fmt ."
+&& pixi run ruff format ./python"""
 
 # doc
 # Note: the CLI calculator doc step uses `-I tests` (the prebuilt
