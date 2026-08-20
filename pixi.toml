@@ -13,7 +13,7 @@ version = "0.12.0"
 # channel does not ship 0.8.0 yet; until it does, `pixi run buildcli`
 # falls back to the pinned upstream commit (see src/cli/ensure_argmojo.sh).
 # Uncomment this line once the package is available:
-# argmojo = ">=0.8.0,<0.9.0"
+argmojo = ">=0.8.0,<0.9.0"
 mojo = ">=1.0.0,<1.1.0" # Mojo language compiler and runtime
 python = ">=3.13" # For Python bindings and tests
 python-build = ">=0.2.0" # Build PyPI wheel (`pixi run wheel`)
