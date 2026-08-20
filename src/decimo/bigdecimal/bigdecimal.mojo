@@ -28,6 +28,7 @@ from std.python import PythonObject
 from std import testing
 
 from decimo.errors import ConversionError, ValueError
+from decimo.numeric import Numeric
 from decimo.rounding_mode import RoundingMode
 from decimo.numerals.chinese import ChineseNumeralStyle
 from decimo.bigdecimal.exponential import MathCache
@@ -111,6 +112,7 @@ struct BigDecimal(
     FloatableRaising,
     IntableRaising,
     Movable,
+    Numeric,
     Roundable,
     Writable,
 ):
@@ -166,6 +168,26 @@ struct BigDecimal(
     # ===------------------------------------------------------------------=== #
     # Constructors and life time dunder methods
     # ===------------------------------------------------------------------=== #
+
+    @always_inline
+    @staticmethod
+    def zero() -> Self:
+        """Returns a BigDecimal with value 0.
+
+        Returns:
+            A `BigDecimal` with value 0.
+        """
+        return Self()
+
+    @always_inline
+    @staticmethod
+    def one() -> Self:
+        """Returns a BigDecimal with value 1.
+
+        Returns:
+            A `BigDecimal` with value 1.
+        """
+        return Self(BigUInt.one(), scale=0, sign=False)
 
     def __init__(out self):
         """Initializes to zero by default."""

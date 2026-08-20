@@ -38,6 +38,7 @@ import decimo.bigint.exponential as bigint_exponential
 import decimo.bigint.number_theory as bigint_number_theory
 import decimo.bigint.special as bigint_special
 import decimo.str as decimo_str
+from decimo.numeric import Numeric
 import decimo.numerals.chinese as decimo_chinese
 from decimo.numerals.chinese import ChineseNumeralStyle
 from decimo.bigint10.bigint10 import BigInt10
@@ -64,6 +65,7 @@ struct BigInt(
     FloatableRaising,
     IntableRaising,
     Movable,
+    Numeric,
     Writable,
 ):
     """An arbitrary-precision signed integer, similar to Python's `int`.
@@ -898,6 +900,34 @@ struct BigInt(
             The product of the two values.
         """
         return bigint_arithmetics.multiply(self, other)
+
+    @always_inline
+    def __truediv__(self, other: Self) raises -> Self:
+        """Divides two values, truncating toward zero.
+
+        `/` on integers is closed and truncating, matching Mojo's own `Int`:
+        `Int(-7) / Int(2)` is `-3` while `Int(-7) // Int(2)` is `-4`. The two
+        operators are therefore different operations on a `BigInt`, not
+        synonyms, and they differ exactly when the operands have opposite
+        signs.
+
+        Args:
+            other: The right-hand side operand.
+
+        Returns:
+            The quotient, rounded toward zero.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
+        """
+        try:
+            return bigint_arithmetics.truncate_divide(self, other)
+        except e:
+            raise ZeroDivisionError(
+                message="See the above exception.",
+                function="BigInt.__truediv__()",
+                previous_error=e^,
+            )
 
     @always_inline
     def __floordiv__(self, other: Self) raises -> Self:

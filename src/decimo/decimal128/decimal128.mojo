@@ -40,6 +40,7 @@ from decimo.errors import (
 )
 import decimo.decimal128.utility as decimal128_utility
 from decimo.bigdecimal.bigdecimal import BigDecimal
+from decimo.numeric import Numeric
 
 comptime Dec128 = Decimal128
 """A 128-bit fixed-point decimal number."""
@@ -52,6 +53,7 @@ struct Decimal128(
     Floatable,
     Hashable,
     IntableRaising,
+    Numeric,
     Roundable,
     TrivialRegisterPassable,
     Writable,
@@ -132,6 +134,28 @@ struct Decimal128(
     """Bits 16 to 23 must contain a scale between 0 and 28."""
     # TODO: Move these special values to top of the module
     # when Mojo support global variables in the future.
+
+    # `zero()` and `one()` are the `Numeric` spelling of `ZERO()` and `ONE()`
+    # below, which predate the trait and stay as they are.
+    @always_inline
+    @staticmethod
+    def zero() -> Self:
+        """Returns a Decimal128 representing 0.
+
+        Returns:
+            A `Decimal128` representing zero.
+        """
+        return Self.ZERO()
+
+    @always_inline
+    @staticmethod
+    def one() -> Self:
+        """Returns a Decimal128 representing 1.
+
+        Returns:
+            A `Decimal128` representing one.
+        """
+        return Self.ONE()
 
     # Special values
     @always_inline

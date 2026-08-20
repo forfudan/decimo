@@ -37,6 +37,9 @@ comptime DECIMO_VERSION_TAG = "v" + DECIMO_VERSION
 """Display version of the Decimo library, prefixed with `v` (e.g. `v0.12.0`).
 """
 
+# Traits
+from .numeric import Numeric
+
 # Core types
 from .decimal128.decimal128 import Decimal128, Dec128
 from .bigint.bigint import BigInt, BInt, Integer
