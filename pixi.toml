@@ -9,10 +9,9 @@ readme = "README.md"
 version = "0.12.0"
 
 [dependencies]
-# CLI argument parsing for the Decimo calculator. The modular-community
-# channel does not ship 0.8.0 yet; until it does, `pixi run buildcli`
+# CLI argument parsing for the Decimo calculator. `pixi run buildcli`
 # falls back to the pinned upstream commit (see src/cli/ensure_argmojo.sh).
-# Uncomment this line once the package is available:
+# if the following line is commented out.
 argmojo = ">=0.8.0,<0.9.0"
 mojo = ">=1.0.0,<1.1.0" # Mojo language compiler and runtime
 python = ">=3.13" # For Python bindings and tests

@@ -3,7 +3,7 @@
 ## Inconsistencies between libraries
 
 - For power functionality: `BigDecimal.power()`, Python's decimal, WolframAlpha
-  give the same result, but `mpmath` gives a different result. Eamples:
+  give the same result, but `mpmath` gives a different result. Examples:
   - `0.123456789 ** 1000`
   - `1234523894766789 ** 1098.1209848`
 - For sin functionality: `BigDecimal.sin()` and WolframAlpha give the same
