@@ -175,6 +175,7 @@ These constructors skip validation for performance-sensitive code. The caller mu
 | `a + b`       | Addition                          | No                 |
 | `a - b`       | Subtraction                       | No                 |
 | `a * b`       | Multiplication                    | No                 |
+| `a / b`       | Truncating division (toward zero) | Yes (zero div)     |
 | `a // b`      | Floor division (rounds toward −∞) | Yes (zero div)     |
 | `a % b`       | Floor modulo (Python semantics)   | Yes (zero div)     |
 | `divmod(a,b)` | Floor quotient and remainder      | Yes (zero div)     |
@@ -209,10 +210,16 @@ print(BInt(2) ** 10)  # 1024
 
 BigInt supports two division conventions:
 
-| Name              | Operator / Method                          | Quotient    | Python equivalent |
-| ----------------- | ------------------------------------------ | ----------- | ----------------- |
-| Floor division    | `//`, `%`, `divmod()`                      | Toward −∞   | `//`, `%`         |
-| Truncate division | `.truncate_divide()`, `.truncate_modulo()` | Toward zero | C/Java `/`, `%`   |
+| Name              | Operator / Method                               | Quotient    | Python equivalent |
+| ----------------- | ----------------------------------------------- | ----------- | ----------------- |
+| Floor division    | `//`, `%`, `divmod()`                           | Toward −∞   | `//`, `%`         |
+| Truncate division | `/`, `.truncate_divide()`, `.truncate_modulo()` | Toward zero | C/Java `/`, `%`   |
+
+`/` on a `BInt` is integer division, not a promotion to a decimal type. It
+follows Mojo's own `Int`, where `Int(7) / Int(-2)` is `-3`: the quotient stays
+in the type and rounds toward zero. It is therefore a different operator from
+`//`, not a synonym, and the two disagree exactly when the operands have
+opposite signs.
 
 The difference matters for negative operands:
 
@@ -225,6 +232,7 @@ print(a // b)                    # -4
 print(a % b)                     # -1
 
 # Truncate division (C/Java semantics)
+print(a / b)                     # -3
 print(a.truncate_divide(b))      # -3
 print(a.truncate_modulo(b))      #  1
 ```
@@ -1188,6 +1196,13 @@ from decimo.expression import tokenize, parse_to_rpn, evaluate_rpn
 
 ### Appendix B — Traits Implemented
 
+All of these come from the Mojo standard library except **`Numeric`**, which
+Decimo defines in `decimo.numeric` and `BigInt`, `BigDecimal` and `Decimal128`
+all conform to. It gathers `zero()`, `one()`, `-x`, `+`, `-`, `*` and `/`, so a
+generic routine — a matrix or polynomial library, say — can be written once
+against `T: Numeric` and run over any of the three. Mojo checks conformance
+nominally, which is why the trait lives in Decimo rather than in the consumer.
+
 #### BigInt <!-- omit from toc -->
 
 | Trait              | What it enables                  |
@@ -1198,6 +1213,7 @@ from decimo.expression import tokenize, parse_to_rpn, evaluate_rpn
 | `Movable`          | Move semantics                   |
 | `FloatableRaising` | `Float64(x)`                     |
 | `IntableRaising`   | `Int(x)`                         |
+| `Numeric`          | Generic code over Decimo numbers |
 | `Representable`    | `repr(x)`                        |
 | `Stringable`       | `String(x)`, `str(x)`            |
 | `Writable`         | `print(x)`, writer protocol      |
@@ -1212,6 +1228,7 @@ from decimo.expression import tokenize, parse_to_rpn, evaluate_rpn
 | `Movable`          | Move semantics                   |
 | `FloatableRaising` | `Float64(x)`                     |
 | `IntableRaising`   | `Int(x)`                         |
+| `Numeric`          | Generic code over Decimo numbers |
 | `Representable`    | `repr(x)`                        |
 | `Roundable`        | `round(x)`, `round(x, ndigits)`  |
 | `Stringable`       | `String(x)`, `str(x)`            |
@@ -1226,6 +1243,7 @@ from decimo.expression import tokenize, parse_to_rpn, evaluate_rpn
 | `a + b`             | `BInt`, `Int`        | No      | Addition               |
 | `a - b`             | `BInt`, `Int`        | No      | Subtraction            |
 | `a * b`             | `BInt`, `Int`        | No      | Multiplication         |
+| `a / b`             | `BInt`, `Int`        | Yes     | Truncating division    |
 | `a // b`            | `BInt`, `Int`        | Yes     | Floor division         |
 | `a % b`             | `BInt`, `Int`        | Yes     | Floor modulo           |
 | `a ** b`            | `BInt`, `Int`        | Yes     | Power                  |

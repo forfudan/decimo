@@ -18,7 +18,7 @@
 Traits describing what Decimo's number types can do.
 
 These exist so that code outside Decimo can be written once and run over
-`BigInt`, `BigDecimal` and `Decimal128` alike --- a matrix library being the
+`BigInt`, `BigDecimal` and `Decimal128` alike - a matrix library being the
 motivating case. Mojo's trait conformance is nominal and has to be declared
 where the struct is defined, so the traits live here rather than in the
 consumer.
@@ -26,17 +26,25 @@ consumer.
 One trait covers `BigInt`, `BigDecimal` and `Decimal128` alike, division
 included. Integer division is closed as long as it is understood the way Mojo's
 own `Int` understands it: `/` truncates toward zero and stays in the type, and
-`//` --- which floors, and so differs whenever the signs differ --- is a
+`//` (which floors, and so differs whenever the signs differ) is a
 separate operator that this trait does not require.
 
 Every operation is declared `raises`, which is the widest signature: a
 non-raising implementation satisfies a raising requirement, so `BigInt.__add__`
 conforms unchanged while `BigDecimal.__add__` -- which really can raise --
 conforms too.
+
+`Movable` sits alongside `Copyable` in the supertraits because every method
+here hands back an owned `Self`. A caller that stores such a result, or returns
+it onward, moves it; without the bound each consumer would have to spell
+`T: Numeric & Movable` to do the obvious thing with a result. The two are
+separate capabilities in this codebase (`BigFloat` is `Movable` but not
+`Copyable`) so requiring both is a real statement, and one all three
+conforming types already satisfy.
 """
 
 
-trait Numeric(Copyable, Deinitable, Writable):
+trait Numeric(Copyable, Deinitable, Movable, Writable):
     """A type closed under addition, subtraction and multiplication.
 
     Enough for the whole of dense linear algebra: matrix addition, scaling,

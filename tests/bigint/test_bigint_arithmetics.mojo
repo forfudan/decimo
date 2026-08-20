@@ -314,6 +314,78 @@ def test_bigint_division_by_zero() raises:
 
     testing.assert_true(raised, "Truncate division by zero should raise")
 
+    raised = False
+    try:
+        _ = a / zero
+    except:
+        raised = True
+
+    testing.assert_true(raised, "True division by zero should raise")
+
+
+def test_bigint_true_divide_operator() raises:
+    """Test `/` on BigInt: closed, truncating toward zero, as Mojo's `Int` is.
+
+    `/` and `//` are different operations on an integer type and agree only
+    when the operands share a sign, so both halves are checked here.
+    """
+    # Exact quotients: the sign rule is invisible, both operators agree.
+    testing.assert_equal(String(BigInt(6) / BigInt(3)), "2", "6 / 3")
+    testing.assert_equal(String(BigInt(-6) / BigInt(3)), "-2", "-6 / 3")
+    testing.assert_equal(String(BigInt(6) / BigInt(-3)), "-2", "6 / -3")
+    testing.assert_equal(String(BigInt(-6) / BigInt(-3)), "2", "-6 / -3")
+
+    # Inexact and same-signed: truncation and flooring coincide.
+    testing.assert_equal(String(BigInt(7) / BigInt(2)), "3", "7 / 2")
+    testing.assert_equal(String(BigInt(-7) / BigInt(-2)), "3", "-7 / -2")
+    testing.assert_equal(String(BigInt(7) // BigInt(2)), "3", "7 // 2")
+
+    # Inexact and mixed-signed: this is where the two operators part ways.
+    testing.assert_equal(String(BigInt(-7) / BigInt(2)), "-3", "-7 / 2")
+    testing.assert_equal(String(BigInt(7) / BigInt(-2)), "-3", "7 / -2")
+    testing.assert_equal(String(BigInt(-7) // BigInt(2)), "-4", "-7 // 2")
+    testing.assert_equal(String(BigInt(7) // BigInt(-2)), "-4", "7 // -2")
+
+    # Magnitude smaller than the divisor truncates to zero, not to -1.
+    testing.assert_equal(String(BigInt(-1) / BigInt(2)), "0", "-1 / 2")
+    testing.assert_equal(String(BigInt(-1) // BigInt(2)), "-1", "-1 // 2")
+
+    # Zero dividend keeps a positive sign whatever the divisor's sign.
+    var zero_quotient = BigInt(0) / BigInt(-5)
+    testing.assert_equal(String(zero_quotient), "0", "0 / -5")
+    testing.assert_equal(
+        zero_quotient.sign, False, "0 / -5 must not be a negative zero"
+    )
+
+    # Values past 64 bits take the general path rather than a fast one.
+    var big = BigInt("123456789012345678901234567891")
+    testing.assert_equal(
+        String(-big / BigInt(7)),
+        "-17636684144620811271604938270",
+        "-big / 7 truncates toward zero",
+    )
+    testing.assert_equal(
+        String(-big // BigInt(7)),
+        "-17636684144620811271604938271",
+        "-big // 7 floors",
+    )
+
+
+def test_bigint_true_divide_matches_truncate_divide() raises:
+    """`/` is the operator spelling of `truncate_divide`, over every sign pair.
+    """
+    var values: List[Int] = [-97, -12, -1, 0, 1, 12, 97]
+    var divisors: List[Int] = [-11, -3, -1, 1, 3, 11]
+    for a in values:
+        for b in divisors:
+            var lhs = BigInt(a)
+            var rhs = BigInt(b)
+            testing.assert_equal(
+                String(lhs / rhs),
+                String(lhs.truncate_divide(rhs)),
+                String(a) + " / " + String(b),
+            )
+
 
 def test_bigint_zero_quotient_mixed_sign() raises:
     """Regression test: 0 // negative should be +0 with sign == False."""
