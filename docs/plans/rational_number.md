@@ -5,18 +5,29 @@
 > Scope: A first-class exact rational number type `Rational`
 > Target: decimo v0.10.0+
 >
-> 子曰工欲善其事必先利其器
-> The mechanic, who wishes to do his work well, must first sharpen his tools -- Confucius
+> 子曰工欲善其事必先利其器 The mechanic, who wishes to do his work well, must
+> first sharpen his tools -- Confucius
 
 ## 1. Motivation
 
-A rational number type can represent any value p/q (where p, q are integers and q ≠ 0) without any loss of precision. Unlike `BigDecimal`, which loses precision when representing numbers like 1/3, a `Rational` type preserves exactness through all arithmetic operations. This makes it ideal for:
+A rational number type can represent any value p/q (where p, q are integers and
+q ≠ 0) without any loss of precision. Unlike `BigDecimal`, which loses precision
+when representing numbers like 1/3, a `Rational` type preserves exactness
+through all arithmetic operations. This makes it ideal for:
 
-- **Lossless intermediate computation**: algorithms like binary splitting (already used in `pi_chudnovsky_binary_split`) accumulate exact rational sums before a single final conversion to `BigDecimal`, avoiding compounding rounding error.
-- **Exact linear algebra and combinatorics**: Gaussian elimination, binomial coefficients, and probability calculations benefit from exact fractions.
-- **Conversion hub**: a `Rational` can be losslessly converted to/from integers and can be converted to `BigDecimal` or `Float64` at any desired precision.
+- **Lossless intermediate computation**: algorithms like binary splitting
+  (already used in `pi_chudnovsky_binary_split`) accumulate exact rational sums
+  before a single final conversion to `BigDecimal`, avoiding compounding
+  rounding error.
+- **Exact linear algebra and combinatorics**: Gaussian elimination, binomial
+  coefficients, and probability calculations benefit from exact fractions.
+- **Conversion hub**: a `Rational` can be losslessly converted to/from integers
+  and can be converted to `BigDecimal` or `Float64` at any desired precision.
 
-A simple internal `Rational` struct already exists in `src/decimo/bigdecimal/constants.mojo` (using `BigInt10` for p and q), but it is a private helper with no normalization, no arithmetic, and no trait conformance. This plan proposes a full public type.
+A simple internal `Rational` struct already exists in
+`src/decimo/bigdecimal/constants.mojo` (using `BigInt10` for p and q), but it is
+a private helper with no normalization, no arithmetic, and no trait conformance.
+This plan proposes a full public type.
 
 ## 2. Design Decision: BigInt as the Underlying Integer Type
 
@@ -32,10 +43,14 @@ A simple internal `Rational` struct already exists in `src/decimo/bigdecimal/con
 
 **Recommendation**: Use `BigInt` for both numerator and denominator.
 
-- GCD is **essential** for keeping fractions in lowest terms. `BigInt` already has a fast binary GCD (Stein's algorithm) plus extended GCD and LCM.
-- `BigInt` is significantly faster for the heavy multiplication and division operations that dominate rational arithmetic.
-- `BigInt` is the recommended forward-looking integer type in decimo; using it aligns with the project's direction.
-- The existing `Rational` in `constants.mojo` should be migrated from `BigInt10` to `BigInt` once the new type is ready.
+- GCD is **essential** for keeping fractions in lowest terms. `BigInt` already
+  has a fast binary GCD (Stein's algorithm) plus extended GCD and LCM.
+- `BigInt` is significantly faster for the heavy multiplication and division
+  operations that dominate rational arithmetic.
+- `BigInt` is the recommended forward-looking integer type in decimo; using it
+  aligns with the project's direction.
+- The existing `Rational` in `constants.mojo` should be migrated from `BigInt10`
+  to `BigInt` once the new type is ready.
 
 ## 3. Cross-Library Comparison
 
@@ -122,12 +137,22 @@ A simple internal `Rational` struct already exists in `src/decimo/bigdecimal/con
 
 ### 3.8 Notable Methods Worth Adopting
 
-1. **`limit_denominator(max_denominator)`** (Python): Uses the continued-fraction algorithm to find the closest rational with denominator ≤ max. Very useful for approximation (e.g., finding 355/113 ≈ π). No other library has this.
-2. **`to_bigdecimal(precision, rounding_mode)`** (Java-inspired): Convert to `BigDecimal` at a given scale with explicit rounding. Essential for decimo's ecosystem.
-3. **`floor()` / `ceil()` / `round()` / `trunc()` / `fract()`** (Rust): Complete set of rounding-to-integer operations. `fract()` returns the fractional part as a `Rational`.
-4. **`from_decimal_string("1.5")`** (Python): Parse `"1.5"` → `Rational(3, 2)`. Very user-friendly.
-5. **`mediant(other)`**: Compute the mediant (a+c)/(b+d) of two fractions. Useful in Stern-Brocot tree and Farey sequence applications.
-6. **`continued_fraction()`**: Return the continued-fraction representation `[a0; a1, a2, ...]` as a list of `BigInt`. Useful for number theory.
+1. **`limit_denominator(max_denominator)`** (Python): Uses the
+   continued-fraction algorithm to find the closest rational with denominator ≤
+   max. Very useful for approximation (e.g., finding 355/113 ≈ π). No other
+   library has this.
+2. **`to_bigdecimal(precision, rounding_mode)`** (Java-inspired): Convert to
+   `BigDecimal` at a given scale with explicit rounding. Essential for decimo's
+   ecosystem.
+3. **`floor()` / `ceil()` / `round()` / `trunc()` / `fract()`** (Rust): Complete
+   set of rounding-to-integer operations. `fract()` returns the fractional part
+   as a `Rational`.
+4. **`from_decimal_string("1.5")`** (Python): Parse `"1.5"` → `Rational(3, 2)`.
+   Very user-friendly.
+5. **`mediant(other)`**: Compute the mediant (a+c)/(b+d) of two fractions.
+   Useful in Stern-Brocot tree and Farey sequence applications.
+6. **`continued_fraction()`**: Return the continued-fraction representation
+   `[a0; a1, a2, ...]` as a list of `BigInt`. Useful for number theory.
 
 ## 4. Proposed API Design
 
@@ -168,7 +193,8 @@ All constructors and arithmetic operations maintain the invariant:
 2. `denominator > 0` (sign is carried by numerator)
 3. If the value is zero, the representation is `0/1`
 
-A private `_normalize()` method computes `g = gcd(abs(numerator), denominator)` and divides both by `g`, then ensures the denominator is positive.
+A private `_normalize()` method computes `g = gcd(abs(numerator), denominator)`
+and divides both by `g`, then ensures the denominator is positive.
 
 ### 4.3 Method Categories
 
@@ -248,7 +274,8 @@ A private `_normalize()` method computes `g = gcd(abs(numerator), denominator)` 
 - [ ] Comparison operators: `==`, `!=`, `<`, `<=`, `>`, `>=`
 - [ ] `__str__`, `__repr__`, `write_to`
 - [ ] `__neg__`, `__abs__`
-- [ ] Trait conformances: Stringable, Writable, Comparable, EqualityComparable, Hashable, Copyable, Movable
+- [ ] Trait conformances: Stringable, Writable, Comparable, EqualityComparable,
+      Hashable, Copyable, Movable
 - [ ] Unit tests for all of the above
 
 ### Phase 2: Conversions & Rounding
@@ -276,7 +303,8 @@ A private `_normalize()` method computes `g = gcd(abs(numerator), denominator)` 
 
 ### Phase 4: Integration
 
-- [ ] Migrate `constants.mojo`'s internal `Rational` (BigInt10-based) to the new type
+- [ ] Migrate `constants.mojo`'s internal `Rational` (BigInt10-based) to the new
+      type
 - [ ] Add `Rational` to `decimo/prelude.mojo` exports
 - [ ] Add type alias: `Frac` or `Fraction`
 - [ ] Add examples in `examples/examples_on_rational.mojo`
@@ -298,21 +326,30 @@ A private `_normalize()` method computes `g = gcd(abs(numerator), denominator)` 
 
 ## 7. Complexity Notes
 
-Rational arithmetic can cause **coefficient explosion**: numerators and denominators grow with each operation unless kept in lowest terms. Auto-normalization (dividing by GCD after each operation) is critical. The cost of GCD is O(n²) for n-digit numbers (using binary Stein's algorithm on `BigInt`), which is acceptable since the alternative — deferring normalization — leads to exponentially growing intermediates.
+Rational arithmetic can cause **coefficient explosion**: numerators and
+denominators grow with each operation unless kept in lowest terms.
+Auto-normalization (dividing by GCD after each operation) is critical. The cost
+of GCD is O(n²) for n-digit numbers (using binary Stein's algorithm on
+`BigInt`), which is acceptable since the alternative — deferring normalization —
+leads to exponentially growing intermediates.
 
 For applications that chain many operations, consider:
 
-- Using `BigDecimal` with a fixed precision instead, if exact representation is not needed.
-- Providing a `reduce()` method that is a no-op (since we always normalize), but documents the intent for users coming from other libraries.
+- Using `BigDecimal` with a fixed precision instead, if exact representation is
+  not needed.
+- Providing a `reduce()` method that is a no-op (since we always normalize), but
+  documents the intent for users coming from other libraries.
 
 ## 8. Literature Research: Internal Representation Best Practices
 
-> Date of research: 2025-07-16
-> Sources: Python `fractions.py`, Rust `num-rational`, Boost `rational`, GMP `mpq_t`
+> Date of research: 2025-07-16 Sources: Python `fractions.py`, Rust
+> `num-rational`, Boost `rational`, GMP `mpq_t`
 
 ### 8.1 Sign Representation: Separate `sign` Field vs. Signed Numerator
 
-**Research question:** Should a Rational struct use a separate `sign: Bool` field (like BigInt does), or embed the sign in the numerator (signed numerator + always-positive denominator)?
+**Research question:** Should a Rational struct use a separate `sign: Bool`
+field (like BigInt does), or embed the sign in the numerator (signed numerator +
+always-positive denominator)?
 
 **Findings — all four major libraries use the same convention:**
 
@@ -352,22 +389,37 @@ For applications that chain many operations, consider:
       denominator = -denominator
   ```
 
-- **Boost `rational<I>`**: Documentation states: "Internally, rational numbers are always stored in normalized form — the numerator and denominator have no common factors, and the denominator is always positive."
+- **Boost `rational<I>`**: Documentation states: "Internally, rational numbers
+  are always stored in normalized form — the numerator and denominator have no
+  common factors, and the denominator is always positive."
 
-- **GMP `mpq_t`**: Documentation states: "A rational number is stored as a pair of `mpz_t` integers, canonical form means denominator and numerator have no common factors, and denominator is positive."
+- **GMP `mpq_t`**: Documentation states: "A rational number is stored as a pair
+  of `mpz_t` integers, canonical form means denominator and numerator have no
+  common factors, and denominator is positive."
 
-**Conclusion:** The universal convention is **no separate sign field**. The sign is encoded in the signed numerator, and the denominator is always positive. This is the correct choice for our `Rational` struct.
+**Conclusion:** The universal convention is **no separate sign field**. The sign
+is encoded in the signed numerator, and the denominator is always positive. This
+is the correct choice for our `Rational` struct.
 
 **Why not a separate sign field?**
 
-1. **Redundancy**: Since `BigInt` already has a `sign: Bool` field internally, a separate `sign` on `Rational` would be redundant. The numerator's `BigInt.sign` already carries the sign.
-2. **Consistency invariant**: A separate sign field creates a three-way consistency problem (rational sign, numerator sign, denominator sign). With the convention "sign in numerator, denom positive", there's only one invariant to maintain.
-3. **Simplicity of arithmetic**: All four libraries implement negation as `Ratio(-numer, denom)` — just negate the numerator. With a separate sign field, every operation would need to reconcile the sign.
-4. **Industry consensus**: 40+ years of implementations (GMP since 1991, Python since 2.6, Rust, Boost, Java) all converged on the same design.
+1. **Redundancy**: Since `BigInt` already has a `sign: Bool` field internally, a
+   separate `sign` on `Rational` would be redundant. The numerator's
+   `BigInt.sign` already carries the sign.
+2. **Consistency invariant**: A separate sign field creates a three-way
+   consistency problem (rational sign, numerator sign, denominator sign). With
+   the convention "sign in numerator, denom positive", there's only one
+   invariant to maintain.
+3. **Simplicity of arithmetic**: All four libraries implement negation as
+   `Ratio(-numer, denom)` — just negate the numerator. With a separate sign
+   field, every operation would need to reconcile the sign.
+4. **Industry consensus**: 40+ years of implementations (GMP since 1991, Python
+   since 2.6, Rust, Boost, Java) all converged on the same design.
 
 ### 8.2 Underlying Integer Type: BigInt vs. BigInt10
 
-**Research question:** Should numerator and denominator use `BigInt` (base 2^32 binary) or `BigInt10` (base 10^9 decimal)?
+**Research question:** Should numerator and denominator use `BigInt` (base 2^32
+binary) or `BigInt10` (base 10^9 decimal)?
 
 | Criterion         | BigInt (base 2^32)                         | BigInt10 (base 10^9)     |
 | ----------------- | ------------------------------------------ | ------------------------ |
@@ -378,14 +430,18 @@ For applications that chain many operations, consider:
 | Bitwise ops       | Full support                               | No                       |
 | Project direction | Primary type, aliased as `BInt`, `Integer` | Legacy, being phased out |
 
-All four reference libraries use a binary representation for the underlying integer:
+All four reference libraries use a binary representation for the underlying
+integer:
 
 - **Python**: Python `int` (binary internally, CPython uses 30-bit digits)
-- **Rust**: Generic over `T: Integer`, but `BigRational = Ratio<BigInt>` uses binary `BigInt`
+- **Rust**: Generic over `T: Integer`, but `BigRational = Ratio<BigInt>` uses
+  binary `BigInt`
 - **Boost**: Template `I`, typically `int` or `long` (binary)
 - **GMP**: `mpz_t` (binary limbs)
 
-**Conclusion:** `BigInt` is the correct choice. GCD is essential for normalization, and `BigInt10` lacks it. Additionally, `BigInt` is faster and is the project's primary integer type going forward.
+**Conclusion:** `BigInt` is the correct choice. GCD is essential for
+normalization, and `BigInt10` lacks it. Additionally, `BigInt` is faster and is
+the project's primary integer type going forward.
 
 ### 8.3 Normalization Strategy
 
@@ -398,13 +454,18 @@ All four libraries auto-normalize after every operation:
 | Boost `rational`  | After every assignment/op                    | `normalize()` — GCD + sign fix                             |
 | GMP `mpq_t`       | `mpq_canonicalize()` — user must call        | GCD + sign fix                                             |
 
-Notably, Rust's `Ratio` also provides `new_raw()` which skips normalization for performance-critical paths where the caller guarantees the inputs are already normalized.
+Notably, Rust's `Ratio` also provides `new_raw()` which skips normalization for
+performance-critical paths where the caller guarantees the inputs are already
+normalized.
 
-**Recommendation:** Always auto-normalize (matching Python, Rust `new()`, Boost). Optionally provide a `_raw()` internal constructor that skips normalization for internal use where normalization is already guaranteed.
+**Recommendation:** Always auto-normalize (matching Python, Rust `new()`,
+Boost). Optionally provide a `_raw()` internal constructor that skips
+normalization for internal use where normalization is already guaranteed.
 
 ### 8.4 Comparison Strategy (Avoiding Overflow)
 
-Rust `num-rational`'s comparison is noteworthy — it avoids cross-multiplication overflow by using a recursive algorithm based on floor division:
+Rust `num-rational`'s comparison is noteworthy — it avoids cross-multiplication
+overflow by using a recursive algorithm based on floor division:
 
 ```txt
 cmp(a/b, c/d):
@@ -413,11 +474,14 @@ cmp(a/b, c/d):
   else: compute floor_div and remainders, recurse on reciprocals
 ```
 
-This is important for fixed-size integers but less critical for `BigInt` (which doesn't overflow). However, cross-multiplication (`a*d` vs `b*c`) can create unnecessarily large intermediates. Consider the Rust approach for efficiency.
+This is important for fixed-size integers but less critical for `BigInt` (which
+doesn't overflow). However, cross-multiplication (`a*d` vs `b*c`) can create
+unnecessarily large intermediates. Consider the Rust approach for efficiency.
 
 ### 8.5 Arithmetic Optimization (GCD Before Multiplication)
 
-Rust `num-rational` uses a cross-GCD optimization for multiplication and division to avoid coefficient explosion:
+Rust `num-rational` uses a cross-GCD optimization for multiplication and
+division to avoid coefficient explosion:
 
 ```txt
 a/b * c/d:
@@ -426,7 +490,8 @@ a/b * c/d:
   result = (a/gcd_ad * c/gcd_bc) / (d/gcd_ad * b/gcd_bc)
 ```
 
-This reduces intermediate sizes significantly. All four libraries use similar pre-reduction strategies. Our implementation should adopt this pattern.
+This reduces intermediate sizes significantly. All four libraries use similar
+pre-reduction strategies. Our implementation should adopt this pattern.
 
 ### 8.6 Summary of Validated Design Decisions
 
@@ -441,7 +506,8 @@ This reduces intermediate sizes significantly. All four libraries use similar pr
 
 ## 9. Future Extensions (Out of Scope)
 
-- **Gaussian rationals**: `Rational` + `Rational * i` for exact complex arithmetic.
+- **Gaussian rationals**: `Rational` + `Rational * i` for exact complex
+  arithmetic.
 - **p-adic rationals**: For number-theoretic applications.
 - **Rational matrix**: Dense matrix of `Rational` for exact linear algebra.
 - **Symbolic expression tree**: Using `Rational` as leaf nodes in a CAS.

@@ -1,21 +1,26 @@
 # decimo
 
-**Arbitrary-precision decimal and integer arithmetic for Python, powered by Mojo.**
+**Arbitrary-precision decimal and integer arithmetic for Python, powered by
+Mojo.**
 
 [![PyPI](https://img.shields.io/pypi/v/decimo)](https://pypi.org/project/decimo/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/forfudan/decimo/blob/main/LICENSE)
 
 > ⚠️ **Pre-Alpha / Placeholder release.**  
-> The Python bindings are under active development. A proper installable wheel is coming soon.  
-> Full Mojo library is already available — see the [main repository](https://github.com/forfudan/decimo).
+> The Python bindings are under active development. A proper installable wheel
+> is coming soon.  
+> Full Mojo library is already available — see the
+> [main repository](https://github.com/forfudan/decimo).
 
 ---
 
 ## What is decimo?
 
-`decimo` is an arbitrary-precision decimal and integer library, originally written in [Mojo](https://www.modular.com/mojo).  
-This package exposes `decimo`'s `Decimal` type to Python via a Mojo-built CPython extension module (`_decimo.so`),
-with a thin Python wrapper providing full Pythonic operator support.
+`decimo` is an arbitrary-precision decimal and integer library, originally
+written in [Mojo](https://www.modular.com/mojo).  
+This package exposes `decimo`'s `Decimal` type to Python via a Mojo-built
+CPython extension module (`_decimo.so`), with a thin Python wrapper providing
+full Pythonic operator support.
 
 ```python
 from decimo import Decimal
@@ -40,7 +45,8 @@ print(a / b)  # 0.12499999...
 
 ## Building from source
 
-The extension requires [Mojo](https://docs.modular.com/mojo/manual/get-started/) and [pixi](https://pixi.sh):
+The extension requires [Mojo](https://docs.modular.com/mojo/manual/get-started/)
+and [pixi](https://pixi.sh):
 
 ```bash
 git clone https://github.com/forfudan/decimo
@@ -58,5 +64,7 @@ pip install -e python/
 ## Links
 
 - **GitHub**: <https://github.com/forfudan/decimo>
-- **Changelog**: <https://github.com/forfudan/decimo/blob/main/docs/changelog.md>
-- **Mojo library docs**: <https://github.com/forfudan/decimo/blob/main/docs/api.md>
+- **Changelog**:
+  <https://github.com/forfudan/decimo/blob/main/docs/changelog.md>
+- **Mojo library docs**:
+  <https://github.com/forfudan/decimo/blob/main/docs/api.md>

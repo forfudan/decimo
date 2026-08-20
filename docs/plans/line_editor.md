@@ -1,38 +1,55 @@
 # Limo — Line Editor for Mojo 🔥
 
-> Date of initial planning: 2026-04-15
-> Author: Yuhao Zhu
-> Scope: A lightweight, reusable line-editing library for Mojo REPL applications
-> Location: `src/cli/limo/` (internal package, parallel to `src/cli/calculator/`)
-> Future: Extract to standalone repo `forfudan/limo` for general-purpose use
+> Date of initial planning: 2026-04-15 Author: Yuhao Zhu Scope: A lightweight,
+> reusable line-editing library for Mojo REPL applications Location:
+> `src/cli/limo/` (internal package, parallel to `src/cli/calculator/`) Future:
+> Extract to standalone repo `forfudan/limo` for general-purpose use
 >
 > The name "limo" = **li**ne + **mo**jo.
 > Name availability: not taken on PyPI or conda-forge (checked 2025-07-15).
 
 ## 1. Motivation
 
-The decimo REPL (`src/cli/calculator/repl.mojo`) currently reads input via a simple `getchar()` loop in cooked/canonical terminal mode. This means:
+The decimo REPL (`src/cli/calculator/repl.mojo`) currently reads input via a
+simple `getchar()` loop in cooked/canonical terminal mode. This means:
 
-- **No line editing** — users cannot move the cursor left/right, jump to Home/End, or delete characters mid-line.
-- **No history** — pressing up/down does nothing; users must retype previous expressions from scratch.
-- **No hotkeys** — Ctrl+A (beginning of line), Ctrl+E (end of line), Ctrl+K (kill to end), Ctrl+U (kill to beginning), Ctrl+W (delete word backward) — none of these work.
+- **No line editing** — users cannot move the cursor left/right, jump to
+  Home/End, or delete characters mid-line.
+- **No history** — pressing up/down does nothing; users must retype previous
+  expressions from scratch.
+- **No hotkeys** — Ctrl+A (beginning of line), Ctrl+E (end of line), Ctrl+K
+  (kill to end), Ctrl+U (kill to beginning), Ctrl+W (delete word backward) —
+  none of these work.
 
-These are table-stakes features for any interactive REPL. Every comparable tool — Python, IPython, bc, calc, qalc — provides them, typically via GNU readline or linenoise.
+These are table-stakes features for any interactive REPL. Every comparable tool
+— Python, IPython, bc, calc, qalc — provides them, typically via GNU readline or
+linenoise.
 
-Mojo has no readline binding. Rather than waiting for one, we can implement a lightweight line editor directly using `tcgetattr`/`tcsetattr` FFI to enter raw terminal mode and handle escape sequences ourselves.
+Mojo has no readline binding. Rather than waiting for one, we can implement a
+lightweight line editor directly using `tcgetattr`/`tcsetattr` FFI to enter raw
+terminal mode and handle escape sequences ourselves.
 
 ### Why a separate package?
 
-The line-editing problem is **completely general** — it has nothing to do with decimal arithmetic. Decoupling it into `limo` provides:
+The line-editing problem is **completely general** — it has nothing to do with
+decimal arithmetic. Decoupling it into `limo` provides:
 
-1. **Clean separation of concerns** — the calculator REPL calls `limo.read_line()` instead of managing terminal state directly.
-2. **Reusability** — any Mojo CLI tool (argmojo REPL, database client, shell, etc.) can import limo.
-3. **Testability** — terminal I/O logic can be tested independently of the calculator.
-4. **Future extraction** — when the API stabilizes, move limo to its own repo and release on conda-forge.
+1. **Clean separation of concerns** — the calculator REPL calls
+   `limo.read_line()` instead of managing terminal state directly.
+2. **Reusability** — any Mojo CLI tool (argmojo REPL, database client, shell,
+   etc.) can import limo.
+3. **Testability** — terminal I/O logic can be tested independently of the
+   calculator.
+4. **Future extraction** — when the API stabilizes, move limo to its own repo
+   and release on conda-forge.
 
 ### Relationship to Termo
 
-The author previously built a terminal manipulation library at `/Users/ZHU/Programs/termo/`. Termo is a full terminal control library (raw mode, screen control, input parsing, Unicode width) designed for building terminal UI applications like text editors. Limo is **lighter and more focused**:
+The author previously built a terminal manipulation library at
+`/Users/ZHU/Programs/termo/`. Termo is a full terminal control library (raw
+mode, screen control, input parsing, Unicode width) designed for building
+terminal UI applications like text editors. Limo is
+**lighter and more focused**:
 
 | Aspect         | Termo                                      | Limo                                         |
 | -------------- | ------------------------------------------ | -------------------------------------------- |
@@ -44,7 +61,9 @@ The author previously built a terminal manipulation library at `/Users/ZHU/Progr
 | **Target use** | Text editors, TUI apps                     | REPLs, interactive CLIs                      |
 | **Code reuse** | Source of truth for FFI and raw mode       | Borrows FFI bindings and raw mode from termo |
 
-Limo **reuses** termo's Phase 1 code (`sys_libc.mojo` TermIOS struct, raw mode enable/disable, byte reading) but does **not** need termo's screen buffer, full color system, or advanced input parsing. It is a purpose-built subset.
+Limo **reuses** termo's Phase 1 code (`sys_libc.mojo` TermIOS struct, raw mode
+enable/disable, byte reading) but does **not** need termo's screen buffer, full
+color system, or advanced input parsing. It is a purpose-built subset.
 
 ## 2. Cross-Library Comparison: Line Editors
 
@@ -74,7 +93,9 @@ Limo **reuses** termo's Phase 1 code (`sys_libc.mojo` TermIOS struct, raw mode e
 | **Windows support**            | ✗                    | ✗ (fork)     | ✓                 | ✓              | ✗ (macOS/Linux only)    |
 | **Platform**                   | POSIX                | POSIX        | Cross-platform    | Cross-platform | macOS arm64 (+ Linux)   |
 
-**Design model:** Limo is closest to **linenoise** — a minimal, single-file, zero-dependency line editor. The key difference is that limo adds Ctrl+W (word delete) and will support history search and tab completion in later phases.
+**Design model:** Limo is closest to **linenoise** — a minimal, single-file,
+zero-dependency line editor. The key difference is that limo adds Ctrl+W (word
+delete) and will support history search and tab completion in later phases.
 
 ## 3. Architecture
 
@@ -106,7 +127,8 @@ Adapted from termo's `sys_libc.mojo` + `raw_mode.mojo`. Contains:
   - `clear_line_from_cursor()`
   - `cursor_move_to_column(col)`
 
-This module does NOT include: ScreenBuffer, full color system, scroll control, alternate screen — those belong in termo.
+This module does NOT include: ScreenBuffer, full color system, scroll control,
+alternate screen — those belong in termo.
 
 #### `line_editor.mojo` — The Line Editor
 
@@ -248,13 +270,17 @@ def run_repl(...):
         ...
 ```
 
-The change to `repl.mojo` is minimal — replace `write_prompt()` + `read_line()` with a single `editor.read_line(prompt)` call. The `io.mojo` file's `read_line()` remains for pipe/file mode (which does not use raw terminal mode).
+The change to `repl.mojo` is minimal — replace `write_prompt()` + `read_line()`
+with a single `editor.read_line(prompt)` call. The `io.mojo` file's
+`read_line()` remains for pipe/file mode (which does not use raw terminal mode).
 
 ## 4. Implementation Roadmap
 
 ### Phase 1: Core Line Editor (MVP)
 
-The essential features that make the REPL usable. After this phase, the decimo REPL has arrow-key navigation, backspace, delete, home/end, history, and Ctrl shortcuts.
+The essential features that make the REPL usable. After this phase, the decimo
+REPL has arrow-key navigation, backspace, delete, home/end, history, and Ctrl
+shortcuts.
 
 | #    | Task                                                   | Status | Notes                                                                                                                            |
 | ---- | ------------------------------------------------------ | :----: | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -282,7 +308,8 @@ The essential features that make the REPL usable. After this phase, the decimo R
 | 1.22 | Unit tests for `LineEditor`                            |   ✗    | Buffer manipulation, cursor movement, history navigation                                                                         |
 | 1.23 | Manual integration testing                             |   ✗    | Run `decimo` REPL and verify all keybindings work                                                                                |
 
-**Milestone:** `decimo` REPL supports full arrow-key editing and up/down history.
+**Milestone:** `decimo` REPL supports full arrow-key editing and up/down
+history.
 
 ### Phase 2: Polish
 
@@ -301,7 +328,8 @@ Quality-of-life improvements and robustness.
 | 2.9  | Handle terminal resize during editing   |   ✗    | SIGWINCH → re-query terminal width → redraw             |
 | 2.10 | History prefix search                   |   ✗    | Type prefix, press up → find matching history entry     |
 
-**Milestone:** Robust line editing with word operations, Unicode support, and persistent history.
+**Milestone:** Robust line editing with word operations, Unicode support, and
+persistent history.
 
 ### Phase 3: Advanced Features (Future)
 
@@ -320,17 +348,35 @@ Features that would make limo competitive as a standalone library.
 
 ### Future: Re-evaluate FFI Signature Alignment
 
-Limo currently uses `Int`-only signatures for `tcgetattr`, `tcsetattr`, and `read` to match argmojo's `external_call` declarations and avoid LLVM IR conflicts (see [user_manual_limo.md](../user_manual_limo.md), "FFI Signature Convention"). This works but is a workaround — the root cause is that Mojo's `external_call` produces flat C-level symbols whose type signatures must be globally consistent across all packages.
+Limo currently uses `Int`-only signatures for `tcgetattr`, `tcsetattr`, and
+`read` to match argmojo's `external_call` declarations and avoid LLVM IR
+conflicts (see [user_manual_limo.md](../user_manual_limo.md), "FFI Signature
+Convention"). This works but is a workaround — the root cause is that Mojo's
+`external_call` produces flat C-level symbols whose type signatures must be
+globally consistent across all packages.
 
-As of Mojo nightly v0.26.3, a new `abi("C")` function effect has been added for declaring C calling convention on function definitions and function pointer types. Additionally, a bug fix now correctly applies platform ABI coercion (System V AMD64 / AAPCS on ARM64) when lowering external calls. These changes improve C interop but do not yet address the `external_call` signature conflict directly — `external_call` still produces global LLVM declarations that must match.
+As of Mojo nightly v0.26.3, a new `abi("C")` function effect has been added for
+declaring C calling convention on function definitions and function pointer
+types. Additionally, a bug fix now correctly applies platform ABI coercion
+(System V AMD64 / AAPCS on ARM64) when lowering external calls. These changes
+improve C interop but do not yet address the `external_call` signature conflict
+directly — `external_call` still produces global LLVM declarations that must
+match.
 
 **Check periodically** (e.g., with each Mojo release) whether:
 
-- [ ] `external_call` gains namespace-scoped or module-local declarations, allowing different packages to declare different signatures for the same C function without conflict.
-- [ ] A higher-level C FFI mechanism (e.g., `DLHandle.get_function` with `abi("C")`) becomes the recommended way to call POSIX functions, making `external_call` alignment unnecessary.
-- [ ] The Mojo team explicitly documents whether same-name `external_call` conflicts are a bug to be fixed or a design constraint to live with.
+- [ ] `external_call` gains namespace-scoped or module-local declarations,
+      allowing different packages to declare different signatures for the same C
+      function without conflict.
+- [ ] A higher-level C FFI mechanism (e.g., `DLHandle.get_function` with
+      `abi("C")`) becomes the recommended way to call POSIX functions, making
+      `external_call` alignment unnecessary.
+- [ ] The Mojo team explicitly documents whether same-name `external_call`
+      conflicts are a bug to be fixed or a design constraint to live with.
 
-If any of these are resolved, limo (and argmojo) can adopt proper C types (`Int32` for fd, `UnsafePointer` for buffers) instead of the current `Int`-everywhere convention.
+If any of these are resolved, limo (and argmojo) can adopt proper C types
+(`Int32` for fd, `UnsafePointer` for buffers) instead of the current
+`Int`-everywhere convention.
 
 ## 5. Design Decisions
 
@@ -353,7 +399,8 @@ If any of these are resolved, limo (and argmojo) can adopt proper C types (`Int3
 
 ## 6. Line Redraw Algorithm
 
-The core rendering operation. Called after every keystroke that modifies the buffer or cursor position.
+The core rendering operation. Called after every keystroke that modifies the
+buffer or cursor position.
 
 ```mojo
 def _redraw(self):
@@ -378,9 +425,12 @@ def _redraw(self):
         write(ESC[{back}D)
 ```
 
-This is the same approach used by linenoise. It's simple, correct, and fast enough for interactive use (terminal bandwidth is not a bottleneck for single-line redraws).
+This is the same approach used by linenoise. It's simple, correct, and fast
+enough for interactive use (terminal bandwidth is not a bottleneck for
+single-line redraws).
 
-For CJK support (Phase 2), `prompt_display_width` and cursor offset calculations must use `char_width()` instead of byte count.
+For CJK support (Phase 2), `prompt_display_width` and cursor offset calculations
+must use `char_width()` instead of byte count.
 
 ## 7. History Navigation Algorithm
 
@@ -425,7 +475,8 @@ def _history_down():
 
 ## 8. Escape Sequence Parsing
 
-When `read_byte()` returns `0x1B` (ESC), we need to determine whether this is a standalone Escape keypress or the start of a CSI escape sequence.
+When `read_byte()` returns `0x1B` (ESC), we need to determine whether this is a
+standalone Escape keypress or the start of a CSI escape sequence.
 
 ```mojo
 def _read_escape_sequence() -> Action:
@@ -454,7 +505,10 @@ def _read_escape_sequence() -> Action:
     return Escape  # standalone ESC
 ```
 
-Note: For Phase 1, we can use `VMIN=1, VTIME=0` (blocking) for simplicity. The ESC disambiguation timeout (`VMIN=0, VTIME=1` = 100ms) can be added in Phase 2 if needed. In practice, escape sequences arrive as bursts and the bytes are available immediately after ESC.
+Note: For Phase 1, we can use `VMIN=1, VTIME=0` (blocking) for simplicity. The
+ESC disambiguation timeout (`VMIN=0, VTIME=1` = 100ms) can be added in Phase 2
+if needed. In practice, escape sequences arrive as bursts and the bytes are
+available immediately after ESC.
 
 ## 9. Complexity Estimate
 
@@ -483,8 +537,13 @@ This is comparable to linenoise (1,100 lines of C for the full feature set).
 
 ## 11. References
 
-- [linenoise](https://github.com/antirez/linenoise) — Salvatore Sanfilippo's ~1,100 line C readline replacement. The primary design inspiration for limo.
-- [rustyline](https://github.com/kkawakam/rustyline) — Rust readline implementation. Reference for the callback-based completion/highlighting API.
-- [termo](https://github.com/forfudan/termo) — My own Mojo terminal library. Source of FFI bindings and raw mode code (`/Users/ZHU/Programs/termo/`).
-- [VT100 escape codes](https://vt100.net/docs/vt100-ug/chapter3.html) — Canonical reference for ANSI escape sequences.
-- [XTerm Control Sequences](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html) — Comprehensive reference for modern terminal escape sequences.
+- [linenoise](https://github.com/antirez/linenoise) — Salvatore Sanfilippo's
+  ~1,100 line C readline replacement. The primary design inspiration for limo.
+- [rustyline](https://github.com/kkawakam/rustyline) — Rust readline
+  implementation. Reference for the callback-based completion/highlighting API.
+- [termo](https://github.com/forfudan/termo) — My own Mojo terminal library.
+  Source of FFI bindings and raw mode code (`/Users/ZHU/Programs/termo/`).
+- [VT100 escape codes](https://vt100.net/docs/vt100-ug/chapter3.html) —
+  Canonical reference for ANSI escape sequences.
+- [XTerm Control Sequences](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html)
+  — Comprehensive reference for modern terminal escape sequences.

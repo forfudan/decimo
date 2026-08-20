@@ -1,14 +1,20 @@
 # Decimo CLI Calculator (`decimo`)
 
-> A native arbitrary-precision command-line calculator powered by Decimo and ArgMojo.
+> A native arbitrary-precision command-line calculator powered by Decimo and
+> ArgMojo.
 
 ## Motivation
 
-Decimo provides arbitrary-precision decimal arithmetic in Mojo, but currently lacks a quick way for users to interact with it outside of writing Mojo programs. A CLI calculator would:
+Decimo provides arbitrary-precision decimal arithmetic in Mojo, but currently
+lacks a quick way for users to interact with it outside of writing Mojo
+programs. A CLI calculator would:
 
 - Serve as the primary demo/showcase for Decimo's capabilities.
-- Provide a practical tool that outperforms `bc` (limited precision) and `python3 -c` (slow startup) for ad-hoc calculations.
-- Act as a real-world integration test for both [Decimo](https://github.com/forfudan/decimo) and [ArgMojo](https://github.com/forfudan/argmojo).
+- Provide a practical tool that outperforms `bc` (limited precision) and
+  `python3 -c` (slow startup) for ad-hoc calculations.
+- Act as a real-world integration test for both
+  [Decimo](https://github.com/forfudan/decimo) and
+  [ArgMojo](https://github.com/forfudan/argmojo).
 - Compile to a single native binary with zero dependencies.
 
 ## Feature Comparison
@@ -30,12 +36,28 @@ Rows are sorted by implementation priority for `decimo` (top = implement first).
 
 **Priority rationale:**
 
-1. **Basic arithmetic + High-precision + Large integers + Pipeline** (Phase 1) — These are the raison d'être of `decimo`. Decimo already provides arbitrary-precision `BigDecimal`; wiring up tokenizer → parser → evaluator gives immediate value. Pipeline/batch is nearly free once one-shot works (just loop over stdin lines).
-2. **Built-in math functions** (Phase 2) — `sqrt`, `ln`, `exp`, `sin`, `cos`, `tan`, `root` already exist in the Decimo API. Adding them mostly means extending the tokenizer/parser to recognize function names.
-3. **Polish & ArgMojo integration** (Phase 3) — Error diagnostics, edge-case handling, and exploiting ArgMojo v0.5.0 features (shell completions, argument groups, numeric range validation, etc.). Mostly CLI UX refinement.
-4. **Interactive REPL** (Phase 4) — Requires a read-eval-print loop, `ans` tracking, named variable storage, session-level precision management. No subcommands — mode is determined by invocation context (same as `bc`, `python3`, `calc`).
-5. **User-defined functions & mini-interpreter** (Phase 5) — Reusable named functions (`f(x) = expr`), library files (`-L`), interactive-after-load (`-I`), `~/.decimorc`. Statement-grammar features (block bodies, loops, arrays) gated on demand to avoid scope creep into a Python competitor.
-6. **Future enhancements** (Phase 6) — Binary distribution, CJK full-width detection, response files, unit conversion, matrix, symbolic. Out of scope for now.
+1. **Basic arithmetic + High-precision + Large integers + Pipeline** (Phase 1) —
+   These are the raison d'être of `decimo`. Decimo already provides
+   arbitrary-precision `BigDecimal`; wiring up tokenizer → parser → evaluator
+   gives immediate value. Pipeline/batch is nearly free once one-shot works
+   (just loop over stdin lines).
+2. **Built-in math functions** (Phase 2) — `sqrt`, `ln`, `exp`, `sin`, `cos`,
+   `tan`, `root` already exist in the Decimo API. Adding them mostly means
+   extending the tokenizer/parser to recognize function names.
+3. **Polish & ArgMojo integration** (Phase 3) — Error diagnostics, edge-case
+   handling, and exploiting ArgMojo v0.5.0 features (shell completions, argument
+   groups, numeric range validation, etc.). Mostly CLI UX refinement.
+4. **Interactive REPL** (Phase 4) — Requires a read-eval-print loop, `ans`
+   tracking, named variable storage, session-level precision management. No
+   subcommands — mode is determined by invocation context (same as `bc`,
+   `python3`, `calc`).
+5. **User-defined functions & mini-interpreter** (Phase 5) — Reusable named
+   functions (`f(x) = expr`), library files (`-L`), interactive-after-load
+   (`-I`), `~/.decimorc`. Statement-grammar features (block bodies, loops,
+   arrays) gated on demand to avoid scope creep into a Python competitor.
+6. **Future enhancements** (Phase 6) — Binary distribution, CJK full-width
+   detection, response files, unit conversion, matrix, symbolic. Out of scope
+   for now.
 
 ## Usage Design
 
@@ -43,7 +65,9 @@ Rows are sorted by implementation priority for `decimo` (top = implement first).
 
 ### Mode 1: One-Shot (Expression Mode)
 
-Pass the expression as a single quoted string. This avoids shell interpretation of `*`, `(`, `)`, etc. All other arguments are flags or options parsed by ArgMojo.
+Pass the expression as a single quoted string. This avoids shell interpretation
+of `*`, `(`, `)`, etc. All other arguments are flags or options parsed by
+ArgMojo.
 
 ```bash
 # Basic arithmetic
@@ -78,7 +102,8 @@ Best for: quick one-off calculations from the command line.
 
 ### Mode 2: Pipe and File Input
 
-Read expressions from stdin or a file — one expression per line, one result per line.
+Read expressions from stdin or a file — one expression per line, one result per
+line.
 
 ```bash
 # Pipe a single expression
@@ -123,7 +148,8 @@ Best for: scripting, piping, batch calculations, reproducible computation files.
 
 ### Mode 3: Interactive REPL
 
-Run `decimo` with no expression (or with `-i`) to enter an interactive session. Type an expression, press Enter, get the result, and continue.
+Run `decimo` with no expression (or with `-i`) to enter an interactive session.
+Type an expression, press Enter, get the result, and continue.
 
 ```bash
 $ decimo
@@ -144,10 +170,12 @@ Features:
 
 - `ans` — automatically holds the previous result.
 - Variable assignment — `x = <expr>` stores a named value for later use.
-- Precision — set once with `decimo -p 100` or change mid-session with `:precision 100`.
+- Precision — set once with `decimo -p 100` or change mid-session with
+  `:precision 100`.
 - Quit — `exit`, `quit`, or Ctrl-D.
 
-Best for: interactive exploration, multi-step calculations, experimenting with precision.
+Best for: interactive exploration, multi-step calculations, experimenting with
+precision.
 
 ## Architecture
 
@@ -163,7 +191,8 @@ Best for: interactive exploration, multi-step calculations, experimenting with p
 
 ### Layer 1: ArgMojo — CLI Argument Parsing
 
-ArgMojo handles the outer CLI structure via its struct-based declarative API (`Parsable` trait).
+ArgMojo handles the outer CLI structure via its struct-based declarative API
+(`Parsable` trait).
 
 ```mojo
 from argmojo import Parsable, Option, Flag, Positional, Command
@@ -202,7 +231,8 @@ Edge cases to handle:
 
 ### Layer 3: Parser — Shunting-Yard Algorithm
 
-Convert infix tokens to Reverse Polish Notation (RPN) using Dijkstra's shunting-yard algorithm.
+Convert infix tokens to Reverse Polish Notation (RPN) using Dijkstra's
+shunting-yard algorithm.
 
 Operator precedence and associativity:
 
@@ -213,7 +243,8 @@ Operator precedence and associativity:
 |     3      | `^`       |     Right     |
 |  4 (high)  | unary `-` |     Right     |
 
-Functions are pushed onto the operator stack and popped when their closing `)` is encountered.
+Functions are pushed onto the operator stack and popped when their closing `)`
+is encountered.
 
 ### Layer 4: Evaluator — Decimo Computation
 
@@ -223,7 +254,8 @@ Walk the RPN queue with a `BigDecimal` stack:
 - **Constant token** → push precomputed value (e.g., `compute_pi(precision)`).
 - **Binary operator** → pop two operands, compute, push result.
 - **Unary operator** → pop one operand, compute, push result.
-- **Function** → pop argument(s), call corresponding Decimo function, push result.
+- **Function** → pop argument(s), call corresponding Decimo function, push
+  result.
 
 Mapping to Decimo API:
 
@@ -285,7 +317,8 @@ Format the final `BigDecimal` result based on CLI flags:
 2. Add function call parsing (`sqrt(...)`, `ln(...)`, etc.).
 3. Add multi-argument function support (`root(x, n)`).
 4. Add built-in constants (`pi`, `e`).
-5. Add output formatting flags (`--scientific` or `-s`, `--engineering` or `-e`, `--pad-to-precision` or `-P`).
+5. Add output formatting flags (`--scientific` or `-s`, `--engineering` or `-e`,
+   `--pad-to-precision` or `-P`).
 
 | #    | Task                                                              | Status | Notes                                           |
 | ---- | ----------------------------------------------------------------- | :----: | ----------------------------------------------- |
@@ -302,13 +335,18 @@ Format the final `BigDecimal` result based on CLI flags:
 
 ### Phase 3: Polish & ArgMojo Deep Integration
 
-> ArgMojo v0.5.0 is installed via pixi. Reference: <https://github.com/forfudan/argmojo> · [User Manual](https://github.com/forfudan/argmojo/wiki)
+> ArgMojo v0.5.0 is installed via pixi. Reference:
+> <https://github.com/forfudan/argmojo> ·
+> [User Manual](https://github.com/forfudan/argmojo/wiki)
 
-1. Error messages: clear diagnostics for malformed expressions (e.g., "Unexpected token '*' at position 5").
+1. Error messages: clear diagnostics for malformed expressions (e.g.,
+   "Unexpected token '*' at position 5").
 2. Edge cases: division by zero, negative sqrt, overflow, empty expression.
 3. Upgrade to ArgMojo v0.5.0 and adopt declarative API.
-4. Exploit ArgMojo v0.5.0 features: shell completions, numeric validation, help readability, argument groups.
-5. Performance: ensure the tokenizer/parser overhead is negligible compared to BigDecimal computation.
+4. Exploit ArgMojo v0.5.0 features: shell completions, numeric validation, help
+   readability, argument groups.
+5. Performance: ensure the tokenizer/parser overhead is negligible compared to
+   BigDecimal computation.
 6. Documentation and examples in README (include shell completion setup).
 7. Build and distribute as a single binary.
 
@@ -333,7 +371,8 @@ Format the final `BigDecimal` result based on CLI flags:
 
 ### Phase 4: Interactive REPL
 
-No subcommands — mode is determined by invocation context (same as `bc`, `python3`, `calc`):
+No subcommands — mode is determined by invocation context (same as `bc`,
+`python3`, `calc`):
 
 | Invocation                         | Mode     |
 | ---------------------------------- | -------- |
@@ -342,7 +381,10 @@ No subcommands — mode is determined by invocation context (same as `bc`, `pyth
 | `decimo -F file.dm`                | File     |
 | `decimo` (no args, stdin is a TTY) | REPL     |
 
-Design rationale: subcommands (`decimo eval`, `decimo repl`) create collision risk with expression identifiers (e.g. `log`, `exp`) and multi-arg function names. Every comparable tool (`bc`, `dc`, `calc`, `qalc`, `python3`) uses the same zero-subcommand pattern.
+Design rationale: subcommands (`decimo eval`, `decimo repl`) create collision
+risk with expression identifiers (e.g. `log`, `exp`) and multi-arg function
+names. Every comparable tool (`bc`, `dc`, `calc`, `qalc`, `python3`) uses the
+same zero-subcommand pattern.
 
 **REPL features:**
 
@@ -392,7 +434,9 @@ decimo> exit
 | 4.18 | Line editing (left/right, backspace, del)  |   ✓    | Implemented via `limo` package; see `docs/plans/line_editor.md`             |
 | 4.19 | Input history (up/down arrow navigation)   |   ✓    | Implemented via `limo` package; see `docs/plans/line_editor.md`             |
 
-將所有的設定放在一行，這個靈感主要來自於 argmojo，其實就是把 CLI 的選項直接放到了 REPL 的表達式行中。這個想法我個人是很喜歡的，因為它簡潔明瞭，避免了多行設定的冗長。
+將所有的設定放在一行，這個靈感主要來自於 argmojo，其實就是把 CLI
+的選項直接放到了 REPL
+的表達式行中。這個想法我個人是很喜歡的，因為它簡潔明瞭，避免了多行設定的冗長。
 
 ### Phase 5: User-Defined Functions & Mini-Interpreter
 
@@ -460,9 +504,11 @@ blank lines skipped — same conventions as the existing `-F` script format.
 
 ### Phase 6: Future Enhancements
 
-1. Build and distribute as a single binary (Homebrew, GitHub Releases, etc.) — defer until REPL is stable so first-run experience is complete.
+1. Build and distribute as a single binary (Homebrew, GitHub Releases, etc.) —
+   defer until REPL is stable so first-run experience is complete.
 2. Detect full-width digits/operators for CJK users while parsing.
-3. Response files (`@expressions.txt`) — when Mojo compiler bug is fixed, use ArgMojo's `cmd.response_file_prefix("@")`.
+3. Response files (`@expressions.txt`) — when Mojo compiler bug is fixed, use
+   ArgMojo's `cmd.response_file_prefix("@")`.
 
 | #   | Task                                        | Status | Notes                                                                             |
 | --- | ------------------------------------------- | :----: | --------------------------------------------------------------------------------- |
@@ -476,13 +522,16 @@ blank lines skipped — same conventions as the existing `-F` script format.
 
 ### All Numbers Are `BigDecimal`
 
-All numeric literals and computation results are stored as `BigDecimal`, not integers. This means:
+All numeric literals and computation results are stored as `BigDecimal`, not
+integers. This means:
 
 - `1 + 2` → `BigDecimal("3")`, displayed as `3` (no trailing `.0`).
 - `1 / 3` → `BigDecimal` with full precision, not integer `0`.
 - `2 ^ 256` → exact integer result stored as `BigDecimal` with scale 0.
 
-This is the natural choice for a calculator: users expect `7 / 2` to be `3.5`, not `3`. Integer-only results are displayed without a decimal point (scale 0 values are printed as plain integers), so the experience is seamless.
+This is the natural choice for a calculator: users expect `7 / 2` to be `3.5`,
+not `3`. Integer-only results are displayed without a decimal point (scale 0
+values are printed as plain integers), so the experience is seamless.
 
 ### Mode Detection
 
@@ -497,7 +546,11 @@ This is the natural choice for a calculator: users expect `7 / 2` to be `3.5`, n
 
 ## Notes
 
-- In one-shot mode, the expression is a single quoted string to prevent shell globbing and special character issues.
-- Division uses `true_divide` (not integer division) by default, matching calculator user expectations.
-- Precision applies to intermediate computations as well (via `working_precision`), not just the final display.
-- File and pipe modes evaluate each line independently. Use the REPL for stateful multi-line sessions with variables.
+- In one-shot mode, the expression is a single quoted string to prevent shell
+  globbing and special character issues.
+- Division uses `true_divide` (not integer division) by default, matching
+  calculator user expectations.
+- Precision applies to intermediate computations as well (via
+  `working_precision`), not just the final display.
+- File and pipe modes evaluate each line independently. Use the REPL for
+  stateful multi-line sessions with variables.

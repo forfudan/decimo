@@ -372,22 +372,20 @@ P1 — Add/Sub small-precision target (currently 4.7× / 3.6× py → target ≤
   `debug_assert(cond, "msg ", value)` pattern (e.g.
   `biguint/arithmetics.mojo:1630`).
 
-- **T-A2: `multiply_by_power_of_ten` allocation audit (H#17). SUBSTANTIALLY DONE (20260606).**
-  The inplace variant
+- **T-A2: `multiply_by_power_of_ten` allocation audit (H#17). SUBSTANTIALLY DONE
+  (20260606).** The inplace variant
   [`multiply_by_power_of_ten_inplace`](../../src/decimo/biguint/arithmetics.mojo)
-  exists, uses `words.resize(unsafe_uninit_length=...)` (O(1)
-  capacity + memset, not O(n) memcpy), and has a multiple-of-9 fast
-  path that delegates to `multiply_by_power_of_billion_inplace`. The
-  hot mutating callers (`add_inplace`, `subtract_inplace` in
-  `bigdecimal/arithmetics.mojo`, plus the new `bigdecimal.mojo:2562`
-  site) already use the inplace form. Residual: the public
-  `add`/`subtract` at `bigdecimal/arithmetics.mojo:94-95,176-177`
-  still call the allocating variant on both operands (one operand
-  always has `scale_factor == 0`, where it degenerates to `x.copy()`).
-  Switching to inplace here would save only the redundant copy, not
-  the alignment allocation — a sub-1% micro-optimisation; the bulk
-  30–50% win projected by this task was already captured by the
-  inplace variant.
+  exists, uses `words.resize(unsafe_uninit_length=...)` (O(1) capacity + memset,
+  not O(n) memcpy), and has a multiple-of-9 fast path that delegates to
+  `multiply_by_power_of_billion_inplace`. The hot mutating callers
+  (`add_inplace`, `subtract_inplace` in `bigdecimal/arithmetics.mojo`, plus the
+  new `bigdecimal.mojo:2562` site) already use the inplace form. Residual: the
+  public `add`/`subtract` at `bigdecimal/arithmetics.mojo:94-95,176-177` still
+  call the allocating variant on both operands (one operand always has
+  `scale_factor == 0`, where it degenerates to `x.copy()`). Switching to inplace
+  here would save only the redundant copy, not the alignment allocation — a
+  sub-1% micro-optimisation; the bulk 30–50% win projected by this task was
+  already captured by the inplace variant.
 
 - **T-A3: Hot-path-first switch reorder in `add`/`subtract` (H#11).**
   **DONE (20260610).** `bigdecimal/arithmetics.mojo`: `add` and
