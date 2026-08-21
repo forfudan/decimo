@@ -14,7 +14,7 @@ value, which is the case the `Movable` supertrait exists to serve.
 
 from std import testing
 
-from decimo.numeric import Numeric
+from decimo.traits import Numeric
 from decimo.bigint.bigint import BigInt
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.decimal128.decimal128 import Decimal128

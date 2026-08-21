@@ -40,7 +40,7 @@ from decimo.errors import (
 )
 import decimo.decimal128.utility as decimal128_utility
 from decimo.bigdecimal.bigdecimal import BigDecimal
-from decimo.numeric import Numeric
+from decimo.traits import Numeric, Parsable
 
 comptime Dec128 = Decimal128
 """A 128-bit fixed-point decimal number."""
@@ -54,6 +54,7 @@ struct Decimal128(
     Hashable,
     IntableRaising,
     Numeric,
+    Parsable,
     Roundable,
     TrivialRegisterPassable,
     Writable,
@@ -160,7 +161,7 @@ struct Decimal128(
     # Special values
     @always_inline
     @staticmethod
-    def ZERO() -> Decimal128:
+    def ZERO() -> Self:
         """Returns a Decimal128 representing 0.
 
         Returns:
@@ -170,7 +171,7 @@ struct Decimal128(
 
     @always_inline
     @staticmethod
-    def ONE() -> Decimal128:
+    def ONE() -> Self:
         """Returns a Decimal128 representing 1.
 
         Returns:
@@ -180,7 +181,7 @@ struct Decimal128(
 
     @always_inline
     @staticmethod
-    def MAX() -> Decimal128:
+    def MAX() -> Self:
         """
         Returns the maximum possible Decimal128 value.
         This is equivalent to 79228162514264337593543950335.
@@ -192,7 +193,7 @@ struct Decimal128(
 
     @always_inline
     @staticmethod
-    def MIN() -> Decimal128:
+    def MIN() -> Self:
         """Returns the minimum possible Decimal128 value (negative of MAX).
         This is equivalent to -79228162514264337593543950335.
 
@@ -203,7 +204,7 @@ struct Decimal128(
 
     @always_inline
     @staticmethod
-    def PI() -> Decimal128:
+    def PI() -> Self:
         """Returns the value of pi (π) as a Decimal128.
 
         Returns:
@@ -213,7 +214,7 @@ struct Decimal128(
 
     @always_inline
     @staticmethod
-    def E() -> Decimal128:
+    def E() -> Self:
         """Returns the value of Euler's number (e) as a Decimal128.
 
         Returns:
@@ -625,7 +626,7 @@ struct Decimal128(
     @always_inline
     def from_uint128(
         value: UInt128, scale: UInt32 = 0, sign: Bool = False
-    ) raises -> Decimal128:
+    ) raises -> Self:
         """Initializes a Decimal128 from a UInt128 value.
 
         Args:
@@ -654,7 +655,7 @@ struct Decimal128(
         return result
 
     @staticmethod
-    def from_string(value: String) raises -> Decimal128:
+    def from_string(value: String) raises -> Self:
         """Initializes a Decimal128 from a string representation.
 
         Args:
@@ -926,7 +927,7 @@ struct Decimal128(
             )
 
     @staticmethod
-    def from_float(value: Float64) raises -> Decimal128:
+    def from_float(value: Float64) raises -> Self:
         """Initializes a Decimal128 from a floating-point value.
         The reliability of this method is limited by the precision of Float64.
         Float64 is reliable up to 15 significant digits and marginally
@@ -2032,7 +2033,7 @@ struct Decimal128(
     # ===------------------------------------------------------------------=== #
 
     @always_inline
-    def max(self, other: Decimal128) -> Decimal128:
+    def max(self, other: Decimal128) -> Self:
         """Returns the larger of `self` and `other`.
         See `max()` for more information.
 
@@ -2045,7 +2046,7 @@ struct Decimal128(
         return decimal128_comparison.max(self, other)
 
     @always_inline
-    def min(self, other: Decimal128) -> Decimal128:
+    def min(self, other: Decimal128) -> Self:
         """Returns the smaller of `self` and `other`.
         See `min()` for more information.
 
@@ -2058,7 +2059,7 @@ struct Decimal128(
         return decimal128_comparison.min(self, other)
 
     @always_inline
-    def clamp(self, lower: Decimal128, upper: Decimal128) raises -> Decimal128:
+    def clamp(self, lower: Decimal128, upper: Decimal128) raises -> Self:
         """Clamps `self` into the closed interval `[lower, upper]`.
         See `clamp()` for more information.
 
@@ -2267,7 +2268,7 @@ struct Decimal128(
         return decimal128_exponential.ln(self)
 
     @always_inline
-    def log10(self) raises -> Decimal128:
+    def log10(self) raises -> Self:
         """Computes the base-10 logarithm of this Decimal128.
 
         Returns:
@@ -2279,7 +2280,7 @@ struct Decimal128(
         return decimal128_exponential.log10(self)
 
     @always_inline
-    def log(self, base: Decimal128) raises -> Decimal128:
+    def log(self, base: Decimal128) raises -> Self:
         """Computes the logarithm of this Decimal128 with an arbitrary base.
 
         Args:
@@ -2294,7 +2295,7 @@ struct Decimal128(
         return decimal128_exponential.log(self, base)
 
     @always_inline
-    def power(self, exponent: Int) raises -> Decimal128:
+    def power(self, exponent: Int) raises -> Self:
         """Raises this Decimal128 to the power of an integer.
 
         Args:
@@ -2310,7 +2311,7 @@ struct Decimal128(
         return decimal128_exponential.power(self, Self(exponent))
 
     @always_inline
-    def power(self, exponent: Decimal128) raises -> Decimal128:
+    def power(self, exponent: Decimal128) raises -> Self:
         """Raises this Decimal128 to the power of another Decimal128.
 
         Args:
@@ -2794,7 +2795,7 @@ struct Decimal128(
         #     | UInt128(self.low)
         # )
 
-    def extend_precision(self, var precision_diff: Int) raises -> Decimal128:
+    def extend_precision(self, var precision_diff: Int) raises -> Self:
         """Returns a number with additional decimal128 places (trailing zeros).
         This multiplies the coefficient by 10^precision_diff and increases
         the scale accordingly, preserving the numeric value.
