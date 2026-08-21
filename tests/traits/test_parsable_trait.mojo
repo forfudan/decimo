@@ -22,9 +22,14 @@ from decimo.decimal128.decimal128 import Decimal128
 
 
 def _parse_all[
-    T: Copyable & Deinitable & Parsable
+    T: Movable & Deinitable & Parsable
 ](tokens: List[String]) raises -> List[T]:
-    """Parses every token into `T`, naming no concrete type."""
+    """Parses every token into `T`, naming no concrete type.
+
+    The bound is `Movable` rather than `Copyable` because nothing here
+    copies, and because `Parsable` is meant to reach types like
+    `BigFloat` that move without copying.
+    """
     var out = List[T](capacity=len(tokens))
     for token in tokens:
         out.append(T.from_string(token))
