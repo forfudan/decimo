@@ -1252,12 +1252,19 @@ from decimo.expression import tokenize, parse_to_rpn, evaluate_rpn
 
 ### Appendix B — Traits Implemented
 
-All of these come from the Mojo standard library except **`Numeric`**, which
-Decimo defines in `decimo.numeric` and `BigInt`, `BigDecimal` and `Decimal128`
-all conform to. It gathers `zero()`, `one()`, `-x`, `+`, `-`, `*` and `/`, so a
-generic routine — a matrix or polynomial library, say — can be written once
-against `T: Numeric` and run over any of the three. Mojo checks conformance
-nominally, which is why the trait lives in Decimo rather than in the consumer.
+All of these come from the Mojo standard library except **`Numeric`** and
+**`Parsable`**, which Decimo defines in `decimo.traits` and `BigInt`,
+`BigDecimal` and `Decimal128` all conform to. Mojo checks conformance
+nominally, which is why they live in Decimo rather than in the consumer.
+
+`Numeric` gathers `zero()`, `one()`, `-x`, `+`, `-`, `*` and `/`, so a generic
+routine — a matrix or polynomial library, say — can be written once against
+`T: Numeric` and run over any of the three.
+
+`Parsable` requires the static `from_string(value)`, so the same generic
+routine can also fill itself from text. The two are separate because the
+capabilities are: `BigFloat` parses but is `Movable` without being `Copyable`,
+so it can never be `Numeric`. Ask for `T: Numeric & Parsable` to get both.
 
 #### BigInt <!-- omit from toc -->
 
@@ -1270,6 +1277,7 @@ nominally, which is why the trait lives in Decimo rather than in the consumer.
 | `FloatableRaising` | `Float64(x)`                     |
 | `IntableRaising`   | `Int(x)`                         |
 | `Numeric`          | Generic code over Decimo numbers |
+| `Parsable`         | `T.from_string(text)` in generic code |
 | `Representable`    | `repr(x)`                        |
 | `Stringable`       | `String(x)`, `str(x)`            |
 | `Writable`         | `print(x)`, writer protocol      |
@@ -1285,6 +1293,7 @@ nominally, which is why the trait lives in Decimo rather than in the consumer.
 | `FloatableRaising` | `Float64(x)`                     |
 | `IntableRaising`   | `Int(x)`                         |
 | `Numeric`          | Generic code over Decimo numbers |
+| `Parsable`         | `T.from_string(text)` in generic code |
 | `Representable`    | `repr(x)`                        |
 | `Roundable`        | `round(x)`, `round(x, ndigits)`  |
 | `Stringable`       | `String(x)`, `str(x)`            |

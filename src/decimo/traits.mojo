@@ -23,11 +23,16 @@ motivating case. Mojo's trait conformance is nominal and has to be declared
 where the struct is defined, so the traits live here rather than in the
 consumer.
 
-One trait covers `BigInt`, `BigDecimal` and `Decimal128` alike, division
+`Numeric` covers `BigInt`, `BigDecimal` and `Decimal128` alike, division
 included. Integer division is closed as long as it is understood the way Mojo's
 own `Int` understands it: `/` truncates toward zero and stays in the type, and
 `//` (which floors, and so differs whenever the signs differ) is a
 separate operator that this trait does not require.
+
+`Parsable` is separate from `Numeric` because the two capabilities are
+independent. `BigFloat` parses but is `Movable` without being `Copyable`, so it
+can never be `Numeric`; a numeric type with no decimal spelling is equally
+imaginable. Splitting them lets each consumer ask for what it actually uses.
 
 Every operation is declared `raises`, which is the widest signature: a
 non-raising implementation satisfies a raising requirement, so `BigInt.__add__`
@@ -81,5 +86,30 @@ trait Numeric(Copyable, Deinitable, Movable, Writable):
         """Returns `self` divided by `other`.
 
         On an integral type this truncates toward zero, as `Int` does.
+        """
+        ...
+
+
+trait Parsable:
+    """A type that can be built from its decimal string form.
+
+    The counterpart of `Writable`: `Parsable` reads a number back out of the
+    text that `write_to` produced. It is what lets a container be filled from a
+    literal - a matrix parsed out of `"[[1.1, 2.2], [3.3, 4.4]]"` - without the
+    container knowing which number type it holds.
+    """
+
+    @staticmethod
+    def from_string(value: String) raises -> Self:
+        """Returns the value the decimal literal `value` denotes.
+
+        Args:
+            value: The decimal literal to parse.
+
+        Returns:
+            The parsed value.
+
+        Raises:
+            Error: If `value` is not a decimal literal this type accepts.
         """
         ...

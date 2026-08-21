@@ -28,7 +28,7 @@ from std.python import PythonObject
 from std import testing
 
 from decimo.errors import ConversionError, ValueError
-from decimo.numeric import Numeric
+from decimo.traits import Numeric, Parsable
 from decimo.rounding_mode import RoundingMode
 from decimo.numerals.chinese import ChineseNumeralStyle
 from decimo.bigdecimal.exponential import MathCache
@@ -113,6 +113,7 @@ struct BigDecimal(
     IntableRaising,
     Movable,
     Numeric,
+    Parsable,
     Roundable,
     Writable,
 ):

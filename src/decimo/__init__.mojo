@@ -38,7 +38,7 @@ comptime DECIMO_VERSION_TAG = "v" + DECIMO_VERSION
 """
 
 # Traits
-from .numeric import Numeric
+from .traits import Numeric, Parsable
 
 # Core types
 from .decimal128.decimal128 import Decimal128, Dec128
