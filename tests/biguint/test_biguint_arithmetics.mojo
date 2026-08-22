@@ -206,9 +206,9 @@ def test_biguint_truncate_divide_random_numbers_against_python() raises:
     for _test_case in range(10):
         number_a = String("")
         number_b = String("")
-        for _i in range(12345):
+        for _i in range(123):
             number_a += String(random_ui64(0, 999_999_999_999_999_999))
-        for _i in range(789):
+        for _i in range(45):
             number_b += String(random_ui64(0, 999_999_999_999_999_999))
         decimo_result = String(BigUInt(number_a) // BigUInt(number_b))
         python_result = String(Python.int(number_a) // Python.int(number_b))

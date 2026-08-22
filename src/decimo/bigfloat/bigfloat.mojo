@@ -38,7 +38,8 @@ from std.memory import Pointer
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.biguint.biguint import BigUInt
-from decimo.errors import ConversionError, RuntimeError
+from decimo.errors import ConversionError, RuntimeError, ValueError
+from decimo.traits import Rootable
 from decimo.bigfloat.mpfr_wrapper import (
     mpfrw_available,
     mpfrw_init,
@@ -116,7 +117,7 @@ def _read_c_string(address: Int) -> String:
 # ===----------------------------------------------------------------------=== #
 
 
-struct BigFloat(Comparable, Movable, Writable):
+struct BigFloat(Comparable, Movable, Rootable, Writable):
     """Arbitrary-precision binary floating-point type backed by MPFR.
 
     Each BigFloat owns a single MPFR handle (index into the C wrapper's pool).
@@ -746,6 +747,28 @@ struct BigFloat(Comparable, Movable, Writable):
             )
         mpfrw_pow(h, self.handle, exponent.handle)
         return Self(_handle=h, _precision=prec)
+
+    def root(self, n: Int) raises -> Self:
+        """Computes the n-th root.
+
+        This is the spelling `BigDecimal.root` and `Decimal128.root` share.
+
+        Args:
+            n: The root degree (e.g. 2 for square root, 3 for cube root).
+
+        Returns:
+            The n-th root of this value.
+
+        Raises:
+            ValueError: If `n` is not positive.
+            RuntimeError: If MPFR handle allocation fails.
+        """
+        if n <= 0:
+            raise ValueError(
+                message="Cannot compute non-positive root.",
+                function="BigFloat.root()",
+            )
+        return self.root(UInt32(n))
 
     def root(self, n: UInt32) raises -> Self:
         """Computes the n-th root.

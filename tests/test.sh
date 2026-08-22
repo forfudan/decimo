@@ -20,7 +20,8 @@
 #   rational    rat   frac      → Rational number tests
 #   expression  expr  eval      → Expression engine tests
 #   numerals    numeral chinese → Numeral system tests
-#   traits      numeric num     → Trait conformance tests (`Numeric`, `Parsable`)
+#   traits      numeric num     → Trait conformance tests (`Numeric`,
+#                                 `Parsable`, `Rootable`)
 #   bigfloat    bfloat float    → BigFloat tests (requires MPFR)
 #   toml                        → TOML parser tests
 #   cli                         → CLI calculator tests
@@ -60,9 +61,12 @@ run_mojo_suite() {
         local attempt=1
         local max_attempts=2
         while (( attempt <= max_attempts )); do
-            if pixi run mojo run -I tests -D ASSERT=all --debug-level=full "$f"; then
-                break
-            fi
+            # `&&` rather than `if`: after an `if ... fi` whose condition was
+            # false, `$?` is the `if` statement's own status, which is 0. The
+            # `return $rc` below would then hand back success for a suite that
+            # failed to compile, and the whole run would exit green.
+            pixi run mojo run -I tests -D ASSERT=all --debug-level=full "$f" \
+                && break
             local rc=$?
             if (( attempt < max_attempts )); then
                 echo "WARN: $f failed (rc=$rc), retrying (attempt $((attempt + 1))/$max_attempts)..."

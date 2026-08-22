@@ -34,6 +34,13 @@ independent. `BigFloat` parses but is `Movable` without being `Copyable`, so it
 can never be `Numeric`; a numeric type with no decimal spelling is equally
 imaginable. Splitting them lets each consumer ask for what it actually uses.
 
+`Rootable` is separate for the same reason, and the evidence is sharper. Two
+types here have a square root and can never be `Numeric`: `BigFloat`, again for
+want of `Copyable`, and `BigUInt`, which is unsigned and so has no `__neg__`.
+Folding `sqrt` into `Numeric` would leave both unable to advertise a capability
+they demonstrably have, and would oblige every future numeric type to grow one.
+A consumer that needs both asks for `T: Numeric & Rootable`.
+
 Every operation is declared `raises`, which is the widest signature: a
 non-raising implementation satisfies a raising requirement, so `BigInt.__add__`
 conforms unchanged while `BigDecimal.__add__` -- which really can raise --
@@ -58,34 +65,122 @@ trait Numeric(Copyable, Deinitable, Movable, Writable):
 
     @staticmethod
     def zero() -> Self:
-        """Returns the additive identity."""
+        """Returns the additive identity.
+
+        Returns:
+            The value that leaves any other unchanged under addition.
+        """
         ...
 
     @staticmethod
     def one() -> Self:
-        """Returns the multiplicative identity."""
+        """Returns the multiplicative identity.
+
+        Returns:
+            The value that leaves any other unchanged under multiplication.
+        """
         ...
 
     def __neg__(self) raises -> Self:
-        """Returns the additive inverse."""
+        """Returns the additive inverse.
+
+        Returns:
+            The value that sums with `self` to `zero()`.
+
+        Raises:
+            Error: If the negation is not representable in this type.
+        """
         ...
 
     def __add__(self, other: Self) raises -> Self:
-        """Returns the sum of `self` and `other`."""
+        """Returns the sum of `self` and `other`.
+
+        Args:
+            other: The value to add to `self`.
+
+        Returns:
+            The sum of `self` and `other`.
+
+        Raises:
+            Error: If the sum is not representable in this type.
+        """
         ...
 
     def __sub__(self, other: Self) raises -> Self:
-        """Returns `other` subtracted from `self`."""
+        """Returns `other` subtracted from `self`.
+
+        Args:
+            other: The value to subtract from `self`.
+
+        Returns:
+            The difference of `self` and `other`.
+
+        Raises:
+            Error: If the difference is not representable in this type.
+        """
         ...
 
     def __mul__(self, other: Self) raises -> Self:
-        """Returns the product of `self` and `other`."""
+        """Returns the product of `self` and `other`.
+
+        Args:
+            other: The value to multiply `self` by.
+
+        Returns:
+            The product of `self` and `other`.
+
+        Raises:
+            Error: If the product is not representable in this type.
+        """
         ...
 
     def __truediv__(self, other: Self) raises -> Self:
         """Returns `self` divided by `other`.
 
         On an integral type this truncates toward zero, as `Int` does.
+
+        Args:
+            other: The divisor.
+
+        Returns:
+            The quotient of `self` and `other`.
+
+        Raises:
+            Error: If `other` is zero, or the quotient is not representable in
+                this type.
+        """
+        ...
+
+
+trait Rootable(Deinitable, Movable):
+    """A type that can take the square root of one of its values.
+
+    The bound that a Cholesky or QR factorisation needs, and nothing more. It
+    is deliberately narrow: `sqrt` is the only operation dense linear algebra
+    asks for, so it is the only one required here.
+
+    What the root means is the implementing type's business. On an integral
+    type it truncates -- `BigInt("10").sqrt()` is `3` -- exactly as
+    `Numeric.__truediv__` truncates there. A caller that cannot accept that
+    should bound on a type that does not.
+
+    The supertraits are `Deinitable` and `Movable`, and no more. `sqrt` hands
+    back an owned `Self`, so a caller that stores or returns that result moves
+    it, and something has to destroy it. `Copyable` is pointedly absent:
+    `BigFloat` is `Movable` without it, and requiring it would exclude a type
+    that has had a square root all along.
+    """
+
+    def sqrt(self) raises -> Self:
+        """Returns the square root of `self`.
+
+        Returns:
+            The non-negative value whose square is `self`, truncated toward
+            zero on a type that cannot represent it exactly.
+
+        Raises:
+            Error: If `self` is negative, or the root is not representable in
+                this type.
         """
         ...
 

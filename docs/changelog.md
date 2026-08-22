@@ -2,6 +2,90 @@
 
 This is a list of changes for the Decimo package (formerly DeciMojo).
 
+## 20260822 (v0.13.0)
+
+Decimo v0.13.0 is a **traits** release. `Numeric`, `Parsable` and `Rootable`
+let code be written once and run over `BigInt`, `BigUInt`, `BigDecimal`,
+`Decimal128` and `BigFloat` alike — a matrix library asking for
+`T: Numeric & Rootable` is the motivating case. `BigInt` gains `/`. The errors
+module is reworked so that the error kinds are functions returning a plain
+`Error`, which is a breaking change for code that spells a typed raise such as
+`raises ValueError` in its own signatures.
+
+### ⭐️ New in v0.13.0
+
+**Traits (`decimo.traits`)**:
+
+1. **`Numeric`** — `zero()`, `one()`, `-x`, `+`, `-`, `*` and `/`, conformed to
+   by `BigInt`, `BigDecimal` and `Decimal128`. Enough for the whole of dense
+   linear algebra. Every operation is declared `raises`, the widest signature,
+   so a non-raising implementation conforms unchanged (PR #265).
+1. **`Parsable`** — the static `from_string()`, and the counterpart of
+   `Writable`: it lets a container be filled from a literal without knowing
+   which number type it holds. Same three types (PR #266).
+1. **`Rootable`** — `sqrt()`, conformed to by five types, `BigUInt` and
+   `BigFloat` included. It is separate from `Numeric` because those two can
+   never be `Numeric`: `BigUInt` is unsigned and so has no `__neg__`, and
+   `BigFloat` is `Movable` without being `Copyable`. What the root means stays
+   the implementing type's business — on an integral type it truncates, so
+   `BigInt("10").sqrt()` is `3` (PR #268).
+
+**Other additions**:
+
+1. **`BigInt.__truediv__`** — `/` on integers is closed and truncates toward
+   zero, matching Mojo's own `Int`: `BInt(-7) / BInt(2)` is `-3` where
+   `BInt(-7) // BInt(2)` is `-4`. The two operators differ exactly when the
+   operands have opposite signs (PR #265).
+1. **`BigDecimal.zero()` / `one()`** and **`Decimal128.zero()` / `one()`**, the
+   `Numeric` spelling of the identities. `Decimal128.ZERO()` and `ONE()` stay
+   as they are (PR #265).
+1. **`PRECISION`** (28, the same default as Python's `decimal`) is exported
+   from the top level, so a caller can name the default it is getting (PR
+   #268).
+
+### 🦋 Changed in v0.13.0
+
+**Errors** (PR #267):
+
+1. **The error kinds are now functions**, not aliases for a parametrised
+   payload type: `ValueError`, `OverflowError` and the rest return a plain
+   **`Error`**, so an enclosing function needs nothing beyond a bare `raises`.
+   Raise sites are unchanged, but a signature can no longer be spelled
+   `raises ValueError` — a typed raise is invariant in Mojo v1.0.0, which cuts
+   such a function off from `std.testing` and from any ordinary helper.
+   `BaseError` is now the payload only.
+1. A new comptime toggle **`_USE_COLOUR`** blanks every ANSI escape, for when
+   the tracebacks go to a log file rather than a terminal. Chained tracebacks
+   gain a blank line after the separator, and a frame now names the function it
+   was raised in.
+
+**Signatures** (PR #268):
+
+1. **`BigDecimal.sqrt()`** splits its defaulted `precision` into the overloads
+   `sqrt(self)` and `sqrt(self, precision)`, since in Mojo a default argument
+   does not satisfy a trait signature. Existing calls are unaffected.
+1. **`root()` converges on one spelling**, `root(self, n: Int)`, which
+   `BigDecimal`, `Decimal128` and `BigFloat` now all accept. `BigDecimal` keeps
+   its `BigDecimal`-degree overloads for non-integral roots and `BigFloat` its
+   `UInt32` one. Every existing call keeps working. `root` is deliberately not
+   part of `Rootable`: `BigInt` and `BigUInt` have no nth root to offer.
+
+**Documentation and tooling:**
+
+1. Markdown across the repository is **reformatted** — long lines rewrapped and
+   list formatting made uniform — and **`argmojo`** is an active Pixi
+   dependency again, pinned to `>=0.8.0,<0.9.0` now that modular-community
+   ships it (PR #264).
+1. The user manual's **Appendix B** documents the three traits and which types
+   conform; the `BigInt` division section covers the new `/` (PR #265, #266,
+   #268).
+1. The test suite **`numeric` is renamed to `traits`**, with `numeric` and
+   `num` kept as aliases and the tests moved to `tests/traits/` (PR #266,
+   #267).
+1. **`tests/test.sh` bug fix**: the retry loop read `$?` after an `if`, which
+   is the `if` statement's own status — zero — so a suite that failed to
+   compile was reported as passing. It now uses `&&` (PR #268).
+
 ## 20260812 (v0.12.0)
 
 Decimo v0.12.0 retargets the codebase to **Mojo v1.0.0**, promotes the CLI's

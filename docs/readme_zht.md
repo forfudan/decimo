@@ -1,6 +1,7 @@
 # Decimo（原名 DeciMojo） <!-- omit from toc -->
 
-由 [Mojo 程序設計語言 🔥](https://www.modular.com/mojo) 實現的任意精度整數和小數運算庫，靈感來源自 Python 的 `int` 和 `Decimal`。
+由 [Mojo 程序設計語言 🔥](https://www.modular.com/mojo)
+實現的任意精度整數和小數運算庫，靈感來源自 Python 的 `int` 和 `Decimal`。
 
 **[English](https://zhuyuhao.com/decimo/)**　|　**[更新日誌](https://github.com/forfudan/decimo/blob/main/docs/changelog.md)**　|　**[GitHub 倉庫»](https://github.com/forfudan/decimo)**　|　**[Discord 頻道»](https://discord.gg/3rGH87uZTk)**
 
@@ -15,15 +16,19 @@
 
 ## 概述
 
-Decimo 爲 Mojo 提供任意精度整數和小數運算庫，爲金融建模、科學計算以及浮點近似誤差不可接受的應用提供精確計算。除了基本算術運算外，該庫還包括具有保證精度的高級數學函數。
+Decimo 爲 Mojo
+提供任意精度整數和小數運算庫，爲金融建模、科學計算以及浮點近似誤差不可接受的應用提供精確計算。除了基本算術運算外，該庫還包括具有保證精度的高級數學函數。
 
-對於 Python 用戶，`decimo.BInt` 之於 Mojo 就如同 `int` 之於 Python，`decimo.Decimal` 之於 Mojo 就如同 `decimal.Decimal` 之於 Python。
+對於 Python 用戶，`decimo.BInt` 之於 Mojo 就如同 `int` 之於
+Python，`decimo.Decimal` 之於 Mojo 就如同 `decimal.Decimal` 之於 Python。
 
 核心類型包括:
 
 - 任意精度有符號整數類型 `BInt`[^bigint]，是 Python `int` 的 Mojo 原生等價實現。
-- 任意精度小數實現 (`Decimal`)，允許進行無限位數和小數位的計算[^arbitrary]，是 Python `decimal.Decimal` 的 Mojo 原生等價實現。
-- 128 位定點小數實現 (`Dec128`)，支持最多 29 位有效數字，小數點後最多 28 位數字[^fixed]。
+- 任意精度小數實現 (`Decimal`)，允許進行無限位數和小數位的計算[^arbitrary]，是
+  Python `decimal.Decimal` 的 Mojo 原生等價實現。
+- 128 位定點小數實現 (`Dec128`)，支持最多 29 位有效數字，小數點後最多 28
+  位數字[^fixed]。
 
 | 類型      | 別名                 | 信息                               | 內部表示     |
 | --------- | -------------------- | ---------------------------------- | ------------ |
@@ -31,22 +36,30 @@ Decimo 爲 Mojo 提供任意精度整數和小數運算庫，爲金融建模、�
 | `Decimal` | `BigDecimal`, `BDec` | 等價於 Python 的 `decimal.Decimal` | Base-10^9    |
 | `Dec128`  | `Decimal128`         | 128 位定點精度小數類型             | 三個 32 位字 |
 
-輔助類型包括基於 10 進制的任意精度有符號整數類型 (`BigInt10`) 和任意精度無符號整數類型 (`BigUInt`)，支持無限位數[^bigint10]。`BigUInt` 是 `BigInt10` 和 `Decimal` 的內部表示。
+輔助類型包括基於 10 進制的任意精度有符號整數類型 (`BigInt10`)
+和任意精度無符號整數類型 (`BigUInt`)，支持無限位數[^bigint10]。`BigUInt` 是
+`BigInt10` 和 `Decimal` 的內部表示。
 
 ---
 
 > 得此魔咒者，即脱凡相，識天數，斬三尸，二十七日飛升。
 > —— 《太上靈通感應二十七章經》
 
-Decimo 是 Decimal 和 Mojo 的組合，既反映了它的目的，也反應了它的設計語言。Decimo本身也是拉丁語的詞，意爲「第十」，即「十進制」一詞的詞源。
+Decimo 是 Decimal 和 Mojo
+的組合，既反映了它的目的，也反應了它的設計語言。Decimo本身也是拉丁語的詞，意爲「第十」，即「十進制」一詞的詞源。
 
 ---
 
-此倉庫包含內建的 [TOML 解析器](./docs/readme_toml.md)（`decimo.toml`），一個純 Mojo 實現的輕量級 TOML v1.0 解析器。它解析配置文件和測試數據，支持基本類型、數組和嵌套表。雖然爲 Decimo 的測試框架而創建，但它提供通用的結構化數據解析，具有簡潔的 API。
+此倉庫包含內建的 [TOML 解析器](./docs/readme_toml.md)（`decimo.toml`），一個純
+Mojo 實現的輕量級 TOML v1.0
+解析器。它解析配置文件和測試數據，支持基本類型、數組和嵌套表。雖然爲 Decimo
+的測試框架而創建，但它提供通用的結構化數據解析，具有簡潔的 API。
 
 ## 安裝
 
-Decimo 可在 modular-community `https://repo.prefix.dev/modular-community` 包倉庫中獲取。爲了訪問此倉庫，請將其添加到您的 `pixi.toml` 文件中的 `channels` 列表：
+Decimo 可在 modular-community `https://repo.prefix.dev/modular-community`
+包倉庫中獲取。爲了訪問此倉庫，請將其添加到您的 `pixi.toml` 文件中的 `channels`
+列表：
 
 ```toml
 channels = ["https://conda.modular.com/max", "https://repo.prefix.dev/modular-community", "conda-forge"]
@@ -54,17 +67,20 @@ channels = ["https://conda.modular.com/max", "https://repo.prefix.dev/modular-co
 
 接下來，您可以使用以下任一方法進行安裝：
 
-1. 從 `pixi` CLI，運行命令 ```pixi add decimo```。這會獲取最新版本並使其立即可用於導入。
+1. 從 `pixi`
+   CLI，運行命令 ```pixi add decimo```。這會獲取最新版本並使其立即可用於導入。
 
 1. 在您項目的 `mojoproject.toml` 文件中，添加以下依賴：
 
     ```toml
-    decimo = "==0.12.0"
+    decimo = "==0.13.0"
     ```
 
     然後運行 `pixi install` 來下載並安裝包。
 
-1. 對於 `main` 分支中的最新開發版本，請克隆 [此 GitHub 倉庫](https://github.com/forfudan/decimo) 並使用命令 `pixi run package` 在本地構建包。
+1. 對於 `main` 分支中的最新開發版本，請克隆
+   [此 GitHub 倉庫](https://github.com/forfudan/decimo) 並使用命令
+   `pixi run package` 在本地構建包。
 
 下表總結了包版本及其對應的 Mojo 版本：
 
@@ -83,10 +99,12 @@ channels = ["https://conda.modular.com/max", "https://repo.prefix.dev/modular-co
 | `decimo`   | v0.10.0 | ==1.0.0b1     | pixi     |
 | `decimo`   | v0.11.0 | ==1.0.0b2     | pixi     |
 | `decimo`   | v0.12.0 | ==1.0.0       | pixi     |
+| `decimo`   | v0.13.0 | ==1.0.0       | pixi     |
 
 ## 快速開始
 
-您可以通過導入 `decimo` 模塊開始使用 Decimo。一個簡單的方法是從 `prelude` 模塊導入所有內容，它提供最常用的類型。
+您可以通過導入 `decimo` 模塊開始使用 Decimo。一個簡單的方法是從 `prelude`
+模塊導入所有內容，它提供最常用的類型。
 
 ```mojo
 from decimo import *
@@ -95,14 +113,18 @@ from decimo import *
 這將導入以下類型或別名到您的命名空間：
 
 - `BInt`（`BigInt` 的別名）：任意精度有符號整數類型，等價於 Python 的 `int`。
-- `Decimal`（也可用 `BigDecimal` 或 `BDec`）：任意精度小數類型，等價於 Python 的 `decimal.Decimal`。
+- `Decimal`（也可用 `BigDecimal` 或 `BDec`）：任意精度小數類型，等價於 Python 的
+  `decimal.Decimal`。
 - `Dec128`（`Decimal128` 的別名）：128 位定點精度小數類型。
 - `RoundingMode`：捨入模式的枚舉。
 - `ROUND_DOWN`、`ROUND_HALF_UP`、`ROUND_HALF_EVEN`、`ROUND_UP`：常用捨入模式的常量。
 
 ---
 
-以下是一些展示 `Decimal` 類型任意精度特性的例子。對於某些數學運算，默認精度（有效數字位數）設為 `28`。您可以通過向函數傳遞 `precision` 參數來更改精度。當 Mojo 支持全局變量時，此默認精度將可以全局配置。
+以下是一些展示 `Decimal`
+類型任意精度特性的例子。對於某些數學運算，默認精度（有效數字位數）設為
+`28`。您可以通過向函數傳遞 `precision` 參數來更改精度。當 Mojo
+支持全局變量時，此默認精度將可以全局配置。
 
 ```mojo
 from decimo.prelude import *
@@ -299,17 +321,23 @@ def main() raises:
 
 ## 目標
 
-金融計算和數據分析需要精確的小數算術，而浮點數無法可靠地提供這種精確性。作爲一名從事金融學研究和信用風險模型驗證工作的人員，在將個人項目從 Python 遷移到 Mojo 時，我需要一個可靠的、能够正確捨入的、固定精度的數值類型。
+金融計算和數據分析需要精確的小數算術，而浮點數無法可靠地提供這種精確性。作爲一名從事金融學研究和信用風險模型驗證工作的人員，在將個人項目從
+Python 遷移到 Mojo 時，我需要一個可靠的、能够正確捨入的、固定精度的數值類型。
 
-由於 Mojo 目前在其標準庫中缺乏原生的 Decimal 類型，我決定創建自己的實現來填補這一空白。
+由於 Mojo 目前在其標準庫中缺乏原生的 Decimal
+類型，我決定創建自己的實現來填補這一空白。
 
-本項目從多個已建立的小數實現和文檔中汲取靈感，例如 [Python 内置的 `Decimal` 類型](https://docs.python.org/3/library/decimal.html)，[Rust 的 `rust_decimal` crate](https://docs.rs/rust_decimal/latest/rust_decimal/index.html)，[Microsoft 的 `Decimal` 實現](https://learn.microsoft.com/en-us/dotnet/api/system.decimal.getbits?view=net-9.0&redirectedfrom=MSDN#System_Decimal_GetBits_System_Decimal_)，[通用小數算術規範](https://speleotrove.com/decimal/decarith.html) 等。非常感謝前輩們的貢獻及其對開放知識共享的促進。
+本項目從多個已建立的小數實現和文檔中汲取靈感，例如
+[Python 内置的 `Decimal` 類型](https://docs.python.org/3/library/decimal.html)，[Rust 的 `rust_decimal` crate](https://docs.rs/rust_decimal/latest/rust_decimal/index.html)，[Microsoft 的 `Decimal` 實現](https://learn.microsoft.com/en-us/dotnet/api/system.decimal.getbits?view=net-9.0&redirectedfrom=MSDN#System_Decimal_GetBits_System_Decimal_)，[通用小數算術規範](https://speleotrove.com/decimal/decarith.html)
+等。非常感謝前輩們的貢獻及其對開放知識共享的促進。
 
 ## 狀態
 
-羅馬不是一日建成的。Decimo 目前正在積極開發中。它已成功通過 **"讓它工作"** 階段和 **"讓它正確"** 階段，現已深入 **"讓它快速"** 階段。
+羅馬不是一日建成的。Decimo 目前正在積極開發中。它已成功通過 **"讓它工作"**
+階段和 **"讓它正確"** 階段，現已深入 **"讓它快速"** 階段。
 
-`BInt` 類型已經完全實現並優化。它已經與 Python 的 `int` 進行了基準測試，並在大多數情況下表現出優越的性能。
+`BInt` 類型已經完全實現並優化。它已經與 Python 的 `int`
+進行了基準測試，並在大多數情況下表現出優越的性能。
 
 歡迎錯誤報告和功能請求！如果您遇到問題，請[在此提交](https://github.com/forfudan/decimo/issues)。
 
@@ -339,7 +367,21 @@ def main() raises:
 
 本倉庫及其所有貢獻内容均採用 Apache 許可證 2.0 版本授權。
 
-[^fixed]: `Decimal128` 類型可以表示最多 29 位有效數字，小數點後最多 28 位數字的值。當數值超過最大可表示值（`2^96 - 1`）時，Decimo 會拋出錯誤或將數值捨入以符合這些約束。例如，`8.8888888888888888888888888888`（總共 29 個 8，小數點後 28 位）的有效數字超過了最大可表示值（`2^96 - 1`），會自動捨入爲 `8.888888888888888888888888889`（總共 28 個 8，小數點後 27 位）。Decimo 的 `Decimal128` 類型類似於 `System.Decimal`（C#/.NET）、Rust 中的 `rust_decimal`、SQL Server 中的 `DECIMAL/NUMERIC` 等。
-[^bigint]: `BigInt` 使用 base-2^32 表示，採用小端格式，最低有效字存儲在索引 0。每個字是一個 `UInt32`，允許對大整數進行高效存儲和算術運算。這種設計優化了二進制計算的性能，同時支持任意精度。
-[^bigint10]: BigInt10 使用基於 10 的表示（保持十進制語義），而內部使用優化的基於 10^9 的存儲系統進行高效計算。這種方法在人類可讀的十進制操作與高性能計算之間取得平衡。它提供向下整除（向負無窮舍入）和截斷除法（向零舍入）語義，無論操作數符號如何，都能確保除法操作具有正確的數學行爲。
-[^arbitrary]: 建立在已完成的 BigInt10 實現之上，Decimal 支持整數和小數部分的任意精度，類似於 Python 中的 `decimal` 和 `mpmath`、Java 中的 `java.math.BigDecimal` 等。
+[^fixed]: `Decimal128` 類型可以表示最多 29 位有效數字，小數點後最多 28
+    位數字的值。當數值超過最大可表示值（`2^96 - 1`）時，Decimo
+    會拋出錯誤或將數值捨入以符合這些約束。例如，`8.8888888888888888888888888888`（總共
+    29 個 8，小數點後 28
+    位）的有效數字超過了最大可表示值（`2^96 - 1`），會自動捨入爲
+    `8.888888888888888888888888889`（總共 28 個 8，小數點後 27
+    位）。Decimo 的 `Decimal128` 類型類似於
+    `System.Decimal`（C#/.NET）、Rust 中的 `rust_decimal`、SQL Server 中的
+    `DECIMAL/NUMERIC` 等。
+[^bigint]: `BigInt` 使用 base-2^32 表示，採用小端格式，最低有效字存儲在索引
+    0。每個字是一個
+    `UInt32`，允許對大整數進行高效存儲和算術運算。這種設計優化了二進制計算的性能，同時支持任意精度。
+[^bigint10]: BigInt10 使用基於 10 的表示（保持十進制語義），而內部使用優化的基於
+    10^9
+    的存儲系統進行高效計算。這種方法在人類可讀的十進制操作與高性能計算之間取得平衡。它提供向下整除（向負無窮舍入）和截斷除法（向零舍入）語義，無論操作數符號如何，都能確保除法操作具有正確的數學行爲。
+[^arbitrary]: 建立在已完成的 BigInt10 實現之上，Decimal
+    支持整數和小數部分的任意精度，類似於 Python 中的 `decimal` 和
+    `mpmath`、Java 中的 `java.math.BigDecimal` 等。

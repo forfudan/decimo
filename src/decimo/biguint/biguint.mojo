@@ -39,6 +39,7 @@ from decimo.errors import (
 )
 import decimo.str as decimo_str
 from decimo.rounding_mode import RoundingMode
+from decimo.traits import Rootable
 from decimo.utility import unsigned_counterpart
 
 # Type aliases
@@ -46,7 +47,7 @@ comptime BUInt = BigUInt
 """A shorthand alias for `BigUInt`."""
 
 
-struct BigUInt(Absable, Copyable, IntableRaising, Movable, Writable):
+struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     """Represents a base-10 arbitrary-precision unsigned integer.
 
     Notes:
