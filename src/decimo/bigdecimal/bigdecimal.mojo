@@ -28,7 +28,7 @@ from std.python import PythonObject
 from std import testing
 
 from decimo.errors import ConversionError, ValueError
-from decimo.traits import Numeric, Parsable
+from decimo.traits import Numeric, Parsable, Rootable
 from decimo.rounding_mode import RoundingMode
 from decimo.numerals.chinese import ChineseNumeralStyle
 from decimo.bigdecimal.exponential import MathCache
@@ -114,6 +114,7 @@ struct BigDecimal(
     Movable,
     Numeric,
     Parsable,
+    Rootable,
     Roundable,
     Writable,
 ):
@@ -1957,11 +1958,70 @@ struct BigDecimal(
         return bigdecimal_exponential.log10(self, precision)
 
     @always_inline
-    def root(self, root: Self, precision: Int = PRECISION) raises -> Self:
+    def root(self, n: Int) raises -> Self:
+        """Returns the nth root of the BigDecimal number with default
+        precision.
+
+        This is the spelling `Decimal128.root` and `BigFloat.root` share.
+
+        Args:
+            n: The degree of the root (e.g. 2 for square root, 3 for cube
+                root).
+
+        Returns:
+            The nth root of this value.
+
+        Raises:
+            ValueError: If the value is negative for an even root, or if
+                the root degree is invalid.
+        """
+        return bigdecimal_exponential.root(self, Self(n), precision=PRECISION)
+
+    @always_inline
+    def root(self, n: Int, precision: Int) raises -> Self:
+        """Returns the nth root of the BigDecimal number.
+
+        Args:
+            n: The degree of the root (e.g. 2 for square root, 3 for cube
+                root).
+            precision: The number of significant digits for the result.
+
+        Returns:
+            The nth root of this value.
+
+        Raises:
+            ValueError: If the value is negative for an even root, or if
+                the root degree is invalid.
+        """
+        return bigdecimal_exponential.root(self, Self(n), precision)
+
+    @always_inline
+    def root(self, root: Self) raises -> Self:
+        """Returns the root of the BigDecimal number with default precision.
+
+        A non-integral degree is permitted here, which is why the degree may
+        be a `BigDecimal` at all.
+
+        Args:
+            root: The degree of the root (e.g. 2 for square root, 3 for cube
+                root).
+
+        Returns:
+            The nth root of this value.
+
+        Raises:
+            ValueError: If the value is negative for an even root, or if
+                the root degree is invalid.
+        """
+        return bigdecimal_exponential.root(self, root, precision=PRECISION)
+
+    @always_inline
+    def root(self, root: Self, precision: Int) raises -> Self:
         """Returns the root of the BigDecimal number.
 
         Args:
-            root: The degree of the root (e.g. 2 for square root, 3 for cube root).
+            root: The degree of the root (e.g. 2 for square root, 3 for cube
+                root).
             precision: The number of significant digits for the result.
 
         Returns:
@@ -1974,7 +2034,20 @@ struct BigDecimal(
         return bigdecimal_exponential.root(self, root, precision)
 
     @always_inline
-    def sqrt(self, precision: Int = PRECISION) raises -> Self:
+    def sqrt(self) raises -> Self:
+        """Returns the square root of the BigDecimal number with default
+        precision.
+
+        Returns:
+            The square root of this value.
+
+        Raises:
+            ValueError: If the value is negative.
+        """
+        return bigdecimal_exponential.sqrt(self, precision=PRECISION)
+
+    @always_inline
+    def sqrt(self, precision: Int) raises -> Self:
         """Returns the square root of the BigDecimal number.
 
         Args:

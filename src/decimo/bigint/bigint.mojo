@@ -38,7 +38,7 @@ import decimo.bigint.exponential as bigint_exponential
 import decimo.bigint.number_theory as bigint_number_theory
 import decimo.bigint.special as bigint_special
 import decimo.str as decimo_str
-from decimo.traits import Numeric, Parsable
+from decimo.traits import Numeric, Parsable, Rootable
 import decimo.numerals.chinese as decimo_chinese
 from decimo.numerals.chinese import ChineseNumeralStyle
 from decimo.bigint10.bigint10 import BigInt10
@@ -67,6 +67,7 @@ struct BigInt(
     Movable,
     Numeric,
     Parsable,
+    Rootable,
     Writable,
 ):
     """An arbitrary-precision signed integer, similar to Python's `int`.

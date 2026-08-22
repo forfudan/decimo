@@ -18,6 +18,7 @@
 
 from decimo.bigfloat.bigfloat import BigFloat, PRECISION
 from decimo.bigfloat.mpfr_wrapper import mpfrw_available
+from decimo.traits import Rootable
 
 
 def test_mpfr_available() raises:
@@ -179,7 +180,28 @@ def test_power_and_root() raises:
     var x = BigFloat("8.0", precision=30)
     var third = BigFloat("0.333333333333333333", precision=30)
     var cube_root = x.root(UInt32(3))
+    # The `Int` spelling `BigDecimal` and `Decimal128` share.
+    var cube_root_int = x.root(3)
     var power_result = x.power(third)
+    if not cube_root_int.to_string(10).startswith("2"):
+        raise Error(
+            "FAIL test_power_and_root got: " + cube_root_int.to_string(10)
+        )
+    var raised = False
+    try:
+        _ = x.root(0)
+    except:
+        raised = True
+    if not raised:
+        raise Error("FAIL test_power_and_root: root(0) did not raise")
+    # One past `UInt32.MAX`, which would wrap to 0 if it reached the cast.
+    raised = False
+    try:
+        _ = x.root(Int(UInt32.MAX) + 1)
+    except:
+        raised = True
+    if not raised:
+        raise Error("FAIL test_power_and_root: oversized root did not raise")
     print("OK  cbrt(8) =", cube_root, " 8^(1/3) =", power_result)
 
 
@@ -210,6 +232,35 @@ def test_high_precision_sqrt() raises:
     print("OK  sqrt(2) to 100 digits verified")
 
 
+def _root_of[T: Rootable](var x: T) raises -> T:
+    """Returns `x.sqrt()` through the trait alone.
+
+    `Rootable` carries `Deinitable` and `Movable` and nothing else, which is
+    what lets it reach `BigFloat`: a type that moves without copying.
+    """
+    return x^.sqrt()
+
+
+def test_rootable_conformance() raises:
+    print("test_rootable_conformance ... ", end="")
+    if not mpfrw_available():
+        print("SKIPPED")
+        return
+    var s = _root_of(BigFloat("2.0", precision=50))
+    var result = s.to_string(50)
+    if not result.startswith("1.4142"):
+        raise Error("FAIL test_rootable_conformance got: " + result)
+    # `Rootable` lets a type with a `nan` return one where the four exact
+    # types raise. `BigFloat` has one, and every function of it outside its
+    # domain gives one, so `sqrt` does too.
+    var negative = _root_of(BigFloat("-4.0", precision=50))
+    if String(negative) != "nan":
+        raise Error(
+            "FAIL test_rootable_conformance: sqrt(-4) gave " + String(negative)
+        )
+    print("OK  sqrt(2) through Rootable =", result, " sqrt(-4) = nan")
+
+
 def main() raises:
     test_mpfr_available()
     test_construct_from_string()
@@ -225,4 +276,5 @@ def main() raises:
     test_power_and_root()
     test_neg_and_abs()
     test_high_precision_sqrt()
+    test_rootable_conformance()
     print("\nAll BigFloat smoke tests completed.")

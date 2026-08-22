@@ -40,7 +40,7 @@ from decimo.errors import (
 )
 import decimo.decimal128.utility as decimal128_utility
 from decimo.bigdecimal.bigdecimal import BigDecimal
-from decimo.traits import Numeric, Parsable
+from decimo.traits import Numeric, Parsable, Rootable
 
 comptime Dec128 = Decimal128
 """A 128-bit fixed-point decimal number."""
@@ -55,6 +55,7 @@ struct Decimal128(
     IntableRaising,
     Numeric,
     Parsable,
+    Rootable,
     Roundable,
     TrivialRegisterPassable,
     Writable,

@@ -9,7 +9,7 @@ Comes with an interactive arbitrary-precision calculator (REPL + one-shot mode)
 powered by [ArgMojo](https://github.com/forfudan/argmojo). Install it with
 `brew install forfudan/tap/decimo`.
 
-[![Version](https://img.shields.io/badge/version-v0.12.0-blue)](https://github.com/forfudan/decimo/releases/tag/v0.12.0)
+[![Version](https://img.shields.io/badge/version-v0.13.0-blue)](https://github.com/forfudan/decimo/releases/tag/v0.13.0)
 [![Mojo](https://img.shields.io/badge/mojo-1.0.0-orange)](https://docs.modular.com/mojo/manual/)
 [![pixi](https://img.shields.io/badge/pixi%20add-decimo-purple)](https://prefix.dev/channels/modular-community/packages/decimo)
 [![CI](https://img.shields.io/github/actions/workflow/status/forfudan/decimo/run_tests.yaml?branch=main&label=tests)](https://github.com/forfudan/decimo/actions/workflows/run_tests.yaml)
@@ -21,7 +21,7 @@ powered by [ArgMojo](https://github.com/forfudan/argmojo). Install it with
 | `Decimal128` | `Dec128`          | 128-bit fixed-precision decimal type     | 32-bit words |
 | `BigFloat`   | `Float`           | Arbitrary-precision floating-point type  | MPFR/GMP     |
 
-<!-- 
+<!--
 [![License](https://img.shields.io/github/license/forfudan/decimo)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/forfudan/decimo?style=flat)](https://github.com/forfudan/decimo/stargazers)
 [![Issues](https://img.shields.io/github/issues/forfudan/decimo)](https://github.com/forfudan/decimo/issues)
@@ -29,7 +29,7 @@ powered by [ArgMojo](https://github.com/forfudan/argmojo). Install it with
 [![Last Commit](https://img.shields.io/github/last-commit/forfudan/decimo?color=red)](https://github.com/forfudan/decimo/commits/main)
 -->
 
-<!-- 
+<!--
 [![中文](https://img.shields.io/badge/中文-介紹-red)](https://github.com/forfudan/decimo/blob/main/docs/readme_zht.md)
 [![Changelog](https://img.shields.io/badge/change-log-yellow)](https://github.com/forfudan/decimo/blob/main/docs/changelog.md)
 [![Repository on GitHub](https://img.shields.io/badge/repo-GitHub-black)](https://github.com/forfudan/decimo)
@@ -111,7 +111,7 @@ Then, you can install Decimo using any of these methods:
 1. In the `mojoproject.toml` file of your project, add the following dependency:
 
     ```toml
-    decimo = "==0.12.0"
+    decimo = ">=0.13.0, <0.14.0"
     ```
 
     Then run `pixi install` to download and install the package.
@@ -123,21 +123,22 @@ Then, you can install Decimo using any of these methods:
 The following table summarizes the package versions and their corresponding Mojo
 versions:
 
-| library    | version | Mojo version  | package manager |
-| ---------- | ------- | ------------- | --------------- |
-| `decimojo` | v0.1.0  | ==25.1        | magic           |
-| `decimojo` | v0.2.0  | ==25.2        | magic           |
-| `decimojo` | v0.3.0  | ==25.2        | magic           |
-| `decimojo` | v0.3.1  | >=25.2, <25.4 | pixi            |
-| `decimojo` | v0.4.x  | ==25.4        | pixi            |
-| `decimojo` | v0.5.0  | ==25.5        | pixi            |
-| `decimojo` | v0.6.0  | ==0.25.7      | pixi            |
-| `decimojo` | v0.7.0  | ==0.26.1      | pixi            |
-| `decimo`   | v0.8.0  | ==0.26.1      | pixi            |
-| `decimo`   | v0.9.0  | ==0.26.2      | pixi            |
-| `decimo`   | v0.10.0 | ==1.0.0b1     | pixi            |
-| `decimo`   | v0.11.0 | ==1.0.0b2     | pixi            |
-| `decimo`   | v0.12.0 | ==1.0.0       | pixi            |
+| library    | version | Mojo version    | package manager |
+| ---------- | ------- | --------------- | --------------- |
+| `decimojo` | v0.1.0  | ==25.1          | magic           |
+| `decimojo` | v0.2.0  | ==25.2          | magic           |
+| `decimojo` | v0.3.0  | ==25.2          | magic           |
+| `decimojo` | v0.3.1  | >=25.2, <25.4   | pixi            |
+| `decimojo` | v0.4.x  | ==25.4          | pixi            |
+| `decimojo` | v0.5.0  | ==25.5          | pixi            |
+| `decimojo` | v0.6.0  | ==0.25.7        | pixi            |
+| `decimojo` | v0.7.0  | ==0.26.1        | pixi            |
+| `decimo`   | v0.8.0  | ==0.26.1        | pixi            |
+| `decimo`   | v0.9.0  | ==0.26.2        | pixi            |
+| `decimo`   | v0.10.0 | ==1.0.0b1       | pixi            |
+| `decimo`   | v0.11.0 | ==1.0.0b2       | pixi            |
+| `decimo`   | v0.12.0 | >=1.0.0, <1.1.0 | pixi            |
+| `decimo`   | v0.13.0 | >=1.0.0, <1.1.0 | pixi            |
 
 ### Install CLI calculator
 
@@ -545,7 +546,7 @@ If you find Decimo useful, consider listing it in your citations.
     year         = {2026},
     title        = {Decimo: An arbitrary-precision integer and decimal library for Mojo},
     url          = {https://github.com/forfudan/decimo},
-    version      = {0.12.0},
+    version      = {0.13.0},
     note         = {Computer Software}
 }
 ```

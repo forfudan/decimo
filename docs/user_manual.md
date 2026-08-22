@@ -67,7 +67,7 @@ pixi add decimo
 Or add it manually to `pixi.toml`:
 
 ```toml
-decimo = "==0.12.0"
+decimo = "==0.13.0"
 ```
 
 Then run `pixi install`.
@@ -1252,10 +1252,11 @@ from decimo.expression import tokenize, parse_to_rpn, evaluate_rpn
 
 ### Appendix B — Traits Implemented
 
-All of these come from the Mojo standard library except **`Numeric`** and
-**`Parsable`**, which Decimo defines in `decimo.traits` and `BigInt`,
-`BigDecimal` and `Decimal128` all conform to. Mojo checks conformance
-nominally, which is why they live in Decimo rather than in the consumer.
+All of these come from the Mojo standard library except **`Numeric`**,
+**`Parsable`** and **`Rootable`**, which Decimo defines in `decimo.traits`.
+`BigInt`, `BigDecimal` and `Decimal128` conform to all three. Mojo checks
+conformance nominally, which is why the traits live in Decimo rather than in
+the consumer.
 
 `Numeric` gathers `zero()`, `one()`, `-x`, `+`, `-`, `*` and `/`, so a generic
 routine — a matrix or polynomial library, say — can be written once against
@@ -1266,38 +1267,53 @@ routine can also fill itself from text. The two are separate because the
 capabilities are: `BigFloat` parses but is `Movable` without being `Copyable`,
 so it can never be `Numeric`. Ask for `T: Numeric & Parsable` to get both.
 
+`Rootable` requires `sqrt()`, the one operation a Cholesky or QR factorisation
+needs beyond arithmetic. It is separate for the same reason, and here the
+evidence is sharper: `BigUInt` has a square root but is unsigned, so it has no
+`__neg__` and can never be `Numeric` either. Its supertraits are `Deinitable`
+and `Movable` and no more — `Copyable` is pointedly absent, so that `BigFloat`
+can conform.
+`BigFloat` and `BigUInt` therefore conform to `Rootable` as well, five types
+in all. Ask for `T: Numeric & Rootable` in a routine that needs both. What the
+root means stays the implementing type's business: on an integral type it
+truncates, so `BigInt("10").sqrt()` is `3`, exactly as `/` truncates there. So
+does what a negative value does — the four exact types raise, and `BigFloat`
+returns `nan`, as it does for every other function outside its domain.
+
 #### BigInt <!-- omit from toc -->
 
-| Trait              | What it enables                  |
-| ------------------ | -------------------------------- |
-| `Absable`          | `abs(x)`                         |
-| `Comparable`       | `<`, `<=`, `>`, `>=`, `==`, `!=` |
-| `Copyable`         | Value-semantic copy              |
-| `Movable`          | Move semantics                   |
-| `FloatableRaising` | `Float64(x)`                     |
-| `IntableRaising`   | `Int(x)`                         |
-| `Numeric`          | Generic code over Decimo numbers |
+| Trait              | What it enables                       |
+| ------------------ | ------------------------------------- |
+| `Absable`          | `abs(x)`                              |
+| `Comparable`       | `<`, `<=`, `>`, `>=`, `==`, `!=`      |
+| `Copyable`         | Value-semantic copy                   |
+| `Movable`          | Move semantics                        |
+| `FloatableRaising` | `Float64(x)`                          |
+| `IntableRaising`   | `Int(x)`                              |
+| `Numeric`          | Generic code over Decimo numbers      |
 | `Parsable`         | `T.from_string(text)` in generic code |
-| `Representable`    | `repr(x)`                        |
-| `Stringable`       | `String(x)`, `str(x)`            |
-| `Writable`         | `print(x)`, writer protocol      |
+| `Rootable`         | `x.sqrt()` in generic code            |
+| `Representable`    | `repr(x)`                             |
+| `Stringable`       | `String(x)`, `str(x)`                 |
+| `Writable`         | `print(x)`, writer protocol           |
 
 #### Decimal <!-- omit from toc -->
 
-| Trait              | What it enables                  |
-| ------------------ | -------------------------------- |
-| `Absable`          | `abs(x)`                         |
-| `Comparable`       | `<`, `<=`, `>`, `>=`, `==`, `!=` |
-| `Copyable`         | Value-semantic copy              |
-| `Movable`          | Move semantics                   |
-| `FloatableRaising` | `Float64(x)`                     |
-| `IntableRaising`   | `Int(x)`                         |
-| `Numeric`          | Generic code over Decimo numbers |
+| Trait              | What it enables                       |
+| ------------------ | ------------------------------------- |
+| `Absable`          | `abs(x)`                              |
+| `Comparable`       | `<`, `<=`, `>`, `>=`, `==`, `!=`      |
+| `Copyable`         | Value-semantic copy                   |
+| `Movable`          | Move semantics                        |
+| `FloatableRaising` | `Float64(x)`                          |
+| `IntableRaising`   | `Int(x)`                              |
+| `Numeric`          | Generic code over Decimo numbers      |
 | `Parsable`         | `T.from_string(text)` in generic code |
-| `Representable`    | `repr(x)`                        |
-| `Roundable`        | `round(x)`, `round(x, ndigits)`  |
-| `Stringable`       | `String(x)`, `str(x)`            |
-| `Writable`         | `print(x)`, writer protocol      |
+| `Rootable`         | `x.sqrt()` in generic code            |
+| `Representable`    | `repr(x)`                             |
+| `Roundable`        | `round(x)`, `round(x, ndigits)`       |
+| `Stringable`       | `String(x)`, `str(x)`                 |
+| `Writable`         | `print(x)`, writer protocol           |
 
 ### Appendix C — Complete API Tables
 
