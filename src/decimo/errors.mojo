@@ -25,30 +25,47 @@ Traceback (most recent call last):
 ValueError: description of what went wrong
 ```
 
+A raise site names the kind, the enclosing function and the message:
+
+```mojo
+raise ValueError(function="my_function", message="what went wrong")
+```
+
 File name and line number are automatically captured at the raise site using
 `call_location()`. The absolute path is automatically shortened to a relative
 path (e.g. `./src/...`, `./tests/...`) for readability and privacy.
 Function name must be provided manually since Mojo does not have a built-in way
 to get the current function name at runtime.
+
+Every kind returns a plain `Error`, so the enclosing function needs nothing
+beyond a bare `raises`. Set `_USE_COLOUR` to `False` to emit the tracebacks
+without ANSI escapes.
 """
 
 from std.reflection import call_location
 
 
-# ===--- ANSI Color Codes ---=== #
-# Mimics Python/Rich traceback coloring style.
+# ===----------------------------------------------------------------------=== #
+# ANSI colour codes
+#
+# Mimics Python/Rich traceback colouring style. Set `_USE_COLOUR` to False to
+# emit plain text - worth doing if the escapes ever show up as literal
+# `\033[1m` noise in a log file rather than as colour in a terminal.
+# ===----------------------------------------------------------------------=== #
 
-comptime _RESET = "\033[0m"
-comptime _BOLD = "\033[1m"
-comptime _DIM = "\033[2m"
+comptime _USE_COLOUR = True
 
-comptime _RED = "\033[31m"
-comptime _GREEN = "\033[32m"
-comptime _YELLOW = "\033[33m"
-comptime _BLUE = "\033[34m"
-comptime _MAGENTA = "\033[35m"
-comptime _CYAN = "\033[36m"
-comptime _WHITE = "\033[37m"
+comptime _RESET = "\033[0m" if _USE_COLOUR else ""
+comptime _BOLD = "\033[1m" if _USE_COLOUR else ""
+comptime _DIM = "\033[2m" if _USE_COLOUR else ""
+
+comptime _RED = "\033[31m" if _USE_COLOUR else ""
+comptime _GREEN = "\033[32m" if _USE_COLOUR else ""
+comptime _YELLOW = "\033[33m" if _USE_COLOUR else ""
+comptime _BLUE = "\033[34m" if _USE_COLOUR else ""
+comptime _MAGENTA = "\033[35m" if _USE_COLOUR else ""
+comptime _CYAN = "\033[36m" if _USE_COLOUR else ""
+comptime _WHITE = "\033[37m" if _USE_COLOUR else ""
 
 # Semantic aliases for error formatting.
 comptime _CLR_ERROR_TYPE = _BOLD + _RED  # Error type name (e.g., ValueError)
@@ -59,30 +76,10 @@ comptime _CLR_FUNC_NAME = _YELLOW  # Function name
 comptime _CLR_MSG_TEXT = _BOLD  # Error message text
 comptime _CLR_CHAIN_MSG = _DIM  # Chained error separator message
 
-comptime DecimoError = BaseError[error_type="DecimoError"]
-"""Type for general erros in Decimo."""
 
-comptime OverflowError = BaseError[error_type="OverflowError"]
-"""Type for overflow errors in Decimo."""
-
-comptime IndexError = BaseError[error_type="IndexError"]
-"""Type for index errors in Decimo."""
-
-comptime KeyError = BaseError[error_type="KeyError"]
-"""Type for key errors in Decimo."""
-
-comptime ValueError = BaseError[error_type="ValueError"]
-"""Type for value errors in Decimo."""
-
-comptime ZeroDivisionError = BaseError[error_type="ZeroDivisionError"]
-"""Type for divided-by-zero errors in Decimo."""
-
-comptime ConversionError = BaseError[error_type="ConversionError"]
-"""Type for conversion errors in Decimo."""
-
-comptime RuntimeError = BaseError[error_type="RuntimeError"]
-"""Type for runtime infrastructure errors in Decimo (e.g., resource allocation
-failures, missing native libraries)."""
+# ===----------------------------------------------------------------------=== #
+# Path shortening
+# ===----------------------------------------------------------------------=== #
 
 
 @always_inline
@@ -136,7 +133,266 @@ def _shorten_path_implementation(full_path: String) -> String:
     return full_path
 
 
-struct BaseError[error_type: StringLiteral = "BaseError"](Writable):
+# ===----------------------------------------------------------------------=== #
+# Error kinds
+#
+# Each kind is a function that wraps a `BaseError` payload in a plain `Error`,
+# rather than a type alias for the payload itself.
+#
+# [Mojo Miji]
+# A typed raise is invariant in Mojo 1.0.0: a function declared
+# `raises ValueError` may not call one declared with a bare `raises`, so it can
+# reach neither `std.testing` nor any ordinary helper, and the restriction
+# spreads up the call chain from wherever it is introduced. Spelling the kinds
+# as functions leaves `raises ValueError` unwritable, which keeps that dead end
+# out of reach.
+#
+# Each one is `@always_inline` so that the `call_location()` inside reports the
+# `raise` site rather than a line in this file.
+# ===----------------------------------------------------------------------=== #
+
+
+@always_inline
+def DecimoError(
+    *,
+    function: String,
+    message: String,
+    previous_error: Optional[Error] = None,
+) -> Error:
+    """Builds an `Error` describing general errors in Decimo.
+
+    Args:
+        function: The function where the error occurred.
+        message: A message describing the error.
+        previous_error: An optional previous error that caused this error.
+
+    Returns:
+        An `Error` carrying a `BaseError["DecimoError"]` payload.
+    """
+    var loc = call_location()
+    return Error(
+        BaseError[error_type="DecimoError"](
+            _shorten_path(String(loc.file_name())),
+            loc.line(),
+            function,
+            message,
+            previous_error,
+        )
+    )
+
+
+@always_inline
+def OverflowError(
+    *,
+    function: String,
+    message: String,
+    previous_error: Optional[Error] = None,
+) -> Error:
+    """Builds an `Error` describing overflow errors in Decimo.
+
+    Args:
+        function: The function where the error occurred.
+        message: A message describing the error.
+        previous_error: An optional previous error that caused this error.
+
+    Returns:
+        An `Error` carrying a `BaseError["OverflowError"]` payload.
+    """
+    var loc = call_location()
+    return Error(
+        BaseError[error_type="OverflowError"](
+            _shorten_path(String(loc.file_name())),
+            loc.line(),
+            function,
+            message,
+            previous_error,
+        )
+    )
+
+
+@always_inline
+def IndexError(
+    *,
+    function: String,
+    message: String,
+    previous_error: Optional[Error] = None,
+) -> Error:
+    """Builds an `Error` describing index errors in Decimo.
+
+    Args:
+        function: The function where the error occurred.
+        message: A message describing the error.
+        previous_error: An optional previous error that caused this error.
+
+    Returns:
+        An `Error` carrying a `BaseError["IndexError"]` payload.
+    """
+    var loc = call_location()
+    return Error(
+        BaseError[error_type="IndexError"](
+            _shorten_path(String(loc.file_name())),
+            loc.line(),
+            function,
+            message,
+            previous_error,
+        )
+    )
+
+
+@always_inline
+def KeyError(
+    *,
+    function: String,
+    message: String,
+    previous_error: Optional[Error] = None,
+) -> Error:
+    """Builds an `Error` describing key errors in Decimo.
+
+    Args:
+        function: The function where the error occurred.
+        message: A message describing the error.
+        previous_error: An optional previous error that caused this error.
+
+    Returns:
+        An `Error` carrying a `BaseError["KeyError"]` payload.
+    """
+    var loc = call_location()
+    return Error(
+        BaseError[error_type="KeyError"](
+            _shorten_path(String(loc.file_name())),
+            loc.line(),
+            function,
+            message,
+            previous_error,
+        )
+    )
+
+
+@always_inline
+def ValueError(
+    *,
+    function: String,
+    message: String,
+    previous_error: Optional[Error] = None,
+) -> Error:
+    """Builds an `Error` describing value errors in Decimo.
+
+    Args:
+        function: The function where the error occurred.
+        message: A message describing the error.
+        previous_error: An optional previous error that caused this error.
+
+    Returns:
+        An `Error` carrying a `BaseError["ValueError"]` payload.
+    """
+    var loc = call_location()
+    return Error(
+        BaseError[error_type="ValueError"](
+            _shorten_path(String(loc.file_name())),
+            loc.line(),
+            function,
+            message,
+            previous_error,
+        )
+    )
+
+
+@always_inline
+def ZeroDivisionError(
+    *,
+    function: String,
+    message: String,
+    previous_error: Optional[Error] = None,
+) -> Error:
+    """Builds an `Error` describing divided-by-zero errors in Decimo.
+
+    Args:
+        function: The function where the error occurred.
+        message: A message describing the error.
+        previous_error: An optional previous error that caused this error.
+
+    Returns:
+        An `Error` carrying a `BaseError["ZeroDivisionError"]` payload.
+    """
+    var loc = call_location()
+    return Error(
+        BaseError[error_type="ZeroDivisionError"](
+            _shorten_path(String(loc.file_name())),
+            loc.line(),
+            function,
+            message,
+            previous_error,
+        )
+    )
+
+
+@always_inline
+def ConversionError(
+    *,
+    function: String,
+    message: String,
+    previous_error: Optional[Error] = None,
+) -> Error:
+    """Builds an `Error` describing conversion errors in Decimo.
+
+    Args:
+        function: The function where the error occurred.
+        message: A message describing the error.
+        previous_error: An optional previous error that caused this error.
+
+    Returns:
+        An `Error` carrying a `BaseError["ConversionError"]` payload.
+    """
+    var loc = call_location()
+    return Error(
+        BaseError[error_type="ConversionError"](
+            _shorten_path(String(loc.file_name())),
+            loc.line(),
+            function,
+            message,
+            previous_error,
+        )
+    )
+
+
+@always_inline
+def RuntimeError(
+    *,
+    function: String,
+    message: String,
+    previous_error: Optional[Error] = None,
+) -> Error:
+    """Builds an `Error` describing runtime infrastructure errors in Decimo.
+
+    Resource allocation failures and missing native libraries are the two
+    cases this covers.
+
+    Args:
+        function: The function where the error occurred.
+        message: A message describing the error.
+        previous_error: An optional previous error that caused this error.
+
+    Returns:
+        An `Error` carrying a `BaseError["RuntimeError"]` payload.
+    """
+    var loc = call_location()
+    return Error(
+        BaseError[error_type="RuntimeError"](
+            _shorten_path(String(loc.file_name())),
+            loc.line(),
+            function,
+            message,
+            previous_error,
+        )
+    )
+
+
+# ===----------------------------------------------------------------------=== #
+# The payload
+# ===----------------------------------------------------------------------=== #
+
+
+struct BaseError[error_type: String = "BaseError"](Writable):
     """Base type for all Decimo errors.
 
     The error message format mimics Python's traceback:
@@ -147,10 +403,10 @@ struct BaseError[error_type: StringLiteral = "BaseError"](Writable):
     ValueError: description of what went wrong
     ```
 
-    File name and line number are automatically captured at the raise site.
-    The absolute path is shortened to a relative path for readability.
-    Function name must be provided manually since Mojo does not yet support
-    runtime introspection of the current function name.
+    File name and line number are captured at the raise site by the error kind
+    that builds the payload; the function name is supplied by the caller, since
+    Mojo does not yet support runtime introspection of the current function
+    name.
 
     Parameters:
         error_type: The type of the error, e.g., "OverflowError", "IndexError".
@@ -167,26 +423,25 @@ struct BaseError[error_type: StringLiteral = "BaseError"](Writable):
     var previous_error: Optional[String]
     """An optional formatted string of a previous error that caused this one."""
 
-    @always_inline
     def __init__(
         out self,
-        *,
-        message: String,
+        file: String,
+        line: Int,
         function: String,
-        previous_error: Optional[Error] = None,
+        message: String,
+        previous_error: Optional[Error],
     ):
-        """Creates a new `BaseError` with auto-captured file and line.
-
-        File name and line number are automatically captured from the call site.
+        """Creates a new `BaseError`.
 
         Args:
-            message: A message describing the error.
+            file: The file where the error occurred, already shortened.
+            line: The line number where the error occurred.
             function: The function name where the error occurred.
+            message: A message describing the error.
             previous_error: An optional previous error that caused this one.
         """
-        var loc = call_location()  # Comptime evaluated
-        self.file = _shorten_path(String(loc.file_name()))
-        self.line = loc.line()
+        self.file = file
+        self.line = line
         self.function = function
         self.message = message
         if previous_error is None:
@@ -194,7 +449,7 @@ struct BaseError[error_type: StringLiteral = "BaseError"](Writable):
         else:
             self.previous_error = String(previous_error.value())
 
-    def write_to[W: Writer](self, mut writer: W):
+    def write_to[W: Writer, //](self, mut writer: W):
         """Writes a Python-style formatted error traceback to a writer.
 
         Output format (colored with ANSI codes):
@@ -209,7 +464,7 @@ struct BaseError[error_type: StringLiteral = "BaseError"](Writable):
 
         ```
         Traceback (most recent call last):
-          File "./src/decimo/bigint/bigint.mojo", line 10
+          File "./src/decimo/bigint/bigint.mojo", line 10, in inner_function
         ValueError: inner error message
 
         The above exception was the direct cause of the following exception:
@@ -235,7 +490,7 @@ struct BaseError[error_type: StringLiteral = "BaseError"](Writable):
                 " exception:"
             )
             writer.write(_RESET)
-            writer.write("\n")
+            writer.write("\n\n")
 
         # "Traceback (most recent call last):"
         writer.write(_CLR_TRACEBACK)
