@@ -760,12 +760,19 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
             The n-th root of this value.
 
         Raises:
-            ValueError: If `n` is not positive.
+            ValueError: If `n` is not positive, or is larger than `UInt32.MAX`.
             RuntimeError: If MPFR handle allocation fails.
         """
         if n <= 0:
             raise ValueError(
                 message="Cannot compute non-positive root.",
+                function="BigFloat.root()",
+            )
+        # The degree reaches MPFR as a `UInt32`. Without this bound a larger
+        # `n` would wrap and quietly compute a different root.
+        if n > Int(UInt32.MAX):
+            raise ValueError(
+                message="Root degree is too large.",
                 function="BigFloat.root()",
             )
         return self.root(UInt32(n))

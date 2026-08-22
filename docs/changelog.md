@@ -28,7 +28,8 @@ module is reworked so that the error kinds are functions returning a plain
    never be `Numeric`: `BigUInt` is unsigned and so has no `__neg__`, and
    `BigFloat` is `Movable` without being `Copyable`. What the root means stays
    the implementing type's business — on an integral type it truncates, so
-   `BigInt("10").sqrt()` is `3` (PR #268).
+   `BigInt("10").sqrt()` is `3`, and a negative value raises on the four exact
+   types but yields `nan` on `BigFloat` (PR #268).
 
 **Other additions**:
 

@@ -1276,42 +1276,44 @@ can conform.
 `BigFloat` and `BigUInt` therefore conform to `Rootable` as well, five types
 in all. Ask for `T: Numeric & Rootable` in a routine that needs both. What the
 root means stays the implementing type's business: on an integral type it
-truncates, so `BigInt("10").sqrt()` is `3`, exactly as `/` truncates there.
+truncates, so `BigInt("10").sqrt()` is `3`, exactly as `/` truncates there. So
+does what a negative value does — the four exact types raise, and `BigFloat`
+returns `nan`, as it does for every other function outside its domain.
 
 #### BigInt <!-- omit from toc -->
 
-| Trait              | What it enables                  |
-| ------------------ | -------------------------------- |
-| `Absable`          | `abs(x)`                         |
-| `Comparable`       | `<`, `<=`, `>`, `>=`, `==`, `!=` |
-| `Copyable`         | Value-semantic copy              |
-| `Movable`          | Move semantics                   |
-| `FloatableRaising` | `Float64(x)`                     |
-| `IntableRaising`   | `Int(x)`                         |
-| `Numeric`          | Generic code over Decimo numbers |
+| Trait              | What it enables                       |
+| ------------------ | ------------------------------------- |
+| `Absable`          | `abs(x)`                              |
+| `Comparable`       | `<`, `<=`, `>`, `>=`, `==`, `!=`      |
+| `Copyable`         | Value-semantic copy                   |
+| `Movable`          | Move semantics                        |
+| `FloatableRaising` | `Float64(x)`                          |
+| `IntableRaising`   | `Int(x)`                              |
+| `Numeric`          | Generic code over Decimo numbers      |
 | `Parsable`         | `T.from_string(text)` in generic code |
-| `Rootable`         | `x.sqrt()` in generic code       |
-| `Representable`    | `repr(x)`                        |
-| `Stringable`       | `String(x)`, `str(x)`            |
-| `Writable`         | `print(x)`, writer protocol      |
+| `Rootable`         | `x.sqrt()` in generic code            |
+| `Representable`    | `repr(x)`                             |
+| `Stringable`       | `String(x)`, `str(x)`                 |
+| `Writable`         | `print(x)`, writer protocol           |
 
 #### Decimal <!-- omit from toc -->
 
-| Trait              | What it enables                  |
-| ------------------ | -------------------------------- |
-| `Absable`          | `abs(x)`                         |
-| `Comparable`       | `<`, `<=`, `>`, `>=`, `==`, `!=` |
-| `Copyable`         | Value-semantic copy              |
-| `Movable`          | Move semantics                   |
-| `FloatableRaising` | `Float64(x)`                     |
-| `IntableRaising`   | `Int(x)`                         |
-| `Numeric`          | Generic code over Decimo numbers |
+| Trait              | What it enables                       |
+| ------------------ | ------------------------------------- |
+| `Absable`          | `abs(x)`                              |
+| `Comparable`       | `<`, `<=`, `>`, `>=`, `==`, `!=`      |
+| `Copyable`         | Value-semantic copy                   |
+| `Movable`          | Move semantics                        |
+| `FloatableRaising` | `Float64(x)`                          |
+| `IntableRaising`   | `Int(x)`                              |
+| `Numeric`          | Generic code over Decimo numbers      |
 | `Parsable`         | `T.from_string(text)` in generic code |
-| `Rootable`         | `x.sqrt()` in generic code       |
-| `Representable`    | `repr(x)`                        |
-| `Roundable`        | `round(x)`, `round(x, ndigits)`  |
-| `Stringable`       | `String(x)`, `str(x)`            |
-| `Writable`         | `print(x)`, writer protocol      |
+| `Rootable`         | `x.sqrt()` in generic code            |
+| `Representable`    | `repr(x)`                             |
+| `Roundable`        | `round(x)`, `round(x, ndigits)`       |
+| `Stringable`       | `String(x)`, `str(x)`                 |
+| `Writable`         | `print(x)`, writer protocol           |
 
 ### Appendix C — Complete API Tables
 

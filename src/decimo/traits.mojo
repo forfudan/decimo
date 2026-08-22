@@ -161,8 +161,11 @@ trait Rootable(Deinitable, Movable):
 
     What the root means is the implementing type's business. On an integral
     type it truncates -- `BigInt("10").sqrt()` is `3` -- exactly as
-    `Numeric.__truediv__` truncates there. A caller that cannot accept that
-    should bound on a type that does not.
+    `Numeric.__truediv__` truncates there. A negative value is the type's
+    business too: four of the five implementations raise, and `BigFloat`
+    returns `nan`, because it has a `nan` and every other function it offers
+    returns one there as well. A caller that cannot accept either should bound
+    on a type that does not do it.
 
     The supertraits are `Deinitable` and `Movable`, and no more. `sqrt` hands
     back an owned `Self`, so a caller that stores or returns that result moves
@@ -175,12 +178,17 @@ trait Rootable(Deinitable, Movable):
         """Returns the square root of `self`.
 
         Returns:
-            The non-negative value whose square is `self`, truncated toward
-            zero on a type that cannot represent it exactly.
+            The non-negative value whose square is `self`, exact where the
+            type can represent it. Where it cannot, the rule is the
+            implementation's own: an integral type truncates, a decimal or
+            floating type rounds at its working precision.
 
         Raises:
-            Error: If `self` is negative, or the root is not representable in
-                this type.
+            Error: If `self` is negative and the type has no value standing
+                for a root it cannot give, or if the root is not
+                representable. A type that has such a value returns it
+                instead -- `BigFloat("-4").sqrt()` is `nan` -- so generic
+                code must tolerate either outcome.
         """
         ...
 

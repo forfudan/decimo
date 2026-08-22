@@ -228,6 +228,42 @@ def test_biguint_truncate_divide_random_numbers_against_python() raises:
     # print("BigUInt truncate division tests passed!")
 
 
+def test_biguint_truncate_divide_huge_random_numbers_against_python() raises:
+    # The dividend here is some two hundred thousand digits over a divisor of
+    # some fourteen thousand, which is the size at which truncated division
+    # recurses through Burnikel-Ziegler rather than taking the schoolbook
+    # path the smaller random cases above exercise. One case rather than ten:
+    # the size is what is being covered, and each one costs a couple of
+    # minutes against Python.
+
+    _set_max_str_digits(500000)
+
+    var number_a: String = String("")
+    var number_b: String = String("")
+    var decimo_result: String
+    var python_result: String
+
+    for _i in range(123):
+        number_a += String(random_ui64(0, 999_999_999_999_999_999))
+    for _i in range(78):
+        number_b += String(random_ui64(0, 999_999_999_999_999_999))
+    decimo_result = String(BigUInt(number_a) // BigUInt(number_b))
+    python_result = String(Python.int(number_a) // Python.int(number_b))
+    assert_equal(
+        lhs=decimo_result,
+        rhs=python_result,
+        msg="Python int division does not match BigUInt division\n"
+        + "number a: \n"
+        + number_a
+        + "\n\nnumber b: \n"
+        + number_b
+        + "\n\nDecimo BigUInt division: \n"
+        + decimo_result
+        + "\n\nPython int division: \n"
+        + python_result,
+    )
+
+
 def main() raises:
     # test_biguint_arithmetics()
     # test_biguint_truncate_divide()

@@ -194,6 +194,14 @@ def test_power_and_root() raises:
         raised = True
     if not raised:
         raise Error("FAIL test_power_and_root: root(0) did not raise")
+    # One past `UInt32.MAX`, which would wrap to 0 if it reached the cast.
+    raised = False
+    try:
+        _ = x.root(Int(UInt32.MAX) + 1)
+    except:
+        raised = True
+    if not raised:
+        raise Error("FAIL test_power_and_root: oversized root did not raise")
     print("OK  cbrt(8) =", cube_root, " 8^(1/3) =", power_result)
 
 
@@ -242,7 +250,15 @@ def test_rootable_conformance() raises:
     var result = s.to_string(50)
     if not result.startswith("1.4142"):
         raise Error("FAIL test_rootable_conformance got: " + result)
-    print("OK  sqrt(2) through Rootable =", result)
+    # `Rootable` lets a type with a `nan` return one where the four exact
+    # types raise. `BigFloat` has one, and every function of it outside its
+    # domain gives one, so `sqrt` does too.
+    var negative = _root_of(BigFloat("-4.0", precision=50))
+    if String(negative) != "nan":
+        raise Error(
+            "FAIL test_rootable_conformance: sqrt(-4) gave " + String(negative)
+        )
+    print("OK  sqrt(2) through Rootable =", result, " sqrt(-4) = nan")
 
 
 def main() raises:

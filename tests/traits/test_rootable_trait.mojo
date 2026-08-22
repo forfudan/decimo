@@ -89,7 +89,11 @@ def test_integral_root_truncates() raises:
 
 
 def test_negative_root_raises() raises:
-    """A negative value raises rather than returning a wrong root."""
+    """A negative value raises rather than returning a wrong root.
+
+    The four exact types only. `BigFloat` has a `nan` and returns one, which
+    `Rootable` permits; the BigFloat suite pins that half.
+    """
     var raised = False
     try:
         _ = _root_of(BigInt(-1))
