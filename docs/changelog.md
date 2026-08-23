@@ -2,9 +2,9 @@
 
 This is a list of changes for the Decimo package (formerly DeciMojo).
 
-## Unreleased
+## Unreleased (v0.14.0)
 
-Work since v0.13.0. `Rational` grows a full set of conversions and joins the
+`Rational` grows a full set of conversions and joins the
 `from_integral_scalar()` / `from_float_scalar()` naming used by the other
 numeric types, `BigInt10` is no longer referenced by the rest of the library,
 and `BigDecimal.pi()` gets two to three orders of magnitude faster.
