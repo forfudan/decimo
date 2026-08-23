@@ -262,6 +262,75 @@ def test_sub() raises:
     print("  PASS: sub")
 
 
+def test_add_sub_reduction_paths() raises:
+    """Test every branch of the gcd-aware add/subtract.
+
+    `_add_or_subtract()` splits on `gcd(a.d, b.d)` and then on
+    `gcd(t, that gcd)`, and returns each result unnormalized, so a wrong
+    branch shows up as a fraction that is correct in value but not in lowest
+    terms - which `__eq__` compares field-by-field and would report as
+    unequal. Each case below names the branch it exercises.
+    """
+    # gcd(denominators) == 1: the result is already reduced.
+    var r = Rational(BigInt(3), BigInt(7)) + Rational(BigInt(2), BigInt(5))
+    assert_true(
+        String(r) == "29/35", "3/7 + 2/5 should be '29/35', got: " + String(r)
+    )
+
+    # Shared factor in the denominators, nothing left to cancel afterwards.
+    var r2 = Rational(BigInt(3), BigInt(10)) + Rational(BigInt(1), BigInt(15))
+    assert_true(
+        String(r2) == "11/30",
+        "3/10 + 1/15 should be '11/30', got: " + String(r2),
+    )
+
+    # Shared factor, and the sum cancels against it a second time.
+    var r3 = Rational(BigInt(5), BigInt(12)) + Rational(BigInt(1), BigInt(12))
+    assert_true(
+        String(r3) == "1/2", "5/12 + 1/12 should be '1/2', got: " + String(r3)
+    )
+
+    var r4 = Rational(BigInt(1), BigInt(4)) + Rational(BigInt(1), BigInt(4))
+    assert_true(
+        String(r4) == "1/2", "1/4 + 1/4 should be '1/2', got: " + String(r4)
+    )
+
+    # Cancelling to zero must produce the canonical 0/1, not 0/n.
+    var z = Rational(BigInt(7), BigInt(12)) - Rational(BigInt(7), BigInt(12))
+    assert_true(z.is_zero(), "7/12 - 7/12 should be zero")
+    assert_true(String(z) == "0", "zero should print as '0', got: " + String(z))
+    assert_true(z == Rational(0), "7/12 - 7/12 should equal Rational(0)")
+
+    # Negative operands, on both branches.
+    var n1 = Rational(BigInt(-3), BigInt(7)) + Rational(BigInt(2), BigInt(5))
+    assert_true(
+        String(n1) == "-1/35",
+        "-3/7 + 2/5 should be '-1/35', got: " + String(n1),
+    )
+    var n2 = Rational(BigInt(-5), BigInt(12)) - Rational(BigInt(1), BigInt(12))
+    assert_true(
+        String(n2) == "-1/2",
+        "-5/12 - 1/12 should be '-1/2', got: " + String(n2),
+    )
+
+    # An accumulation with heavily shared denominators: sum of 1/k for
+    # k = 1..10 is 7381/2520, which is in lowest terms.
+    var acc = Rational(0)
+    for k in range(1, 11):
+        acc = acc + Rational(BigInt(1), BigInt(k))
+    assert_true(
+        String(acc) == "7381/2520",
+        "sum of 1/k for k=1..10 should be '7381/2520', got: " + String(acc),
+    )
+
+    # The same sum, undone term by term, must return exactly to zero.
+    for k in range(1, 11):
+        acc = acc - Rational(BigInt(1), BigInt(k))
+    assert_true(acc.is_zero(), "the sum minus its own terms should be zero")
+
+    print("  PASS: add/sub reduction paths")
+
+
 def test_mul() raises:
     """Test multiplication."""
     var a = Rational(BigInt(2), BigInt(3))
@@ -482,6 +551,7 @@ def main() raises:
     test_abs()
     test_add()
     test_sub()
+    test_add_sub_reduction_paths()
     test_mul()
     test_truediv()
     test_truediv_by_zero_raises()

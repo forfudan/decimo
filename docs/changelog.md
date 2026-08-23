@@ -2,6 +2,76 @@
 
 This is a list of changes for the Decimo package (formerly DeciMojo).
 
+## Unreleased (v0.14.0)
+
+`Rational` grows a full set of conversions and joins the
+`from_integral_scalar()` / `from_float_scalar()` naming used by the other
+numeric types, `BigInt10` is no longer referenced by the rest of the library,
+and `BigDecimal.pi()` gets two to three orders of magnitude faster.
+
+### ⭐️ New in Unreleased
+
+1. **`Rational` conversions.** Constructors from an integral scalar, a `String`
+   and a `BigDecimal`; the factories `from_string()`, `from_integral_scalar()`,
+   `from_float_scalar()` and `from_bigdecimal()`; and the outbound
+   `__int__()`, `__float__()`, `to_int()`, `to_integer()`, `to_float()` and
+   `to_bigdecimal()` (PR #269).
+1. **`from_integral_scalar()` and `from_float_scalar()` on `BigInt`,
+   `BigDecimal`, `Decimal128` and `Rational`.** One pair of names across the
+   library, constrained with `where` clauses instead of `comptime assert`, so
+   the wrong scalar kind is an overload mismatch rather than an assertion
+   (PR #269).
+1. **`BigInt.from_biguint()` and `BigInt.to_biguint()`**, plus
+   `BigInt10.from_bigint()` and `BigInt10.to_bigint()` (PR #269).
+
+### 🦋 Changed in Unreleased
+
+1. **`BigDecimal.pi()` is two to three orders of magnitude faster.** The
+   Chudnovsky binary splitting now uses the `P`/`Q`/`T` recurrence: each leaf
+   is O(1) instead of rebuilding `(6k)!/(3k)!`, `(k!)^3` and `C^k` from
+   scratch, and the root denominator is the size of a single term rather than
+   the product of every term's denominator. `pi(10000)` goes from 13.7 s to
+   8.8 ms; `pi(100000)`, out of practical reach before, takes 0.28 s. The
+   earlier half of the work moved the split to `BigInt` and cut the
+   base-conversion overhead (PR #269). Everything that range-reduces against
+   π — `sin()`, `cos()`, `tan()` — inherits the gain.
+1. **`Rational.__add__` and `__sub__` cancel before they multiply**, using
+   Algorithm A of Knuth 4.5.1: the denominators are reduced by their gcd
+   first, and the result is in lowest terms without a second gcd over two
+   full-width operands. This is the cross-cancellation `__mul__` and
+   `__truediv__` already did. Summing `1/k^2` to 1 200 terms goes from 123 ms
+   to 3.1 ms.
+1. **`gcd()` balances its operands before entering the binary loop.** Stein's
+   algorithm makes about one bit of progress per full-width subtraction, which
+   is quadratic when one operand dwarfs the other, so `gcd()` now takes
+   Euclidean steps while the bit-length gap exceeds two words.
+   `gcd(17 940-bit, 20-bit)` drops from 4.85 ms to 0.003 ms; balanced operands
+   are untouched. This is what makes the `Rational` change above pay.
+1. **`BigInt10` is no longer used by any other module.** Bridging goes through
+   `BigUInt`, and `BigInt10` keeps its own conversions for code that still
+   wants them (PR #269).
+1. **Faster tests.** Test helpers that built large decimal strings by repeated
+   appending now pre-size the `String`, and `decimo.tests` gains
+   `random_decimal_string()` (PR #269).
+
+### 🗑️ Deprecated in Unreleased
+
+1. **`BigDecimal.from_float()` and `Decimal128.from_float()`** are deprecated in
+   favour of `from_float_scalar()`, the name that lines up with
+   `from_integral_scalar()`. They forward unchanged (PR #269).
+
+### 💥 Breaking in Unreleased
+
+1. **The `Integer` alias for `BigInt` is removed.** `BInt` remains, and matches
+   `BDec` and `Dec128` in shape. `Integer` named a general concept rather than
+   one concrete type, and collided with the ordinary English word used
+   throughout the documentation. Replace `Integer` with `BInt` or `BigInt`.
+1. **`gcd()` and `BigInt.gcd()` are now `raises`.** They take a remainder on
+   unbalanced operands, and `BigInt` division raises. Callers already inside a
+   `raises` function need no change.
+1. **`BigInt.from_bigint10()` and `BigInt.to_bigint10()` are removed.** Use
+   `BigInt10.from_bigint()` and `BigInt10.to_bigint()` (PR #269).
+
 ## 20260822 (v0.13.0)
 
 Decimo v0.13.0 is a **traits** release. `Numeric`, `Parsable` and `Rootable`

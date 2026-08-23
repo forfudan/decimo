@@ -16,7 +16,7 @@ powered by [ArgMojo](https://github.com/forfudan/argmojo). Install it with
 
 | Type         | Alias             | Information                              | Layout       |
 | ------------ | ----------------- | ---------------------------------------- | ------------ |
-| `BigInt`     | `BInt`, `Integer` | Equivalent to Python's `int`             | Base-2^32    |
+| `BigInt`     | `BInt`            | Equivalent to Python's `int`             | Base-2^32    |
 | `BigDecimal` | `BDec`, `Decimal` | Equivalent to Python's `decimal.Decimal` | Base-10^9    |
 | `Decimal128` | `Dec128`          | 128-bit fixed-precision decimal type     | 32-bit words |
 | `BigFloat`   | `Float`           | Arbitrary-precision floating-point type  | MPFR/GMP     |
@@ -68,7 +68,7 @@ The core types are[^auxiliary]:
   a wide exponent range. Unlike `BigDecimal`, which uses base-10 arithmetic,
   `BigFloat` uses binary floating-point internally. This type is optional and
   requires MPFR/GMP to be installed on the user's system.
-<!-- - An arbitrary-precision exact rational number type (`Rational`) represented as a reduced fraction of two `Integer`s (numerator and denominator). It supports exact arithmetic and comparisons without any loss of precision, making it ideal for applications that require precise fractional calculations. -->
+<!-- - An arbitrary-precision exact rational number type (`Rational`) represented as a reduced fraction of two `BigInt`s (numerator and denominator). It supports exact arithmetic and comparisons without any loss of precision, making it ideal for applications that require precise fractional calculations. -->
 
 **Decimo** combines "**Deci**mal" and "**Mo**jo" - reflecting its purpose and
 implementation language. "Decimo" is also a Latin word meaning "tenth" and is
@@ -233,7 +233,7 @@ from decimo import *
 
 This will import the following types or aliases into your namespace:
 
-- `BigInt` (and its aliases `BInt`, `Integer`): An arbitrary-precision signed
+- `BigInt` (and its alias `BInt`): An arbitrary-precision signed
   integer type, equivalent to Python's `int`.
 - `BigDecimal` (and its aliases `BDec`, `Decimal`): An arbitrary-precision
   decimal type, equivalent to Python's `decimal.Decimal`.
@@ -327,7 +327,7 @@ def main() raises:
 ---
 
 Here is a comprehensive quick-start guide showcasing each major function of the
-`BigInt` (`BInt`, `Integer`) type.
+`BigInt` (`BInt`) type.
 
 ```mojo
 from decimo.prelude import *
@@ -476,7 +476,7 @@ Rome wasn't built in a day. Decimo is currently under active development. It has
 successfully progressed through the **"make it work"** phase and the
 **"make it right"**, and is now well into the **"make it fast"** phase.
 
-The `Integer` type is fully implemented and optimized. It has been benchmarked
+The `BigInt` type is fully implemented and optimized. It has been benchmarked
 against Python's `int` and demonstrates superior performance in most cases.
 
 Bug reports and feature requests are welcome! If you encounter issues, please
@@ -489,7 +489,7 @@ decimo/
 ├── src/                          # All source code
 │   ├── decimo/                   # Core library (mojo pre-compiled package)
 │   │   ├── bigdecimal/           #   Arbitrary-precision decimal (Decimal)
-│   │   ├── bigint/               #   Arbitrary-precision signed integer (Integer)
+│   │   ├── bigint/               #   Arbitrary-precision signed integer (BigInt)
 │   │   ├── bigint10/             #   Base-10 signed integer (BigInt10)
 │   │   ├── biguint/              #   Base-10 unsigned integer (BigUInt)
 │   │   ├── bigfloat/             #   Arbitrary-precision binary float (MPFR)
@@ -575,7 +575,7 @@ for details.
     eights total with 27 after the decimal point). Decimo's `Dec128` type
     is similar to `System.Decimal` (C#/.NET), `rust_decimal` in Rust,
     `DECIMAL/NUMERIC` in SQL Server, etc.
-[^bigint]: The `Integer` implementation uses a base-2^32 representation with a
+[^bigint]: The `BigInt` implementation uses a base-2^32 representation with a
     little-endian format, where the least significant word is stored at
     index 0. Each word is a `UInt32`, allowing for efficient storage and
     arithmetic operations on large integers. This design choice optimizes

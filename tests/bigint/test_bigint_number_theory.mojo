@@ -421,6 +421,55 @@ def test_mod_inverse_not_exists() raises:
     testing.assert_true(raised, "mod_inverse(0, 5) should raise")
 
 
+def test_gcd_unbalanced_operands() raises:
+    """Test GCD where one operand is vastly larger than the other.
+
+    The binary (Stein) loop makes about one bit of progress per full-width
+    subtraction, so this shape is where it is at its worst and where `gcd()`
+    takes Euclidean steps instead. Correctness must not depend on which of the
+    two paths a given pair happens to take, so each case is checked against a
+    value whose factorisation is known by construction.
+
+    Every case is also checked with the arguments reversed. `gcd()` orders its
+    operands by magnitude before measuring the bit-length gap, and a
+    regression there is invisible to the result - both orders still return the
+    right answer, but the reversed one silently falls back to the quadratic
+    binary loop. `gcd(97, 10^5400)` cost 2.4 ms against 0.002 ms for the
+    forward order before that ordering step was added.
+    """
+    # 10^400 = 2^400 * 5^400, so gcd(10^400, 2^k) = 2^k for k <= 400.
+    var big = BigInt(10) ** BigInt(400)
+    testing.assert_equal(
+        String(gcd(big, BigInt(1) << 40)), String(BigInt(1) << 40)
+    )
+    testing.assert_equal(
+        String(gcd(BigInt(1) << 40, big)), String(BigInt(1) << 40)
+    )
+
+    # A large value built to be a multiple of a small one.
+    var multiple = big * BigInt(97)
+    testing.assert_equal(String(gcd(multiple, BigInt(97))), "97")
+    testing.assert_equal(String(gcd(BigInt(97), multiple)), "97")
+
+    # Coprime: 10^400 has only the factors 2 and 5.
+    testing.assert_equal(String(gcd(big, BigInt(2187))), "1")  # 3^7
+    testing.assert_equal(String(gcd(BigInt(2187), big)), "1")
+
+    # A gap far wider than the balance threshold, in both orders.
+    var huge = BigInt(10) ** BigInt(1800)
+    testing.assert_equal(String(gcd(huge, BigInt(97))), "1")
+    testing.assert_equal(String(gcd(BigInt(97), huge)), "1")
+
+    # Crossing the balance threshold in both directions must agree.
+    var a = (BigInt(3) ** BigInt(200)) * (BigInt(7) ** BigInt(50))
+    var b = BigInt(7) ** BigInt(50)
+    testing.assert_equal(String(gcd(a, b)), String(b))
+    testing.assert_equal(String(gcd(b, a)), String(b))
+
+    # One Euclidean step lands exactly on zero.
+    testing.assert_equal(String(gcd(big, big)), String(big))
+
+
 # ===----------------------------------------------------------------------=== #
 # Main
 # ===----------------------------------------------------------------------=== #
