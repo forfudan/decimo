@@ -359,10 +359,12 @@ and divides both by `g`, then ensures the denominator is positive.
 >   `BigInt10.to_bigint()` / `BigInt10.from_bigint()`. The module is kept, but
 >   depends on nothing and nothing depends on it.
 > - `constants.mojo`'s Chudnovsky binary splitting moved from `BigInt10` to
->   `BigInt`. Its `_UnreducedFraction` helper stays private: the public
->   `Rational` documents lowest terms as an invariant, and `__eq__` compares
->   the two fields directly, so an unreduced value stored in a `Rational` would
->   be unsound. Two changes paid for the base conversion the move
+>   `BigInt`. Its fraction helper stays private, and has since been replaced by
+>   the `P`/`Q`/`T` triple `_ChudnovskyPartialSum`; a `Rational`-based split was
+>   measured against it and is 15-100x slower, because `Rational`'s
+>   lowest-terms invariant forces a gcd per node that shrinks the operands by
+>   only about a quarter. See `docs/internal/internal_notes.md`. Two changes
+>   paid for the base conversion the move
 >   would otherwise have added — `to_biguint()` now uses the divide-and-conquer
 >   path above 128 words, and the splitting's two ~70 000-digit operands are
 >   shifted right by a common number of bits before conversion, which leaves

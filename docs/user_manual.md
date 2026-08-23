@@ -98,7 +98,7 @@ def main() raises:
 
 ### Overview
 
-`BigInt` (aliases `BInt`, `Integer`) is an arbitrary-precision signed integer
+`BigInt` (alias `BInt`) is an arbitrary-precision signed integer
 type — the Mojo-native equivalent of Python's `int`. It supports
 unlimited-precision integer arithmetic, bitwise operations, and number-theoretic
 functions.
@@ -106,7 +106,7 @@ functions.
 | Property          | Value                        |
 | ----------------- | ---------------------------- |
 | Full name         | `BigInt`                     |
-| Aliases           | `BInt`, `Integer`            |
+| Alias             | `BInt`                       |
 | Internal base     | 2^32 (binary representation) |
 | Word type         | `UInt32` (little-endian)     |
 | Python equivalent | `int`                        |
@@ -1231,12 +1231,12 @@ print(evaluate_rpn(rpn^, precision=50))         # 7
 ```mojo
 # Recommended: import everything commonly needed
 from decimo.prelude import *
-# Brings in: BigInt, BInt, Integer, Decimal, BigDecimal, BDec, Dec128,
+# Brings in: BigInt, BInt, Decimal, BigDecimal, BDec, Dec128,
 #   RoundingMode, ROUND_DOWN, ROUND_HALF_UP, ROUND_HALF_EVEN,
 #   ROUND_UP, ROUND_CEILING, ROUND_FLOOR
 
 # Or import specific types
-from decimo import BInt, BigInt, Integer
+from decimo import BInt, BigInt
 from decimo import Decimal  # also available as BigDecimal or BDec
 from decimo import RoundingMode
 

@@ -467,7 +467,7 @@ struct Rational(
         # 1. Prime factorization of numerator and denominator, cancel common factors.
         # 2. Combine gcd with division.
         # 3. Since we know that the division will be exact, we can add a method
-        #   to Integer, e.g., `exact_divide`. The user must ensure the exactness.
+        #   to BigInt, e.g., `exact_divide`. The user must ensure the exactness.
         var g = gcd(self.numerator, self.denominator)
         if g > BigInt(1):
             self.numerator = self.numerator // g
@@ -917,9 +917,6 @@ struct Rational(
     def __add__(self, other: Self) raises -> Self:
         """Returns self + other.
 
-        Uses the formula: a/b + c/d = (a*d + c*b) / (b*d),
-        then normalizes to lowest terms.
-
         Args:
             other: The other rational.
 
@@ -929,12 +926,7 @@ struct Rational(
         Raises:
             Error: Propagated from underlying BigInt arithmetic.
         """
-        var num = (
-            self.numerator * other.denominator
-            + other.numerator * self.denominator
-        )
-        var den = self.denominator * other.denominator
-        return Self(num, den)
+        return Self._add_or_subtract(self, other, subtract=False)
 
     def __sub__(self, other: Self) raises -> Self:
         """Returns self - other.
@@ -948,12 +940,69 @@ struct Rational(
         Raises:
             Error: Propagated from underlying BigInt arithmetic.
         """
-        var num = (
-            self.numerator * other.denominator
-            - other.numerator * self.denominator
+        return Self._add_or_subtract(self, other, subtract=True)
+
+    @staticmethod
+    def _add_or_subtract(a: Self, b: Self, *, subtract: Bool) raises -> Self:
+        """Returns `a + b` or `a - b`, already in lowest terms.
+
+        The obvious route - `(a.n*b.d +- b.n*a.d) / (a.d*b.d)` followed by
+        `_normalize()` - forms a denominator as large as the product of the two
+        and then pays a gcd over both full-width operands to throw most of it
+        away again. Algorithm A of Knuth 4.5.1 gcds the *denominators* first,
+        which is the same cancellation `__mul__` and `__truediv__` already do
+        on the cross terms:
+
+            g1 = gcd(a.d, b.d)
+            g1 == 1  ->  (a.n*b.d +- b.n*a.d) / (a.d*b.d), already reduced
+            else     ->  t = a.n*(b.d/g1) +- b.n*(a.d/g1)
+                         g2 = gcd(t, g1)
+                         t/g2  /  (a.d/g1)*(b.d/g2)
+
+        Both branches return a fraction that is already in lowest terms, so
+        neither pays a second gcd. When the denominators are coprime - the
+        common case for unrelated values - the only gcd is the one on the
+        denominators, and it is on operands no larger than the inputs.
+
+        Args:
+            a: The left operand.
+            b: The right operand.
+            subtract: If True, compute `a - b`; otherwise `a + b`.
+
+        Returns:
+            The sum or difference, in lowest terms with a positive denominator.
+
+        Raises:
+            Error: Propagated from underlying BigInt arithmetic.
+        """
+        var common = gcd(a.denominator, b.denominator)
+
+        if common.is_one():
+            var scaled_a = a.numerator * b.denominator
+            var scaled_b = b.numerator * a.denominator
+            var num = scaled_a - scaled_b if subtract else scaled_a + scaled_b
+            var den = a.denominator * b.denominator
+            return Self(num^, den^, raw=True)
+
+        var a_den_reduced = a.denominator // common
+        var b_den_reduced = b.denominator // common
+        var scaled_a = a.numerator * b_den_reduced
+        var scaled_b = b.numerator * a_den_reduced
+        var t = scaled_a - scaled_b if subtract else scaled_a + scaled_b
+
+        # Zero has a canonical representation of 0/1, which the general
+        # expression below would not produce.
+        if t.is_zero():
+            return Self.zero()
+
+        var residual = gcd(t, common)
+        if residual.is_one():
+            return Self(t^, a_den_reduced * b.denominator, raw=True)
+        return Self(
+            t // residual,
+            a_den_reduced * (b.denominator // residual),
+            raw=True,
         )
-        var den = self.denominator * other.denominator
-        return Self(num, den)
 
     def __mul__(self, other: Self) raises -> Self:
         """Returns self * other.

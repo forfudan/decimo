@@ -39,6 +39,7 @@ ratios between them are meaningful:
 | `2e81976` - Chudnovsky over `BigInt10` (base 10^9) | 0.2539 s   | -            |
 | `51e5896` - Chudnovsky over `BigInt` (base 2^32)   | 0.1408 s   | 1.80x        |
 | common powers of two divided out in `combine()`    | 0.0974 s   | 1.45x        |
+| `P`/`Q`/`T` binary splitting recurrence            | 0.0007 s   | 139x         |
 
 Notes on the last two, both in `bigdecimal/constants.mojo`:
 
@@ -71,12 +72,112 @@ wins outright beyond that. It is not used because the shifts get most of the
 benefit for a fraction of the cost, and because `BigInt`'s gcd is binary
 (Stein's), which is quadratic; a subquadratic gcd would change this trade-off.
 
-The base cases are the remaining structural inefficiency. Each leaf `k` rebuilds
-`(6k)!/(3k)!`, `(k!)^3` and `C^k` from scratch, which is O(k) big-integer
-multiplications per leaf and O(n^2) overall. The textbook `P`/`Q`/`T` binary
-splitting recurrence makes the leaf O(1) and lets those factors telescope
-through the combines instead. At 640 terms the leaves alone cost 0.89 s of the
-total, so this is not yet the bottleneck, but it is where the next big win is.
+### The `P`/`Q`/`T` recurrence
+
+The base cases used to be the remaining structural inefficiency: each leaf `k`
+rebuilt `(6k)!/(3k)!`, `(k!)^3` and `C^k` from scratch, O(k) big-integer
+multiplications per leaf and O(n^2) overall. That has been replaced with the
+textbook `P`/`Q`/`T` recurrence, in which the leaf is O(1) and those factors
+telescope through the combines.
+
+The leaf cost was the visible half of the problem and the smaller half. The
+larger half was what the old shape did to the operands. Carrying each term as
+an evaluated fraction means `combine()` multiplies the two denominators, so the
+denominator at the root is the *product* of all `n` term denominators - about
+O(n^2 log n) bits. With `P`/`Q`/`T` the same root denominator is
+`((n-1)!)^3 (C^3/24)^(n-1)`, the denominator of a *single* term, about
+O(n log n) bits. That is where the two-to-three orders of magnitude come from,
+and why the win grows with precision:
+
+| `pi(n)`   | Fraction leaves | `P`/`Q`/`T` | Speedup |
+| --------- | --------------- | ----------- | ------- |
+| 1 000     | 10.46 ms        | 0.25 ms     | 43x     |
+| 2 048     | 86.01 ms        | 0.69 ms     | 125x    |
+| 5 000     | 1.464 s         | 3.30 ms     | 443x    |
+| 10 000    | 13.658 s        | 8.81 ms     | 1 551x  |
+| 20 000    | -               | 27.92 ms    | -       |
+| 50 000    | -               | 96.89 ms    | -       |
+| 100 000   | -               | 288.84 ms   | -       |
+
+Two consequences worth recording:
+
+- **The common-powers-of-two trick is gone, and it is not a loss.** The triple
+  is homogeneous of degree one in each child, so dividing all three fields of a
+  subrange by a common factor does propagate correctly. But `P` is a product of
+  `(6k-5)(2k-1)(6k-1)`, all three of which are odd, so `P` is always odd and
+  the common factor is always one. There is nothing left to strip. The
+  reduction the old code did was reclaiming bloat the old shape created.
+- **The split is no longer where the time goes.** At `pi(100000)`, the split is
+  66 ms of the 289 ms total; the rest is the base-2^32 to base-10^9 conversion,
+  the final division, and `sqrt(10005)`. Further work on the series itself has
+  little left to win.
+
+### Could the public `Rational` carry the split?
+
+Asked and measured, because it would be one type fewer. The answer is no, but
+not for the reason the old `_UnreducedFraction` docstring gave.
+
+The natural `Rational` formulation carries two fractions per node - the partial
+sum `S` and the running term ratio `R` - and combines them as
+`S = S_left + R_left * S_right`, `R = R_left * R_right`. That is a faithful
+translation, and it agrees with the `P`/`Q`/`T` result exactly at every size
+tested, which is a useful independent check on the implementation. It is also
+much slower, and falls further behind as the range grows:
+
+| Terms | `P`/`Q`/`T` | Two `Rational`s | Root denominator, reduced |
+| ----- | ----------- | --------------- | ------------------------- |
+| 80    | 0.17 ms     | 2.60 ms         | 84% of unreduced          |
+| 160   | 0.28 ms     | 8.77 ms         | 81%                       |
+| 320   | 0.58 ms     | 31.24 ms        | 78%                       |
+| 640   | 1.60 ms     | 119.72 ms       | 75%                       |
+| 1 280 | 4.65 ms     | 481.02 ms       | 72%                       |
+
+The reason is in the last column. `Rational`'s invariant forces a gcd at every
+node, and here it buys almost nothing: the operands are only about a quarter
+smaller after full reduction, because the `P`/`Q`/`T` products are already
+close to coprime by construction. Paying a gcd per node to shave 25% off the
+operands is a bad trade at any size, and it gets worse, not better, as the
+numbers grow. `Rational` is the right type for exact fractions; it is the wrong
+type for a splitting tree whose whole point is that the fractions never need to
+be in lowest terms.
+
+## `Rational` addition and unbalanced `gcd`
+
+Two changes that came out of the question above, and that stand on their own.
+
+`Rational.__add__` used to form `(a.n*b.d + b.n*a.d) / (a.d*b.d)` and then
+normalize, which pays a gcd over two full-width operands to throw away a
+denominator it just built. `__mul__` and `__truediv__` already cross-cancelled;
+addition now does the equivalent, via Algorithm A of Knuth 4.5.1: gcd the two
+denominators first, and both branches return a fraction already in lowest
+terms.
+
+That change on its own was *slower*, which is the interesting part. Knuth's
+form replaces one gcd of two big operands with `gcd(big denominator, small
+denominator)` - and Stein's binary algorithm is close to its worst case on
+exactly that shape. It makes about one bit of progress per iteration and every
+iteration costs a subtraction over the larger operand, so gcd(18 000-bit,
+20-bit) spends 18 000 full-width subtractions to reach what a single remainder
+reaches at once. Euclidean steps have the opposite profile: worth their
+division cost only while they shrink the operand by a large factor.
+
+So `gcd()` now takes Euclidean steps while the bit-length gap exceeds two
+words, and hands over to Stein as soon as it does not:
+
+| `gcd(a, b)`             | Stein only | Euclid-balanced |
+| ----------------------- | ---------- | --------------- |
+| 1 795 bits, 20 bits     | 0.049 ms   | 0.002 ms        |
+| 5 981 bits, 20 bits     | 0.534 ms   | 0.002 ms        |
+| 17 940 bits, 20 bits    | 4.850 ms   | 0.003 ms        |
+| 5 980 bits, 5 980 bits  | 0.805 ms   | 0.818 ms        |
+
+The balanced row is the control: the loop never fires there, and the difference
+is noise. With that in place the `Rational` change pays - summing `1/k^2` to
+1 200 terms goes from 123 ms to 3.1 ms, a 39x improvement.
+
+The balanced case is still Stein's, which is quadratic. A subquadratic gcd
+(Lehmer, or half-gcd) would be the next step, and would also change the
+full-gcd-per-combine trade-off recorded above.
 
 ## Test suite timing
 

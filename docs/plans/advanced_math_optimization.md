@@ -55,25 +55,27 @@ range.
 to `sin()`'s range reduction) that directly calls `cos_taylor_series()` for the
 base case. This avoids the double π computation entirely.
 
-### 4. Chudnovsky Binary Splitting: Factorial/Power Recomputation (High Impact, Medium Effort)
+### 4. Chudnovsky Binary Splitting: Factorial/Power Recomputation — DONE
 
-**Current behavior:** Each leaf node in `chudnovsky_split()` calls
-`compute_m_k_rational(k)`, which computes `(6k)! / (3k)!` and `(k!)^3` from
-scratch using loops. Similarly, `X(k) = (-262537412640768000)^k` is computed by
-multiplying in a loop `k` times. This means factorial products are rebuilt from
-1 for every single term.
+**Was:** Each leaf node in `chudnovsky_split()` called `compute_m_k_rational(k)`,
+which computed `(6k)! / (3k)!` and `(k!)^3` from scratch using loops, and
+`X(k) = (-262537412640768000)^k` by multiplying in a loop `k` times. Factorial
+products were rebuilt from 1 for every single term.
 
-**What can be done:** The standard approach for Chudnovsky binary splitting uses
-a 3-variable recursion `(P, Q, B)` where each recursive level combines its
-children's partial products — no per-leaf factorial computation is needed. The
-recurrence relations are:
+**Now:** `chudnovsky_split()` uses the standard 3-variable `P`/`Q`/`T`
+recurrence — the formulation used by y-cruncher, GMP's `mpfr_const_pi`, and
+mpmath — where each level combines its children's partial products and no
+per-leaf factorial computation happens at all:
 
-- `P(a,b) = P(a,m) * Q(m,b) + P(m,b) * Q(a,m)`
+- `P(a,b) = P(a,m) * P(m,b)`
 - `Q(a,b) = Q(a,m) * Q(m,b)`
-- `B(a,b) = B(a,m) * B(m,b)`
+- `T(a,b) = T(a,m) * Q(m,b) + P(a,m) * T(m,b)`
 
-This is the standard formulation used by y-cruncher, GMP's `mpfr_const_pi`, and
-mpmath.
+`pi(2048)` went from 86.0 ms to 0.69 ms and `pi(10000)` from 13.66 s to 8.81 ms.
+The leaf cost was the smaller half of the win; the larger half was that an
+evaluated-fraction leaf makes the root denominator the product of all `n` term
+denominators rather than the size of one. See `docs/internal/internal_notes.md`
+for the measurements and for why the split is no longer the bottleneck.
 
 ### 5. tan() Redundant Range Reduction (Medium Impact, Low Effort)
 

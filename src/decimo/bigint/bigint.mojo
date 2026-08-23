@@ -53,8 +53,6 @@ from decimo.errors import (
 # Type aliases
 comptime BInt = BigInt
 """An arbitrary-precision signed integer, similar to Python's `int`."""
-comptime Integer = BigInt
-"""An arbitrary-precision signed integer, similar to Python's `int`."""
 
 
 struct BigInt(
@@ -1703,7 +1701,7 @@ struct BigInt(
     # ===------------------------------------------------------------------=== #
 
     @always_inline
-    def gcd(self, other: Self) -> Self:
+    def gcd(self, other: Self) raises -> Self:
         """Returns the greatest common divisor of self and other.
 
         Args:
@@ -1711,6 +1709,9 @@ struct BigInt(
 
         Returns:
             The greatest common divisor of the two values.
+
+        Raises:
+            Error: Propagated from underlying BigInt arithmetic.
         """
         return bigint_number_theory.gcd(self, other)
 
