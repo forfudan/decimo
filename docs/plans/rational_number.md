@@ -73,7 +73,7 @@ This plan proposes a full public type.
 | From single integer | `Fraction(5)`              | `BigFraction(5)`          | `Ratio::from_integer(5)` | `rational<int>(5)`    | `Rational(5)`              |
 | From string `"3/7"` | `Fraction("3/7")`          | ✗                         | ✗ (via parse)            | `cin >> r`            | `Rational("3/7")`          |
 | From decimal string | `Fraction("1.5")`          | ✗                         | ✗                        | ✗                     | `Rational("1.5")`          |
-| From float          | `Fraction.from_float(1.5)` | `BigFraction(1.5)`        | ✗                        | ✗                     | `Rational.from_float(1.5)` |
+| From float          | `Fraction.from_float(1.5)` | `BigFraction(1.5)`        | ✗                        | ✗                     | `Rational.from_float_scalar(1.5)` |
 | From BigDecimal     | —                          | `BigFraction(bigDecimal)` | —                        | —                     | `Rational(big_decimal)`    |
 
 ### 3.3 Arithmetic Operations
@@ -205,7 +205,7 @@ and divides both by `g`, then ensures the denominator is positive.
 - `__init__(value: Scalar)` — implicit, for any integral scalar
 - `__init__(value: String)` — parse `"3/7"`, `"1.5"`, `"-42"`, `"7e-3"`
 - `from_integral_scalar(value: Scalar) -> Rational` — any integral width
-- `from_float(value: Scalar) -> Rational` — exact float-to-rational, for any
+- `from_float_scalar(value: Scalar) -> Rational` — exact float-to-rational, for any
   binary floating-point width
 - `from_bigdecimal(value: BigDecimal) -> Rational` — exact conversion
 
@@ -286,7 +286,7 @@ and divides both by `g`, then ensures the denominator is positive.
 ### Phase 2: Conversions & Rounding
 
 - [x] String parsing: `"3/7"`, `"1.5"`, `"-42"`, `"7e-3"`
-- [x] `from_float(Scalar)` — every binary floating-point width
+- [x] `from_float_scalar(Scalar)` — every binary floating-point width
 - [x] `from_integral_scalar(Scalar)` — every integral width
 - [x] `from_bigdecimal(BigDecimal)`
 - [x] `to_float()`, `to_integer()`, `to_bigdecimal(precision, rounding_mode)`
@@ -359,15 +359,40 @@ and divides both by `g`, then ensures the denominator is positive.
 >   `BigInt10.to_bigint()` / `BigInt10.from_bigint()`. The module is kept, but
 >   depends on nothing and nothing depends on it.
 > - `constants.mojo`'s Chudnovsky binary splitting moved from `BigInt10` to
->   `BigInt`. Its `_RationalBigInt` helper stays private and unreduced: taking
->   a gcd at every combine step, which the public `Rational` would do, costs
->   far more than it saves. Two changes paid for the base conversion the move
+>   `BigInt`. Its `_UnreducedFraction` helper stays private: the public
+>   `Rational` documents lowest terms as an invariant, and `__eq__` compares
+>   the two fields directly, so an unreduced value stored in a `Rational` would
+>   be unsound. Two changes paid for the base conversion the move
 >   would otherwise have added — `to_biguint()` now uses the divide-and-conquer
 >   path above 128 words, and the splitting's two ~70 000-digit operands are
 >   shifted right by a common number of bits before conversion, which leaves
 >   their ratio intact but converts only the digits the quotient actually
 >   needs. `pi(n)` is byte-identical to before at n = 100, 500, 1000, 2000 and
 >   5000, and 1.4x to 1.7x faster.
+
+> Progress note, 2026-08-23 (third pass): scalar-factory symmetry, and a second
+> round on pi. See `docs/internal/internal_notes.md` for the pi measurements.
+>
+> - The scalar factories now have parallel names and parallel signatures across
+>   `BigUInt`, `BigInt`, `BigDecimal`, `Decimal128` and `Rational`:
+>   `from_integral_scalar[dtype](Scalar[dtype]) where dtype.is_integral()` and
+>   `from_float_scalar[dtype](Scalar[dtype]) where dtype.is_floating_point()`.
+>   `from_float` survives as a deprecated forwarder on `BigDecimal` and
+>   `Decimal128`, which shipped it in v0.13.0; `Rational.from_float` was one
+>   commit old and unreleased, so it was simply renamed. `Decimal128` gained
+>   the parametric pair it never had - it only accepted `Int` and `Float64`.
+> - Every remaining `comptime assert dtype.is_...()` guarding a signature moved
+>   onto the signature as a `where` clause. Two did not, for a reason worth
+>   recording: a `where` clause has to be *discharged by the caller*, so
+>   `BigUInt.from_unsigned_integral_scalar` cannot have one - its only caller
+>   reaches it through `unsigned_counterpart[dtype]()`, whose result the
+>   compiler will not evaluate while proving a constraint. A `comptime assert`
+>   in a caller does count as evidence, which is why
+>   `BigDecimal.__init__(Scalar)` keeps its long "quote the literal instead"
+>   message and still satisfies `from_integral_scalar`'s `where`.
+> - The Chudnovsky combine now divides the common powers of two out of `p` and
+>   `q` - two shifts, no gcd. `q` is dense in factors of two, and this is worth
+>   1.45x on `pi(2048)` on top of the previous pass.
 
 ## 6. Key Design Decisions
 

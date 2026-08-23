@@ -128,29 +128,29 @@ def test_parsable_conformance() raises:
 # ===----------------------------------------------------------------------=== #
 
 
-def test_from_float_exact() raises:
+def test_from_float_scalar_exact() raises:
     """A float that is a dyadic fraction converts to that fraction."""
-    assert_equal(String(Rational.from_float(0.5)), "1/2")
-    assert_equal(String(Rational.from_float(-2.5)), "-5/2")
-    assert_equal(String(Rational.from_float(0.0)), "0")
-    assert_equal(String(Rational.from_float(-0.0)), "0")
-    assert_equal(String(Rational.from_float(1.0)), "1")
-    assert_equal(String(Rational.from_float(-3.0)), "-3")
+    assert_equal(String(Rational.from_float_scalar(0.5)), "1/2")
+    assert_equal(String(Rational.from_float_scalar(-2.5)), "-5/2")
+    assert_equal(String(Rational.from_float_scalar(0.0)), "0")
+    assert_equal(String(Rational.from_float_scalar(-0.0)), "0")
+    assert_equal(String(Rational.from_float_scalar(1.0)), "1")
+    assert_equal(String(Rational.from_float_scalar(-3.0)), "-3")
 
 
-def test_from_float_is_the_float_not_the_literal() raises:
+def test_from_float_scalar_is_the_float_not_the_literal() raises:
     """0.1 converts to the value the Float64 holds, not to one tenth."""
     assert_equal(
-        String(Rational.from_float(0.1)),
+        String(Rational.from_float_scalar(0.1)),
         "3602879701896397/36028797018963968",
     )
     assert_true(
-        Rational.from_float(0.1) != Rational("1/10"),
+        Rational.from_float_scalar(0.1) != Rational("1/10"),
         "the Float64 0.1 is not one tenth",
     )
 
 
-def test_from_float_extremes() raises:
+def test_from_float_scalar_extremes() raises:
     """The ends of the Float64 range survive the round trip."""
     var values: List[Float64] = [
         5e-324,  # smallest positive subnormal
@@ -161,27 +161,27 @@ def test_from_float_extremes() raises:
     ]
     for value in values:
         assert_equal(
-            Rational.from_float(value).to_float(),
+            Rational.from_float_scalar(value).to_float(),
             value,
             "round trip of " + String(value),
         )
 
 
-def test_from_float_rejects_non_finite() raises:
+def test_from_float_scalar_rejects_non_finite() raises:
     """Infinity and NaN are not rational numbers."""
     var raised = False
     try:
-        _ = Rational.from_float(Float64("1e400"))
+        _ = Rational.from_float_scalar(Float64("1e400"))
     except:
         raised = True
-    assert_true(raised, "from_float(inf) should raise")
+    assert_true(raised, "from_float_scalar(inf) should raise")
 
     raised = False
     try:
-        _ = Rational.from_float(Float64("1e400") - Float64("1e400"))
+        _ = Rational.from_float_scalar(Float64("1e400") - Float64("1e400"))
     except:
         raised = True
-    assert_true(raised, "from_float(nan) should raise")
+    assert_true(raised, "from_float_scalar(nan) should raise")
 
 
 # ===----------------------------------------------------------------------=== #
@@ -464,57 +464,57 @@ def test_to_bigdecimal_rejects_non_positive_precision() raises:
 # ===----------------------------------------------------------------------=== #
 
 
-def test_from_float_narrower_types() raises:
-    """`from_float` reads every binary format exactly, not just Float64.
+def test_from_float_scalar_narrower_types() raises:
+    """`from_float_scalar` reads every binary format exactly, not just Float64.
 
     The references are CPython's `Fraction` of the same bit pattern, so a
     difference here is a difference in what the bits are taken to mean.
     """
     assert_equal(
-        String(Rational.from_float(Float32(0.1))),
+        String(Rational.from_float_scalar(Float32(0.1))),
         "13421773/134217728",
         "Float32(0.1) is 13421773 * 2^-27",
     )
     assert_equal(
-        String(Rational.from_float(Float16(0.1))),
+        String(Rational.from_float_scalar(Float16(0.1))),
         "819/8192",
         "Float16(0.1) is 819 * 2^-13",
     )
     assert_equal(
-        String(Rational.from_float(BFloat16(0.1))),
+        String(Rational.from_float_scalar(BFloat16(0.1))),
         "205/2048",
         "BFloat16(0.1) is 205 * 2^-11",
     )
 
     # A value every format holds exactly reads the same out of all of them.
-    assert_equal(String(Rational.from_float(Float16(-2.5))), "-5/2")
-    assert_equal(String(Rational.from_float(BFloat16(-2.5))), "-5/2")
-    assert_equal(String(Rational.from_float(Float32(-2.5))), "-5/2")
-    assert_equal(String(Rational.from_float(Float64(-2.5))), "-5/2")
+    assert_equal(String(Rational.from_float_scalar(Float16(-2.5))), "-5/2")
+    assert_equal(String(Rational.from_float_scalar(BFloat16(-2.5))), "-5/2")
+    assert_equal(String(Rational.from_float_scalar(Float32(-2.5))), "-5/2")
+    assert_equal(String(Rational.from_float_scalar(Float64(-2.5))), "-5/2")
 
-    assert_equal(String(Rational.from_float(Float32(0.0))), "0")
-    assert_equal(String(Rational.from_float(Float16(0.0))), "0")
+    assert_equal(String(Rational.from_float_scalar(Float32(0.0))), "0")
+    assert_equal(String(Rational.from_float_scalar(Float16(0.0))), "0")
 
 
-def test_from_float_narrower_subnormals_and_non_finite() raises:
+def test_from_float_scalar_narrower_subnormals_and_non_finite() raises:
     """The narrow formats keep their subnormals, and still reject inf/NaN."""
     # 2^-24 is the smallest positive Float16, a subnormal.
     assert_equal(
-        String(Rational.from_float(Float16(6e-8))),
+        String(Rational.from_float_scalar(Float16(6e-8))),
         "1/16777216",
         "the smallest Float16 subnormal is 2^-24",
     )
 
     var raised = False
     try:
-        _ = Rational.from_float(Float32.MAX * Float32(2.0))
+        _ = Rational.from_float_scalar(Float32.MAX * Float32(2.0))
     except:
         raised = True
     assert_true(raised, "an infinite Float32 is not a rational")
 
     raised = False
     try:
-        _ = Rational.from_float(Float16(0.0) / Float16(0.0))
+        _ = Rational.from_float_scalar(Float16(0.0) / Float16(0.0))
     except:
         raised = True
     assert_true(raised, "a Float16 NaN is not a rational")

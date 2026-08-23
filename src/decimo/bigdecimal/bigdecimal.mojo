@@ -263,7 +263,7 @@ struct BigDecimal(
             " avoid unintentional loss of precision. If you want to create"
             " a BigDecimal from a floating-point number, please consider"
             " wrapping it with quotation marks or using the"
-            " `Decimal.from_float()` method"
+            " `BigDecimal.from_float_scalar()` method"
             " instead."
             "\n***********************************************************"
         )
@@ -284,7 +284,7 @@ struct BigDecimal(
     # ===------------------------------------------------------------------=== #
     # Constructing methods that are not dunders
     # from_integral_scalar[dtype: DType](value: Scalar[dtype]) -> Self
-    # from_float[dtype: DType](value: Scalar[dtype]) -> Self
+    # from_float_scalar[dtype: DType](value: Scalar[dtype]) -> Self
     # from_string(value: String) -> Self
     # ===------------------------------------------------------------------=== #
 
@@ -330,7 +330,9 @@ struct BigDecimal(
         return Self(BigUInt(raw_words=[word]), scale, sign)
 
     @staticmethod
-    def from_integral_scalar[dtype: DType, //](value: SIMD[dtype, 1]) -> Self:
+    def from_integral_scalar[
+        dtype: DType, //
+    ](value: Scalar[dtype]) -> Self where dtype.is_integral():
         """Initializes a BigDecimal from an integral scalar.
         This includes all SIMD integral types, such as Int8, Int16, UInt32, etc.
 
@@ -344,8 +346,6 @@ struct BigDecimal(
             dtype: The data type of the scalar.
         """
 
-        comptime assert dtype.is_integral(), "dtype must be integral."
-
         if value == 0:
             return Self(coefficient=BigUInt.zero(), scale=0, sign=False)
 
@@ -356,7 +356,33 @@ struct BigDecimal(
         )
 
     @staticmethod
-    def from_float[dtype: DType, //](value: Scalar[dtype]) raises -> Self:
+    def from_float[
+        dtype: DType, //
+    ](value: Scalar[dtype]) raises -> Self where dtype.is_floating_point():
+        """Initializes a BigDecimal from a floating-point scalar.
+
+        Deprecated: use `from_float_scalar()`, which is the name that lines up
+        with `from_integral_scalar()`. This forwards to it unchanged.
+
+        Args:
+            value: The Scalar value to be converted to BigDecimal.
+
+        Returns:
+            The BigDecimal representation of the Scalar value.
+
+        Raises:
+            ValueError: If the value is NaN.
+            ConversionError: If the conversion from scalar to BigDecimal fails.
+
+        Parameters:
+            dtype: The data type of the scalar.
+        """
+        return Self.from_float_scalar(value)
+
+    @staticmethod
+    def from_float_scalar[
+        dtype: DType, //
+    ](value: Scalar[dtype]) raises -> Self where dtype.is_floating_point():
         """Initializes a BigDecimal from a floating-point scalar.
 
         Args:
@@ -378,17 +404,13 @@ struct BigDecimal(
             dtype: The data type of the scalar.
         """
 
-        comptime assert (
-            dtype.is_floating_point()
-        ), "dtype must be floating-point."
-
         if value == 0:
             return Self(coefficient=BigUInt.zero(), scale=0, sign=False)
 
         if value != value:  # Check for NaN
             raise ValueError(
                 message="Cannot convert NaN to BigDecimal.",
-                function="BigDecimal.from_scalar()",
+                function="BigDecimal.from_float_scalar()",
             )
         # Convert to string with full precision
         try:
@@ -396,7 +418,7 @@ struct BigDecimal(
         except e:
             raise ConversionError(
                 message="Cannot convert scalar to BigDecimal.",
-                function="BigDecimal.from_scalar()",
+                function="BigDecimal.from_float_scalar()",
                 previous_error=e^,
             )
 

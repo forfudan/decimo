@@ -564,10 +564,10 @@ var y = Decimal(UInt128(99999999999999))
 ```
 
 Works with all integral SIMD types.
-**Floating-point scalars are rejected at compile time** — use `from_float()`
-instead.
+**Floating-point scalars are rejected at compile time** — use
+`from_float_scalar()` instead.
 
-#### From floating-point — `from_float()` <!-- omit from toc -->
+#### From floating-point — `from_float_scalar()` <!-- omit from toc -->
 
 When constructing a `Decimal` from a floating-point number, the number is first
 converted to its string representation and then parsed as a `Decimal`.
@@ -578,15 +578,21 @@ floating-point. You may lose precision without awareness.
 To make the conversion from float to `Decimal` more explicit so that you are
 aware of the potential precision issues, the `Decimal()` constructor does not
 accept floating-point numbers directly. Instead, to create a `Decimal` from a
-float, you must use the `from_float()` factory method.
+float, you must use the `from_float_scalar()` factory method. It accepts any
+floating-point width — `Float16`, `BFloat16`, `Float32`, `Float64` and the
+8-bit formats — since every one of them widens to `Float64` exactly.
 
-Consider never using `Decimal.from_float()` in performance-sensitive code, but
-use string construction instead.
+Consider never using `Decimal.from_float_scalar()` in performance-sensitive
+code, but use string construction instead.
 
 ```mojo
-var x = Decimal.from_float(3.14159)
-var y = Decimal.from_float(Float64(2.71828))
+var x = Decimal.from_float_scalar(3.14159)
+var y = Decimal.from_float_scalar(Float32(2.71828))
 ```
+
+`from_float()` is the former name and still works, forwarding unchanged. It is
+deprecated in favour of `from_float_scalar()`, which lines up with
+`from_integral_scalar()`.
 
 #### From Python — `from_python_decimal()` <!-- omit from toc -->
 
@@ -612,7 +618,8 @@ var b = Decimal(py=py_dec)  # Alternative keyword-only syntax
 | `Decimal(value: Scalar)`              | From any integral scalar (impl) |
 | `Decimal(py=py_obj)`                  | From Python `Decimal` (raises)  |
 | `Decimal.from_integral_scalar(value)` | From any integral scalar type   |
-| `Decimal.from_float(value)`           | From floating-point (raises)    |
+| `Decimal.from_float_scalar(value)`    | From any float scalar (raises)  |
+| `Decimal.from_float(value)`           | Deprecated alias of the above   |
 | `Decimal.from_string(value)`          | Explicit factory from string    |
 | `Decimal.from_python_decimal(py_obj)` | From Python `Decimal` (raises)  |
 

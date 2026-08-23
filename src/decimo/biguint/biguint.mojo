@@ -511,7 +511,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     @staticmethod
     def from_unsigned_integral_scalar[
         dtype: DType, //
-    ](value: SIMD[dtype, 1]) -> Self:
+    ](value: Scalar[dtype]) -> Self:
         """Initializes a BigUInt from an unsigned integral scalar.
         This includes all SIMD unsigned integral types, such as UInt8, UInt16,
         UInt32, UInt64, etc.
@@ -543,6 +543,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             dtype: The scalar data type, must be integral and unsigned.
         """
 
+        # Not a `where` clause: the only in-library caller reaches this through
+        # `unsigned_counterpart[dtype]()`, whose result the compiler cannot
+        # evaluate while discharging a constraint. An in-body assert checks the
+        # same thing at instantiation without demanding a proof from the caller.
         comptime assert (
             dtype.is_integral() and dtype.is_unsigned()
         ), "dtype must be unsigned integral."
@@ -596,7 +600,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     @staticmethod
     def from_absolute_integral_scalar[
         dtype: DType, //
-    ](value: SIMD[dtype, 1]) -> Self:
+    ](value: Scalar[dtype]) -> Self where dtype.is_integral():
         """Initializes a BigUInt from an integral scalar and ignores the sign.
         This includes all SIMD integral types, such as UInt8, UInt16, Int32,
         Int64, Int128, etc.
@@ -613,8 +617,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         Parameters:
             dtype: The scalar data type, must be integral.
         """
-
-        comptime assert dtype.is_integral(), "dtype must be integral."
 
         comptime if (dtype == DType.uint8) or (dtype == DType.uint16):
             # For types that are smaller than word size

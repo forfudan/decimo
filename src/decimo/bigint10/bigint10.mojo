@@ -172,7 +172,7 @@ struct BigInt10(
             )
 
     @implicit
-    def __init__(out self, value: Scalar):
+    def __init__(out self, value: Scalar) where value.dtype.is_integral():
         """Constructs a BigInt10 from an integral scalar.
         This includes all SIMD integral types, such as Int8, Int16, UInt32, etc.
 
@@ -269,7 +269,9 @@ struct BigInt10(
         return Self(BigUInt(raw_words=list_of_words^), sign)
 
     @staticmethod
-    def from_integral_scalar[dtype: DType, //](value: SIMD[dtype, 1]) -> Self:
+    def from_integral_scalar[
+        dtype: DType, //
+    ](value: Scalar[dtype]) -> Self where dtype.is_integral():
         """Initializes a BigInt10 from an integral scalar.
         This includes all SIMD integral types, such as Int8, Int16, UInt32, etc.
 
@@ -285,8 +287,6 @@ struct BigInt10(
         Parameters:
             dtype: The data type of the input scalar.
         """
-
-        comptime assert dtype.is_integral(), "dtype must be integral."
 
         if value == 0:
             return Self()

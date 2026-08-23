@@ -177,7 +177,7 @@ struct Rational(
             The dtype of the scalar must be integral. A floating-point value
             is not accepted here, because whether `Rational(0.1)` should mean
             1/10 or the binary float that literal denotes is a question the
-            caller has to answer: use `from_float()` for the latter and
+            caller has to answer: use `from_float_scalar()` for the latter and
             `Rational("0.1")` for the former.
 
         Args:
@@ -235,7 +235,7 @@ struct Rational(
     @staticmethod
     def from_integral_scalar[
         dtype: DType, //
-    ](value: SIMD[dtype, 1]) -> Self where dtype.is_integral():
+    ](value: Scalar[dtype]) -> Self where dtype.is_integral():
         """Creates a Rational from an integral scalar, with denominator 1.
         This includes all SIMD integral types:
         Int8, Int16, Int32, Int64, Int128, Int256,
@@ -371,16 +371,16 @@ struct Rational(
         return Self(numerator)
 
     @staticmethod
-    def from_float[
+    def from_float_scalar[
         dtype: DType, //
-    ](value: SIMD[dtype, 1]) raises -> Self where dtype.is_floating_point():
+    ](value: Scalar[dtype]) raises -> Self where dtype.is_floating_point():
         """Creates a Rational from a floating-point scalar, losslessly.
         This includes all SIMD floating-point types, such as Float16,
         BFloat16, Float32, Float64, and the 8-bit formats.
 
         Every finite binary float is a fraction whose denominator is a power
         of two, so the result is the exact value of `value`, not the decimal
-        literal that was written to produce it: `from_float(0.1)` is
+        literal that was written to produce it: `from_float_scalar(0.1)` is
         3602879701896397/36028797018963968, not 1/10.
 
         Constraints:
@@ -413,7 +413,7 @@ struct Rational(
 
         if exponent_field == 0x7FF:
             raise ConversionError(
-                function="Rational.from_float(value: Scalar[dtype])",
+                function="Rational.from_float_scalar(value: Scalar[dtype])",
                 message=(
                     "The input value "
                     + String(value)
