@@ -712,6 +712,13 @@ def subtract_inplace(mut x: BigUInt, y: BigUInt) raises -> None:
     if comparison_result == 0:
         x.words.resize(unsafe_uninit_length=1)
         x.words[0] = UInt32(0)  # Result is zero
+        # This return is load-bearing. Without it the equal-operands case falls
+        # through into the subtraction below, which subtracts `y` from the
+        # one-word zero that `x` has just become: the vectorized loop runs over
+        # `len(y.words)` words and reads and writes past the end of `x`, and
+        # `normalize_borrows()` then turns the garbage into a plausible-looking
+        # value. `subtract(x, x)` returned `877910460` for one 18-word operand.
+        return
     elif comparison_result < 0:
         raise OverflowError(
             function="subtract_inplace()",
@@ -2471,17 +2478,29 @@ def floor_divide_by_uint32_inplace(mut x: BigUInt, y: UInt32) -> None:
         ),
     )
 
-    # Most significant word of the dividend
-    var dividend = UInt64(x.words[len(x.words) - 1] // y)
-    var carry = UInt64(x.words[len(x.words) - 1] % y)
+    # Most significant word of the dividend. `top` is read before the value is
+    # shortened below: the loop that follows walks down from `top - 1`, and
+    # deriving that bound from `len(x.words)` after a `shrink()` would skip the
+    # word just below the one that was dropped and leave it undivided.
+    var top = len(x.words) - 1
+    var dividend = UInt64(x.words[top] // y)
+    var carry = UInt64(x.words[top] % y)
     var y_uint64 = UInt64(y)
     if dividend == 0:
-        x.words.shrink(len(x.words) - 1)
+        if top == 0:
+            # A single-word dividend smaller than the divisor has a quotient of
+            # zero, and `BigUInt` spells zero as one zero word. Shrinking here
+            # would leave the value with no words at all, and every operation
+            # that reaches for `words[len(words) - 1]` - comparison first among
+            # them - then indexes out of bounds.
+            x.words[0] = UInt32(0)
+            return
+        x.words.shrink(top)
     else:
-        x.words[len(x.words) - 1] = UInt32(dividend)
+        x.words[top] = UInt32(dividend)
 
     # Process the rest of the words
-    for i in range(len(x.words) - 2, -1, -1):
+    for i in range(top - 1, -1, -1):
         dividend = carry * UInt64(BigUInt.BASE) + UInt64(x.words[i])
         x.words[i] = UInt32(dividend // y_uint64)
         carry = dividend % y_uint64
@@ -2543,6 +2562,14 @@ def floor_divide_by_uint64_inplace(mut x: BigUInt, y: UInt64) -> None:
         "biguint.arithmetics.floor_divide_by_uint64_inplace(): ",
         "Division by zero.",
     )
+
+    if len(x.words) == 1:
+        # The loop below folds an odd top word into `carry` and shortens the
+        # value by one word, which for a one-word value leaves it with no words
+        # at all - not a valid `BigUInt`, and a fault in the first comparison
+        # that reads `words[len(words) - 1]`. A one-word quotient needs no loop.
+        x.words[0] = UInt32(UInt64(x.words[0]) // y)
+        return
 
     var carry = UInt128(0)
     var y_uint128 = UInt128(y)
@@ -3009,14 +3036,20 @@ def floor_divide_burnikel_ziegler(
     # STEP 2: Split the normalized a into blocks of size n.
     # t is the number of blocks in the dividend.
     var t = math.ceildiv(len(normalized_a.words), n)
-    if len(a.words) == t * n:
-        # If the number of words in a is already a multiple of n
+    if len(normalized_a.words) == t * n:
+        # If the number of words in the dividend is already a multiple of n
         # We check if the most significant word is >= 500_000_000.
         # If it is, we need to add one more block to the dividend.
         # This ensures that the most significant word of the dividend
         # is smaller than 500_000_000.
         # In this sense, the first 2-by-1 division will generate a quotient
         # of either 0 or 1, which would exceeds n-word capacity.
+        #
+        # The length tested is `normalized_a`'s, not `a`'s. `t` counts blocks
+        # of the normalized dividend, and normalization scales it by the same
+        # power of ten as the divisor, so it is usually the longer of the two:
+        # `len(a.words)` and `t * n` could only agree by accident. `BigInt`'s
+        # copy of this algorithm has always tested the normalized length.
         if normalized_a.words[len(normalized_a.words) - 1] >= 500_000_000:
             t += 1
 

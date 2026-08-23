@@ -117,6 +117,35 @@ returned short of its requested precision is fixed.
 
 ### 🩹 Fixed in Unreleased
 
+1. **`BigUInt` in-place subtraction returned garbage when the two operands were
+   equal**, and with it `BigUInt` long division for a whole class of dividends.
+   `subtract_inplace()` handled `x == y` by shortening `x` to a single zero
+   word - and then fell through into the general path, which ran a vectorized
+   subtraction over `len(y.words)` words of a value now one word long, reading
+   and writing past the end of `x`. `normalize_borrows()` turned the result
+   into a plausible-looking number rather than anything obviously broken:
+   `x -= x` returned `877910460` for one 18-word operand, and was wrong at
+   every width from a single word up. The fix is a `return`.
+
+   The reach went well past `-=`. Burnikel-Ziegler's schoolbook base case
+   computes its remainder as `a_slice -= q * b_slice`, and a block that divides
+   exactly makes those two equal, so `//` and `%` returned wrong quotients
+   whenever the recursion met such a block. A sweep of dividends of the form
+   `b * (10^9)^k + j * (b - 1)` over divisors of 33 to 71 words found 676 wrong
+   results out of 5 148; there are now none. `BigInt`, `BigDecimal` and `gcd()`
+   have their own subtraction and were never affected.
+1. **The in-place single-word divisions left a `BigUInt` with no words at all**
+   when the quotient was zero, which faults the next comparison that reads
+   `words[len(words) - 1]`, and `floor_divide_by_uint32_inplace()` also read
+   its loop bound from the already-shortened list and so skipped a word
+   whenever the leading word was smaller than the divisor. Neither function is
+   called anywhere in the library today; the out-of-place versions that `//`
+   does use were correct.
+1. **Burnikel-Ziegler's "add one more block" guard tested the wrong length.**
+   It compared `len(a.words)` against `t * n` while `t` counts blocks of the
+   *normalized* dividend, which the normalization has usually lengthened, so
+   the guard fired more or less at random. It now tests the normalized length,
+   as `BigInt`'s copy of the algorithm always has.
 1. **`sqrt_reciprocal()` returned fewer correct digits than asked for**, from
    two independent causes. A reciprocal-sqrt iteration only doubles the correct
    digits, so `n` iterations reach `seed * 2^n` — and the schedule halved down

@@ -8,6 +8,15 @@ from std.python import Python
 from std import testing
 from std.testing import assert_equal, assert_true
 from decimo.biguint.biguint import BigUInt
+from decimo.biguint.arithmetics import (
+    add,
+    add_inplace,
+    floor_divide_by_uint32_inplace,
+    floor_divide_by_uint64_inplace,
+    subtract,
+    subtract_inplace,
+    subtract_no_check_inplace,
+)
 from decimo.tests import (
     TestCase,
     load_test_cases,
@@ -313,6 +322,179 @@ def test_biguint_divide_bz_block_padding_sizes() raises:
                 String(q * b + r), String(a), "q*b+r != a for " + case_label
             )
             assert_true(r < b, "remainder out of range for " + case_label)
+
+
+def test_biguint_divide_dividend_on_a_block_boundary() raises:
+    """Burnikel-Ziegler stays correct when the dividend fills its blocks.
+
+    `a = b * (10^9)^k` puts the dividend's top block exactly on the divisor,
+    so the first 2-by-1 division inside the recursion returns a quotient of
+    `n + 1` words instead of `n`. That is the case an "add one more block"
+    guard used to try to prevent, by incrementing the block count without
+    lengthening the dividend - which left the first 2-by-1 division a block
+    short of its 2n words and produced a wrong quotient. `k` is swept across
+    the block size so that some dividends land exactly on `t * n` words and
+    others just miss.
+
+    The maximal case is included separately: an all-nines dividend over a
+    divisor whose leading word is the smallest normalization allows, which is
+    what makes that first quotient use its full extra word.
+    """
+    for words_b in [33, 34, 40, 48, 64, 65, 70, 96, 129]:
+        var b = BigUInt(_bz_digit_run(words_b * 9, 5_000_003 + words_b))
+        for k in range(words_b - 1, words_b + 4):
+            var shifted = BigUInt(String("1") + String("0") * (9 * k))
+            var exact = b * shifted
+            for offset in range(3):
+                var a = exact + BigUInt(offset) * (b - BigUInt(1))
+                var q = a // b
+                var r = a - q * b
+                var case_label = (
+                    String("b=")
+                    + String(words_b)
+                    + " words, k="
+                    + String(k)
+                    + ", offset="
+                    + String(offset)
+                )
+                assert_equal(
+                    String(q * b + r),
+                    String(a),
+                    "q*b+r != a for " + case_label,
+                )
+                assert_true(r < b, "remainder out of range for " + case_label)
+
+        # Widest possible first quotient: dividend all nines, divisor's
+        # leading word just over the 500_000_000 normalization threshold.
+        var small_lead = BigUInt(
+            String("5") + String("0") * (words_b * 9 - 2) + "1"
+        )
+        for extra_words in range(3):
+            var wide = BigUInt(String("9") * ((2 * words_b + extra_words) * 9))
+            var q_wide = wide // small_lead
+            var r_wide = wide - q_wide * small_lead
+            var wide_label = (
+                String("maximal b=")
+                + String(words_b)
+                + " words, extra="
+                + String(extra_words)
+            )
+            assert_equal(
+                String(q_wide * small_lead + r_wide),
+                String(wide),
+                "q*b+r != a for " + wide_label,
+            )
+            assert_true(
+                r_wide < small_lead,
+                "remainder out of range for " + wide_label,
+            )
+
+
+def test_biguint_inplace_arithmetics_match_out_of_place() raises:
+    """Every in-place operation agrees with its out-of-place twin.
+
+    `subtract_inplace()` used to fall through its equal-operands branch: it set
+    `x` to a single zero word and then, without returning, ran the vectorized
+    subtraction anyway, over `len(y.words)` words of a value now one word long.
+    That read and wrote past the end of `x` and `normalize_borrows()` turned
+    the result into a plausible number - `x -= x` returned `877910460` for one
+    18-word operand, and was wrong at every width from one word up.
+
+    It was reached far beyond `-=`: the Burnikel-Ziegler base case computes its
+    remainder as `a_slice -= q * b_slice`, and a block that divides exactly
+    makes those operands equal, so long division returned wrong quotients for a
+    whole class of dividends.
+
+    The in-place single-word divisions had their own faults: both left a value
+    with no words at all when the quotient was zero, and the `UInt32` one read
+    its loop bound from the already-shortened list, skipping a word.
+    """
+    var widths = [1, 2, 3, 4, 8, 17, 18, 33, 64, 65, 100]
+    var by_uint32 = UInt32(999_999_937)
+    var by_uint64 = UInt64(999_999_999_999_999_989)
+    var as_biguint_32 = BigUInt(String("999999937"))
+    var as_biguint_64 = BigUInt(String("999999999999999989"))
+
+    for i in range(len(widths)):
+        var wx = widths[i]
+        var x = BigUInt(_bz_digit_run(wx * 9, 900_001 + wx))
+
+        for j in range(len(widths)):
+            var wy = widths[j]
+            if wy > wx:
+                continue
+            # `equal = 1` is the case that used to fail: x and y the same value.
+            for equal in range(2):
+                var y = x.copy() if equal == 1 else BigUInt(
+                    _bz_digit_run(wy * 9, 700_003 + wy)
+                )
+                if y > x:
+                    continue
+                var case_label = (
+                    String("x=")
+                    + String(wx)
+                    + " words, y="
+                    + String(wy)
+                    + " words, equal="
+                    + String(equal)
+                )
+
+                var summed = x.copy()
+                add_inplace(summed, y)
+                assert_equal(
+                    String(summed),
+                    String(add(x, y)),
+                    "add_inplace " + case_label,
+                )
+
+                var expected_difference = String(subtract(x, y))
+
+                var difference = x.copy()
+                subtract_inplace(difference, y)
+                assert_equal(
+                    String(difference),
+                    expected_difference,
+                    "subtract_inplace " + case_label,
+                )
+                assert_equal(
+                    len(difference.words) > 0,
+                    True,
+                    "subtract_inplace left no words for " + case_label,
+                )
+
+                var unchecked = x.copy()
+                subtract_no_check_inplace(unchecked, y)
+                assert_equal(
+                    String(unchecked),
+                    expected_difference,
+                    "subtract_no_check_inplace " + case_label,
+                )
+
+                var operator_form = x.copy()
+                operator_form -= y
+                assert_equal(
+                    String(operator_form),
+                    expected_difference,
+                    "__isub__ " + case_label,
+                )
+
+        # The in-place single-word divisions, including the quotient-is-zero
+        # case that used to leave the value with no words.
+        var quotient_32 = x.copy()
+        floor_divide_by_uint32_inplace(quotient_32, by_uint32)
+        assert_equal(
+            String(quotient_32),
+            String(x // as_biguint_32),
+            "floor_divide_by_uint32_inplace at " + String(wx) + " words",
+        )
+
+        var quotient_64 = x.copy()
+        floor_divide_by_uint64_inplace(quotient_64, by_uint64)
+        assert_equal(
+            String(quotient_64),
+            String(x // as_biguint_64),
+            "floor_divide_by_uint64_inplace at " + String(wx) + " words",
+        )
 
 
 def main() raises:
