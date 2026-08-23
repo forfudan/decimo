@@ -32,7 +32,7 @@ from decimo.traits import Numeric, Parsable, Rootable
 from decimo.rounding_mode import RoundingMode
 from decimo.numerals.chinese import ChineseNumeralStyle
 from decimo.bigdecimal.exponential import MathCache
-from decimo.bigint10.bigint10 import BigInt10
+from decimo.bigint.bigint import BigInt
 import decimo.str as decimo_str
 import decimo.numerals.chinese as decimo_chinese
 import decimo.bigdecimal.arithmetics as bigdecimal_arithmetics
@@ -221,13 +221,13 @@ struct BigDecimal(
         self.sign = sign
 
     @implicit
-    def __init__(out self, value: BigInt10):
-        """Constructs a BigDecimal from a base-10 big integer.
+    def __init__(out self, value: BigInt):
+        """Constructs a BigDecimal from an arbitrary-precision integer.
 
         Args:
-            value: The `BigInt10` to convert.
+            value: The `BigInt` to convert.
         """
-        self.coefficient = value.magnitude.copy()
+        self.coefficient = value.to_biguint()
         self.scale = 0
         self.sign = value.sign
 

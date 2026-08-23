@@ -19,9 +19,11 @@
 BigInt is a signed arbitrary-precision integer that uses base-2^32
 representation internally. This is the binary counterpart to BigInt10 (base-10^9).
 
-Once BigInt is stable and performant, the naming plan is:
-- The alias `BInt` will be reassigned from BigInt10 to BigInt
-- BigInt10 will be kept for decimal-friendly use cases but hidden from users
+`BInt` now names BigInt. BigInt10 is no longer referenced by any other module
+of the library: the base-10^9 side of the bridge is `to_biguint()` /
+`from_biguint()`, which speak `BigUInt` directly, and BigInt10 itself carries
+`to_bigint()` / `from_bigint()` for the code that still wants it. The module is
+kept for now, but nothing depends on it.
 
 Modules:
 - bigint: Core struct with constructors, conversions, dunders

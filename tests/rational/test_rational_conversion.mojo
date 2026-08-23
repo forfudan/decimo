@@ -459,5 +459,98 @@ def test_to_bigdecimal_rejects_non_positive_precision() raises:
     assert_true(raised, "precision=-1 should raise")
 
 
+# ===----------------------------------------------------------------------=== #
+# Narrower floating-point types and integral scalars
+# ===----------------------------------------------------------------------=== #
+
+
+def test_from_float_narrower_types() raises:
+    """`from_float` reads every binary format exactly, not just Float64.
+
+    The references are CPython's `Fraction` of the same bit pattern, so a
+    difference here is a difference in what the bits are taken to mean.
+    """
+    assert_equal(
+        String(Rational.from_float(Float32(0.1))),
+        "13421773/134217728",
+        "Float32(0.1) is 13421773 * 2^-27",
+    )
+    assert_equal(
+        String(Rational.from_float(Float16(0.1))),
+        "819/8192",
+        "Float16(0.1) is 819 * 2^-13",
+    )
+    assert_equal(
+        String(Rational.from_float(BFloat16(0.1))),
+        "205/2048",
+        "BFloat16(0.1) is 205 * 2^-11",
+    )
+
+    # A value every format holds exactly reads the same out of all of them.
+    assert_equal(String(Rational.from_float(Float16(-2.5))), "-5/2")
+    assert_equal(String(Rational.from_float(BFloat16(-2.5))), "-5/2")
+    assert_equal(String(Rational.from_float(Float32(-2.5))), "-5/2")
+    assert_equal(String(Rational.from_float(Float64(-2.5))), "-5/2")
+
+    assert_equal(String(Rational.from_float(Float32(0.0))), "0")
+    assert_equal(String(Rational.from_float(Float16(0.0))), "0")
+
+
+def test_from_float_narrower_subnormals_and_non_finite() raises:
+    """The narrow formats keep their subnormals, and still reject inf/NaN."""
+    # 2^-24 is the smallest positive Float16, a subnormal.
+    assert_equal(
+        String(Rational.from_float(Float16(6e-8))),
+        "1/16777216",
+        "the smallest Float16 subnormal is 2^-24",
+    )
+
+    var raised = False
+    try:
+        _ = Rational.from_float(Float32.MAX * Float32(2.0))
+    except:
+        raised = True
+    assert_true(raised, "an infinite Float32 is not a rational")
+
+    raised = False
+    try:
+        _ = Rational.from_float(Float16(0.0) / Float16(0.0))
+    except:
+        raised = True
+    assert_true(raised, "a Float16 NaN is not a rational")
+
+
+def test_from_integral_scalar() raises:
+    """Every integral width lands on an exact integer with denominator 1."""
+    assert_equal(String(Rational.from_integral_scalar(Int8(-5))), "-5")
+    assert_equal(String(Rational.from_integral_scalar(Int8.MIN)), "-128")
+    assert_equal(String(Rational.from_integral_scalar(UInt8.MAX)), "255")
+    assert_equal(String(Rational.from_integral_scalar(Int32(0))), "0")
+    assert_equal(
+        String(Rational.from_integral_scalar(Int64.MIN)),
+        "-9223372036854775808",
+    )
+    assert_equal(
+        String(Rational.from_integral_scalar(UInt64.MAX)),
+        "18446744073709551615",
+    )
+
+    var one = Rational.from_integral_scalar(Int(7))
+    assert_equal(String(one.denominator), "1", "an integer has denominator 1")
+
+
+def test_integral_scalar_constructor_is_implicit() raises:
+    """An integral scalar converts to a Rational wherever one is wanted."""
+    assert_equal(String(Rational(42)), "42")
+    assert_equal(String(Rational(Int64(-7))), "-7")
+    assert_equal(String(Rational(UInt32(9))), "9")
+
+    var coerced: Rational = 12
+    assert_equal(String(coerced), "12")
+
+    # And it composes with the arithmetic, which is the point of @implicit.
+    assert_equal(String(Rational("1/3") + 1), "4/3")
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()

@@ -26,7 +26,6 @@ mathematical methods that do not implement a trait.
 from std.memory import Pointer, unsafe_memcpy, memcmp
 from std.sys import size_of
 
-from decimo.bigint10.bigint10 import BigInt10
 import decimo.biguint.arithmetics as biguint_arithmetics
 import decimo.biguint.comparison as biguint_comparison
 import decimo.biguint.exponential as biguint_exponential

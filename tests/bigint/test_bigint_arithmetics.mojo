@@ -9,6 +9,7 @@ use decimal string representations that are valid for both BigInt10 and BigInt.
 from std.python import Python
 from std import testing
 from decimo.bigint.bigint import BigInt
+from decimo.bigint10.bigint10 import BigInt10
 from decimo.tests import TestCase, parse_file, load_test_cases
 
 comptime file_path_arithmetics = (
@@ -560,7 +561,7 @@ def test_bigint_floor_divide_burnikel_ziegler() raises:
     # Cross-check D&C string conversion against BigInt10 path
     testing.assert_equal(
         lhs=String(a1),
-        rhs=String(a1.to_bigint10()),
+        rhs=String(BigInt10.from_bigint(a1)),
         msg="[B-Z case 1] D&C to_string matches BigInt10 path",
     )
 
@@ -580,7 +581,7 @@ def test_bigint_floor_divide_burnikel_ziegler() raises:
     )
     testing.assert_equal(
         lhs=String(a2),
-        rhs=String(a2.to_bigint10()),
+        rhs=String(BigInt10.from_bigint(a2)),
         msg="[B-Z case 2] D&C to_string matches BigInt10 path",
     )
 

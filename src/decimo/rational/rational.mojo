@@ -31,7 +31,6 @@ from std.memory import bitcast
 from decimo.bigdecimal.bigdecimal import BigDecimal, PRECISION
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.number_theory import gcd
-from decimo.bigint10.bigint10 import BigInt10
 from decimo.errors import ConversionError, ValueError, ZeroDivisionError
 from decimo.rounding_mode import RoundingMode
 from decimo.traits import Parsable
@@ -168,14 +167,23 @@ struct Rational(
         self.numerator = value.copy()
         self.denominator = BigInt(UInt32(1))
 
-    def __init__(out self, value: Int):
-        """Initializes a rational number from an Int (denominator = 1).
+    @implicit
+    def __init__(out self, value: Scalar) where value.dtype.is_integral():
+        """Initializes a rational number from an integral scalar
+        (denominator = 1). This includes all SIMD integral types, such as
+        Int8, Int16, UInt32, etc.
+
+        Constraints:
+            The dtype of the scalar must be integral. A floating-point value
+            is not accepted here, because whether `Rational(0.1)` should mean
+            1/10 or the binary float that literal denotes is a question the
+            caller has to answer: use `from_float()` for the latter and
+            `Rational("0.1")` for the former.
 
         Args:
-            value: The integer value.
+            value: The integral scalar value to convert.
         """
-        self.numerator = BigInt(value)
-        self.denominator = BigInt(UInt32(1))
+        self = Self.from_integral_scalar(value)
 
     def __init__(
         out self, var numerator: BigInt, var denominator: BigInt, *, raw: Bool
@@ -220,12 +228,33 @@ struct Rational(
         """
         self = Self.from_bigdecimal(value)
 
-    # TODO:
-    # Initializes a Rational from a integral scalar.
-
     # ===------------------------------------------------------------------=== #
     # Constructing methods that are not dunders
     # ===------------------------------------------------------------------=== #
+
+    @staticmethod
+    def from_integral_scalar[
+        dtype: DType, //
+    ](value: SIMD[dtype, 1]) -> Self where dtype.is_integral():
+        """Creates a Rational from an integral scalar, with denominator 1.
+        This includes all SIMD integral types:
+        Int8, Int16, Int32, Int64, Int128, Int256,
+        UInt8, UInt16, UInt32, UInt64, UInt128, UInt256,
+        and the platform-sized Int (DType.int) and UInt (DType.uint).
+
+        Constraints:
+            The dtype must be integral.
+
+        Args:
+            value: The Scalar value to be converted to Rational.
+
+        Returns:
+            The value as a Rational, already in lowest terms.
+
+        Parameters:
+            dtype: The data type of the scalar value.
+        """
+        return Self(BigInt.from_integral_scalar(value))
 
     @staticmethod
     def from_string(value: String) raises -> Self:
@@ -330,9 +359,7 @@ struct Rational(
         Raises:
             Error: If the underlying integer arithmetic fails.
         """
-        var numerator = BigInt.from_bigint10(
-            BigInt10(value.coefficient, value.sign)
-        )
+        var numerator = BigInt.from_biguint(value.coefficient, value.sign)
 
         if value.scale > 0:
             return Self(numerator, BigInt(10) ** value.scale)
@@ -344,13 +371,20 @@ struct Rational(
         return Self(numerator)
 
     @staticmethod
-    def from_float(value: Float64) raises -> Self:
-        """Creates a Rational from a Float64, losslessly.
+    def from_float[
+        dtype: DType, //
+    ](value: SIMD[dtype, 1]) raises -> Self where dtype.is_floating_point():
+        """Creates a Rational from a floating-point scalar, losslessly.
+        This includes all SIMD floating-point types, such as Float16,
+        BFloat16, Float32, Float64, and the 8-bit formats.
 
         Every finite binary float is a fraction whose denominator is a power
         of two, so the result is the exact value of `value`, not the decimal
         literal that was written to produce it: `from_float(0.1)` is
         3602879701896397/36028797018963968, not 1/10.
+
+        Constraints:
+            The dtype must be floating-point.
 
         Args:
             value: The floating-point value to convert.
@@ -361,15 +395,25 @@ struct Rational(
         Raises:
             ConversionError: If `value` is infinite or NaN, neither of which
                 is a rational number.
+
+        Parameters:
+            dtype: The data type of the scalar value.
+
+        Notes:
+
+        Every narrower binary format is a subset of Float64 - fewer
+        significand bits and a narrower exponent range - so widening first is
+        exact, and one decoder then serves them all.
         """
-        var bits = value.to_bits()
+        var widened = value.cast[DType.float64]()
+        var bits = widened.to_bits()
         var exponent_field = Int((bits >> 52) & 0x7FF)
         var mantissa_field = bits & 0x000F_FFFF_FFFF_FFFF
         var negative = Bool((bits >> 63) != 0)
 
         if exponent_field == 0x7FF:
             raise ConversionError(
-                function="Rational.from_float(value: Float64)",
+                function="Rational.from_float(value: Scalar[dtype])",
                 message=(
                     "The input value "
                     + String(value)
@@ -758,7 +802,7 @@ struct Rational(
                     exponent -= 1
 
         return BigDecimal(
-            coefficient=quotient.to_bigint10().magnitude,
+            coefficient=quotient.to_biguint(),
             scale=exponent,
             sign=sign,
         )

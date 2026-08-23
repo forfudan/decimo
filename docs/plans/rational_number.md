@@ -202,9 +202,11 @@ and divides both by `g`, then ensures the denominator is positive.
 
 - `__init__(numerator: BigInt, denominator: BigInt)` — auto-normalizes
 - `__init__(numerator: BigInt)` — integer as rational (denominator = 1)
-- `__init__(value: Int)` — convenience for integer literals
+- `__init__(value: Scalar)` — implicit, for any integral scalar
 - `__init__(value: String)` — parse `"3/7"`, `"1.5"`, `"-42"`, `"7e-3"`
-- `from_float(value: Float64) -> Rational` — exact float-to-rational
+- `from_integral_scalar(value: Scalar) -> Rational` — any integral width
+- `from_float(value: Scalar) -> Rational` — exact float-to-rational, for any
+  binary floating-point width
 - `from_bigdecimal(value: BigDecimal) -> Rational` — exact conversion
 
 #### Arithmetic (return new Rational — consider `__iadd__` etc. for in-place)
@@ -269,7 +271,8 @@ and divides both by `g`, then ensures the denominator is positive.
 - [x] Create `src/decimo/rational/` module directory
 - [x] Implement `Rational` struct with `BigInt` numerator/denominator
 - [x] `_normalize()` using `BigInt.gcd()`
-- [x] Constructors: from two BigInts, from single BigInt, from Int
+- [x] Constructors: from two BigInts, from single BigInt, from any integral
+      scalar
 - [x] Basic arithmetic: `+`, `-`, `*`, `/`
 - [x] Comparison operators: `==`, `!=`, `<`, `<=`, `>`, `>=`
 - [x] `__str__`, `__repr__`, `write_to`
@@ -283,7 +286,8 @@ and divides both by `g`, then ensures the denominator is positive.
 ### Phase 2: Conversions & Rounding
 
 - [x] String parsing: `"3/7"`, `"1.5"`, `"-42"`, `"7e-3"`
-- [x] `from_float(Float64)`
+- [x] `from_float(Scalar)` — every binary floating-point width
+- [x] `from_integral_scalar(Scalar)` — every integral width
 - [x] `from_bigdecimal(BigDecimal)`
 - [x] `to_float()`, `to_integer()`, `to_bigdecimal(precision, rounding_mode)`
 - [ ] `floor()`, `ceil()`, `trunc()`, `round()`, `fract()`
@@ -326,14 +330,44 @@ and divides both by `g`, then ensures the denominator is positive.
 
 ### Phase 4: Integration
 
-- [ ] Migrate `constants.mojo`'s internal `Rational` (BigInt10-based) to the new
-      type
+- [x] Migrate `constants.mojo`'s internal `Rational` to `BigInt` (it stays a
+      private, unreduced helper rather than becoming a `Rational` — see the
+      note under Phase 4 below)
 - [ ] Add `Rational` to `decimo/prelude.mojo` exports
 - [ ] Add type alias: `Frac` or `Fraction`
 - [ ] Add examples in `examples/examples_on_rational.mojo`
 - [ ] CLI calculator support for rational expressions
 - [ ] Documentation in user manual
 - [ ] Benchmark suite in `benches/rational/`
+
+> Progress note, 2026-08-23 (second pass): `from_float` and the integral
+> constructors were generalised, and `BigInt10` was cut out of the library.
+>
+> - `from_float` and `from_integral_scalar` are now parametric on the scalar's
+>   dtype, constrained with a `where` clause on the signature rather than a
+>   `comptime assert` in the body. `from_float` widens to `Float64` first,
+>   which is exact for every narrower binary format, so one decoder serves
+>   Float16, BFloat16, Float32 and Float64 alike. The integral constructor is
+>   `@implicit`, so `Rational("1/3") + 1` works; the floating-point one
+>   deliberately is not, because whether `Rational(0.1)` should mean 1/10 or
+>   the binary float that literal denotes is the caller's decision.
+> - Nothing in `src/decimo/` imports `bigint10` any more. `Rational` reaches
+>   `BigDecimal`'s base-10^9 coefficient through the new
+>   `BigInt.from_biguint()` / `BigInt.to_biguint()` pair, `BigDecimal` gained
+>   an implicit constructor from `BigInt` in place of the one from `BigInt10`,
+>   and the legacy bridge now lives on the legacy type as
+>   `BigInt10.to_bigint()` / `BigInt10.from_bigint()`. The module is kept, but
+>   depends on nothing and nothing depends on it.
+> - `constants.mojo`'s Chudnovsky binary splitting moved from `BigInt10` to
+>   `BigInt`. Its `_RationalBigInt` helper stays private and unreduced: taking
+>   a gcd at every combine step, which the public `Rational` would do, costs
+>   far more than it saves. Two changes paid for the base conversion the move
+>   would otherwise have added — `to_biguint()` now uses the divide-and-conquer
+>   path above 128 words, and the splitting's two ~70 000-digit operands are
+>   shifted right by a common number of bits before conversion, which leaves
+>   their ratio intact but converts only the digits the quotient actually
+>   needs. `pi(n)` is byte-identical to before at n = 100, 500, 1000, 2000 and
+>   5000, and 1.4x to 1.7x faster.
 
 ## 6. Key Design Decisions
 

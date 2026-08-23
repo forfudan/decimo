@@ -165,7 +165,7 @@ Accepts any integral scalar type (`Int8` through `Int256`, `UInt8` through
 | `BInt(value: Scalar)`              | From any integral scalar (implicit)   |
 | `BInt.from_integral_scalar(value)` | From any integral scalar type         |
 | `BInt.from_string(value)`          | Explicit factory from string (raises) |
-| `BInt.from_bigint10(value)`        | Convert from `BigInt10`               |
+| `BInt.from_biguint(value, sign)`   | From a base-10^9 magnitude and a sign |
 
 #### Unsafe constructors <!-- omit from toc -->
 
@@ -403,7 +403,7 @@ print(mod_inverse(BInt(3), BInt(7)))      # 5
 | ----------------- | ------------------------------------------------- |
 | `int(x)`          | Convert to `Int` (raises if exceeds 64-bit range) |
 | `float(x)`        | Convert to `Float64` (may lose precision)         |
-| `x.to_bigint10()` | Convert to `BigInt10` (base-10^9)                 |
+| `x.to_biguint()`  | Convert the magnitude to `BigUInt` (base-10^9)    |
 
 ```mojo
 var x = BInt("123456789012345678901234567890")

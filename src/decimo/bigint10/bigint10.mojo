@@ -30,6 +30,7 @@ import decimo.bigint10.arithmetics as bigint10_arithmetics
 import decimo.bigint10.comparison as bigint10_comparison
 import decimo.biguint.arithmetics as biguint_arithmetics
 from decimo.bigdecimal.bigdecimal import BigDecimal
+from decimo.bigint.bigint import BigInt
 from decimo.biguint.biguint import BigUInt
 from decimo.errors import (
     ValueError,
@@ -419,6 +420,29 @@ struct BigInt10(
             writer: The writer instance.
         """
         writer.write(self.to_string())
+
+    @staticmethod
+    def from_bigint(value: BigInt) -> Self:
+        """Converts a base-2^32 BigInt to a base-10^9 BigInt10.
+
+        This bridge lives here, rather than on `BigInt`, so that nothing
+        outside this legacy module has to know that `BigInt10` exists.
+
+        Args:
+            value: The BigInt (base-2^32) to convert.
+
+        Returns:
+            The BigInt10 (base-10^9) representation with the same value.
+        """
+        return Self(value.to_biguint(), value.sign)
+
+    def to_bigint(self) -> BigInt:
+        """Converts the BigInt10 to a base-2^32 BigInt.
+
+        Returns:
+            The BigInt (base-2^32) representation with the same value.
+        """
+        return BigInt.from_biguint(self.magnitude, self.sign)
 
     def to_int(self) raises -> Int:
         """Returns the number as Int.
@@ -975,7 +999,9 @@ struct BigInt10(
         Returns:
             A BigDecimal value.
         """
-        return BigDecimal(self)
+        return BigDecimal(
+            coefficient=self.magnitude.copy(), scale=0, sign=self.sign
+        )
 
     # ===------------------------------------------------------------------=== #
     # Mathematical methods that do not implement a trait (not a dunder)
