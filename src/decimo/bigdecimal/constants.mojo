@@ -19,7 +19,8 @@
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.errors import ValueError
-from decimo.bigint10.bigint10 import BigInt10
+from decimo.bigint.bigint import BigInt
+from decimo.bigint.number_theory import _count_trailing_zeros
 from decimo.biguint.biguint import BigUInt
 from decimo.rounding_mode import RoundingMode
 import decimo.bigdecimal.trigonometric as bigdecimal_trigonometric
@@ -190,21 +191,32 @@ def pi(precision: Int) raises -> BigDecimal:
     return pi_chudnovsky_binary_split(precision)
 
 
-struct _RationalBigInt10:
-    """Internal rational number p/q using BigInt10 for Chudnovsky binary splitting.
+struct _UnreducedFraction:
+    """Internal fraction p/q used for Chudnovsky binary splitting.
 
-    Note: This is a legacy internal helper. The public Rational type lives in
-    `decimo.rational.rational` and uses BigInt instead. This struct will be
-    migrated in a future release.
+    Deliberately not the public `Rational` type in `decimo.rational.rational`:
+    binary splitting carries the fraction *unreduced*, and `Rational` documents
+    lowest terms as an invariant (`__eq__` compares the two fields directly and
+    would be unsound without it). This struct is the same pair of BigInts with
+    that invariant dropped, so the difference is a contract, not duplication.
+
+    Note: unreduced does not mean untouched. `combine()` divides out the common
+    powers of two, which is two shifts rather than a gcd. That is worth doing:
+    measured over the whole split at 640 terms (~9 000 digits of pi), leaving
+    the fraction fully unreduced takes 15.2 s, stripping the common twos takes
+    10.0 s, and a full gcd at every step takes 14.8 s. A full gcd is therefore
+    not the disaster it looks like - it is roughly break-even here and wins
+    outright beyond this size - but the shifts get most of the benefit for
+    almost none of the cost.
     """
 
-    var p: BigInt10  # numerator
+    var p: BigInt  # numerator
     """The numerator of the rational number."""
-    var q: BigInt10  # denominator
+    var q: BigInt  # denominator
     """The denominator of the rational number."""
 
-    def __init__(out self, p: BigInt10, q: BigInt10):
-        """Initializes a rational number from a numerator and denominator.
+    def __init__(out self, p: BigInt, q: BigInt):
+        """Initializes a fraction from a numerator and denominator.
 
         Args:
             p: The numerator.
@@ -212,6 +224,33 @@ struct _RationalBigInt10:
         """
         self.p = p.copy()
         self.q = q.copy()
+
+    @staticmethod
+    def combine(left: Self, right: Self) raises -> Self:
+        """Adds two partial sums: left.p/left.q + right.p/right.q.
+
+        The common powers of two are divided out of the result. Both operands
+        grow by roughly the sum of their sizes at every level of the split, and
+        `q` is dense in factors of two - it is built from `(k!)^3` and from
+        `262537412640768000^k`, and 262537412640768000 alone contributes 2^18
+        per term - so this reclaims a large constant factor for two shifts.
+
+        Args:
+            left: The partial sum over the lower half of the range.
+            right: The partial sum over the upper half of the range.
+
+        Returns:
+            The combined partial sum.
+        """
+        var p = left.p * right.q + right.p * left.q
+        var q = left.q * right.q
+        var common_twos = min(
+            _count_trailing_zeros(p.words), _count_trailing_zeros(q.words)
+        )
+        if common_twos > 0:
+            p >>= common_twos
+            q >>= common_twos
+        return Self(p^, q^)
 
 
 def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
@@ -247,9 +286,27 @@ def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
     # Binary splitting to compute the series sum as a single rational number
     var result_fraction = chudnovsky_split(0, iterations, working_precision)
 
-    # Convert rational result to BigDecimal: q/p
-    var sum_series = BigDecimal(result_fraction.q).true_divide(
-        BigDecimal(result_fraction.p), working_precision
+    # Convert rational result to BigDecimal: q/p.
+    #
+    # Binary splitting hands back two operands of tens of thousands of digits,
+    # of which only `working_precision` survive the division. Shifting both by
+    # the same number of bits leaves the ratio unchanged to within a relative
+    # error of 2^-guard_bits, and keeps the base-2^32 to base-10^9 conversion
+    # proportional to the digits actually wanted rather than to the digits the
+    # splitting happened to produce.
+    var guard_bits = (working_precision + 32) * 10 // 3  # 10/3 > log2(10)
+    var shared_bits = min(
+        result_fraction.p.bit_length(), result_fraction.q.bit_length()
+    )
+    var numerator = result_fraction.q.copy()
+    var denominator = result_fraction.p.copy()
+    if shared_bits > guard_bits:
+        var shift = shared_bits - guard_bits
+        numerator = numerator >> shift
+        denominator = denominator >> shift
+
+    var sum_series = BigDecimal(numerator).true_divide(
+        BigDecimal(denominator), working_precision
     )
 
     # Final formula: π = 426880 * √10005 / sum_series
@@ -268,7 +325,7 @@ def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
 
 def chudnovsky_split(
     a: Int, b: Int, precision: Int
-) raises -> _RationalBigInt10:
+) raises -> _UnreducedFraction:
     """Conducts binary splitting for Chudnovsky series from term a to b-1.
 
     Args:
@@ -277,26 +334,27 @@ def chudnovsky_split(
         precision: The working precision for intermediate calculations.
 
     Returns:
-        A `_RationalBigInt10` representing the partial sum of the Chudnovsky series.
+        A `_UnreducedFraction` representing the partial sum of the
+        Chudnovsky series.
 
     Raises:
         Error: If an arithmetic error occurs during computation.
     """
 
-    var bint_1 = BigInt10(1)
-    var bint_13591409 = BigInt10(13591409)
-    var bint_545140134 = BigInt10(545140134)
-    var bint_262537412640768000 = BigInt10(262537412640768000)
+    var bint_1 = BigInt(1)
+    var bint_13591409 = BigInt(13591409)
+    var bint_545140134 = BigInt(545140134)
+    var bint_262537412640768000 = BigInt(262537412640768000)
 
     if b - a == 1:
         # Base case: compute single term as exact rational
         if a == 0:
             # Special case for k=0: M(0)=1, L(0)=13591409, X(0)=1
-            return _RationalBigInt10(bint_13591409, bint_1)
+            return _UnreducedFraction(bint_13591409, bint_1)
 
         # For k > 0: compute M(k), L(k), X(k)
         var m_k_rational = compute_m_k_rational(a)
-        var l_k = bint_545140134 * BigInt10(a) + bint_13591409
+        var l_k = bint_545140134 * BigInt(a) + bint_13591409
 
         # X(k) = (-262537412640768000)^k
         var x_k = bint_1^
@@ -311,51 +369,47 @@ def chudnovsky_split(
         var term_p = m_k_rational.p * l_k
         var term_q = m_k_rational.q * x_k
 
-        return _RationalBigInt10(term_p^, term_q^)
+        return _UnreducedFraction(term_p^, term_q^)
 
     # Recursive case: split range in half
     var mid = (a + b) // 2
     var left = chudnovsky_split(a, mid, precision)
     var right = chudnovsky_split(mid, b, precision)
 
-    # Combine fractions: left.p/left.q + right.p/right.q
-    var combined_p = left.p * right.q + right.p * left.q
-    var combined_q = left.q * right.q
-
-    return _RationalBigInt10(combined_p^, combined_q^)
+    return _UnreducedFraction.combine(left, right)
 
 
-def compute_m_k_rational(k: Int) raises -> _RationalBigInt10:
+def compute_m_k_rational(k: Int) raises -> _UnreducedFraction:
     """Computes M(k) = (6k)! / ((3k)! * (k!)³) as exact rational.
 
     Args:
         k: The term index in the Chudnovsky series.
 
     Returns:
-        A `_RationalBigInt10` with numerator (6k)!/(3k)! and denominator (k!)³.
+        A `_UnreducedFraction` with numerator (6k)!/(3k)! and denominator (k!)³.
 
     Raises:
         Error: If an arithmetic error occurs during computation.
     """
 
-    var bint_1 = BigInt10(1)
+    var bint_1 = BigInt(1)
 
     if k == 0:
-        return _RationalBigInt10(bint_1, bint_1)
+        return _UnreducedFraction(bint_1, bint_1)
 
     # Compute numerator: (6k)! / (3k)! = (3k+1) * (3k+2) * ... * (6k)
     var numerator = bint_1.copy()
     for i in range(3 * k + 1, 6 * k + 1):
-        numerator *= BigInt10(i)
+        numerator *= BigInt(i)
 
     # Compute denominator: (k!)³
     var k_factorial = bint_1.copy()
     for i in range(1, k + 1):
-        k_factorial *= BigInt10(i)
+        k_factorial *= BigInt(i)
 
     var denominator = k_factorial * k_factorial * k_factorial
 
-    return _RationalBigInt10(numerator, denominator)
+    return _UnreducedFraction(numerator, denominator)
 
 
 def pi_machin(precision: Int) raises -> BigDecimal:

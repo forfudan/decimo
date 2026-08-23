@@ -528,5 +528,106 @@ def test_from_decimal_overflow() raises:
         var _d = Dec128.from_decimal(huge)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# from_integral_scalar / from_float_scalar (parametric on dtype)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_from_integral_scalar_widths() raises:
+    """Every integral width lands on the same value as `from_int` would."""
+    testing.assert_equal(
+        String(Decimal128.from_integral_scalar(Int8(-123))), "-123"
+    )
+    testing.assert_equal(
+        String(Decimal128.from_integral_scalar(Int8.MIN)), "-128"
+    )
+    testing.assert_equal(
+        String(Decimal128.from_integral_scalar(UInt8.MAX)), "255"
+    )
+    testing.assert_equal(String(Decimal128.from_integral_scalar(Int32(0))), "0")
+    testing.assert_equal(
+        String(Decimal128.from_integral_scalar(Int64.MIN)),
+        "-9223372036854775808",
+    )
+    testing.assert_equal(
+        String(Decimal128.from_integral_scalar(UInt64.MAX)),
+        "18446744073709551615",
+    )
+
+
+def test_from_integral_scalar_wide_types() raises:
+    """128- and 256-bit scalars are the only ones that can overflow."""
+    # The largest coefficient Decimal128 can hold, exactly.
+    testing.assert_equal(
+        String(Decimal128.from_integral_scalar(Decimal128.MAX_AS_UINT128)),
+        "79228162514264337593543950335",
+    )
+    testing.assert_equal(
+        String(Decimal128.from_integral_scalar(Decimal128.MAX_AS_INT128)),
+        "79228162514264337593543950335",
+    )
+    testing.assert_equal(
+        String(Decimal128.from_integral_scalar(-Decimal128.MAX_AS_INT128)),
+        "-79228162514264337593543950335",
+    )
+    testing.assert_equal(
+        String(Decimal128.from_integral_scalar(Int128(-7))), "-7"
+    )
+
+    # One past the top overflows, in both directions.
+    with testing.assert_raises():
+        var _a = Decimal128.from_integral_scalar(
+            Decimal128.MAX_AS_UINT128 + UInt128(1)
+        )
+    with testing.assert_raises():
+        var _b = Decimal128.from_integral_scalar(
+            -Decimal128.MAX_AS_INT256 - Int256(1)
+        )
+    # Int256.MIN has no positive counterpart; it must be rejected, not negated.
+    with testing.assert_raises():
+        var _c = Decimal128.from_integral_scalar(Int256.MIN)
+
+
+def test_from_float_scalar_narrower_types() raises:
+    """Narrower binary formats widen to Float64 exactly."""
+    # 0.5 and -2.5 are exact in every one of these formats.
+    testing.assert_equal(
+        String(Decimal128.from_float_scalar(Float16(0.5))), "0.5"
+    )
+    testing.assert_equal(
+        String(Decimal128.from_float_scalar(BFloat16(0.5))), "0.5"
+    )
+    testing.assert_equal(
+        String(Decimal128.from_float_scalar(Float32(0.5))), "0.5"
+    )
+    testing.assert_equal(
+        String(Decimal128.from_float_scalar(Float64(0.5))), "0.5"
+    )
+    testing.assert_equal(
+        String(Decimal128.from_float_scalar(Float16(-2.5))), "-2.5"
+    )
+    testing.assert_equal(
+        String(Decimal128.from_float_scalar(Float32(-2.5))), "-2.5"
+    )
+
+    # Float16(0.1) is 819/8192 = 0.0999755859375, and that is what we get -
+    # not the 0.1 the literal was written as.
+    testing.assert_equal(
+        String(Decimal128.from_float_scalar(Float16(0.1))), "0.0999755859375"
+    )
+
+
+def test_from_float_is_a_forwarding_alias() raises:
+    """The deprecated `from_float` still agrees with `from_float_scalar`."""
+    testing.assert_equal(
+        String(Decimal128.from_float(Float64(3.25))),
+        String(Decimal128.from_float_scalar(Float64(3.25))),
+    )
+    testing.assert_equal(
+        String(Decimal128.from_float(Float64(-0.125))),
+        String(Decimal128.from_float_scalar(Float32(-0.125))),
+    )
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()

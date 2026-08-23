@@ -393,7 +393,7 @@ def main() raises:
     var a = Decimal128("123.45")  # From string
     var b = Decimal128(123)  # From integer
     var c = Dec128(123, 2)  # Integer with scale (1.23)
-    var d = Dec128.from_float(3.14159)  # From floating-point
+    var d = Dec128.from_float_scalar(3.14159)  # From floating-point
 
     # === Basic Arithmetic ===
     print(a + b)  # Addition: 246.45

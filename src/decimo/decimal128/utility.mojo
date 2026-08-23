@@ -721,7 +721,9 @@ def number_of_digits[dtype: DType, //](value: Scalar[dtype]) -> Int:
 
 
 @always_inline
-def number_of_bits[dtype: DType, //](var value: Scalar[dtype]) -> Int:
+def number_of_bits[
+    dtype: DType, //
+](var value: Scalar[dtype]) -> Int where dtype.is_integral():
     """
     Returns the number of significant bits in an integer value.
 
@@ -737,8 +739,6 @@ def number_of_bits[dtype: DType, //](var value: Scalar[dtype]) -> Int:
     Returns:
         The number of significant bits in the value.
     """
-
-    comptime assert dtype.is_integral(), "must be integral"
 
     # Delegate to `std.bit.bit_width`, which lowers to a hardware
     # `count_leading_zeros` (single-instruction for ≤ 64-bit, two CLZs

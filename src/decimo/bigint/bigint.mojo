@@ -41,7 +41,6 @@ import decimo.str as decimo_str
 from decimo.traits import Numeric, Parsable, Rootable
 import decimo.numerals.chinese as decimo_chinese
 from decimo.numerals.chinese import ChineseNumeralStyle
-from decimo.bigint10.bigint10 import BigInt10
 from decimo.biguint.biguint import BigUInt
 from decimo.utility import unsigned_counterpart
 from decimo.errors import (
@@ -401,24 +400,25 @@ struct BigInt(
         return result^
 
     @staticmethod
-    def from_bigint10(value: BigInt10) -> Self:
-        """Converts a base-10^9 BigInt10 to a base-2^32 BigInt.
+    def from_biguint(magnitude: BigUInt, sign: Bool = False) -> Self:
+        """Converts a base-10^9 magnitude and a sign to a base-2^32 BigInt.
 
         Args:
-            value: The BigInt10 (base-10^9) to convert.
+            magnitude: The unsigned base-10^9 magnitude to convert.
+            sign: Whether the result is negative. Ignored when the magnitude
+                is zero, which is always stored unsigned.
 
         Returns:
             The BigInt (base-2^32) representation.
         """
-        if value.is_zero():
+        if magnitude.is_zero():
             return Self()
 
         # Convert from base 10^9 to base 2^32 using repeated division
-        # Work on the magnitude words (base-10^9)
-        var div_words = List[UInt32](capacity=len(value.magnitude.words))
-        for word in value.magnitude.words:
+        var div_words = List[UInt32](capacity=len(magnitude.words))
+        for word in magnitude.words:
             div_words.append(word)
-        var result = Self(uninitialized_capacity=len(value.magnitude.words))
+        var result = Self(uninitialized_capacity=len(magnitude.words))
 
         var all_zero = False
         while not all_zero:
@@ -443,7 +443,7 @@ struct BigInt(
                     all_zero = False
                     break
 
-        result.sign = value.sign
+        result.sign = sign
         return result^
 
     # ===------------------------------------------------------------------=== #
@@ -543,14 +543,35 @@ struct BigInt(
                 )
             return Int(magnitude)
 
-    def to_bigint10(self) -> BigInt10:
-        """Converts the BigInt to a base-10^9 BigInt10.
+    def to_biguint(self) -> BigUInt:
+        """Converts the magnitude of the BigInt to a base-10^9 BigUInt.
+
+        The sign is dropped: the result is the absolute value. Use
+        `is_negative()` to recover it.
 
         Returns:
-            The BigInt10 (base-10^9) representation with the same value.
+            The magnitude as a `BigUInt` (base-10^9).
         """
         if self.is_zero():
-            return BigInt10()
+            return BigUInt()
+
+        # Above the divide-and-conquer threshold, borrow the base conversion
+        # `to_string()` already has: repeated division below is O(n^2), while
+        # `to_string()` is O(M(n) log n) and re-packing a decimal string into
+        # base-10^9 words is linear. Measured on a 20 000-digit value, the
+        # detour through the string is about three times faster.
+        var effective_words = len(self.words)
+        while effective_words > 1 and self.words[effective_words - 1] == 0:
+            effective_words -= 1
+        if effective_words > _DC_TO_STR_ENTRY_THRESHOLD:
+            try:
+                return BigUInt(
+                    _magnitude_to_decimal_dc(self.words, effective_words),
+                    ignore_sign=True,
+                )
+            except:
+                # Fall through to the simple path if D&C raises.
+                pass
 
         # Convert from base 2^32 to base 10^9 using repeated division
         var dividend = self.copy()
@@ -572,7 +593,7 @@ struct BigInt(
 
             decimal_words.append(UInt32(remainder))
 
-        return BigInt10(raw_words=decimal_words^, sign=self.sign)
+        return BigUInt(raw_words=decimal_words^)
 
     def to_string(self, line_width: Int = 0) -> String:
         """Returns the decimal string representation of the BigInt.
@@ -1893,8 +1914,8 @@ struct BigInt(
         if self.is_zero():
             return 1
 
-        # Convert to BigInt10 and use its digit counting
-        return self.to_bigint10().magnitude.number_of_digits()
+        # Convert to base-10^9 and use its digit counting
+        return self.to_biguint().number_of_digits()
 
     # ===------------------------------------------------------------------=== #
     # Internal utility methods

@@ -25,6 +25,7 @@ mathematical methods that do not implement a trait.
 
 from std.collections import Span
 from std.memory import Pointer
+from std.sys import bit_width_of
 from std.hashlib.hasher import Hasher
 
 import decimo.decimal128.arithmetics as decimal128_arithmetics
@@ -347,7 +348,7 @@ struct Decimal128(
 
     def __init__(out self, value: Float64) raises:
         """Initializes a Decimal128 from a floating-point value.
-        See `from_float` for more information.
+        See `from_float_scalar()` for more information.
 
         Args:
             value: The floating-point value to convert.
@@ -357,7 +358,7 @@ struct Decimal128(
         """
 
         try:
-            self = Decimal128.from_float(value)
+            self = Decimal128.from_float_scalar(value)
         except e:
             raise ConversionError(
                 message="Cannot initialize Decimal128 from Float64.",
@@ -928,11 +929,117 @@ struct Decimal128(
             )
 
     @staticmethod
+    def from_integral_scalar[
+        dtype: DType, //
+    ](value: Scalar[dtype]) raises -> Self where dtype.is_integral():
+        """Initializes a Decimal128 from an integral scalar, with scale 0.
+        This includes all SIMD integral types, both signed (Int8, Int16, Int32,
+        Int64, Int128, Int256 and the platform-sized `Int`) and unsigned
+        (UInt8 ... UInt256 and `UInt`).
+
+        Constraints:
+            The dtype must be integral.
+
+        Args:
+            value: The integral scalar to convert to Decimal128.
+
+        Returns:
+            The Decimal128 representation of the integral scalar.
+
+        Raises:
+            OverflowError: If the magnitude exceeds the 96-bit coefficient,
+                which only 128- and 256-bit scalars can do.
+
+        Notes:
+
+        The `from_int()` fast path is taken only where `Int` can hold the value
+        without reinterpreting it. `Int` is 64-bit and signed, so that is every
+        signed scalar up to 64 bits but only unsigned scalars narrower than 64:
+        `Int(UInt64.MAX)` would come out as -1. Everything else goes through the
+        256-bit path, which range checks first - that is also what makes the
+        negation there safe, since `Int256.MIN` has no positive counterpart and
+        is rejected before it is negated.
+
+        Examples:
+        ```mojo
+        from decimo import Decimal128
+        var a = Decimal128.from_integral_scalar(Int8(-123))  # -123
+        # 18446744073709551615
+        var b = Decimal128.from_integral_scalar(UInt64.MAX)
+        ```
+        End of examples.
+
+        Parameters:
+            dtype: The data type of the scalar value.
+        """
+
+        comptime width = bit_width_of[Scalar[dtype]]()
+        comptime fits_in_int = (width <= 64) if dtype.is_signed() else (
+            width < 64
+        )
+
+        comptime if fits_in_int:
+            return Self.from_int(Int(value))
+
+        elif dtype.is_unsigned():
+            var magnitude = UInt256(value)
+            if magnitude > UInt256(Self.MAX_AS_UINT128):
+                raise OverflowError(
+                    message=String(
+                        "The value {} is too large (>=2^96) to be transformed"
+                        " into Decimal128."
+                    ).format(value),
+                    function="Decimal128.from_integral_scalar()",
+                )
+            return Self.from_uint128(UInt128(magnitude), 0, False)
+
+        else:
+            var signed = Int256(value)
+            if (signed > Self.MAX_AS_INT256) or (signed < -Self.MAX_AS_INT256):
+                raise OverflowError(
+                    message=String(
+                        "The value {} is out of range (>=2^96 in magnitude) to"
+                        " be transformed into Decimal128."
+                    ).format(value),
+                    function="Decimal128.from_integral_scalar()",
+                )
+            var is_negative = signed < 0
+            var magnitude = UInt256(-signed) if is_negative else UInt256(signed)
+            return Self.from_uint128(UInt128(magnitude), 0, is_negative)
+
+    @staticmethod
     def from_float(value: Float64) raises -> Self:
-        """Initializes a Decimal128 from a floating-point value.
+        """Initializes a Decimal128 from a Float64.
+
+        Deprecated: use `from_float_scalar()`, which accepts any floating-point
+        scalar and is the name that lines up with `from_integral_scalar()`.
+        This forwards to it unchanged.
+
+        Args:
+            value: The floating-point value to convert to Decimal128.
+
+        Returns:
+            The Decimal128 representation of the floating-point value.
+
+        Raises:
+            OverflowError: If the value is too large for Decimal128.
+            ValueError: If the value is infinity or NaN.
+        """
+        return Self.from_float_scalar(value)
+
+    @staticmethod
+    def from_float_scalar[
+        dtype: DType, //
+    ](value: Scalar[dtype]) raises -> Self where dtype.is_floating_point():
+        """Initializes a Decimal128 from a floating-point scalar.
+        This includes all SIMD floating-point types, such as Float16,
+        BFloat16, Float32, Float64, and the 8-bit formats. Narrower formats are
+        widened to Float64 first, which is exact: every one of them has both
+        fewer significand bits and a narrower exponent range.
+
         The reliability of this method is limited by the precision of Float64.
         Float64 is reliable up to 15 significant digits and marginally
-        reliable up to 16 siginficant digits. Be careful when using this method.
+        reliable up to 16 significant digits. Be careful when using this method.
 
         Args:
             value: The floating-point value to convert to Decimal128.
@@ -947,25 +1054,27 @@ struct Decimal128(
         Example:
         ```mojo
         from decimo import Decimal128
-        print(Decimal128.from_float(Float64(3.1415926535897932383279502)))
         # 3.1415926535897932 (17 significant digits)
-        print(Decimal128.from_float(12345678901234567890.12345678901234567890))
-        # 12345678901234567168 (20 significant digits, but only 15 are reliable)
+        print(Decimal128.from_float_scalar(3.1415926535897932383279502))
+        # 12345678901234567168 (20 digits, but only 15 are reliable)
+        print(Decimal128.from_float_scalar(12345678901234567890.1234567890))
         ```
         .
         """
 
+        var widened = value.cast[DType.float64]()
+
         # CASE: Zero
-        if value == Float64(0):
+        if widened == Float64(0):
             return Decimal128.ZERO()
 
         # Get the positive value of the input
         var abs_value: Float64
-        var is_negative: Bool = value < 0
+        var is_negative: Bool = widened < 0
         if is_negative:
-            abs_value = -value
+            abs_value = -widened
         else:
-            abs_value = value
+            abs_value = widened
 
         # Early exit if the value is too large
         if UInt128(abs_value) > Decimal128.MAX_AS_UINT128:
@@ -974,7 +1083,7 @@ struct Decimal128(
                     "The float value {} is too large (>=2^96) to be"
                     " transformed into Decimal128."
                 ).format(value),
-                function="Decimal128.from_float()",
+                function="Decimal128.from_float_scalar()",
             )
 
         # Extract binary exponent using IEEE 754 bit manipulation
@@ -995,7 +1104,7 @@ struct Decimal128(
                 message=(
                     "Cannot convert IEEE 754 infinity or NaN to Decimal128."
                 ),
-                function="Decimal128.from_float()",
+                function="Decimal128.from_float_scalar()",
             )
 
         # Get unbias exponent

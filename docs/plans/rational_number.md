@@ -73,7 +73,7 @@ This plan proposes a full public type.
 | From single integer | `Fraction(5)`              | `BigFraction(5)`          | `Ratio::from_integer(5)` | `rational<int>(5)`    | `Rational(5)`              |
 | From string `"3/7"` | `Fraction("3/7")`          | ✗                         | ✗ (via parse)            | `cin >> r`            | `Rational("3/7")`          |
 | From decimal string | `Fraction("1.5")`          | ✗                         | ✗                        | ✗                     | `Rational("1.5")`          |
-| From float          | `Fraction.from_float(1.5)` | `BigFraction(1.5)`        | ✗                        | ✗                     | `Rational.from_float(1.5)` |
+| From float          | `Fraction.from_float(1.5)` | `BigFraction(1.5)`        | ✗                        | ✗                     | `Rational.from_float_scalar(1.5)` |
 | From BigDecimal     | —                          | `BigFraction(bigDecimal)` | —                        | —                     | `Rational(big_decimal)`    |
 
 ### 3.3 Arithmetic Operations
@@ -202,9 +202,11 @@ and divides both by `g`, then ensures the denominator is positive.
 
 - `__init__(numerator: BigInt, denominator: BigInt)` — auto-normalizes
 - `__init__(numerator: BigInt)` — integer as rational (denominator = 1)
-- `__init__(value: Int)` — convenience for integer literals
+- `__init__(value: Scalar)` — implicit, for any integral scalar
 - `__init__(value: String)` — parse `"3/7"`, `"1.5"`, `"-42"`, `"7e-3"`
-- `from_float(value: Float64) -> Rational` — exact float-to-rational
+- `from_integral_scalar(value: Scalar) -> Rational` — any integral width
+- `from_float_scalar(value: Scalar) -> Rational` — exact float-to-rational, for any
+  binary floating-point width
 - `from_bigdecimal(value: BigDecimal) -> Rational` — exact conversion
 
 #### Arithmetic (return new Rational — consider `__iadd__` etc. for in-place)
@@ -266,51 +268,131 @@ and divides both by `g`, then ensures the denominator is positive.
 
 ### Phase 1: Core Type (Foundation)
 
-- [ ] Create `src/decimo/rational/` module directory
-- [ ] Implement `Rational` struct with `BigInt` numerator/denominator
-- [ ] `_normalize()` using `BigInt.gcd()`
-- [ ] Constructors: from two BigInts, from single BigInt, from Int
-- [ ] Basic arithmetic: `+`, `-`, `*`, `/`
-- [ ] Comparison operators: `==`, `!=`, `<`, `<=`, `>`, `>=`
-- [ ] `__str__`, `__repr__`, `write_to`
-- [ ] `__neg__`, `__abs__`
+- [x] Create `src/decimo/rational/` module directory
+- [x] Implement `Rational` struct with `BigInt` numerator/denominator
+- [x] `_normalize()` using `BigInt.gcd()`
+- [x] Constructors: from two BigInts, from single BigInt, from any integral
+      scalar
+- [x] Basic arithmetic: `+`, `-`, `*`, `/`
+- [x] Comparison operators: `==`, `!=`, `<`, `<=`, `>`, `>=`
+- [x] `__str__`, `__repr__`, `write_to`
+- [x] `__neg__`, `__abs__`
 - [ ] Trait conformances: Stringable, Writable, Comparable, EqualityComparable,
       Hashable, Copyable, Movable
-- [ ] Unit tests for all of the above
+      (done except `Hashable`, which needs `__hash__`; `Stringable` is not
+      declared, though `String(r)` already works through `Writable`)
+- [x] Unit tests for all of the above — `tests/rational/test_rational_basic.mojo`
 
 ### Phase 2: Conversions & Rounding
 
-- [ ] String parsing: `"3/7"`, `"1.5"`, `"-42"`, `"7e-3"`
-- [ ] `from_float(Float64)`
-- [ ] `from_bigdecimal(BigDecimal)`
-- [ ] `to_float()`, `to_integer()`, `to_bigdecimal(precision, rounding_mode)`
+- [x] String parsing: `"3/7"`, `"1.5"`, `"-42"`, `"7e-3"`
+- [x] `from_float_scalar(Scalar)` — every binary floating-point width
+- [x] `from_integral_scalar(Scalar)` — every integral width
+- [x] `from_bigdecimal(BigDecimal)`
+- [x] `to_float()`, `to_integer()`, `to_bigdecimal(precision, rounding_mode)`
 - [ ] `floor()`, `ceil()`, `trunc()`, `round()`, `fract()`
 - [ ] `__floordiv__`, `__mod__`
 - [ ] `__pow__(Int)`
-- [ ] `reciprocal()`
+- [x] `reciprocal()`
 - [ ] In-place operators: `__iadd__`, `__isub__`, `__imul__`, `__itruediv__`
-- [ ] Unit tests
+- [x] Unit tests for the conversions above —
+      `tests/rational/test_rational_conversion.mojo`
+
+> Progress note, 2026-08-23: the conversion half of Phase 2 is in.
+>
+> - `from_string` doubles as the `Parsable` conformance, and takes either one
+>   decimal literal or two separated by `/`. Each side goes through
+>   `BigDecimal`, so it accepts everything `BigDecimal` does — signs, spaces,
+>   commas, underscores, scientific notation — and `"1.5/2.5"` is 3/5.
+> - `to_bigdecimal(precision, rounding_mode)` divides the exact integers and
+>   rounds once, weighing `2 * remainder` against the divisor, so all seven
+>   rounding modes are honoured with no double rounding. A value with a finite
+>   decimal form comes back unpadded (`1/2` is `0.5`).
+> - `to_float()` builds the Float64 bit pattern from a 53-bit quotient rounded
+>   ties-to-even, rather than going through a decimal string. The decimal
+>   detour would lose exact halfway cases — `(2^53 + 1) / 2^53` must round to
+>   `1.0` — and Mojo's `Float64(String)` rejects long literals anyway.
+>   Subnormals, overflow to `inf` and underflow to zero are all covered.
+> - All of it is cross-checked against CPython `fractions.Fraction`,
+>   `float(Fraction)` and `decimal.Decimal` over 200 random cases spanning
+>   small, huge, tiny and dyadic fractions.
 
 ### Phase 3: Advanced Features
 
 - [ ] `limit_denominator(max)` — continued-fraction best-approximation algorithm
 - [ ] `continued_fraction() -> List[BigInt]`
 - [ ] `mediant(other)`
-- [ ] `is_integer()`, `is_zero()`, `is_positive()`, `is_negative()`, `sign()`
-- [ ] Predefined constants: `ZERO`, `ONE`, `ONE_HALF`
+- [x] `is_integer()`, `is_zero()`, `is_positive()`, `is_negative()`, `sign()`
+- [x] Predefined constants — as the static methods `zero()`, `one()`, `two()`,
+      `minus_one()`, `one_half()`, `one_third()`
 - [ ] Mixed-type arithmetic: `Rational + BigInt`, `Rational + Int`, etc.
 - [ ] Unit tests
 
 ### Phase 4: Integration
 
-- [ ] Migrate `constants.mojo`'s internal `Rational` (BigInt10-based) to the new
-      type
+- [x] Migrate `constants.mojo`'s internal `Rational` to `BigInt` (it stays a
+      private, unreduced helper rather than becoming a `Rational` — see the
+      note under Phase 4 below)
 - [ ] Add `Rational` to `decimo/prelude.mojo` exports
 - [ ] Add type alias: `Frac` or `Fraction`
 - [ ] Add examples in `examples/examples_on_rational.mojo`
 - [ ] CLI calculator support for rational expressions
 - [ ] Documentation in user manual
 - [ ] Benchmark suite in `benches/rational/`
+
+> Progress note, 2026-08-23 (second pass): `from_float` and the integral
+> constructors were generalised, and `BigInt10` was cut out of the library.
+>
+> - `from_float` and `from_integral_scalar` are now parametric on the scalar's
+>   dtype, constrained with a `where` clause on the signature rather than a
+>   `comptime assert` in the body. `from_float` widens to `Float64` first,
+>   which is exact for every narrower binary format, so one decoder serves
+>   Float16, BFloat16, Float32 and Float64 alike. The integral constructor is
+>   `@implicit`, so `Rational("1/3") + 1` works; the floating-point one
+>   deliberately is not, because whether `Rational(0.1)` should mean 1/10 or
+>   the binary float that literal denotes is the caller's decision.
+> - Nothing in `src/decimo/` imports `bigint10` any more. `Rational` reaches
+>   `BigDecimal`'s base-10^9 coefficient through the new
+>   `BigInt.from_biguint()` / `BigInt.to_biguint()` pair, `BigDecimal` gained
+>   an implicit constructor from `BigInt` in place of the one from `BigInt10`,
+>   and the legacy bridge now lives on the legacy type as
+>   `BigInt10.to_bigint()` / `BigInt10.from_bigint()`. The module is kept, but
+>   depends on nothing and nothing depends on it.
+> - `constants.mojo`'s Chudnovsky binary splitting moved from `BigInt10` to
+>   `BigInt`. Its `_UnreducedFraction` helper stays private: the public
+>   `Rational` documents lowest terms as an invariant, and `__eq__` compares
+>   the two fields directly, so an unreduced value stored in a `Rational` would
+>   be unsound. Two changes paid for the base conversion the move
+>   would otherwise have added — `to_biguint()` now uses the divide-and-conquer
+>   path above 128 words, and the splitting's two ~70 000-digit operands are
+>   shifted right by a common number of bits before conversion, which leaves
+>   their ratio intact but converts only the digits the quotient actually
+>   needs. `pi(n)` is byte-identical to before at n = 100, 500, 1000, 2000 and
+>   5000, and 1.4x to 1.7x faster.
+
+> Progress note, 2026-08-23 (third pass): scalar-factory symmetry, and a second
+> round on pi. See `docs/internal/internal_notes.md` for the pi measurements.
+>
+> - The scalar factories now have parallel names and parallel signatures across
+>   `BigUInt`, `BigInt`, `BigDecimal`, `Decimal128` and `Rational`:
+>   `from_integral_scalar[dtype](Scalar[dtype]) where dtype.is_integral()` and
+>   `from_float_scalar[dtype](Scalar[dtype]) where dtype.is_floating_point()`.
+>   `from_float` survives as a deprecated forwarder on `BigDecimal` and
+>   `Decimal128`, which shipped it in v0.13.0; `Rational.from_float` was one
+>   commit old and unreleased, so it was simply renamed. `Decimal128` gained
+>   the parametric pair it never had - it only accepted `Int` and `Float64`.
+> - Every remaining `comptime assert dtype.is_...()` guarding a signature moved
+>   onto the signature as a `where` clause. Two did not, for a reason worth
+>   recording: a `where` clause has to be *discharged by the caller*, so
+>   `BigUInt.from_unsigned_integral_scalar` cannot have one - its only caller
+>   reaches it through `unsigned_counterpart[dtype]()`, whose result the
+>   compiler will not evaluate while proving a constraint. A `comptime assert`
+>   in a caller does count as evidence, which is why
+>   `BigDecimal.__init__(Scalar)` keeps its long "quote the literal instead"
+>   message and still satisfies `from_integral_scalar`'s `where`.
+> - The Chudnovsky combine now divides the common powers of two out of `p` and
+>   `q` - two shifts, no gcd. `q` is dense in factors of two, and this is worth
+>   1.45x on `pi(2048)` on top of the previous pass.
 
 ## 6. Key Design Decisions
 

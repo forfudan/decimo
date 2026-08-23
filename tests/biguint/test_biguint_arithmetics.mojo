@@ -5,11 +5,15 @@ BigUInt is an unsigned integer type, so it doesn't support negative values.
 
 
 from std.python import Python
-from std.random import random_ui64
 from std import testing
 from std.testing import assert_equal, assert_true
 from decimo.biguint.biguint import BigUInt
-from decimo.tests import TestCase, parse_file, load_test_cases
+from decimo.tests import (
+    TestCase,
+    load_test_cases,
+    parse_file,
+    random_decimal_string,
+)
 
 comptime file_path_arithmetics = (
     "tests/biguint/test_data/biguint_arithmetics.toml"
@@ -204,12 +208,8 @@ def test_biguint_truncate_divide_random_numbers_against_python() raises:
     var python_result: String
 
     for _test_case in range(10):
-        number_a = String("")
-        number_b = String("")
-        for _i in range(123):
-            number_a += String(random_ui64(0, 999_999_999_999_999_999))
-        for _i in range(45):
-            number_b += String(random_ui64(0, 999_999_999_999_999_999))
+        number_a = random_decimal_string(123)
+        number_b = random_decimal_string(45)
         decimo_result = String(BigUInt(number_a) // BigUInt(number_b))
         python_result = String(Python.int(number_a) // Python.int(number_b))
         assert_equal(
@@ -229,24 +229,26 @@ def test_biguint_truncate_divide_random_numbers_against_python() raises:
 
 
 def test_biguint_truncate_divide_huge_random_numbers_against_python() raises:
-    # The dividend here is some two hundred thousand digits over a divisor of
-    # some fourteen thousand, which is the size at which truncated division
-    # recurses through Burnikel-Ziegler rather than taking the schoolbook
-    # path the smaller random cases above exercise. One case rather than ten:
-    # the size is what is being covered, and each one costs a couple of
-    # minutes against Python.
+    # Some two hundred thousand digits over a divisor of some fourteen
+    # thousand. The smaller random cases above already clear
+    # `CUTOFF_BURNIKEL_ZIEGLER` (32 words, 288 digits) and so take the
+    # Burnikel-Ziegler path too; what this size adds is the depth. A divisor
+    # of ~1,570 words recurses six levels deep on blocks of n = 2048 words,
+    # against two levels on n = 128 for the cases above, and the dividend
+    # splits into thirteen blocks, so the remainder is carried across twelve
+    # iterations of the outer loop rather than two. At that block size the
+    # multiplications *inside* the division cross `CUTOFF_KARATSUBA` (64) and
+    # `CUTOFF_TOOM3` (256), which the smaller cases never reach. One case
+    # rather than ten: the size is what is being covered, and it costs a
+    # fraction of a second.
 
     _set_max_str_digits(500000)
 
-    var number_a: String = String("")
-    var number_b: String = String("")
     var decimo_result: String
     var python_result: String
 
-    for _i in range(123):
-        number_a += String(random_ui64(0, 999_999_999_999_999_999))
-    for _i in range(78):
-        number_b += String(random_ui64(0, 999_999_999_999_999_999))
+    var number_a = random_decimal_string(12345)
+    var number_b = random_decimal_string(789)
     decimo_result = String(BigUInt(number_a) // BigUInt(number_b))
     python_result = String(Python.int(number_a) // Python.int(number_b))
     assert_equal(

@@ -7,6 +7,7 @@ point), and D&C from_string for large numbers.
 from std import testing
 from decimo.bigint.bigint import BigInt
 from decimo.bigint10.bigint10 import BigInt10
+from decimo.biguint.biguint import BigUInt
 
 
 # ===----------------------------------------------------------------------=== #
@@ -265,7 +266,7 @@ def test_from_string_large_dc() raises:
     var a4 = BigInt(10).power(599) + BigInt(10).power(300) + BigInt(7)
     testing.assert_equal(
         lhs=String(a4),
-        rhs=String(a4.to_bigint10()),
+        rhs=String(BigInt10.from_bigint(a4)),
         msg="[D&C from_string] D&C to_string matches BigInt10 for 600-digit",
     )
 
@@ -289,7 +290,7 @@ def test_from_string_dc_path() raises:
     )
 
     # Cross-check with BigInt10 (independent reference implementation)
-    var b = BigInt.from_bigint10(BigInt10(s))
+    var b = BigInt10(s).to_bigint()
     testing.assert_true(
         a == b,
         msg="[D&C from_string] 10501-digit D&C matches BigInt10 path",
@@ -300,7 +301,7 @@ def test_from_string_dc_path() raises:
     var s2 = String("7") + String("0") * 10490 + String("123456789")
     var a2 = BigInt(s2)
     # Cross-check against an independent BigInt10-based reference
-    var b2 = BigInt.from_bigint10(BigInt10(s2))
+    var b2 = BigInt10(s2).to_bigint()
     testing.assert_true(
         a2 == b2,
         msg="[D&C from_string] 10500-digit non-trivial round-trip",
@@ -404,6 +405,60 @@ def test_float_small() raises:
 def test_float_large() raises:
     """Tests __float__ with a large-ish integer."""
     testing.assert_equal(Float64(BigInt(1000000)), 1000000.0)
+
+
+# ===----------------------------------------------------------------------=== #
+# Test: to_biguint / from_biguint
+# ===----------------------------------------------------------------------=== #
+
+
+def test_biguint_round_trip() raises:
+    """A BigInt survives the trip through base-10^9 and back."""
+    for value in [
+        String("0"),
+        String("1"),
+        String("-1"),
+        String("999999999"),
+        String("1000000000"),
+        String("-123456789012345678901234567890"),
+    ]:
+        var n = BigInt(value)
+        var back = BigInt.from_biguint(n.to_biguint(), n.is_negative())
+        testing.assert_equal(String(back), String(n))
+
+
+def test_to_biguint_drops_the_sign() raises:
+    """`to_biguint` hands back the magnitude, not the value."""
+    testing.assert_equal(String(BigInt("-42").to_biguint()), "42")
+    testing.assert_equal(String(BigInt("42").to_biguint()), "42")
+    # Zero is unsigned whatever sign is asked for.
+    testing.assert_equal(String(BigInt.from_biguint(BigUInt(), True)), "0")
+
+
+def test_to_biguint_large_takes_the_dc_path() raises:
+    """Above the D&C threshold the fast path must agree with the slow one.
+
+    2000 digits is well past `_DC_TO_STR_ENTRY_THRESHOLD` (128 words, about
+    1230 digits), so this exercises the divide-and-conquer conversion; the
+    decimal string is the independent reference.
+    """
+    var digits = String("1234567890") * 200
+    var n = BigInt(digits)
+    testing.assert_equal(String(n.to_biguint()), digits)
+    testing.assert_equal(String(BigInt("-" + digits).to_biguint()), digits)
+
+
+def test_bigint10_bridge() raises:
+    """The legacy BigInt10 bridge round-trips through BigInt."""
+    for value in [
+        String("0"),
+        String("-1"),
+        String("123456789012345678901234567890"),
+        String("-987654321098765432109876543210"),
+    ]:
+        var b10 = BigInt10(value)
+        testing.assert_equal(String(b10.to_bigint()), value)
+        testing.assert_equal(String(BigInt10.from_bigint(BigInt(value))), value)
 
 
 def main() raises:

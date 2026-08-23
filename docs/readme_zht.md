@@ -266,7 +266,7 @@ def main() raises:
     var a = Dec128("123.45")                         # 從字符串
     var b = Dec128(123)                              # 從整數
     var c = Dec128(123, 2)                           # 帶精度的整數 (1.23)
-    var d = Dec128.from_float(3.14159)               # 從浮點數
+    var d = Dec128.from_float_scalar(3.14159)         # 從浮點數
     
     # === 基本算術 ===
     print(a + b)                                     # 加法: 246.45
