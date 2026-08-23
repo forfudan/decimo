@@ -31,8 +31,10 @@
 #   all                         → Everything (decimo + toml + cli)
 #
 # Environment:
-#   DECIMO_TEST_JOBS=N   Run up to N Mojo test files concurrently (default 1).
-#                        Output is buffered per file and replayed in order.
+#   DECIMO_TEST_JOBS=N   Run up to N Mojo test files concurrently. Defaults to
+#                        the number of logical CPUs locally, and to 1 when CI
+#                        is set. Output is buffered per file and replayed in
+#                        the original order either way.
 
 set -eo pipefail
 
@@ -45,13 +47,39 @@ cd "$REPO_ROOT"
 # cache that process spends far more time starting up than running tests: the
 # whole core suite is ~0.8 s of test bodies inside ~71 s of wall clock, i.e.
 # ~99% fixed per-file overhead. The files are independent, so they can run
-# concurrently; at DECIMO_TEST_JOBS=8 the same run takes ~13 s.
+# concurrently, and doing so is the only lever that matters: 67 s sequentially
+# against 11 s on 14 cores.
 #
-# Default 1 (sequential, unchanged) because a serialized run is easier to watch
-# and easier to attribute a crash to. The parallel path still replays each
-# file's output whole and in the original order, so a failing run reads the
-# same - it just arrives all at once at the end of the suite.
-DECIMO_TEST_JOBS="${DECIMO_TEST_JOBS:-1}"
+# Locally the default is therefore one job per logical CPU. The parallel path
+# buffers each file's output and replays it whole, in the original order, so a
+# failing run reads exactly like a sequential one - it just arrives all at once
+# at the end of the suite rather than incrementally.
+#
+# CI keeps the sequential default: each suite is already its own job there, the
+# runners have few cores to share, and a serialized transcript is easier to
+# attribute a crash to when the only evidence is a log. `CI` is set by GitHub
+# Actions and by essentially every other CI provider.
+detect_cpu_count() {
+    local n=""
+    if command -v nproc >/dev/null 2>&1; then
+        n=$(nproc 2>/dev/null)
+    elif command -v sysctl >/dev/null 2>&1; then
+        n=$(sysctl -n hw.logicalcpu 2>/dev/null)
+    fi
+    if [[ "$n" =~ ^[0-9]+$ ]] && (( n > 0 )); then
+        printf '%s' "$n"
+    else
+        printf '1'
+    fi
+}
+
+if [[ -n "${DECIMO_TEST_JOBS:-}" ]]; then
+    :
+elif [[ -n "${CI:-}" ]]; then
+    DECIMO_TEST_JOBS=1
+else
+    DECIMO_TEST_JOBS=$(detect_cpu_count)
+fi
 
 # ── Preflight: ensure tests/decimo.mojoc exists ─────────────────────────────
 # All Mojo test invocations below use `-I tests` to pick up the prebuilt
@@ -110,6 +138,10 @@ run_mojo_files() {
         done
         return 0
     fi
+
+    # Nothing is printed until the batch finishes, so say up front how many
+    # workers are running - otherwise a parallel run looks like a hang.
+    echo "--- running $# file(s) on $DECIMO_TEST_JOBS parallel job(s) ---"
 
     local tmpdir
     tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/decimo-tests.XXXXXX")

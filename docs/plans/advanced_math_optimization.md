@@ -74,8 +74,13 @@ per-leaf factorial computation happens at all:
 `pi(2048)` went from 86.0 ms to 0.69 ms and `pi(10000)` from 13.66 s to 8.81 ms.
 The leaf cost was the smaller half of the win; the larger half was that an
 evaluated-fraction leaf makes the root denominator the product of all `n` term
-denominators rather than the size of one. See `docs/internal/internal_notes.md`
-for the measurements and for why the split is no longer the bottleneck.
+denominators rather than the size of one.
+
+Later work on the stages around the split - an intermediate-grade `sqrt`,
+scaling and dividing in binary so only the quotient is converted to base 10^9,
+and machine-arithmetic leaves - took those two to 0.30 ms and 3.55 ms, which is
+ahead of mpmath's pure-Python backend. See `docs/internal/internal_notes.md`
+for the per-stage measurements and for what is left.
 
 ### 5. tan() Redundant Range Reduction (Medium Impact, Low Effort)
 

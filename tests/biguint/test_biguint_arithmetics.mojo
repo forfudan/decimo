@@ -266,6 +266,55 @@ def test_biguint_truncate_divide_huge_random_numbers_against_python() raises:
     )
 
 
+def _bz_digit_run(count: Int, seed: Int) -> String:
+    """Builds a `count`-digit decimal string with no leading zero."""
+    var out = String(1 + seed % 9)
+    var x = seed
+    for j in range(count - 1):
+        x = (x * 1103515245 + 12345 + j) % 2147483647
+        out += String(x % 10)
+    return out^
+
+
+def test_biguint_divide_bz_block_padding_sizes() raises:
+    """Burnikel-Ziegler stays correct at every divisor block padding.
+
+    The divisor is padded to `n = j * 2^k` words, with `2^k` the smallest
+    power of two that brings the block size `j` down to the cutoff, so that
+    halving `n` stays even all the way down to `j` - the recursion falls back
+    to schoolbook the moment it meets an odd block size. `j` is derived from
+    the divisor rather than pinned at the cutoff, which is what keeps the
+    padding small; the sizes below land on different `(j, k)` pairs, including
+    ones needing almost none and ones needing almost a whole block.
+
+    `q * b + r == a` with `r < b` pins each result without a stored expected
+    value.
+    """
+    var divisor_digits = [400, 600, 900, 1800, 3600]
+    var dividend_scales = [2, 3]
+
+    for i in range(len(divisor_digits)):
+        var nb = divisor_digits[i]
+        var b = BigUInt(_bz_digit_run(nb, 20260823 + i))
+        for j in range(len(dividend_scales)):
+            var na = nb * dividend_scales[j] // 2 + 7 * j
+            var a = BigUInt(_bz_digit_run(na, 27182818 + i * 3 + j))
+
+            var q = a // b
+            var r = a - q * b
+            var case_label = (
+                String("a=")
+                + String(na)
+                + " digits, b="
+                + String(nb)
+                + " digits"
+            )
+            assert_equal(
+                String(q * b + r), String(a), "q*b+r != a for " + case_label
+            )
+            assert_true(r < b, "remainder out of range for " + case_label)
+
+
 def main() raises:
     # test_biguint_arithmetics()
     # test_biguint_truncate_divide()

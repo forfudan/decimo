@@ -2962,16 +2962,23 @@ def floor_divide_burnikel_ziegler(
     else:
         ndigits_to_shift = 0
 
-    # The targeted number of blocks should be the smallest 2^k such that
-    # 2^k >= number of words in normalized_b ceil divided by BLOCK_SIZE_OF_WORDS.
-    # k is the depth of the recursion.
-    # n is the final number of words in the normalized b.
-    var n_blocks_divisor = math.ceildiv(
-        len(normalized_b.words), BLOCK_SIZE_OF_WORDS
-    )
-    var depth = Int(math.ceil(math.log2(Float64(n_blocks_divisor))))
-    n_blocks_divisor = 2**depth
-    var n = n_blocks_divisor * BLOCK_SIZE_OF_WORDS
+    # The divisor is padded to n = j * 2^k words, where 2^k is the smallest
+    # power of two that brings the block size j down to BLOCK_SIZE_OF_WORDS.
+    # k is the depth of the recursion: halving n stays even all the way down
+    # to j, which is what the recursion needs, since it drops to schoolbook
+    # the moment it is handed an odd block size.
+    #
+    # j is derived from the divisor rather than pinned at BLOCK_SIZE_OF_WORDS.
+    # Pinning it rounds n up to a multiple of 2^k * BLOCK_SIZE_OF_WORDS, which
+    # for a 5 556-word divisor means padding to 8 192 - both operands carry
+    # nearly 50% dead words through every level of the recursion. Deriving j
+    # pads the same divisor to 5 632.
+    var depth = 0
+    while math.ceildiv(len(normalized_b.words), 1 << depth) > (
+        BLOCK_SIZE_OF_WORDS
+    ):
+        depth += 1
+    var n = math.ceildiv(len(normalized_b.words), 1 << depth) * (1 << depth)
 
     var n_digits_to_scale_up = (
         n - len(normalized_b.words)

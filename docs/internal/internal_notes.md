@@ -107,10 +107,141 @@ Two consequences worth recording:
   `(6k-5)(2k-1)(6k-1)`, all three of which are odd, so `P` is always odd and
   the common factor is always one. There is nothing left to strip. The
   reduction the old code did was reclaiming bloat the old shape created.
-- **The split is no longer where the time goes.** At `pi(100000)`, the split is
-  66 ms of the 289 ms total; the rest is the base-2^32 to base-10^9 conversion,
-  the final division, and `sqrt(10005)`. Further work on the series itself has
-  little left to win.
+- **The split stopped being the whole cost, then became the largest single
+  piece again.** When the `P`/`Q`/`T` shape landed, the split was 66 ms of the
+  289 ms of a `pi(100000)`, the rest being base conversion, the final division
+  and `sqrt(10005)`. Those three have since been cut hard enough that the split
+  is back on top at roughly 45% - see the stage table below. Further work on
+  the series itself is now the thing with the most left to win, and it means
+  faster multiplication rather than a better recurrence.
+
+### Where the rest of `pi()` goes
+
+Measured per stage, in milliseconds:
+
+| Stage                     | 5 000 digits | 10 000 | 50 000 |
+| ------------------------- | ------------ | ------ | ------ |
+| binary splitting          | 0.54         | 1.58   | 21.1   |
+| `5^s` and the scaling mul | 0.09         | 0.26   | 3.5    |
+| final division, binary    | 0.17         | 0.49   | 6.2    |
+| base 2^32 -> 10^9, x1     | 0.19         | 0.62   | 7.1    |
+| `sqrt(10005)`             | 0.18         | 0.57   | 7.4    |
+| final multiplies, round   | 0.10         | 0.30   | 3.8    |
+
+Two stages of that table used to be one line reading `base 2^32 -> 10^9, x2`,
+and it cost 0.43 / 1.33 / 23.9. The final step of the evaluation built a
+`BigDecimal` out of each of `q` and `t` and divided those, so both operands
+crossed from binary to decimal. Base conversion is the one cost a binary bignum
+library never pays at all, so the fix is to stay in binary as long as possible:
+scale `q` by `10^s` there, take a single integer division, and convert only the
+quotient. That trades one whole conversion for a multiplication, and the
+multiplication is the cheaper of the two. `10^s` is spelled `5^s << s`, which
+takes the power over the smaller base and leaves the factor of `2^s` to a word
+shift.
+
+A third of what remains is the binary splitting, and most of what was shaved
+off that was not arithmetic at all. `P(k)`, `Q(k)` and `T(k)` fit in a
+`UInt128` for every `k` below four million, so a leaf can pack its words
+directly instead of composing itself out of about ten small `BigInt` operands;
+there are `precision / 14` leaves, and at 1 000 digits that allocation traffic
+was half of the whole split. The root of the split also stopped computing
+`left.p * right.p`, which is a full-width multiplication the final formula
+never reads.
+
+`sqrt(10005)` used to head this table - 1.61 ms, 4.59 ms and 36.8 ms, ahead of
+the split itself - because `pi()` called the public `sqrt()`, which is
+`sqrt_exact()`. That function reproduces CPython's `Decimal.sqrt()` bit for bit
+by computing an exact integer square root and then testing whether the input is
+a perfect square; both cost full-size divisions, and neither means anything for
+a fixed non-square constant used as an intermediate. `pi()` now calls
+`sqrt_reciprocal()`, whose Newton iteration is division-free.
+
+Against mpmath 1.4.1 on its pure-Python backend, best of N for both sides on
+the same machine, comparing against its `to_str` timing since decimo returns
+decimal digits and mpmath's `pi_fixed` does not:
+
+| digits  | decimo   | mpmath   |
+| ------- | -------- | -------- |
+| 100     | 0.011 ms | 0.008 ms |
+| 500     | 0.039    | 0.043    |
+| 1 000   | 0.110    | 0.116    |
+| 5 000   | 1.19     | 1.67     |
+| 10 000  | 3.55     | 5.11     |
+| 50 000  | 47.9     | 61.5     |
+| 100 000 | 148      | 189      |
+
+Note that "pure-Python mpmath" still multiplies and divides in C: what the
+backend switch turns off is gmpy2, not CPython's own Karatsuba `int`. Only the
+orchestration is Python.
+
+Below about 500 digits decimo is still behind, and the profile there is flat -
+no single stage dominates, it is fixed overhead spread across a dozen small
+allocations. That is the remaining piece worth looking at, along with the
+`to_biguint()` in the table above, which is still two thirds the cost of the
+division it feeds.
+
+### Burnikel-Ziegler padding has to survive every halving
+
+Found while making the above change, and worth recording separately because it
+had nothing to do with `pi()`: `BigInt` division was losing its asymptotics on
+about half of all operand sizes.
+
+`_bz_two_by_one_slices()` bails out to schoolbook Knuth D when the block size
+`n` is odd. That is correct - Knuth D gives the right answer at any size - so
+nothing failed; it just meant the recursion could stop one step in. `n` was
+rounded up only to even, and evenness does not survive halving. A 20 762-word
+divisor is even, its half is 10 381, and the very first recursive step
+therefore ran a 10 381-word schoolbook division. Measured on 100 000-digit
+operands: 81 ms, against 26 ms for the same operands one power of two smaller,
+where the halving happened to stay even further down.
+
+The fix is to pad to `n = j * 2^k`, with `2^k` the smallest power of two that
+brings `j` down to the cutoff. Halving then stays even until it reaches `j`,
+which is small enough that Knuth D is the right answer. That took the same
+division to 18 ms.
+
+`BigUInt` had the opposite version of the same problem. It padded to
+`2^k * cutoff`, which always halves cleanly but rounds a 5 556-word divisor up
+to 8 192 - both operands carry nearly 50% dead words through every level.
+Deriving `j` from the divisor instead pads it to 5 632, and division is 20%
+faster from 10 000 digits up.
+
+Two lessons. First, a performance bug that hides behind a correct fallback path
+produces no test failure and no exception; the only symptom is a timing curve
+with a step in it, which is why the division benchmark now sweeps sizes rather
+than checking one. Second, the padding rule and the recursion's base case are
+one decision, not two - the base case's condition (`n` odd) is what determines
+what the padding has to guarantee, and they were written far enough apart in
+the file to be changed independently.
+
+### A Newton schedule reaches `seed * 2^n`, and nothing caps it
+
+Two bugs in `sqrt_reciprocal()` and `fast_isqrt()`, caught while measuring the
+above, both of which returned the full requested digit count with a wrong tail
+and raised nothing.
+
+The iteration `r <- r * (3 - x * r^2) / 2` doubles the correct digits. It does
+*not* get pulled up to whatever precision the arithmetic inside it runs at, so
+`n` iterations return `seed * 2^n` digits and no more. Both functions built
+their schedule by halving from the target down to 20, which credits the seed
+with 20 digits; and both seeded with `x ** -0.5`, which goes through `exp`/`log`
+and is accurate to about ten digits for some inputs while being exact for
+others. Instrumented, `sqrt_reciprocal(1234.5678, 1500)`:
+
+| iteration precision | 34 | 58 | 106 | 201 | 392 | 773 | 1535 |
+| ------------------- | -- | -- | --- | --- | --- | --- | ---- |
+| correct digits      | 19 | 38 | 78  | 156 | 312 | 624 | 1248 |
+
+Clean doubling from a ten-digit seed, never once reaching the precision the
+iteration was nominally running at. The schedule now halves down to
+`_F64_SEED_DIGITS`, and the seed is `1 / sqrt(x)`, which is correctly rounded.
+
+The reason this survived so long is that both dials have to be wrong *and* the
+schedule has to land badly. `sqrt_reciprocal(10005, 1000)` and
+`(10005, 2000)` were correct in full; `(10005, 1500)` was correct in full but
+`(1234.5678, 1500)` was not, because `1.0005 ** -0.5` happens to be exact and
+`12.345678 ** -0.5` is not. Any spot check picks a survivor. The test sweeps
+inputs against precisions for that reason.
 
 ### Could the public `Rational` carry the split?
 
@@ -234,20 +365,32 @@ test file that asserts nothing measurable still costs ~0.6 s.
 
 Nothing inside the tests is worth optimising at this ratio. The lever is to
 stop paying that cost 50 times in series. The files are independent, so
-`tests/test.sh` takes `DECIMO_TEST_JOBS` (default 1) and runs that many
-concurrently, buffering each file's output and replaying it whole, in the
-original order, so the transcript is unchanged:
+`tests/test.sh` runs `DECIMO_TEST_JOBS` of them concurrently, buffering each
+file's output and replaying it whole, in the original order, so the transcript
+is unchanged:
 
 | `DECIMO_TEST_JOBS` | `test.sh decimo` | `test.sh all` |
 | ------------------ | ---------------- | ------------- |
-| 1 (default)        | 67.4 s           | 68.4 s        |
+| 1                  | 67.4 s           | 68.4 s        |
 | 4                  | 21.4 s           |               |
 | 8                  | 13.3 s           | 15.2 s        |
-| 14 (= `hw.ncpu`)   | 10.6 s           |               |
+| 14 (= `hw.ncpu`)   | 10.6 s           | 13.1 s        |
 
-Same 1005 passing tests either way, and the normalised transcripts are
+Same 1062 passing tests either way, and the normalised transcripts are
 identical. Note that these numbers all assume a warm cache: the first run after
 `src/decimo` changes recompiles every test file and takes ~320 s sequentially.
+
+The default is the machine's logical CPU count, from `nproc` or from
+`sysctl -n hw.logicalcpu` on macOS, falling back to 1 if neither is available.
+A five-fold saving on every local run is worth more than an incrementally
+arriving transcript, and the replayed output is byte-identical to the
+sequential one anyway - it just all arrives at the end of the suite.
+
+CI keeps the sequential default, keyed off the `CI` environment variable that
+GitHub Actions and every other provider set. There, each suite is already its
+own job on a runner with few cores to share, and when the only evidence of a
+crash is a log file, a transcript that stops at the offending line is worth
+more than one that has to be read backwards.
 
 ### Building long decimal literals in tests
 

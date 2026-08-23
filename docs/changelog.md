@@ -7,7 +7,11 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 `Rational` grows a full set of conversions and joins the
 `from_integral_scalar()` / `from_float_scalar()` naming used by the other
 numeric types, `BigInt10` is no longer referenced by the rest of the library,
-and `BigDecimal.pi()` gets two to three orders of magnitude faster.
+and `BigDecimal.pi()` gets three to four orders of magnitude faster — it now
+runs ahead of pure-Python mpmath from 500 digits up. Burnikel-Ziegler division
+loses a padding choice that cost it its own asymptotics on some sizes, which
+speeds up every division in the library. A Newton iteration that silently
+returned short of its requested precision is fixed.
 
 ### ⭐️ New in Unreleased
 
@@ -26,7 +30,7 @@ and `BigDecimal.pi()` gets two to three orders of magnitude faster.
 
 ### 🦋 Changed in Unreleased
 
-1. **`BigDecimal.pi()` is two to three orders of magnitude faster.** The
+1. **`BigDecimal.pi()` is three to four orders of magnitude faster.** The
    Chudnovsky binary splitting now uses the `P`/`Q`/`T` recurrence: each leaf
    is O(1) instead of rebuilding `(6k)!/(3k)!`, `(k!)^3` and `C^k` from
    scratch, and the root denominator is the size of a single term rather than
@@ -35,6 +39,57 @@ and `BigDecimal.pi()` gets two to three orders of magnitude faster.
    earlier half of the work moved the split to `BigInt` and cut the
    base-conversion overhead (PR #269). Everything that range-reduces against
    π — `sin()`, `cos()`, `tan()` — inherits the gain.
+1. **`pi()` no longer takes the exact square root of 10005.** The public
+   `sqrt()` is `sqrt_exact()`, which reproduces CPython's `Decimal.sqrt()` bit
+   for bit by computing an exact integer square root and testing for a perfect
+   square; both cost full-size divisions and neither means anything for a fixed
+   non-square constant used as an intermediate. `pi()` now uses the
+   division-free `sqrt_reciprocal()`, which was the largest single line item in
+   `pi()` — ahead of the binary splitting itself. `pi(5000)` goes from 3.26 ms
+   to 1.98 ms and `pi(100000)` from 295 ms to 211 ms.
+1. **`pi()` divides in binary and converts once.** The last step of the
+   Chudnovsky evaluation used to build a `BigDecimal` out of each of `q` and
+   `t` and divide those, which meant two base-2^32 to base-10^9 conversions —
+   and base conversion is the one cost a binary bignum library never pays at
+   all. It now scales `q` in binary and takes a single integer division, so
+   only the quotient is converted. The scaling uses `5^s << s` rather than
+   `10^s`, taking the power over the smaller base and leaving the factor of
+   `2^s` to a word shift.
+1. **The Chudnovsky leaves are built in machine arithmetic.** `P(k)`, `Q(k)`
+   and `T(k)` all fit in a `UInt128` for any `k` below four million, so the
+   leaves pack their words directly instead of composing themselves out of
+   about ten small `BigInt` operands each. There are `precision / 14` leaves,
+   and at 1 000 digits that allocation traffic was half of the entire binary
+   splitting. Two smaller cuts alongside it: the root of the split no longer
+   computes `left.p * right.p`, a full-width multiplication whose result the
+   final formula never reads, and the term count is now
+   `ceil(working_precision / 14) + 3` rather than `precision // 14 + 9` — the
+   old flat margin was invisible at 10 000 digits but nearly doubled the work
+   at 100.
+1. **Burnikel-Ziegler pads the divisor to `j * 2^k` words.** The recursion
+   halves the block size and falls back to schoolbook Knuth D as soon as it
+   meets an odd one, so the padding has to keep it even the whole way down,
+   not just at the first step. `BigInt` rounded up only to even, which a
+   20 762-word divisor already satisfies — its half is 10 381, so the first
+   recursive step landed on a schoolbook division and the algorithm lost its
+   asymptotics: a 100 000-digit division took 81 ms where the same operands
+   one power of two smaller took 26 ms. It now takes 18 ms. `BigUInt` was
+   correct but rounded up to a multiple of `2^k * cutoff`, carrying up to 50%
+   dead words through every level; deriving the block size from the divisor
+   instead makes division 20% faster from 10 000 digits up. Everything built
+   on division inherits both: `BigDecimal.true_divide()` at 20 000 digits goes
+   from 4.49 ms to 3.83 ms, and `sqrt_exact()` from 9.53 ms to 8.49 ms.
+1. **`BigInt.to_biguint()` no longer detours through a decimal string.** The
+   divide-and-conquer conversion splits on powers of `10^9` instead of powers
+   of `10`, so each half lands on a base-10^9 word boundary and its words go
+   straight into the result; formatting a decimal string and parsing it back
+   was a pass and a half of pure overhead.
+
+   Together with the four entries above, `pi(10000)` goes from 5.48 ms to
+   3.55 ms and `pi(100000)` from 226 ms to 148 ms. For comparison, mpmath
+   1.4.1 on its pure-Python backend takes 5.11 ms and 189 ms for the same
+   two, counting the conversion to a decimal string that decimo does as part
+   of computing at all.
 1. **`Rational.__add__` and `__sub__` cancel before they multiply**, using
    Algorithm A of Knuth 4.5.1: the denominators are reduced by their gcd
    first, and the result is in lowest terms without a second gcd over two
@@ -53,6 +108,25 @@ and `BigDecimal.pi()` gets two to three orders of magnitude faster.
 1. **Faster tests.** Test helpers that built large decimal strings by repeated
    appending now pre-size the `String`, and `decimo.tests` gains
    `random_decimal_string()` (PR #269).
+1. **`tests/test.sh` runs in parallel by default.** `DECIMO_TEST_JOBS` now
+   defaults to the machine's logical CPU count instead of 1, which takes
+   `test.sh all` from ~68 s to ~13 s on 14 cores. CI is unaffected: when `CI`
+   is set the default stays 1, since each suite is already its own job there
+   and a serialized transcript is easier to attribute a crash to. Setting
+   `DECIMO_TEST_JOBS` explicitly still wins in both cases.
+
+### 🩹 Fixed in Unreleased
+
+1. **`sqrt_reciprocal()` returned fewer correct digits than asked for**, from
+   two independent causes. A reciprocal-sqrt iteration only doubles the correct
+   digits, so `n` iterations reach `seed * 2^n` — and the schedule halved down
+   to 20, crediting the seed with more digits than it carries. The seed itself
+   was `x ** -0.5`, which for some inputs is accurate to only about ten digits;
+   it is now `1 / sqrt(x)`, which is correctly rounded. Together these left
+   `sqrt_reciprocal(1234.5678, 1500)` correct to 1248 of 1500 digits, with the
+   full digit count returned and nothing raised. `fast_isqrt()` shared both
+   bugs and was hiding them behind full-size corrective divisions, so
+   `sqrt_exact()` is about 30% faster as well.
 
 ### 🗑️ Deprecated in Unreleased
 

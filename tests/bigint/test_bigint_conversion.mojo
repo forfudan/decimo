@@ -448,6 +448,67 @@ def test_to_biguint_large_takes_the_dc_path() raises:
     testing.assert_equal(String(BigInt("-" + digits).to_biguint()), digits)
 
 
+def _digit_run(count: Int) -> String:
+    """Builds a `count`-digit decimal string with no leading zero."""
+    var out = String("1")
+    var x = 7
+    for j in range(count - 1):
+        x = (x * 7 + j) % 10
+        out += String(x)
+    return out^
+
+
+def test_to_biguint_sweeps_the_dc_split_points() raises:
+    """`to_biguint()` must agree with the decimal string at every size.
+
+    The divide-and-conquer conversion splits on powers of `10^9` so that each
+    half lands on a base-10^9 word boundary and its words can be written
+    straight into the output buffer. That makes the split points, not the
+    magnitudes, the interesting cases: the sizes below bracket the entry
+    threshold (128 binary words, about 1 230 digits) and the points where a
+    subproblem exactly fills its slot in the buffer or falls one word short.
+    Each value is also tested shifted up by `10^37`, because a high half whose
+    low words are zero has to leave the zeros already sitting in its slot
+    alone instead of writing over the word boundary.
+    """
+    var sizes = [
+        1,
+        9,
+        10,
+        18,
+        19,
+        1229,
+        1230,
+        1231,
+        1232,
+        2303,
+        2304,
+        2305,
+        4607,
+        4608,
+        4609,
+        5000,
+    ]
+
+    for i in range(len(sizes)):
+        var digits = _digit_run(sizes[i])
+        var n = BigInt(digits)
+        testing.assert_equal(
+            String(n.to_biguint()),
+            digits,
+            String("to_biguint() disagrees at ") + String(sizes[i]) + " digits",
+        )
+
+        var padded = n * BigInt(10) ** 37
+        testing.assert_equal(
+            String(padded.to_biguint()),
+            String(padded),
+            String("to_biguint() disagrees at ")
+            + String(sizes[i])
+            + " digits with a trailing zero run",
+        )
+
+
 def test_bigint10_bridge() raises:
     """The legacy BigInt10 bridge round-trips through BigInt."""
     for value in [

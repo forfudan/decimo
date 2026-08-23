@@ -466,5 +466,60 @@ def test_multiply_then_divide_roundtrip() raises:
     testing.assert_equal(String(x1 * y1 // y1), String(x1))
 
 
+def _bz_digit_run(count: Int, seed: Int) -> String:
+    """Builds a `count`-digit decimal string with no leading zero."""
+    var out = String(1 + seed % 9)
+    var x = seed
+    for j in range(count - 1):
+        x = (x * 1103515245 + 12345 + j) % 2147483647
+        out += String(x % 10)
+    return out^
+
+
+def test_divide_bz_block_padding_sizes() raises:
+    """Burnikel-Ziegler stays correct at every divisor block padding.
+
+    The divisor is padded to `n = j * 2^k` words, where `2^k` is the smallest
+    power of two that brings the block size `j` down to the cutoff. Halving
+    `n` then stays even the whole way down, which is what the recursion needs:
+    it drops to schoolbook Knuth D the moment it is handed an odd block size.
+    (That is a correctness-preserving bail-out, so what it costs is time, not
+    accuracy - a 100 000-digit division took 81 ms before this padding was
+    fixed against 18 ms after.)
+
+    The sizes below land on different `(j, k)` pairs, including ones that need
+    no padding at all and ones that need nearly a whole block, and the
+    dividend lengths vary independently so the block count `t` varies too.
+    `q * b + r == a` with `0 <= r < b` pins each result without a stored
+    expected value.
+    """
+    var divisor_digits = [700, 1229, 1300, 2500, 5000]
+    var dividend_scales = [2, 3]
+
+    for i in range(len(divisor_digits)):
+        var nb = divisor_digits[i]
+        var b = BigInt(_bz_digit_run(nb, 20260823 + i))
+        for j in range(len(dividend_scales)):
+            var na = nb * dividend_scales[j] // 2 + 7 * j
+            var a = BigInt(_bz_digit_run(na, 31415926 + i * 3 + j))
+
+            var q = a // b
+            var r = a - q * b
+            var case_label = (
+                String("a=")
+                + String(na)
+                + " digits, b="
+                + String(nb)
+                + " digits"
+            )
+            testing.assert_equal(
+                String(q * b + r), String(a), "q*b+r != a for " + case_label
+            )
+            testing.assert_true(
+                r >= BigInt(0) and r < b,
+                "remainder out of range for " + case_label,
+            )
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()
