@@ -22,6 +22,7 @@ from decimo.errors import ValueError
 from decimo.bigint.bigint import BigInt
 from decimo.biguint.biguint import BigUInt
 from decimo.rounding_mode import RoundingMode
+import decimo.bigdecimal.exponential as bigdecimal_exponential
 import decimo.bigdecimal.trigonometric as bigdecimal_trigonometric
 
 comptime PI_1024 = BigDecimal(
@@ -329,8 +330,17 @@ def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
     )
 
     # Final formula: π = 426880 * √10005 * (q / t)
+    #
+    # `sqrt_reciprocal()` rather than the public `sqrt()`: the latter is
+    # `sqrt_exact()`, which reproduces CPython's `Decimal.sqrt()` bit for bit
+    # by computing an exact `isqrt` and testing whether the input is a perfect
+    # square. Both of those cost full-size divisions, and neither means
+    # anything for a fixed non-square integer used as an intermediate. The
+    # division-free Newton iteration gives the same digits here for a fraction
+    # of the work - it was the single largest line item in `pi()`, ahead of the
+    # binary splitting itself.
     var result = bdec_426880.multiply(
-        bdec_10005.sqrt(working_precision)
+        bigdecimal_exponential.sqrt_reciprocal(bdec_10005, working_precision)
     ).multiply(sum_series)
 
     result.round_to_precision_inplace(

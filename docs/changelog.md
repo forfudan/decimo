@@ -7,7 +7,8 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 `Rational` grows a full set of conversions and joins the
 `from_integral_scalar()` / `from_float_scalar()` naming used by the other
 numeric types, `BigInt10` is no longer referenced by the rest of the library,
-and `BigDecimal.pi()` gets two to three orders of magnitude faster.
+and `BigDecimal.pi()` gets two to three orders of magnitude faster. A Newton
+iteration that silently returned short of its requested precision is fixed.
 
 ### ⭐️ New in Unreleased
 
@@ -35,6 +36,14 @@ and `BigDecimal.pi()` gets two to three orders of magnitude faster.
    earlier half of the work moved the split to `BigInt` and cut the
    base-conversion overhead (PR #269). Everything that range-reduces against
    π — `sin()`, `cos()`, `tan()` — inherits the gain.
+1. **`pi()` no longer takes the exact square root of 10005.** The public
+   `sqrt()` is `sqrt_exact()`, which reproduces CPython's `Decimal.sqrt()` bit
+   for bit by computing an exact integer square root and testing for a perfect
+   square; both cost full-size divisions and neither means anything for a fixed
+   non-square constant used as an intermediate. `pi()` now uses the
+   division-free `sqrt_reciprocal()`, which was the largest single line item in
+   `pi()` — ahead of the binary splitting itself. `pi(5000)` goes from 3.26 ms
+   to 1.98 ms and `pi(100000)` from 295 ms to 211 ms.
 1. **`Rational.__add__` and `__sub__` cancel before they multiply**, using
    Algorithm A of Knuth 4.5.1: the denominators are reduced by their gcd
    first, and the result is in lowest terms without a second gcd over two
@@ -53,6 +62,19 @@ and `BigDecimal.pi()` gets two to three orders of magnitude faster.
 1. **Faster tests.** Test helpers that built large decimal strings by repeated
    appending now pre-size the `String`, and `decimo.tests` gains
    `random_decimal_string()` (PR #269).
+
+### 🩹 Fixed in Unreleased
+
+1. **`sqrt_reciprocal()` returned fewer correct digits than asked for**, from
+   two independent causes. A reciprocal-sqrt iteration only doubles the correct
+   digits, so `n` iterations reach `seed * 2^n` — and the schedule halved down
+   to 20, crediting the seed with more digits than it carries. The seed itself
+   was `x ** -0.5`, which for some inputs is accurate to only about ten digits;
+   it is now `1 / sqrt(x)`, which is correctly rounded. Together these left
+   `sqrt_reciprocal(1234.5678, 1500)` correct to 1248 of 1500 digits, with the
+   full digit count returned and nothing raised. `fast_isqrt()` shared both
+   bugs and was hiding them behind full-size corrective divisions, so
+   `sqrt_exact()` is about 30% faster as well.
 
 ### 🗑️ Deprecated in Unreleased
 

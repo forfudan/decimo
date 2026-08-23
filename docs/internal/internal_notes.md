@@ -112,6 +112,66 @@ Two consequences worth recording:
   the final division, and `sqrt(10005)`. Further work on the series itself has
   little left to win.
 
+### Where the rest of `pi()` goes
+
+Measured per stage, in milliseconds, after the `sqrt` change below:
+
+| Stage                   | 5 000 digits | 10 000 | 50 000 |
+| ----------------------- | ------------ | ------ | ------ |
+| binary splitting        | 0.70         | 1.88   | 22.5   |
+| base 2^32 -> 10^9, x2    | 0.43         | 1.33   | 23.9   |
+| final division          | 0.58         | 1.27   | 12.4   |
+| `sqrt(10005)`           | 0.19         | 0.56   | 6.6    |
+| final multiplies, round | 0.10         | 0.30   | 3.8    |
+
+`sqrt(10005)` used to head this table - 1.61 ms, 4.59 ms and 36.8 ms, ahead of
+the split itself - because `pi()` called the public `sqrt()`, which is
+`sqrt_exact()`. That function reproduces CPython's `Decimal.sqrt()` bit for bit
+by computing an exact integer square root and then testing whether the input is
+a perfect square; both cost full-size divisions, and neither means anything for
+a fixed non-square constant used as an intermediate. `pi()` now calls
+`sqrt_reciprocal()`, whose Newton iteration is division-free.
+
+What remains is mostly a tax that a binary library does not pay. mpmath's
+`pi_fixed` stays in binary from end to end and converts once, when the value is
+printed; decimo converts both operands of the final division into base 10^9
+before dividing. Against mpmath 1.4.1 on the pure-Python backend, comparing
+against its `to_str` timing since decimo returns decimal digits, the ratio is
+now 1.5x at 1 000 digits and 1.2x from 5 000 up, against 2.1x before. Closing
+the rest means converting once rather than twice - computing `q * 10^p // t` in
+`BigInt` and converting only the quotient - and giving `to_biguint()` a
+divide-and-conquer that splits on powers of `10^9` rather than powers of `10`,
+so the halves land on word boundaries and no decimal string is built at all.
+
+### A Newton schedule reaches `seed * 2^n`, and nothing caps it
+
+Two bugs in `sqrt_reciprocal()` and `fast_isqrt()`, caught while measuring the
+above, both of which returned the full requested digit count with a wrong tail
+and raised nothing.
+
+The iteration `r <- r * (3 - x * r^2) / 2` doubles the correct digits. It does
+*not* get pulled up to whatever precision the arithmetic inside it runs at, so
+`n` iterations return `seed * 2^n` digits and no more. Both functions built
+their schedule by halving from the target down to 20, which credits the seed
+with 20 digits; and both seeded with `x ** -0.5`, which goes through `exp`/`log`
+and is accurate to about ten digits for some inputs while being exact for
+others. Instrumented, `sqrt_reciprocal(1234.5678, 1500)`:
+
+| iteration precision | 34 | 58 | 106 | 201 | 392 | 773 | 1535 |
+| ------------------- | -- | -- | --- | --- | --- | --- | ---- |
+| correct digits      | 19 | 38 | 78  | 156 | 312 | 624 | 1248 |
+
+Clean doubling from a ten-digit seed, never once reaching the precision the
+iteration was nominally running at. The schedule now halves down to
+`_F64_SEED_DIGITS`, and the seed is `1 / sqrt(x)`, which is correctly rounded.
+
+The reason this survived so long is that both dials have to be wrong *and* the
+schedule has to land badly. `sqrt_reciprocal(10005, 1000)` and
+`(10005, 2000)` were correct in full; `(10005, 1500)` was correct in full but
+`(1234.5678, 1500)` was not, because `1.0005 ** -0.5` happens to be exact and
+`12.345678 ** -0.5` is not. Any spot check picks a survivor. The test sweeps
+inputs against precisions for that reason.
+
 ### Could the public `Rational` carry the split?
 
 Asked and measured, because it would be one type fewer. The answer is no, but

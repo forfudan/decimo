@@ -27,6 +27,15 @@ import decimo.bigdecimal.arithmetics as bigdecimal_arithmetics
 from decimo.errors import ValueError, OverflowError, ZeroDivisionError
 from decimo.rounding_mode import RoundingMode
 
+comptime _F64_SEED_DIGITS = 12
+"""Correct decimal digits the `Float64` seed of a Newton iteration is worth.
+
+`Float64` carries just under 16 decimal digits, and taking `x ** -0.5` costs a
+couple more. Twelve is the conservative floor: the reciprocal-sqrt schedules
+below halve down to this value so that the doubling actually reaches the top of
+the schedule.
+"""
+
 # ===----------------------------------------------------------------------=== #
 # List of functions in this module:
 # - MathCache (struct): Cache for ln(2) and ln(1.25) constants
@@ -1103,16 +1112,26 @@ def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
 
     var c_norm_exp = c_norm.adjusted()
     var c_norm_f64 = mantissa * Float64(10.0) ** Float64(c_norm_exp)
-    var r_f64 = c_norm_f64 ** (-0.5)
+    # `1 / sqrt(v)` rather than `v ** -0.5`: the latter goes through `exp`/`log`
+    # and is accurate to only about ten digits for some inputs, while `sqrt()`
+    # is correctly rounded and the division costs one more rounding. The
+    # schedule below assumes the seed is worth `_F64_SEED_DIGITS`, so the
+    # difference decides how many digits the whole function returns.
+    var r_f64 = Float64(1.0) / math.sqrt(c_norm_f64)
     if r_f64 != r_f64 or r_f64 <= 0.0:
         r_f64 = 1.0
 
     var r = BigDecimal(String(r_f64))
 
     # --- Precision doubling schedule ---
+    # Halve down to what the seed is actually worth. A Newton step only
+    # doubles the correct digits, so `n` steps reach `_F64_SEED_DIGITS * 2^n`;
+    # stopping the halving higher than the seed leaves the top of the schedule
+    # short of its nominal precision and forces the integer refinement below to
+    # pay for extra full-size divisions.
     var prec_schedule = List[Int]()
     var p = working_digits
-    while p > 20:
+    while p > _F64_SEED_DIGITS:
         prec_schedule.append(p)
         p = (p + 1) // 2
 
@@ -1419,18 +1438,27 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
     var x_norm_exp = x_norm.adjusted()
     var x_norm_f64 = mantissa * Float64(10.0) ** Float64(x_norm_exp)
-    var r_f64 = x_norm_f64 ** (-0.5)  # 1/sqrt(x_norm)
+    # `1 / sqrt(v)`, not `v ** -0.5`. See the note in `fast_isqrt()`: the power
+    # operator is accurate to only about ten digits for some inputs, which the
+    # doubling schedule then carries all the way to the top.
+    var r_f64 = Float64(1.0) / math.sqrt(x_norm_f64)  # 1/sqrt(x_norm)
     if r_f64 != r_f64 or r_f64 <= 0.0:  # NaN or degenerate
         r_f64 = 1.0
 
     var r = BigDecimal(String(r_f64))
 
     # --- Precision doubling schedule ---
-    # Build list from working_precision down to ~20, iterate in reverse.
-    # Float64 gives ~15 correct digits; each Newton iteration doubles that.
+    # Build the list from `working_precision` down to what the seed is worth,
+    # then iterate in reverse. Halving `n` times from `working_precision` lands
+    # at or below `_F64_SEED_DIGITS`, so `working_precision <=
+    # _F64_SEED_DIGITS * 2^n` and the `n` doublings below reach the top. A
+    # higher stopping point silently returns fewer correct digits than asked
+    # for: with the halving stopped at 20 the seed was credited with 20 digits
+    # it does not have, and `sqrt_reciprocal(10005, 5009)` came back correct to
+    # only 4244 digits.
     var prec_schedule = List[Int]()
     var p = working_precision
-    while p > 20:
+    while p > _F64_SEED_DIGITS:
         prec_schedule.append(p)
         p = (p + 1) // 2
 
@@ -1516,6 +1544,7 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
     return result^
 
 
+# Legacy implementation
 def sqrt_newton(x: BigDecimal, precision: Int) raises -> BigDecimal:
     """Calculates the square root of a BigDecimal number using Newton's method.
 
@@ -1607,6 +1636,7 @@ def sqrt_newton(x: BigDecimal, precision: Int) raises -> BigDecimal:
     return result^
 
 
+# Legacy implementation
 def sqrt_decimal_approach(x: BigDecimal, precision: Int) raises -> BigDecimal:
     """Calculate the square root of a BigDecimal number.
 
