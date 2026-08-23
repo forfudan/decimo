@@ -214,6 +214,63 @@ one decision, not two - the base case's condition (`n` odd) is what determines
 what the padding has to guarantee, and they were written far enough apart in
 the file to be changed independently.
 
+### A missing `return` in `subtract_inplace()`, and why nothing caught it
+
+A Copilot review of PR #271 flagged the Burnikel-Ziegler block guard in
+`biguint/arithmetics.mojo` as testing the wrong length. It was right, and
+chasing it turned up something much larger sitting underneath.
+
+`subtract_inplace()` handled equal operands like this:
+
+```mojo
+if comparison_result == 0:
+    x.words.resize(unsafe_uninit_length=1)
+    x.words[0] = UInt32(0)   # Result is zero
+elif comparison_result < 0:
+    raise OverflowError(...)
+# ... and then falls straight through into the general subtraction
+```
+
+With no `return`, the equal case sets `x` to one zero word and then subtracts
+`y` from it: the vectorized loop runs over `len(y.words)` words and reads and
+writes past the end of `x`, and `normalize_borrows()` tidies the garbage into
+something that looks like a number. `x -= x` returned `877910460` for one
+18-word operand. Not zero, not a crash, not even an obviously wrong magnitude.
+
+The damage was not confined to `-=`. Burnikel-Ziegler's schoolbook base case
+computes its remainder as `a_slice -= q * b_slice`, and a block that happens to
+divide exactly makes those two operands equal - so `//` and `%` silently
+returned wrong quotients for a whole family of dividends. A sweep of
+`b * (10^9)^k + j * (b - 1)` over divisors of 33 to 71 words found 676 wrong
+answers in 5 148.
+
+Three things are worth keeping from this.
+
+The out-of-place `subtract()` was correct the whole time, and so was every
+other in-place operation. The way to find this was not to read the code, which
+looks fine at a glance, but to run each in-place operation against its
+out-of-place twin over a grid of operand widths - including the case where both
+operands are the same value, which is exactly the case a hand-written test set
+forgets. That differential is now
+`test_biguint_inplace_arithmetics_match_out_of_place`, and it fails loudly on
+the old code.
+
+The bug was reachable from `x -= x` at every width from one word up, and the
+suite still passed. Long division has thousands of assertions against Python's
+`//`, and it passed too, because the failing dividends have a specific shape
+that random test data does not produce: the recursion has to meet a block that
+divides exactly. Structured adversarial inputs - operands built to land exactly
+on the algorithm's internal boundaries - find what random ones cannot.
+
+Finally, the fault was a control-flow slip, not an algorithmic mistake, and it
+lived in the one branch of a function that is otherwise about arithmetic. It
+survived review, CI, and a benchmark suite that exercises the code constantly.
+The two in-place single-word divisions found alongside it are the same sort of
+thing: both left a `BigUInt` with no words at all when the quotient was zero,
+and `floor_divide_by_uint32_inplace()` read its loop bound from a list it had
+already shortened. Nothing calls those two today, which is precisely why the
+faults were still there.
+
 ### A Newton schedule reaches `seed * 2^n`, and nothing caps it
 
 Two bugs in `sqrt_reciprocal()` and `fast_isqrt()`, caught while measuring the
