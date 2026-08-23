@@ -4,11 +4,15 @@ Test BigUInt exponential functions.
 
 
 from std.python import Python
-from std.random import random_ui64
 from std import testing
 from std.testing import assert_equal, assert_true
 from decimo.biguint.biguint import BigUInt
-from decimo.tests import TestCase, parse_file, load_test_cases
+from decimo.tests import (
+    TestCase,
+    load_test_cases,
+    parse_file,
+    random_decimal_string,
+)
 
 comptime file_path_sqrt = "tests/biguint/test_data/biguint_sqrt.toml"
 
@@ -70,9 +74,7 @@ def test_biguint_sqrt_random_numbers_against_python() raises:
     var python_result: String
 
     for _test_case in range(10):
-        number_a = String("")
-        for _i in range(666):
-            number_a += String(random_ui64(0, 999_999_999_999_999_999))
+        number_a = random_decimal_string(666)
         decimo_result = String(BigUInt(number_a).sqrt())
         python_result = String(pymath.isqrt(Python.int(number_a)))
         assert_equal(

@@ -1039,7 +1039,7 @@ struct Decimal128(
 
         The reliability of this method is limited by the precision of Float64.
         Float64 is reliable up to 15 significant digits and marginally
-        reliable up to 16 siginficant digits. Be careful when using this method.
+        reliable up to 16 significant digits. Be careful when using this method.
 
         Args:
             value: The floating-point value to convert to Decimal128.

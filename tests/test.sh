@@ -29,11 +29,29 @@
 #   decimo      core            → All core suites (bigdecimal+bigint+biguint+bigint10+
 #                                 decimal128+rational+expression+numerals+traits)
 #   all                         → Everything (decimo + toml + cli)
+#
+# Environment:
+#   DECIMO_TEST_JOBS=N   Run up to N Mojo test files concurrently (default 1).
+#                        Output is buffered per file and replayed in order.
 
 set -eo pipefail
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
+SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$REPO_ROOT"
+
+# ── Parallelism ──────────────────────────────────────────────────────────────
+# Every Mojo test file is its own `mojo run` process, and on a warm compile
+# cache that process spends far more time starting up than running tests: the
+# whole core suite is ~0.8 s of test bodies inside ~71 s of wall clock, i.e.
+# ~99% fixed per-file overhead. The files are independent, so they can run
+# concurrently; at DECIMO_TEST_JOBS=8 the same run takes ~13 s.
+#
+# Default 1 (sequential, unchanged) because a serialized run is easier to watch
+# and easier to attribute a crash to. The parallel path still replays each
+# file's output whole and in the original order, so a failing run reads the
+# same - it just arrives all at once at the end of the suite.
+DECIMO_TEST_JOBS="${DECIMO_TEST_JOBS:-1}"
 
 # ── Preflight: ensure tests/decimo.mojoc exists ─────────────────────────────
 # All Mojo test invocations below use `-I tests` to pick up the prebuilt
@@ -52,31 +70,78 @@ ensure_decimo_package() {
 
 # ── Suite definitions ────────────────────────────────────────────────────────
 
-run_mojo_suite() {
-    local dir="$1"
-    ensure_decimo_package
-    for f in tests/"$dir"/*.mojo; do
-        echo "=== $f ==="
-        # Retry once on transient Python init crash (libpython sporadic load failure).
-        local attempt=1
-        local max_attempts=2
-        while (( attempt <= max_attempts )); do
-            # `&&` rather than `if`: after an `if ... fi` whose condition was
-            # false, `$?` is the `if` statement's own status, which is 0. The
-            # `return $rc` below would then hand back success for a suite that
-            # failed to compile, and the whole run would exit green.
-            pixi run mojo run -I tests -D ASSERT=all --debug-level=full "$f" \
-                && break
-            local rc=$?
-            if (( attempt < max_attempts )); then
-                echo "WARN: $f failed (rc=$rc), retrying (attempt $((attempt + 1))/$max_attempts)..."
-                attempt=$((attempt + 1))
-            else
-                echo "ERROR: $f failed after $max_attempts attempts"
-                return $rc
-            fi
-        done
+run_one_mojo_file() {
+    local f="$1"
+    # Retry once on transient Python init crash (libpython sporadic load failure).
+    local attempt=1
+    local max_attempts=2
+    while (( attempt <= max_attempts )); do
+        # `&&` rather than `if`: after an `if ... fi` whose condition was
+        # false, `$?` is the `if` statement's own status, which is 0. The
+        # `return $rc` below would then hand back success for a suite that
+        # failed to compile, and the whole run would exit green.
+        pixi run mojo run -I tests -D ASSERT=all --debug-level=full "$f" \
+            && break
+        local rc=$?
+        if (( attempt < max_attempts )); then
+            echo "WARN: $f failed (rc=$rc), retrying (attempt $((attempt + 1))/$max_attempts)..."
+            attempt=$((attempt + 1))
+        else
+            echo "ERROR: $f failed after $max_attempts attempts"
+            return $rc
+        fi
     done
+}
+
+# Log path for one test file inside a scratch directory. `/` is not legal in a
+# filename, so flatten the path rather than recreating the tree.
+mojo_log_path() {
+    printf '%s/%s.log' "$1" "$(printf '%s' "$2" | tr '/' '_')"
+}
+
+run_mojo_files() {
+    ensure_decimo_package
+
+    if (( DECIMO_TEST_JOBS <= 1 )); then
+        local f
+        for f in "$@"; do
+            echo "=== $f ==="
+            run_one_mojo_file "$f" || return $?
+        done
+        return 0
+    fi
+
+    local tmpdir
+    tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/decimo-tests.XXXXXX")
+
+    # `--run-one` always exits 0 and records failure as a marker file, so xargs
+    # never aborts the batch early; the verdict is collected in the replay loop
+    # below, which also keeps the output in the caller's order.
+    printf '%s\n' "$@" \
+        | xargs -P "$DECIMO_TEST_JOBS" -I{} bash "$SELF" --run-one {} "$tmpdir" \
+        || true
+
+    local rc=0 f log
+    for f in "$@"; do
+        echo "=== $f ==="
+        log=$(mojo_log_path "$tmpdir" "$f")
+        if [[ -f "$log" ]]; then
+            cat "$log"
+        else
+            echo "ERROR: $f produced no output (worker did not run)"
+            rc=1
+        fi
+        if [[ -f "$log.fail" ]]; then
+            rc=1
+        fi
+    done
+
+    rm -rf "$tmpdir"
+    return $rc
+}
+
+run_mojo_suite() {
+    run_mojo_files tests/"$1"/*.mojo
 }
 
 run_bigdecimal()  { run_mojo_suite bigdecimal; }
@@ -330,15 +395,20 @@ run_python() {
 
 # Composite suites
 run_decimo() {
-    run_bigdecimal
-    run_bigint
-    run_biguint
-    run_bigint10
-    run_decimal128
-    run_rational
-    run_expression
-    run_numerals
-    run_traits
+    # One batch rather than nine sequential ones: with DECIMO_TEST_JOBS > 1 a
+    # per-suite batch drains to a handful of stragglers before the next suite
+    # can start, so the pool sits half idle. Sequentially this is the same
+    # ordering as before, since the directories are listed in the same order.
+    run_mojo_files \
+        tests/bigdecimal/*.mojo \
+        tests/bigint/*.mojo \
+        tests/biguint/*.mojo \
+        tests/bigint10/*.mojo \
+        tests/decimal128/*.mojo \
+        tests/rational/*.mojo \
+        tests/expression/*.mojo \
+        tests/numerals/*.mojo \
+        tests/traits/*.mojo
 }
 
 run_all() {
@@ -395,6 +465,16 @@ list_suites() {
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────────
+
+# Internal: run one test file into a log under a scratch directory. Used by the
+# parallel path in `run_mojo_files`; always exits 0 so the batch is not aborted.
+if [ "${1:-}" = "--run-one" ]; then
+    log=$(mojo_log_path "$3" "$2")
+    if ! run_one_mojo_file "$2" > "$log" 2>&1; then
+        : > "$log.fail"
+    fi
+    exit 0
+fi
 
 if [ "${1:-}" = "--list" ] || [ "${1:-}" = "-l" ]; then
     list_suites

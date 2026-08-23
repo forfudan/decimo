@@ -26,15 +26,10 @@ from decimo.expression import (
 
 def rpn_to_string(rpn: List[Token]) -> String:
     """Convert an RPN token list to a space-separated string."""
-    var parts = List[String]()
+    var parts = List[String](capacity=len(rpn))
     for i in range(len(rpn)):
         parts.append(rpn[i].value)
-    var result = String("")
-    for i in range(len(parts)):
-        if i > 0:
-            result += " "
-        result += parts[i]
-    return result^
+    return String(" ").join(parts)
 
 
 def parse_expr(expr: String) raises -> String:

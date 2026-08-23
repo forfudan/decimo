@@ -5,11 +5,15 @@ BigUInt is an unsigned integer type, so it doesn't support negative values.
 
 
 from std.python import Python
-from std.random import random_ui64
 from std import testing
 from std.testing import assert_equal, assert_true
 from decimo.biguint.biguint import BigUInt
-from decimo.tests import TestCase, parse_file, load_test_cases
+from decimo.tests import (
+    TestCase,
+    load_test_cases,
+    parse_file,
+    random_decimal_string,
+)
 
 comptime file_path_arithmetics = (
     "tests/biguint/test_data/biguint_arithmetics.toml"
@@ -204,12 +208,8 @@ def test_biguint_truncate_divide_random_numbers_against_python() raises:
     var python_result: String
 
     for _test_case in range(10):
-        number_a = String("")
-        number_b = String("")
-        for _i in range(123):
-            number_a += String(random_ui64(0, 999_999_999_999_999_999))
-        for _i in range(45):
-            number_b += String(random_ui64(0, 999_999_999_999_999_999))
+        number_a = random_decimal_string(123)
+        number_b = random_decimal_string(45)
         decimo_result = String(BigUInt(number_a) // BigUInt(number_b))
         python_result = String(Python.int(number_a) // Python.int(number_b))
         assert_equal(
@@ -244,15 +244,11 @@ def test_biguint_truncate_divide_huge_random_numbers_against_python() raises:
 
     _set_max_str_digits(500000)
 
-    var number_a: String = String("")
-    var number_b: String = String("")
     var decimo_result: String
     var python_result: String
 
-    for _i in range(12345):
-        number_a += String(random_ui64(0, 999_999_999_999_999_999))
-    for _i in range(789):
-        number_b += String(random_ui64(0, 999_999_999_999_999_999))
+    var number_a = random_decimal_string(12345)
+    var number_b = random_decimal_string(789)
     decimo_result = String(BigUInt(number_a) // BigUInt(number_b))
     python_result = String(Python.int(number_a) // Python.int(number_b))
     assert_equal(
