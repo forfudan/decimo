@@ -202,9 +202,12 @@ struct _ChudnovskyPartialSum:
 
     the three values for a range are the two running products and the sum:
 
-    - `p` is `P(a+1) * ... * P(b-1)`,
-    - `q` is `Q(a+1) * ... * Q(b-1)`,
+    - `p` is `P(a) * ... * P(b-1)`,
+    - `q` is `Q(a) * ... * Q(b-1)`,
     - `t` is chosen so that the partial sum over `[a, b)` equals `t / q`.
+
+    Index `0` has no predecessor to form a ratio with, so `P(0)` and `Q(0)`
+    are taken to be `1` and the leaf at `0` contributes `t = L(0)` alone.
 
     Carrying `p` as well as `q` is what makes the leaves O(1). The previous
     formulation stored each term as an already-evaluated fraction, so every

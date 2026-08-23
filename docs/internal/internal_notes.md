@@ -175,6 +175,23 @@ The balanced row is the control: the loop never fires there, and the difference
 is noise. With that in place the `Rational` change pays - summing `1/k^2` to
 1 200 terms goes from 123 ms to 3.1 ms, a 39x improvement.
 
+One trap worth recording, caught in review of PR #270. `bit_length()` returns a
+signed `Int`, so for `gcd(small, big)` the gap is simply negative, the
+balancing loop never runs, and the call drops straight back into the quadratic
+binary loop. Both argument orders still return the right answer, so no
+correctness test can see it:
+
+| `gcd(a, b)`            | forward  | reversed, unordered | reversed, ordered |
+| ---------------------- | -------- | ------------------- | ----------------- |
+| 1 329 bits, 41 bits    | 0.000 ms | 0.014 ms            | 0.000 ms          |
+| 5 980 bits, 7 bits     | 0.001 ms | 0.268 ms            | 0.001 ms          |
+| 17 939 bits, 7 bits    | 0.002 ms | 2.367 ms            | 0.003 ms          |
+
+`gcd()` therefore orders its operands by magnitude before measuring the gap.
+Each Euclidean step preserves that order on its own - the new pair is
+`(v, u mod v)`, and a remainder is smaller than what it was taken modulo - so
+one comparison at the top is enough.
+
 The balanced case is still Stein's, which is quadratic. A subquadratic gcd
 (Lehmer, or half-gcd) would be the next step, and would also change the
 full-gcd-per-combine trade-off recorded above.

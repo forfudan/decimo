@@ -113,6 +113,15 @@ def gcd(a: BigInt, b: BigInt) raises -> BigInt:
     if v.is_zero():
         return u^
 
+    # Order the operands by magnitude, so that `gcd(a, b)` and `gcd(b, a)`
+    # take the same path from here on. `bit_length()` returns a signed `Int`,
+    # so without this the gap below is simply negative for the reversed
+    # argument order and the balancing loop never runs.
+    if compare_magnitudes(u, v) < 0:
+        var larger = v^
+        v = u^
+        u = larger^
+
     # Balance the operands before entering the binary loop.
     #
     # Stein's algorithm makes progress of roughly one bit per iteration, and
@@ -128,6 +137,10 @@ def gcd(a: BigInt, b: BigInt) raises -> BigInt:
     # with a 20-bit one: 4.85 ms before, 0.003 ms after. Balanced operands
     # skip the loop entirely and are unaffected (5 980 bits: 0.805 vs 0.818
     # ms, i.e. noise).
+    #
+    # `u` is the larger operand on entry, and each step keeps it that way:
+    # the new pair is `(v, u mod v)` and a remainder is smaller than what it
+    # was taken modulo.
     while u.bit_length() - v.bit_length() >= _GCD_EUCLID_GAP_BITS:
         var remainder = floor_modulo(u, v)
         u = v^
