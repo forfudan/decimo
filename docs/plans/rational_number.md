@@ -266,38 +266,61 @@ and divides both by `g`, then ensures the denominator is positive.
 
 ### Phase 1: Core Type (Foundation)
 
-- [ ] Create `src/decimo/rational/` module directory
-- [ ] Implement `Rational` struct with `BigInt` numerator/denominator
-- [ ] `_normalize()` using `BigInt.gcd()`
-- [ ] Constructors: from two BigInts, from single BigInt, from Int
-- [ ] Basic arithmetic: `+`, `-`, `*`, `/`
-- [ ] Comparison operators: `==`, `!=`, `<`, `<=`, `>`, `>=`
-- [ ] `__str__`, `__repr__`, `write_to`
-- [ ] `__neg__`, `__abs__`
+- [x] Create `src/decimo/rational/` module directory
+- [x] Implement `Rational` struct with `BigInt` numerator/denominator
+- [x] `_normalize()` using `BigInt.gcd()`
+- [x] Constructors: from two BigInts, from single BigInt, from Int
+- [x] Basic arithmetic: `+`, `-`, `*`, `/`
+- [x] Comparison operators: `==`, `!=`, `<`, `<=`, `>`, `>=`
+- [x] `__str__`, `__repr__`, `write_to`
+- [x] `__neg__`, `__abs__`
 - [ ] Trait conformances: Stringable, Writable, Comparable, EqualityComparable,
       Hashable, Copyable, Movable
-- [ ] Unit tests for all of the above
+      (done except `Hashable`, which needs `__hash__`; `Stringable` is not
+      declared, though `String(r)` already works through `Writable`)
+- [x] Unit tests for all of the above — `tests/rational/test_rational_basic.mojo`
 
 ### Phase 2: Conversions & Rounding
 
-- [ ] String parsing: `"3/7"`, `"1.5"`, `"-42"`, `"7e-3"`
-- [ ] `from_float(Float64)`
-- [ ] `from_bigdecimal(BigDecimal)`
-- [ ] `to_float()`, `to_integer()`, `to_bigdecimal(precision, rounding_mode)`
+- [x] String parsing: `"3/7"`, `"1.5"`, `"-42"`, `"7e-3"`
+- [x] `from_float(Float64)`
+- [x] `from_bigdecimal(BigDecimal)`
+- [x] `to_float()`, `to_integer()`, `to_bigdecimal(precision, rounding_mode)`
 - [ ] `floor()`, `ceil()`, `trunc()`, `round()`, `fract()`
 - [ ] `__floordiv__`, `__mod__`
 - [ ] `__pow__(Int)`
-- [ ] `reciprocal()`
+- [x] `reciprocal()`
 - [ ] In-place operators: `__iadd__`, `__isub__`, `__imul__`, `__itruediv__`
-- [ ] Unit tests
+- [x] Unit tests for the conversions above —
+      `tests/rational/test_rational_conversion.mojo`
+
+> Progress note, 2026-08-23: the conversion half of Phase 2 is in.
+>
+> - `from_string` doubles as the `Parsable` conformance, and takes either one
+>   decimal literal or two separated by `/`. Each side goes through
+>   `BigDecimal`, so it accepts everything `BigDecimal` does — signs, spaces,
+>   commas, underscores, scientific notation — and `"1.5/2.5"` is 3/5.
+> - `to_bigdecimal(precision, rounding_mode)` divides the exact integers and
+>   rounds once, weighing `2 * remainder` against the divisor, so all seven
+>   rounding modes are honoured with no double rounding. A value with a finite
+>   decimal form comes back unpadded (`1/2` is `0.5`).
+> - `to_float()` builds the Float64 bit pattern from a 53-bit quotient rounded
+>   ties-to-even, rather than going through a decimal string. The decimal
+>   detour would lose exact halfway cases — `(2^53 + 1) / 2^53` must round to
+>   `1.0` — and Mojo's `Float64(String)` rejects long literals anyway.
+>   Subnormals, overflow to `inf` and underflow to zero are all covered.
+> - All of it is cross-checked against CPython `fractions.Fraction`,
+>   `float(Fraction)` and `decimal.Decimal` over 200 random cases spanning
+>   small, huge, tiny and dyadic fractions.
 
 ### Phase 3: Advanced Features
 
 - [ ] `limit_denominator(max)` — continued-fraction best-approximation algorithm
 - [ ] `continued_fraction() -> List[BigInt]`
 - [ ] `mediant(other)`
-- [ ] `is_integer()`, `is_zero()`, `is_positive()`, `is_negative()`, `sign()`
-- [ ] Predefined constants: `ZERO`, `ONE`, `ONE_HALF`
+- [x] `is_integer()`, `is_zero()`, `is_positive()`, `is_negative()`, `sign()`
+- [x] Predefined constants — as the static methods `zero()`, `one()`, `two()`,
+      `minus_one()`, `one_half()`, `one_third()`
 - [ ] Mixed-type arithmetic: `Rational + BigInt`, `Rational + Int`, etc.
 - [ ] Unit tests
 
