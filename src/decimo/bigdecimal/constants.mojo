@@ -298,35 +298,73 @@ def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
     """
 
     var working_precision = precision + 9  # 1 words
-    var iterations = (
-        precision // 14
-    ) + 9  # ~14.18 digits per iteration + safety margin
+
+    # Each term of the series is worth log10(151931373056000) = 14.18 digits,
+    # so `ceil(working_precision / 14)` terms already cover the target with a
+    # little to spare, and three more terms are 42 digits of margin on top.
+    # The margin used to be a flat nine terms on top of `precision // 14`,
+    # which is invisible at 10 000 digits but nearly doubles the work at 100:
+    # 16 terms where 11 will do.
+    var iterations = (working_precision + 13) // 14 + 3
 
     var bdec_10005 = BigDecimal.from_raw_components(UInt32(10005))
     var bdec_426880 = BigDecimal.from_raw_components(UInt32(426880))
 
-    # Binary splitting to compute the series sum as a single rational number
-    var series = chudnovsky_split(0, iterations)
+    # Binary splitting to compute the series sum as a single rational number.
+    #
+    # The two halves are joined here rather than through
+    # `_ChudnovskyPartialSum.combine()` because `p` is dead at the root: the
+    # formula below reads only `q` and `t`, so the `left.p * right.p` that
+    # `combine()` would compute is a full-width multiplication whose result is
+    # discarded. Three multiplications at the top instead of four.
+    var mid = iterations // 2
+    var left = chudnovsky_split(0, mid)
+    var right = chudnovsky_split(mid, iterations)
+    var series_q = left.q * right.q
+    var series_t = left.t * right.q + left.p * right.t
 
-    # Convert rational result to BigDecimal: q/t.
+    # Trim both operands to the digits that will actually survive.
     #
     # Binary splitting hands back two operands of tens of thousands of digits,
-    # of which only `working_precision` survive the division. Shifting both by
+    # of which only `working_precision` outlive the division. Shifting both by
     # the same number of bits leaves the ratio unchanged to within a relative
-    # error of 2^-guard_bits, and keeps the base-2^32 to base-10^9 conversion
-    # proportional to the digits actually wanted rather than to the digits the
-    # splitting happened to produce.
+    # error of 2^-guard_bits, and keeps everything below proportional to the
+    # digits wanted rather than to the digits the splitting happened to
+    # produce.
     var guard_bits = (working_precision + 32) * 10 // 3  # 10/3 > log2(10)
-    var shared_bits = min(series.q.bit_length(), series.t.bit_length())
-    var numerator = series.q.copy()
-    var denominator = series.t.copy()
+    var shared_bits = min(series_q.bit_length(), series_t.bit_length())
+    var numerator = series_q^
+    var denominator = series_t^
     if shared_bits > guard_bits:
         var shift = shared_bits - guard_bits
         numerator = numerator >> shift
         denominator = denominator >> shift
 
-    var sum_series = BigDecimal(numerator).true_divide(
-        BigDecimal(denominator), working_precision
+    # `q / t` is formed as a single fixed-point integer division rather than as
+    # `BigDecimal(q).true_divide(BigDecimal(t))`. The latter converts *both*
+    # operands from base 2^32 to base 10^9 before dividing, and base conversion
+    # is the one cost a binary bignum library never pays at all. Scaling in
+    # binary and converting only the quotient halves that bill: the scaling
+    # multiply and the binary division together come to less than the
+    # conversion they replace.
+    #
+    # `5^s << s` rather than `10^s`: the two are equal, but the power is taken
+    # over the smaller base and the factor of `2^s` is a word shift, so both
+    # the exponentiation and the multiply shrink by about a third.
+    #
+    # The scale has to cover the leading zeros of `q / t` as well as the digits
+    # actually wanted. Rather than hard-code that `q / t` is around 7.4e-8,
+    # bound it from the bit lengths: a fraction whose denominator is `d` bits
+    # longer than its numerator has fewer than `d * log10(2)` leading zeros
+    # after the point. `31/100` rounds that up, and two more digits absorb the
+    # truncation of the division itself.
+    var lead_bits = max(0, denominator.bit_length() - numerator.bit_length())
+    var scale_digits = working_precision + (lead_bits * 31 + 99) // 100 + 2
+
+    var scaled = (numerator * BigInt(5).power(scale_digits)) << scale_digits
+    var quotient = scaled.truncate_divide(denominator)
+    var sum_series = BigDecimal(
+        quotient.to_biguint(), scale_digits, quotient.sign
     )
 
     # Final formula: π = 426880 * √10005 * (q / t)
@@ -352,6 +390,37 @@ def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
     return result^
 
 
+comptime _CHUDNOVSKY_LEAF_UINT128_MAX_K = 4_000_000
+"""Largest term index whose Chudnovsky leaf values still fit in a `UInt128`.
+
+The largest of the three is `T(k) = P(k) * L(k)`, which grows like
+`3.9e10 * k^4` and crosses `2^128` just above `k = 5.4e6`; `Q(k)`, growing like
+`1.1e16 * k^3`, does not cross until `k = 3.1e7`. Four million leaves leaves a
+comfortable margin and covers precisions up to about 56 million digits. Beyond
+it the leaves fall back to `BigInt` arithmetic, which cannot overflow.
+"""
+
+
+def _bigint_from_uint128(value: UInt128, sign: Bool) -> BigInt:
+    """Packs a machine-sized magnitude and a sign into a `BigInt`.
+
+    Args:
+        value: The magnitude, as an unsigned 128-bit integer.
+        sign: `True` if the result is negative.
+
+    Returns:
+        The corresponding `BigInt`.
+    """
+    var words = List[UInt32](capacity=4)
+    var remaining = value
+    while remaining != 0:
+        words.append(UInt32(remaining & UInt128(0xFFFF_FFFF)))
+        remaining >>= UInt128(32)
+    if len(words) == 0:
+        words.append(UInt32(0))
+    return BigInt(raw_words=words^, sign=sign)
+
+
 def chudnovsky_split(a: Int, b: Int) raises -> _ChudnovskyPartialSum:
     """Conducts binary splitting for Chudnovsky series from term a to b-1.
 
@@ -372,6 +441,27 @@ def chudnovsky_split(a: Int, b: Int) raises -> _ChudnovskyPartialSum:
         if a == 0:
             # P(0) and Q(0) are empty products; the sum is just L(0).
             return _ChudnovskyPartialSum(BigInt(1), BigInt(1), BigInt(13591409))
+
+        if a <= _CHUDNOVSKY_LEAF_UINT128_MAX_K:
+            # All three leaf values fit in a `UInt128`, so compute them in
+            # machine arithmetic and pack the words directly. Composing them
+            # out of `BigInt` operands instead costs about ten small
+            # allocations per leaf, and there are `precision / 14` leaves: at
+            # 1 000 digits that allocation traffic is half of the entire
+            # binary splitting, and still a fifth of it at 10 000 digits.
+            var k = UInt128(a)
+            var p128 = (
+                (UInt128(6) * k - UInt128(5))
+                * (UInt128(2) * k - UInt128(1))
+                * (UInt128(6) * k - UInt128(1))
+            )
+            var q128 = k * k * k * UInt128(10939058860032000)
+            var l128 = UInt128(545140134) * k + UInt128(13591409)
+            return _ChudnovskyPartialSum(
+                _bigint_from_uint128(p128, False),
+                _bigint_from_uint128(q128, False),
+                _bigint_from_uint128(p128 * l128, a % 2 == 1),
+            )
 
         # P(a) = (6a-5) * (2a-1) * (6a-1). Built out of `BigInt` rather than
         # `Int` so that the product cannot overflow for very large `a`.

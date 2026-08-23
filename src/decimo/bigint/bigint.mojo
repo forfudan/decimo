@@ -28,7 +28,7 @@ in little-endian order, and a separate sign bit.
 """
 
 from std.bit import bit_width, pop_count
-from std.memory import Pointer, unsafe_memcpy
+from std.memory import Pointer, unsafe_memcpy, unsafe_memset_zero
 from std.sys import size_of
 
 import decimo.bigint.arithmetics as bigint_arithmetics
@@ -553,45 +553,28 @@ struct BigInt(
         if self.is_zero():
             return BigUInt()
 
-        # Above the divide-and-conquer threshold, borrow the base conversion
-        # `to_string()` already has: repeated division below is O(n^2), while
-        # `to_string()` is O(M(n) log n) and re-packing a decimal string into
-        # base-10^9 words is linear. Measured on a 20 000-digit value, the
-        # detour through the string is about three times faster.
         var effective_words = len(self.words)
         while effective_words > 1 and self.words[effective_words - 1] == 0:
             effective_words -= 1
+
+        # Above the divide-and-conquer threshold, split on powers of 10^9:
+        # repeated division is O(n^2), while the recursion is O(M(n) log n)
+        # and lands each half on a base-10^9 word boundary, so the words go
+        # straight into the result with no decimal string in between.
         if effective_words > _DC_TO_STR_ENTRY_THRESHOLD:
             try:
                 return BigUInt(
-                    _magnitude_to_decimal_dc(self.words, effective_words),
-                    ignore_sign=True,
+                    raw_words=_magnitude_to_base_1e9_dc(
+                        self.words, effective_words
+                    )
                 )
             except:
                 # Fall through to the simple path if D&C raises.
                 pass
 
-        # Convert from base 2^32 to base 10^9 using repeated division
-        var dividend = self.copy()
-        var decimal_words = List[UInt32]()
-
-        while not dividend.is_zero():
-            var remainder: UInt64 = 0
-            for i in range(len(dividend.words) - 1, -1, -1):
-                var temp = (remainder << 32) + UInt64(dividend.words[i])
-                dividend.words[i] = UInt32(temp // BigUInt.BASE)
-                remainder = temp % BigUInt.BASE
-
-            # Remove leading zeros from dividend
-            while (
-                len(dividend.words) > 1
-                and dividend.words[len(dividend.words) - 1] == 0
-            ):
-                dividend.words.shrink(len(dividend.words) - 1)
-
-            decimal_words.append(UInt32(remainder))
-
-        return BigUInt(raw_words=decimal_words^)
+        return BigUInt(
+            raw_words=_magnitude_to_base_1e9_simple(self.words, effective_words)
+        )
 
     def to_string(self, line_width: Int = 0) -> String:
         """Returns the decimal string representation of the BigInt.
@@ -2410,31 +2393,7 @@ def _magnitude_to_decimal_simple(words: List[UInt32], eff_words: Int) -> String:
         var val = (UInt64(words[1]) << 32) | UInt64(words[0])
         return String(val)
 
-    # Allocate dividend buffer and get raw pointer for fast inner loop.
-    var dividend = List[UInt32](capacity=eff_words)
-    for i in range(eff_words):
-        dividend.append(words[i])
-    var dp = dividend.unsafe_ptr()
-
-    # Estimate number of 9-digit chunks: ceil(bits * log10(2) / 9) + 1.
-    var est_chunks = (eff_words * 32 * 9 + 268) // 269 + 1
-
-    # Extract base-10^9 chunks via repeated division.
-    var chunks = List[UInt32](capacity=est_chunks)
-    var div_len = eff_words
-
-    while div_len > 0:
-        var remainder: UInt64 = 0
-        for i in range(div_len - 1, -1, -1):
-            var temp = (remainder << 32) + UInt64(dp[unsafe_offset=i])
-            dp[unsafe_offset=i] = UInt32(temp // _DECIMAL_CHUNK_BASE)
-            remainder = temp % _DECIMAL_CHUNK_BASE
-
-        while div_len > 0 and dp[unsafe_offset=div_len - 1] == 0:
-            div_len -= 1
-
-        chunks.append(UInt32(remainder))
-
+    var chunks = _magnitude_to_base_1e9_simple(words, eff_words)
     var num_chunks = len(chunks)
     if num_chunks == 0:
         return String("0")
@@ -2469,6 +2428,190 @@ def _magnitude_to_decimal_simple(words: List[UInt32], eff_words: Int) -> String:
             buf.append(digits9[d])
 
     return String(unsafe_from_utf8=buf^)
+
+
+def _magnitude_to_base_1e9_simple(
+    words: List[UInt32], eff_words: Int
+) -> List[UInt32]:
+    """Converts a magnitude from base 2^32 to base 10^9 by repeated division.
+
+    Complexity is O(n^2); this is the base case of the divide-and-conquer
+    conversion and the whole of the conversion for small inputs. The result is
+    the natural intermediate of decimal output as well, so
+    `_magnitude_to_decimal_simple()` formats what this returns rather than
+    repeating the division loop.
+
+    Args:
+        words: The magnitude in little-endian UInt32 words.
+        eff_words: Effective number of words (excluding trailing zeros).
+
+    Returns:
+        The magnitude in little-endian base-10^9 words, with no trailing zero
+        word except for the value zero itself.
+    """
+    if eff_words <= 0 or (eff_words == 1 and words[0] == 0):
+        return [UInt32(0)]
+
+    # Allocate dividend buffer and get raw pointer for fast inner loop.
+    var dividend = List[UInt32](capacity=eff_words)
+    for i in range(eff_words):
+        dividend.append(words[i])
+    var dp = dividend.unsafe_ptr()
+
+    # Estimate number of 9-digit chunks: ceil(bits * log10(2) / 9) + 1.
+    var est_chunks = (eff_words * 32 * 9 + 268) // 269 + 1
+
+    var chunks = List[UInt32](capacity=est_chunks)
+    var div_len = eff_words
+
+    while div_len > 0:
+        var remainder: UInt64 = 0
+        for i in range(div_len - 1, -1, -1):
+            var temp = (remainder << 32) + UInt64(dp[unsafe_offset=i])
+            dp[unsafe_offset=i] = UInt32(temp // _DECIMAL_CHUNK_BASE)
+            remainder = temp % _DECIMAL_CHUNK_BASE
+
+        while div_len > 0 and dp[unsafe_offset=div_len - 1] == 0:
+            div_len -= 1
+
+        chunks.append(UInt32(remainder))
+
+    if len(chunks) == 0:
+        chunks.append(UInt32(0))
+
+    return chunks^
+
+
+def _magnitude_to_base_1e9_dc(
+    words: List[UInt32], eff_words: Int
+) raises -> List[UInt32]:
+    """Converts a magnitude from base 2^32 to base 10^9, divide and conquer.
+
+    Same recursion as `_magnitude_to_decimal_dc()`, but splitting on powers of
+    `10^9` instead of powers of `10`, so that each half lands on a base-10^9
+    word boundary and the digits can be written straight into the output
+    buffer. Nothing here builds a decimal string: the caller wants words, and
+    going out through a string and back costs a full formatting pass plus a
+    full parse over the whole number.
+
+    Complexity: O(M(n) . log n), where M(n) is the multiplication cost.
+
+    Args:
+        words: The magnitude in little-endian UInt32 words.
+        eff_words: Effective number of words (excluding trailing zeros).
+
+    Returns:
+        The magnitude in little-endian base-10^9 words, with no trailing zero
+        word except for the value zero itself.
+
+    Raises:
+        Error: If an arithmetic error occurs during the internal divisions.
+    """
+    # Estimate the output length from the bit length, rounding up throughout.
+    var top_word = words[eff_words - 1]
+    var bits_in_top = 32
+    var probe: UInt32 = 1 << 31
+    while probe != 0 and (top_word & probe) == 0:
+        bits_in_top -= 1
+        probe >>= 1
+    var total_bits = (eff_words - 1) * 32 + bits_in_top
+
+    # digits <= floor(bits * log10(2)) + 1, with 78/259 just over log10(2).
+    var est_digits = (total_bits * 78 + 258) // 259 + 1
+    var est_words = (est_digits + 8) // 9
+
+    # Smallest `max_level` with `2^max_level >= est_words`; the split is then
+    # always at a level strictly below it.
+    var max_level = 0
+    var tmp = est_words - 1
+    while tmp > 0:
+        tmp >>= 1
+        max_level += 1
+
+    # Power table: power_table[k] = (10^9)^(2^k), whose remainder therefore
+    # occupies exactly 2^k base-10^9 words.
+    var num_powers = max_level
+    var power_table = List[BigInt](capacity=num_powers)
+    power_table.append(BigInt(Int(_DECIMAL_CHUNK_BASE)))
+    for k in range(1, num_powers):
+        var sq = power_table[k - 1] * power_table[k - 1]
+        power_table.append(sq^)
+
+    var trimmed = List[UInt32](capacity=eff_words)
+    for i in range(eff_words):
+        trimmed.append(words[i])
+    var n = BigInt(raw_words=trimmed^, sign=False)
+
+    # `2^max_level` words is an upper bound on the output length, so every
+    # write below is in range and the buffer needs zeroing only once.
+    var capacity = 1 << max_level
+    var out = List[UInt32](capacity=capacity)
+    out.resize(unsafe_uninit_length=capacity)
+    unsafe_memset_zero(ptr=out._data, count=capacity)
+
+    _dc_to_base_1e9_recursive(n, power_table, num_powers - 1, out, 0)
+
+    var length = capacity
+    while length > 1 and out[length - 1] == 0:
+        length -= 1
+    out.shrink(length)
+    return out^
+
+
+def _dc_to_base_1e9_recursive(
+    n: BigInt,
+    power_table: List[BigInt],
+    max_level: Int,
+    mut out: List[UInt32],
+    offset: Int,
+) raises:
+    """Writes the base-10^9 words of `n` into `out` starting at `offset`.
+
+    The caller guarantees that `out` is zero-filled and long enough, so a
+    short value simply leaves the high words of its slot alone.
+
+    Args:
+        n: The non-negative value to convert.
+        power_table: Table with `power_table[k] = (10^9)^(2^k)`.
+        max_level: Highest level of `power_table` usable for this subproblem.
+        out: The destination buffer, in little-endian base-10^9 words.
+        offset: Index in `out` at which this subproblem's words begin.
+
+    Raises:
+        Error: If an arithmetic error occurs during the internal divisions.
+    """
+    var eff = len(n.words)
+    while eff > 1 and n.words[eff - 1] == 0:
+        eff -= 1
+
+    if eff <= _DC_TO_STR_BASE_THRESHOLD:
+        var chunks = _magnitude_to_base_1e9_simple(n.words, eff)
+        for i in range(len(chunks)):
+            out[offset + i] = chunks[i]
+        return
+
+    # Largest level `k` with `power_table[k] <= n`.
+    var level = -1
+    for k in range(min(max_level + 1, len(power_table))):
+        if n >= power_table[k]:
+            level = k
+        else:
+            break
+
+    if level < 0:
+        var chunks = _magnitude_to_base_1e9_simple(n.words, eff)
+        for i in range(len(chunks)):
+            out[offset + i] = chunks[i]
+        return
+
+    var qr = bigint_arithmetics.floor_divmod(n, power_table[level])
+
+    # The low part occupies exactly 2^level base-10^9 words, so the high part
+    # starts that far along.
+    _dc_to_base_1e9_recursive(qr[1], power_table, level - 1, out, offset)
+    _dc_to_base_1e9_recursive(
+        qr[0], power_table, level - 1, out, offset + (1 << level)
+    )
 
 
 def _magnitude_to_decimal_dc(

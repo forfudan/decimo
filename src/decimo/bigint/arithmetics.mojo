@@ -1260,15 +1260,27 @@ def _divmod_burnikel_ziegler(
     var norm_a = _shift_left_words(a, bit_shift)
 
     # STEP 2: Set n = number of words for the divisor block.
-    # Use minimal padding: just round up to even so the first halving works.
-    # This avoids the massive padding waste of rounding to 2^k * cutoff
-    # (e.g., 520 words → 1024 with the old scheme, vs 520 with this one).
-    # The recursion handles odd half-sizes gracefully by falling through
-    # to the base case when n is odd.
+    #
+    # `n` has to survive every halving the recursion performs, not just the
+    # first one: `_bz_two_by_one_slices()` drops to Knuth D the moment it is
+    # handed an odd block size, and Knuth D is O(n^2). Rounding up to even is
+    # not enough, because evenness does not survive halving - a 20 762-word
+    # divisor is even, but its half is 10 381, so the first recursive step
+    # lands on a 10 381-word schoolbook division and the whole point of
+    # Burnikel-Ziegler is lost. (Measured: a 100 000-digit division took
+    # 81 ms this way against 26 ms for the same operands one power of two
+    # smaller.)
+    #
+    # Pick `n = j * 2^k` instead, with `2^k` the smallest power of two that
+    # brings `j` down to the cutoff. Halving then stays even until it reaches
+    # `j`, which is small enough that Knuth D is the right answer. The padding
+    # this costs is under one part in `CUTOFF_BURNIKEL_ZIEGLER`, far from the
+    # round-up-to-`2^k * cutoff` scheme that would take 520 words to 1024.
     var len_norm_b = len(norm_b)
-    var n = len_norm_b
-    if n & 1 == 1:
-        n += 1  # round up to even
+    var block_pow2 = 1
+    while (len_norm_b + block_pow2 - 1) // block_pow2 > CUTOFF_BURNIKEL_ZIEGLER:
+        block_pow2 <<= 1
+    var n = ((len_norm_b + block_pow2 - 1) // block_pow2) * block_pow2
 
     # Pad both by prepending zeros (multiply by B^word_pad).
     var word_pad = n - len_norm_b
