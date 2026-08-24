@@ -84,31 +84,31 @@ Dated by report file under `benches/bigdecimal/reports/`. Append-only.
 ms — 2.7× MPFR 4.2.2 + GMP 6.3, which does the same job in 20.7 ms. Everything
 that range-reduces against π (`sin`/`cos`/`tan`) inherits it.
 
-| Date     | PR   | Item                                                                     |
-| -------- | ---- | ------------------------------------------------------------------------ |
-| 20260823 | #269 | Chudnovsky `P`/`Q`/`T` recurrence — O(1) leaves, root denominator is one |
-|          |      | term's worth instead of the product of every term's                      |
-| 20260823 | #269 | Binary splitting moved from `BigDecimal` to `BigInt`                     |
-| 20260823 | #270 | `sqrt_via_reciprocal_iteration()` instead of the exact `sqrt()` (which costs two       |
-|          |      | full-size divisions to reproduce CPython's perfect-square test)          |
-| 20260823 | #270 | Divide once in binary, convert only the quotient; `10^s` as `5^s << s`   |
-| 20260823 | #270 | Leaves packed from `UInt128` — was half the split's time at p=1000       |
-| 20260823 | #271 | B-Z divisor padding fixed; a 100 000-digit divide 81 ms → 18 ms          |
-| 20260824 | #273 | Toom-3 on `BigInt` (`bigint_enhancement.md` T-M1); 152 → 142 ms          |
-| 20260824 | #273 | Product-scanning `BigUInt` schoolbook, replacing deferred-carry (T-9b);  |
-|          |      | 2.2× at 256 words, and it supersedes `multiply_slices_deferred_carry`    |
-| 20260824 | #273 | `BigUInt` cutoffs re-tuned: Karatsuba 64 → 256, Toom-3 256 → 768;        |
-|          |      | a 100 000-digit `BigUInt` multiply 10.5 → 6.0 ms                         |
-| 20260824 | #274 | Product-scanning `BigUInt` schoolbook mul, windowed schoolbook div,      |
-|          |      | dead `right.p` at the root of the split. Total: 142 → 78 ms              |
-| 20260824 | #275 | `sqrt_via_reciprocal_iteration()` Newton step rearranged around the residual (T-Sq1)   |
-|          |      | 10.4 → 6.6 ms at p=100000                                                |
-| 20260824 | #275 | 64-bit limbs inside the `BigInt` schoolbook base case                    |
-|          |      | (`bigint_enhancement.md` T-M4), plus cutoffs re-tuned. Total: 78 → 55 ms |
-| 20260824 | #276 | `fast_isqrt()` Newton step rearranged around the residual too (T-Sq1);   |
-|          |      | only 6% — `sqrt(10005, 50000)` 19.3 → 18.2 ms. See T-Sq2                 |
-| 20260824 | #276 | Binary-only `pi()` tail via `reciprocal_sqrt_fixed_point()` (T-PI4);          |
-|          |      | sqrt and final multiplies leave base 10^9. Total: 58.2 → 50.2 ms         |
+| Date     | PR   | Item                                                                                  |
+| -------- | ---- | ------------------------------------------------------------------------------------- |
+| 20260823 | #269 | Chudnovsky `P`/`Q`/`T` recurrence — O(1) leaves, root denominator is one              |
+|          |      | term's worth instead of the product of every term's                                   |
+| 20260823 | #269 | Binary splitting moved from `BigDecimal` to `BigInt`                                  |
+| 20260823 | #270 | `sqrt_via_reciprocal_iteration()` instead of the exact `sqrt()` (which costs two      |
+|          |      | full-size divisions to reproduce CPython's perfect-square test)                       |
+| 20260823 | #270 | Divide once in binary, convert only the quotient; `10^s` as `5^s << s`                |
+| 20260823 | #270 | Leaves packed from `UInt128` — was half the split's time at p=1000                    |
+| 20260823 | #271 | B-Z divisor padding fixed; a 100 000-digit divide 81 ms → 18 ms                       |
+| 20260824 | #273 | Toom-3 on `BigInt` (`bigint_enhancement.md` T-M1); 152 → 142 ms                       |
+| 20260824 | #273 | Product-scanning `BigUInt` schoolbook, replacing deferred-carry (T-9b);               |
+|          |      | 2.2× at 256 words, and it supersedes `multiply_slices_deferred_carry`                 |
+| 20260824 | #273 | `BigUInt` cutoffs re-tuned: Karatsuba 64 → 256, Toom-3 256 → 768;                     |
+|          |      | a 100 000-digit `BigUInt` multiply 10.5 → 6.0 ms                                      |
+| 20260824 | #274 | Product-scanning `BigUInt` schoolbook mul, windowed schoolbook div,                   |
+|          |      | dead `right.p` at the root of the split. Total: 142 → 78 ms                           |
+| 20260824 | #275 | `sqrt_via_reciprocal_iteration()` Newton step rearranged around the residual (T-Sq1)  |
+|          |      | 10.4 → 6.6 ms at p=100000                                                             |
+| 20260824 | #275 | 64-bit limbs inside the `BigInt` schoolbook base case                                 |
+|          |      | (`bigint_enhancement.md` T-M4), plus cutoffs re-tuned. Total: 78 → 55 ms              |
+| 20260824 | #276 | `isqrt_via_reciprocal_seed()` Newton step rearranged around the residual too (T-Sq1); |
+|          |      | only 6% — `sqrt(10005, 50000)` 19.3 → 18.2 ms. See T-Sq2                              |
+| 20260824 | #276 | Binary-only `pi()` tail via `reciprocal_sqrt_fixed_point()` (T-PI4);                  |
+|          |      | sqrt and final multiplies leave base 10^9. Total: 58.2 → 50.2 ms                      |
 
 ### 2.4 Performance tracking — absolute decimo median ns/iter (ascending precision)
 
@@ -613,20 +613,19 @@ P3 — Divide all precisions (5× py → target ≤2×)
 
 P4 — sqrt at p=100 (2.1× py → target ≤1.0×)
 
-- **T-S1: Small-coefficient short-circuit before `fast_isqrt`.**
+- **T-S1: Small-coefficient short-circuit before `isqrt_via_reciprocal_seed`.**
   **INVALID — already handled, and the premise is false (20260611).**
   `sqrt_exact` already short-circuits the reciprocal-Newton dance:
-  `if len(c.words) <= 20: n = biguint_exponential.sqrt(c)` (direct
-  integer Newton) else `fast_isqrt`. Two problems with the task as
-  written: (1) at p=100 the coefficient is rescaled so `isqrt(c)` has
-  `prec` (101) digits, making `c` ~202 digits (~23 words) — it never
-  fits UInt128, so a "UInt128 isqrt" cannot apply. (2) The claim that
-  the float64 setup + precision doubling is "wasted" at this size is
-  empirically false: raising the direct-Newton threshold to 30 words so
-  p=100 takes the direct path **regressed** sqrt@p100 from 8,370 →
-  15,125 ns (1.8× → 3.8× py). `fast_isqrt` is the faster choice at ~23
-  words; the existing threshold of 20 is well-tuned. sqrt@p1000 is
-  already 0.7× py.
+  `if len(c.words) <= 20: n = biguint_exponential.sqrt(c)` (direct integer
+  Newton) else `isqrt_via_reciprocal_seed`. Two problems with the task as
+  written: (1) at p=100 the coefficient is rescaled so `isqrt(c)` has `prec`
+  (101) digits, making `c` ~202 digits (~23 words) — it never fits UInt128, so a
+  "UInt128 isqrt" cannot apply. (2) The claim that the float64 setup + precision
+  doubling is "wasted" at this size is empirically false: raising the
+  direct-Newton threshold to 30 words so p=100 takes the direct path
+  **regressed** sqrt@p100 from 8,370 → 15,125 ns (1.8× → 3.8× py).
+  `isqrt_via_reciprocal_seed` is the faster choice at ~23 words; the existing
+  threshold of 20 is well-tuned. sqrt@p1000 is already 0.7× py.
 
 P5 — ln far-from-1 (4.6×–9.2× py → target ≤2×)
 
@@ -829,16 +828,16 @@ P7 — `round` (2× py → target ≤1.0×)
 **T-PI4 — keep the `pi()` pipeline binary, convert once. DONE 20260824.**
 Stage breakdown at p=100000, before and after:
 
-| Stage                              | before   | after    | Base |
-| ---------------------------------- | -------- | -------- | ---- |
-| binary splitting, below the root   | 16.8     | 16       | 2^32 |
-| base 2^32 → 10^9                   | 9.8      | 9        | both |
-| `sqrt_via_reciprocal_iteration(10005)`           | 7.0      | 2        | 2^32 |
-| final division                     | 6.6      | 6        | 2^32 |
-| root join, 3 full-width multiplies | 6.5      | 6        | 2^32 |
-| final multiplies and round         | 6.4      | 2        | 2^32 |
-| `5^s` and the scaling multiply     | 3.3      | 3        | 2^32 |
-| **total**                          | **58.2** | **50.2** |      |
+| Stage                                  | before   | after    | Base |
+| -------------------------------------- | -------- | -------- | ---- |
+| binary splitting, below the root       | 16.8     | 16       | 2^32 |
+| base 2^32 → 10^9                       | 9.8      | 9        | both |
+| `sqrt_via_reciprocal_iteration(10005)` | 7.0      | 2        | 2^32 |
+| final division                         | 6.6      | 6        | 2^32 |
+| root join, 3 full-width multiplies     | 6.5      | 6        | 2^32 |
+| final multiplies and round             | 6.4      | 2        | 2^32 |
+| `5^s` and the scaling multiply         | 3.3      | 3        | 2^32 |
+| **total**                              | **58.2** | **50.2** |      |
 
 The square root and both final multiplications used to run in base 10^9, where
 a multiplication costs about 2.8× what it costs in base 2^32 (6.4 ms vs 2.3 at
@@ -937,50 +936,50 @@ binary splitting). All implementable in base-10^9.
 Open items in priority order (target: dm/py ≤ 1.5× across the board,
 some ops < 1.0×):
 
-| #      | Issue                                      | Effort | Priority | Target gain                                     |
-| ------ | ------------------------------------------ | ------ | -------- | ----------------------------------------------- |
-| T-API1 | `precision` arg on `add`/`sub`/`multiply`  | S      | **DONE** | exact-then-round; foundation for T-API2/T-API3  |
-| T-R2   | `round_to_precision_inplace` audit         | S      | **DONE** | code-quality; ~0% on divide bench (noise)       |
-| T-A1   | `debug_assert .format` sweep across        | S      | **DONE** | sweep complete (20260606);                      |
-|        |                                            |        |          | no .format asserts remain                       |
-|        | BigDecimal                                 |        |          |                                                 |
-| T-A2   | `multiply_by_power_of_ten` audit           | M      | **DONE** | inplace + multiple-of-9 fast path in use;       |
-|        | + inplace variant                          |        |          | minor residual in non-inplace add/sub           |
-| T-A3   | Hot-path-first switch in `add`/`sub`       | S      | **DONE** | subtract −37%@p1000, −24%@p100;                 |
-|        |                                            |        |          | add −13%@p1000; add@p100 noise                  |
-| T-A4   | `@no_inline` raise helpers in              | S      | **DONE** | `_shorten_path` `@no_inline`;                   |
-|        | BigDecimal/BigUInt                         |        |          | shrinks every inlined raise site                |
-| T-A5   | `is_zero`/`is_integer` branch audit        | S      | **DONE** | kept; removal = 3x regression on zero           |
-| T-M1   | Small-coefficient mul fast path            | M      | **NO**   | UInt128 path 130 vs 46 ns (base-10⁹)            |
-| T-M2   | Single-pass rounding in `multiply`         | S      | **DONE** | already single-pass; 90→80 ns                   |
-| T-D1   | Short-divisor fast path in `divide`        | M      | **DONE** | already via BigUInt dispatch                    |
-| T-D2   | Trailing-zero strip allocation in divide   | S      | **DONE** | inplace strip; −16–21% exact-divide             |
-| T-D3   | Reciprocal-Newton divide (legacy Task 2)   | XL     | **WAIT** | div only 2.1–3.1× mul →                         |
-|        |                                            |        |          | recip-Newton ~5× mul (slower); gated on NTT     |
-| T-S1   | Small-coef short-circuit in `sqrt` p=100   | S      | **NO**   | already short-circuits                          |
-| T-L1   | atanh reformulation for ln (T3f)           | M      | **DONE** | already a hybrid; near-1 0.9–1.8× py            |
-| T-L2   | Process-wide ln(10) cache recipe           | S      | **DONE** | `MathCache` (ln2/ln1.25/ln10) + recipe exist;   |
-|        |                                            |        |          | auto-cache blocked on Mojo                      |
-| T-L3   | AGM ln for p ≥ 1000 (T3g)                  | XL     | **WAIT** | gated on NTT (heavy per-iter sqrt);             |
-|        |                                            |        |          | far-from-1 ln now addressed by T-3e             |
-| T-IO1  | `from_string` digit batching               | M      | **DONE** | batching already present;                       |
-|        |                                            |        |          | slice removed, 1.4×→1.2×                        |
-| T-IO2  | `to_string` right-aligned InlineArray      | M      | **DONE** | hybrid exact-size direct-write;                 |
-|        |                                            |        |          | long 2.5–2.9×→0.8×                              |
-| T-R1   | `round` `.format` sweep                    | S      | **NO**   | no `.format` asserts in round; great            |
-| T-7b   | Reciprocal-Newton nth root                 | M      | **WAIT** | break-even at current mul speed                 |
-|        |                                            |        |          | (div ~2.7× mul); root already 0.2× py           |
-| T-PI4  | Binary-only `pi()` pipeline, convert once  | M      | **DONE** | 58.2 → 50.2 ms; sqrt + final mul left base 10^9 |
-| T-Sq1  | Newton step around the residual in sqrt    | S      | **DONE** | 1.6× in `sqrt_via_reciprocal_iteration`; only 6% in           |
-|        |                                            |        |          | `fast_isqrt`, whose time is elsewhere           |
-| T-Sq2  | Exact `sqrt()` refinement out of base 10^9 | M      | **OPEN** | exact path is 7.7× `sqrt_via_reciprocal_iteration`; one       |
-|        |                                            |        |          | full-width divide + square, both base 10^9      |
-| T-9b   | Product-scanning `BigUInt` schoolbook      | M      | **DONE** | 2.2× at 256 words; deferred-carry removed       |
-| T-9c   | Re-tune `BigUInt` mul cutoffs              | S      | **DONE** | Kara 64→256, Toom3 256→768; 10.5 → 6.0 ms       |
-| T-D5   | Windowed fused mul-sub in schoolbook div   | M      | **DONE** | 2.0× at 100 digits, 1.5× at 300, 1.3× at 1 000  |
-| T-5    | NTT multiplication                         | XL     | **NEXT** | largest lever: 3.7× of the GMP mul gap is FFT   |
-| T-9    | deferred-carry schoolbook mul              | M      | **DONE** | deferred-carry (product-scanning);              |
-|        |                                            |        |          | Definitely worth bringing it to `BigInt` too    |
-| T-3e   | Faster ln constant series                  | L      | **DONE** | exact-reciprocal divide; ln(2) 9–21×,           |
-|        |                                            |        |          | ln(1.25) 3–4× at p≥1000                         |
-| T-U1   | Use pointers rather than list indexing     | M      | **DONE** | kept 2-buffer divide (+4-8% >=256w)             |
+| #      | Issue                                      | Effort | Priority | Target gain                                             |
+| ------ | ------------------------------------------ | ------ | -------- | ------------------------------------------------------- |
+| T-API1 | `precision` arg on `add`/`sub`/`multiply`  | S      | **DONE** | exact-then-round; foundation for T-API2/T-API3          |
+| T-R2   | `round_to_precision_inplace` audit         | S      | **DONE** | code-quality; ~0% on divide bench (noise)               |
+| T-A1   | `debug_assert .format` sweep across        | S      | **DONE** | sweep complete (20260606);                              |
+|        |                                            |        |          | no .format asserts remain                               |
+|        | BigDecimal                                 |        |          |                                                         |
+| T-A2   | `multiply_by_power_of_ten` audit           | M      | **DONE** | inplace + multiple-of-9 fast path in use;               |
+|        | + inplace variant                          |        |          | minor residual in non-inplace add/sub                   |
+| T-A3   | Hot-path-first switch in `add`/`sub`       | S      | **DONE** | subtract −37%@p1000, −24%@p100;                         |
+|        |                                            |        |          | add −13%@p1000; add@p100 noise                          |
+| T-A4   | `@no_inline` raise helpers in              | S      | **DONE** | `_shorten_path` `@no_inline`;                           |
+|        | BigDecimal/BigUInt                         |        |          | shrinks every inlined raise site                        |
+| T-A5   | `is_zero`/`is_integer` branch audit        | S      | **DONE** | kept; removal = 3x regression on zero                   |
+| T-M1   | Small-coefficient mul fast path            | M      | **NO**   | UInt128 path 130 vs 46 ns (base-10⁹)                    |
+| T-M2   | Single-pass rounding in `multiply`         | S      | **DONE** | already single-pass; 90→80 ns                           |
+| T-D1   | Short-divisor fast path in `divide`        | M      | **DONE** | already via BigUInt dispatch                            |
+| T-D2   | Trailing-zero strip allocation in divide   | S      | **DONE** | inplace strip; −16–21% exact-divide                     |
+| T-D3   | Reciprocal-Newton divide (legacy Task 2)   | XL     | **WAIT** | div only 2.1–3.1× mul →                                 |
+|        |                                            |        |          | recip-Newton ~5× mul (slower); gated on NTT             |
+| T-S1   | Small-coef short-circuit in `sqrt` p=100   | S      | **NO**   | already short-circuits                                  |
+| T-L1   | atanh reformulation for ln (T3f)           | M      | **DONE** | already a hybrid; near-1 0.9–1.8× py                    |
+| T-L2   | Process-wide ln(10) cache recipe           | S      | **DONE** | `MathCache` (ln2/ln1.25/ln10) + recipe exist;           |
+|        |                                            |        |          | auto-cache blocked on Mojo                              |
+| T-L3   | AGM ln for p ≥ 1000 (T3g)                  | XL     | **WAIT** | gated on NTT (heavy per-iter sqrt);                     |
+|        |                                            |        |          | far-from-1 ln now addressed by T-3e                     |
+| T-IO1  | `from_string` digit batching               | M      | **DONE** | batching already present;                               |
+|        |                                            |        |          | slice removed, 1.4×→1.2×                                |
+| T-IO2  | `to_string` right-aligned InlineArray      | M      | **DONE** | hybrid exact-size direct-write;                         |
+|        |                                            |        |          | long 2.5–2.9×→0.8×                                      |
+| T-R1   | `round` `.format` sweep                    | S      | **NO**   | no `.format` asserts in round; great                    |
+| T-7b   | Reciprocal-Newton nth root                 | M      | **WAIT** | break-even at current mul speed                         |
+|        |                                            |        |          | (div ~2.7× mul); root already 0.2× py                   |
+| T-PI4  | Binary-only `pi()` pipeline, convert once  | M      | **DONE** | 58.2 → 50.2 ms; sqrt + final mul left base 10^9         |
+| T-Sq1  | Newton step around the residual in sqrt    | S      | **DONE** | 1.6× in `sqrt_via_reciprocal_iteration`; only 6% in     |
+|        |                                            |        |          | `isqrt_via_reciprocal_seed`, whose time is elsewhere    |
+| T-Sq2  | Exact `sqrt()` refinement out of base 10^9 | M      | **OPEN** | exact path is 7.7× `sqrt_via_reciprocal_iteration`; one |
+|        |                                            |        |          | full-width divide + square, both base 10^9              |
+| T-9b   | Product-scanning `BigUInt` schoolbook      | M      | **DONE** | 2.2× at 256 words; deferred-carry removed               |
+| T-9c   | Re-tune `BigUInt` mul cutoffs              | S      | **DONE** | Kara 64→256, Toom3 256→768; 10.5 → 6.0 ms               |
+| T-D5   | Windowed fused mul-sub in schoolbook div   | M      | **DONE** | 2.0× at 100 digits, 1.5× at 300, 1.3× at 1 000          |
+| T-5    | NTT multiplication                         | XL     | **NEXT** | largest lever: 3.7× of the GMP mul gap is FFT           |
+| T-9    | deferred-carry schoolbook mul              | M      | **DONE** | deferred-carry (product-scanning);                      |
+|        |                                            |        |          | Definitely worth bringing it to `BigInt` too            |
+| T-3e   | Faster ln constant series                  | L      | **DONE** | exact-reciprocal divide; ln(2) 9–21×,                   |
+|        |                                            |        |          | ln(1.25) 3–4× at p≥1000                                 |
+| T-U1   | Use pointers rather than list indexing     | M      | **DONE** | kept 2-buffer divide (+4-8% >=256w)                     |

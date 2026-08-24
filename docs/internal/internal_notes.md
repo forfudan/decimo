@@ -194,15 +194,15 @@ the same few levels again; only an FFT changes the exponent everywhere.
 
 Where the time goes, after the rest of the 2026-08-24 work took it to 78 ms:
 
-| Stage                              | ms   | Base |
-| ---------------------------------- | ---- | ---- |
-| binary splitting, below the root   | 24.5 | 2^32 |
-| base 2^32 -> 10^9                  | 12.5 | both |
-| `sqrt_via_reciprocal_iteration(10005)`           | 11.1 | 10^9 |
-| root join, 3 full-width multiplies |  9.7 | 2^32 |
-| final division                     |  9.6 | 2^32 |
-| final multiplies and round         |  6.0 | 10^9 |
-| `5^s` and the scaling multiply     |  4.9 | 2^32 |
+| Stage                                  | ms   | Base |
+| -------------------------------------- | ---- | ---- |
+| binary splitting, below the root       | 24.5 | 2^32 |
+| base 2^32 -> 10^9                      | 12.5 | both |
+| `sqrt_via_reciprocal_iteration(10005)` | 11.1 | 10^9 |
+| root join, 3 full-width multiplies     | 9.7  | 2^32 |
+| final division                         | 9.6  | 2^32 |
+| final multiplies and round             | 6.0  | 10^9 |
+| `5^s` and the scaling multiply         | 4.9  | 2^32 |
 
 17 ms still runs in base 10^9, where the same multiply costs more than it does
 in base 2^32 (6.0 ms against 3.4 at 100 000 digits). Neither stage has to be
@@ -217,17 +217,19 @@ one word. 58.2 → 50.2 ms.
 
 ### The exact `sqrt()` spends 87% of its time after Newton has finished
 
-`sqrt(10005, 50000)` takes 18.3 ms; `sqrt_via_reciprocal_iteration(10005, 50000)` takes
-2.36 ms and agrees to every digit checked. The difference is `sqrt_exact()`'s
-exact-integer tail: rescale `c`, one `c.floor_divide(n)` refinement step, and
-the `n * n == c` perfect-square test. Instrumenting the refinement loop shows
-it runs **once**, so this is not a convergence problem - it is one full-width
-division plus one full-width square, both in base 10^9.
+`sqrt(10005, 50000)` takes 18.3 ms;
+`sqrt_via_reciprocal_iteration(10005, 50000)` takes 2.36 ms and agrees to every
+digit checked. The difference is `sqrt_exact()`'s exact-integer tail: rescale
+`c`, one `c.floor_divide(n)` refinement step, and the `n * n == c`
+perfect-square test. Instrumenting the refinement loop shows it runs **once**,
+so this is not a convergence problem - it is one full-width division plus one
+full-width square, both in base 10^9.
 
-That is why rearranging `fast_isqrt()`'s Newton step around the residual, which
-was worth 1.6x in `sqrt_via_reciprocal_iteration()`, is worth only 6% here. The exactness
-guarantee costs a divide and a square at full width, and the fix is to stop
-paying for them in base 10^9 (T-Sq2, same argument as T-PI4).
+That is why rearranging `isqrt_via_reciprocal_seed()`'s Newton step around the
+residual, which was worth 1.6x in `sqrt_via_reciprocal_iteration()`, is worth
+only 6% here. The exactness guarantee costs a divide and a square at full width,
+and the fix is to stop paying for them in base 10^9 (T-Sq2, same argument as
+T-PI4).
 
 ### GMP is on FFT from ~32 000 digits, and that is most of the gap
 
@@ -342,9 +344,9 @@ adversarial inputs are the only thing that finds this class of bug.
 
 ### A Newton schedule reaches `seed * 2^n`, and nothing caps it
 
-Two bugs in `sqrt_via_reciprocal_iteration()` and `fast_isqrt()`, caught while measuring the
-above, both of which returned the full requested digit count with a wrong tail
-and raised nothing.
+Two bugs in `sqrt_via_reciprocal_iteration()` and `isqrt_via_reciprocal_seed()`,
+caught while measuring the above, both of which returned the full requested
+digit count with a wrong tail and raised nothing.
 
 The iteration `r <- r * (3 - x * r^2) / 2` doubles the correct digits. It does
 *not* get pulled up to whatever precision the arithmetic inside it runs at, so

@@ -45,7 +45,7 @@ the schedule.
 # - integer_root(x: BigDecimal, n: BigDecimal, precision: Int) -> BigDecimal
 # - is_integer_reciprocal_and_return(n: BigDecimal) -> Tuple[Bool, BigDecimal]
 # - is_odd_reciprocal(n: BigDecimal) -> Bool
-# - fast_isqrt(c: BigUInt, working_digits: Int) -> BigUInt
+# - isqrt_via_reciprocal_seed(c: BigUInt, working_digits: Int) -> BigUInt
 # - sqrt(x: BigDecimal, precision: Int) -> BigDecimal  [public API]
 # - sqrt_exact(x: BigDecimal, precision: Int) -> BigDecimal  [CPython-style]
 # - sqrt_via_reciprocal_iteration(x: BigDecimal, precision: Int) -> BigDecimal
@@ -1011,9 +1011,10 @@ def _rational_root_decomposition(
 #
 # In Decimo v0.6.0, `sqrt` is re-implemented as `sqrt_exact`, using the
 # CPython _pydecimal.py algorithm for bit-perfect results matching Python's
-# Decimal.sqrt() output. For large numbers (>20 words), `fast_isqrt` uses
-# reciprocal sqrt with precision doubling for a fast initial approximation,
-# then exact integer Newton iterations to converge to isqrt(c).
+# Decimal.sqrt() output. For large numbers (>20 words),
+# `isqrt_via_reciprocal_seed` uses reciprocal sqrt with precision doubling for
+# a fast initial approximation, then exact integer Newton iterations to
+# converge to isqrt(c).
 #
 # Function hierarchy:
 # - sqrt()
@@ -1027,7 +1028,7 @@ def _rational_root_decomposition(
 #       arctan, ln) where exact perfect-square detection is unnecessary.
 #       It returns the root itself, not the reciprocal - the reciprocal is
 #       `bigint.exponential.reciprocal_sqrt_fixed_point()`.
-# - fast_isqrt()
+# - isqrt_via_reciprocal_seed()
 #       Hybrid isqrt: reciprocal sqrt approximation + exact integer Newton
 #       refinement. Used by sqrt_exact() for large numbers.
 # - sqrt_decimal_approach()
@@ -1066,9 +1067,15 @@ def sqrt(x: BigDecimal, precision: Int) raises -> BigDecimal:
     return sqrt_exact(x, precision)
 
 
-def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
-    """Compute isqrt(c) using reciprocal sqrt with precision doubling for speed,
-    then verify/correct with exact integer Newton iterations.
+def isqrt_via_reciprocal_seed(
+    c: BigUInt, working_digits: Int
+) raises -> BigUInt:
+    """Returns `isqrt(c)`, seeded by a reciprocal square root approximation.
+
+    The seed is what makes this faster than a plain integer Newton: reaching
+    `sqrt(c)` through `1 / sqrt(c)` needs no division, so the approximation is
+    cheap, and the exact refinement that follows it then costs one or two
+    divisions instead of a full convergence.
 
     This is a hybrid approach:
     1. Use reciprocal sqrt Newton (division-free, precision doubling) to get
@@ -1345,7 +1352,7 @@ def sqrt_exact(x: BigDecimal, precision: Int) raises -> BigDecimal:
     if len(c.words) <= 20:
         n = biguint_exponential.sqrt(c)
     else:
-        n = fast_isqrt(c, prec + 10)
+        n = isqrt_via_reciprocal_seed(c, prec + 10)
 
     # Check for exact perfect square
     exact = exact and (n * n == c)
@@ -1472,7 +1479,7 @@ def sqrt_via_reciprocal_iteration(
 
     var x_norm_exp = x_norm.adjusted()
     var x_norm_f64 = mantissa * Float64(10.0) ** Float64(x_norm_exp)
-    # `1 / sqrt(v)`, not `v ** -0.5`. See the note in `fast_isqrt()`: the power
+    # `1 / sqrt(v)`, not `v ** -0.5`. See the note in `isqrt_via_reciprocal_seed()`: the power
     # operator is accurate to only about ten digits for some inputs, which the
     # doubling schedule then carries all the way to the top.
     var r_f64 = Float64(1.0) / math.sqrt(x_norm_f64)  # 1/sqrt(x_norm)
