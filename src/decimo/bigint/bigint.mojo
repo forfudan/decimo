@@ -2107,7 +2107,11 @@ def _multiply_add_inplace(mut x: BigInt, mul: UInt32, add: UInt32):
 # that the O(n²) simple method is significantly slower than the O(M(n)·log n)
 # D&C method despite the power-table construction overhead.
 # Base threshold: within the recursion, switch to simple method.
-comptime _DC_FROM_STR_ENTRY_THRESHOLD = 10000
+# Entry lowered from 10000 to 2000 in 2026-08 when the multiply kernels became
+# product-scanning: D&C spends its time multiplying and the simple method does
+# not, so the crossover moved down with them. At 8 000 digits that is 0.18 ms
+# -> 0.11 ms, and nothing above or below regresses.
+comptime _DC_FROM_STR_ENTRY_THRESHOLD = 2000
 comptime _DC_FROM_STR_BASE_THRESHOLD = 256
 
 

@@ -7,11 +7,13 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 `Rational` grows a full set of conversions and joins the
 `from_integral_scalar()` / `from_float_scalar()` naming used by the other
 numeric types, `BigInt10` is no longer referenced by the rest of the library,
-and `BigDecimal.pi()` gets three to four orders of magnitude faster — it now
-runs ahead of pure-Python mpmath from 500 digits up. Burnikel-Ziegler division
-loses a padding choice that cost it its own asymptotics on some sizes, which
-speeds up every division in the library. A Newton iteration that silently
-returned short of its requested precision is fixed.
+and `BigDecimal.pi()` gets four orders of magnitude faster — it now runs ahead
+of pure-Python mpmath from 500 digits up. Multiplication is 2-3x faster for
+both `BigInt` and `BigUInt`, which puts `BigInt` ahead of CPython's `int` on
+every large operation. Burnikel-Ziegler division loses a padding choice that
+cost it its own asymptotics on some sizes, which speeds up every division in
+the library. A Newton iteration that silently returned short of its requested
+precision is fixed.
 
 ### ⭐️ New in Unreleased
 
@@ -30,23 +32,48 @@ returned short of its requested precision is fixed.
 
 ### 🦋 Changed in Unreleased
 
-1. **`BigInt` multiplication gains a Toom-3 path.** Above 384 words the
-   magnitude multiply now splits each operand three ways, evaluates both as
-   polynomials at `0`, `1`, `-1`, `2` and `inf`, and interpolates the product
-   from five sub-multiplications instead of Karatsuba's three: `O(n^1.465)`
-   against `O(n^1.585)`. `BigUInt` has had this since v0.10.0 (PR #166); `BigInt` — the
-   type the Chudnovsky binary splitting actually runs on — stopped at
-   Karatsuba. Against the Karatsuba path it is 1.15x at 400 words, 1.25x at
-   5 000 and 1.5x at 22 000; a 100 000-digit product goes from 7.7 ms to
-   6.0 ms, and `pi(100000)` from 152 ms to 142 ms. The end-to-end gain is
-   smaller than the multiply gain because a binary-splitting tree spends only
-   about a third of its time at the top level, and only the top few levels are
-   large enough for Toom-3 to reach.
+1. **`BigUInt` schoolbook division is 1.3-2x faster.** Each quotient word used
+   to build `q * y` as a fresh `BigUInt`, shift it up by the word position,
+   compare it against the whole remainder and subtract it from the whole
+   remainder — four passes over the full dividend plus an allocation, per
+   word. It is now a single fused multiply-subtract over just the `n + 1` word
+   window the quotient word touches, Knuth D style, keeping the existing
+   3-by-2 estimator. Biggest in the band where `BigDecimal` division actually
+   lives: 2.0x at 100 digits, 1.5x at 300, 1.3x at 1 000.
 
-   With this, `BigInt` is ahead of CPython's `int` on both of the operations
-   that dominate large-integer work: at 100 000 decimal digits a product takes
-   6.0 ms against CPython's 9.4 ms, and a floor division 16.1 ms against
-   19.4 ms. CPython still edges it on decimal output, 18.6 ms against 21.0 ms.
+1. **Multiplication is 2-3x faster, and `pi(100000)` runs in 78 ms instead of
+   152 ms.** Three changes, in the order they were made:
+
+   *Toom-3 on `BigInt`.* Above 512 words the magnitude multiply splits each
+   operand three ways, evaluates at `0`, `1`, `-1`, `2` and `inf`, and
+   interpolates the product from five sub-multiplications instead of
+   Karatsuba's three: `O(n^1.465)` against `O(n^1.585)`. `BigUInt` has had
+   this since v0.10.0 (PR #166); `BigInt` — the type the Chudnovsky binary
+   splitting runs on — stopped at Karatsuba. It is 1.26x the Karatsuba path at
+   5 000 words and 1.51x at 22 000.
+
+   *Product-scanning schoolbook base case, for both types.* The old kernel read
+   and wrote the result array on every one of the `n*m` partial products and
+   carried serially along each row. It now walks the result one word at a time
+   and sums the whole column in a `UInt128` accumulator — four of them, since
+   one serialises on the 128-bit add — so the column stays in registers and
+   the base reduction happens once per result word rather than once per
+   partial product. About 2x at 48 words for `BigInt`, 2.2x at 256 words for
+   `BigUInt`. This supersedes `BigUInt`'s `multiply_slices_deferred_carry()`,
+   which has been removed along with `CUTOFF_DEFERRED_CARRY_PRODUCT`.
+
+   *Re-tuned cutoffs.* A quadratic kernel that fast moves both crossovers a
+   long way up. `BigInt`: Karatsuba 48 -> 128, Toom-3 384 -> 512. `BigUInt`:
+   Karatsuba 64 -> 256, Toom-3 256 -> 768. Worth another 20% on its own.
+
+   At 100 000 decimal digits a `BigInt` product now takes 3.4 ms and a
+   `BigUInt` product 6.0 ms, against 7.7 and 11.8 before. `pi(10000)` goes
+   from 3.75 ms to 2.2 ms and `pi(100000)` from 152 ms to 78 ms.
+
+   With this `BigInt` is ahead of CPython's `int` on every large operation. At
+   100 000 digits, decimo against CPython 3.14: multiply 3.4 ms vs 9.4,
+   floor division 9.2 ms vs 19.4, `to_string` 13.1 ms vs 18.6, `from_string`
+   5.1 ms vs 9.3.
 
 1. **`BigDecimal.pi()` is three to four orders of magnitude faster.** The
    Chudnovsky binary splitting now uses the `P`/`Q`/`T` recurrence: each leaf
@@ -134,6 +161,38 @@ returned short of its requested precision is fixed.
    `DECIMO_TEST_JOBS` explicitly still wins in both cases.
 
 ### 🩹 Fixed in Unreleased
+
+1. **`BigUInt` division crashed, or silently lost a factor of 10^9, for
+   three-word dividends.** `floor_divide()` routes any divisor of three or
+   four words to `floor_divide_by_uint128()`, which consumes the dividend four
+   words at a time. When the word count is not a multiple of four the leading
+   group is short, and its own quotient was discarded — only its remainder was
+   carried forward, and the result was sized at `n - (n mod 4)` words. A
+   seven-word dividend over a three-word divisor therefore came back a factor
+   of 10^9 too small, and a three-word dividend — where the leading group *is*
+   the whole number — produced a `BigUInt` with no words at all, which faults
+   the next operation that reads `words[len(words) - 1]`.
+
+   Neither shape is exotic: `BigUInt("23334504672441144935") //
+   BigUInt("1854056525350022197")` crashed, and a sweep of dividend lengths
+   one to nine words against divisor lengths one to five had 80 wrong results
+   in 1 824. Present since PR #111 (2025-07-23), so released versions are
+   affected. `test_biguint_divide_short_operands_of_every_word_count()` covers
+   every residue of the group size.
+
+1. **Toom-3 wrote one word past the end of its result buffer for lopsided
+   operands.** A three-way split sizes its limbs by the longer operand, so a
+   short second operand can have empty high limbs while `4 * m` — the offset
+   where the `w4` coefficient is recomposed — runs past the end of the result.
+   With 513 and 129 words, `4 * m` is 684 against a 642-word buffer. `w4` is
+   zero in exactly those cases and `_add_at_offset_inplace()` does not bounds
+   check its main loop, so it wrote a zero word out of bounds and no value
+   comparison could see it. `BigUInt`'s Toom-3 was never affected: its
+   recomposition helper checks each position. Found by Copilot on PR #273.
+
+   `_add_at_offset_inplace()` now states the precondition and asserts it, so
+   the suite — which runs with `-D ASSERT=all` — catches any recurrence, and
+   `test_multiply_toom3_lopsided_operands()` covers the shapes that trip it.
 
 1. **`BigUInt` in-place subtraction returned garbage when the two operands were
    equal**, and with it `BigUInt` long division for a whole class of dividends.

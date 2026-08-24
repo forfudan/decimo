@@ -319,9 +319,9 @@ def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
     # discarded. Three multiplications at the top instead of four.
     var mid = iterations // 2
     var left = chudnovsky_split(0, mid)
-    var right = chudnovsky_split(mid, iterations)
-    var series_q = left.q * right.q
-    var series_t = left.t * right.q + left.p * right.t
+    var right = _chudnovsky_split_dropping_p(mid, iterations)
+    var series_q = left.q * right[0]
+    var series_t = left.t * right[0] + left.p * right[1]
 
     # Trim both operands to the digits that will actually survive.
     #
@@ -419,6 +419,40 @@ def _bigint_from_uint128(value: UInt128, sign: Bool) -> BigInt:
     if len(words) == 0:
         words.append(UInt32(0))
     return BigInt(raw_words=words^, sign=sign)
+
+
+def _chudnovsky_split_dropping_p(
+    a: Int, b: Int
+) raises -> Tuple[BigInt, BigInt]:
+    """Binary splitting over `[a, b)`, returning only `Q` and `T`.
+
+    The root of the evaluation reads `left.p`, `left.q`, `left.t`, `right.q`
+    and `right.t` - never `right.p`. Letting the right subtree build it anyway
+    costs one multiplication of two half-width operands, which at 100 000
+    digits is around 1.3 ms.
+
+    Args:
+        a: The start index of the splitting range (inclusive).
+        b: The end index of the splitting range (exclusive).
+
+    Returns:
+        `(Q, T)` over `[a, b)`.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
+    """
+    if b - a <= 1:
+        # A single leaf is a handful of words; copying it out is free, and
+        # moving a field out of the struct would leave it undestroyable.
+        var leaf = chudnovsky_split(a, b)
+        return (leaf.q.copy(), leaf.t.copy())
+
+    var mid = (a + b) // 2
+    var left = chudnovsky_split(a, mid)
+    var right = chudnovsky_split(mid, b)
+    var q = left.q * right.q
+    var t = left.t * right.q + left.p * right.t
+    return (q^, t^)
 
 
 def chudnovsky_split(a: Int, b: Int) raises -> _ChudnovskyPartialSum:

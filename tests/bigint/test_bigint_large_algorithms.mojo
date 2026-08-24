@@ -630,6 +630,52 @@ def test_multiply_toom3_with_zero_limbs() raises:
         )
 
 
+def test_multiply_toom3_lopsided_operands() raises:
+    """Toom-3 stays in bounds when one operand is far shorter than the other.
+
+    A three-way split sizes its limbs by the *longer* operand, so a short
+    second operand can have empty high limbs while `4 * m` — where the `w4`
+    coefficient is recomposed — runs past the end of the result buffer. With
+    `len_a = 513` and `len_b = 129` words, `4 * m` is 684 against a 642-word
+    result. `w4` is zero in exactly those cases, so nothing is *computed*
+    wrongly and a value comparison cannot see it; what catches it is the
+    precondition `debug_assert` in `_add_at_offset_inplace()`, which the suite
+    runs with `-D ASSERT=all`.
+
+    The digit counts below sit either side of `CUTOFF_KARATSUBA` and
+    `CUTOFF_TOOM3` in words, and each pair is checked in both orders so the
+    short operand is exercised as both multiplicand and multiplier.
+    """
+    var long_digits = [4950, 5800, 7400, 9700, 14800]
+    var short_ratios = [4, 3, 2]
+
+    for i in range(len(long_digits)):
+        var na = long_digits[i]
+        var a = BigInt(_bz_digit_run(na, 20260824 + 41 * i))
+        for j in range(len(short_ratios)):
+            var nb = na // short_ratios[j]
+            var b = BigInt(_bz_digit_run(nb, 60504030 + 7 * i + j))
+            var case_label = (
+                String("a=")
+                + String(na)
+                + " digits, b="
+                + String(nb)
+                + " digits"
+            )
+            var forward = a * b
+            var reversed = b * a
+            testing.assert_equal(
+                String(forward),
+                String(reversed),
+                "a * b != b * a for " + case_label,
+            )
+            testing.assert_equal(
+                String(forward),
+                String(_blockwise_product(a, b, 800)),
+                "lopsided product differs from reference for " + case_label,
+            )
+
+
 def test_multiply_toom3_algebraic_identities() raises:
     """Distributivity and the multiply/divide round trip above the cutoff.
 

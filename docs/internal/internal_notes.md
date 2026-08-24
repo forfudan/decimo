@@ -183,7 +183,7 @@ division it feeds.
 ### Toom-3 helps the multiply much more than it helps `pi()`
 
 Toom-3 on `BigInt` is 1.15x Karatsuba at 400 words, 1.26x at 5 000 and 1.51x
-at 22 000, but `pi(100000)` only went 152 -> 142 ms. The tree shape explains
+at 22 000, but on its own `pi(100000)` only went 152 -> 142 ms. The tree shape explains
 it: doubling the term count multiplies the split's cost by 3.06, so the top
 level is only 35% of the total and each level below adds 65% of the one above.
 Toom-3 reaches the top three or four levels; the rest is Karatsuba as before.
@@ -191,21 +191,21 @@ Toom-3 reaches the top three or four levels; the rest is Karatsuba as before.
 So a faster multiply only pays across a *wide* size range. Toom-4 would move
 the same few levels again; only an FFT changes the exponent everywhere.
 
-Where the 142 ms goes:
+Where the time goes, after the rest of the 2026-08-24 work took it to 78 ms:
 
 | Stage                              | ms   | Base |
 | ---------------------------------- | ---- | ---- |
-| binary splitting, below the root   | 43.1 | 2^32 |
-| root join, 3 full-width multiplies | 16.7 | 2^32 |
-| `5^s` and the scaling multiply     | 9.1  | 2^32 |
-| final division                     | 16.5 | 2^32 |
-| base 2^32 -> 10^9                  | 19.9 | both |
-| `sqrt_reciprocal(10005)`           | 21.3 | 10^9 |
-| final multiplies and round         | 12.9 | 10^9 |
+| binary splitting, below the root   | 24.5 | 2^32 |
+| base 2^32 -> 10^9                  | 12.5 | both |
+| `sqrt_reciprocal(10005)`           | 11.1 | 10^9 |
+| root join, 3 full-width multiplies |  9.7 | 2^32 |
+| final division                     |  9.6 | 2^32 |
+| final multiplies and round         |  6.0 | 10^9 |
+| `5^s` and the scaling multiply     |  4.9 | 2^32 |
 
-The last two rows, 34 ms, run in base 10^9 where the same multiply costs twice
-what it costs in base 2^32 (12.1 ms against 6.0 ms at 100 000 digits). Neither
-has to be decimal. See `plans/bigdecimal_enhancement.md` T-PI4.
+17 ms still runs in base 10^9, where the same multiply costs more than it does
+in base 2^32 (6.0 ms against 3.4 at 100 000 digits). Neither stage has to be
+decimal. See `plans/bigdecimal_enhancement.md` T-PI4.
 
 ### Burnikel-Ziegler padding has to survive every halving
 
@@ -240,6 +240,25 @@ than checking one. Second, the padding rule and the recursion's base case are
 one decision, not two - the base case's condition (`n` odd) is what determines
 what the padding has to guarantee, and they were written far enough apart in
 the file to be changed independently.
+
+### Two size points are not a size sweep
+
+`floor_divide_by_uint128()` dropped the quotient of its leading partial group
+for over a year: a three-word divisor lost a factor of 10^9 when the dividend
+had `4k + 3` words, and crashed outright when the dividend *was* the leading
+group. `BigUInt("23334504672441144935") // BigUInt("1854056525350022197")`
+faulted.
+
+Both randomized division cross-checks against Python used fixed sizes —
+2 214 digits over 810, and 200 000 over 14 000. `random_decimal_string(n)`
+counts 18-digit chunks, not digits, so both are far above
+`CUTOFF_BURNIKEL_ZIEGLER` and both take the B-Z path. The whole
+`len(y.words) <= 4` branch had no randomized cross-check at all.
+
+The dispatch has four branches and the three-or-four-word one behaves
+differently for each residue of the dividend length mod 4. Two samples cannot
+cross that. `test_biguint_divide_across_the_dispatch_boundaries_against_python`
+now walks divisor 1-40 digits against dividend up to 90.
 
 ### A missing `return` in `subtract_inplace()`
 

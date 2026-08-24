@@ -43,7 +43,11 @@ from decimo.errors import ValueError, ZeroDivisionError
 
 # Karatsuba cutoff: operands with this many words or fewer use schoolbook.
 # Tuned for Apple Silicon arm64. Adjust if benchmarking shows a better value.
-comptime CUTOFF_KARATSUBA: Int = 48
+# Raised from 48 when the schoolbook base case became product-scanning: a
+# Comba column runs at well under a cycle per partial product, which pushes
+# the point where Karatsuba's three sub-products and its extra additions and
+# allocations start to pay well past where it used to be.
+comptime CUTOFF_KARATSUBA: Int = 128
 """The minimum number of words above which Karatsuba multiplication is used."""
 
 # Toom-3 cutoff: operands with this many words or fewer use Karatsuba.
@@ -53,12 +57,11 @@ comptime CUTOFF_KARATSUBA: Int = 48
 # and interpolation step. The extra additions, the two exact divisions and
 # the five sub-results only pay for themselves once the operands are large.
 #
-# The crossover is soft rather than sharp: measured on Apple Silicon arm64,
-# Toom-3 loses a few percent between roughly 260 and 320 words, breaks even
-# by 350, and is ahead by 15% at 400 words, 25% at 5 000 and 50% at 22 000.
-# 384 sits just above the band where it loses. Adjust if benchmarking on
-# another target shows a better value.
-comptime CUTOFF_TOOM3: Int = 384
+# The crossover is soft rather than sharp, and it moved up with the Karatsuba
+# cutoff for the same reason. Measured on Apple Silicon arm64 with the tuned
+# base case, 512 is the best of 384 / 512 / 768 / 1024 across 512 to 11 000
+# words. Adjust if benchmarking on another target shows a better value.
+comptime CUTOFF_TOOM3: Int = 512
 """The minimum number of words above which Toom-3 multiplication is used."""
 
 # Burnikel-Ziegler cutoff: divisors with this many words or fewer use
@@ -263,10 +266,20 @@ def _multiply_magnitude_by_word(
 def _multiply_magnitudes_schoolbook(
     a: ImmSpan[UInt32, _], b: ImmSpan[UInt32, _]
 ) -> List[UInt32]:
-    """Schoolbook multiplication on magnitude slices.
+    """Product-scanning (Comba) multiplication on magnitude slices.
 
-    Operates on borrowed views of the operands without copying the input
-    data. Uses UInt64 for intermediate products.
+    Walks the result one word at a time, summing the whole column
+    `sum(a[i] * b[k-i])` into a `UInt128` before emitting a word. Each product
+    is below 2^64 and the column has at most `2^64` terms, so the accumulator
+    cannot overflow and no carry has to be propagated back through the result.
+
+    Against the operand-scanning form this replaces, that removes the
+    read-modify-write of the result array on every partial product and the
+    serial carry chain along each row: about 2x at the Karatsuba cutoff. The
+    column is unrolled over four independent accumulators because a single one
+    serialises on the 128-bit add.
+
+    Operates on borrowed views of the operands without copying the input data.
 
     Args:
         a: First magnitude.
@@ -282,34 +295,61 @@ def _multiply_magnitudes_schoolbook(
         var zero: List[UInt32] = [UInt32(0)]
         return zero^
 
-    # Allocate and zero-initialize result
     var result_len = len_a + len_b
     var result = List[UInt32](capacity=result_len)
     result.resize(unsafe_uninit_length=result_len)
-    unsafe_memset_zero(ptr=result._data, count=result_len)
 
-    for i in range(len_a):
-        var ai = UInt64(a[i])
-        if ai == 0:
-            continue
-        var carry: UInt64 = 0
-        var rp = result._data.unsafe_offset(i)
-        var bp = b.unsafe_ptr()
-        for j in range(len_b):
-            var product = (
-                ai * UInt64(bp[unsafe_offset=j])
-                + UInt64(rp[unsafe_offset=j])
-                + carry
+    var ap = a.unsafe_ptr()
+    var bp = b.unsafe_ptr()
+    var rp = result._data
+
+    # `carry` is the part of the column sum above 32 bits, which belongs to
+    # the next column. The last column leaves it holding the top word.
+    var carry = UInt128(0)
+    for k in range(result_len - 1):
+        var i_low = 0 if k < len_b else k - len_b + 1
+        var i_high = k if k < len_a else len_a - 1
+
+        var acc0 = carry
+        var acc1 = UInt128(0)
+        var acc2 = UInt128(0)
+        var acc3 = UInt128(0)
+
+        var i = i_low
+        while i + 3 <= i_high:
+            acc0 += UInt128(
+                UInt64(ap[unsafe_offset=i]) * UInt64(bp[unsafe_offset=k - i])
             )
-            rp[unsafe_offset=j] = UInt32(product & 0xFFFF_FFFF)
-            carry = product >> 32
-        if carry > 0:
-            rp[unsafe_offset=len_b] = UInt32(carry)
+            acc1 += UInt128(
+                UInt64(ap[unsafe_offset=i + 1])
+                * UInt64(bp[unsafe_offset=k - i - 1])
+            )
+            acc2 += UInt128(
+                UInt64(ap[unsafe_offset=i + 2])
+                * UInt64(bp[unsafe_offset=k - i - 2])
+            )
+            acc3 += UInt128(
+                UInt64(ap[unsafe_offset=i + 3])
+                * UInt64(bp[unsafe_offset=k - i - 3])
+            )
+            i += 4
+        while i <= i_high:
+            acc0 += UInt128(
+                UInt64(ap[unsafe_offset=i]) * UInt64(bp[unsafe_offset=k - i])
+            )
+            i += 1
+
+        var column = (acc0 + acc1) + (acc2 + acc3)
+        rp[unsafe_offset=k] = UInt32(column & 0xFFFF_FFFF)
+        carry = column >> 32
+
+    rp[unsafe_offset=result_len - 1] = UInt32(carry & 0xFFFF_FFFF)
 
     # Strip leading zeros
-    while result_len > 1 and result[result_len - 1] == 0:
-        result_len -= 1
-    while len(result) > result_len:
+    var rlen = result_len
+    while rlen > 1 and result[rlen - 1] == 0:
+        rlen -= 1
+    while len(result) > rlen:
         result.shrink(len(result) - 1)
 
     return result^
@@ -517,8 +557,13 @@ def _multiply_magnitudes_toom3(
 
     Five sub-multiplications on third-length operands instead of Karatsuba's
     three on half-length ones: `O(n^log_3(5))` = `O(n^1.465)` against
-    `O(n^1.585)`. Falls back to Karatsuba below `CUTOFF_TOOM3`, and for very
-    lopsided operands, where Karatsuba's one-sided split is the better shape.
+    `O(n^1.585)`. Falls back to Karatsuba when the longer operand is at or
+    below `CUTOFF_TOOM3`, or the shorter one is at or below
+    `CUTOFF_KARATSUBA` - the second is the guard against lopsided pairs,
+    where a three-way split of the long operand leaves the short one with
+    empty limbs and Karatsuba's one-sided split is the better shape. Pairs
+    that are lopsided but still have both operands above their cutoff do run
+    here.
 
     Only `a(-1)` and `b(-1)` can be negative, so a single sign flag on each
     stands in for signed arithmetic; every other intermediate, including all
@@ -691,7 +736,15 @@ def _multiply_magnitudes_toom3(
     _add_at_offset_inplace(result, t1, m)  # w1
     _add_at_offset_inplace(result, w2, 2 * m)
     _add_at_offset_inplace(result, t3, 3 * m)  # w3
-    _add_at_offset_inplace(result, v_inf, 4 * m)
+
+    # `w4` is the one coefficient whose offset is not covered by the argument
+    # above. A zero `BigInt` magnitude is one zero word, not an empty list, so
+    # an empty high limb still presents a length-1 value to add at `4 * m` -
+    # and for a lopsided pair `4 * m` can be past the end of `result`
+    # (`len_a = 513`, `len_b = 129` gives `4 * m = 684` against 642 words).
+    # Adding zero changes nothing, so skip it.
+    if not (len(v_inf) == 1 and v_inf[0] == 0):
+        _add_at_offset_inplace(result, v_inf, 4 * m)
 
     _strip_leading_zeros_inplace(result)
     return result^
@@ -827,9 +880,14 @@ def _add_at_offset_inplace(
     Args:
         a: The accumulator magnitude (modified in-place).
         b: The magnitude to add.
-        offset: Word offset at which to start adding b into a.
+        offset: Word offset at which to start adding b into a. `offset +
+            len(b)` must not exceed `len(a)`: the loop below is unchecked.
     """
     var len_b = len(b)
+    debug_assert(
+        offset + len_b <= len(a),
+        "_add_at_offset_inplace(): writes past the end of the accumulator",
+    )
     var carry: UInt64 = 0
     var ap = a._data.unsafe_offset(offset)
     var bp = b._data
@@ -1441,15 +1499,24 @@ def _divmod_knuth_d_from_slices(
     var v_n_minus_1 = UInt64(b[n - 1])
     var v_n_minus_2 = UInt64(b[n - 2]) if n >= 2 else UInt64(0)
 
-    # Knuth D main loop
+    # Knuth D main loop.
+    #
+    # Every index below is provably in bounds, so none of them is checked:
+    # `u` was grown to `m + n + 1` words above, `j` runs down from `m`, and
+    # `i` stays under `n`, so `j + i <= m + n - 1` and `j + n <= m + n`. The
+    # single-word divisor was handled earlier, so `n >= 2` and `j + n - 2`
+    # cannot go negative either. The three buffers are borrowed through raw
+    # pointers for the same reason the multiply kernels are: a `List[i]` reads
+    # the list's `_data` field again on every element (Lesson 7). None of them
+    # is resized while these pointers are live.
+    var u_ptr = u._data
+    var b_ptr = b.unsafe_ptr()
+    var quotient_ptr = quotient._data
+
     for j in range(m, -1, -1):
-        var u_jn = UInt64(u[j + n]) if (j + n) < len(u) else UInt64(0)
-        var u_jn_minus_1 = UInt64(u[j + n - 1]) if (j + n - 1) < len(
-            u
-        ) else UInt64(0)
-        var u_jn_minus_2 = UInt64(u[j + n - 2]) if (j + n - 2) < len(
-            u
-        ) else UInt64(0)
+        var u_jn = UInt64(u_ptr[unsafe_offset=j + n])
+        var u_jn_minus_1 = UInt64(u_ptr[unsafe_offset=j + n - 1])
+        var u_jn_minus_2 = UInt64(u_ptr[unsafe_offset=j + n - 2])
 
         var two_digits = (u_jn << 32) + u_jn_minus_1
         var q_hat = two_digits // v_n_minus_1
@@ -1466,39 +1533,49 @@ def _divmod_knuth_d_from_slices(
             if r_hat >= BigInt.BASE:
                 break
 
-        # Multiply and subtract: u[j..j+n] -= q_hat * v[0..n-1]
+        # Multiply and subtract: u[j..j+n] -= q_hat * v[0..n-1].
+        #
+        # The borrow is branchless. Biasing the difference by 2^32 keeps it
+        # non-negative, so bit 32 of the result is the complement of the
+        # borrow, and folding that borrow into the product carry is exactly
+        # what the branchy form did one word later.
         var carry: UInt64 = 0
         for i in range(n):
-            var prod = q_hat * UInt64(b[i]) + carry
-            var prod_lo = UInt32(prod & 0xFFFF_FFFF)
-            carry = prod >> 32
-            var idx = j + i
-            if idx < len(u):
-                if UInt64(u[idx]) >= UInt64(prod_lo):
-                    u[idx] = UInt32(UInt64(u[idx]) - UInt64(prod_lo))
-                else:
-                    u[idx] = UInt32(
-                        BigInt.BASE + UInt64(u[idx]) - UInt64(prod_lo)
-                    )
-                    carry += 1
+            var product = q_hat * UInt64(b_ptr[unsafe_offset=i]) + carry
+            carry = product >> 32
+            var biased = (
+                UInt64(u_ptr[unsafe_offset=j + i])
+                + 0x1_0000_0000
+                - (product & 0xFFFF_FFFF)
+            )
+            u_ptr[unsafe_offset=j + i] = UInt32(biased & 0xFFFF_FFFF)
+            carry += 1 - (biased >> 32)
 
         var jn = j + n
-        if jn < len(u):
-            if UInt64(u[jn]) >= carry:
-                u[jn] = UInt32(UInt64(u[jn]) - carry)
-            else:
-                u[jn] = UInt32(BigInt.BASE + UInt64(u[jn]) - carry)
-                q_hat -= 1
-                # Add back: u[j..j+n-1] += v
-                var add_carry: UInt64 = 0
-                for i in range(n):
-                    var s = UInt64(u[j + i]) + UInt64(b[i]) + add_carry
-                    u[j + i] = UInt32(s & 0xFFFF_FFFF)
-                    add_carry = s >> 32
-                if jn < len(u):
-                    u[jn] = UInt32(UInt64(u[jn]) + add_carry)
+        if UInt64(u_ptr[unsafe_offset=jn]) >= carry:
+            u_ptr[unsafe_offset=jn] = UInt32(
+                UInt64(u_ptr[unsafe_offset=jn]) - carry
+            )
+        else:
+            u_ptr[unsafe_offset=jn] = UInt32(
+                BigInt.BASE + UInt64(u_ptr[unsafe_offset=jn]) - carry
+            )
+            q_hat -= 1
+            # Add back: u[j..j+n-1] += v
+            var add_carry: UInt64 = 0
+            for i in range(n):
+                var total = (
+                    UInt64(u_ptr[unsafe_offset=j + i])
+                    + UInt64(b_ptr[unsafe_offset=i])
+                    + add_carry
+                )
+                u_ptr[unsafe_offset=j + i] = UInt32(total & 0xFFFF_FFFF)
+                add_carry = total >> 32
+            u_ptr[unsafe_offset=jn] = UInt32(
+                UInt64(u_ptr[unsafe_offset=jn]) + add_carry
+            )
 
-        quotient[j] = UInt32(q_hat)
+        quotient_ptr[unsafe_offset=j] = UInt32(q_hat)
 
     # Extract remainder: first n words of u (no shift needed)
     while len(u) > n:
