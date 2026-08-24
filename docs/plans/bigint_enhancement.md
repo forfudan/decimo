@@ -18,7 +18,7 @@ base-10^9 integer) and `BigUInt` are out of scope here.
 
 | Library           | Limb | Mul algorithm tier         | Div algorithm  | Sqrt                    |
 | ----------------- | ---- | -------------------------- | -------------- | ----------------------- |
-| decimo BigInt     | 2^32 | School → Kara              | Knuth-D → B-Z  | Newton → prec-doubling  |
+| decimo BigInt     | 2^32 | School → Kara → Toom-3     | Knuth-D → B-Z  | Newton → prec-doubling  |
 | Py `int` (C)      | 2^30 | School → Kara              | Knuth (school) | prec-doubling (`isqrt`) |
 | Rust `num-bigint` | 2^64 | School → Kara → Toom-3     | Knuth (school) | Newton                  |
 | Java `BigInteger` | 2^32 | School → Kara → Toom-3     | Knuth → B-Z    | Newton                  |
@@ -136,9 +136,10 @@ unchanged for the variable-length signed case.
    the final iteration instead of `log n` full-width iterations.
 
 9. **Reciprocal-Newton divide only wins once multiplication is much
-   cheaper than division** (the NTT regime). With Karatsuba, a B-Z divide is
-   ~2–3× a same-size multiply, so a reciprocal-Newton rewrite would be a
-   *regression* today — gate it behind Toom-3/NTT (T-M1).
+   cheaper than division** (the NTT regime). Re-measured after T-M1: at
+   100 000 digits B-Z divides in 16.5 ms against 6.0 ms for the same-size
+   multiply, so it is still 2.75× a multiply and a reciprocal-Newton rewrite
+   would be a wash. Toom-3 was not enough to unblock it; NTT would be.
 
 ## 5. Open Items
 
@@ -203,18 +204,33 @@ larger radix only helps if it avoids the software-emulated 128-bit divide.
 PR4d rejected 10^18 chunks for exactly this reason; re-verify on current
 hardware before trying again.
 
-### multiply (1.2× py, 1.6× rs)
+### multiply — T-M1 done (2026-08-24)
 
-decimo stops at Karatsuba; num-bigint adds Toom-3, which is what makes it
-1.6× faster on large operands.
+**T-M1 — Toom-3 multiplication. DONE.** `_multiply_magnitudes_toom3()`,
+points `0 / 1 / -1 / 2 / inf`, one sign flag per operand for `a(-1)` and
+`b(-1)` (every other intermediate is non-negative, so the unsigned in-place
+subtractions hold). Against the Karatsuba path:
 
-**T-M1 — Toom-3 multiplication.** Add a Toom-3 tier above ~256 words, the
-same cutoff ratio used in BigDecimal / BigUInt.
+| words | Karatsuba | Toom-3 | speedup |
+| ----- | --------- | ------ | ------- |
+| 300   | 24 µs     | 27 µs  | 0.89    |
+| 400   | 45        | 40     | 1.15    |
+| 5 000 | 2 460     | 1 950  | 1.26    |
+| 22 000| 28 300    | 18 700 | 1.51    |
+
+`CUTOFF_TOOM3 = 384`. The crossover is soft, not sharp — Toom-3 loses a few
+percent from ~260 to ~320 words — and 384 is just above that band.
+
+This puts `BigInt` ahead of CPython `int` on the two ops that dominate large
+work. At 100 000 decimal digits: multiply 6.0 ms vs 9.4, floor_divide 16.1 ms
+vs 19.4. CPython still wins to_string, 18.6 ms vs 21.0 (T-T1).
 
 **T-M2 — SIMD partial-product accumulation** in the schoolbook base case
-(NEON 4×UInt32), which is the base for both Karatsuba and a future Toom-3.
-This is the base-2^32 analogue of the BigDecimal multiply win; note that
-the base-10^9 Comba trick itself does not transfer (Lesson 2).
+(NEON 4×UInt32), which is the base for Karatsuba and Toom-3 alike. Now the
+highest-value multiply item left: with Toom-3 in place, essentially all the
+arithmetic still bottoms out in ≤48-word schoolbook leaves. This is the
+base-2^32 analogue of the BigDecimal multiply win; the base-10^9 Comba trick
+itself does not transfer (Lesson 2).
 
 ### power (2.1× py) and add (1.5× py)
 
@@ -302,10 +318,10 @@ and fix the base-conversion and SIMD fallout behind the test suite.
 |       | branchless offset-carry                          |                                       |
 | T-D3  | Re-tune `CUTOFF_BURNIKEL_ZIEGLER`                | OPEN — pair with the BigUInt todo     |
 | T-T1  | Lower to_string D&C entry threshold              | OPEN — after T-D1 / T-D2              |
-| T-M1  | Toom-3 multiply above ~256 words                 | OPEN — unblocks multiply, from_string |
-| T-M2  | SIMD partial-product accumulation in school base | OPEN                                  |
+| T-M1  | Toom-3 multiply above 384 words                  | DONE 2026-08-24                       |
+| T-M2  | SIMD partial-product accumulation in school base | OPEN — now the top multiply item      |
 | T-P1  | `square()` plus inplace loop for power           | OPEN                                  |
 | T-A1  | add/sub dispatch reorder                         | OPEN                                  |
 | T-SH1 | Pre-size the shift result buffer                 | OPEN                                  |
 | T-W1  | Base-2^64 limbs                                  | OPEN — unproven, low priority         |
-| T-D4  | Reciprocal-Newton divide                         | DEFERRED — needs Toom-3 (Lesson 9)    |
+| T-D4  | Reciprocal-Newton divide                         | DEFERRED — needs NTT, not Toom-3      |

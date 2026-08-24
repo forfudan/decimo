@@ -180,6 +180,33 @@ allocations. That is the remaining piece worth looking at, along with the
 `to_biguint()` in the table above, which is still two thirds the cost of the
 division it feeds.
 
+### Toom-3 helps the multiply much more than it helps `pi()`
+
+Toom-3 on `BigInt` is 1.15x Karatsuba at 400 words, 1.26x at 5 000 and 1.51x
+at 22 000, but `pi(100000)` only went 152 -> 142 ms. The tree shape explains
+it: doubling the term count multiplies the split's cost by 3.06, so the top
+level is only 35% of the total and each level below adds 65% of the one above.
+Toom-3 reaches the top three or four levels; the rest is Karatsuba as before.
+
+So a faster multiply only pays across a *wide* size range. Toom-4 would move
+the same few levels again; only an FFT changes the exponent everywhere.
+
+Where the 142 ms goes:
+
+| Stage                              | ms   | Base |
+| ---------------------------------- | ---- | ---- |
+| binary splitting, below the root   | 43.1 | 2^32 |
+| root join, 3 full-width multiplies | 16.7 | 2^32 |
+| `5^s` and the scaling multiply     | 9.1  | 2^32 |
+| final division                     | 16.5 | 2^32 |
+| base 2^32 -> 10^9                  | 19.9 | both |
+| `sqrt_reciprocal(10005)`           | 21.3 | 10^9 |
+| final multiplies and round         | 12.9 | 10^9 |
+
+The last two rows, 34 ms, run in base 10^9 where the same multiply costs twice
+what it costs in base 2^32 (12.1 ms against 6.0 ms at 100 000 digits). Neither
+has to be decimal. See `plans/bigdecimal_enhancement.md` T-PI4.
+
 ### Burnikel-Ziegler padding has to survive every halving
 
 Found while making the above change, and worth recording separately because it
@@ -214,13 +241,11 @@ one decision, not two - the base case's condition (`n` odd) is what determines
 what the padding has to guarantee, and they were written far enough apart in
 the file to be changed independently.
 
-### A missing `return` in `subtract_inplace()`, and why nothing caught it
+### A missing `return` in `subtract_inplace()`
 
-A Copilot review of PR #271 flagged the Burnikel-Ziegler block guard in
-`biguint/arithmetics.mojo` as testing the wrong length. It was right, and
-chasing it turned up something much larger sitting underneath.
-
-`subtract_inplace()` handled equal operands like this:
+Found while checking a Copilot review comment on PR #271 (which was itself
+right: the B-Z block guard tested `len(a.words)` where `t` counts blocks of
+`normalized_a`).
 
 ```mojo
 if comparison_result == 0:
@@ -232,44 +257,21 @@ elif comparison_result < 0:
 ```
 
 With no `return`, the equal case sets `x` to one zero word and then subtracts
-`y` from it: the vectorized loop runs over `len(y.words)` words and reads and
+`y` from it: the vectorized loop runs over `len(y.words)` words, reads and
 writes past the end of `x`, and `normalize_borrows()` tidies the garbage into
 something that looks like a number. `x -= x` returned `877910460` for one
-18-word operand. Not zero, not a crash, not even an obviously wrong magnitude.
+18-word operand.
 
-The damage was not confined to `-=`. Burnikel-Ziegler's schoolbook base case
-computes its remainder as `a_slice -= q * b_slice`, and a block that happens to
-divide exactly makes those two operands equal - so `//` and `%` silently
-returned wrong quotients for a whole family of dividends. A sweep of
-`b * (10^9)^k + j * (b - 1)` over divisors of 33 to 71 words found 676 wrong
-answers in 5 148.
+It reached past `-=`. B-Z's schoolbook base case computes `a_slice -= q *
+b_slice`, and a block that divides exactly makes those equal, so `//` and `%`
+returned wrong quotients: 676 wrong in 5 148 over a sweep of
+`b * (10^9)^k + j * (b - 1)`.
 
-Three things are worth keeping from this.
-
-The out-of-place `subtract()` was correct the whole time, and so was every
-other in-place operation. The way to find this was not to read the code, which
-looks fine at a glance, but to run each in-place operation against its
-out-of-place twin over a grid of operand widths - including the case where both
-operands are the same value, which is exactly the case a hand-written test set
-forgets. That differential is now
-`test_biguint_inplace_arithmetics_match_out_of_place`, and it fails loudly on
-the old code.
-
-The bug was reachable from `x -= x` at every width from one word up, and the
-suite still passed. Long division has thousands of assertions against Python's
-`//`, and it passed too, because the failing dividends have a specific shape
-that random test data does not produce: the recursion has to meet a block that
-divides exactly. Structured adversarial inputs - operands built to land exactly
-on the algorithm's internal boundaries - find what random ones cannot.
-
-Finally, the fault was a control-flow slip, not an algorithmic mistake, and it
-lived in the one branch of a function that is otherwise about arithmetic. It
-survived review, CI, and a benchmark suite that exercises the code constantly.
-The two in-place single-word divisions found alongside it are the same sort of
-thing: both left a `BigUInt` with no words at all when the quotient was zero,
-and `floor_divide_by_uint32_inplace()` read its loop bound from a list it had
-already shortened. Nothing calls those two today, which is precisely why the
-faults were still there.
+Two lessons. Test every in-place op against its out-of-place twin over a grid
+of widths, *including equal operands* - that differential is now
+`test_biguint_inplace_arithmetics_match_out_of_place`. And random dividends
+never land on the recursion's internal block boundaries, so structured
+adversarial inputs are the only thing that finds this class of bug.
 
 ### A Newton schedule reaches `seed * 2^n`, and nothing caps it
 

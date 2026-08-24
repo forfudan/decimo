@@ -30,6 +30,24 @@ returned short of its requested precision is fixed.
 
 ### 🦋 Changed in Unreleased
 
+1. **`BigInt` multiplication gains a Toom-3 path.** Above 384 words the
+   magnitude multiply now splits each operand three ways, evaluates both as
+   polynomials at `0`, `1`, `-1`, `2` and `inf`, and interpolates the product
+   from five sub-multiplications instead of Karatsuba's three: `O(n^1.465)`
+   against `O(n^1.585)`. `BigUInt` has had this since v0.10.0 (PR #166); `BigInt` — the
+   type the Chudnovsky binary splitting actually runs on — stopped at
+   Karatsuba. Against the Karatsuba path it is 1.15x at 400 words, 1.25x at
+   5 000 and 1.5x at 22 000; a 100 000-digit product goes from 7.7 ms to
+   6.0 ms, and `pi(100000)` from 152 ms to 142 ms. The end-to-end gain is
+   smaller than the multiply gain because a binary-splitting tree spends only
+   about a third of its time at the top level, and only the top few levels are
+   large enough for Toom-3 to reach.
+
+   With this, `BigInt` is ahead of CPython's `int` on both of the operations
+   that dominate large-integer work: at 100 000 decimal digits a product takes
+   6.0 ms against CPython's 9.4 ms, and a floor division 16.1 ms against
+   19.4 ms. CPython still edges it on decimal output, 18.6 ms against 21.0 ms.
+
 1. **`BigDecimal.pi()` is three to four orders of magnitude faster.** The
    Chudnovsky binary splitting now uses the `P`/`Q`/`T` recurrence: each leaf
    is O(1) instead of rebuilding `(6k)!/(3k)!`, `(k!)^3` and `C^k` from

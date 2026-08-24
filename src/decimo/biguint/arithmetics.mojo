@@ -717,7 +717,8 @@ def subtract_inplace(mut x: BigUInt, y: BigUInt) raises -> None:
         # one-word zero that `x` has just become: the vectorized loop runs over
         # `len(y.words)` words and reads and writes past the end of `x`, and
         # `normalize_borrows()` then turns the garbage into a plausible-looking
-        # value. `subtract(x, x)` returned `877910460` for one 18-word operand.
+        # value. `x -= x` returned `877910460` for one 18-word operand. The
+        # out-of-place `subtract()` is unaffected; only this in-place path was.
         return
     elif comparison_result < 0:
         raise OverflowError(
@@ -3043,7 +3044,7 @@ def floor_divide_burnikel_ziegler(
         # This ensures that the most significant word of the dividend
         # is smaller than 500_000_000.
         # In this sense, the first 2-by-1 division will generate a quotient
-        # of either 0 or 1, which would exceeds n-word capacity.
+        # of either 0 or 1, which would otherwise exceed n-word capacity.
         #
         # The length tested is `normalized_a`'s, not `a`'s. `t` counts blocks
         # of the normalized dividend, and normalization scales it by the same
