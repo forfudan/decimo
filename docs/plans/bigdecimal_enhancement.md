@@ -80,26 +80,31 @@ Dated by report file under `benches/bigdecimal/reports/`. Append-only.
 
 ### 2.3b Constants — `pi()` (PR #269–#273)
 
-`pi(10000)` 13.7 s → 2.2 ms; `pi(100000)`, out of practical reach before, now
-78 ms. Everything that range-reduces against π (`sin`/`cos`/`tan`) inherits it.
+`pi(10000)` 13.7 s → 1.7 ms; `pi(100000)`, out of practical reach before, now 55
+ms — 2.7× MPFR 4.2.2 + GMP 6.3, which does the same job in 20.7 ms. Everything
+that range-reduces against π (`sin`/`cos`/`tan`) inherits it.
 
-| Date     | PR       | Item                                                                      |
-| -------- | -------- | ------------------------------------------------------------------------- |
-| 20260823 | #269     | Chudnovsky `P`/`Q`/`T` recurrence — O(1) leaves, root denominator is one   |
-|          |          | term's worth instead of the product of every term's                       |
-| 20260823 | #269     | Binary splitting moved from `BigDecimal` to `BigInt`                       |
-| 20260823 | #270     | `sqrt_reciprocal()` instead of the exact `sqrt()` (which costs two         |
-|          |          | full-size divisions to reproduce CPython's perfect-square test)            |
-| 20260823 | #270     | Divide once in binary, convert only the quotient; `10^s` as `5^s << s`     |
-| 20260823 | #270     | Leaves packed from `UInt128` — was half the split's time at p=1000         |
-| 20260823 | #271     | B-Z divisor padding fixed; a 100 000-digit divide 81 ms → 18 ms     |
-| 20260824 | #273     | Toom-3 on `BigInt` (`bigint_enhancement.md` T-M1); 152 → 142 ms            |
-| 20260824 | #273     | Product-scanning `BigUInt` schoolbook, replacing deferred-carry (T-9b);    |
-|          |          | 2.2× at 256 words, and it supersedes `multiply_slices_deferred_carry`      |
-| 20260824 | #273     | `BigUInt` cutoffs re-tuned: Karatsuba 64 → 256, Toom-3 256 → 768;          |
-|          |          | a 100 000-digit `BigUInt` multiply 10.5 → 6.0 ms                           |
-| 20260824 | #274     | Product-scanning `BigUInt` schoolbook mul, windowed schoolbook div,        |
-|          |          | dead `right.p` at the root of the split. Total: 142 → 78 ms                |
+| Date     | PR   | Item                                                                     |
+| -------- | ---- | ------------------------------------------------------------------------ |
+| 20260823 | #269 | Chudnovsky `P`/`Q`/`T` recurrence — O(1) leaves, root denominator is one |
+|          |      | term's worth instead of the product of every term's                      |
+| 20260823 | #269 | Binary splitting moved from `BigDecimal` to `BigInt`                     |
+| 20260823 | #270 | `sqrt_reciprocal()` instead of the exact `sqrt()` (which costs two       |
+|          |      | full-size divisions to reproduce CPython's perfect-square test)          |
+| 20260823 | #270 | Divide once in binary, convert only the quotient; `10^s` as `5^s << s`   |
+| 20260823 | #270 | Leaves packed from `UInt128` — was half the split's time at p=1000       |
+| 20260823 | #271 | B-Z divisor padding fixed; a 100 000-digit divide 81 ms → 18 ms          |
+| 20260824 | #273 | Toom-3 on `BigInt` (`bigint_enhancement.md` T-M1); 152 → 142 ms          |
+| 20260824 | #273 | Product-scanning `BigUInt` schoolbook, replacing deferred-carry (T-9b);  |
+|          |      | 2.2× at 256 words, and it supersedes `multiply_slices_deferred_carry`    |
+| 20260824 | #273 | `BigUInt` cutoffs re-tuned: Karatsuba 64 → 256, Toom-3 256 → 768;        |
+|          |      | a 100 000-digit `BigUInt` multiply 10.5 → 6.0 ms                         |
+| 20260824 | #274 | Product-scanning `BigUInt` schoolbook mul, windowed schoolbook div,      |
+|          |      | dead `right.p` at the root of the split. Total: 142 → 78 ms              |
+| 20260824 | #275 | `sqrt_reciprocal()` Newton step rearranged around the residual (T-Sq1)   |
+|          |      | 10.4 → 6.6 ms at p=100000                                                |
+| 20260824 | #275 | 64-bit limbs inside the `BigInt` schoolbook base case                    |
+|          |      | (`bigint_enhancement.md` T-M4), plus cutoffs re-tuned. Total: 78 → 55 ms |
 
 ### 2.4 Performance tracking — absolute decimo median ns/iter (ascending precision)
 
@@ -805,26 +810,28 @@ P7 — `round` (2× py → target ≤1.0×)
   `subtract` / `multiply` with `precision > 0`).
 
 **T-PI4 — keep the `pi()` pipeline binary, convert once. OPEN.**
-Stage breakdown at p=100000, after the 2026-08-24 work (78 ms total):
+Stage breakdown at p=100000, end of 2026-08-24 (56 ms total):
 
 | Stage                              | ms   | Base |
 | ---------------------------------- | ---- | ---- |
-| binary splitting, below the root   | 24.5 | 2^32 |
-| base 2^32 → 10^9                   | 12.5 | both |
-| `sqrt_reciprocal(10005)`           | 11.1 | 10^9 |
-| final division                     |  9.6 | 2^32 |
-| root join, 3 full-width multiplies |  9.7 | 2^32 |
-| final multiplies and round         |  6.0 | 10^9 |
-| `5^s` and the scaling multiply     |  4.9 | 2^32 |
+| binary splitting, below the root   | 16.8 | 2^32 |
+| base 2^32 → 10^9                   |  9.8 | both |
+| `sqrt_reciprocal(10005)`           |  7.0 | 10^9 |
+| final division                     |  6.6 | 2^32 |
+| root join, 3 full-width multiplies |  6.5 | 2^32 |
+| final multiplies and round         |  6.4 | 10^9 |
+| `5^s` and the scaling multiply     |  3.3 | 2^32 |
 
-`sqrt_reciprocal` has no reason to be decimal — a fixed-point reciprocal
-square root on `BigInt` would run against a multiply that is still 1.75× the
-base-10^9 one (3.4 ms vs 6.0 at 100 000 digits) — and the final multiply could
-follow it, leaving a single conversion. Worth roughly 5 ms now, down from the
-17 ms it would have been worth before the kernels were fixed.
+The two base-10^9 stages are now 13.4 ms of the 56, and `BigInt` multiply has
+pulled 2.8× ahead of `BigUInt` multiply (2.3 ms vs 6.4 at 100 000 digits)
+because the 64-bit packing of T-M4 has no base-10^9 analogue. A fixed-point
+reciprocal square root on `BigInt`, with the final multiply following it and a
+single conversion at the end, is worth roughly 8 ms — up from the 5 ms it was
+worth this morning, because the gap between the two bases has widened.
 
 Below that the multiplication exponent itself has to come down (T-5, NTT).
-For scale, mpmath on gmpy2 does the same 100 000 digits in ~16 ms.
+For scale, MPFR 4.2.2 + GMP 6.3 does the same 100 000 digits in 20.7 ms
+(18.6 compute + 2.1 to-string), and mpmath on gmpy2 in ~16 ms.
 
 ### 5.3 Long-term tasks not on the active roadmap
 
@@ -935,7 +942,8 @@ some ops < 1.0×):
 | T-R1   | `round` `.format` sweep                   | S      | **NO**   | no `.format` asserts in round; great           |
 | T-7b   | Reciprocal-Newton nth root                | M      | **WAIT** | break-even at current mul speed                |
 |        |                                           |        |          | (div ~2.7× mul); root already 0.2× py          |
-| T-PI4  | Binary-only `pi()` pipeline, convert once | M      | **OPEN** | ~5 ms of the 82 ms at p=100000                 |
+| T-PI4  | Binary-only `pi()` pipeline, convert once | M      | **OPEN** | now the biggest item left: ~8 ms of the 55 ms  |
+| T-Sq1  | Newton step around the residual in sqrt   | S      | **DONE** | 1.6× at p=100000; correction mul halves        |
 | T-9b   | Product-scanning `BigUInt` schoolbook     | M      | **DONE** | 2.2× at 256 words; deferred-carry removed      |
 | T-9c   | Re-tune `BigUInt` mul cutoffs             | S      | **DONE** | Kara 64→256, Toom3 256→768; 10.5 → 6.0 ms      |
 | T-D5   | Windowed fused mul-sub in schoolbook div  | M      | **DONE** | 2.0× at 100 digits, 1.5× at 300, 1.3× at 1 000 |

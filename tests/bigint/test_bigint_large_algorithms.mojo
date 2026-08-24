@@ -700,5 +700,45 @@ def test_multiply_toom3_algebraic_identities() raises:
     )
 
 
+def test_multiply_across_the_64_bit_packing_boundary() raises:
+    """The packed and unpacked schoolbook kernels agree, at every parity.
+
+    Below `CUTOFF_PACK_64` (32 words) the base case runs over 32-bit words;
+    above it, operands are packed into base-2^64 limbs and the result is
+    unpacked again. An operand with an odd word count leaves the top limb
+    half empty, and the product then carries up to two zero words the packed
+    kernel has to strip, so both parities are covered on both sides of the
+    gate and in every combination.
+
+    9 decimal digits is a shade under one 32-bit word, so this walks the word
+    counts one at a time through the boundary rather than jumping over it.
+    The reference multiplies in 200-bit blocks, which stays under the gate
+    whatever the operands do.
+    """
+    var digit_counts = [180, 189, 198, 270, 279, 288, 297, 306, 360, 450]
+
+    for i in range(len(digit_counts)):
+        for j in range(len(digit_counts)):
+            var a = BigInt(_bz_digit_run(digit_counts[i], 24680 + 13 * i + j))
+            var b = BigInt(_bz_digit_run(digit_counts[j], 13579 + 7 * i + j))
+            var case_label = (
+                String("a=")
+                + String(digit_counts[i])
+                + " digits, b="
+                + String(digit_counts[j])
+                + " digits"
+            )
+            testing.assert_equal(
+                String(a * b),
+                String(_blockwise_product(a, b, 200)),
+                "packed product differs from reference for " + case_label,
+            )
+            testing.assert_equal(
+                String(a * (-b)),
+                "-" + String(_blockwise_product(a, b, 200)),
+                "packed product sign is wrong for " + case_label,
+            )
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()
