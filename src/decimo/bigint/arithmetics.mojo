@@ -47,7 +47,7 @@ from decimo.errors import ValueError, ZeroDivisionError
 # Comba column runs at well under a cycle per partial product, which pushes
 # the point where Karatsuba's three sub-products and its extra additions and
 # allocations start to pay well past where it used to be.
-comptime CUTOFF_KARATSUBA: Int = 128
+comptime CUTOFF_KARATSUBA: Int = 256
 """The minimum number of words above which Karatsuba multiplication is used."""
 
 # Toom-3 cutoff: operands with this many words or fewer use Karatsuba.
@@ -61,7 +61,7 @@ comptime CUTOFF_KARATSUBA: Int = 128
 # cutoff for the same reason. Measured on Apple Silicon arm64 with the tuned
 # base case, 512 is the best of 384 / 512 / 768 / 1024 across 512 to 11 000
 # words. Adjust if benchmarking on another target shows a better value.
-comptime CUTOFF_TOOM3: Int = 512
+comptime CUTOFF_TOOM3: Int = 768
 """The minimum number of words above which Toom-3 multiplication is used."""
 
 # Burnikel-Ziegler cutoff: divisors with this many words or fewer use
@@ -263,37 +263,34 @@ def _multiply_magnitude_by_word(
     return result^
 
 
-def _multiply_magnitudes_schoolbook(
+comptime CUTOFF_PACK_64: Int = 32
+"""Operand size at which the schoolbook kernel switches to 64-bit limbs.
+
+Packing costs three linear passes and two heap allocations either side of a
+quadratic loop. That is a rounding error at the Karatsuba cutoff but it is
+about 120 ns of fixed cost, which swamps a multiplication of a handful of
+words. Measured crossover is just under 30 words.
+"""
+
+
+def _multiply_magnitudes_comba32(
     a: ImmSpan[UInt32, _], b: ImmSpan[UInt32, _]
 ) -> List[UInt32]:
-    """Product-scanning (Comba) multiplication on magnitude slices.
+    """Product-scanning multiplication over 32-bit words, without packing.
 
-    Walks the result one word at a time, summing the whole column
-    `sum(a[i] * b[k-i])` into a `UInt128` before emitting a word. Each product
-    is below 2^64 and the column has at most `2^64` terms, so the accumulator
-    cannot overflow and no carry has to be propagated back through the result.
-
-    Against the operand-scanning form this replaces, that removes the
-    read-modify-write of the result array on every partial product and the
-    serial carry chain along each row: about 2x at the Karatsuba cutoff. The
-    column is unrolled over four independent accumulators because a single one
-    serialises on the 128-bit add.
-
-    Operates on borrowed views of the operands without copying the input data.
+    The small-operand half of `_multiply_magnitudes_schoolbook()`. Allocates
+    nothing but the result, which is what makes it the better choice below
+    `CUTOFF_PACK_64`.
 
     Args:
-        a: First magnitude.
-        b: Second magnitude.
+        a: First magnitude, non-empty.
+        b: Second magnitude, non-empty.
 
     Returns:
         The product magnitude as a new word list.
     """
     var len_a = len(a)
     var len_b = len(b)
-
-    if len_a == 0 or len_b == 0:
-        var zero: List[UInt32] = [UInt32(0)]
-        return zero^
 
     var result_len = len_a + len_b
     var result = List[UInt32](capacity=result_len)
@@ -303,8 +300,6 @@ def _multiply_magnitudes_schoolbook(
     var bp = b.unsafe_ptr()
     var rp = result._data
 
-    # `carry` is the part of the column sum above 32 bits, which belongs to
-    # the next column. The last column leaves it holding the top word.
     var carry = UInt128(0)
     for k in range(result_len - 1):
         var i_low = 0 if k < len_b else k - len_b + 1
@@ -344,6 +339,150 @@ def _multiply_magnitudes_schoolbook(
         carry = column >> 32
 
     rp[unsafe_offset=result_len - 1] = UInt32(carry & 0xFFFF_FFFF)
+
+    var rlen = result_len
+    while rlen > 1 and result[rlen - 1] == 0:
+        rlen -= 1
+    while len(result) > rlen:
+        result.shrink(len(result) - 1)
+
+    return result^
+
+
+def _multiply_magnitudes_schoolbook(
+    a: ImmSpan[UInt32, _], b: ImmSpan[UInt32, _]
+) -> List[UInt32]:
+    """Product-scanning (Comba) multiplication on magnitude slices.
+
+    Packs the two magnitudes into base-2^64 limbs, walks the result one limb
+    at a time summing the whole column `sum(a[i] * b[k-i])`, and writes each
+    limb straight back out as two 32-bit words.
+
+    The packing is what makes this fast. A 32-bit kernel already runs at under
+    a cycle per word pair, so the only way left to cut the base case is to cut
+    the number of word pairs, and 64-bit limbs quarter it. That is worth about
+    1.9x at the Karatsuba cutoff. Small operands take
+    `_multiply_magnitudes_comba32()` instead, which skips the packing.
+
+    A column of 64-bit products does not fit in 128 bits, and the usual answer
+    - a three-word accumulator with an explicit carry chain - gives most of
+    the gain back. Instead each product is split at the word boundary and the
+    two halves go into separate `UInt128` accumulators: every half is below
+    `2^64`, so neither can overflow until a column is `2^64` limbs long. On
+    arm64 the split is free, since `mul` and `umulh` already deliver the two
+    halves in separate registers. Recombining is one add per column, not one
+    per product.
+
+    The columns are unrolled over two independent accumulator pairs because a
+    single one serialises on the 128-bit add.
+
+    Operates on borrowed views of the operands without copying the input data.
+
+    Args:
+        a: First magnitude.
+        b: Second magnitude.
+
+    Returns:
+        The product magnitude as a new word list.
+    """
+    var len_a = len(a)
+    var len_b = len(b)
+
+    if len_a == 0 or len_b == 0:
+        var zero: List[UInt32] = [UInt32(0)]
+        return zero^
+
+    if len_a < CUTOFF_PACK_64 or len_b < CUTOFF_PACK_64:
+        return _multiply_magnitudes_comba32(a, b)
+
+    comptime LOW_HALF = UInt128(0xFFFF_FFFF_FFFF_FFFF)
+
+    var ap = a.unsafe_ptr()
+    var bp = b.unsafe_ptr()
+
+    # --- Pack both operands into base-2^64 limbs ---
+    var n_a = (len_a + 1) >> 1
+    var n_b = (len_b + 1) >> 1
+
+    var limbs_a = List[UInt64](capacity=n_a)
+    limbs_a.resize(unsafe_uninit_length=n_a)
+    var lap = limbs_a._data
+    for j in range(n_a - 1):
+        lap[unsafe_offset=j] = UInt64(ap[unsafe_offset=2 * j]) | (
+            UInt64(ap[unsafe_offset=2 * j + 1]) << 32
+        )
+    var last_a = UInt64(ap[unsafe_offset=2 * (n_a - 1)])
+    if 2 * n_a - 1 < len_a:
+        last_a |= UInt64(ap[unsafe_offset=2 * n_a - 1]) << 32
+    lap[unsafe_offset=n_a - 1] = last_a
+
+    var limbs_b = List[UInt64](capacity=n_b)
+    limbs_b.resize(unsafe_uninit_length=n_b)
+    var lbp = limbs_b._data
+    for j in range(n_b - 1):
+        lbp[unsafe_offset=j] = UInt64(bp[unsafe_offset=2 * j]) | (
+            UInt64(bp[unsafe_offset=2 * j + 1]) << 32
+        )
+    var last_b = UInt64(bp[unsafe_offset=2 * (n_b - 1)])
+    if 2 * n_b - 1 < len_b:
+        last_b |= UInt64(bp[unsafe_offset=2 * n_b - 1]) << 32
+    lbp[unsafe_offset=n_b - 1] = last_b
+
+    # --- Product scanning over the packed limbs ---
+    # `2 * (n_a + n_b)` is at most two words longer than `len_a + len_b`, and
+    # any such word is zero, so stripping below removes it.
+    var n_out = n_a + n_b
+    var result_len = n_out << 1
+    var result = List[UInt32](capacity=result_len)
+    result.resize(unsafe_uninit_length=result_len)
+    var rp = result._data
+
+    # `carry` is the part of the column sum above 64 bits, which belongs to
+    # the next column. The last column leaves it holding the top limb.
+    var carry = UInt128(0)
+    for k in range(n_out - 1):
+        var i_low = 0 if k < n_b else k - n_b + 1
+        var i_high = k if k < n_a else n_a - 1
+
+        var low0 = carry
+        var high0 = UInt128(0)
+        var low1 = UInt128(0)
+        var high1 = UInt128(0)
+
+        var i = i_low
+        while i + 1 <= i_high:
+            var product0 = UInt128(lap[unsafe_offset=i]) * UInt128(
+                lbp[unsafe_offset=k - i]
+            )
+            low0 += product0 & LOW_HALF
+            high0 += product0 >> 64
+            var product1 = UInt128(lap[unsafe_offset=i + 1]) * UInt128(
+                lbp[unsafe_offset=k - i - 1]
+            )
+            low1 += product1 & LOW_HALF
+            high1 += product1 >> 64
+            i += 2
+        if i <= i_high:
+            var product = UInt128(lap[unsafe_offset=i]) * UInt128(
+                lbp[unsafe_offset=k - i]
+            )
+            low0 += product & LOW_HALF
+            high0 += product >> 64
+
+        var low = low0 + low1
+        rp[unsafe_offset=2 * k] = UInt32(low & 0xFFFF_FFFF)
+        rp[unsafe_offset=2 * k + 1] = UInt32((low >> 32) & 0xFFFF_FFFF)
+        carry = (high0 + high1) + (low >> 64)
+
+    rp[unsafe_offset=result_len - 2] = UInt32(carry & 0xFFFF_FFFF)
+    rp[unsafe_offset=result_len - 1] = UInt32((carry >> 32) & 0xFFFF_FFFF)
+
+    # The packed operands are only ever touched through the raw pointers taken
+    # above, so their last *use* as values was where those pointers were
+    # taken. Without these the compiler is free to destroy them there, and the
+    # loop above then reads freed memory.
+    _ = limbs_a^
+    _ = limbs_b^
 
     # Strip leading zeros
     var rlen = result_len

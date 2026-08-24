@@ -258,7 +258,38 @@ four accumulators, because one serialises on the 128-bit add.
 **T-M3 — re-tune the cutoffs. DONE (2026-08-24).** A quadratic kernel at well
 under a cycle per partial product moves both crossovers a long way up:
 `CUTOFF_KARATSUBA` 48 → 128, `CUTOFF_TOOM3` 384 → 512. At 11 000 words the
-dispatcher went 4 754 → 3 743 µs on the cutoffs alone.
+dispatcher went 4 754 → 3 743 µs on the cutoffs alone. T-M4 moved them again,
+to 256 / 768.
+
+**T-M4 — 64-bit limbs in the base case. DONE (2026-08-24).** T-M2 left the
+kernel at 0.19 ns per word pair, about 0.85 cycles — there was nothing left to
+win per pair, only in the number of pairs. So the base case now packs both
+operands into base-2^64 limbs, quartering the pairs, and writes each result
+limb straight back out as two words. Below `CUTOFF_PACK_64 = 32` words the
+packing costs more than it saves and `_multiply_magnitudes_comba32()` runs
+instead.
+
+A column of 64-bit products overflows 128 bits, and a three-word accumulator
+with a carry chain gives most of the gain back. Splitting each product at the
+word boundary into two `UInt128` accumulators avoids that: each half is below
+`2^64`, so neither overflows until a column is `2^64` limbs long, and on arm64
+`mul`/`umulh` deliver the two halves already separated.
+
+| words | Comba ×4 (T-M2) | packed 64-bit |
+| ----- | --------------- | ------------- |
+| 38    | 387 ns          | 270           |
+| 75    | 1 230           | 676           |
+| 113   | 2 530           | 1 320         |
+| 182   | 6 630           | 3 400         |
+
+A 100 000-digit multiply went 3.44 → 2.30 ms, and `pi(100000)` 78 → 55 ms.
+GMP does the same multiply in 0.39 ms, so it is still 5.9× ahead — it is on
+FFT at this size and we are not (T-5).
+
+Watch out for Mojo's ASAP destruction here: the packed operands are only
+touched through raw pointers, so without an explicit `_ = limbs_a^` the
+compiler destroys them at the point the pointer is taken and the loop reads
+freed memory. That is a silent heap corruption, not a crash at the fault.
 
 ### power (2.1× py) and add (1.5× py)
 
@@ -348,9 +379,10 @@ and fix the base-conversion and SIMD fallout behind the test suite.
 | T-T1  | Lower to_string D&C entry threshold              | OPEN — after T-D1 / T-D2              |
 | T-M1  | Toom-3 multiply above 384 words                  | DONE 2026-08-24                       |
 | T-M2  | Product-scanning (Comba) schoolbook base case    | DONE 2026-08-24 — ~2× at the cutoff   |
-| T-M3  | Re-tune `CUTOFF_KARATSUBA` / `CUTOFF_TOOM3`      | DONE 2026-08-24 — 48→128, 384→512     |
+| T-M3  | Re-tune `CUTOFF_KARATSUBA` / `CUTOFF_TOOM3`      | DONE 2026-08-24 — 48→128→256, →768    |
+| T-M4  | Pack the base case into base-2^64 limbs          | DONE 2026-08-24 — 1.9× at the cutoff  |
 | T-P1  | `square()` plus inplace loop for power           | OPEN                                  |
 | T-A1  | add/sub dispatch reorder                         | OPEN                                  |
 | T-SH1 | Pre-size the shift result buffer                 | OPEN                                  |
-| T-W1  | Base-2^64 limbs                                  | OPEN — unproven, low priority         |
+| T-W1  | Base-2^64 limbs throughout                       | PARTLY — T-M4 does it in the kernel   |
 | T-D4  | Reciprocal-Newton divide                         | DEFERRED — needs NTT, not Toom-3      |

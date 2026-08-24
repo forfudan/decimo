@@ -431,6 +431,10 @@ def _chudnovsky_split_dropping_p(
     costs one multiplication of two half-width operands, which at 100 000
     digits is around 1.3 ms.
 
+    The same argument then applies to that subtree's own right child, and so
+    on down the right spine, so this recurses into itself rather than into
+    `chudnovsky_split`. The left child still needs its `p`.
+
     Args:
         a: The start index of the splitting range (inclusive).
         b: The end index of the splitting range (exclusive).
@@ -449,9 +453,9 @@ def _chudnovsky_split_dropping_p(
 
     var mid = (a + b) // 2
     var left = chudnovsky_split(a, mid)
-    var right = chudnovsky_split(mid, b)
-    var q = left.q * right.q
-    var t = left.t * right.q + left.p * right.t
+    var right = _chudnovsky_split_dropping_p(mid, b)
+    var q = left.q * right[0]
+    var t = left.t * right[0] + left.p * right[1]
     return (q^, t^)
 
 

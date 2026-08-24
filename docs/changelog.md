@@ -7,13 +7,13 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 `Rational` grows a full set of conversions and joins the
 `from_integral_scalar()` / `from_float_scalar()` naming used by the other
 numeric types, `BigInt10` is no longer referenced by the rest of the library,
-and `BigDecimal.pi()` gets four orders of magnitude faster — it now runs ahead
-of pure-Python mpmath from 500 digits up. Multiplication is 2-3x faster for
-both `BigInt` and `BigUInt`, which puts `BigInt` ahead of CPython's `int` on
-every large operation. Burnikel-Ziegler division loses a padding choice that
-cost it its own asymptotics on some sizes, which speeds up every division in
-the library. A Newton iteration that silently returned short of its requested
-precision is fixed.
+and `BigDecimal.pi()` gets four orders of magnitude faster — 100 000 digits in
+55 ms, and ahead of pure-Python mpmath from 500 digits up. Multiplication is
+2-3x faster for both `BigInt` and `BigUInt`, which puts `BigInt` ahead of
+CPython's `int` on every large operation. Burnikel-Ziegler division loses a
+padding choice that cost it its own asymptotics on some sizes, which speeds up
+every division in the library. A Newton iteration that silently returned short
+of its requested precision is fixed.
 
 ### ⭐️ New in Unreleased
 
@@ -74,6 +74,35 @@ precision is fixed.
    100 000 digits, decimo against CPython 3.14: multiply 3.4 ms vs 9.4,
    floor division 9.2 ms vs 19.4, `to_string` 13.1 ms vs 18.6, `from_string`
    5.1 ms vs 9.3.
+
+1. **The `BigInt` multiply base case works in 64-bit limbs, and `pi(100000)`
+   drops to 55 ms.** After the product-scanning rewrite above, the schoolbook
+   kernel was down to about 0.85 cycles per word pair — there was nothing left
+   to win per pair, only in the number of pairs. It now packs both operands
+   into base-2^64 limbs before the column loop, which quarters the pairs, and
+   writes each result limb straight back out as two 32-bit words. Operands
+   below 32 words skip the packing, which would cost more than it saves.
+
+   A column of 64-bit products does not fit in 128 bits. Rather than carry a
+   three-word accumulator, each product is split at the word boundary and the
+   halves go into two separate `UInt128` accumulators: neither can overflow
+   until a column is `2^64` limbs long, and on arm64 the split is free because
+   `mul` and `umulh` already produce the halves in different registers.
+
+   1.9x at the Karatsuba cutoff, which moved the cutoffs up again (Karatsuba
+   128 -> 256, Toom-3 512 -> 768). A 100 000-digit `BigInt` product goes from
+   3.4 ms to 2.3 ms.
+
+1. **`sqrt()` and `sqrt_reciprocal()` are 1.6x faster at high precision.** The
+   Newton step was the textbook `r * (3 - x * r^2) / 2`, whose second multiply
+   is half-width by full-width. Written around the residual instead — `r + r *
+   (1 - x * r^2) / 2`, algebraically the same thing — the correction is around
+   `10^(-p/2)`, and a `BigDecimal` keeps those leading zeros in the scale
+   rather than in the coefficient. The multiply is then half-width by
+   half-width. `sqrt_reciprocal(10005, 100000)` goes from 10.4 ms to 6.6 ms.
+
+   Together with the item above, `pi(100000)` goes from 78 ms to 55 ms and
+   `pi(10000)` from 2.2 ms to 1.7 ms.
 
 1. **`BigDecimal.pi()` is three to four orders of magnitude faster.** The
    Chudnovsky binary splitting now uses the `P`/`Q`/`T` recurrence: each leaf

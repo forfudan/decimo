@@ -1462,10 +1462,20 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
         prec_schedule.append(p)
         p = (p + 1) // 2
 
-    # Constant 3
-    var three = BigDecimal(BigUInt(raw_words=[3]), 0, False)
+    # Constant 1
+    var one = BigDecimal(BigUInt(raw_words=[1]), 0, False)
 
-    # --- Newton iterations: r_{k+1} = r_k * (3 - x_norm * r_k^2) / 2 ---
+    # --- Newton iterations: r_{k+1} = r_k + r_k * (1 - x_norm * r_k^2) / 2 ---
+    #
+    # This is the textbook `r * (3 - x * r^2) / 2` rearranged around the
+    # residual `e = 1 - x * r^2`. The two forms are algebraically identical -
+    # `(3 - x r^2) / 2 = 1 + e / 2` - but they cost different amounts. `r`
+    # entering an iteration is accurate to half the target, so `e` is around
+    # `10^(-ip/2)` and a `BigDecimal` keeps those leading zeros in the scale
+    # rather than in the coefficient. The correction multiply is therefore
+    # half-width by half-width, where `r * (3 - x r^2)` was half-width by
+    # full-width. That is one full half-precision multiplication saved per
+    # iteration, about 3 ms of `pi(100000)`.
     for i in range(len(prec_schedule) - 1, -1, -1):
         var ip = prec_schedule[i] + 10  # iteration precision with guard
 
@@ -1487,20 +1497,27 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
             fill_zeros_to_precision=False,
         )
 
-        # 3 - x_norm * r^2 (should be close to 2 when converged)
-        var correction = three.subtract(r_sq)
+        # e = 1 - x_norm * r^2, the Newton residual. Signed, and tiny.
+        var residual = one.subtract(r_sq)
 
-        # r * (3 - x_norm * r^2) (inplace)
-        bigdecimal_arithmetics.multiply_inplace(r, correction)
+        # r * e / 2
+        bigdecimal_arithmetics.multiply_inplace(residual, r)
+        residual.round_to_precision_inplace(
+            precision=ip,
+            rounding_mode=RoundingMode.half_up(),
+            remove_extra_digit_due_to_rounding=True,
+            fill_zeros_to_precision=False,
+        )
+        residual = residual.true_divide_inexact_by_uint32(UInt32(2), ip)
+
+        # r + r * e / 2
+        r = r.add(residual)
         r.round_to_precision_inplace(
             precision=ip,
             rounding_mode=RoundingMode.half_up(),
             remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
-
-        # / 2
-        r = r.true_divide_inexact_by_uint32(UInt32(2), ip)
 
     # --- Final: sqrt(x_norm) = x_norm * r ---
     var result = x_norm.multiply(r)
