@@ -113,7 +113,7 @@ of its requested precision is fixed.
    `426880 * 10005 / √10005 * (q/t)`, so the irrational factor enters as a
    *reciprocal* square root — which Newton reaches without a division — and
    `426880 * 10005 = 4270934400` still fits in a word. The new
-   `BigInt.exponential.reciprocal_isqrt_fixed()` returns `2^f / sqrt(x)` as a
+   `BigInt.exponential.reciprocal_sqrt_fixed_point()` returns `2^f / sqrt(x)` as a
    binary fixed-point integer, everything is combined in `BigInt`, and the
    conversion to base 10^9 happens once, on the finished value.
 
@@ -122,13 +122,13 @@ of its requested precision is fixed.
    `pi(1000)` 82 -> 71 us. Digits are unchanged: exact against MPFR at every
    precision from 1 to 100 000 digits.
 
-1. **`sqrt_reciprocal()` is 1.6x faster at high precision.** The Newton step
+1. **`sqrt_via_reciprocal_iteration()` is 1.6x faster at high precision.** The Newton step
    was the textbook `r * (3 - x * r^2) / 2`, whose second multiply is
    half-width by full-width. Written around the residual instead — `r + r *
    (1 - x * r^2) / 2`, algebraically the same thing — the correction is around
    `10^(-p/2)`, and a `BigDecimal` keeps those leading zeros in the scale
    rather than in the coefficient. The multiply is then half-width by
-   half-width. `sqrt_reciprocal(10005, 100000)` goes from 10.4 ms to 6.6 ms.
+   half-width. `sqrt_via_reciprocal_iteration(10005, 100000)` goes from 10.4 ms to 6.6 ms.
 
    `fast_isqrt()`, which the exact `BigDecimal.sqrt()` uses, now takes the
    same form, but gains only about 6% (`sqrt(10005, 50000)` 19.3 ms to
@@ -153,7 +153,7 @@ of its requested precision is fixed.
    for bit by computing an exact integer square root and testing for a perfect
    square; both cost full-size divisions and neither means anything for a fixed
    non-square constant used as an intermediate. `pi()` now uses the
-   division-free `sqrt_reciprocal()`, which was the largest single line item in
+   division-free `sqrt_via_reciprocal_iteration()`, which was the largest single line item in
    `pi()` — ahead of the binary splitting itself. `pi(5000)` goes from 3.26 ms
    to 1.98 ms and `pi(100000)` from 295 ms to 211 ms.
 1. **`pi()` divides in binary and converts once.** The last step of the
@@ -287,13 +287,13 @@ of its requested precision is fixed.
    *normalized* dividend, which the normalization has usually lengthened, so
    the guard fired more or less at random. It now tests the normalized length,
    as `BigInt`'s copy of the algorithm always has.
-1. **`sqrt_reciprocal()` returned fewer correct digits than asked for**, from
+1. **`sqrt_via_reciprocal_iteration()` returned fewer correct digits than asked for**, from
    two independent causes. A reciprocal-sqrt iteration only doubles the correct
    digits, so `n` iterations reach `seed * 2^n` — and the schedule halved down
    to 20, crediting the seed with more digits than it carries. The seed itself
    was `x ** -0.5`, which for some inputs is accurate to only about ten digits;
    it is now `1 / sqrt(x)`, which is correctly rounded. Together these left
-   `sqrt_reciprocal(1234.5678, 1500)` correct to 1248 of 1500 digits, with the
+   `sqrt_via_reciprocal_iteration(1234.5678, 1500)` correct to 1248 of 1500 digits, with the
    full digit count returned and nothing raised. `fast_isqrt()` shared both
    bugs and was hiding them behind full-size corrective divisions, so
    `sqrt_exact()` is about 30% faster as well.

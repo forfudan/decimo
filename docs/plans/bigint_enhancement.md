@@ -387,5 +387,5 @@ and fix the base-conversion and SIMD fallout behind the test suite.
 | T-A1  | add/sub dispatch reorder                         | OPEN                                  |
 | T-SH1 | Pre-size the shift result buffer                 | OPEN                                  |
 | T-W1  | Base-2^64 limbs throughout                       | PARTLY — T-M4 does it in the kernel   |
-| T-E1  | `reciprocal_isqrt_fixed()` binary recip. sqrt    | DONE 2026-08-24 — enables T-PI4       |
+| T-E1  | `reciprocal_sqrt_fixed_point()` binary recip. sqrt    | DONE 2026-08-24 — enables T-PI4       |
 | T-D4  | Reciprocal-Newton divide                         | DEFERRED — needs NTT, not Toom-3      |

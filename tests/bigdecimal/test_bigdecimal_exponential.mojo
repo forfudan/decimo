@@ -188,8 +188,8 @@ def test_ln_invalid_inputs() raises:
     )
 
 
-def test_sqrt_reciprocal_matches_sqrt_exact() raises:
-    """Test that `sqrt_reciprocal()` delivers every digit it is asked for.
+def test_sqrt_via_reciprocal_iteration_matches_sqrt_exact() raises:
+    """Test that `sqrt_via_reciprocal_iteration()` delivers every digit it is asked for.
 
     `sqrt_exact()` is the oracle here: it reproduces CPython's
     `Decimal.sqrt()`, which the tests above check directly.
@@ -201,8 +201,8 @@ def test_sqrt_reciprocal_matches_sqrt_exact() raises:
     and both are invisible to a spot check: one shows up only at precisions
     where the halving schedule lands with little slack (1500 and 3000 here, but
     not 1000 or 2000), and the other only for inputs whose `Float64` seed is
-    poor - `sqrt_reciprocal(1234.5678, 1500)` was correct to 1248 of 1500
-    digits while `sqrt_reciprocal(10005, 1500)` was correct in full, because
+    poor - `sqrt_via_reciprocal_iteration(1234.5678, 1500)` was correct to 1248 of 1500
+    digits while `sqrt_via_reciprocal_iteration(10005, 1500)` was correct in full, because
     `12.345678 ** -0.5` is accurate to ten digits and `1.0005 ** -0.5` is
     exact. Neither raises, and both return the full requested digit count.
     """
@@ -215,7 +215,9 @@ def test_sqrt_reciprocal_matches_sqrt_exact() raises:
             var prec = precisions[j]
             var got = List[Byte](
                 String(
-                    bigdecimal_exponential.sqrt_reciprocal(x, prec)
+                    bigdecimal_exponential.sqrt_via_reciprocal_iteration(
+                        x, prec
+                    )
                 ).as_bytes()
             )
             var want = List[Byte](
@@ -234,7 +236,7 @@ def test_sqrt_reciprocal_matches_sqrt_exact() raises:
             # half-even), so only the last digit is allowed to differ.
             testing.assert_true(
                 agree >= len(want) - 1,
-                String("sqrt_reciprocal(")
+                String("sqrt_via_reciprocal_iteration(")
                 + inputs[i]
                 + String(", ")
                 + String(prec)

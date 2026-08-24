@@ -478,7 +478,7 @@ def _sqrt_precision_doubling_fast(x: BigInt) raises -> BigInt:
 
 
 comptime _NEWTON_GUARD_BITS: Int = 4
-"""Bits of slack per Newton step in `reciprocal_isqrt_fixed()`.
+"""Bits of slack per Newton step in `reciprocal_sqrt_fixed_point()`.
 
 Each step truncates twice - once in the shift that forms the correction, once
 in the shift that rescales `r` - so the doubling of correct bits falls a little
@@ -503,15 +503,20 @@ def isqrt(x: BigInt) raises -> BigInt:
     return sqrt(x)
 
 
-def reciprocal_isqrt_fixed(x: UInt64, frac_bits: Int) raises -> BigInt:
-    """Returns `2^frac_bits / sqrt(x)` as a binary fixed-point integer.
+def reciprocal_sqrt_fixed_point(
+    x: UInt64, fractional_bits: Int
+) raises -> BigInt:
+    """Returns `2^fractional_bits / sqrt(x)` as a binary fixed-point integer.
 
-    The result `r` satisfies `r ~= 2^frac_bits / sqrt(x)` to within a few units
-    in the last place, so it carries about `frac_bits - bit_length(x) / 2`
-    correct significant bits. It is the binary counterpart of
-    `bigdecimal.exponential.sqrt_reciprocal()`, and exists because a
-    `BigDecimal` holds its coefficient in base 10^9, where the same
-    multiplication costs about 2.8x what it does in base 2^32.
+    The result `r` satisfies `r ~= 2^fractional_bits / sqrt(x)` to within a few
+    units in the last place, so it carries about
+    `fractional_bits - bit_length(x) / 2` correct significant bits. Note that
+    this returns the *reciprocal* of the root, where
+    `bigdecimal.exponential.sqrt_via_reciprocal_iteration()` merely reaches
+    the root through one and returns the root.
+
+    It exists because a `BigDecimal` holds its coefficient in base 10^9, where
+    the same multiplication costs about 2.8x what it does in base 2^32.
 
     The iteration is Newton's for the reciprocal square root, written around
     the residual so that no step ever multiplies at the full target width:
@@ -531,24 +536,24 @@ def reciprocal_isqrt_fixed(x: UInt64, frac_bits: Int) raises -> BigInt:
 
     Args:
         x: The value to take the reciprocal square root of. Must be non-zero.
-        frac_bits: The number of fractional bits in the result. Must be
+        fractional_bits: The number of fractional bits in the result. Must be
             non-negative.
 
     Returns:
-        `2^frac_bits / sqrt(x)`, truncated to an integer.
+        `2^fractional_bits / sqrt(x)`, truncated to an integer.
 
     Raises:
-        ValueError: If `x` is zero or `frac_bits` is negative.
+        ValueError: If `x` is zero or `fractional_bits` is negative.
     """
     if x == 0:
         raise ValueError(
             message="Cannot compute the reciprocal square root of zero.",
-            function="reciprocal_isqrt_fixed()",
+            function="reciprocal_sqrt_fixed_point()",
         )
-    if frac_bits < 0:
+    if fractional_bits < 0:
         raise ValueError(
             message="Number of fractional bits must be non-negative.",
-            function="reciprocal_isqrt_fixed()",
+            function="reciprocal_sqrt_fixed_point()",
         )
 
     # Bit length of `x`, and half of it rounded up: `r` is about
@@ -570,15 +575,15 @@ def reciprocal_isqrt_fixed(x: UInt64, frac_bits: Int) raises -> BigInt:
         Int(Float64(2.0) ** Float64(seed_scale) / math.sqrt(Float64(x)))
     )
 
-    if frac_bits <= seed_credit:
-        return seed >> (seed_scale - frac_bits)
+    if fractional_bits <= seed_credit:
+        return seed >> (seed_scale - fractional_bits)
 
     # Newton doubles the correct significant bits, so a step lands at
     # `g = 2f - half_bits - 2 * _NEWTON_GUARD_BITS`; inverting that gives the
     # scale each step has to start from. Building the schedule downwards from
     # the target is what keeps the final step at half the target width.
     var schedule = List[Int]()
-    var f = frac_bits
+    var f = fractional_bits
     while f > seed_credit:
         schedule.append(f)
         f = (f + half_bits) // 2 + _NEWTON_GUARD_BITS

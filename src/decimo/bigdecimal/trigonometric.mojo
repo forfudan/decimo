@@ -545,9 +545,9 @@ def arctan(x: BigDecimal, precision: Int) raises -> BigDecimal:
         # This is to ensure convergence of the Taylor series.
         # print("Using identity for arctan with |x| <= 2")
         # print(bdec_1 + x * x)
-        # Use sqrt_reciprocal for speed — exact perfect square detection is
+        # Use sqrt_via_reciprocal_iteration for speed — exact perfect square detection is
         # unnecessary since this is an intermediate computation.
-        var sqrt_term = bigdecimal_exponential.sqrt_reciprocal(
+        var sqrt_term = bigdecimal_exponential.sqrt_via_reciprocal_iteration(
             bdec_1.add(x.multiply(x)), working_precision
         )
         var x_divided = x.true_divide(

@@ -89,7 +89,7 @@ that range-reduces against π (`sin`/`cos`/`tan`) inherits it.
 | 20260823 | #269 | Chudnovsky `P`/`Q`/`T` recurrence — O(1) leaves, root denominator is one |
 |          |      | term's worth instead of the product of every term's                      |
 | 20260823 | #269 | Binary splitting moved from `BigDecimal` to `BigInt`                     |
-| 20260823 | #270 | `sqrt_reciprocal()` instead of the exact `sqrt()` (which costs two       |
+| 20260823 | #270 | `sqrt_via_reciprocal_iteration()` instead of the exact `sqrt()` (which costs two       |
 |          |      | full-size divisions to reproduce CPython's perfect-square test)          |
 | 20260823 | #270 | Divide once in binary, convert only the quotient; `10^s` as `5^s << s`   |
 | 20260823 | #270 | Leaves packed from `UInt128` — was half the split's time at p=1000       |
@@ -101,13 +101,13 @@ that range-reduces against π (`sin`/`cos`/`tan`) inherits it.
 |          |      | a 100 000-digit `BigUInt` multiply 10.5 → 6.0 ms                         |
 | 20260824 | #274 | Product-scanning `BigUInt` schoolbook mul, windowed schoolbook div,      |
 |          |      | dead `right.p` at the root of the split. Total: 142 → 78 ms              |
-| 20260824 | #275 | `sqrt_reciprocal()` Newton step rearranged around the residual (T-Sq1)   |
+| 20260824 | #275 | `sqrt_via_reciprocal_iteration()` Newton step rearranged around the residual (T-Sq1)   |
 |          |      | 10.4 → 6.6 ms at p=100000                                                |
 | 20260824 | #275 | 64-bit limbs inside the `BigInt` schoolbook base case                    |
 |          |      | (`bigint_enhancement.md` T-M4), plus cutoffs re-tuned. Total: 78 → 55 ms |
 | 20260824 | #276 | `fast_isqrt()` Newton step rearranged around the residual too (T-Sq1);   |
 |          |      | only 6% — `sqrt(10005, 50000)` 19.3 → 18.2 ms. See T-Sq2                 |
-| 20260824 | #276 | Binary-only `pi()` tail via `reciprocal_isqrt_fixed()` (T-PI4);          |
+| 20260824 | #276 | Binary-only `pi()` tail via `reciprocal_sqrt_fixed_point()` (T-PI4);          |
 |          |      | sqrt and final multiplies leave base 10^9. Total: 58.2 → 50.2 ms         |
 
 ### 2.4 Performance tracking — absolute decimo median ns/iter (ascending precision)
@@ -255,7 +255,7 @@ because the lesson generalises to the variable-length case unchanged.
    $2\sqrt{3.322p}$ multiplies. **2.6× py at p=1000.**
 
 5. **Repeated-sqrt range reduction for ln REGRESSES** by 100×.
-   `sqrt_reciprocal` per call costs more than the Taylor terms it
+   `sqrt_via_reciprocal_iteration` per call costs more than the Taylor terms it
    saves. Use `atanh` reformulation (T3f) instead.
 
 6. **Wasted quotient words dominate asymmetric division.** The T1 fix
@@ -833,7 +833,7 @@ Stage breakdown at p=100000, before and after:
 | ---------------------------------- | -------- | -------- | ---- |
 | binary splitting, below the root   | 16.8     | 16       | 2^32 |
 | base 2^32 → 10^9                   | 9.8      | 9        | both |
-| `sqrt_reciprocal(10005)`           | 7.0      | 2        | 2^32 |
+| `sqrt_via_reciprocal_iteration(10005)`           | 7.0      | 2        | 2^32 |
 | final division                     | 6.6      | 6        | 2^32 |
 | root join, 3 full-width multiplies | 6.5      | 6        | 2^32 |
 | final multiplies and round         | 6.4      | 2        | 2^32 |
@@ -846,7 +846,7 @@ a multiplication costs about 2.8× what it costs in base 2^32 (6.4 ms vs 2.3 at
 Moving them cost nothing in conversions: there was one before and there is one
 now, it just happens on the finished value instead of on the quotient.
 
-The enabler is `bigint.exponential.reciprocal_isqrt_fixed()`, which returns
+The enabler is `bigint.exponential.reciprocal_sqrt_fixed_point()`, which returns
 `2^f / sqrt(x)` as a binary fixed-point integer. Writing the formula as
 `426880 * 10005 / √10005 * (q/t)` is what lets the irrational factor enter as
 a reciprocal — Newton reaches it with no division at all — and
@@ -971,9 +971,9 @@ some ops < 1.0×):
 | T-7b   | Reciprocal-Newton nth root                 | M      | **WAIT** | break-even at current mul speed                 |
 |        |                                            |        |          | (div ~2.7× mul); root already 0.2× py           |
 | T-PI4  | Binary-only `pi()` pipeline, convert once  | M      | **DONE** | 58.2 → 50.2 ms; sqrt + final mul left base 10^9 |
-| T-Sq1  | Newton step around the residual in sqrt    | S      | **DONE** | 1.6× in `sqrt_reciprocal`; only 6% in           |
+| T-Sq1  | Newton step around the residual in sqrt    | S      | **DONE** | 1.6× in `sqrt_via_reciprocal_iteration`; only 6% in           |
 |        |                                            |        |          | `fast_isqrt`, whose time is elsewhere           |
-| T-Sq2  | Exact `sqrt()` refinement out of base 10^9 | M      | **OPEN** | exact path is 7.7× `sqrt_reciprocal`; one       |
+| T-Sq2  | Exact `sqrt()` refinement out of base 10^9 | M      | **OPEN** | exact path is 7.7× `sqrt_via_reciprocal_iteration`; one       |
 |        |                                            |        |          | full-width divide + square, both base 10^9      |
 | T-9b   | Product-scanning `BigUInt` schoolbook      | M      | **DONE** | 2.2× at 256 words; deferred-carry removed       |
 | T-9c   | Re-tune `BigUInt` mul cutoffs              | S      | **DONE** | Kara 64→256, Toom3 256→768; 10.5 → 6.0 ms       |

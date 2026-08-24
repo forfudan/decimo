@@ -370,23 +370,23 @@ def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
     #
     # All three factors are combined in `BigInt` and converted to base 10^9
     # exactly once, at the end. The obvious alternative - build a `BigDecimal`
-    # from `quotient` and multiply it by `sqrt_reciprocal()` - converts here
+    # from `quotient` and multiply it by `sqrt_via_reciprocal_iteration()` - converts here
     # instead of at the end, and then does the square root and both final
     # multiplications in base 10^9, where the same multiplication costs about
     # 2.8x what it does in base 2^32. Same number of conversions, three
     # expensive stages moved to the cheaper base.
     #
-    # `quotient` takes the word factor first: `(quotient * r) >> frac_bits`
+    # `quotient` takes the word factor first: `(quotient * r) >> fractional_bits`
     # would truncate before the multiplication and turn one unit in the last
     # place into 4.3 billion of them.
-    var frac_bits = (scale_digits + 32) * 10 // 3  # 10/3 > log2(10)
-    var reciprocal_root = bigint_exponential.reciprocal_isqrt_fixed(
-        UInt64(10005), frac_bits
+    var fractional_bits = (scale_digits + 32) * 10 // 3  # 10/3 > log2(10)
+    var reciprocal_root = bigint_exponential.reciprocal_sqrt_fixed_point(
+        UInt64(10005), fractional_bits
     )
     var magnitude = (
         (bigint_arithmetics.absolute(quotient) * BigInt(4270934400))
         * reciprocal_root
-    ) >> frac_bits
+    ) >> fractional_bits
 
     var result = BigDecimal(magnitude.to_biguint(), scale_digits, quotient.sign)
 

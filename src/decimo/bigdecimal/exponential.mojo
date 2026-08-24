@@ -48,7 +48,8 @@ the schedule.
 # - fast_isqrt(c: BigUInt, working_digits: Int) -> BigUInt
 # - sqrt(x: BigDecimal, precision: Int) -> BigDecimal  [public API]
 # - sqrt_exact(x: BigDecimal, precision: Int) -> BigDecimal  [CPython-style]
-# - sqrt_reciprocal(x: BigDecimal, precision: Int) -> BigDecimal  [fast, for internal use]
+# - sqrt_via_reciprocal_iteration(x: BigDecimal, precision: Int) -> BigDecimal
+#       [returns sqrt(x); fast, for internal use]
 # - sqrt_decimal_approach(x: BigDecimal, precision: Int) -> BigDecimal  [legacy]
 # - sqrt_newton(x: BigDecimal, precision: Int) -> BigDecimal  [legacy]
 # - exp(x: BigDecimal, precision: Int) -> BigDecimal
@@ -1015,25 +1016,31 @@ def _rational_root_decomposition(
 # then exact integer Newton iterations to converge to isqrt(c).
 #
 # Function hierarchy:
-# - sqrt()                : Public API, delegates to sqrt_exact().
-# - sqrt_exact()          : CPython-style exact integer algorithm. Produces
-#                           results identical to Python's Decimal.sqrt().
-# - sqrt_reciprocal()     : Fast reciprocal sqrt iteration. For use as an
-#                           intermediate function by other functions (e.g.,
-#                           arctan, ln) where exact perfect square detection
-#                           is unnecessary.
-# - fast_isqrt()          : Hybrid isqrt: reciprocal sqrt approximation +
-#                           exact integer Newton refinement. Used by
-#                           sqrt_exact() for large numbers.
-# - sqrt_decimal_approach() : Legacy implementation (v0.3.0).
-# - sqrt_newton()           : Legacy implementation (v0.5.0).
+# - sqrt()
+#       Public API, delegates to sqrt_exact().
+# - sqrt_exact()
+#       CPython-style exact integer algorithm. Produces results identical to
+#       Python's Decimal.sqrt().
+# - sqrt_via_reciprocal_iteration()
+#       Returns sqrt(x), reached through the division-free Newton iteration
+#       for 1/sqrt(x). For use as an intermediate by other functions (e.g.
+#       arctan, ln) where exact perfect-square detection is unnecessary.
+#       It returns the root itself, not the reciprocal - the reciprocal is
+#       `bigint.exponential.reciprocal_sqrt_fixed_point()`.
+# - fast_isqrt()
+#       Hybrid isqrt: reciprocal sqrt approximation + exact integer Newton
+#       refinement. Used by sqrt_exact() for large numbers.
+# - sqrt_decimal_approach()
+#       Legacy implementation (v0.3.0).
+# - sqrt_newton()
+#       Legacy implementation (v0.5.0).
 # ===----------------------------------------------------------------------=== #
 
 
 # TODO:
 # When global config for pad_zeros_to_precision is implemented,
 # Pass the config to sqrt() and use it to control whether to
-# call `sqrt_exact()` (pad zeros) or `sqrt_reciprocal()` (no padding)
+# call `sqrt_exact()` (pad zeros) or `sqrt_via_reciprocal_iteration()` (no padding)
 def sqrt(x: BigDecimal, precision: Int) raises -> BigDecimal:
     """Calculate the square root of a BigDecimal number.
 
@@ -1043,7 +1050,7 @@ def sqrt(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
     Use this function when the result is returned directly to users.
     For intermediate computations inside other functions (e.g., arctan, ln),
-    prefer `sqrt_reciprocal()` for better performance.
+    prefer `sqrt_via_reciprocal_iteration()` for better performance.
 
     Args:
         x: The number to calculate the square root of.
@@ -1141,7 +1148,7 @@ def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
     # --- Newton iterations: r_{k+1} = r_k + r_k * (1 - c_norm * r_k^2) / 2 ---
     #
     # Rearranged around the residual for exactly the reason spelled out in
-    # `sqrt_reciprocal()`: `e = 1 - c_norm * r^2` is around `10^(-ip/2)`, and a
+    # `sqrt_via_reciprocal_iteration()`: `e = 1 - c_norm * r^2` is around `10^(-ip/2)`, and a
     # `BigDecimal` holds those leading zeros in the scale rather than the
     # coefficient, so the correction multiply is half-width by half-width where
     # `r * (3 - c_norm * r^2)` was half-width by full-width.
@@ -1257,7 +1264,7 @@ def sqrt_exact(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
     This function produces results identical to Python's `Decimal.sqrt()`.
     For better performance in intermediate computations where exact perfect
-    square detection is not needed, use `sqrt_reciprocal()` instead.
+    square detection is not needed, use `sqrt_via_reciprocal_iteration()` instead.
 
     Args:
         x: The number to calculate the square root of.
@@ -1377,9 +1384,16 @@ def sqrt_exact(x: BigDecimal, precision: Int) raises -> BigDecimal:
     return result^
 
 
-def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
-    """Calculate the square root of a BigDecimal number using reciprocal square
-    root iteration.
+def sqrt_via_reciprocal_iteration(
+    x: BigDecimal, precision: Int
+) raises -> BigDecimal:
+    """Returns `sqrt(x)`, computed through a reciprocal square root iteration.
+
+    The return value is the square root itself, not its reciprocal; the
+    reciprocal only appears inside, because the Newton iteration for
+    `1 / sqrt(x)` needs no division where the one for `sqrt(x)` does. For the
+    reciprocal as a return value, see
+    `bigint.exponential.reciprocal_sqrt_fixed_point()`.
 
     Uses reciprocal square root Newton iteration with precision doubling:
         r_{k+1} = r_k + r_k * (1 - x * r_k^2) / 2   (computes 1/sqrt(x))
@@ -1411,7 +1425,7 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
     if x.sign:
         raise ValueError(
             message="Cannot compute square root of a negative number.",
-            function="sqrt_reciprocal()",
+            function="sqrt_via_reciprocal_iteration()",
         )
 
     if x.coefficient.is_zero():
@@ -1474,7 +1488,7 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
     # _F64_SEED_DIGITS * 2^n` and the `n` doublings below reach the top. A
     # higher stopping point silently returns fewer correct digits than asked
     # for: with the halving stopped at 20 the seed was credited with 20 digits
-    # it does not have, and `sqrt_reciprocal(10005, 5009)` came back correct to
+    # it does not have, and `sqrt_via_reciprocal_iteration(10005, 5009)` came back correct to
     # only 4244 digits.
     var prec_schedule = List[Int]()
     var p = working_precision
