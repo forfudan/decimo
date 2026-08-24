@@ -283,8 +283,10 @@ word boundary into two `UInt128` accumulators avoids that: each half is below
 | 182   | 6 630           | 3 400         |
 
 A 100 000-digit multiply went 3.44 → 2.30 ms, and `pi(100000)` 78 → 55 ms.
-GMP does the same multiply in 0.39 ms, so it is still 5.9× ahead — it is on
-FFT at this size and we are not (T-5).
+GMP does the same multiply in 0.39 ms, so it is still 5.9× ahead. Measuring
+its exponent across sizes splits that gap: GMP moves to FFT at ~1 600 limbs
+(≈32 000 digits), which is worth 3.7× to it at 100 000 digits, leaving only
+1.6× for base case, glue and assembly. See `internal/internal_notes.md`.
 
 Watch out for Mojo's ASAP destruction here: the packed operands are only
 touched through raw pointers, so without an explicit `_ = limbs_a^` the
@@ -385,4 +387,5 @@ and fix the base-conversion and SIMD fallout behind the test suite.
 | T-A1  | add/sub dispatch reorder                         | OPEN                                  |
 | T-SH1 | Pre-size the shift result buffer                 | OPEN                                  |
 | T-W1  | Base-2^64 limbs throughout                       | PARTLY — T-M4 does it in the kernel   |
+| T-E1  | `reciprocal_sqrt_fixed_point()` binary recip. sqrt    | DONE 2026-08-24 — enables T-PI4       |
 | T-D4  | Reciprocal-Newton divide                         | DEFERRED — needs NTT, not Toom-3      |

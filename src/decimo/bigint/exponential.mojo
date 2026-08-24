@@ -477,6 +477,16 @@ def _sqrt_precision_doubling_fast(x: BigInt) raises -> BigInt:
     return BigInt(raw_words=a_words^, sign=False)
 
 
+comptime _NEWTON_GUARD_BITS: Int = 4
+"""Bits of slack per Newton step in `reciprocal_sqrt_fixed_point()`.
+
+Each step truncates twice - once in the shift that forms the correction, once
+in the shift that rescales `r` - so the doubling of correct bits falls a little
+short of exact. Four bits per step covers that with room to spare, and costs
+four bits of width on operands tens of thousands of bits wide.
+"""
+
+
 def isqrt(x: BigInt) raises -> BigInt:
     """Calculates the integer square root of a BigInt.
     Equivalent to `sqrt()`.
@@ -491,3 +501,107 @@ def isqrt(x: BigInt) raises -> BigInt:
         ValueError: If x is negative.
     """
     return sqrt(x)
+
+
+def reciprocal_sqrt_fixed_point(
+    x: UInt64, fractional_bits: Int
+) raises -> BigInt:
+    """Returns `2^fractional_bits / sqrt(x)` as a binary fixed-point integer.
+
+    The result `r` satisfies `r ~= 2^fractional_bits / sqrt(x)` to within a few
+    units in the last place, so it carries about
+    `fractional_bits - bit_length(x) / 2` correct significant bits. Note that
+    this returns the *reciprocal* of the root, where
+    `bigdecimal.exponential.sqrt_via_reciprocal_iteration()` merely reaches
+    the root through one and returns the root.
+
+    It exists because a `BigDecimal` holds its coefficient in base 10^9, where
+    the same multiplication costs about 2.8x what it does in base 2^32.
+
+    The iteration is Newton's for the reciprocal square root, written around
+    the residual so that no step ever multiplies at the full target width:
+
+        e     = 2^(2f) - x * r^2                 (r at scale 2^f)
+        r_new = (r << (g - f)) + (r * e) >> (3f + 1 - g)
+
+    `r` and `e` are both about `f` bits, so a step from scale `f` to scale
+    `g <= 2f` costs two multiplications of `f`-bit operands. Halving the scale
+    on the way down means the last step - the only one at half the target
+    width - dominates, and the whole function costs about 1.1 multiplications
+    at the target width.
+
+    `x` is a machine word rather than a `BigInt` because the only caller needs
+    `1 / sqrt(10005)`. Generalising means normalising `x` to an even power of
+    two before seeding, and nothing else here changes.
+
+    Args:
+        x: The value to take the reciprocal square root of. Must be non-zero.
+        fractional_bits: The number of fractional bits in the result. Must be
+            non-negative.
+
+    Returns:
+        `2^fractional_bits / sqrt(x)`, truncated to an integer.
+
+    Raises:
+        ValueError: If `x` is zero or `fractional_bits` is negative.
+    """
+    if x == 0:
+        raise ValueError(
+            message="Cannot compute the reciprocal square root of zero.",
+            function="reciprocal_sqrt_fixed_point()",
+        )
+    if fractional_bits < 0:
+        raise ValueError(
+            message="Number of fractional bits must be non-negative.",
+            function="reciprocal_sqrt_fixed_point()",
+        )
+
+    # Bit length of `x`, and half of it rounded up: `r` is about
+    # `2^(scale - half_bits)`, so `half_bits` is the gap between the scale of
+    # `r` and the number of significant bits it actually carries.
+    var bits = 0
+    var probe = x
+    while probe != 0:
+        probe >>= 1
+        bits += 1
+    var half_bits = (bits + 1) // 2
+
+    # Seed from `Float64`, placed so the value lands near 2^48 whatever `x` is.
+    # One `sqrt` and one divide leave it good to about 51 bits; 44 is the
+    # conservative credit the schedule below is built on.
+    var seed_scale = 48 + half_bits
+    var seed_credit = 44 + half_bits
+    var seed = BigInt(
+        Int(Float64(2.0) ** Float64(seed_scale) / math.sqrt(Float64(x)))
+    )
+
+    if fractional_bits <= seed_credit:
+        return seed >> (seed_scale - fractional_bits)
+
+    # Newton doubles the correct significant bits, so a step lands at
+    # `g = 2f - half_bits - 2 * _NEWTON_GUARD_BITS`; inverting that gives the
+    # scale each step has to start from. Building the schedule downwards from
+    # the target is what keeps the final step at half the target width.
+    var schedule = List[Int]()
+    var f = fractional_bits
+    while f > seed_credit:
+        schedule.append(f)
+        f = (f + half_bits) // 2 + _NEWTON_GUARD_BITS
+
+    var r = seed >> (seed_scale - f)
+    var current = f
+    # Built from the words rather than through `Int(x)`, which wraps to a
+    # negative value for `x >= 2^63`.
+    var bx = BigInt(raw_words=_uint64_to_words(x), sign=False)
+
+    for i in range(len(schedule) - 1, -1, -1):
+        var target = schedule[i]
+        # The subtraction is a near-total cancellation, exact in integers:
+        # `x * r^2` agrees with `2^(2f)` to within about `f` bits.
+        var residual = (BigInt.one() << (2 * current)) - bx * (r * r)
+        r = (r << (target - current)) + (
+            (r * residual) >> (3 * current + 1 - target)
+        )
+        current = target
+
+    return r^

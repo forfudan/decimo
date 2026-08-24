@@ -154,7 +154,7 @@ the split itself - because `pi()` called the public `sqrt()`, which is
 by computing an exact integer square root and then testing whether the input is
 a perfect square; both cost full-size divisions, and neither means anything for
 a fixed non-square constant used as an intermediate. `pi()` now calls
-`sqrt_reciprocal()`, whose Newton iteration is division-free.
+`sqrt_via_reciprocal_iteration()`, whose Newton iteration is division-free.
 
 Against mpmath 1.4.1 on its pure-Python backend, best of N for both sides on
 the same machine, comparing against its `to_str` timing since decimo returns
@@ -182,30 +182,80 @@ division it feeds.
 
 ### Toom-3 helps the multiply much more than it helps `pi()`
 
-Toom-3 on `BigInt` is 1.15x Karatsuba at 400 words, 1.26x at 5 000 and 1.51x
-at 22 000, but on its own `pi(100000)` only went 152 -> 142 ms. The tree shape explains
-it: doubling the term count multiplies the split's cost by 3.06, so the top
-level is only 35% of the total and each level below adds 65% of the one above.
-Toom-3 reaches the top three or four levels; the rest is Karatsuba as before.
+Toom-3 on `BigInt` is 1.15x Karatsuba at 400 words, 1.26x at 5 000 and 1.51x at
+22 000, but on its own `pi(100000)` only went 152 -> 142 ms. The tree shape
+explains it: doubling the term count multiplies the split's cost by 3.06, so the
+top level is only 35% of the total and each level below adds 65% of the one
+above. Toom-3 reaches the top three or four levels; the rest is Karatsuba as
+before.
 
 So a faster multiply only pays across a *wide* size range. Toom-4 would move
 the same few levels again; only an FFT changes the exponent everywhere.
 
 Where the time goes, after the rest of the 2026-08-24 work took it to 78 ms:
 
-| Stage                              | ms   | Base |
-| ---------------------------------- | ---- | ---- |
-| binary splitting, below the root   | 24.5 | 2^32 |
-| base 2^32 -> 10^9                  | 12.5 | both |
-| `sqrt_reciprocal(10005)`           | 11.1 | 10^9 |
-| root join, 3 full-width multiplies |  9.7 | 2^32 |
-| final division                     |  9.6 | 2^32 |
-| final multiplies and round         |  6.0 | 10^9 |
-| `5^s` and the scaling multiply     |  4.9 | 2^32 |
+| Stage                                  | ms   | Base |
+| -------------------------------------- | ---- | ---- |
+| binary splitting, below the root       | 24.5 | 2^32 |
+| base 2^32 -> 10^9                      | 12.5 | both |
+| `sqrt_via_reciprocal_iteration(10005)` | 11.1 | 10^9 |
+| root join, 3 full-width multiplies     | 9.7  | 2^32 |
+| final division                         | 9.6  | 2^32 |
+| final multiplies and round             | 6.0  | 10^9 |
+| `5^s` and the scaling multiply         | 4.9  | 2^32 |
 
 17 ms still runs in base 10^9, where the same multiply costs more than it does
 in base 2^32 (6.0 ms against 3.4 at 100 000 digits). Neither stage has to be
 decimal. See `plans/bigdecimal_enhancement.md` T-PI4.
+
+**Update (T-PI4, done).** The square root and the final multiplies moved to
+`BigInt`; only the one conversion still runs in base 10^9. What made it work
+was writing `π = 426880 * √10005 * (q/t)` as `426880 * 10005 / √10005 * (q/t)`
+
+- as a *reciprocal* root it needs no division, and `426880 * 10005` is still
+one word. 58.2 → 50.2 ms.
+
+### The exact `sqrt()` spends 87% of its time after Newton has finished
+
+`sqrt(10005, 50000)` takes 18.3 ms;
+`sqrt_via_reciprocal_iteration(10005, 50000)` takes 2.36 ms and agrees to every
+digit checked. The difference is `sqrt_exact()`'s exact-integer tail: rescale
+`c`, one `c.floor_divide(n)` refinement step, and the `n * n == c`
+perfect-square test. Instrumenting the refinement loop shows it runs **once**,
+so this is not a convergence problem - it is one full-width division plus one
+full-width square, both in base 10^9.
+
+That is why rearranging `isqrt_via_reciprocal_seed()`'s Newton step around the
+residual, which was worth 1.6x in `sqrt_via_reciprocal_iteration()`, is worth
+only 6% here. The exactness guarantee costs a divide and a square at full width,
+and the fix is to stop paying for them in base 10^9 (T-Sq2, same argument as
+T-PI4).
+
+### GMP is on FFT from ~32 000 digits, and that is most of the gap
+
+`mpz_mul` normalised to Toom-3's exponent, `t / n^1.465` with `n` in 64-bit
+limbs, is flat until it suddenly isn't:
+
+| digits  | limbs | mul    | t/n^1.465 |
+| ------- | ----- | ------ | --------- |
+| 20 000  | 1 039 | 147 us | 5.58      |
+| 30 000  | 1 558 | 263    | 5.53      |
+| 40 000  | 2 077 | 220    | 3.03      |
+| 100 000 | 5 191 | 412    | 1.49      |
+| 180 000 | 9 343 | 742    | 1.13      |
+
+40 000 digits is faster in *absolute* terms than 30 000, so Schonhage-Strassen
+takes over between them, at roughly 1 600-2 000 limbs.
+
+Extrapolating the flat part to 100 000 digits gives ~1 550 us for a GMP that
+had stayed on Toom. It actually takes 412, so FFT is worth 3.7x there; our
+2 500 us against that 1 550 is 1.6x, and that 1.6x is base case, glue and
+assembly.
+
+Of the 6.1x multiply gap at 100 000 digits, then, 3.7x is algorithm and 1.6x
+is code. NTT is not a >=10^6-digit concern - it is the largest single lever at
+the sizes we already benchmark, and it makes Toom-4 (which by the tree-shape
+argument above would be worth a couple of percent on `pi`) not worth doing.
 
 ### Burnikel-Ziegler padding has to survive every halving
 
@@ -294,9 +344,9 @@ adversarial inputs are the only thing that finds this class of bug.
 
 ### A Newton schedule reaches `seed * 2^n`, and nothing caps it
 
-Two bugs in `sqrt_reciprocal()` and `fast_isqrt()`, caught while measuring the
-above, both of which returned the full requested digit count with a wrong tail
-and raised nothing.
+Two bugs in `sqrt_via_reciprocal_iteration()` and `isqrt_via_reciprocal_seed()`,
+caught while measuring the above, both of which returned the full requested
+digit count with a wrong tail and raised nothing.
 
 The iteration `r <- r * (3 - x * r^2) / 2` doubles the correct digits. It does
 *not* get pulled up to whatever precision the arithmetic inside it runs at, so
@@ -304,7 +354,7 @@ The iteration `r <- r * (3 - x * r^2) / 2` doubles the correct digits. It does
 their schedule by halving from the target down to 20, which credits the seed
 with 20 digits; and both seeded with `x ** -0.5`, which goes through `exp`/`log`
 and is accurate to about ten digits for some inputs while being exact for
-others. Instrumented, `sqrt_reciprocal(1234.5678, 1500)`:
+others. Instrumented, `sqrt_via_reciprocal_iteration(1234.5678, 1500)`:
 
 | iteration precision | 34 | 58 | 106 | 201 | 392 | 773 | 1535 |
 | ------------------- | -- | -- | --- | --- | --- | --- | ---- |
@@ -315,7 +365,7 @@ iteration was nominally running at. The schedule now halves down to
 `_F64_SEED_DIGITS`, and the seed is `1 / sqrt(x)`, which is correctly rounded.
 
 The reason this survived so long is that both dials have to be wrong *and* the
-schedule has to land badly. `sqrt_reciprocal(10005, 1000)` and
+schedule has to land badly. `sqrt_via_reciprocal_iteration(10005, 1000)` and
 `(10005, 2000)` were correct in full; `(10005, 1500)` was correct in full but
 `(1234.5678, 1500)` was not, because `1.0005 ** -0.5` happens to be exact and
 `12.345678 ** -0.5` is not. Any spot check picks a survivor. The test sweeps

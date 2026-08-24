@@ -57,10 +57,11 @@ comptime CUTOFF_KARATSUBA: Int = 256
 # and interpolation step. The extra additions, the two exact divisions and
 # the five sub-results only pay for themselves once the operands are large.
 #
-# The crossover is soft rather than sharp, and it moved up with the Karatsuba
-# cutoff for the same reason. Measured on Apple Silicon arm64 with the tuned
-# base case, 512 is the best of 384 / 512 / 768 / 1024 across 512 to 11 000
-# words. Adjust if benchmarking on another target shows a better value.
+# The crossover is soft rather than sharp, and it moves up every time the base
+# case gets faster. Measured on Apple Silicon arm64 after the base case was
+# packed into 64-bit limbs, 768 is the best of 384 / 512 / 768 / 1024 across
+# 512 to 11 000 words; before the packing it was 512. Adjust if benchmarking
+# on another target shows a better value.
 comptime CUTOFF_TOOM3: Int = 768
 """The minimum number of words above which Toom-3 multiplication is used."""
 
@@ -177,8 +178,11 @@ def _subtract_magnitudes(a: List[UInt32], b: List[UInt32]) -> List[UInt32]:
 def _multiply_magnitudes(a: List[UInt32], b: List[UInt32]) -> List[UInt32]:
     """Multiplies two unsigned magnitudes, dispatching to the best algorithm.
 
-    Uses Karatsuba O(n^1.585) for large operands, schoolbook O(n*m) for small.
-    Both algorithms use UInt64 for intermediate products.
+    Toom-3 O(n^1.465) above `CUTOFF_TOOM3`, Karatsuba O(n^1.585) above
+    `CUTOFF_KARATSUBA`, product-scanning schoolbook O(n*m) below it. The
+    schoolbook base case accumulates in `UInt128` over packed 64-bit limbs,
+    or in `UInt64` over 32-bit words when the operands are too small to repay
+    the packing - see `_multiply_magnitudes_schoolbook()`.
 
     Args:
         a: First magnitude (little-endian UInt32 words).
@@ -263,13 +267,19 @@ def _multiply_magnitude_by_word(
     return result^
 
 
-comptime CUTOFF_PACK_64: Int = 32
-"""Operand size at which the schoolbook kernel switches to 64-bit limbs.
+comptime CUTOFF_PACK_64_AREA: Int = 32 * 32
+"""Word-pair count at which the schoolbook kernel switches to 64-bit limbs.
 
 Packing costs three linear passes and two heap allocations either side of a
 quadratic loop. That is a rounding error at the Karatsuba cutoff but it is
 about 120 ns of fixed cost, which swamps a multiplication of a handful of
-words. Measured crossover is just under 30 words.
+words. Measured crossover is just under 30 words square.
+
+The gate is on `len_a * len_b`, the work the quadratic loop actually does,
+rather than on either operand alone. Packing is linear in `len_a + len_b`, so
+a lopsided product such as 31x250 words is worth packing even though one side
+is below the square crossover: it does 7 750 word pairs, and the 32-bit kernel
+needs all of them where the packed one needs 2 048.
 """
 
 
@@ -280,7 +290,7 @@ def _multiply_magnitudes_comba32(
 
     The small-operand half of `_multiply_magnitudes_schoolbook()`. Allocates
     nothing but the result, which is what makes it the better choice below
-    `CUTOFF_PACK_64`.
+    `CUTOFF_PACK_64_AREA`.
 
     Args:
         a: First magnitude, non-empty.
@@ -392,7 +402,7 @@ def _multiply_magnitudes_schoolbook(
         var zero: List[UInt32] = [UInt32(0)]
         return zero^
 
-    if len_a < CUTOFF_PACK_64 or len_b < CUTOFF_PACK_64:
+    if len_a * len_b < CUTOFF_PACK_64_AREA:
         return _multiply_magnitudes_comba32(a, b)
 
     comptime LOW_HALF = UInt128(0xFFFF_FFFF_FFFF_FFFF)
@@ -2077,7 +2087,8 @@ def absolute(x: BigInt) -> BigInt:
 def multiply(x1: BigInt, x2: BigInt) -> BigInt:
     """Returns the product of two BigInt numbers.
 
-    Uses schoolbook multiplication O(n*m) with UInt64 intermediate products.
+    Dispatches on operand size through `_multiply_magnitudes()`: Toom-3,
+    Karatsuba, or a product-scanning schoolbook base case.
 
     Args:
         x1: The first operand (multiplicand).
