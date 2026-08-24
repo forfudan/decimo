@@ -46,6 +46,21 @@ from decimo.errors import ValueError, ZeroDivisionError
 comptime CUTOFF_KARATSUBA: Int = 48
 """The minimum number of words above which Karatsuba multiplication is used."""
 
+# Toom-3 cutoff: operands with this many words or fewer use Karatsuba.
+# Toom-3 splits into three parts and does five recursive multiplications
+# instead of Karatsuba's three on halves, trading a lower exponent
+# (log_3(5) = 1.465 against log_2(3) = 1.585) for a much heavier evaluation
+# and interpolation step. The extra additions, the two exact divisions and
+# the five sub-results only pay for themselves once the operands are large.
+#
+# The crossover is soft rather than sharp: measured on Apple Silicon arm64,
+# Toom-3 loses a few percent between roughly 260 and 320 words, breaks even
+# by 350, and is ahead by 15% at 400 words, 25% at 5 000 and 50% at 22 000.
+# 384 sits just above the band where it loses. Adjust if benchmarking on
+# another target shows a better value.
+comptime CUTOFF_TOOM3: Int = 384
+"""The minimum number of words above which Toom-3 multiplication is used."""
+
 # Burnikel-Ziegler cutoff: divisors with this many words or fewer use
 # Knuth D (schoolbook). Must be even for the recursive halving to work.
 comptime CUTOFF_BURNIKEL_ZIEGLER: Int = 64
@@ -194,6 +209,8 @@ def _multiply_magnitudes(a: List[UInt32], b: List[UInt32]) -> List[UInt32]:
     var len_max = max(len_a, len_b)
     if len_max <= CUTOFF_KARATSUBA:
         return _multiply_magnitudes_schoolbook(a, b)
+    elif len_max > CUTOFF_TOOM3:
+        return _multiply_magnitudes_toom3(a, b)
     else:
         return _multiply_magnitudes_karatsuba(a, b)
 
@@ -414,6 +431,269 @@ def _multiply_magnitudes_karatsuba(
     while len(result) > result_len:
         result.shrink(len(result) - 1)
 
+    return result^
+
+
+def _strip_leading_zeros_inplace(mut a: List[UInt32]):
+    """Drops high-order zero words, leaving at least one word.
+
+    Args:
+        a: The magnitude to normalize in-place.
+    """
+    var length = len(a)
+    while length > 1 and a[length - 1] == 0:
+        length -= 1
+    while len(a) > length:
+        a.shrink(len(a) - 1)
+
+
+def _double_inplace(mut a: List[UInt32]):
+    """Doubles a magnitude in-place: a *= 2.
+
+    A one-bit left shift, appending a word if the top bit carries out.
+
+    Args:
+        a: The magnitude to double in-place.
+    """
+    var carry: UInt32 = 0
+    var ap = a._data
+    for i in range(len(a)):
+        var word = ap[unsafe_offset=i]
+        ap[unsafe_offset=i] = (word << 1) | carry
+        carry = word >> 31
+    if carry != 0:
+        a.append(carry)
+
+
+def _exact_divide_by_2_inplace(mut a: List[UInt32]):
+    """Halves a magnitude in-place, assuming it is even.
+
+    A one-bit right shift. The caller guarantees divisibility; a stray low
+    bit is simply discarded rather than reported.
+
+    Args:
+        a: The magnitude to halve in-place. Must be even.
+    """
+    var carry: UInt32 = 0
+    var ap = a._data
+    for i in range(len(a) - 1, -1, -1):
+        var word = ap[unsafe_offset=i]
+        ap[unsafe_offset=i] = (word >> 1) | (carry << 31)
+        carry = word & 1
+    _strip_leading_zeros_inplace(a)
+
+
+def _exact_divide_by_3_inplace(mut a: List[UInt32]):
+    """Divides a magnitude by three in-place, assuming it is a multiple of 3.
+
+    Walks the words from the top down carrying the remainder, which is zero
+    once the last word is consumed. Toom-3's interpolation is the only caller
+    and its dividend is exactly divisible by construction.
+
+    Args:
+        a: The magnitude to divide in-place. Must be a multiple of three.
+    """
+    var remainder: UInt64 = 0
+    var ap = a._data
+    for i in range(len(a) - 1, -1, -1):
+        var current = (remainder << 32) | UInt64(ap[unsafe_offset=i])
+        ap[unsafe_offset=i] = UInt32(current // 3)
+        remainder = current % 3
+    _strip_leading_zeros_inplace(a)
+
+
+def _multiply_magnitudes_toom3(
+    a: ImmSpan[UInt32, _], b: ImmSpan[UInt32, _]
+) -> List[UInt32]:
+    """Toom-Cook 3-way multiplication on magnitude slices.
+
+    Splits each operand into three limbs of `m` words, evaluates both as
+    polynomials at `0`, `1`, `-1`, `2` and `inf`, multiplies the five pairs of
+    values, and interpolates the five coefficients of the product polynomial:
+
+        a = a2 * B^(2m) + a1 * B^m + a0
+        b = b2 * B^(2m) + b1 * B^m + b0
+        a*b = w4 * B^(4m) + w3 * B^(3m) + w2 * B^(2m) + w1 * B^m + w0
+
+    Five sub-multiplications on third-length operands instead of Karatsuba's
+    three on half-length ones: `O(n^log_3(5))` = `O(n^1.465)` against
+    `O(n^1.585)`. Falls back to Karatsuba below `CUTOFF_TOOM3`, and for very
+    lopsided operands, where Karatsuba's one-sided split is the better shape.
+
+    Only `a(-1)` and `b(-1)` can be negative, so a single sign flag on each
+    stands in for signed arithmetic; every other intermediate, including all
+    five coefficients, is non-negative.
+
+    Args:
+        a: First magnitude.
+        b: Second magnitude.
+
+    Returns:
+        The product magnitude as a new word list.
+    """
+    var len_a = len(a)
+    var len_b = len(b)
+    var len_max = max(len_a, len_b)
+    var len_min = min(len_a, len_b)
+
+    if len_max <= CUTOFF_TOOM3 or len_min <= CUTOFF_KARATSUBA:
+        return _multiply_magnitudes_karatsuba(a, b)
+
+    var m = (len_max + 2) // 3  # ceil(len_max / 3)
+
+    # The limbs. `_subspan()` clamps, so the high limbs of the shorter operand
+    # come back empty rather than out of range, and the code below treats an
+    # empty limb as a zero coefficient throughout.
+    var a0 = _subspan(a, 0, m)
+    var a1 = _subspan(a, m, 2 * m)
+    var a2 = _subspan(a, 2 * m, len_a)
+    var b0 = _subspan(b, 0, m)
+    var b1 = _subspan(b, m, 2 * m)
+    var b2 = _subspan(b, 2 * m, len_b)
+
+    # ---- Evaluation ---------------------------------------------------- #
+
+    # `a0 + a2` is shared between a(1) and a(-1); likewise `b0 + b2`.
+    var a0_plus_a2 = _add_slices(a0, a2)
+    _strip_leading_zeros_inplace(a0_plus_a2)
+    var b0_plus_b2 = _add_slices(b0, b2)
+    _strip_leading_zeros_inplace(b0_plus_b2)
+
+    # a(1) = (a0 + a2) + a1, b(1) = (b0 + b2) + b1
+    var a_at_1 = a0_plus_a2.copy()
+    _add_from_slice_inplace(a_at_1, a1)
+    var b_at_1 = b0_plus_b2.copy()
+    _add_from_slice_inplace(b_at_1, b1)
+
+    # a(-1) = (a0 + a2) - a1, kept as magnitude plus sign.
+    var a1_words = _normalized_copy(a1)
+    var a_at_m1: List[UInt32]
+    var a_at_m1_negative: Bool
+    if _compare_word_lists(a0_plus_a2, a1_words) >= 0:
+        a_at_m1 = a0_plus_a2.copy()
+        _subtract_magnitudes_inplace(a_at_m1, a1_words)
+        a_at_m1_negative = False
+    else:
+        a_at_m1 = a1_words.copy()
+        _subtract_magnitudes_inplace(a_at_m1, a0_plus_a2)
+        a_at_m1_negative = True
+
+    # b(-1) = (b0 + b2) - b1
+    var b1_words = _normalized_copy(b1)
+    var b_at_m1: List[UInt32]
+    var b_at_m1_negative: Bool
+    if _compare_word_lists(b0_plus_b2, b1_words) >= 0:
+        b_at_m1 = b0_plus_b2.copy()
+        _subtract_magnitudes_inplace(b_at_m1, b1_words)
+        b_at_m1_negative = False
+    else:
+        b_at_m1 = b1_words.copy()
+        _subtract_magnitudes_inplace(b_at_m1, b0_plus_b2)
+        b_at_m1_negative = True
+
+    # a(2) = a0 + 2*a1 + 4*a2, by Horner: ((a2 * 2) + a1) * 2 + a0.
+    var a_at_2 = _normalized_copy(a2)
+    _double_inplace(a_at_2)
+    _add_from_slice_inplace(a_at_2, a1)
+    _double_inplace(a_at_2)
+    _add_from_slice_inplace(a_at_2, a0)
+
+    # b(2) = b0 + 2*b1 + 4*b2
+    var b_at_2 = _normalized_copy(b2)
+    _double_inplace(b_at_2)
+    _add_from_slice_inplace(b_at_2, b1)
+    _double_inplace(b_at_2)
+    _add_from_slice_inplace(b_at_2, b0)
+
+    # ---- The five sub-multiplications ---------------------------------- #
+
+    # v0 and vinf multiply the original slices directly - no copy needed.
+    var v0 = _multiply_magnitudes_slices(a0, b0)
+
+    var v_inf: List[UInt32]
+    if len(a2) > 0 and len(b2) > 0:
+        v_inf = _multiply_magnitudes_slices(a2, b2)
+    else:
+        v_inf = [UInt32(0)]
+
+    var v1 = _multiply_magnitudes(a_at_1, b_at_1)
+    var v_m1 = _multiply_magnitudes(a_at_m1, b_at_m1)
+    var v_m1_negative = a_at_m1_negative != b_at_m1_negative
+    var v2 = _multiply_magnitudes(a_at_2, b_at_2)
+
+    # ---- Interpolation -------------------------------------------------- #
+    #
+    # With r(t) = w0 + w1*t + w2*t^2 + w3*t^3 + w4*t^4:
+    #   v0   = r(0)   = w0
+    #   v1   = r(1)   = w0 + w1 + w2 + w3 + w4
+    #   v_m1 = r(-1)  = w0 - w1 + w2 - w3 + w4
+    #   v2   = r(2)   = w0 + 2*w1 + 4*w2 + 8*w3 + 16*w4
+    #   vinf = r(inf) = w4
+    #
+    # so, in the order evaluated below,
+    #   t1 = (v1 - v_m1) / 2               = w1 + w3
+    #   w2 = (v1 + v_m1) / 2 - w0 - w4
+    #   t3 = (v2 - w0 - 16*w4) / 2         = w1 + 2*w2 + 4*w3
+    #   w3 = (t3 - 2*w2 - t1) / 3
+    #   w1 = t1 - w3
+    #
+    # Every division here is exact, and every value is non-negative, so the
+    # unsigned in-place subtractions below never underflow.
+
+    # t1 = (v1 - v_m1) / 2
+    var t1: List[UInt32]
+    if v_m1_negative:
+        t1 = _add_magnitudes(v1, v_m1)
+    else:
+        t1 = v1.copy()
+        _subtract_magnitudes_inplace(t1, v_m1)
+    _exact_divide_by_2_inplace(t1)
+
+    # w2 = (v1 + v_m1) / 2 - w0 - w4
+    var w2: List[UInt32]
+    if v_m1_negative:
+        w2 = v1.copy()
+        _subtract_magnitudes_inplace(w2, v_m1)
+    else:
+        w2 = _add_magnitudes(v1, v_m1)
+    _exact_divide_by_2_inplace(w2)
+    _subtract_magnitudes_inplace(w2, v0)
+    _subtract_magnitudes_inplace(w2, v_inf)
+
+    # t3 = (v2 - w0 - 16*w4) / 2, then w3 = (t3 - 2*w2 - t1) / 3.
+    # `w2` is subtracted twice rather than doubled into a temporary.
+    var t3 = v2^
+    _subtract_magnitudes_inplace(t3, v0)
+    if not (len(v_inf) == 1 and v_inf[0] == 0):
+        var v_inf_16 = _multiply_magnitude_by_word(v_inf, UInt32(16))
+        _subtract_magnitudes_inplace(t3, v_inf_16)
+    _exact_divide_by_2_inplace(t3)
+    _subtract_magnitudes_inplace(t3, w2)
+    _subtract_magnitudes_inplace(t3, w2)
+    _subtract_magnitudes_inplace(t3, t1)
+    _exact_divide_by_3_inplace(t3)  # t3 now holds w3
+
+    # w1 = t1 - w3
+    _subtract_magnitudes_inplace(t1, t3)  # t1 now holds w1
+
+    # ---- Recomposition -------------------------------------------------- #
+    #
+    # The five coefficients are non-negative and normalized, and they sum to
+    # the product, so `k*m + len(w_k)` never exceeds `len_a + len_b` and each
+    # `_add_at_offset_inplace()` stays inside the buffer.
+
+    var result_len = len_a + len_b
+    var result = List[UInt32](capacity=result_len)
+    result.resize(unsafe_uninit_length=result_len)
+    unsafe_memset_zero(ptr=result._data, count=result_len)
+
+    _add_at_offset_inplace(result, v0, 0)
+    _add_at_offset_inplace(result, t1, m)  # w1
+    _add_at_offset_inplace(result, w2, 2 * m)
+    _add_at_offset_inplace(result, t3, 3 * m)  # w3
+    _add_at_offset_inplace(result, v_inf, 4 * m)
+
+    _strip_leading_zeros_inplace(result)
     return result^
 
 
@@ -1064,6 +1344,8 @@ def _multiply_magnitudes_slices(
     var len_max = max(len_a, len_b)
     if len_max <= CUTOFF_KARATSUBA:
         return _multiply_magnitudes_schoolbook(a, b)
+    if len_max > CUTOFF_TOOM3:
+        return _multiply_magnitudes_toom3(a, b)
     return _multiply_magnitudes_karatsuba(a, b)
 
 

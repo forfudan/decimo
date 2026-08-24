@@ -521,5 +521,138 @@ def test_divide_bz_block_padding_sizes() raises:
             )
 
 
+# ===----------------------------------------------------------------=== #
+# Toom-3 multiplication (> 384 words = > 12288 bits)
+# ===----------------------------------------------------------------=== #
+
+
+def _split_into_blocks(x: BigInt, block_bits: Int) raises -> List[BigInt]:
+    """Cuts a magnitude into `block_bits`-wide pieces, least significant first.
+
+    Args:
+        x: The value to split. Must be non-negative.
+        block_bits: Width of each block in bits.
+
+    Returns:
+        The blocks, low to high. Empty for zero.
+    """
+    var blocks = List[BigInt]()
+    var rest = x.copy()
+    while not rest.is_zero():
+        var high = rest >> block_bits
+        var low = rest - (high << block_bits)
+        blocks.append(low^)
+        rest = high^
+    return blocks^
+
+
+def _blockwise_product(a: BigInt, b: BigInt, block_bits: Int) raises -> BigInt:
+    """Multiplies by summing block-by-block partial products.
+
+    An independent reference for the Toom-3 path: the blocks are small enough
+    that every partial product goes through the schoolbook or Karatsuba code,
+    so a Toom-3 bug cannot cancel itself out on both sides of the comparison.
+
+    Args:
+        a: First operand.
+        b: Second operand.
+        block_bits: Width of each block in bits. Keep it well under the
+            Karatsuba cutoff so the partial products never reach Toom-3.
+
+    Returns:
+        The product of `a` and `b`.
+    """
+    var a_blocks = _split_into_blocks(a, block_bits)
+    var b_blocks = _split_into_blocks(b, block_bits)
+    var total = BigInt(0)
+    for i in range(len(a_blocks)):
+        for j in range(len(b_blocks)):
+            total += (a_blocks[i] * b_blocks[j]) << ((i + j) * block_bits)
+    return total^
+
+
+def test_multiply_toom3_against_blockwise_reference() raises:
+    """Toom-3 products match a block-by-block schoolbook recomposition.
+
+    The digit counts straddle `CUTOFF_TOOM3` (384 words, about 3 700 decimal
+    digits), including sizes just below and just above it, and pair operands
+    of unequal length so the three-way split lands on ragged limbs. The
+    reference multiplies in 800-bit blocks, which never leaves the schoolbook
+    path, so the two sides share no code above the cutoff.
+    """
+    var sizes = [3600, 3700, 3750, 4200, 6000, 9000]
+
+    for i in range(len(sizes)):
+        for j in range(len(sizes)):
+            var a = BigInt(_bz_digit_run(sizes[i], 20260824 + 31 * i + j))
+            var b = BigInt(_bz_digit_run(sizes[j], 76543210 + 17 * i + j))
+            var case_label = (
+                String("a=")
+                + String(sizes[i])
+                + " digits, b="
+                + String(sizes[j])
+                + " digits"
+            )
+            testing.assert_equal(
+                String(a * b),
+                String(_blockwise_product(a, b, 800)),
+                "Toom-3 product differs from reference for " + case_label,
+            )
+
+
+def test_multiply_toom3_with_zero_limbs() raises:
+    """Toom-3 stays correct when a three-way limb comes out zero or short.
+
+    Shifting a short value far to the left leaves whole runs of zero words in
+    the middle of the magnitude, so `a1`, `a2` or the high words of `a0` are
+    zero. Those are the cases where an interpolation step can quietly produce
+    a value shorter than the one it is subtracted from, and random operands
+    never generate them.
+    """
+    var gaps = [6000, 12000, 20000, 24000, 30000]
+
+    for i in range(len(gaps)):
+        var low = BigInt(_bz_digit_run(900, 11223344 + i))
+        var high = BigInt(_bz_digit_run(900, 55667788 + i))
+        var a = (high << gaps[i]) + low
+        var b = BigInt(_bz_digit_run(5000, 99887766 + i))
+
+        var case_label = String("gap=") + String(gaps[i]) + " bits"
+        testing.assert_equal(
+            String(a * b),
+            String(_blockwise_product(a, b, 800)),
+            "gapped operand product differs for " + case_label,
+        )
+        testing.assert_equal(
+            String(a * a),
+            String(_blockwise_product(a, a, 800)),
+            "gapped square differs for " + case_label,
+        )
+
+
+def test_multiply_toom3_algebraic_identities() raises:
+    """Distributivity and the multiply/divide round trip above the cutoff.
+
+    These reach sizes where Toom-3 recurses into itself, which the reference
+    comparison above is too slow to cover.
+    """
+    var a = BigInt(_bz_digit_run(30000, 20260824))
+    var b = BigInt(_bz_digit_run(30000, 13572468))
+    var c = BigInt(_bz_digit_run(17000, 24681357))
+
+    testing.assert_equal(
+        String(a * (b + c)),
+        String(a * b + a * c),
+        "a * (b + c) != a * b + a * c",
+    )
+    testing.assert_equal(String((a * b) // b), String(a), "(a * b) // b != a")
+    testing.assert_true(((a * b) % b).is_zero(), "(a * b) % b is not zero")
+    testing.assert_equal(
+        String((a - c) * (a + c)),
+        String(a * a - c * c),
+        "(a - c) * (a + c) != a^2 - c^2",
+    )
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()

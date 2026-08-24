@@ -78,6 +78,23 @@ Dated by report file under `benches/bigdecimal/reports/`. Append-only.
 |          |      | copy+inplace; `BigUInt.remove_trailing_digits_with_rounding` de-duplicated to      |
 |          |      | thin wrapper                                                                       |
 
+### 2.3b Constants — `pi()` (PR #269–#273)
+
+`pi(10000)` 13.7 s → 3.9 ms; `pi(100000)` was out of practical reach, now
+142 ms. Everything that range-reduces against π (`sin`/`cos`/`tan`) inherits it.
+
+| Date     | PR       | Item                                                                      |
+| -------- | -------- | ------------------------------------------------------------------------- |
+| 20260823 | #269     | Chudnovsky `P`/`Q`/`T` recurrence — O(1) leaves, root denominator is one   |
+|          |          | term's worth instead of the product of every term's                       |
+| 20260823 | #269     | Binary splitting moved from `BigDecimal` to `BigInt`                       |
+| 20260823 | #270     | `sqrt_reciprocal()` instead of the exact `sqrt()` (which costs two         |
+|          |          | full-size divisions to reproduce CPython's perfect-square test)            |
+| 20260823 | #270     | Divide once in binary, convert only the quotient; `10^s` as `5^s << s`     |
+| 20260823 | #270     | Leaves packed from `UInt128` — was half the split's time at p=1000         |
+| 20260823 | #271     | B-Z divisor padding fixed; a 100 000-digit divide 81 ms → 18 ms     |
+| 20260824 | #273     | Toom-3 on `BigInt` (see `bigint_enhancement.md` T-M1); 152 → 142 ms        |
+
 ### 2.4 Performance tracking — absolute decimo median ns/iter (ascending precision)
 
 Best-of-5, `-D ASSERT=none`. Append-only. Where a precision is omitted
@@ -781,6 +798,26 @@ P7 — `round` (2× py → target ≤1.0×)
   rounding-dominated fast paths (e.g. small-coefficient `add` /
   `subtract` / `multiply` with `precision > 0`).
 
+**T-PI4 — keep the `pi()` pipeline binary, convert once. OPEN.**
+Stage breakdown at p=100000 (142 ms total):
+
+| Stage                              | ms   | Base |
+| ---------------------------------- | ---- | ---- |
+| binary splitting, below the root   | 43.1 | 2^32 |
+| root join, 3 full-width multiplies | 16.7 | 2^32 |
+| `5^s` and the scaling multiply     | 9.1  | 2^32 |
+| final division                     | 16.5 | 2^32 |
+| base 2^32 → 10^9                   | 19.9 | both |
+| `sqrt_reciprocal(10005)`           | 21.3 | 10^9 |
+| final multiplies and round         | 12.9 | 10^9 |
+
+The last two rows, 34 ms, run in base 10^9, where the same multiply costs
+twice what it costs in base 2^32 (12.1 ms vs 6.0 ms at 100 000 digits).
+Neither needs to be decimal: `sqrt_reciprocal` can run as a fixed-point
+reciprocal square root on `BigInt`, and the final multiply with it. Estimated
+142 → ~125 ms. Below that the multiplication exponent itself has to come down
+(T-5, NTT) — for scale, mpmath on gmpy2 does the same 100 000 digits in ~16 ms.
+
 ### 5.3 Long-term tasks not on the active roadmap
 
 | #   | Task                                                            | Effort |
@@ -890,6 +927,7 @@ some ops < 1.0×):
 | T-R1   | `round` `.format` sweep                   | S      | **NO**   | no `.format` asserts in round; great           |
 | T-7b   | Reciprocal-Newton nth root                | M      | **WAIT** | break-even at current mul speed                |
 |        |                                           |        |          | (div ~2.7× mul); root already 0.2× py          |
+| T-PI4  | Binary-only `pi()` pipeline, convert once | M      | **OPEN** | 142 → ~125 ms at p=100000                      |
 | T-5    | NTT multiplication                        | XL     | **WAIT** | valid; multi-session XL, tracked in §5.3       |
 | T-9    | deferred-carry schoolbook mul             | M      | **DONE** | deferred-carry (product-scanning);             |
 |        |                                           |        |          | Definitely worth bringing it to `BigInt` too   |
