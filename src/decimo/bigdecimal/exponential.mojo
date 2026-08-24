@@ -1135,10 +1135,16 @@ def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
         prec_schedule.append(p)
         p = (p + 1) // 2
 
-    # Constant 3
-    var three = BigDecimal(BigUInt(raw_words=[3]), 0, False)
+    # Constant 1
+    var one = BigDecimal(BigUInt(raw_words=[1]), 0, False)
 
-    # --- Reciprocal sqrt Newton iterations ---
+    # --- Newton iterations: r_{k+1} = r_k + r_k * (1 - c_norm * r_k^2) / 2 ---
+    #
+    # Rearranged around the residual for exactly the reason spelled out in
+    # `sqrt_reciprocal()`: `e = 1 - c_norm * r^2` is around `10^(-ip/2)`, and a
+    # `BigDecimal` holds those leading zeros in the scale rather than the
+    # coefficient, so the correction multiply is half-width by half-width where
+    # `r * (3 - c_norm * r^2)` was half-width by full-width.
     for i in range(len(prec_schedule) - 1, -1, -1):
         var ip = prec_schedule[i] + 10
 
@@ -1158,17 +1164,27 @@ def fast_isqrt(c: BigUInt, working_digits: Int) raises -> BigUInt:
             fill_zeros_to_precision=False,
         )
 
-        var correction = three.subtract(r_sq)
+        # e = 1 - c_norm * r^2, the Newton residual. Signed, and tiny.
+        var residual = one.subtract(r_sq)
 
-        bigdecimal_arithmetics.multiply_inplace(r, correction)
+        # r * e / 2
+        bigdecimal_arithmetics.multiply_inplace(residual, r)
+        residual.round_to_precision_inplace(
+            precision=ip,
+            rounding_mode=RoundingMode.half_up(),
+            remove_extra_digit_due_to_rounding=True,
+            fill_zeros_to_precision=False,
+        )
+        residual = residual.true_divide_inexact_by_uint32(UInt32(2), ip)
+
+        # r + r * e / 2
+        r = r.add(residual)
         r.round_to_precision_inplace(
             precision=ip,
             rounding_mode=RoundingMode.half_up(),
             remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
-
-        r = r.true_divide_inexact_by_uint32(UInt32(2), ip)
 
     # --- Compute sqrt(c) = c_norm * r * 10^(norm_shift/2) ---
     var result_bd = c_norm.multiply(r)
@@ -1366,8 +1382,12 @@ def sqrt_reciprocal(x: BigDecimal, precision: Int) raises -> BigDecimal:
     root iteration.
 
     Uses reciprocal square root Newton iteration with precision doubling:
-        r_{k+1} = r_k * (3 - x * r_k^2) / 2   (computes 1/sqrt(x))
+        r_{k+1} = r_k + r_k * (1 - x * r_k^2) / 2   (computes 1/sqrt(x))
     Then sqrt(x) = x * r.
+
+    That is the textbook `r * (3 - x * r^2) / 2` rearranged around the
+    residual, which makes the correction multiply half-width by half-width
+    instead of half-width by full-width. See the note on the loop itself.
 
     This avoids division entirely — each Newton iteration uses only
     multiplication, subtraction, and trivial divide-by-2. Combined with

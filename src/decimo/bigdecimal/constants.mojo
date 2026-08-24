@@ -22,7 +22,8 @@ from decimo.errors import ValueError
 from decimo.bigint.bigint import BigInt
 from decimo.biguint.biguint import BigUInt
 from decimo.rounding_mode import RoundingMode
-import decimo.bigdecimal.exponential as bigdecimal_exponential
+import decimo.bigint.arithmetics as bigint_arithmetics
+import decimo.bigint.exponential as bigint_exponential
 import decimo.bigdecimal.trigonometric as bigdecimal_trigonometric
 
 comptime PI_1024 = BigDecimal(
@@ -307,9 +308,6 @@ def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
     # 16 terms where 11 will do.
     var iterations = (working_precision + 13) // 14 + 3
 
-    var bdec_10005 = BigDecimal.from_raw_components(UInt32(10005))
-    var bdec_426880 = BigDecimal.from_raw_components(UInt32(426880))
-
     # Binary splitting to compute the series sum as a single rational number.
     #
     # The two halves are joined here rather than through
@@ -363,23 +361,34 @@ def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
 
     var scaled = (numerator * BigInt(5).power(scale_digits)) << scale_digits
     var quotient = scaled.truncate_divide(denominator)
-    var sum_series = BigDecimal(
-        quotient.to_biguint(), scale_digits, quotient.sign
-    )
 
-    # Final formula: π = 426880 * √10005 * (q / t)
+    # Final formula: π = 426880 * √10005 * (q / t).
     #
-    # `sqrt_reciprocal()` rather than the public `sqrt()`: the latter is
-    # `sqrt_exact()`, which reproduces CPython's `Decimal.sqrt()` bit for bit
-    # by computing an exact `isqrt` and testing whether the input is a perfect
-    # square. Both of those cost full-size divisions, and neither means
-    # anything for a fixed non-square integer used as an intermediate. The
-    # division-free Newton iteration gives the same digits here for a fraction
-    # of the work - it was the single largest line item in `pi()`, ahead of the
-    # binary splitting itself.
-    var result = bdec_426880.multiply(
-        bigdecimal_exponential.sqrt_reciprocal(bdec_10005, working_precision)
-    ).multiply(sum_series)
+    # Written as `426880 * 10005 / √10005` so that the irrational factor enters
+    # as a *reciprocal* square root, which Newton computes without a single
+    # division. `426880 * 10005 = 4270934400`, which still fits in a word.
+    #
+    # All three factors are combined in `BigInt` and converted to base 10^9
+    # exactly once, at the end. The obvious alternative - build a `BigDecimal`
+    # from `quotient` and multiply it by `sqrt_reciprocal()` - converts here
+    # instead of at the end, and then does the square root and both final
+    # multiplications in base 10^9, where the same multiplication costs about
+    # 2.8x what it does in base 2^32. Same number of conversions, three
+    # expensive stages moved to the cheaper base.
+    #
+    # `quotient` takes the word factor first: `(quotient * r) >> frac_bits`
+    # would truncate before the multiplication and turn one unit in the last
+    # place into 4.3 billion of them.
+    var frac_bits = (scale_digits + 32) * 10 // 3  # 10/3 > log2(10)
+    var reciprocal_root = bigint_exponential.reciprocal_isqrt_fixed(
+        UInt64(10005), frac_bits
+    )
+    var magnitude = (
+        (bigint_arithmetics.absolute(quotient) * BigInt(4270934400))
+        * reciprocal_root
+    ) >> frac_bits
+
+    var result = BigDecimal(magnitude.to_biguint(), scale_digits, quotient.sign)
 
     result.round_to_precision_inplace(
         precision,

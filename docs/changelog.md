@@ -8,7 +8,7 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 `from_integral_scalar()` / `from_float_scalar()` naming used by the other
 numeric types, `BigInt10` is no longer referenced by the rest of the library,
 and `BigDecimal.pi()` gets four orders of magnitude faster — 100 000 digits in
-55 ms, and ahead of pure-Python mpmath from 500 digits up. Multiplication is
+50 ms, and ahead of pure-Python mpmath from 500 digits up. Multiplication is
 2-3x faster for both `BigInt` and `BigUInt`, which puts `BigInt` ahead of
 CPython's `int` on every large operation. Burnikel-Ziegler division loses a
 padding choice that cost it its own asymptotics on some sizes, which speeds up
@@ -80,8 +80,9 @@ of its requested precision is fixed.
    kernel was down to about 0.85 cycles per word pair — there was nothing left
    to win per pair, only in the number of pairs. It now packs both operands
    into base-2^64 limbs before the column loop, which quarters the pairs, and
-   writes each result limb straight back out as two 32-bit words. Operands
-   below 32 words skip the packing, which would cost more than it saves.
+   writes each result limb straight back out as two 32-bit words. Products of
+   fewer than 1024 word pairs skip the packing, which would cost more than it
+   saves.
 
    A column of 64-bit products does not fit in 128 bits. Rather than carry a
    three-word accumulator, each product is split at the word boundary and the
@@ -93,13 +94,47 @@ of its requested precision is fixed.
    128 -> 256, Toom-3 512 -> 768). A 100 000-digit `BigInt` product goes from
    3.4 ms to 2.3 ms.
 
-1. **`sqrt()` and `sqrt_reciprocal()` are 1.6x faster at high precision.** The
-   Newton step was the textbook `r * (3 - x * r^2) / 2`, whose second multiply
-   is half-width by full-width. Written around the residual instead — `r + r *
+   The gate is on `len_a * len_b` rather than on either operand, because
+   packing is linear in `len_a + len_b` while the loop it feeds is quadratic.
+   Gating on the shorter operand alone sent lopsided products back to the
+   32-bit kernel for no reason: 31x250 words is 1.8x faster packed, and was
+   slower than 64x250 before. Balanced products, and `pi()` with them, are
+   unaffected.
+
+1. **`pi()` finishes in binary and converts once, and 100 000 digits drop to
+   50 ms.** The pipeline used to leave base 2^32 as soon as the series
+   division was done: the quotient was converted to base 10^9, and the square
+   root and both final multiplications then ran there. That put three of the
+   most expensive stages in the base where a multiplication costs about 2.8x
+   what it costs in base 2^32, for no gain — the same single conversion was
+   needed either way.
+
+   `π = 426880 * √10005 * (q/t)` is now evaluated as
+   `426880 * 10005 / √10005 * (q/t)`, so the irrational factor enters as a
+   *reciprocal* square root — which Newton reaches without a division — and
+   `426880 * 10005 = 4270934400` still fits in a word. The new
+   `BigInt.exponential.reciprocal_isqrt_fixed()` returns `2^f / sqrt(x)` as a
+   binary fixed-point integer, everything is combined in `BigInt`, and the
+   conversion to base 10^9 happens once, on the finished value.
+
+   The three moved stages go from 7.0, 6.4 and 9.8 ms to 2, 2 and 9 ms at
+   100 000 digits. `pi(100000)` 58.2 -> 50.2 ms, `pi(10000)` 1.74 -> 1.59 ms,
+   `pi(1000)` 82 -> 71 us. Digits are unchanged: exact against MPFR at every
+   precision from 1 to 100 000 digits.
+
+1. **`sqrt_reciprocal()` is 1.6x faster at high precision.** The Newton step
+   was the textbook `r * (3 - x * r^2) / 2`, whose second multiply is
+   half-width by full-width. Written around the residual instead — `r + r *
    (1 - x * r^2) / 2`, algebraically the same thing — the correction is around
    `10^(-p/2)`, and a `BigDecimal` keeps those leading zeros in the scale
    rather than in the coefficient. The multiply is then half-width by
    half-width. `sqrt_reciprocal(10005, 100000)` goes from 10.4 ms to 6.6 ms.
+
+   `fast_isqrt()`, which the exact `BigDecimal.sqrt()` uses, now takes the
+   same form, but gains only about 6% (`sqrt(10005, 50000)` 19.3 ms to
+   18.2 ms). Its Newton loop is not where its time goes: the exact-integer
+   refinement that follows costs 7.7x the whole reciprocal iteration, because
+   it divides and squares at full width in base 10^9.
 
    Together with the item above, `pi(100000)` goes from 78 ms to 55 ms and
    `pi(10000)` from 2.2 ms to 1.7 ms.

@@ -5,6 +5,7 @@ with positive, negative, mixed-sign, and consistency checks.
 
 from std import testing
 from decimo.bigint.bigint import BigInt
+import decimo.bigint.exponential as bigint_exponential
 
 
 # ===----------------------------------------------------------------------=== #
@@ -151,6 +152,108 @@ def test_divmod_by_zero_raises() raises:
     except:
         raised = True
     testing.assert_true(raised, "divmod by zero should raise")
+
+
+# ===----------------------------------------------------------------------=== #
+# Test: reciprocal_isqrt_fixed
+# ===----------------------------------------------------------------------=== #
+
+
+def _assert_reciprocal_isqrt(x: UInt64, frac_bits: Int, tolerance: Int) raises:
+    """Brackets `r` against the exact `floor(2^frac_bits / sqrt(x))`.
+
+    `r` is the exact value when `r^2 * x <= 2^(2f) < (r + 1)^2 * x`. Widening
+    that by `tolerance` on each side gives a check that needs no reference
+    value and no reference implementation: it asserts exactly the contract the
+    function documents, and it is not satisfied by any wrong answer.
+    """
+    var r = bigint_exponential.reciprocal_isqrt_fixed(x, frac_bits)
+    var bx = BigInt(String(x))
+    var square = BigInt.one() << (2 * frac_bits)
+    var label = " for x=" + String(x) + ", frac_bits=" + String(frac_bits)
+
+    var low = r - BigInt(tolerance)
+    if low.sign:
+        low = BigInt.zero()
+    testing.assert_true(
+        low * low * bx <= square,
+        "reciprocal_isqrt_fixed() is more than "
+        + String(tolerance)
+        + " ulp high"
+        + label,
+    )
+
+    var high = r + BigInt(tolerance + 1)
+    testing.assert_true(
+        high * high * bx > square,
+        "reciprocal_isqrt_fixed() is more than "
+        + String(tolerance)
+        + " ulp low"
+        + label,
+    )
+
+
+def test_reciprocal_isqrt_fixed_brackets_the_exact_value() raises:
+    """`2^f / sqrt(x)` is within a few ulp of the true value, at every size.
+
+    The word-sized `x` values span the whole `UInt64` range, including both
+    perfect squares (exact answers, where an off-by-one is easiest to make)
+    and values above `2^53`, which no longer round-trip through the `Float64`
+    seed. The `frac_bits` values cross the point where the Newton schedule
+    starts running at all (`frac_bits <= 44 + bits(x) / 2` returns the seed
+    directly) and then several doublings past it.
+    """
+    var xs = [
+        UInt64(1),
+        UInt64(2),
+        UInt64(3),
+        UInt64(4),
+        UInt64(10005),
+        UInt64(999999937),
+        UInt64(1) << 40,
+        UInt64(9223372036854775807),
+        UInt64(0) - UInt64(1),
+    ]
+    var frac_bits = [0, 1, 30, 64, 128, 200, 256, 501, 1000, 3000]
+
+    for i in range(len(xs)):
+        for j in range(len(frac_bits)):
+            _assert_reciprocal_isqrt(xs[i], frac_bits[j], 4)
+
+
+def test_reciprocal_isqrt_fixed_exact_powers_of_four() raises:
+    """`x = 4^k` makes `2^f / sqrt(x)` an exact power of two."""
+    testing.assert_equal(
+        String(bigint_exponential.reciprocal_isqrt_fixed(UInt64(1), 64)),
+        String(BigInt.one() << 64),
+    )
+    testing.assert_equal(
+        String(bigint_exponential.reciprocal_isqrt_fixed(UInt64(4), 300)),
+        String(BigInt.one() << 299),
+    )
+    testing.assert_equal(
+        String(
+            bigint_exponential.reciprocal_isqrt_fixed(UInt64(1) << 40, 1000)
+        ),
+        String(BigInt.one() << 980),
+    )
+
+
+def test_reciprocal_isqrt_fixed_rejects_bad_arguments() raises:
+    """Zero and a negative width raise rather than returning nonsense."""
+    var raised = False
+    try:
+        _ = bigint_exponential.reciprocal_isqrt_fixed(UInt64(0), 64)
+    except:
+        raised = True
+    testing.assert_true(raised, "x = 0 should raise")
+
+    raised = False
+    try:
+        _ = bigint_exponential.reciprocal_isqrt_fixed(UInt64(10005), -1)
+    except:
+        raised = True
+    testing.assert_true(raised, "negative frac_bits should raise")
 
 
 def main() raises:

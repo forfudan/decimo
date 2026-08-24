@@ -3,8 +3,13 @@ Characterization tests for the large-operand code paths of BigInt.
 
 These exercise the algorithms that only engage above the size cutoffs in
 `bigint/arithmetics.mojo`, and which no other test in the suite reaches:
-  - Karatsuba multiplication (len_max > CUTOFF_KARATSUBA = 48 words)
+  - packed base-2^64 schoolbook (len_a * len_b >= CUTOFF_PACK_64_AREA = 1024)
+  - Karatsuba multiplication (len_max > CUTOFF_KARATSUBA = 256 words)
+  - Toom-3 multiplication (len_max > CUTOFF_TOOM3 = 768 words)
   - Burnikel-Ziegler division (len_b > CUTOFF_BURNIKEL_ZIEGLER = 64 words)
+
+Keep the sizes here in step with those constants. A cutoff that moves up past
+a fixture leaves the test passing while covering a path it no longer reaches.
 
 Expected values were computed with Python's arbitrary-precision integers.
 Operand bit widths are chosen to straddle each cutoff, including cases just
@@ -16,12 +21,20 @@ from decimo.bigint.bigint import BigInt
 
 
 # ===----------------------------------------------------------------=== #
-# Karatsuba multiplication (> 48 words = > 1536 bits)
+# Karatsuba multiplication (> 256 words = > 8192 bits)
 # ===----------------------------------------------------------------=== #
 
 
-def test_multiply_at_karatsuba_boundary() raises:
-    """Products straddling the Karatsuba cutoff (1536 bits = 48 words)."""
+def test_multiply_schoolbook_fixed_vectors() raises:
+    """Fixed 48-word products, checked against Python's `int`.
+
+    48 words is below `CUTOFF_KARATSUBA` and above `CUTOFF_PACK_64_AREA`, so
+    these run on the packed base-2^64 schoolbook kernel. They were written
+    when 48 was the Karatsuba cutoff and are kept as fixed vectors: every
+    other multiplication test in this file checks one decimo path against
+    another, and these are the only ones that check against an outside
+    oracle.
+    """
     testing.assert_equal(
         String(
             BigInt(
@@ -571,16 +584,47 @@ def _blockwise_product(a: BigInt, b: BigInt, block_bits: Int) raises -> BigInt:
     return total^
 
 
+def test_multiply_at_karatsuba_boundary() raises:
+    """Products straddling the Karatsuba cutoff (256 words, ~2 470 digits).
+
+    Dispatch is on `max(len_a, len_b)`, so pairing unequal sizes also covers a
+    Karatsuba operand multiplied by a schoolbook-sized one, where the halves
+    of the split are lopsided. The reference multiplies in 800-bit blocks
+    (25 words, area 625), which stays on the unpacked schoolbook kernel, so
+    the two sides share no code above the cutoff.
+    """
+    var sizes = [2400, 2460, 2480, 2600, 3000]
+
+    for i in range(len(sizes)):
+        for j in range(len(sizes)):
+            var a = BigInt(_bz_digit_run(sizes[i], 51000 + 29 * i + j))
+            var b = BigInt(_bz_digit_run(sizes[j], 82000 + 11 * i + j))
+            var case_label = (
+                String("a=")
+                + String(sizes[i])
+                + " digits, b="
+                + String(sizes[j])
+                + " digits"
+            )
+            testing.assert_equal(
+                String(a * b),
+                String(_blockwise_product(a, b, 800)),
+                "Karatsuba product differs from reference for " + case_label,
+            )
+
+
 def test_multiply_toom3_against_blockwise_reference() raises:
     """Toom-3 products match a block-by-block schoolbook recomposition.
 
-    The digit counts straddle `CUTOFF_TOOM3` (384 words, about 3 700 decimal
+    The digit counts straddle `CUTOFF_TOOM3` (768 words, about 7 400 decimal
     digits), including sizes just below and just above it, and pair operands
-    of unequal length so the three-way split lands on ragged limbs. The
-    reference multiplies in 800-bit blocks, which never leaves the schoolbook
+    of unequal length so the three-way split lands on ragged limbs. Dispatch
+    is on `max(len_a, len_b)`, so the mixed pairs also cover a Toom-3 operand
+    multiplied by a Karatsuba-sized one. The reference multiplies in 800-bit
+    blocks (25 words, area 625), which never leaves the unpacked schoolbook
     path, so the two sides share no code above the cutoff.
     """
-    var sizes = [3600, 3700, 3750, 4200, 6000, 9000]
+    var sizes = [6000, 7300, 7400, 7600, 9000]
 
     for i in range(len(sizes)):
         for j in range(len(sizes)):
@@ -703,17 +747,17 @@ def test_multiply_toom3_algebraic_identities() raises:
 def test_multiply_across_the_64_bit_packing_boundary() raises:
     """The packed and unpacked schoolbook kernels agree, at every parity.
 
-    Below `CUTOFF_PACK_64` (32 words) the base case runs over 32-bit words;
-    above it, operands are packed into base-2^64 limbs and the result is
-    unpacked again. An operand with an odd word count leaves the top limb
-    half empty, and the product then carries up to two zero words the packed
-    kernel has to strip, so both parities are covered on both sides of the
-    gate and in every combination.
+    Below `CUTOFF_PACK_64_AREA` (`len_a * len_b < 1024`) the base case runs
+    over 32-bit words; at or above it, operands are packed into base-2^64
+    limbs and the result is unpacked again. An operand with an odd word count
+    leaves the top limb half empty, and the product then carries up to two
+    zero words the packed kernel has to strip, so both parities are covered on
+    both sides of the gate and in every combination.
 
     9 decimal digits is a shade under one 32-bit word, so this walks the word
     counts one at a time through the boundary rather than jumping over it.
-    The reference multiplies in 200-bit blocks, which stays under the gate
-    whatever the operands do.
+    The reference multiplies in 200-bit blocks (7 words, area 49), which stays
+    under the gate whatever the operands do.
     """
     var digit_counts = [180, 189, 198, 270, 279, 288, 297, 306, 360, 450]
 
@@ -738,6 +782,36 @@ def test_multiply_across_the_64_bit_packing_boundary() raises:
                 "-" + String(_blockwise_product(a, b, 200)),
                 "packed product sign is wrong for " + case_label,
             )
+
+
+def test_multiply_lopsided_across_the_packing_boundary() raises:
+    """One short operand against a long one, either side of the area gate.
+
+    The gate is on `len_a * len_b`, not on either operand alone, so a product
+    such as 5x250 words packs while 4x250 does not - the short side crosses
+    the boundary while the long side never moves. That also drives the packed
+    kernel at `n_a = 3` packed limbs, where the column bounds `i_low` and
+    `i_high` are at their tightest and the two-wide unroll runs at most one
+    full pass. The small digit counts below straddle the gate against a fixed
+    250-word operand.
+    """
+    var short_digits = [20, 30, 40, 50, 70, 120, 250, 400]
+    var long_digits = 2400
+
+    for i in range(len(short_digits)):
+        var a = BigInt(_bz_digit_run(short_digits[i], 90210 + 17 * i))
+        var b = BigInt(_bz_digit_run(long_digits, 31337 + i))
+        var case_label = String(short_digits[i]) + " digits x 2400 digits"
+        testing.assert_equal(
+            String(a * b),
+            String(_blockwise_product(a, b, 200)),
+            "lopsided product differs from reference for " + case_label,
+        )
+        testing.assert_equal(
+            String(b * a),
+            String(_blockwise_product(a, b, 200)),
+            "lopsided product is not commutative for " + case_label,
+        )
 
 
 def main() raises:
