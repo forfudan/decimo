@@ -31,30 +31,21 @@ from decimo.errors import (
 )
 from decimo.rounding_mode import RoundingMode
 
-comptime CUTOFF_KARATSUBA = 64
-"""The cutoff number of words for using Karatsuba multiplication."""
-comptime CUTOFF_TOOM3 = 256
+comptime CUTOFF_KARATSUBA = 256
+"""The cutoff number of words for using Karatsuba multiplication.
+
+Raised from 64 when the schoolbook base case became product-scanning. A Comba
+column reduces base-10^9 once per result word instead of once per partial
+product, which makes the quadratic kernel fast enough that Karatsuba's extra
+`BigUInt` allocations and additions do not pay until much later.
+"""
+comptime CUTOFF_TOOM3 = 768
 """The cutoff number of words for using Toom-3 multiplication.
 
 NOTE: Karatsuba is used for `CUTOFF_KARATSUBA < max_words <= CUTOFF_TOOM3`.
 """
 comptime CUTOFF_BURNIKEL_ZIEGLER = 32
 """The cutoff number of words for using Burnikel-Ziegler division."""
-comptime CUTOFF_DEFERRED_CARRY_PRODUCT = 200
-"""Threshold for switching the schoolbook inner loop to deferred-carry
-accumulation.
-
-NOTE: unlike `CUTOFF_KARATSUBA` / `CUTOFF_TOOM3`, which are
-word counts, this is a product `n_words_x * n_words_y` (the number of
-single-word partial products). It is therefore reached *within* the schoolbook
-range (`max_words <= CUTOFF_KARATSUBA` = 64): two ~15-word operands give a
-product of 225 >= 200, and a 64x64 multiply gives 4096. So the deferred-carry
-path runs for the ~15-64 word band directly and for the Karatsuba / Toom-3
-recursion base cases (whose sub-multiplies are <= 64 words). Below this product
-the per-step-carry loop is faster (the accumulator + final-normalization
-overhead dominates).
-"""
-
 # ===----------------------------------------------------------------------=== #
 # List of functions in this module:
 #
@@ -1009,178 +1000,76 @@ def multiply_slices_schoolbook(
             multiply_by_uint32_inplace(result, y_word)
             return result^
 
-    # Deferred-carry multiply for larger slices: accumulate column
-    # sums in a UInt64 buffer and normalize the base-10^9 carry only
-    # periodically, doing ~8x fewer div/mods than the per-step-carry loop
-    # below. The gate is a PRODUCT (n_x * n_y), not a word count, so it is
-    # reached for both operands >= ~15 words (within the <=64-word schoolbook
-    # range) and for the Karatsuba/Toom-3 recursion base cases. Below the
-    # crossover the buffer + final-normalization overhead loses.
-    if n_words_x_slice * n_words_y_slice >= CUTOFF_DEFERRED_CARRY_PRODUCT:
-        return multiply_slices_deferred_carry(x, y, bounds_x, bounds_y)
-
-    # The max number of words in the result is the sum of the words in the operands
-    var max_result_len = n_words_x_slice + n_words_y_slice
-    # Allocate the result of zero words with the maximum length
-    # The leading zeros need to be removed before returning the result
-    var result = BigUInt(unsafe_uninit_length=max_result_len)
-    unsafe_memset_zero(ptr=result.words._data, count=max_result_len)
-
-    # Perform the multiplication word by word (from least significant to most significant)
-    # x = x[start_x] + x[start_x + 1] * 10^9
-    # y = y[start_y] + y[start_y + 1] * 10^9
-    # x * y = x[start_x] * y[start_y]
-    #       + (x[start_x] * y[start_y + 1]
-    #       + x[start_x + 1] * y[start_y]) * 10^9
-    #       + x[start_x + 1] * y[start_y + 1] * 10^18
-    var carry: UInt64
-    for i in range(n_words_x_slice):
-        # Skip if the word is zero
-        if x.words[bounds_x[0] + i] == 0:
-            continue
-
-        carry = UInt64(0)
-
-        for j in range(n_words_y_slice):
-            # Calculate the product of the current words
-            # plus the carry from the previous multiplication
-            # plus the value already at this position in the result
-            var product = (
-                UInt64(x.words[bounds_x[0] + i])
-                * UInt64(y.words[bounds_y[0] + j])
-                + carry
-                + UInt64(result.words[i + j])
-            )
-
-            # The lower 9 digits (base 10^9) go into the current word
-            # The upper digits become the carry for the next position
-            result.words[i + j] = UInt32(product % UInt64(BigUInt.BASE))
-            carry = product // UInt64(BigUInt.BASE)
-
-        # If there is a carry left, add it to the next position
-        if carry > 0:
-            result.words[i + n_words_y_slice] += UInt32(carry)
-
-    result.remove_leading_empty_words()
-    return result^
-
-
-def multiply_slices_deferred_carry(
-    imm x: BigUInt,
-    imm y: BigUInt,
-    bounds_x: Tuple[Int, Int],
-    bounds_y: Tuple[Int, Int],
-) -> BigUInt:
-    """Multiplies two BigUInt slices using deferred-carry accumulation.
-
-    Args:
-        x: The first BigUInt operand (multiplicand).
-        y: The second BigUInt operand (multiplier).
-        bounds_x: A tuple containing the start and end indices of the slice in x.
-        bounds_y: A tuple containing the start and end indices of the slice in y.
-
-    Returns:
-        The product of the two BigUInt slices.
-
-    Notes:
-
-    Unlike `multiply_slices_schoolbook`, which performs a base-10^9 carry
-    normalization (`% BASE` and `// BASE`) on every inner-loop step
-    (`n_x * n_y` divisions), this accumulates each partial product into a
-    `UInt64` column buffer and normalizes only every `SAFE_ROWS` rows, plus
-    once at the end. That reduces the division count to roughly
-    `n_x * n_y / SAFE_ROWS`, which dominates the runtime for larger slices.
-
-    This is the deferred-carry / column-accumulation idea behind
-    product-scanning multiplication (also known in the literature as "Comba
-    multiplication"): P. G. Comba, "Exponentiation cribs", IBM Systems
-    Journal 29(4), 1990, pp. 526-538; see also Koc, Acar & Kaliski,
-    "Analyzing and comparing Montgomery multiplication algorithms", IEEE
-    Micro 16(3), 1996, for the operand-scanning vs product-scanning contrast.
-    Here the accumulator is a base-10^9 `UInt64` column buffer rather than a
-    binary one, and carries are deferred in batches of `SAFE_ROWS` rows for
-    overflow safety.
-
-    Overflow safety: each partial product `x_i * y_j` is `< (10^9)^2 = 10^18`,
-    and at most `SAFE_ROWS = 15` rows accumulate into any column between
-    normalizations, so each accumulator stays below `15 * 10^18 < 2^64 - 1`.
-    Caller (`multiply_slices_schoolbook`) only routes here above the benchmarked
-    product crossover, and never with a single-word slice.
-    """
-    var start_x = bounds_x[0]
-    var start_y = bounds_y[0]
-    var n_words_x_slice = bounds_x[1] - start_x
-    var n_words_y_slice = bounds_y[1] - start_y
-
-    comptime SAFE_ROWS = 15
-    comptime BASE = UInt64(BigUInt.BASE)
+    # Product scanning (Comba): walk the result one word at a time, summing
+    # the whole column `sum(x_i * y_j)` with `i + j == k` in a `UInt128`
+    # accumulator before emitting a word.
+    #
+    # The operand-scanning form this replaces did a `% BASE` and a `// BASE`
+    # on every one of the `n_x * n_y` partial products, and read and wrote the
+    # result array on each of them too. Here the base-10^9 reduction happens
+    # once per result word - `n_x + n_y` of them, not `n_x * n_y` - and the
+    # column stays in registers. About 2.2x at 256 words, and ahead from two
+    # words up, so there is no size gate any more.
+    #
+    # Overflow safety: each partial product is below `(10^9)^2 = 10^18 < 2^60`
+    # and a column has at most `n_min` of them, so a `UInt128` accumulator
+    # cannot overflow for any operand this library can allocate. The column is
+    # unrolled over four independent accumulators because a single one
+    # serialises on the 128-bit add.
+    comptime BASE = UInt128(BigUInt.BASE)
 
     var result_length = n_words_x_slice + n_words_y_slice
+    var result = BigUInt(unsafe_uninit_length=result_length)
 
-    # Column accumulator: `column_sums[k]` holds the running sum of every
-    # partial product `x_i * y_j` with `i + j == k`, before the base-10^9
-    # carries are propagated.
-    #
-    # The inner multiply loop is O(n^2). I use raw data pointer for each
-    # of the three buffers it touches and index through those, so the compiler
-    # keeps each buffer's base address in a register for the whole loop instead
-    # reload that List's `_data` field on every element access. That
-    # reload is the bottleneck in the indexed form (measured ~8% slower at
-    # 64-word operands under `-D ASSERT=none`).
-    #
-    # Memory safety: the three buffers all outlive this loop and are never
-    # resized inside it. `x` / `y` are borrowed (`imm`, owned by the caller),
-    # and `column_sums` is only element-mutated (never appended). `List.
-    # unsafe_ptr()` returns an origin-parameterized `UnsafePointer` tied to the
-    # List's origin, so Mojo's lifetime tracking keeps `column_sums` alive for
-    # as long as `column_sums_ptr` is used (including the final pass below).
-    # Every index is provably in-bounds:
-    # `start_x + i < bounds_x[1] <= len(x.words)`,
-    # `start_y + j < bounds_y[1] <= len(y.words)`, and the column index
-    # `i + j < result_length` (likewise the carry index `k`).
-    var column_sums = List[UInt64](length=result_length, fill=0)
-    var column_sums_ptr = column_sums.unsafe_ptr()
+    var start_x = bounds_x[0]
+    var start_y = bounds_y[0]
     var x_words_ptr = x.words.unsafe_ptr()
     var y_words_ptr = y.words.unsafe_ptr()
+    var result_ptr = result.words.unsafe_ptr()
 
-    var rows_since_normalization = 0
-    var highest_column = 0  # highest accumulator index touched + 1
+    # `carry` is the part of the column sum at or above 10^9, which belongs to
+    # the next column. The last column leaves it holding the top word.
+    var carry = UInt128(0)
+    for k in range(result_length - 1):
+        var i_low = 0 if k < n_words_y_slice else k - n_words_y_slice + 1
+        var i_high = k if k < n_words_x_slice else n_words_x_slice - 1
 
-    for i in range(n_words_x_slice):
-        var x_word = UInt64(x_words_ptr[unsafe_offset=start_x + i])
-        if x_word == 0:
-            continue
-        for j in range(n_words_y_slice):
-            column_sums_ptr[unsafe_offset=i + j] += x_word * UInt64(
-                y_words_ptr[unsafe_offset=start_y + j]
+        var acc0 = carry
+        var acc1 = UInt128(0)
+        var acc2 = UInt128(0)
+        var acc3 = UInt128(0)
+
+        var i = i_low
+        while i + 3 <= i_high:
+            acc0 += UInt128(
+                UInt64(x_words_ptr[unsafe_offset=start_x + i])
+                * UInt64(y_words_ptr[unsafe_offset=start_y + k - i])
             )
-        if i + n_words_y_slice > highest_column:
-            highest_column = i + n_words_y_slice
-        rows_since_normalization += 1
-        if rows_since_normalization == SAFE_ROWS:
-            # Propagate base-10^9 carries across the touched range.
-            var carry: UInt64 = 0
-            for k in range(highest_column):
-                var column_value = column_sums_ptr[unsafe_offset=k] + carry
-                column_sums_ptr[unsafe_offset=k] = column_value % BASE
-                carry = column_value // BASE
-            var k = highest_column
-            while carry > 0:
-                var column_value = column_sums_ptr[unsafe_offset=k] + carry
-                column_sums_ptr[unsafe_offset=k] = column_value % BASE
-                carry = column_value // BASE
-                k += 1
-                if k > highest_column:
-                    highest_column = k
-            rows_since_normalization = 0
+            acc1 += UInt128(
+                UInt64(x_words_ptr[unsafe_offset=start_x + i + 1])
+                * UInt64(y_words_ptr[unsafe_offset=start_y + k - i - 1])
+            )
+            acc2 += UInt128(
+                UInt64(x_words_ptr[unsafe_offset=start_x + i + 2])
+                * UInt64(y_words_ptr[unsafe_offset=start_y + k - i - 2])
+            )
+            acc3 += UInt128(
+                UInt64(x_words_ptr[unsafe_offset=start_x + i + 3])
+                * UInt64(y_words_ptr[unsafe_offset=start_y + k - i - 3])
+            )
+            i += 4
+        while i <= i_high:
+            acc0 += UInt128(
+                UInt64(x_words_ptr[unsafe_offset=start_x + i])
+                * UInt64(y_words_ptr[unsafe_offset=start_y + k - i])
+            )
+            i += 1
 
-    # Final normalization into base-10^9 result words.
-    var result = BigUInt(uninitialized_capacity=result_length)
-    var carry: UInt64 = 0
-    for k in range(result_length):
-        var column_value = column_sums_ptr[unsafe_offset=k] + carry
-        result.words.append(UInt32(column_value % BASE))
-        carry = column_value // BASE
+        var column = (acc0 + acc1) + (acc2 + acc3)
+        result_ptr[unsafe_offset=k] = UInt32(column % BASE)
+        carry = column // BASE
+
+    result_ptr[unsafe_offset=result_length - 1] = UInt32(carry % BASE)
 
     result.remove_leading_empty_words()
     return result^
@@ -2270,46 +2159,91 @@ def floor_divide_schoolbook(x: BigUInt, y: BigUInt) raises -> BigUInt:
 
     # ===----------------------------------------------=== #
     # ALL OTHER CASES
-    # Use the schoolbook division algorithm
-    # Initialize result and remainder
-    var result = BigUInt(uninitialized_capacity=len(x.words))
-    var remainder = x.copy()
+    # Schoolbook division, Knuth D style: each quotient word is estimated from
+    # the top three words of the running remainder and then subtracted in a
+    # single fused multiply-subtract over the `n + 1` word window it affects.
+    #
+    # The older form built `q * y` as a fresh `BigUInt`, shifted it up by
+    # `index_of_word` words, compared it against the whole remainder and
+    # subtracted it from the whole remainder. That is four passes over the
+    # full dividend, plus an allocation, for every quotient word - which made
+    # the routine cost `O(m * (n + m))` with a large constant instead of
+    # `O(m * n)` with a small one. Windowing it was worth 2-4x, most of it in
+    # the 100 to 1 000 digit band.
+    comptime BASE = UInt64(BigUInt.BASE)
 
-    # Shift and initialize
-    var n_words_diff = len(remainder.words) - len(y.words)
-    # The quotient will have at most n_words_diff + 1 words
+    var n = len(y.words)
+    var n_words_diff = len(x.words) - n
+
+    var result = BigUInt(uninitialized_capacity=n_words_diff + 1)
     for _ in range(n_words_diff + 1):
         result.words.append(0)
 
-    # Main division loop
-    var index_of_word = n_words_diff  # Start from the most significant word
-    var trial_product: BigUInt
-    var quotient: UInt32
-    while index_of_word >= 0:
-        # OPTIMIZATION: Better quotient estimation
-        quotient = floor_divide_estimate_quotient(remainder, y, index_of_word)
+    # One guard word above the dividend, so `index_of_word + n` is always a
+    # real position for the fused subtraction to take its final borrow from.
+    var remainder = BigUInt(uninitialized_capacity=len(x.words) + 1)
+    remainder.words = x.words.copy()
+    remainder.words.append(UInt32(0))
 
-        # Calculate trial product
-        trial_product = y.copy()
-        multiply_by_uint32_inplace(trial_product, quotient)
-        multiply_by_power_of_billion_inplace(trial_product, index_of_word)
+    var y_ptr = y.words.unsafe_ptr()
+    var r_ptr = remainder.words.unsafe_ptr()
 
-        # By construction, no correction is needed
-        # Add correction attempts counter to avoid infinite loop
+    for index_of_word in range(n_words_diff, -1, -1):
+        var quotient = floor_divide_estimate_quotient(
+            remainder, y, index_of_word
+        )
+
+        # remainder[index .. index + n) -= quotient * y.
+        #
+        # `carry` carries both halves of the step: the high word of the
+        # product, and the borrow, which is folded into it exactly one word
+        # later - the same trick the base-2^32 Knuth D uses. Biasing the
+        # difference by BASE keeps it non-negative, so the borrow is just
+        # whether the biased value stayed below BASE.
+        var carry = UInt64(0)
+        for i in range(n):
+            var product = (
+                UInt64(quotient) * UInt64(y_ptr[unsafe_offset=i]) + carry
+            )
+            carry = product // BASE
+            var biased = (
+                UInt64(r_ptr[unsafe_offset=index_of_word + i])
+                + BASE
+                - (product % BASE)
+            )
+            r_ptr[unsafe_offset=index_of_word + i] = UInt32(biased % BASE)
+            carry += 1 - biased // BASE
+
+        # The estimate can be one or two too large. Each add-back returns the
+        # divisor to the window and buys back one unit of the quotient.
+        var top = index_of_word + n
+        var top_value = UInt64(r_ptr[unsafe_offset=top])
         var correction_attempts = 0
-        while (trial_product.compare(remainder) > 0) and (quotient > 0):
+        while top_value < carry:
             quotient -= 1
             correction_attempts += 1
-            trial_product -= multiply_by_power_of_billion(y, index_of_word)
             debug_assert[assert_mode="none"](
                 correction_attempts <= 2, "Too many correction attempts"
             )
+            var add_carry = UInt64(0)
+            for i in range(n):
+                var total = (
+                    UInt64(r_ptr[unsafe_offset=index_of_word + i])
+                    + UInt64(y_ptr[unsafe_offset=i])
+                    + add_carry
+                )
+                if total >= BASE:
+                    r_ptr[unsafe_offset=index_of_word + i] = UInt32(
+                        total - BASE
+                    )
+                    add_carry = 1
+                else:
+                    r_ptr[unsafe_offset=index_of_word + i] = UInt32(total)
+                    add_carry = 0
+            top_value += add_carry
+        r_ptr[unsafe_offset=top] = UInt32(top_value - carry)
 
-        # Store the quotient word
         result.words[index_of_word] = quotient
-        # By construction, trial_product <= remainder
-        subtract_no_check_inplace(remainder, trial_product)
-        index_of_word -= 1
 
     result.remove_leading_empty_words()
     return result^
@@ -2613,38 +2547,36 @@ def floor_divide_by_uint128(x: BigUInt, y: UInt128) -> BigUInt:
         "Division by zero.",
     )
 
-    var carry = UInt256(0)
-    var y_uint255 = UInt256(y)
-    var result: BigUInt
-    if len(x.words) % 4 == 1:
-        carry = UInt256(x.words[len(x.words) - 1])
-        result = BigUInt(unsafe_uninit_length=len(x.words) - 1)
-    elif len(x.words) % 4 == 2:
-        carry = UInt256(
-            (
-                x.words.unsafe_ptr()
-                .unsafe_load[width=2](len(x.words) - 2)
-                .cast[DType.uint64]()
-                * SIMD[DType.uint64, 2](1, 1_000_000_000)
-            ).reduce_add()
-        )
-        result = BigUInt(unsafe_uninit_length=len(x.words) - 2)
-    elif len(x.words) % 4 == 3:
-        carry = UInt256(
-            (
-                x.words.unsafe_ptr()
-                .unsafe_load[width=4](len(x.words) - 3)
-                .cast[DType.uint128]()
-                * SIMD[DType.uint128, 4](
-                    1, 1_000_000_000, 1_000_000_000_000_000_000, 0
-                )
-            ).reduce_add()
-        )
-        result = BigUInt(unsafe_uninit_length=len(x.words) - 3)
-    else:
-        result = BigUInt(unsafe_uninit_length=len(x.words))
+    comptime BILLION = UInt256(1_000_000_000)
 
-    for i in range(len(result.words) - 1, -1, -4):
+    var y_uint255 = UInt256(y)
+    var n_words = len(x.words)
+    var lead_words = n_words % 4
+    var result = BigUInt(unsafe_uninit_length=n_words)
+    var carry = UInt256(0)
+
+    # The dividend is consumed four words at a time, so a word count that is
+    # not a multiple of four leaves a short leading group.
+    #
+    # That group has a quotient of its own, and the previous version of this
+    # function threw it away: it kept only `lead % y` as the carry and sized
+    # the result at `n - lead_words` words. Two things went wrong. A quotient
+    # that needed the dropped words came back too small - `y` of three words
+    # against `x` of seven silently lost the top word, a factor of 10^9. And
+    # when the dividend *was* the leading group, at three words or fewer, the
+    # result was left with no words at all, which faults the first operation
+    # that reads `words[len(words) - 1]`.
+    if lead_words != 0:
+        var lead = UInt256(0)
+        for k in range(n_words - 1, n_words - lead_words - 1, -1):
+            lead = lead * BILLION + UInt256(x.words[k])
+        var lead_quotient = lead // y_uint255
+        carry = lead % y_uint255
+        for k in range(n_words - lead_words, n_words):
+            result.words[k] = UInt32(lead_quotient % BILLION)
+            lead_quotient //= BILLION
+
+    for i in range(n_words - lead_words - 1, -1, -4):
         var dividend = (
             carry * UInt256(1_000_000_000_000_000_000_000_000_000_000_000_000)
             + (

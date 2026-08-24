@@ -237,6 +237,49 @@ def test_biguint_truncate_divide_random_numbers_against_python() raises:
     # print("BigUInt truncate division tests passed!")
 
 
+def test_biguint_divide_across_the_dispatch_boundaries_against_python() raises:
+    """Cross-checks `//` against Python across every size the dispatch splits on.
+
+    `floor_divide()` picks a different routine for a divisor of one word, two
+    words, three-or-four words, and anything larger, and the three-or-four-word
+    routine additionally behaves differently for each residue of the dividend
+    word count mod four. The two random cross-checks in this file use 2 214
+    digits over 810 and 200 000 over 14 000 — both far above the
+    Burnikel-Ziegler cutoff, so neither ever reaches the small-divisor paths.
+    That is how a three-word divisor could lose a factor of 10^9 for over a
+    year without a red test.
+
+    This walks the divisor from 1 to 40 digits and the dividend from the
+    divisor's length up to 90 digits, which crosses every boundary in the
+    dispatch, and compares against Python at each step.
+    """
+    _set_max_str_digits(500000)
+
+    for divisor_digits in range(1, 41):
+        for dividend_digits in range(divisor_digits, 91, 7):
+            var number_b = _bz_digit_run(divisor_digits, 7 * divisor_digits + 3)
+            var number_a = _bz_digit_run(
+                dividend_digits, 13 * dividend_digits + divisor_digits
+            )
+            var case_label = (
+                String("a=")
+                + String(dividend_digits)
+                + " digits, b="
+                + String(divisor_digits)
+                + " digits"
+            )
+            assert_equal(
+                lhs=String(BigUInt(number_a) // BigUInt(number_b)),
+                rhs=String(Python.int(number_a) // Python.int(number_b)),
+                msg="floor division differs from Python for " + case_label,
+            )
+            assert_equal(
+                lhs=String(BigUInt(number_a) % BigUInt(number_b)),
+                rhs=String(Python.int(number_a) % Python.int(number_b)),
+                msg="modulo differs from Python for " + case_label,
+            )
+
+
 def test_biguint_truncate_divide_huge_random_numbers_against_python() raises:
     # Some two hundred thousand digits over a divisor of some fourteen
     # thousand. The smaller random cases above already clear
@@ -283,6 +326,69 @@ def _bz_digit_run(count: Int, seed: Int) -> String:
         x = (x * 1103515245 + 12345 + j) % 2147483647
         out += String(x % 10)
     return out^
+
+
+def test_biguint_divide_short_operands_of_every_word_count() raises:
+    """`//` and `%` are correct for every small dividend/divisor word count.
+
+    `floor_divide()` routes any divisor of three or four words to
+    `floor_divide_by_uint128()`, which consumes the dividend four words at a
+    time. A dividend whose word count is not a multiple of four leaves a short
+    leading group, and that group's own quotient used to be discarded: a
+    seven-word dividend over a three-word divisor came back a factor of 10^9
+    too small, and a three-word dividend - where the leading group *is* the
+    whole number - produced a `BigUInt` with no words at all, which faults the
+    next operation that reads `words[len(words) - 1]`.
+
+    Neither shape is exotic: `23334504672441144935 // 1854056525350022197`
+    crashed. The sweep below walks every dividend length from one to nine
+    words against every divisor length from one to five, which covers all four
+    residues of the group size, and pins each result with `q * b + r == a`
+    and `0 <= r < b`.
+    """
+    for divisor_words in range(1, 6):
+        for dividend_words in range(1, 10):
+            if dividend_words < divisor_words:
+                continue
+            var b = BigUInt(
+                _bz_digit_run(9 * divisor_words, 30 * divisor_words + 7)
+            )
+            var a = BigUInt(
+                _bz_digit_run(
+                    9 * dividend_words, 91 * dividend_words + divisor_words
+                )
+            )
+            var case_label = (
+                String("a=")
+                + String(dividend_words)
+                + " words, b="
+                + String(divisor_words)
+                + " words"
+            )
+            var q = a // b
+            var r = a % b
+            assert_equal(
+                String(q * b + r), String(a), "q*b+r != a for " + case_label
+            )
+            assert_true(r < b, "remainder not below divisor for " + case_label)
+            assert_true(
+                len(q.words) > 0, "quotient has no words for " + case_label
+            )
+
+    # The exact pair that crashed, and one that came back 10^9 too small.
+    assert_equal(
+        String(
+            BigUInt("23334504672441144935") // BigUInt("1854056525350022197")
+        ),
+        "12",
+    )
+    assert_equal(
+        String(
+            BigUInt("807907260199438794337606998415891117067948916721663647060")
+            // BigUInt("2822897927280927212")
+        ),
+        "286197829681228157267625044899046282569",
+    )
 
 
 def test_biguint_divide_bz_block_padding_sizes() raises:

@@ -136,10 +136,16 @@ unchanged for the variable-length signed case.
    the final iteration instead of `log n` full-width iterations.
 
 9. **Reciprocal-Newton divide only wins once multiplication is much
-   cheaper than division** (the NTT regime). Re-measured after T-M1: at
-   100 000 digits B-Z divides in 16.5 ms against 6.0 ms for the same-size
-   multiply, so it is still 2.75× a multiply and a reciprocal-Newton rewrite
-   would be a wash. Toom-3 was not enough to unblock it; NTT would be.
+   cheaper than division** (the NTT regime). Re-measured after T-M1/T-M2: at
+   100 000 digits B-Z divides in 9.2 ms against 3.4 ms for the same-size
+   multiply — still 2.7×, the ratio has not moved. A reciprocal-Newton rewrite
+   would be a wash. Neither Toom-3 nor Comba unblocks it; NTT would.
+
+10. **A fast quadratic kernel moves the crossovers a long way, so re-tune
+    them together.** After T-M2 the old `CUTOFF_KARATSUBA = 48` cost 27% at
+    11 000 words: schoolbook was still winning at 256 words against a
+    Karatsuba whose leaves were capped at 48. Any change to the base case
+    invalidates every cutoff above it.
 
 ## 5. Open Items
 
@@ -221,16 +227,38 @@ subtractions hold). Against the Karatsuba path:
 `CUTOFF_TOOM3 = 384`. The crossover is soft, not sharp — Toom-3 loses a few
 percent from ~260 to ~320 words — and 384 is just above that band.
 
-This puts `BigInt` ahead of CPython `int` on the two ops that dominate large
-work. At 100 000 decimal digits: multiply 6.0 ms vs 9.4, floor_divide 16.1 ms
-vs 19.4. CPython still wins to_string, 18.6 ms vs 21.0 (T-T1).
+With T-M2 and T-M3 on top, `BigInt` is ahead of CPython `int` on every large
+op. At 100 000 decimal digits (decimo / CPython, ms):
 
-**T-M2 — SIMD partial-product accumulation** in the schoolbook base case
-(NEON 4×UInt32), which is the base for Karatsuba and Toom-3 alike. Now the
-highest-value multiply item left: with Toom-3 in place, essentially all the
-arithmetic still bottoms out in ≤48-word schoolbook leaves. This is the
-base-2^32 analogue of the BigDecimal multiply win; the base-10^9 Comba trick
-itself does not transfer (Lesson 2).
+| op           | decimo | CPython | ratio |
+| ------------ | ------ | ------- | ----- |
+| multiply     |   3.44 |    9.37 | 2.7×  |
+| floor_divide |   9.20 |   19.35 | 2.1×  |
+| to_string    |  13.12 |   18.56 | 1.4×  |
+| from_string  |   5.07 |    9.32 | 1.8×  |
+
+At 1 000 digits multiply is 2.9× and divide is at parity; `to_string` and
+`from_string` are still behind below ~10 000 digits (T-T1, T-F1).
+
+**T-M2 — product-scanning schoolbook base case. DONE (2026-08-24).** Not the
+SIMD form originally planned. The old kernel was operand-scanning: it read and
+wrote the result array on every one of the `n_x · n_y` partial products and
+carried serially along each row. Comba walks the result one word at a time and
+sums the whole column `sum(a[i]·b[k-i])` in a `UInt128` before emitting a word,
+so the column stays in registers and there is no carry chain. Unrolled over
+four accumulators, because one serialises on the 128-bit add.
+
+| words | operand-scanning | Comba ×1 | Comba ×4 |
+| ----- | ---------------- | -------- | -------- |
+| 8     | 71 ns            | 57       | 57       |
+| 16    | 154              | 114      | 108      |
+| 48    | 1 074            | 701      | 520      |
+| 64    | 1 989            | 1 298    | 848      |
+
+**T-M3 — re-tune the cutoffs. DONE (2026-08-24).** A quadratic kernel at well
+under a cycle per partial product moves both crossovers a long way up:
+`CUTOFF_KARATSUBA` 48 → 128, `CUTOFF_TOOM3` 384 → 512. At 11 000 words the
+dispatcher went 4 754 → 3 743 µs on the cutoffs alone.
 
 ### power (2.1× py) and add (1.5× py)
 
@@ -319,7 +347,8 @@ and fix the base-conversion and SIMD fallout behind the test suite.
 | T-D3  | Re-tune `CUTOFF_BURNIKEL_ZIEGLER`                | OPEN — pair with the BigUInt todo     |
 | T-T1  | Lower to_string D&C entry threshold              | OPEN — after T-D1 / T-D2              |
 | T-M1  | Toom-3 multiply above 384 words                  | DONE 2026-08-24                       |
-| T-M2  | SIMD partial-product accumulation in school base | OPEN — now the top multiply item      |
+| T-M2  | Product-scanning (Comba) schoolbook base case    | DONE 2026-08-24 — ~2× at the cutoff   |
+| T-M3  | Re-tune `CUTOFF_KARATSUBA` / `CUTOFF_TOOM3`      | DONE 2026-08-24 — 48→128, 384→512     |
 | T-P1  | `square()` plus inplace loop for power           | OPEN                                  |
 | T-A1  | add/sub dispatch reorder                         | OPEN                                  |
 | T-SH1 | Pre-size the shift result buffer                 | OPEN                                  |

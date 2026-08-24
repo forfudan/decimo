@@ -80,8 +80,8 @@ Dated by report file under `benches/bigdecimal/reports/`. Append-only.
 
 ### 2.3b Constants — `pi()` (PR #269–#273)
 
-`pi(10000)` 13.7 s → 3.9 ms; `pi(100000)` was out of practical reach, now
-142 ms. Everything that range-reduces against π (`sin`/`cos`/`tan`) inherits it.
+`pi(10000)` 13.7 s → 2.2 ms; `pi(100000)`, out of practical reach before, now
+78 ms. Everything that range-reduces against π (`sin`/`cos`/`tan`) inherits it.
 
 | Date     | PR       | Item                                                                      |
 | -------- | -------- | ------------------------------------------------------------------------- |
@@ -93,7 +93,13 @@ Dated by report file under `benches/bigdecimal/reports/`. Append-only.
 | 20260823 | #270     | Divide once in binary, convert only the quotient; `10^s` as `5^s << s`     |
 | 20260823 | #270     | Leaves packed from `UInt128` — was half the split's time at p=1000         |
 | 20260823 | #271     | B-Z divisor padding fixed; a 100 000-digit divide 81 ms → 18 ms     |
-| 20260824 | #273     | Toom-3 on `BigInt` (see `bigint_enhancement.md` T-M1); 152 → 142 ms        |
+| 20260824 | #273     | Toom-3 on `BigInt` (`bigint_enhancement.md` T-M1); 152 → 142 ms            |
+| 20260824 | #273     | Product-scanning `BigUInt` schoolbook, replacing deferred-carry (T-9b);    |
+|          |          | 2.2× at 256 words, and it supersedes `multiply_slices_deferred_carry`      |
+| 20260824 | #273     | `BigUInt` cutoffs re-tuned: Karatsuba 64 → 256, Toom-3 256 → 768;          |
+|          |          | a 100 000-digit `BigUInt` multiply 10.5 → 6.0 ms                           |
+| 20260824 | #274     | Product-scanning `BigUInt` schoolbook mul, windowed schoolbook div,        |
+|          |          | dead `right.p` at the root of the split. Total: 142 → 78 ms                |
 
 ### 2.4 Performance tracking — absolute decimo median ns/iter (ascending precision)
 
@@ -799,24 +805,26 @@ P7 — `round` (2× py → target ≤1.0×)
   `subtract` / `multiply` with `precision > 0`).
 
 **T-PI4 — keep the `pi()` pipeline binary, convert once. OPEN.**
-Stage breakdown at p=100000 (142 ms total):
+Stage breakdown at p=100000, after the 2026-08-24 work (78 ms total):
 
 | Stage                              | ms   | Base |
 | ---------------------------------- | ---- | ---- |
-| binary splitting, below the root   | 43.1 | 2^32 |
-| root join, 3 full-width multiplies | 16.7 | 2^32 |
-| `5^s` and the scaling multiply     | 9.1  | 2^32 |
-| final division                     | 16.5 | 2^32 |
-| base 2^32 → 10^9                   | 19.9 | both |
-| `sqrt_reciprocal(10005)`           | 21.3 | 10^9 |
-| final multiplies and round         | 12.9 | 10^9 |
+| binary splitting, below the root   | 24.5 | 2^32 |
+| base 2^32 → 10^9                   | 12.5 | both |
+| `sqrt_reciprocal(10005)`           | 11.1 | 10^9 |
+| final division                     |  9.6 | 2^32 |
+| root join, 3 full-width multiplies |  9.7 | 2^32 |
+| final multiplies and round         |  6.0 | 10^9 |
+| `5^s` and the scaling multiply     |  4.9 | 2^32 |
 
-The last two rows, 34 ms, run in base 10^9, where the same multiply costs
-twice what it costs in base 2^32 (12.1 ms vs 6.0 ms at 100 000 digits).
-Neither needs to be decimal: `sqrt_reciprocal` can run as a fixed-point
-reciprocal square root on `BigInt`, and the final multiply with it. Estimated
-142 → ~125 ms. Below that the multiplication exponent itself has to come down
-(T-5, NTT) — for scale, mpmath on gmpy2 does the same 100 000 digits in ~16 ms.
+`sqrt_reciprocal` has no reason to be decimal — a fixed-point reciprocal
+square root on `BigInt` would run against a multiply that is still 1.75× the
+base-10^9 one (3.4 ms vs 6.0 at 100 000 digits) — and the final multiply could
+follow it, leaving a single conversion. Worth roughly 5 ms now, down from the
+17 ms it would have been worth before the kernels were fixed.
+
+Below that the multiplication exponent itself has to come down (T-5, NTT).
+For scale, mpmath on gmpy2 does the same 100 000 digits in ~16 ms.
 
 ### 5.3 Long-term tasks not on the active roadmap
 
@@ -927,7 +935,10 @@ some ops < 1.0×):
 | T-R1   | `round` `.format` sweep                   | S      | **NO**   | no `.format` asserts in round; great           |
 | T-7b   | Reciprocal-Newton nth root                | M      | **WAIT** | break-even at current mul speed                |
 |        |                                           |        |          | (div ~2.7× mul); root already 0.2× py          |
-| T-PI4  | Binary-only `pi()` pipeline, convert once | M      | **OPEN** | 142 → ~125 ms at p=100000                      |
+| T-PI4  | Binary-only `pi()` pipeline, convert once | M      | **OPEN** | ~5 ms of the 82 ms at p=100000                 |
+| T-9b   | Product-scanning `BigUInt` schoolbook     | M      | **DONE** | 2.2× at 256 words; deferred-carry removed      |
+| T-9c   | Re-tune `BigUInt` mul cutoffs             | S      | **DONE** | Kara 64→256, Toom3 256→768; 10.5 → 6.0 ms      |
+| T-D5   | Windowed fused mul-sub in schoolbook div  | M      | **DONE** | 2.0× at 100 digits, 1.5× at 300, 1.3× at 1 000 |
 | T-5    | NTT multiplication                        | XL     | **WAIT** | valid; multi-session XL, tracked in §5.3       |
 | T-9    | deferred-carry schoolbook mul             | M      | **DONE** | deferred-carry (product-scanning);             |
 |        |                                           |        |          | Definitely worth bringing it to `BigInt` too   |
