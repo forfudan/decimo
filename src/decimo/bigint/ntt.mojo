@@ -549,8 +549,11 @@ def multiply_magnitudes_ntt(
 ) -> List[UInt32]:
     """Multiplies two magnitudes through a number-theoretic transform.
 
-    The caller guarantees both operands are non-empty, non-zero and small
-    enough for `can_multiply()`.
+    The caller guarantees both operands are non-empty and non-zero.
+    `should_multiply_ntt()` answers whether this is the cheaper way to form a
+    given product, and rejects any size whose transform length would exceed
+    `MAX_TRANSFORM_LOG`; correctness here does not depend on going through it,
+    only cost does.
 
     Args:
         a: First magnitude (little-endian UInt32 words).

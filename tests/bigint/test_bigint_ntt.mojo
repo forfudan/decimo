@@ -32,11 +32,18 @@ def _pseudo_random_words(count: Int, seed: UInt64) -> List[UInt32]:
 def _assert_matches_reference(
     len_a: Int, len_b: Int, seed: UInt64, top_bits: Int
 ) raises:
-    """Checks the transform against `_multiply_magnitudes()` on one product.
+    """Checks the transform against the schoolbook path on one product.
 
-    Toom-3 and schoolbook are the reference: they are covered by their own
-    tests and by every arithmetic test in the suite, so agreement with them is
-    a strong check with no second implementation to maintain here.
+    The reference is `_multiply_magnitudes_schoolbook()` specifically, and not
+    the `multiply()` dispatcher, because `multiply()` now routes large operands
+    to the transform itself — comparing against it would compare the transform
+    with itself and pass no matter what. Schoolbook is the only multiplication
+    in the module that neither recurses nor dispatches, so it stays independent
+    however the cutoffs move. It is covered by its own tests and by every
+    arithmetic test in the suite.
+
+    It is O(n*m), which at the sizes here costs a few milliseconds. That is the
+    price of an independent reference and it is worth paying.
 
     Args:
         len_a: Word count of the first operand.
@@ -52,16 +59,15 @@ def _assert_matches_reference(
     if top_bits > 0 and top_bits < 32:
         words_a[len_a - 1] = UInt32(1) << UInt32(top_bits - 1)
 
-    var expected = bigint_arithmetics.multiply(
-        BigInt(raw_words=words_a.copy(), sign=False),
-        BigInt(raw_words=words_b.copy(), sign=False),
+    var expected = bigint_arithmetics._multiply_magnitudes_schoolbook(
+        ImmSpan[UInt32](words_a), ImmSpan[UInt32](words_b)
     )
     var actual = bigint_ntt.multiply_magnitudes_ntt(
         ImmSpan[UInt32](words_a), ImmSpan[UInt32](words_b)
     )
 
-    var expected_length = len(expected.words)
-    while expected_length > 1 and expected.words[expected_length - 1] == 0:
+    var expected_length = len(expected)
+    while expected_length > 1 and expected[expected_length - 1] == 0:
         expected_length -= 1
 
     var label = " for len_a=" + String(len_a) + ", len_b=" + String(len_b)
@@ -73,7 +79,7 @@ def _assert_matches_reference(
     for i in range(expected_length):
         testing.assert_equal(
             actual[i],
-            expected.words[i],
+            expected[i],
             "transform product differs at word " + String(i) + label,
         )
 
@@ -305,15 +311,14 @@ def test_ntt_matches_reference_on_extreme_words() raises:
     for i in range(len(word_counts)):
         var count = word_counts[i]
         var ones = _all_ones(count)
-        var expected = bigint_arithmetics.multiply(
-            BigInt(raw_words=ones.copy(), sign=False),
-            BigInt(raw_words=ones.copy(), sign=False),
+        var expected = bigint_arithmetics._multiply_magnitudes_schoolbook(
+            ImmSpan[UInt32](ones), ImmSpan[UInt32](ones)
         )
         var actual = bigint_ntt.multiply_magnitudes_ntt(
             ImmSpan[UInt32](ones), ImmSpan[UInt32](ones)
         )
-        var expected_length = len(expected.words)
-        while expected_length > 1 and expected.words[expected_length - 1] == 0:
+        var expected_length = len(expected)
+        while expected_length > 1 and expected[expected_length - 1] == 0:
             expected_length -= 1
         testing.assert_equal(
             len(actual),
@@ -325,7 +330,7 @@ def test_ntt_matches_reference_on_extreme_words() raises:
         for k in range(expected_length):
             testing.assert_equal(
                 actual[k],
-                expected.words[k],
+                expected[k],
                 "all-ones square differs at word "
                 + String(k)
                 + " of "
@@ -334,14 +339,24 @@ def test_ntt_matches_reference_on_extreme_words() raises:
 
 
 def test_ntt_matches_reference_above_the_dispatch_cutoff() raises:
-    """Sizes the dispatcher actually routes through the transform."""
+    """Sizes the dispatcher actually routes through the transform.
+
+    The assertion on `should_multiply_ntt()` is the point of the test rather
+    than a precondition: without it, a later change to the cutoffs could move
+    these sizes back onto Toom-3 and leave the whole file testing a path that
+    production never takes, silently and with everything still green.
+    """
     var word_counts = [5000, 8192, 10400]
     for i in range(len(word_counts)):
+        var count = word_counts[i]
+        testing.assert_true(
+            bigint_ntt.should_multiply_ntt(count, count),
+            "the dispatcher no longer routes "
+            + String(count)
+            + " words through the transform, so this test covers nothing",
+        )
         _assert_matches_reference(
-            word_counts[i],
-            word_counts[i],
-            UInt64(i * 6151 + 3),
-            (i * 9 + 1) % 33,
+            count, count, UInt64(i * 6151 + 3), (i * 9 + 1) % 33
         )
 
 

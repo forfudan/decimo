@@ -2576,7 +2576,7 @@ struct BigDecimal(
             A copy of this number with the sign taken from `other`.
         """
         return Self(
-            coefficient=self.coefficient,
+            coefficient=self.coefficient.copy(),
             scale=self.scale,
             sign=other.sign,
         )
@@ -2950,7 +2950,7 @@ struct BigDecimal(
             )
 
         return Self(
-            coefficient,
+            coefficient^,
             self.scale - number_of_digits_to_remove,
             self.sign,
         )

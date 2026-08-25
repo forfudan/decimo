@@ -1786,9 +1786,10 @@ def sqrt_decimal_approach(x: BigDecimal, precision: Int) raises -> BigDecimal:
         value = value * UInt128(10)
     var sqrt_value = decimal128_utility.sqrt(value)
     var sqrt_value_biguint = BigUInt.from_integral_scalar(sqrt_value)
+    var sqrt_value_ndigits = sqrt_value_biguint.number_of_digits()
     guess = BigDecimal(
-        sqrt_value_biguint,
-        sqrt_value_biguint.number_of_digits() - ndigits_int_part_sqrt,
+        sqrt_value_biguint^,
+        sqrt_value_ndigits - ndigits_int_part_sqrt,
         False,
     )
 
