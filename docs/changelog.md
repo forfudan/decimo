@@ -8,12 +8,14 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 `from_integral_scalar()` / `from_float_scalar()` naming used by the other
 numeric types, `BigInt10` is no longer referenced by the rest of the library,
 and `BigDecimal.pi()` gets four orders of magnitude faster — 100 000 digits in
-50 ms, and ahead of pure-Python mpmath from 500 digits up. Multiplication is
+36 ms, and ahead of pure-Python mpmath from 500 digits up. Multiplication is
 2-3x faster for both `BigInt` and `BigUInt`, which puts `BigInt` ahead of
-CPython's `int` on every large operation. Burnikel-Ziegler division loses a
-padding choice that cost it its own asymptotics on some sizes, which speeds up
-every division in the library. A Newton iteration that silently returned short
-of its requested precision is fixed.
+CPython's `int` on every large operation. Addition and subtraction are 2-3x
+faster in turn, which the recursive multiplications and divisions inherit.
+Burnikel-Ziegler division loses a padding choice that cost it its own
+asymptotics on some sizes, which speeds up every division in the library. A
+Newton iteration that silently returned short of its requested precision is
+fixed.
 
 ### ⭐️ New in Unreleased
 
@@ -31,6 +33,51 @@ of its requested precision is fixed.
    `BigInt10.from_bigint()` and `BigInt10.to_bigint()` (PR #269).
 
 ### 🦋 Changed in Unreleased
+
+1. **Addition and subtraction are 2-3x faster, and everything built on them
+   moves with them.** Both types carried word by word in 32-bit steps, and
+   both spent more of the loop on bookkeeping than on the sum.
+
+   *`BigInt`, base 2^32.* The words are little-endian, so a pair of them is
+   already a base-2^64 limb: one 64-bit add does the work of two 32-bit ones,
+   and the carry out is the unsigned overflow of that add, which a comparison
+   recovers without the old shift-and-mask. The loads ask for `alignment=4`, so
+   the two operands and the destination may each start at any word offset —
+   which is what lets the Karatsuba and Toom-3 helpers, whose slices start
+   anywhere, use the same kernel. 0.71 -> 0.25 ns/word.
+
+   *`BigUInt`, base 10^9.* A base-10^9 word carries by comparison against
+   `BASE`, not by overflowing, and the comparison depends on the carry coming
+   in — so the carry sat on the loop-carried dependency chain. Both answers are
+   now computed from the operands alone, off the critical path, and the
+   incoming carry only selects between them; what remains loop-carried is a
+   select. This also replaces a two-pass shape — a vectorized word-wise add
+   over the whole operand, then a normalization sweep over the whole result —
+   with one pass, so the words are touched once, and a carry that dies early
+   stops early instead of walking the rest of the accumulator. 1.75 -> 0.83
+   ns/word at 100 000 words, 1.31 -> 0.87 at 1 000.
+
+   The recursive algorithms are add/sub-heavy at every level of their
+   recursion, so they inherit most of this: `BigInt` multiply 1.26x and divide
+   1.22x at 10 400 words, `BigUInt` 1.30x and 1.27x at 11 112. `pi(100000)`
+   goes from 44.2 ms to 36.1 ms and `pi(10000)` from 1.42 ms to 1.27 ms.
+
+   *Exact division by three, the same way.* Toom-3's interpolation calls it once
+   per node. Building `remainder * BASE + word` and then taking both the
+   quotient and the modulus puts *two* dependent multiply-highs on the
+   loop-carried chain, which cost about nine cycles per word — nine times what
+   the neighbouring word-at-a-time helpers cost. Both bases happen to be
+   `1 mod 3`, so with `BASE = 3T + 1` and `word = 3d + m` the step splits into
+   `quotient = remainder * T + d + (remainder + m >= 3)` and
+   `new remainder = (remainder + m) mod 3`. `d` and `m` depend only on `word`,
+   so the one division left is off the chain. 1.7x in `BigInt`, 2.2x in
+   `BigUInt` — though it is only a few percent of a Toom-3 multiply, at the
+   edge of what the benchmark resolves.
+
+   `subtract_simd()` and `add_slices_simd()` are renamed
+   `subtract_carry_select()` and `add_slices_carry_select()`, since neither is
+   vectorized any more, and `normalize_borrows()` is gone — the kernels resolve
+   borrows as they go.
 
 1. **`BigUInt` schoolbook division is 1.3-2x faster.** Each quotient word used
    to build `q * y` as a fresh `BigUInt`, shift it up by the word position,
@@ -112,7 +159,7 @@ of its requested precision is fixed.
    `426880 * 10005 / √10005 * (q/t)`, so the irrational factor enters as a
    *reciprocal* square root — which Newton reaches without a division — and
    `426880 * 10005 = 4270934400` still fits in a word. The new
-   `BigInt.exponential.reciprocal_sqrt_fixed_point()` returns `2^f / sqrt(x)` as
+   `bigint.exponential.reciprocal_sqrt_fixed_point()` returns `2^f / sqrt(x)` as
    a binary fixed-point integer, everything is combined in `BigInt`, and the
    conversion to base 10^9 happens once, on the finished value.
 

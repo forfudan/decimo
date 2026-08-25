@@ -603,6 +603,69 @@ def test_biguint_inplace_arithmetics_match_out_of_place() raises:
         )
 
 
+def _digit_run(digit: String, count: Int) -> String:
+    var out = String("")
+    for _ in range(count):
+        out += digit
+    return out^
+
+
+def test_biguint_add_subtract_carry_chains() raises:
+    """Carry and borrow cascades that run the whole length of the operand.
+
+    `10^n - 1` is a run of `999_999_999` words, so adding to it carries through
+    every one of them and subtracting borrows back through every one. The digit
+    counts sweep across the word boundary at every multiple of nine, and the
+    second operand is short so that the carry has to leave the common region
+    and walk the rest of the accumulator on its own.
+    """
+    _set_max_str_digits(500000)
+
+    for n_digits in range(1, 120):
+        var nines = _digit_run("9", n_digits)
+        var x = BigUInt(nines)
+        var py_x = Python.int(nines)
+        var label = " at " + String(n_digits) + " digits"
+
+        for n_short in range(1, 4):
+            var short = _digit_run("9", n_short)
+            var y = BigUInt(short)
+            var py_y = Python.int(short)
+            var py_sum = String(py_x + py_y)
+            var py_difference = String(py_x - py_y)
+
+            assert_equal(String(add(x, y)), py_sum, "add" + label)
+            var accumulator = x.copy()
+            add_inplace(accumulator, y)
+            assert_equal(String(accumulator), py_sum, "add_inplace" + label)
+
+            if py_x >= py_y:
+                assert_equal(
+                    String(subtract(x, y)), py_difference, "subtract" + label
+                )
+                var minuend = x.copy()
+                subtract_inplace(minuend, y)
+                assert_equal(
+                    String(minuend), py_difference, "subtract_inplace" + label
+                )
+                var minuend_unchecked = x.copy()
+                subtract_no_check_inplace(minuend_unchecked, y)
+                assert_equal(
+                    String(minuend_unchecked),
+                    py_difference,
+                    "subtract_no_check_inplace" + label,
+                )
+
+        # x + x doubles every word at once; x - x is the equal-operands path.
+        assert_equal(String(add(x, x)), String(py_x + py_x), "x + x" + label)
+        var self_sum = x.copy()
+        add_inplace(self_sum, x)
+        assert_equal(String(self_sum), String(py_x + py_x), "x += x" + label)
+        var self_difference = x.copy()
+        subtract_inplace(self_difference, x)
+        assert_equal(String(self_difference), "0", "x -= x" + label)
+
+
 def main() raises:
     # test_biguint_arithmetics()
     # test_biguint_truncate_divide()

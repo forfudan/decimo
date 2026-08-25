@@ -679,5 +679,67 @@ def test_bigint_biguint_truncate_divide() raises:
     )
 
 
+def test_bigint_add_subtract_carry_chains() raises:
+    """Carry and borrow cascades that run the whole length of the operand.
+
+    `2^k - 1` is a run of all-ones words, so adding to it carries through every
+    one of them and subtracting borrows back through every one. The magnitude
+    loops work on 64-bit pairs of words, so the sweep of `k` crosses both the
+    word boundary and the pair boundary, and the second operand is short enough
+    that the carry has to leave the common region on its own. The mixed-sign
+    cases go through the opposite dispatch arm.
+    """
+    var py_builtins = Python.import_module("builtins")
+    for k in range(1, 300):
+        var py_ones = (py_builtins.int(1) << k) - 1
+        var ones = BigInt(String(py_ones))
+        var label = " at 2^" + String(k) + " - 1"
+        testing.assert_equal(
+            String(ones), String(py_ones), "round trip" + label
+        )
+
+        for small in range(1, 4):
+            var addend = BigInt(small)
+            var py_addend = py_builtins.int(small)
+            testing.assert_equal(
+                String(ones + addend),
+                String(py_ones + py_addend),
+                "add" + label,
+            )
+            testing.assert_equal(
+                String(ones - addend),
+                String(py_ones - py_addend),
+                "subtract" + label,
+            )
+            # Opposite signs: the same magnitudes, through the other arm.
+            testing.assert_equal(
+                String(ones + (-addend)),
+                String(py_ones - py_addend),
+                "add of opposite signs" + label,
+            )
+            testing.assert_equal(
+                String(ones - (-addend)),
+                String(py_ones + py_addend),
+                "subtract of opposite signs" + label,
+            )
+            testing.assert_equal(
+                String((-ones) + addend),
+                String(py_addend - py_ones),
+                "add into a negative" + label,
+            )
+
+        testing.assert_equal(
+            String(ones + ones), String(py_ones + py_ones), "doubling" + label
+        )
+        testing.assert_equal(String(ones - ones), "0", "self subtract" + label)
+        var accumulator = ones.copy()
+        accumulator += ones
+        testing.assert_equal(
+            String(accumulator), String(py_ones + py_ones), "+=" + label
+        )
+        accumulator -= ones
+        testing.assert_equal(String(accumulator), String(py_ones), "-=" + label)
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()

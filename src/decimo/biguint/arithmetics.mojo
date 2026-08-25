@@ -53,12 +53,13 @@ comptime CUTOFF_BURNIKEL_ZIEGLER = 32
 # absolute(x: BigUInt) -> BigUInt
 #
 # add(x1: BigUInt, x2: BigUInt) -> BigUInt
-# add_slices_simd(x: BigUInt, y: BigUInt) -> BigUInt
+# add_slices_carry_select(x: BigUInt, y: BigUInt) -> BigUInt
 # add_slices(x: BigUInt, y: BigUInt, start_x: Int, end_x: Int, start_y: Int, end_y: Int) -> BigUInt
 # add_inplace(x1: BigUInt, x2: BigUInt)
 # add_by_uint32_inplace(x: BigUInt, y: UInt32) -> None
 #
 # subtract(x1: BigUInt, x2: BigUInt) -> BigUInt
+# subtract_carry_select(x1: BigUInt, x2: BigUInt) -> BigUInt
 # subtract_inplace(x1: BigUInt, x2: BigUInt) -> None
 # subtract_no_check_inplace(x1: BigUInt, x2: BigUInt) -> None
 # subtract_by_uint32_inplace(x: BigUInt, y: UInt32) -> None
@@ -100,6 +101,182 @@ comptime CUTOFF_BURNIKEL_ZIEGLER = 32
 # Unary operations
 # negative, absolute
 # ===----------------------------------------------------------------------=== #
+
+
+# ===----------------------------------------------------------------------=== #
+# Word-level carry-select kernels
+#
+# A base-10^9 word does not carry by overflowing, so the carry out of a word
+# cannot be read off the hardware flags the way a base-2^32 one can: it is a
+# comparison against `BASE`, and the comparison depends on the carry coming in.
+# Written directly, that puts a compare on the loop-carried dependency chain.
+#
+# These kernels use the carry-select trick instead: both answers — the one for
+# carry-in 0 and the one for carry-in 1 — are computed from the operands alone,
+# off the critical path, and the incoming carry only picks between them. What
+# remains loop-carried is a select, so the chain is roughly one cycle per word
+# rather than the three or four an add-compare-branch chain costs.
+#
+# They also replace the older two-pass shape (a vectorized word-wise add over
+# the whole operand, then `normalize_carries_lt_2_bases()` over the whole
+# result). One pass touches the words once instead of twice, which is what the
+# large sizes were actually paying for, and a carry that dies early now stops
+# early instead of walking the rest of the accumulator.
+# ===----------------------------------------------------------------------=== #
+
+
+@always_inline
+def _add_words_carry_select[
+    o: Origin[mut=True]
+](
+    rp: Pointer[UInt32, o],
+    ap: Pointer[UInt32, _],
+    bp: Pointer[UInt32, _],
+    n_words: Int,
+    carry_in: UInt32,
+) -> UInt32:
+    """Adds `n_words` base-10^9 words: `r = a + b`, least significant first.
+
+    `r` may alias `a` or `b` word-for-word.
+
+    Args:
+        rp: Destination, at least `n_words` words.
+        ap: First summand, at least `n_words` words.
+        bp: Second summand, at least `n_words` words.
+        n_words: Number of words to add.
+        carry_in: Carry into the lowest word, 0 or 1.
+
+    Returns:
+        The carry out of the highest word, 0 or 1.
+    """
+    var carry = carry_in
+    for i in range(n_words):
+        var raw = ap[unsafe_offset=i] + bp[unsafe_offset=i]
+        var carry_if_0 = UInt32(raw >= BigUInt.BASE)
+        var carry_if_1 = UInt32(raw >= BigUInt.BASE_MAX)
+        var word_if_0 = raw - BigUInt.BASE if carry_if_0 != 0 else raw
+        var word_if_1 = raw + 1 - BigUInt.BASE if carry_if_1 != 0 else raw + 1
+        rp[unsafe_offset=i] = word_if_1 if carry != 0 else word_if_0
+        carry = carry_if_1 if carry != 0 else carry_if_0
+    return carry
+
+
+@always_inline
+def _subtract_words_borrow_select[
+    o: Origin[mut=True]
+](
+    rp: Pointer[UInt32, o],
+    ap: Pointer[UInt32, _],
+    bp: Pointer[UInt32, _],
+    n_words: Int,
+    borrow_in: UInt32,
+) -> UInt32:
+    """Subtracts `n_words` base-10^9 words: `r = a - b`, least significant first.
+
+    The borrow counterpart of `_add_words_carry_select()`, with the same
+    aliasing freedom. The wrapped `a - b` is deliberate: it is the right answer
+    modulo 2^32 once `BASE` is added back.
+
+    Args:
+        rp: Destination, at least `n_words` words.
+        ap: Minuend, at least `n_words` words.
+        bp: Subtrahend, at least `n_words` words.
+        n_words: Number of words to subtract.
+        borrow_in: Borrow into the lowest word, 0 or 1.
+
+    Returns:
+        The borrow out of the highest word, 0 or 1.
+    """
+    var borrow = borrow_in
+    for i in range(n_words):
+        var minuend = ap[unsafe_offset=i]
+        var subtrahend = bp[unsafe_offset=i]
+        var raw = minuend - subtrahend
+        var borrow_if_0 = UInt32(minuend < subtrahend)
+        var borrow_if_1 = UInt32(minuend <= subtrahend)
+        var word_if_0 = raw + BigUInt.BASE if borrow_if_0 != 0 else raw
+        var word_if_1 = raw - 1 + BigUInt.BASE if borrow_if_1 != 0 else raw - 1
+        rp[unsafe_offset=i] = word_if_1 if borrow != 0 else word_if_0
+        borrow = borrow_if_1 if borrow != 0 else borrow_if_0
+    return borrow
+
+
+@always_inline
+def _carry_into_tail[
+    o: Origin[mut=True]
+](
+    rp: Pointer[UInt32, o],
+    ap: Pointer[UInt32, _],
+    start: Int,
+    end: Int,
+    carry_in: UInt32,
+) -> UInt32:
+    """Copies `a[start:end]` into `r`, absorbing a carry on the way.
+
+    The carry dies at the first word below `BASE_MAX`, so the loop usually runs
+    once; the untouched remainder is a single memory copy. `r` may alias `a`,
+    in which case the copy is elided.
+
+    Args:
+        rp: Destination, at least `end` words.
+        ap: Source, at least `end` words.
+        start: First word to process.
+        end: One past the last word to process.
+        carry_in: Carry into word `start`, 0 or 1.
+
+    Returns:
+        The carry out of word `end - 1`, 0 or 1.
+    """
+    var carry = carry_in
+    var i = start
+    while carry != 0 and i < end:
+        var raw = ap[unsafe_offset=i] + carry
+        carry = UInt32(raw >= BigUInt.BASE)
+        rp[unsafe_offset=i] = raw - BigUInt.BASE if carry != 0 else raw
+        i += 1
+    if i < end and rp.unsafe_offset(i) != ap.unsafe_offset(i):
+        unsafe_memcpy(
+            dest=rp.unsafe_offset(i), src=ap.unsafe_offset(i), count=end - i
+        )
+    return carry
+
+
+@always_inline
+def _borrow_into_tail[
+    o: Origin[mut=True]
+](
+    rp: Pointer[UInt32, o],
+    ap: Pointer[UInt32, _],
+    start: Int,
+    end: Int,
+    borrow_in: UInt32,
+) -> UInt32:
+    """Copies `a[start:end]` into `r`, absorbing a borrow on the way.
+
+    The borrow counterpart of `_carry_into_tail()`.
+
+    Args:
+        rp: Destination, at least `end` words.
+        ap: Source, at least `end` words.
+        start: First word to process.
+        end: One past the last word to process.
+        borrow_in: Borrow into word `start`, 0 or 1.
+
+    Returns:
+        The borrow out of word `end - 1`, 0 or 1.
+    """
+    var borrow = borrow_in
+    var i = start
+    while borrow != 0 and i < end:
+        var minuend = ap[unsafe_offset=i]
+        borrow = UInt32(minuend == 0)
+        rp[unsafe_offset=i] = BigUInt.BASE_MAX if borrow != 0 else minuend - 1
+        i += 1
+    if i < end and rp.unsafe_offset(i) != ap.unsafe_offset(i):
+        unsafe_memcpy(
+            dest=rp.unsafe_offset(i), src=ap.unsafe_offset(i), count=end - i
+        )
+    return borrow
 
 
 def negative(x: BigUInt) raises -> BigUInt:
@@ -156,7 +333,7 @@ def add(x: BigUInt, y: BigUInt) -> BigUInt:
     Notes:
 
     This function will consider the special cases first, and then call
-    `add_slices_simd()` to handle the addition of the two BigUInt numbers.
+    `add_slices_carry_select()` to handle the addition of the two numbers.
     """
     debug_assert[assert_mode="none"](
         len(x.words) != 0, "BigUInt is uninitialized!"
@@ -209,7 +386,7 @@ def add(x: BigUInt, y: BigUInt) -> BigUInt:
     # can be simplified to addition and subtraction instead of floor division
     # and modulo operations.
     # This speeds up the addition by 2x-4x for large numbers.
-    return add_slices_simd(x, y, (0, len(x.words)), (0, len(y.words)))
+    return add_slices_carry_select(x, y, (0, len(x.words)), (0, len(y.words)))
 
 
 def add_slices(
@@ -229,7 +406,7 @@ def add_slices(
     Notes:
 
     This function will consider the special cases first, and then call
-    `add_slices_simd()` to handle the addition of the two BigUInt slices.
+    `add_slices_carry_select()` to handle the addition of the two slices.
     """
 
     var n_words_x_slice = bounds_x[1] - bounds_x[0]
@@ -261,13 +438,13 @@ def add_slices(
 
     # Normal cases
     # Use SIMD operations for addition if both numbers are large enough.
-    return add_slices_simd(x, y, bounds_x, bounds_y)
+    return add_slices_carry_select(x, y, bounds_x, bounds_y)
 
 
-def add_slices_simd(
+def add_slices_carry_select(
     x: BigUInt, y: BigUInt, bounds_x: Tuple[Int, Int], bounds_y: Tuple[Int, Int]
 ) -> BigUInt:
-    """Adds two BigUInt slices using SIMD operations.
+    """Adds two BigUInt slices in a single carry-select pass.
 
     Args:
         x: The first BigUInt operand (first summand).
@@ -276,87 +453,35 @@ def add_slices_simd(
         bounds_y: A tuple containing the start and end indices of the slice in y.
 
     Returns:
-        A new BigUInt containing the sum of the two numbers.
+        A new BigUInt containing the sum of the two slices.
 
     Notes:
 
     **Special cases are not handled here**. Please handle them in the caller.
 
-    This function uses **SIMD operations** to add the words of the two BigUInt
-    slices in parallel. It is optimized for performance and can handle
-    large numbers efficiently.
-
-    After the parallel addition, it normalizes the carries to ensure that
-    the result is a valid BigUInt number.
-
-    Although you use an extra loop to normalize the carries, this is still
-    faster than the school method for large numbers, as the normalized carries
-    can be simplified to addition and subtraction instead of floor division
-    and modulo operations.
-
-    This function conducts addtion of the two **BigUInt slices**. It avoids
-    creating copies of the BigUInt objects by using the indices to access
-    the words directly. This is useful for performance in cases where the
-    BigUInt objects are large and we only need to add a part of them.
+    Working on the slices in place, through the indices, is what keeps this off
+    the copy path: neither operand is materialised. See the kernel comment
+    above `_add_words_carry_select()` for why the loop is shaped the way it is.
     """
+
     var n_words_x_slice = bounds_x[1] - bounds_x[0]
     var n_words_y_slice = bounds_y[1] - bounds_y[0]
+    var n_words_longer = max(n_words_x_slice, n_words_y_slice)
+    var n_words_shorter = min(n_words_x_slice, n_words_y_slice)
 
-    var result = BigUInt(
-        unsafe_uninit_length=max(n_words_x_slice, n_words_y_slice)
-    )
+    var result = BigUInt(unsafe_uninit_length=n_words_longer)
+    result.words.reserve(n_words_longer + 1)
 
-    def vector_add[
-        simd_width: Int
-    ](i: Int) {mut result, imm x, imm y, imm bounds_x, imm bounds_y}:
-        result.words.unsafe_ptr().unsafe_store[width=simd_width](
-            i,
-            x.words.unsafe_ptr().unsafe_load[width=simd_width](i + bounds_x[0])
-            + y.words.unsafe_ptr().unsafe_load[width=simd_width](
-                i + bounds_y[0]
-            ),
-        )
+    var xp = x.words._data.unsafe_offset(bounds_x[0])
+    var yp = y.words._data.unsafe_offset(bounds_y[0])
+    var rp = result.words._data
 
-    vectorize[BigUInt.VECTOR_WIDTH](
-        min(n_words_x_slice, n_words_y_slice), vector_add
-    )
+    var carry = _add_words_carry_select(rp, xp, yp, n_words_shorter, UInt32(0))
+    var longer = xp if n_words_x_slice > n_words_y_slice else yp
+    carry = _carry_into_tail(rp, longer, n_words_shorter, n_words_longer, carry)
+    if carry != 0:
+        result.words.append(UInt32(1))
 
-    var longer: Pointer[BigUInt, origin_of(x, y)]
-    var n_words_longer_slice: Int
-    var n_words_shorter_slice: Int
-    var longer_start: Int
-
-    if n_words_x_slice >= n_words_y_slice:
-        longer = Pointer[BigUInt, origin_of(x, y)](to=x)
-        n_words_longer_slice = n_words_x_slice
-        n_words_shorter_slice = n_words_y_slice
-        longer_start = bounds_x[0]
-    else:
-        longer = Pointer[BigUInt, origin_of(x, y)](to=y)
-        n_words_longer_slice = n_words_y_slice
-        n_words_shorter_slice = n_words_x_slice
-        longer_start = bounds_y[0]
-
-    def vector_copy_rest_from_longer[
-        simd_width: Int
-    ](i: Int) {
-        mut result, imm longer, imm n_words_shorter_slice, imm longer_start
-    }:
-        result.words.unsafe_ptr().unsafe_store[width=simd_width](
-            n_words_shorter_slice + i,
-            longer[]
-            .words.unsafe_ptr()
-            .unsafe_load[width=simd_width](
-                longer_start + n_words_shorter_slice + i
-            ),
-        )
-
-    vectorize[BigUInt.VECTOR_WIDTH](
-        n_words_longer_slice - n_words_shorter_slice,
-        vector_copy_rest_from_longer,
-    )
-
-    normalize_carries_lt_2_bases(result)
     result.remove_leading_empty_words()
     return result^
 
@@ -370,7 +495,8 @@ def add_inplace(mut x: BigUInt, y: BigUInt) -> None:
 
     Notes:
 
-    This function uses SIMD operations to add the words of the two BigUInt.
+    A single carry-select pass over the words of `y`, then the carry alone
+    through whatever of `x` extends past it.
     """
 
     # Short circuit cases
@@ -394,17 +520,14 @@ def add_inplace(mut x: BigUInt, y: BigUInt) -> None:
     if len(x.words) < len(y.words):
         x.words.resize(length=len(y.words), fill=UInt32(0))
 
-    def vector_add[simd_width: Int](i: Int) {mut x, imm y}:
-        x.words.unsafe_ptr().unsafe_store[width=simd_width](
-            i,
-            x.words.unsafe_ptr().unsafe_load[width=simd_width](i)
-            + y.words.unsafe_ptr().unsafe_load[width=simd_width](i),
-        )
+    var xp = x.words._data
+    var carry = _add_words_carry_select(
+        xp, xp, y.words._data, len(y.words), UInt32(0)
+    )
+    carry = _carry_into_tail(xp, xp, len(y.words), len(x.words), carry)
+    if carry != 0:
+        x.words.append(UInt32(1))
 
-    vectorize[BigUInt.VECTOR_WIDTH](len(y.words), vector_add)
-
-    # Normalize carries after addition
-    normalize_carries_lt_2_bases(x)
     x.remove_leading_empty_words()
 
     return
@@ -444,19 +567,17 @@ def add_by_slice_inplace(
     if len(x.words) < n_words_y_slice:
         x.words.resize(length=n_words_y_slice, fill=UInt32(0))
 
-    def vector_add[simd_width: Int](i: Int) {mut x, imm y, imm bounds_y}:
-        x.words.unsafe_ptr().unsafe_store[width=simd_width](
-            i,
-            x.words.unsafe_ptr().unsafe_load[width=simd_width](i)
-            + y.words.unsafe_ptr().unsafe_load[width=simd_width](
-                i + bounds_y[0]
-            ),
-        )
-
-    vectorize[BigUInt.VECTOR_WIDTH](n_words_y_slice, vector_add)
-
-    # Normalize carries after addition
-    normalize_carries_lt_2_bases(x)
+    var xp = x.words._data
+    var carry = _add_words_carry_select(
+        xp,
+        xp,
+        y.words._data.unsafe_offset(bounds_y[0]),
+        n_words_y_slice,
+        UInt32(0),
+    )
+    carry = _carry_into_tail(xp, xp, n_words_y_slice, len(x.words), carry)
+    if carry != 0:
+        x.words.append(UInt32(1))
 
     return
 
@@ -500,9 +621,9 @@ def subtract(x: BigUInt, y: BigUInt) raises -> BigUInt:
     Returns:
         The result of subtracting y from x.
     """
-    # I will use the SIMD approach for subtraction
-    # This speeds up the subtraction by 1.25x for large numbers.
-    return subtract_simd(x, y)
+    # A single borrow-select pass. The school method below is kept for
+    # reference; it is the same algorithm with the borrow on the critical path.
+    return subtract_carry_select(x, y)
 
     # Yuhao ZHU:
     # Below is a school method for subtraction.
@@ -590,8 +711,8 @@ def subtract_schoolbook(x: BigUInt, y: BigUInt) raises -> BigUInt:
     return result^
 
 
-def subtract_simd(x: BigUInt, y: BigUInt) raises -> BigUInt:
-    """Returns the difference of two unsigned integers using SIMD operations.
+def subtract_carry_select(x: BigUInt, y: BigUInt) raises -> BigUInt:
+    """Returns the difference of two unsigned integers, borrow-select.
 
     Args:
         x: The first unsigned integer (minuend).
@@ -605,10 +726,8 @@ def subtract_simd(x: BigUInt, y: BigUInt) raises -> BigUInt:
 
     Notes:
 
-    I will make use of SIMD operations to subtract the words in parallel.
-    This will first subtract the words in parallel and then handle the borrows.
-    Note that there will be potential overflow in the subtraction,
-    but I will take advantage of that.
+    One pass over the words of `y`, then the borrow alone through the rest of
+    `x`. See the kernel comment above `_add_words_carry_select()`.
     """
     debug_assert[assert_mode="none"](
         len(x.words) != 0, "BigUInt is uninitialized!"
@@ -617,16 +736,14 @@ def subtract_simd(x: BigUInt, y: BigUInt) raises -> BigUInt:
         len(y.words) != 0, "BigUInt is uninitialized!"
     )
 
-    # If the subtrahend is zero, return the minuend
+    # If the subtrahend is zero, return the minuend.
     # Yuhao ZHU:
-    # This step is important because y can be of zero words and is longer than x.
-    # This will makes the subtraction beyond the boundary of the result number,
-    # whose length is equal to the length of x.
-    # Note that our subtraction is via SIMD, so it is directly worked on unsafe
-    # pointers.
+    # This step is important because y can be of zero words and is longer than
+    # x. That would run the loop past the end of the result, whose length is
+    # the length of x, and the loop works on unsafe pointers.
     if y.is_zero():
         debug_assert[assert_mode="none"](
-            len(y.words) == 1, "subtract_simd(): leading zero words"
+            len(y.words) == 1, "subtract_carry_select(): leading zero words"
         )
         return x.copy()
 
@@ -644,37 +761,17 @@ def subtract_simd(x: BigUInt, y: BigUInt) raises -> BigUInt:
             ),
         )
 
-    # Now it is safe to subtract the smaller number from the larger one
-    # The result will have no more words than the first number
+    # Now it is safe to subtract the smaller number from the larger one.
+    # The result will have no more words than the first number.
     var result = BigUInt(unsafe_uninit_length=len(x.words))
 
-    # Yuhao ZHU:
-    # We will make use of SIMD operations to subtract the words in parallel.
-    # This will first subtract the words in parallel and then handle the borrows.
-    # Note that there will be potential overflow in the subtraction,
-    # but we will take advantage of that.
-    def vector_subtract[simd_width: Int](i: Int) {mut result, imm x, imm y}:
-        result.words.unsafe_ptr().unsafe_store[width=simd_width](
-            i,
-            x.words.unsafe_ptr().unsafe_load[width=simd_width](i)
-            - y.words.unsafe_ptr().unsafe_load[width=simd_width](i),
-        )
-
-    vectorize[BigUInt.VECTOR_WIDTH](len(y.words), vector_subtract)
-
-    def vector_copy_rest[simd_width: Int](i: Int) {mut result, imm x, imm y}:
-        result.words.unsafe_ptr().unsafe_store[width=simd_width](
-            len(y.words) + i,
-            x.words.unsafe_ptr().unsafe_load[width=simd_width](
-                len(y.words) + i
-            ),
-        )
-
-    vectorize[BigUInt.VECTOR_WIDTH](
-        len(x.words) - len(y.words), vector_copy_rest
+    var xp = x.words._data
+    var rp = result.words._data
+    var borrow = _subtract_words_borrow_select(
+        rp, xp, y.words._data, len(y.words), UInt32(0)
     )
+    _ = _borrow_into_tail(rp, xp, len(y.words), len(x.words), borrow)
 
-    normalize_borrows(result)
     result.remove_leading_empty_words()
 
     return result^
@@ -705,11 +802,11 @@ def subtract_inplace(mut x: BigUInt, y: BigUInt) raises -> None:
         x.words[0] = UInt32(0)  # Result is zero
         # This return is load-bearing. Without it the equal-operands case falls
         # through into the subtraction below, which subtracts `y` from the
-        # one-word zero that `x` has just become: the vectorized loop runs over
+        # one-word zero that `x` has just become: the loop runs over
         # `len(y.words)` words and reads and writes past the end of `x`, and
-        # `normalize_borrows()` then turns the garbage into a plausible-looking
-        # value. `x -= x` returned `877910460` for one 18-word operand. The
-        # out-of-place `subtract()` is unaffected; only this in-place path was.
+        # the result looks plausible rather than obviously wrong. `x -= x`
+        # returned `877910460` for one 18-word operand. The out-of-place
+        # `subtract()` is unaffected; only this in-place path was.
         return
     elif comparison_result < 0:
         raise OverflowError(
@@ -728,18 +825,12 @@ def subtract_inplace(mut x: BigUInt, y: BigUInt) raises -> None:
         return
 
     # Note that len(x.words) >= len(y.words) here
-    # Use SIMD operations to subtract the words in parallel.
-    def vector_subtract[simd_width: Int](i: Int) {mut x, imm y}:
-        x.words.unsafe_ptr().unsafe_store[width=simd_width](
-            i,
-            x.words.unsafe_ptr().unsafe_load[width=simd_width](i)
-            - y.words.unsafe_ptr().unsafe_load[width=simd_width](i),
-        )
+    var xp = x.words._data
+    var borrow = _subtract_words_borrow_select(
+        xp, xp, y.words._data, len(y.words), UInt32(0)
+    )
+    _ = _borrow_into_tail(xp, xp, len(y.words), len(x.words), borrow)
 
-    vectorize[BigUInt.VECTOR_WIDTH](len(y.words), vector_subtract)
-
-    # Normalize borrows after subtraction
-    normalize_borrows(x)
     x.remove_leading_empty_words()
 
     return
@@ -768,18 +859,12 @@ def subtract_no_check_inplace(mut x: BigUInt, y: BigUInt) -> None:
 
     # Underflow checks are skipped here, so we assume x >= y
     # Note that len(x.words) >= len(y.words) under this assumption
+    var xp = x.words._data
+    var borrow = _subtract_words_borrow_select(
+        xp, xp, y.words._data, len(y.words), UInt32(0)
+    )
+    _ = _borrow_into_tail(xp, xp, len(y.words), len(x.words), borrow)
 
-    def vector_subtract[simd_width: Int](i: Int) {mut x, imm y}:
-        x.words.unsafe_ptr().unsafe_store[width=simd_width](
-            i,
-            x.words.unsafe_ptr().unsafe_load[width=simd_width](i)
-            - y.words.unsafe_ptr().unsafe_load[width=simd_width](i),
-        )
-
-    vectorize[BigUInt.VECTOR_WIDTH](len(y.words), vector_subtract)
-
-    # Normalize borrows after subtraction
-    normalize_borrows(x)
     x.remove_leading_empty_words()
 
     return
@@ -1950,16 +2035,42 @@ def exact_divide_by_3_inplace(mut x: BigUInt):
     The caller must ensure that x is divisible by 3.
     Uses base-10^9 long division from MSB to LSB.
 
+    Notes:
+
+    The straightforward form — build `carry * BASE + word`, divide it, take the
+    modulus — puts *two* dependent multiplications on the loop-carried chain,
+    because a compiler turns both the division and the modulus by a constant
+    into multiply-high.
+
+    The division comes off the chain by splitting it. Since `10^9 = 3 * T + 1`
+    with `T = 333_333_333`, writing `word = 3 * d + m`:
+
+        carry * 10^9 + word = 3 * (carry * T + d) + (carry + m)
+
+    so, with `carry + m <= 4`,
+
+        quotient = carry * T + d + (carry + m >= 3)
+        new carry = (carry + m) mod 3
+
+    `d` and `m` depend only on `word`, so the one division left is off the
+    chain. See `bigint.arithmetics._exact_divide_by_3_inplace()`, which uses
+    the same identity in base 2^32 — both bases happen to be `1 mod 3`.
+
     Args:
         x: The `BigUInt` value to divide, modified in place.
     """
-    var carry: UInt32 = 0
+    comptime BASE_OVER_THREE = UInt32(333_333_333)  # (10^9 - 1) / 3
+
+    var carry = UInt32(0)  # 0, 1 or 2
+    var xp = x.words._data
     for i in range(len(x.words) - 1, -1, -1):
-        # carry is 0..2; carry * BASE + words[i] fits in UInt32
-        # because max = 2 * 10^9 + 999_999_999 = 2_999_999_999 < 2^32
-        var val = carry * UInt32(BigUInt.BASE) + x.words[i]
-        x.words[i] = val // 3
-        carry = val % 3
+        var word = xp[unsafe_offset=i]
+        var word_quotient = word // 3  # off the chain
+        var word_remainder = word - 3 * word_quotient  # off the chain, 0..2
+        var total = carry + word_remainder  # on the chain, 0..4
+        var carried = UInt32(total >= 3)
+        xp[unsafe_offset=i] = carry * BASE_OVER_THREE + word_quotient + carried
+        carry = total - 3 * carried
     x.remove_leading_empty_words()
 
 
@@ -3827,49 +3938,6 @@ def normalize_carries_lt_4_bases(mut x: BigUInt):
     if carry > 0:
         # If there is still a carry, we need to add a new word
         x.words.append(UInt32(carry))
-    return
-
-
-def normalize_borrows(mut x: BigUInt):
-    """Normalizes the values of words into valid range by borrowing.
-    The caller should ensure that the final result is non-negative.
-    The initial values of the words should be in the range:
-    [0, BASE-1] or [3294967297, 4294967295], in other words,
-    [UInt32.MAX - 999_999_998, ..., UInt32.MAX, 0, ..., BASE-1].
-
-    Notes:
-
-    If we subtract two BigUInt numbers word-by-word, we may end up with
-    a situation where some words are **underflowed**. We can take advantage of
-    the overflowed values of the words to normalize the borrows,
-    ensuring that all words are within the valid range.
-
-    Args:
-        x: The `BigUInt` to normalize, modified in place.
-    """
-
-    comptime NEG_BASE_MAX = UInt32(3294967297)  # UInt32(0) - BigUInt.BASE_MAX
-
-    # Yuhao ZHU:
-    # By construction, the words of x are in the range [-BASE_MAX, BASE_MAX].
-    # Thus, the borrow can only be 0 or 1.
-    var borrow: UInt32 = 0
-    for ref word in x.words:
-        if borrow == 0:
-            if word <= BigUInt.BASE_MAX:  # 0 <= word <= 999_999_999
-                pass  # borrow = 0
-            else:  # word >= 3294967297, overflowed value
-                word += BigUInt.BASE
-                borrow = 1
-        else:  # borrow == 1
-            if (word >= 1) and (
-                word <= BigUInt.BASE_MAX
-            ):  # 1 <= word <= 999_999_999
-                word -= 1
-                borrow = 0
-            else:  # word >= 3294967297 or word == 0, overflowed value
-                word = (word + BigUInt.BASE) - 1
-                # borrow = 1
     return
 
 

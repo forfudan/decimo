@@ -18,6 +18,7 @@ below and just above the boundary. Generated with seed 20260812.
 
 from std import testing
 from decimo.bigint.bigint import BigInt
+import decimo.bigint.arithmetics as bigint_arithmetics
 
 
 # ===----------------------------------------------------------------=== #
@@ -812,6 +813,50 @@ def test_multiply_lopsided_across_the_packing_boundary() raises:
             String(_blockwise_product(a, b, 200)),
             "lopsided product is not commutative for " + case_label,
         )
+
+
+def test_exact_divide_by_three_round_trips() raises:
+    """`(x * 3) / 3 == x` for word patterns that stress the remainder chain.
+
+    Toom-3's interpolation is the only caller, and a wrong quotient there shows
+    up as a wrong product rather than as anything local, so the helper is worth
+    testing directly. The three carried remainders are exercised by sweeping
+    the word count against all-ones, all-zero and alternating magnitudes, which
+    is where an off-by-one in the `carry + word_remainder` reduction would land.
+    """
+    var patterns = [
+        String("all ones"),
+        String("all zeros but the top"),
+        String("alternating"),
+    ]
+    for n_words in range(1, 40):
+        for p in range(len(patterns)):
+            var magnitude = BigInt.zero()
+            for k in range(n_words):
+                var word: UInt32
+                if p == 0:
+                    word = UInt32(0xFFFF_FFFF)
+                elif p == 1:
+                    word = UInt32(0xFFFF_FFFF) if k == n_words - 1 else UInt32(
+                        0
+                    )
+                else:
+                    word = UInt32(0xFFFF_FFFF) if k % 2 == 0 else UInt32(0)
+                magnitude += BigInt(Int(word)) << (32 * k)
+            if magnitude.is_zero():
+                continue
+            var tripled = magnitude * BigInt(3)
+            var words = tripled.words.copy()
+            bigint_arithmetics._exact_divide_by_3_inplace(words)
+            testing.assert_equal(
+                String(BigInt(raw_words=words^, sign=False)),
+                String(magnitude),
+                "(x * 3) / 3 != x for "
+                + patterns[p]
+                + " at "
+                + String(n_words)
+                + " words",
+            )
 
 
 def main() raises:

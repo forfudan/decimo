@@ -310,6 +310,22 @@ differently for each residue of the dividend length mod 4. Two samples cannot
 cross that. `test_biguint_divide_across_the_dispatch_boundaries_against_python`
 now walks divisor 1-40 digits against dividend up to 90.
 
+### Passing one pointer as both source and destination
+
+The exclusivity checker rejects `kernel(p, p, ...)` when the destination
+parameter requires `Origin[mut=True]`: `list.unsafe_ptr()` carries
+`origin_of(list.words)`, and two arguments tied to the same origin, one of them
+mutable, is an aliasing error even when the aliasing is the whole point of an
+in-place loop. `list._data` yields the same address without the origin, so
+`kernel(x._data, x._data, ...)` compiles. Used by every in-place add/sub kernel
+in both types.
+
+Reading a `UInt32` array two words at a time needs
+`ptr.unsafe_bitcast[UInt64]().unsafe_load[alignment=4](i)`. Without the
+explicit alignment the load claims 8-byte alignment, which a slice starting at
+an odd word offset does not have — and the Karatsuba and Toom-3 helpers pass
+exactly those.
+
 ### A missing `return` in `subtract_inplace()`
 
 Found while checking a Copilot review comment on PR #271 (which was itself
