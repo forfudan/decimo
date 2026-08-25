@@ -210,6 +210,40 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         """
         self.words = List[UInt32](unsafe_uninit_length=unsafe_uninit_length)
 
+    def __init__(
+        out self, *, unsafe_uninit_length: Int, unsafe_uninit_capacity: Int
+    ):
+        """Creates an uninitialized BigUInt with a given length and capacity.
+
+        As `__init__(unsafe_uninit_length=)`, but reserves room for more words
+        than the value starts with. Use it when the result may grow by a known
+        amount -- a carry word out of an addition, say. Allocating the larger
+        buffer once is a single `malloc`; allocating the exact length and then
+        calling `reserve()` is two, plus a copy, and at these sizes an
+        allocation is most of what the operation costs.
+
+        Args:
+            unsafe_uninit_length: The length of the BigUInt.
+            unsafe_uninit_capacity: The capacity to allocate. Must be at least
+                `unsafe_uninit_length`.
+
+        Notes:
+
+        **UNSAFE**
+
+        The words are uninitialized and may hold any value, exactly as with
+        `__init__(unsafe_uninit_length=)`.
+        """
+        debug_assert(
+            unsafe_uninit_capacity >= unsafe_uninit_length,
+            "BigUInt.__init__(): capacity ",
+            unsafe_uninit_capacity,
+            " is below length ",
+            unsafe_uninit_length,
+        )
+        self.words = List[UInt32](capacity=unsafe_uninit_capacity)
+        self.words.resize(unsafe_uninit_length=unsafe_uninit_length)
+
     def __init__(out self, var words: List[UInt32]) raises:
         """Initializes a BigUInt from a list of UInt32 words.
         The BigUInt constructed in this way is guaranteed to be valid.
@@ -2308,6 +2342,39 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             "BigUInt.assert_invariant(): leading zero word. ",
             context,
         )
+
+    def copy_with_extra_capacity(self, extra_words: Int) -> Self:
+        """Copies `self`, leaving room for `extra_words` more words.
+
+        For the common shape "copy a value, then grow it by a bounded amount":
+        multiplying by a single word can add one word, adding can carry into
+        one. A plain `copy()` allocates exactly what it holds, so the growth
+        then reallocates and copies again -- two allocations where one would
+        do, and at small sizes an allocation is most of the operation.
+
+        Args:
+            extra_words: Number of words of spare capacity. Must not be
+                negative.
+
+        Returns:
+            A copy of `self` whose capacity is `len(words) + extra_words`.
+        """
+        debug_assert(
+            extra_words >= 0,
+            "BigUInt.copy_with_extra_capacity(): negative extra_words ",
+            extra_words,
+        )
+        var count = len(self.words)
+        var result = Self(
+            unsafe_uninit_length=count,
+            unsafe_uninit_capacity=count + extra_words,
+        )
+        unsafe_memcpy(
+            dest=result.words.unsafe_ptr(),
+            src=self.words.unsafe_ptr(),
+            count=count,
+        )
+        return result^
 
     def remove_leading_empty_words(mut self):
         """Removes the most significant empty words of a BigUInt.

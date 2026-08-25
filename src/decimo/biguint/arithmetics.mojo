@@ -474,8 +474,12 @@ def add_slices_carry_select(
     var n_words_longer = max(n_words_x_slice, n_words_y_slice)
     var n_words_shorter = min(n_words_x_slice, n_words_y_slice)
 
-    var result = BigUInt(unsafe_uninit_length=n_words_longer)
-    result.words.reserve(n_words_longer + 1)
+    # One allocation sized for the possible carry word, not an exact-length
+    # allocation followed by a `reserve()` that has to move it.
+    var result = BigUInt(
+        unsafe_uninit_length=n_words_longer,
+        unsafe_uninit_capacity=n_words_longer + 1,
+    )
 
     var xp = x.words.unsafe_ptr().unsafe_offset(bounds_x[0])
     var yp = y.words.unsafe_ptr().unsafe_offset(bounds_y[0])
@@ -980,7 +984,10 @@ def multiply(x: BigUInt, y: BigUInt) -> BigUInt:
         elif x_word == 1:
             return y.copy()
         else:
-            var result = y.copy()
+            # Multiplying by a single word can add one word, so copy with room
+            # for it: growing the buffer afterwards would allocate a second
+            # time and copy what was just allocated.
+            var result = y.copy_with_extra_capacity(1)
             multiply_by_uint32_inplace(result, x_word)
             return result^
 
@@ -991,7 +998,10 @@ def multiply(x: BigUInt, y: BigUInt) -> BigUInt:
         if y_word == 1:
             return x.copy()
         else:
-            var result = x.copy()
+            # Multiplying by a single word can add one word, so copy with room
+            # for it: growing the buffer afterwards would allocate a second
+            # time and copy what was just allocated.
+            var result = x.copy_with_extra_capacity(1)
             multiply_by_uint32_inplace(result, y_word)
             return result^
 
