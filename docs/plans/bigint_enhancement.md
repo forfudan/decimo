@@ -320,6 +320,28 @@ operations, the two in-place ones, `_add_slices()` and
 words. The recursions are add/sub-heavy at every level and inherit most of it:
 multiply 1.26× and divide 1.22× at 10 400 words, `pi(100000)` 44.2 → 36.1 ms.
 
+**T-A4 — exact divide-by-3 off the carry chain. DONE 2026-08-25.** Found by
+listing every `O(n)` helper's ns/word and looking for the outlier:
+`_exact_divide_by_3_inplace()` was 2.03 against 0.23-0.25 for its neighbours,
+because `//3` and `%3` both lower to multiply-high and both sat on the
+loop-carried chain.
+
+`2^32 = 3T + 1` with `T = 0x5555_5555`, so writing `word = 3d + m`:
+
+    quotient      = remainder * T + d + (remainder + m >= 3)
+    new remainder = (remainder + m) mod 3
+
+`d` and `m` depend only on `word`, so the surviving division is off the chain;
+what stays on it is an add and a reduction of a value below five. 2.03 → 1.17
+ns/word. `BigUInt` uses the same identity — `10^9` is also `1 mod 3` — and goes
+2.50 → 1.13.
+
+Worth having, but small: Toom-3 calls it once per node, so it is about 4% of a
+large multiply and the ~2% it returns is at the edge of the benchmark's noise.
+The remaining carry-select candidates in the codebase are all this size or
+smaller — the carry domain has to be tiny to enumerate, and multiply, division
+and base conversion all carry full-width values.
+
 ### from_string and shift
 
 **T-F1 — from_string base conversion.** The 50–10000-digit band runs an
@@ -401,6 +423,7 @@ and fix the base-conversion and SIMD fallout behind the test suite.
 | T-P1  | `square()` plus inplace loop for power           | OPEN                                  |
 | T-A1  | add/sub dispatch reorder                         | DONE 2026-08-25                       |
 | T-A2  | 64-bit limb pairs in the add/sub kernels         | DONE 2026-08-25 — 2.8× at every size  |
+| T-A4  | Exact divide-by-3 off the carry chain            | DONE 2026-08-25 — 1.7×, but ~2% of mul|
 | T-SH1 | Pre-size the shift result buffer                 | OPEN                                  |
 | T-W1  | Base-2^64 limbs throughout                       | PARTLY — T-M4 does it in the kernel   |
 | T-E1  | `reciprocal_sqrt_fixed_point()` binary recip. sqrt    | DONE 2026-08-24 — enables T-PI4       |

@@ -802,15 +802,42 @@ def _exact_divide_by_3_inplace(mut a: List[UInt32]):
     once the last word is consumed. Toom-3's interpolation is the only caller
     and its dividend is exactly divisible by construction.
 
+    The straightforward form — build `remainder * 2^32 + word`, divide it, take
+    the modulus — puts *two* dependent multiplications on the loop-carried
+    chain, because a compiler turns both the division and the modulus by a
+    constant into multiply-high. That cost about nine cycles per word, roughly
+    nine times what the neighbouring word-at-a-time helpers cost.
+
+    The division comes off the chain by splitting it. Since `2^32 = 3 * T + 1`
+    with `T = 0x5555_5555`, writing `word = 3 * d + m`:
+
+        remainder * 2^32 + word = 3 * (remainder * T + d) + (remainder + m)
+
+    so, with `remainder + m <= 4`,
+
+        quotient      = remainder * T + d + (remainder + m >= 3)
+        new remainder = (remainder + m) mod 3
+
+    `d` and `m` depend only on `word`, so the one division left is off the
+    chain; what stays on it is an add and a reduction of a value below five.
+
     Args:
         a: The magnitude to divide in-place. Must be a multiple of three.
     """
-    var remainder: UInt64 = 0
+    comptime BASE_OVER_THREE = UInt32(0x5555_5555)  # (2^32 - 1) / 3
+
+    var remainder = UInt32(0)  # 0, 1 or 2
     var ap = a._data
     for i in range(len(a) - 1, -1, -1):
-        var current = (remainder << 32) | UInt64(ap[unsafe_offset=i])
-        ap[unsafe_offset=i] = UInt32(current // 3)
-        remainder = current % 3
+        var word = ap[unsafe_offset=i]
+        var word_quotient = word // 3  # off the chain
+        var word_remainder = word - 3 * word_quotient  # off the chain, 0..2
+        var total = remainder + word_remainder  # on the chain, 0..4
+        var carried = UInt32(total >= 3)
+        ap[unsafe_offset=i] = (
+            remainder * BASE_OVER_THREE + word_quotient + carried
+        )
+        remainder = total - 3 * carried
     _strip_leading_zeros_inplace(a)
 
 

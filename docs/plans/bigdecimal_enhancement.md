@@ -113,6 +113,8 @@ that range-reduces against π (`sin`/`cos`/`tan`) inherits it.
 |          |      | 0.71 → 0.25 ns/word                                                                   |
 | 20260825 | —    | Carry-select, single-pass `BigUInt` add/sub (T-A3); 1.75 → 0.83 ns/word at            |
 |          |      | 100 000 words. Multiply and divide inherit ~1.3×. Total: 44.2 → 36.1 ms               |
+| 20260825 | —    | `exact_divide_by_3_inplace()` division taken off the carry chain (T-A4);              |
+|          |      | 2.50 → 1.13 ns/word, but only ~2% of a Toom-3 multiply                                |
 
 ### 2.4 Performance tracking — absolute decimo median ns/iter (ascending precision)
 
@@ -1011,6 +1013,7 @@ some ops < 1.0×):
 | T-D5   | Windowed fused mul-sub in schoolbook div   | M      | **DONE** | 2.0× at 100 digits, 1.5× at 300, 1.3× at 1 000          |
 | T-A2   | 64-bit limb pairs in `BigInt` add/sub      | S      | **DONE** | 0.71 → 0.25 ns/word; mul 1.26×, div 1.22× at 10 400w    |
 | T-A3   | Carry-select single-pass `BigUInt` add/sub | M      | **DONE** | 1.75 → 0.83 ns/word; mul 1.30×, div 1.27×               |
+| T-A4   | Exact divide-by-3 off the carry chain      | S      | **DONE** | 2.50 → 1.13 ns/word; ~2% of a Toom-3 multiply           |
 | T-5    | NTT multiplication                         | XL     | **NEXT** | largest lever: 3.7× of the GMP mul gap is FFT           |
 | T-9    | deferred-carry schoolbook mul              | M      | **DONE** | deferred-carry (product-scanning);                      |
 |        |                                            |        |          | Definitely worth bringing it to `BigInt` too            |

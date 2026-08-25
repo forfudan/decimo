@@ -2035,16 +2035,42 @@ def exact_divide_by_3_inplace(mut x: BigUInt):
     The caller must ensure that x is divisible by 3.
     Uses base-10^9 long division from MSB to LSB.
 
+    Notes:
+
+    The straightforward form — build `carry * BASE + word`, divide it, take the
+    modulus — puts *two* dependent multiplications on the loop-carried chain,
+    because a compiler turns both the division and the modulus by a constant
+    into multiply-high.
+
+    The division comes off the chain by splitting it. Since `10^9 = 3 * T + 1`
+    with `T = 333_333_333`, writing `word = 3 * d + m`:
+
+        carry * 10^9 + word = 3 * (carry * T + d) + (carry + m)
+
+    so, with `carry + m <= 4`,
+
+        quotient = carry * T + d + (carry + m >= 3)
+        new carry = (carry + m) mod 3
+
+    `d` and `m` depend only on `word`, so the one division left is off the
+    chain. See `bigint.arithmetics._exact_divide_by_3_inplace()`, which uses
+    the same identity in base 2^32 — both bases happen to be `1 mod 3`.
+
     Args:
         x: The `BigUInt` value to divide, modified in place.
     """
-    var carry: UInt32 = 0
+    comptime BASE_OVER_THREE = UInt32(333_333_333)  # (10^9 - 1) / 3
+
+    var carry = UInt32(0)  # 0, 1 or 2
+    var xp = x.words._data
     for i in range(len(x.words) - 1, -1, -1):
-        # carry is 0..2; carry * BASE + words[i] fits in UInt32
-        # because max = 2 * 10^9 + 999_999_999 = 2_999_999_999 < 2^32
-        var val = carry * UInt32(BigUInt.BASE) + x.words[i]
-        x.words[i] = val // 3
-        carry = val % 3
+        var word = xp[unsafe_offset=i]
+        var word_quotient = word // 3  # off the chain
+        var word_remainder = word - 3 * word_quotient  # off the chain, 0..2
+        var total = carry + word_remainder  # on the chain, 0..4
+        var carried = UInt32(total >= 3)
+        xp[unsafe_offset=i] = carry * BASE_OVER_THREE + word_quotient + carried
+        carry = total - 3 * carried
     x.remove_leading_empty_words()
 
 

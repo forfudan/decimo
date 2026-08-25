@@ -62,6 +62,18 @@ fixed.
    1.22x at 10 400 words, `BigUInt` 1.30x and 1.27x at 11 112. `pi(100000)`
    goes from 44.2 ms to 36.1 ms and `pi(10000)` from 1.42 ms to 1.27 ms.
 
+   *Exact division by three, the same way.* Toom-3's interpolation calls it once
+   per node. Building `remainder * BASE + word` and then taking both the
+   quotient and the modulus puts *two* dependent multiply-highs on the
+   loop-carried chain, which cost about nine cycles per word — nine times what
+   the neighbouring word-at-a-time helpers cost. Both bases happen to be
+   `1 mod 3`, so with `BASE = 3T + 1` and `word = 3d + m` the step splits into
+   `quotient = remainder * T + d + (remainder + m >= 3)` and
+   `new remainder = (remainder + m) mod 3`. `d` and `m` depend only on `word`,
+   so the one division left is off the chain. 1.7x in `BigInt`, 2.2x in
+   `BigUInt` — though it is only a few percent of a Toom-3 multiply, at the
+   edge of what the benchmark resolves.
+
    `subtract_simd()` and `add_slices_simd()` are renamed
    `subtract_carry_select()` and `add_slices_carry_select()`, since neither is
    vectorized any more, and `normalize_borrows()` is gone — the kernels resolve
