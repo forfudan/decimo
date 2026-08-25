@@ -334,9 +334,29 @@ Measured on one-word operands:
 | libmpdec small add, for reference | 32 |
 
 The arithmetic is already fast; a small `BigDecimal` operation is one or two
-malloc/free pairs with a little work attached. That is the whole gap against
-libmpdec, which keeps small coefficients inline and never calls malloc for
-them.
+malloc/free pairs with a little work attached.
+
+**Correction (20260826).** An earlier note here said libmpdec keeps small
+coefficients inline and never calls malloc for them. That is wrong, and the
+mistake made our position look worse than it is. `mpd_t` is 48 bytes holding a
+`mpd_uint_t *data` *pointer*; `MPD_MINALLOC` (4 words) is the minimum size of
+that heap array, not inline storage. So `mpd_new()` allocates twice — the
+struct and the data — and measured directly:
+
+| | ns |
+|---|---|
+| `mpd_new()` + `mpd_del()`, nothing else | 22.9 |
+| `mpd_add` into a result allocated once | 14.7 |
+| `mpd_add` allocating a fresh result | 37.6 |
+
+which accounts for the whole difference. libmpdec is *not* avoiding
+allocation; it is doing two of them for about 23 ns, where one of ours costs
+about 33 ns. Per allocation it is roughly three times cheaper, and that — not
+inline storage — is the gap.
+
+The consequence is that inline storage would put us clearly ahead rather than
+merely level: removing our one allocation leaves ~10 ns against libmpdec's
+~37 ns, because libmpdec would still be doing its two.
 
 One instance of this was a plain bug and is fixed: `BigDecimal.__init__`
 took its coefficient *borrowed* and then copied it, so the 27 call sites
@@ -345,7 +365,9 @@ allocation for a move they had asked for. Making the parameter owned took
 `a + b` from 73 ns to 43 ns, multiply from 2.3x libmpdec to 1.2x, and
 subtract to parity.
 
-What is left is the allocation itself, and only inline storage removes it.
+What is left is the allocation itself. Two ways at it: make our allocation
+cheaper (libmpdec shows ~11 ns each is reachable), or remove it with inline
+storage.
 
 ### MPFR computes pi by AGM, mpmath by Chudnovsky
 
