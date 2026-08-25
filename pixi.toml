@@ -78,6 +78,8 @@ bf = {cmd = "bash examples/run_bigfloat.sh", description = "Build & run a single
 
 # bench
 bench = "pixi run package && bash benches/run_bench.sh"
+# regenerate docs/benchmarks.md from a fresh measurement run
+benchdoc = "python3 benches/doc/generate.py"
 
 # bench with debug assertions enabled
 bdec_debug = """clear && pixi run package && cd benches/bigdecimal \
@@ -131,3 +133,14 @@ all = """pixi run format \
 &&pixi run buildpy \
 &&pixi run testpy \
 &&pixi run clean"""
+
+
+# Optional environment for `pixi run benchdoc`. `mpmath` and `gmpy2` are only
+# needed to fill in the reference columns of the pi table in
+# `docs/benchmarks.md`; the benchmark runs without them and says so.
+[feature.benchdoc.pypi-dependencies]
+mpmath = ">=1.3"
+gmpy2 = ">=2.2"
+
+[environments]
+benchdoc = ["benchdoc"]
