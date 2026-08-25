@@ -109,6 +109,10 @@ that range-reduces against π (`sin`/`cos`/`tan`) inherits it.
 |          |      | only 6% — `sqrt(10005, 50000)` 19.3 → 18.2 ms. See T-Sq2                              |
 | 20260824 | #276 | Binary-only `pi()` tail via `reciprocal_sqrt_fixed_point()` (T-PI4);                  |
 |          |      | sqrt and final multiplies leave base 10^9. Total: 58.2 → 50.2 ms                      |
+| 20260825 | —    | 64-bit limb pairs in every `BigInt` add/sub loop (`bigint_enhancement.md` T-A2);      |
+|          |      | 0.71 → 0.25 ns/word                                                                   |
+| 20260825 | —    | Carry-select, single-pass `BigUInt` add/sub (T-A3); 1.75 → 0.83 ns/word at            |
+|          |      | 100 000 words. Multiply and divide inherit ~1.3×. Total: 44.2 → 36.1 ms               |
 
 ### 2.4 Performance tracking — absolute decimo median ns/iter (ascending precision)
 
@@ -860,6 +864,34 @@ come down (T-5, NTT). For scale, MPFR 4.2.2 + GMP 6.3 does the same 100 000
 digits in 20.7 ms (18.6 compute + 2.1 to-string), and mpmath on gmpy2 in
 ~16 ms.
 
+**T-A3 — carry-select `BigUInt` add/sub. DONE 20260825.** A base-10^9 word
+carries by comparison against `BASE`, not by overflowing, and the comparison
+depends on the carry coming in — so the carry sat on the loop-carried
+dependency chain. Both answers, for carry-in 0 and for carry-in 1, are now
+computed from the operands alone, off the critical path, and the incoming
+carry only selects between them.
+
+That also collapses the old two-pass shape — a vectorized word-wise add over
+the whole operand, then `normalize_carries_lt_2_bases()` over the whole result
+— into one pass. Two consequences beyond the halved memory traffic: the
+accumulator paths (`add_inplace()`, `add_by_slice_inplace()`, both in-place
+subtracts) now stop as soon as the carry dies instead of walking the rest of a
+much longer `x`, and `normalize_borrows()` has no callers left.
+
+| words   | before | after | |
+| ------- | ------ | ----- | ----------- |
+| 1 000   | 1.31   | 0.87  | ns/word     |
+| 11 112  | 1.21   | 0.84  | ns/word     |
+| 100 000 | 1.75   | 0.83  | ns/word     |
+
+Multiply 6.29 → 4.84 ms and divide 15.5 → 12.2 ms at ~11 000 words. The
+`_simd` names went with the vectorization: `add_slices_carry_select()` and
+`subtract_carry_select()`.
+
+The `BigInt` half of the same task is `bigint_enhancement.md` T-A2, which gets
+to 0.25 ns/word — base 2^32 can pair two words into one 64-bit add, and base
+10^9 cannot.
+
 ### 5.3 Long-term tasks not on the active roadmap
 
 | #   | Task                                                            | Effort |
@@ -977,6 +1009,8 @@ some ops < 1.0×):
 | T-9b   | Product-scanning `BigUInt` schoolbook      | M      | **DONE** | 2.2× at 256 words; deferred-carry removed               |
 | T-9c   | Re-tune `BigUInt` mul cutoffs              | S      | **DONE** | Kara 64→256, Toom3 256→768; 10.5 → 6.0 ms               |
 | T-D5   | Windowed fused mul-sub in schoolbook div   | M      | **DONE** | 2.0× at 100 digits, 1.5× at 300, 1.3× at 1 000          |
+| T-A2   | 64-bit limb pairs in `BigInt` add/sub      | S      | **DONE** | 0.71 → 0.25 ns/word; mul 1.26×, div 1.22× at 10 400w    |
+| T-A3   | Carry-select single-pass `BigUInt` add/sub | M      | **DONE** | 1.75 → 0.83 ns/word; mul 1.30×, div 1.27×               |
 | T-5    | NTT multiplication                         | XL     | **NEXT** | largest lever: 3.7× of the GMP mul gap is FFT           |
 | T-9    | deferred-carry schoolbook mul              | M      | **DONE** | deferred-carry (product-scanning);                      |
 |        |                                            |        |          | Definitely worth bringing it to `BigInt` too            |

@@ -300,10 +300,25 @@ temporary on every multiply. Route the loop through `multiply_inplace` and
 add a dedicated `square()` that exploits symmetry, roughly half the partial
 products. The 2^N shift fast path is already excellent; Rust loses to it.
 
-**T-A1 — add/sub dispatch.** SIMD add is already in place, so the
-small-operand gap is dispatch, not the kernel. Put the same-length
-same-sign case first (Lesson 5) and check for any stray
-`debug_assert .format` (Lesson 4).
+**T-A1 — add/sub dispatch. DONE 2026-08-25.** The same-sign case now comes
+first, and the mixed-sign cases no longer route through `subtract(x1, -x2)` /
+`add(x1, -x2)`: negating an operand copied its whole magnitude before the
+kernel ever ran.
+
+**T-A2 — 64-bit limb pairs in the add/sub kernels. DONE 2026-08-25.** The
+words are little-endian, so a pair of them is already a base-2^64 limb: one
+64-bit add does the work of two 32-bit ones, and the carry out is the unsigned
+overflow of that add, recovered by a comparison instead of a shift-and-mask.
+`_add_word_pairs()` and `_subtract_word_pairs()` load with `alignment=4`, so
+the two operands and the destination may each start at any word offset — which
+is what lets the Karatsuba and Toom-3 helpers, whose slices start anywhere,
+share the kernel. All six loops use it: the two out-of-place magnitude
+operations, the two in-place ones, `_add_slices()` and
+`_add_at_offset_inplace()`.
+
+0.71 → 0.25 ns/word (about 3.2 → 1.1 cycles), flat from 1 000 to 100 000
+words. The recursions are add/sub-heavy at every level and inherit most of it:
+multiply 1.26× and divide 1.22× at 10 400 words, `pi(100000)` 44.2 → 36.1 ms.
 
 ### from_string and shift
 
@@ -384,7 +399,8 @@ and fix the base-conversion and SIMD fallout behind the test suite.
 | T-M3  | Re-tune `CUTOFF_KARATSUBA` / `CUTOFF_TOOM3`      | DONE 2026-08-24 — 48→128→256, →768    |
 | T-M4  | Pack the base case into base-2^64 limbs          | DONE 2026-08-24 — 1.9× at the cutoff  |
 | T-P1  | `square()` plus inplace loop for power           | OPEN                                  |
-| T-A1  | add/sub dispatch reorder                         | OPEN                                  |
+| T-A1  | add/sub dispatch reorder                         | DONE 2026-08-25                       |
+| T-A2  | 64-bit limb pairs in the add/sub kernels         | DONE 2026-08-25 — 2.8× at every size  |
 | T-SH1 | Pre-size the shift result buffer                 | OPEN                                  |
 | T-W1  | Base-2^64 limbs throughout                       | PARTLY — T-M4 does it in the kernel   |
 | T-E1  | `reciprocal_sqrt_fixed_point()` binary recip. sqrt    | DONE 2026-08-24 — enables T-PI4       |

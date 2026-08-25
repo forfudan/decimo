@@ -77,6 +77,94 @@ comptime CUTOFF_BURNIKEL_ZIEGLER: Int = 64
 # ===----------------------------------------------------------------------=== #
 
 
+@always_inline
+def _add_word_pairs[
+    o: Origin[mut=True]
+](
+    rp: Pointer[UInt32, o],
+    ap: Pointer[UInt32, _],
+    bp: Pointer[UInt32, _],
+    n_pairs: Int,
+    carry_in: UInt64,
+) -> UInt64:
+    """Adds `n_pairs` 64-bit limbs of two magnitudes: `r = a + b`, LSB first.
+
+    Two base-2^32 words at a time. The words are little-endian, so a pair of
+    them *is* one base-2^64 limb, and a single 64-bit add does the work of two
+    32-bit ones. The carry out of a limb is the unsigned overflow of that add,
+    which a comparison recovers without the shift-and-mask the 32-bit form
+    needs.
+
+    The pointers only have to be word-aligned, not limb-aligned: the accesses
+    request `alignment=4` explicitly, so `a`, `b` and `r` may each begin at any
+    word offset, and at different ones. `r` may alias `a` or `b` exactly.
+
+    Args:
+        rp: Destination, at least `2 * n_pairs` words.
+        ap: First summand, at least `2 * n_pairs` words.
+        bp: Second summand, at least `2 * n_pairs` words.
+        n_pairs: Number of 64-bit limbs to add.
+        carry_in: Carry into the lowest limb, 0 or 1.
+
+    Returns:
+        The carry out of the highest limb, 0 or 1.
+    """
+    var r64 = rp.unsafe_bitcast[UInt64]()
+    var a64 = ap.unsafe_bitcast[UInt64]()
+    var b64 = bp.unsafe_bitcast[UInt64]()
+    var carry = carry_in
+    for i in range(n_pairs):
+        var x = a64.unsafe_load[alignment=4](i)
+        var y = b64.unsafe_load[alignment=4](i)
+        var sum_xy = x + y
+        var carried = UInt64(sum_xy < x)
+        var total = sum_xy + carry
+        r64.unsafe_store[alignment=4](i, total)
+        carry = carried | UInt64(total < sum_xy)
+    return carry
+
+
+@always_inline
+def _subtract_word_pairs[
+    o: Origin[mut=True]
+](
+    rp: Pointer[UInt32, o],
+    ap: Pointer[UInt32, _],
+    bp: Pointer[UInt32, _],
+    n_pairs: Int,
+    borrow_in: UInt64,
+) -> UInt64:
+    """Subtracts `n_pairs` 64-bit limbs: `r = a - b`, LSB first.
+
+    The borrow counterpart of `_add_word_pairs()`, with the same alignment and
+    aliasing freedom. A limb borrows exactly when its 64-bit subtraction
+    wraps, so the borrow is again a comparison rather than a mask.
+
+    Args:
+        rp: Destination, at least `2 * n_pairs` words.
+        ap: Minuend, at least `2 * n_pairs` words.
+        bp: Subtrahend, at least `2 * n_pairs` words.
+        n_pairs: Number of 64-bit limbs to subtract.
+        borrow_in: Borrow into the lowest limb, 0 or 1.
+
+    Returns:
+        The borrow out of the highest limb, 0 or 1.
+    """
+    var r64 = rp.unsafe_bitcast[UInt64]()
+    var a64 = ap.unsafe_bitcast[UInt64]()
+    var b64 = bp.unsafe_bitcast[UInt64]()
+    var borrow = borrow_in
+    for i in range(n_pairs):
+        var x = a64.unsafe_load[alignment=4](i)
+        var y = b64.unsafe_load[alignment=4](i)
+        var difference = x - y
+        var borrowed = UInt64(x < y)
+        var total = difference - borrow
+        r64.unsafe_store[alignment=4](i, total)
+        borrow = borrowed | UInt64(difference < borrow)
+    return borrow
+
+
 def _add_magnitudes(a: List[UInt32], b: List[UInt32]) -> List[UInt32]:
     """Adds two unsigned magnitudes represented as little-endian UInt32 words.
 
@@ -92,16 +180,38 @@ def _add_magnitudes(a: List[UInt32], b: List[UInt32]) -> List[UInt32]:
     var len_a = len(a)
     var len_b = len(b)
     var len_max = max(len_a, len_b)
+    var len_min = min(len_a, len_b)
     var result = List[UInt32](capacity=len_max + 1)
     result.resize(unsafe_uninit_length=len_max)
 
-    var carry: UInt64 = 0
-    for i in range(len_max):
-        var ai: UInt64 = UInt64(a[i]) if i < len_a else 0
-        var bi: UInt64 = UInt64(b[i]) if i < len_b else 0
-        var s = ai + bi + carry
-        result[i] = UInt32(s & 0xFFFF_FFFF)
+    var ap = a.unsafe_ptr()
+    var bp = b.unsafe_ptr()
+    var rp = result.unsafe_ptr()
+
+    var pairs = len_min >> 1
+    var carry = _add_word_pairs(rp, ap, bp, pairs, UInt64(0))
+    var i = pairs << 1
+    while i < len_min:
+        var s = (
+            UInt64(ap[unsafe_offset=i]) + UInt64(bp[unsafe_offset=i]) + carry
+        )
+        rp[unsafe_offset=i] = UInt32(s & 0xFFFF_FFFF)
         carry = s >> 32
+        i += 1
+
+    # Only the longer operand is left: absorb the carry, then copy the rest.
+    var longer = ap if len_a > len_b else bp
+    while i < len_max and carry != 0:
+        var s = UInt64(longer[unsafe_offset=i]) + carry
+        rp[unsafe_offset=i] = UInt32(s & 0xFFFF_FFFF)
+        carry = s >> 32
+        i += 1
+    if i < len_max:
+        unsafe_memcpy(
+            dest=rp.unsafe_offset(i),
+            src=longer.unsafe_offset(i),
+            count=len_max - i,
+        )
 
     if carry > 0:
         result.append(UInt32(carry))
@@ -154,23 +264,36 @@ def _subtract_magnitudes(a: List[UInt32], b: List[UInt32]) -> List[UInt32]:
     var len_a = len(a)
     var len_b = len(b)
     var result = List[UInt32](capacity=len_a)
+    result.resize(unsafe_uninit_length=len_a)
 
-    var borrow: UInt64 = 0
-    for i in range(len_a):
-        var ai: UInt64 = UInt64(a[i])
-        var bi: UInt64 = UInt64(b[i]) if i < len_b else 0
-        var diff = ai - bi - borrow
-        if ai < bi + borrow:
-            # Underflow — add 2^32 and set borrow
-            diff += BigInt.BASE
-            borrow = 1
-        else:
-            borrow = 0
-        result.append(UInt32(diff & 0xFFFF_FFFF))
+    var ap = a.unsafe_ptr()
+    var bp = b.unsafe_ptr()
+    var rp = result.unsafe_ptr()
 
-    # Strip leading zeros
-    while len(result) > 1 and result[len(result) - 1] == 0:
-        result.shrink(len(result) - 1)
+    var pairs = len_b >> 1
+    var borrow = _subtract_word_pairs(rp, ap, bp, pairs, UInt64(0))
+    var i = pairs << 1
+    while i < len_b:
+        var ai = UInt64(ap[unsafe_offset=i])
+        var bi = UInt64(bp[unsafe_offset=i]) + borrow
+        borrow = UInt64(ai < bi)
+        rp[unsafe_offset=i] = UInt32((ai - bi) & 0xFFFF_FFFF)
+        i += 1
+
+    # Only the minuend is left: absorb the borrow, then copy the rest.
+    while i < len_a and borrow != 0:
+        var ai = ap[unsafe_offset=i]
+        rp[unsafe_offset=i] = ai - UInt32(1)
+        borrow = UInt64(ai == 0)
+        i += 1
+    if i < len_a:
+        unsafe_memcpy(
+            dest=rp.unsafe_offset(i),
+            src=ap.unsafe_offset(i),
+            count=len_a - i,
+        )
+
+    _strip_leading_zeros_inplace(result)
 
     return result^
 
@@ -920,20 +1043,37 @@ def _add_slices(a: ImmSpan[UInt32, _], b: ImmSpan[UInt32, _]) -> List[UInt32]:
     var len_a = len(a)
     var len_b = len(b)
     var len_max = max(len_a, len_b)
+    var len_min = min(len_a, len_b)
     var result = List[UInt32](capacity=len_max + 1)
     result.resize(unsafe_uninit_length=len_max + 1)
-    result[len_max] = UInt32(0)
 
-    var carry: UInt64 = 0
     var ap = a.unsafe_ptr()
     var bp = b.unsafe_ptr()
     var rp = result._data
-    for i in range(len_max):
-        var ai: UInt64 = UInt64(ap[unsafe_offset=i]) if i < len_a else 0
-        var bi: UInt64 = UInt64(bp[unsafe_offset=i]) if i < len_b else 0
-        var s = ai + bi + carry
+
+    var pairs = len_min >> 1
+    var carry = _add_word_pairs(rp, ap, bp, pairs, UInt64(0))
+    var i = pairs << 1
+    while i < len_min:
+        var s = (
+            UInt64(ap[unsafe_offset=i]) + UInt64(bp[unsafe_offset=i]) + carry
+        )
         rp[unsafe_offset=i] = UInt32(s & 0xFFFF_FFFF)
         carry = s >> 32
+        i += 1
+
+    var longer = ap if len_a > len_b else bp
+    while i < len_max and carry != 0:
+        var s = UInt64(longer[unsafe_offset=i]) + carry
+        rp[unsafe_offset=i] = UInt32(s & 0xFFFF_FFFF)
+        carry = s >> 32
+        i += 1
+    if i < len_max:
+        unsafe_memcpy(
+            dest=rp.unsafe_offset(i),
+            src=longer.unsafe_offset(i),
+            count=len_max - i,
+        )
 
     if carry > 0:
         rp[unsafe_offset=len_max] = UInt32(carry)
@@ -964,26 +1104,28 @@ def _add_magnitudes_inplace(mut a: List[UInt32], imm b: List[UInt32]):
         for i in range(len_a, len_max + 1):
             a[i] = UInt32(0)
 
-    var carry: UInt64 = 0
-    for i in range(len_max):
-        var ai: UInt64 = UInt64(a[i]) if i < len_a else 0
-        var bi: UInt64 = UInt64(b[i]) if i < len_b else 0
-        var s = ai + bi + carry
-        a[i] = UInt32(s & 0xFFFF_FFFF)
-        carry = s >> 32
+    # `a` is now `len_max + 1` words long with a zero on top, so the sum and
+    # its carry both fit and every word of `b` has a counterpart in `a`.
+    var ap = a._data
+    var bp = b._data
 
-    if carry > 0:
-        if len_max < len(a):
-            a[len_max] = UInt32(UInt64(a[len_max]) + carry)
-        else:
-            a.append(UInt32(carry))
-    else:
-        # Trim to actual length
-        var alen = len(a)
-        while alen > 1 and a[alen - 1] == 0:
-            alen -= 1
-        while len(a) > alen:
-            a.shrink(len(a) - 1)
+    var pairs = len_b >> 1
+    var carry = _add_word_pairs(ap, ap, bp, pairs, UInt64(0))
+    var i = pairs << 1
+    while i < len_b:
+        var s = (
+            UInt64(ap[unsafe_offset=i]) + UInt64(bp[unsafe_offset=i]) + carry
+        )
+        ap[unsafe_offset=i] = UInt32(s & 0xFFFF_FFFF)
+        carry = s >> 32
+        i += 1
+    while carry != 0:
+        var s = UInt64(ap[unsafe_offset=i]) + carry
+        ap[unsafe_offset=i] = UInt32(s & 0xFFFF_FFFF)
+        carry = s >> 32
+        i += 1
+
+    _strip_leading_zeros_inplace(a)
 
 
 def _add_magnitudes_inplace(mut a: List[UInt32], b: UInt32):
@@ -1037,15 +1179,18 @@ def _add_at_offset_inplace(
         offset + len_b <= len(a),
         "_add_at_offset_inplace(): writes past the end of the accumulator",
     )
-    var carry: UInt64 = 0
     var ap = a._data.unsafe_offset(offset)
     var bp = b._data
-    for i in range(len_b):
+    var pairs = len_b >> 1
+    var carry = _add_word_pairs(ap, ap, bp, pairs, UInt64(0))
+    var i = pairs << 1
+    while i < len_b:
         var s = (
             UInt64(ap[unsafe_offset=i]) + UInt64(bp[unsafe_offset=i]) + carry
         )
         ap[unsafe_offset=i] = UInt32(s & 0xFFFF_FFFF)
         carry = s >> 32
+        i += 1
     # Propagate remaining carry
     var j = len_b
     while carry > 0 and (offset + j) < len(a):
@@ -1067,23 +1212,25 @@ def _subtract_magnitudes_inplace(mut a: List[UInt32], imm b: List[UInt32]):
     var len_a = len(a)
     var len_b = len(b)
 
-    var borrow: UInt64 = 0
     var ap = a._data
     var bp = b._data
-    for i in range(len_a):
-        var ai = UInt64(ap[unsafe_offset=i])
-        var bi: UInt64 = UInt64(bp[unsafe_offset=i]) if i < len_b else 0
-        var diff = ai - bi - borrow
-        if ai < bi + borrow:
-            diff += BigInt.BASE
-            borrow = 1
-        else:
-            borrow = 0
-        ap[unsafe_offset=i] = UInt32(diff & 0xFFFF_FFFF)
 
-    # Strip leading zeros
-    while len(a) > 1 and a[len(a) - 1] == 0:
-        a.shrink(len(a) - 1)
+    var pairs = len_b >> 1
+    var borrow = _subtract_word_pairs(ap, ap, bp, pairs, UInt64(0))
+    var i = pairs << 1
+    while i < len_b:
+        var ai = UInt64(ap[unsafe_offset=i])
+        var bi = UInt64(bp[unsafe_offset=i]) + borrow
+        borrow = UInt64(ai < bi)
+        ap[unsafe_offset=i] = UInt32((ai - bi) & 0xFFFF_FFFF)
+        i += 1
+    while i < len_a and borrow != 0:
+        var ai = ap[unsafe_offset=i]
+        ap[unsafe_offset=i] = ai - UInt32(1)
+        borrow = UInt64(ai == 0)
+        i += 1
+
+    _strip_leading_zeros_inplace(a)
 
 
 def _shift_left_words_inplace(mut a: List[UInt32], n: Int):
@@ -1506,25 +1653,28 @@ def _add_from_slice_inplace(mut a: List[UInt32], b: ImmSpan[UInt32, _]):
         for i in range(len_a, len_max + 1):
             a[i] = UInt32(0)
 
-    var carry: UInt64 = 0
-    for i in range(len_max):
-        var ai: UInt64 = UInt64(a[i]) if i < len_a else 0
-        var bi: UInt64 = UInt64(b[i]) if i < len_b_slice else 0
-        var s = ai + bi + carry
-        a[i] = UInt32(s & 0xFFFF_FFFF)
-        carry = s >> 32
+    # As in `_add_magnitudes_inplace()`, `a` now has `len_max + 1` words with a
+    # zero on top, so the carry always lands inside it.
+    var ap = a._data
+    var bp = b.unsafe_ptr()
 
-    if carry > 0:
-        if len_max < len(a):
-            a[len_max] = UInt32(UInt64(a[len_max]) + carry)
-        else:
-            a.append(UInt32(carry))
-    else:
-        var alen = len(a)
-        while alen > 1 and a[alen - 1] == 0:
-            alen -= 1
-        while len(a) > alen:
-            a.shrink(len(a) - 1)
+    var pairs = len_b_slice >> 1
+    var carry = _add_word_pairs(ap, ap, bp, pairs, UInt64(0))
+    var i = pairs << 1
+    while i < len_b_slice:
+        var s = (
+            UInt64(ap[unsafe_offset=i]) + UInt64(bp[unsafe_offset=i]) + carry
+        )
+        ap[unsafe_offset=i] = UInt32(s & 0xFFFF_FFFF)
+        carry = s >> 32
+        i += 1
+    while carry != 0:
+        var s = UInt64(ap[unsafe_offset=i]) + carry
+        ap[unsafe_offset=i] = UInt32(s & 0xFFFF_FFFF)
+        carry = s >> 32
+        i += 1
+
+    _strip_leading_zeros_inplace(a)
 
 
 def _multiply_magnitudes_slices(
@@ -2001,19 +2151,33 @@ def add(x1: BigInt, x2: BigInt) -> BigInt:
     Returns:
         The sum of the two BigInt numbers.
     """
+    # Same sign: add magnitudes, preserve sign. First, because it is both the
+    # common case and the one that does no comparison.
+    if x1.sign == x2.sign:
+        if x1.is_zero():
+            return x2.copy()
+        if x2.is_zero():
+            return x1.copy()
+        var result_words = _add_magnitudes(x1.words, x2.words)
+        return BigInt(raw_words=result_words^, sign=x1.sign)
+
     # If one of the numbers is zero, return the other
     if x1.is_zero():
         return x2.copy()
     if x2.is_zero():
         return x1.copy()
 
-    # Different signs: a + (-b) = a - b
-    if x1.sign != x2.sign:
-        return subtract(x1, -x2)
-
-    # Same sign: add magnitudes, preserve sign
-    var result_words = _add_magnitudes(x1.words, x2.words)
-    return BigInt(raw_words=result_words^, sign=x1.sign)
+    # Opposite signs: the magnitudes cancel, and the larger one wins the sign.
+    # Done here rather than as `subtract(x1, -x2)` so that negating `x2` does
+    # not copy its whole magnitude first.
+    var cmp = compare_magnitudes(x1, x2)
+    if cmp == 0:
+        return BigInt()
+    if cmp > 0:
+        var result_words = _subtract_magnitudes(x1.words, x2.words)
+        return BigInt(raw_words=result_words^, sign=x1.sign)
+    var result_words = _subtract_magnitudes(x2.words, x1.words)
+    return BigInt(raw_words=result_words^, sign=x2.sign)
 
 
 def subtract(x1: BigInt, x2: BigInt) -> BigInt:
@@ -2033,9 +2197,12 @@ def subtract(x1: BigInt, x2: BigInt) -> BigInt:
     if x1.is_zero():
         return -x2
 
-    # Different signs: a - (-b) = a + b
+    # Different signs: a - (-b) = a + b, with a's sign. Inlined rather than
+    # routed through `add(x1, -x2)` so that negating `x2` does not copy its
+    # whole magnitude first.
     if x1.sign != x2.sign:
-        return add(x1, -x2)
+        var sum_words = _add_magnitudes(x1.words, x2.words)
+        return BigInt(raw_words=sum_words^, sign=x1.sign)
 
     # Same sign: compare magnitudes to determine result sign
     var cmp = compare_magnitudes(x1, x2)

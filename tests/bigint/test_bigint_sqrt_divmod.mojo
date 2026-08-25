@@ -204,8 +204,8 @@ def test_reciprocal_sqrt_fixed_point_brackets_the_exact_value() raises:
     perfect squares (exact answers, where an off-by-one is easiest to make)
     and values above `2^53`, which no longer round-trip through the `Float64`
     seed. The `fractional_bits` values cross the point where the Newton schedule
-    starts running at all (`fractional_bits <= 44 + bits(x) / 2` returns the seed
-    directly) and then several doublings past it.
+    starts running at all (`fractional_bits <= 44 + ceil(bits(x) / 2)` returns
+    the seed directly) and then several doublings past it.
     """
     var xs = [
         UInt64(1),
