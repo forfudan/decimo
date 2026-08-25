@@ -70,6 +70,13 @@ The core types are[^auxiliary]:
   requires MPFR/GMP to be installed on the user's system.
 <!-- - An arbitrary-precision exact rational number type (`Rational`) represented as a reduced fraction of two `BigInt`s (numerator and denominator). It supports exact arithmetic and comparisons without any loss of precision, making it ideal for applications that require precise fractional calculations. -->
 
+Decimo is fast: at a million digits `pi()` is ten times quicker than pure-Python
+mpmath, `BigInt` multiplication is seven times quicker than CPython's `int`, and
+small `BigDecimal` operations are close to libmpdec, the C library behind
+Python's `decimal`. The measured numbers, with the commit they were taken on,
+are in [docs/benchmarks.md](docs/benchmarks.md); `pixi run benchdoc`
+regenerates them.
+
 **Decimo** combines "**Deci**mal" and "**Mo**jo" - reflecting its purpose and
 implementation language. "Decimo" is also a Latin word meaning "tenth" and is
 the root of the word "decimal".
@@ -534,6 +541,10 @@ After cloning the repo onto your local disk, you can:
   (`pixi run test --list` shows them).
 - Use `pixi run testcli` to run CLI calculator tests.
 - Use `pixi run bench` to run benchmarks.
+- Use `pixi run benchdoc` to regenerate [docs/benchmarks.md](docs/benchmarks.md)
+  against libmpdec, CPython and MPFR. Needs `mpdecimal` installed for the C
+  comparison; the reference libraries for the `pi()` table live in the optional
+  `benchdoc` environment (`pixi install -e benchdoc`).
 - Use `pixi run buildcli` to compile the CLI calculator to a `./decimo` binary.
 
 ## Citation
