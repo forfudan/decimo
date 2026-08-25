@@ -1,5 +1,26 @@
 # Internal Notes
 
+## Goals
+
+Two targets to steer by, both about being competitive with the established
+libraries rather than beating them everywhere. Measured on Apple M4 Pro,
+20260825.
+
+**1. `pi(10^6)` within 1.2x of mpmath+GMP** — 314 ms, against 796 ms today
+(3.0x). Two steps get there and neither needs a new algorithm: Newton
+reciprocal division (T-D6) is worth about 115 ms, and the rest has to come
+from a cheaper NTT butterfly — precomputed twiddles and radix-4, together
+about 2.5x. Detail in the sections on the NTT and on GMP's ratios below.
+
+**2. Beat CPython's `decimal` on small numbers** — this is what a
+`decimal.Decimal` drop-in is judged on, and today we are at parity on
+subtract, multiply and `from_string`, and 1.8-2.1x behind on add, round and
+divide. It is almost entirely memory management, not arithmetic: a small add
+does about 5 ns of real work and spends 36 ns allocating the result. Giving
+`BigUInt` inline storage for one or two words would remove the allocation
+and should put small operations clearly ahead of libmpdec. See "Small
+operations are allocation, not arithmetic".
+
 ## Inconsistencies between libraries
 
 - For power functionality: `BigDecimal.power()`, Python's decimal, WolframAlpha
@@ -272,6 +293,31 @@ top few levels of its tree are above the transform's crossover.
 
 decimo wins outright at 100 and 1 000 digits, including against MPFR. That is
 real and not a warm-up artifact — decimo was timed in-process, best-of-N.
+
+### Small operations are allocation, not arithmetic
+
+Measured on one-word operands:
+
+| | ns |
+| --- | --- |
+| `+=` in place, no allocation | 5 |
+| one `List[UInt32]` alloc + free | 36 |
+| `a + b` out of place | 43 |
+| libmpdec small add, for reference | 32 |
+
+The arithmetic is already fast; a small `BigDecimal` operation is one or two
+malloc/free pairs with a little work attached. That is the whole gap against
+libmpdec, which keeps small coefficients inline and never calls malloc for
+them.
+
+One instance of this was a plain bug and is fixed: `BigDecimal.__init__`
+took its coefficient *borrowed* and then copied it, so the 27 call sites
+already written as `coefficient=coef^` were all paying a full extra
+allocation for a move they had asked for. Making the parameter owned took
+`a + b` from 73 ns to 43 ns, multiply from 2.3x libmpdec to 1.2x, and
+subtract to parity.
+
+What is left is the allocation itself, and only inline storage removes it.
 
 ### MPFR computes pi by AGM, mpmath by Chudnovsky
 

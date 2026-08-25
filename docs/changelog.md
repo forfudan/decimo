@@ -37,6 +37,18 @@ fixed.
 
 ### 🦋 Changed in Unreleased
 
+1. **`BigDecimal` construction no longer copies its coefficient.** The
+   component constructor took `coefficient` borrowed and then copied it, so
+   every call site already written as `coefficient=coef^` — 27 of them, the
+   whole of the arithmetic module among them — paid a full heap allocation for
+   a move it had explicitly asked for. The parameter is now owned.
+
+   Small-operand arithmetic is dominated by allocation rather than by
+   arithmetic, so this shows up across the board: `a + b` on short operands
+   goes from 73 ns to 43 ns. Against CPython's `decimal` (libmpdec), multiply
+   goes from 2.3x to 1.2x, subtract and `from_string` reach parity, and add
+   goes from 2.5x to 1.9x.
+
 1. **`BigInt` multiplication gains a number-theoretic transform, and `pi()`
    inherits it.** Above Toom-3, `_multiply_magnitudes()` now evaluates the
    product as a cyclic convolution modulo the Goldilocks prime

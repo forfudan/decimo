@@ -198,17 +198,17 @@ struct BigDecimal(
         self.sign = False
 
     @implicit
-    def __init__(out self, coefficient: BigUInt):
+    def __init__(out self, var coefficient: BigUInt):
         """Constructs a BigDecimal from a BigUInt object.
 
         Args:
             coefficient: The unsigned integer coefficient.
         """
-        self.coefficient = coefficient.copy()
+        self.coefficient = coefficient^
         self.scale = 0
         self.sign = False
 
-    def __init__(out self, coefficient: BigUInt, scale: Int, sign: Bool):
+    def __init__(out self, var coefficient: BigUInt, scale: Int, sign: Bool):
         """Constructs a BigDecimal from its components.
 
         Args:
@@ -216,7 +216,7 @@ struct BigDecimal(
             scale: The number of decimal places (power of 10 divisor).
             sign: Whether the value is negative.
         """
-        self.coefficient = coefficient.copy()
+        self.coefficient = coefficient^
         self.scale = scale
         self.sign = sign
 
@@ -991,7 +991,7 @@ struct BigDecimal(
             The absolute value.
         """
         return Self(
-            coefficient=self.coefficient,
+            coefficient=self.coefficient.copy(),
             scale=self.scale,
             sign=False,
         )
@@ -1005,7 +1005,7 @@ struct BigDecimal(
             The negated value.
         """
         return Self(
-            coefficient=self.coefficient,
+            coefficient=self.coefficient.copy(),
             scale=self.scale,
             sign=not self.sign,
         )
