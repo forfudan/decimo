@@ -2795,6 +2795,9 @@ def floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
     # `debug_assert` argument is built at the call site before the assert's
     # own `comptime if` can discard it, so `"..." + String(n)` allocates a
     # string on every call even in a build with assertions compiled out.
+    # That cost ~59 ns here, more than the division being guarded.
+    # Upstream bug, still open as of Mojo 1.0.0:
+    # https://github.com/modular/modular/issues/6439
     debug_assert[assert_mode="none"](
         n >= 0,
         (

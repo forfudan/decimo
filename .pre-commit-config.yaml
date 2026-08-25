@@ -14,3 +14,10 @@ repos:
         language: system
         files: '\.py$'
         stages: [pre-commit]
+
+      - id: debug-assert-messages
+        name: debug-assert-messages
+        entry: python3 scripts/check_debug_assert_messages.py
+        language: system
+        files: '\.(mojo|🔥)$'
+        stages: [pre-commit]
