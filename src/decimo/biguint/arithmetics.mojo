@@ -30,6 +30,7 @@ from decimo.errors import (
     ZeroDivisionError,
 )
 from decimo.rounding_mode import RoundingMode
+from decimo.utility import alias_as_immutable_source
 
 comptime CUTOFF_KARATSUBA = 256
 """The cutoff number of words for using Karatsuba multiplication.
@@ -127,11 +128,13 @@ comptime CUTOFF_BURNIKEL_ZIEGLER = 32
 
 @always_inline
 def _add_words_carry_select[
-    o: Origin[mut=True]
+    o: Origin[mut=True],
+    o_a: Origin[mut=False],
+    o_b: Origin[mut=False],
 ](
     rp: Pointer[UInt32, o],
-    ap: Pointer[UInt32, _],
-    bp: Pointer[UInt32, _],
+    ap: Pointer[UInt32, o_a],
+    bp: Pointer[UInt32, o_b],
     n_words: Int,
     carry_in: UInt32,
 ) -> UInt32:
@@ -163,11 +166,13 @@ def _add_words_carry_select[
 
 @always_inline
 def _subtract_words_borrow_select[
-    o: Origin[mut=True]
+    o: Origin[mut=True],
+    o_a: Origin[mut=False],
+    o_b: Origin[mut=False],
 ](
     rp: Pointer[UInt32, o],
-    ap: Pointer[UInt32, _],
-    bp: Pointer[UInt32, _],
+    ap: Pointer[UInt32, o_a],
+    bp: Pointer[UInt32, o_b],
     n_words: Int,
     borrow_in: UInt32,
 ) -> UInt32:
@@ -203,10 +208,10 @@ def _subtract_words_borrow_select[
 
 @always_inline
 def _carry_into_tail[
-    o: Origin[mut=True]
+    o: Origin[mut=True], o_a: Origin[mut=False]
 ](
     rp: Pointer[UInt32, o],
-    ap: Pointer[UInt32, _],
+    ap: Pointer[UInt32, o_a],
     start: Int,
     end: Int,
     carry_in: UInt32,
@@ -243,10 +248,10 @@ def _carry_into_tail[
 
 @always_inline
 def _borrow_into_tail[
-    o: Origin[mut=True]
+    o: Origin[mut=True], o_a: Origin[mut=False]
 ](
     rp: Pointer[UInt32, o],
-    ap: Pointer[UInt32, _],
+    ap: Pointer[UInt32, o_a],
     start: Int,
     end: Int,
     borrow_in: UInt32,
@@ -472,9 +477,9 @@ def add_slices_carry_select(
     var result = BigUInt(unsafe_uninit_length=n_words_longer)
     result.words.reserve(n_words_longer + 1)
 
-    var xp = x.words._data.unsafe_offset(bounds_x[0])
-    var yp = y.words._data.unsafe_offset(bounds_y[0])
-    var rp = result.words._data
+    var xp = x.words.unsafe_ptr().unsafe_offset(bounds_x[0])
+    var yp = y.words.unsafe_ptr().unsafe_offset(bounds_y[0])
+    var rp = result.words.unsafe_ptr()
 
     var carry = _add_words_carry_select(rp, xp, yp, n_words_shorter, UInt32(0))
     var longer = xp if n_words_x_slice > n_words_y_slice else yp
@@ -520,11 +525,17 @@ def add_inplace(mut x: BigUInt, y: BigUInt) -> None:
     if len(x.words) < len(y.words):
         x.words.resize(length=len(y.words), fill=UInt32(0))
 
-    var xp = x.words._data
+    var xp = x.words.unsafe_ptr()
     var carry = _add_words_carry_select(
-        xp, xp, y.words._data, len(y.words), UInt32(0)
+        xp,
+        alias_as_immutable_source(xp),
+        y.words.unsafe_ptr(),
+        len(y.words),
+        UInt32(0),
     )
-    carry = _carry_into_tail(xp, xp, len(y.words), len(x.words), carry)
+    carry = _carry_into_tail(
+        xp, alias_as_immutable_source(xp), len(y.words), len(x.words), carry
+    )
     if carry != 0:
         x.words.append(UInt32(1))
 
@@ -567,15 +578,17 @@ def add_by_slice_inplace(
     if len(x.words) < n_words_y_slice:
         x.words.resize(length=n_words_y_slice, fill=UInt32(0))
 
-    var xp = x.words._data
+    var xp = x.words.unsafe_ptr()
     var carry = _add_words_carry_select(
         xp,
-        xp,
-        y.words._data.unsafe_offset(bounds_y[0]),
+        alias_as_immutable_source(xp),
+        y.words.unsafe_ptr().unsafe_offset(bounds_y[0]),
         n_words_y_slice,
         UInt32(0),
     )
-    carry = _carry_into_tail(xp, xp, n_words_y_slice, len(x.words), carry)
+    carry = _carry_into_tail(
+        xp, alias_as_immutable_source(xp), n_words_y_slice, len(x.words), carry
+    )
     if carry != 0:
         x.words.append(UInt32(1))
 
@@ -765,10 +778,10 @@ def subtract_carry_select(x: BigUInt, y: BigUInt) raises -> BigUInt:
     # The result will have no more words than the first number.
     var result = BigUInt(unsafe_uninit_length=len(x.words))
 
-    var xp = x.words._data
-    var rp = result.words._data
+    var xp = x.words.unsafe_ptr()
+    var rp = result.words.unsafe_ptr()
     var borrow = _subtract_words_borrow_select(
-        rp, xp, y.words._data, len(y.words), UInt32(0)
+        rp, xp, y.words.unsafe_ptr(), len(y.words), UInt32(0)
     )
     _ = _borrow_into_tail(rp, xp, len(y.words), len(x.words), borrow)
 
@@ -825,11 +838,17 @@ def subtract_inplace(mut x: BigUInt, y: BigUInt) raises -> None:
         return
 
     # Note that len(x.words) >= len(y.words) here
-    var xp = x.words._data
+    var xp = x.words.unsafe_ptr()
     var borrow = _subtract_words_borrow_select(
-        xp, xp, y.words._data, len(y.words), UInt32(0)
+        xp,
+        alias_as_immutable_source(xp),
+        y.words.unsafe_ptr(),
+        len(y.words),
+        UInt32(0),
     )
-    _ = _borrow_into_tail(xp, xp, len(y.words), len(x.words), borrow)
+    _ = _borrow_into_tail(
+        xp, alias_as_immutable_source(xp), len(y.words), len(x.words), borrow
+    )
 
     x.remove_leading_empty_words()
 
@@ -859,11 +878,17 @@ def subtract_no_check_inplace(mut x: BigUInt, y: BigUInt) -> None:
 
     # Underflow checks are skipped here, so we assume x >= y
     # Note that len(x.words) >= len(y.words) under this assumption
-    var xp = x.words._data
+    var xp = x.words.unsafe_ptr()
     var borrow = _subtract_words_borrow_select(
-        xp, xp, y.words._data, len(y.words), UInt32(0)
+        xp,
+        alias_as_immutable_source(xp),
+        y.words.unsafe_ptr(),
+        len(y.words),
+        UInt32(0),
     )
-    _ = _borrow_into_tail(xp, xp, len(y.words), len(x.words), borrow)
+    _ = _borrow_into_tail(
+        xp, alias_as_immutable_source(xp), len(y.words), len(x.words), borrow
+    )
 
     x.remove_leading_empty_words()
 
@@ -1073,6 +1098,7 @@ def multiply_slices_schoolbook(
         else:
             var result = BigUInt.from_slice(y, (bounds_y[0], bounds_y[1]))
             multiply_by_uint32_inplace(result, x_word)
+            result.assert_invariant("multiply_slices_schoolbook")
             return result^
     if n_words_y_slice == 1:
         var y_word = y.words[bounds_y[0]]
@@ -1620,7 +1646,7 @@ def multiply_slices_toom3(
     # Maximum result length: nx + ny words (product of two numbers).
     var result_len = nx + ny
     var result = BigUInt(unsafe_uninit_length=result_len)
-    unsafe_memset_zero(ptr=result.words._data, count=result_len)
+    unsafe_memset_zero(ptr=result.words.unsafe_ptr(), count=result_len)
 
     # Helper: add a BigUInt value at a word offset into result
     @parameter
@@ -1951,11 +1977,11 @@ def multiply_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
 
     var res = BigUInt(unsafe_uninit_length=len(x.words) + n)
     # Fill the first n words with zeros
-    unsafe_memset_zero(ptr=res.words._data, count=n)
+    unsafe_memset_zero(ptr=res.words.unsafe_ptr(), count=n)
     # Copy the original words to the end of the new list
     unsafe_memcpy(
-        dest=res.words._data.unsafe_offset(n),
-        src=x.words._data,
+        dest=res.words.unsafe_ptr().unsafe_offset(n),
+        src=x.words.unsafe_ptr(),
         count=len(x.words),
     )
 
@@ -2062,7 +2088,7 @@ def exact_divide_by_3_inplace(mut x: BigUInt):
     comptime BASE_OVER_THREE = UInt32(333_333_333)  # (10^9 - 1) / 3
 
     var carry = UInt32(0)  # 0, 1 or 2
-    var xp = x.words._data
+    var xp = x.words.unsafe_ptr()
     for i in range(len(x.words) - 1, -1, -1):
         var word = xp[unsafe_offset=i]
         var word_quotient = word // 3  # off the chain
@@ -2501,6 +2527,7 @@ def floor_divide_by_uint32(x: BigUInt, y: UInt32) -> BigUInt:
         "biguint.arithmetics.floor_divide_by_uint32(): ",
         "Result has leading zero words",
     )
+    result.assert_invariant("floor_divide_by_uint32")
     return result^
 
 
@@ -2791,8 +2818,8 @@ def floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
     var keep = len(x.words) - word_shift
     var result = BigUInt(unsafe_uninit_length=keep)
     unsafe_memcpy(
-        dest=result.words._data,
-        src=x.words._data.unsafe_offset(word_shift),
+        dest=result.words.unsafe_ptr(),
+        src=x.words.unsafe_ptr().unsafe_offset(word_shift),
         count=keep,
     )
     _shift_right_by_decimal_digits_inplace(result, digit_shift)
@@ -2927,8 +2954,8 @@ def floor_divide_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
     else:
         var result = BigUInt(unsafe_uninit_length=n_words_of_result)
         unsafe_memcpy(
-            dest=result.words._data,
-            src=x.words._data.unsafe_offset(n),
+            dest=result.words.unsafe_ptr(),
+            src=x.words.unsafe_ptr().unsafe_offset(n),
             count=n_words_of_result,
         )
         return result^
@@ -3991,6 +4018,7 @@ def power_of_10(n: Int) raises -> BigUInt:
         # Add a 1 in the next position
         result.words.append(1)
 
+    result.assert_invariant("power_of_10")
     return result^
 
 

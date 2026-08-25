@@ -69,10 +69,29 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     (1) words,
     (2) limbs,
     (3) base-billion digits.
+
+    Representation invariant:
+
+    Every `BigUInt` that leaves a function must satisfy all three of these.
+    Code may break them *inside* a function as long as it repairs them before
+    returning; `remove_leading_empty_words()` is the usual repair.
+
+    1. `words` is never empty. It always holds at least one word.
+    2. There are no leading zero words: `words[len(words) - 1] != 0`, unless
+       `len(words) == 1`. Zero is therefore exactly `[0]` and has no other
+       spelling, which is what lets `is_zero()` and comparison stay cheap.
+    3. Every word is a valid base-billion digit: `words[i] < BASE`.
+
+    Call `assert_invariant()` to check the first two. It is a `debug_assert`,
+    so it costs nothing in a normal build and fires in the test suite.
     """
 
     var words: List[UInt32]
-    """A list of UInt32 words representing the coefficient."""
+    """A list of UInt32 words representing the coefficient.
+
+    Little-endian: `words[0]` is the least significant base-billion digit.
+    Subject to the representation invariant documented on the struct.
+    """
 
     # ===------------------------------------------------------------------=== #
     # Constants
@@ -435,8 +454,8 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         # Now we can safely copy the words
         var result = BigUInt(unsafe_uninit_length=n_words)
         unsafe_memcpy(
-            dest=result.words._data,
-            src=value.words._data.unsafe_offset(start_index),
+            dest=result.words.unsafe_ptr(),
+            src=value.words.unsafe_ptr().unsafe_offset(start_index),
             count=n_words,
         )
         result.remove_leading_empty_words()
@@ -2028,7 +2047,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             "BigUInt should not contain leading zero words.",
         )  # 0 should have only one word by design
 
-        return len(self.words) == 1 and self.words._data[] == 0
+        return len(self.words) == 1 and self.words.unsafe_ptr()[] == 0
 
         # Yuhao ZHU:
         # The following code is commented out because BigUInt is designed
@@ -2267,6 +2286,29 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         return result
 
     @always_inline
+    @always_inline
+    def assert_invariant(self, context: StaticString = "") -> None:
+        """Checks the representation invariant documented on the struct.
+
+        A `debug_assert`, so it compiles away entirely unless the build sets
+        `-D ASSERT=all`. Call it at the end of any function that rebuilds
+        `words` by hand, and the test suite will catch a malformed result at
+        the point that produced it rather than wherever it later misbehaves.
+
+        Args:
+            context: Name of the calling function, shown if the check fires.
+        """
+        debug_assert(
+            len(self.words) > 0,
+            "BigUInt.assert_invariant(): empty words. ",
+            context,
+        )
+        debug_assert(
+            len(self.words) == 1 or self.words[len(self.words) - 1] != 0,
+            "BigUInt.assert_invariant(): leading zero word. ",
+            context,
+        )
+
     def remove_leading_empty_words(mut self):
         """Removes the most significant empty words of a BigUInt.
 
@@ -2297,6 +2339,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 else:
                     break
             self.words.shrink(len(self.words) - n_empty_words)
+            self.assert_invariant("remove_leading_empty_words")
 
     @always_inline
     def remove_trailing_digits_with_rounding(

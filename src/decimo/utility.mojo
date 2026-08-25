@@ -56,3 +56,43 @@ def unsigned_counterpart[dtype: DType]() -> DType where dtype.is_integral():
             dtype.is_unsigned()
         ), "unsigned_counterpart: unexpected signed integral dtype"
         return dtype
+
+
+@always_inline
+def alias_as_immutable_source[
+    dtype: DType, //, o: Origin[mut=True]
+](pointer: Pointer[Scalar[dtype], o]) -> Pointer[
+    Scalar[dtype], ImmStaticOrigin
+]:
+    """Re-hands a mutable buffer pointer to a kernel as its own read source.
+
+    Several word kernels take one mutable destination and one or more
+    immutable sources, and are written so that the destination may be one of
+    those sources: each word is read before the same word is written, and the
+    tail copy is elided when the two pointers coincide. Handing the same
+    buffer to both parameters is still an exclusivity violation the compiler
+    rejects, because it cannot see that the overlap is exact rather than
+    partial.
+
+    This asserts precisely that, and nothing wider. The destination pointer
+    keeps its real origin and so keeps the buffer alive for the call; only the
+    duplicate handed in as a source loses its origin, and it never outlives the
+    call it is written into.
+
+    Do not use this to build a lasting pointer, to alias two *different*
+    buffers that happen to overlap, or on a kernel whose contract does not
+    already say the destination may alias a source.
+
+    Parameters:
+        dtype: The element dtype of the buffer.
+        o: The origin of the mutable pointer.
+
+    Args:
+        pointer: The mutable destination pointer to re-hand as a source.
+
+    Returns:
+        The same address, typed as an immutable pointer with no origin.
+    """
+    return pointer.unsafe_mut_cast[False]().unsafe_origin_cast[
+        ImmStaticOrigin
+    ]()

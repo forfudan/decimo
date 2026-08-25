@@ -91,6 +91,23 @@ struct BigInt(
     Arithmetic intermediate results use UInt64 for single products
     (UInt32 * UInt32 → UInt64) and UInt128 for accumulation, which allows
     efficient schoolbook and Karatsuba multiplication on 64-bit hardware.
+
+    Representation invariant:
+
+    1. `words` is never empty. It always holds at least one word.
+    2. There are no leading zero words: `words[len(words) - 1] != 0`, unless
+       `len(words) == 1`.
+    3. Unlike `BigUInt`, a word here uses the full `[0, 2^32 - 1]` range, so
+       there is no per-word bound to check.
+
+    Note that the sign of zero is *not* canonical: `is_zero()` scans the words
+    rather than trusting the leading-zero rule, and `is_negative()` is
+    `sign and not is_zero()`, so a zero carrying `sign = True` compares and
+    prints correctly. Do not write code that reads `sign` alone to decide
+    whether a value is negative.
+
+    Call `assert_invariant()` to check the first two. It is a `debug_assert`,
+    so it costs nothing in a normal build and fires in the test suite.
     """
 
     var words: List[UInt32]
@@ -1790,6 +1807,27 @@ struct BigInt(
     # ===------------------------------------------------------------------=== #
 
     @always_inline
+    @always_inline
+    def assert_invariant(self, context: StaticString = "") -> None:
+        """Checks the representation invariant documented on the struct.
+
+        A `debug_assert`, so it compiles away entirely unless the build sets
+        `-D ASSERT=all`.
+
+        Args:
+            context: Name of the calling function, shown if the check fires.
+        """
+        debug_assert(
+            len(self.words) > 0,
+            "BigInt.assert_invariant(): empty words. ",
+            context,
+        )
+        debug_assert(
+            len(self.words) == 1 or self.words[len(self.words) - 1] != 0,
+            "BigInt.assert_invariant(): leading zero word. ",
+            context,
+        )
+
     def is_zero(self) -> Bool:
         """Returns True if the value is zero.
 
@@ -2146,7 +2184,7 @@ def _from_decimal_digits_simple(
 
     # ---- Fast path: ≤ 9 digits → single UInt32 word, no allocation ----
     if digit_count <= 9:
-        var dp = digits._data.unsafe_offset(start)
+        var dp = digits.unsafe_ptr().unsafe_offset(start)
         var val: UInt32 = UInt32(dp[])
         for j in range(1, digit_count):
             val = val * 10 + UInt32(dp[unsafe_offset=j])
@@ -2156,7 +2194,7 @@ def _from_decimal_digits_simple(
 
     # ---- Fast path: 10–19 digits → parse into UInt64, at most 2 words ----
     if digit_count <= 19:
-        var dp = digits._data.unsafe_offset(start)
+        var dp = digits.unsafe_ptr().unsafe_offset(start)
         var val: UInt64 = UInt64(dp[])
         for j in range(1, digit_count):
             val = val * 10 + UInt64(dp[unsafe_offset=j])
@@ -2177,14 +2215,14 @@ def _from_decimal_digits_simple(
     var result = BigInt()
     result.words = List[UInt32](capacity=max_words)
     result.words.resize(unsafe_uninit_length=max_words)
-    var wp = result.words._data  # stable pointer: no reallocation occurs
+    var wp = result.words.unsafe_ptr()  # stable pointer: no reallocation occurs
 
     # Handle first chunk (1–9 digits) to align the rest to 9-digit boundaries.
     var first_chunk = digit_count % 9
     if first_chunk == 0:
         first_chunk = 9
 
-    var dp = digits._data.unsafe_offset(start)
+    var dp = digits.unsafe_ptr().unsafe_offset(start)
     var chunk_val: UInt32 = UInt32(dp[])
     for j in range(1, first_chunk):
         chunk_val = chunk_val * 10 + UInt32(dp[unsafe_offset=j])
@@ -2551,7 +2589,7 @@ def _magnitude_to_base_1e9_dc(
     var capacity = 1 << max_level
     var out = List[UInt32](capacity=capacity)
     out.resize(unsafe_uninit_length=capacity)
-    unsafe_memset_zero(ptr=out._data, count=capacity)
+    unsafe_memset_zero(ptr=out.unsafe_ptr(), count=capacity)
 
     _dc_to_base_1e9_recursive(n, power_table, num_powers - 1, out, 0)
 

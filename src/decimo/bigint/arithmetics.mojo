@@ -38,6 +38,7 @@ from std.sys import is_little_endian
 from std.memory import unsafe_memcpy, unsafe_memset_zero
 
 from decimo.bigint.bigint import BigInt
+from decimo.utility import alias_as_immutable_source
 from decimo.bigint.comparison import compare_magnitudes
 import decimo.bigint.ntt as bigint_ntt
 from decimo.errors import ValueError, ZeroDivisionError
@@ -81,11 +82,13 @@ comptime CUTOFF_BURNIKEL_ZIEGLER: Int = 64
 
 @always_inline
 def _add_word_pairs[
-    o: Origin[mut=True]
+    o: Origin[mut=True],
+    o_a: Origin[mut=False],
+    o_b: Origin[mut=False],
 ](
     rp: Pointer[UInt32, o],
-    ap: Pointer[UInt32, _],
-    bp: Pointer[UInt32, _],
+    ap: Pointer[UInt32, o_a],
+    bp: Pointer[UInt32, o_b],
     n_pairs: Int,
     carry_in: UInt64,
 ) -> UInt64:
@@ -137,11 +140,13 @@ def _add_word_pairs[
 
 @always_inline
 def _subtract_word_pairs[
-    o: Origin[mut=True]
+    o: Origin[mut=True],
+    o_a: Origin[mut=False],
+    o_b: Origin[mut=False],
 ](
     rp: Pointer[UInt32, o],
-    ap: Pointer[UInt32, _],
-    bp: Pointer[UInt32, _],
+    ap: Pointer[UInt32, o_a],
+    bp: Pointer[UInt32, o_b],
     n_pairs: Int,
     borrow_in: UInt64,
 ) -> UInt64:
@@ -395,7 +400,7 @@ def _multiply_magnitude_by_word(
     var carry: UInt64 = 0
     var w64 = UInt64(w)
     var ap = a.unsafe_ptr()
-    var rp = result._data
+    var rp = result.unsafe_ptr()
     for i in range(len_a):
         var product = UInt64(ap[unsafe_offset=i]) * w64 + carry
         rp[unsafe_offset=i] = UInt32(product & 0xFFFF_FFFF)
@@ -453,7 +458,7 @@ def _multiply_magnitudes_comba32(
 
     var ap = a.unsafe_ptr()
     var bp = b.unsafe_ptr()
-    var rp = result._data
+    var rp = result.unsafe_ptr()
 
     var carry = UInt128(0)
     for k in range(result_len - 1):
@@ -561,7 +566,7 @@ def _multiply_magnitudes_schoolbook(
 
     var limbs_a = List[UInt64](capacity=n_a)
     limbs_a.resize(unsafe_uninit_length=n_a)
-    var lap = limbs_a._data
+    var lap = limbs_a.unsafe_ptr()
     for j in range(n_a - 1):
         lap[unsafe_offset=j] = UInt64(ap[unsafe_offset=2 * j]) | (
             UInt64(ap[unsafe_offset=2 * j + 1]) << 32
@@ -573,7 +578,7 @@ def _multiply_magnitudes_schoolbook(
 
     var limbs_b = List[UInt64](capacity=n_b)
     limbs_b.resize(unsafe_uninit_length=n_b)
-    var lbp = limbs_b._data
+    var lbp = limbs_b.unsafe_ptr()
     for j in range(n_b - 1):
         lbp[unsafe_offset=j] = UInt64(bp[unsafe_offset=2 * j]) | (
             UInt64(bp[unsafe_offset=2 * j + 1]) << 32
@@ -590,7 +595,7 @@ def _multiply_magnitudes_schoolbook(
     var result_len = n_out << 1
     var result = List[UInt32](capacity=result_len)
     result.resize(unsafe_uninit_length=result_len)
-    var rp = result._data
+    var rp = result.unsafe_ptr()
 
     # `carry` is the part of the column sum above 64 bits, which belongs to
     # the next column. The last column leaves it holding the top limb.
@@ -702,7 +707,7 @@ def _multiply_magnitudes_karatsuba(
         var rlen = len_a + len_b
         var result = List[UInt32](capacity=rlen)
         result.resize(unsafe_uninit_length=rlen)
-        unsafe_memset_zero(ptr=result._data, count=rlen)
+        unsafe_memset_zero(ptr=result.unsafe_ptr(), count=rlen)
         _add_at_offset_inplace(result, z0, 0)
         _add_at_offset_inplace(result, z1, m)
         while rlen > 1 and result[rlen - 1] == 0:
@@ -718,7 +723,7 @@ def _multiply_magnitudes_karatsuba(
         var rlen = len_a + len_b
         var result = List[UInt32](capacity=rlen)
         result.resize(unsafe_uninit_length=rlen)
-        unsafe_memset_zero(ptr=result._data, count=rlen)
+        unsafe_memset_zero(ptr=result.unsafe_ptr(), count=rlen)
         _add_at_offset_inplace(result, z0, 0)
         _add_at_offset_inplace(result, z1, m)
         while rlen > 1 and result[rlen - 1] == 0:
@@ -750,7 +755,7 @@ def _multiply_magnitudes_karatsuba(
     var result_len = len_a + len_b
     var result = List[UInt32](capacity=result_len)
     result.resize(unsafe_uninit_length=result_len)
-    unsafe_memset_zero(ptr=result._data, count=result_len)
+    unsafe_memset_zero(ptr=result.unsafe_ptr(), count=result_len)
 
     # Add z0 at offset 0
     _add_at_offset_inplace(result, z0, 0)
@@ -790,7 +795,7 @@ def _double_inplace(mut a: List[UInt32]):
         a: The magnitude to double in-place.
     """
     var carry: UInt32 = 0
-    var ap = a._data
+    var ap = a.unsafe_ptr()
     for i in range(len(a)):
         var word = ap[unsafe_offset=i]
         ap[unsafe_offset=i] = (word << 1) | carry
@@ -809,7 +814,7 @@ def _exact_divide_by_2_inplace(mut a: List[UInt32]):
         a: The magnitude to halve in-place. Must be even.
     """
     var carry: UInt32 = 0
-    var ap = a._data
+    var ap = a.unsafe_ptr()
     for i in range(len(a) - 1, -1, -1):
         var word = ap[unsafe_offset=i]
         ap[unsafe_offset=i] = (word >> 1) | (carry << 31)
@@ -849,7 +854,7 @@ def _exact_divide_by_3_inplace(mut a: List[UInt32]):
     comptime BASE_OVER_THREE = UInt32(0x5555_5555)  # (2^32 - 1) / 3
 
     var remainder = UInt32(0)  # 0, 1 or 2
-    var ap = a._data
+    var ap = a.unsafe_ptr()
     for i in range(len(a) - 1, -1, -1):
         var word = ap[unsafe_offset=i]
         var word_quotient = word // 3  # off the chain
@@ -1051,7 +1056,7 @@ def _multiply_magnitudes_toom3(
     var result_len = len_a + len_b
     var result = List[UInt32](capacity=result_len)
     result.resize(unsafe_uninit_length=result_len)
-    unsafe_memset_zero(ptr=result._data, count=result_len)
+    unsafe_memset_zero(ptr=result.unsafe_ptr(), count=result_len)
 
     _add_at_offset_inplace(result, v0, 0)
     _add_at_offset_inplace(result, t1, m)  # w1
@@ -1098,7 +1103,7 @@ def _add_slices(a: ImmSpan[UInt32, _], b: ImmSpan[UInt32, _]) -> List[UInt32]:
 
     var ap = a.unsafe_ptr()
     var bp = b.unsafe_ptr()
-    var rp = result._data
+    var rp = result.unsafe_ptr()
 
     var pairs = len_min >> 1
     var carry = _add_word_pairs(rp, ap, bp, pairs, UInt64(0))
@@ -1155,11 +1160,13 @@ def _add_magnitudes_inplace(mut a: List[UInt32], imm b: List[UInt32]):
 
     # `a` is now `len_max + 1` words long with a zero on top, so the sum and
     # its carry both fit and every word of `b` has a counterpart in `a`.
-    var ap = a._data
-    var bp = b._data
+    var ap = a.unsafe_ptr()
+    var bp = b.unsafe_ptr()
 
     var pairs = len_b >> 1
-    var carry = _add_word_pairs(ap, ap, bp, pairs, UInt64(0))
+    var carry = _add_word_pairs(
+        ap, alias_as_immutable_source(ap), bp, pairs, UInt64(0)
+    )
     var i = pairs << 1
     while i < len_b:
         var s = (
@@ -1228,10 +1235,12 @@ def _add_at_offset_inplace(
         offset + len_b <= len(a),
         "_add_at_offset_inplace(): writes past the end of the accumulator",
     )
-    var ap = a._data.unsafe_offset(offset)
-    var bp = b._data
+    var ap = a.unsafe_ptr().unsafe_offset(offset)
+    var bp = b.unsafe_ptr()
     var pairs = len_b >> 1
-    var carry = _add_word_pairs(ap, ap, bp, pairs, UInt64(0))
+    var carry = _add_word_pairs(
+        ap, alias_as_immutable_source(ap), bp, pairs, UInt64(0)
+    )
     var i = pairs << 1
     while i < len_b:
         var s = (
@@ -1261,11 +1270,13 @@ def _subtract_magnitudes_inplace(mut a: List[UInt32], imm b: List[UInt32]):
     var len_a = len(a)
     var len_b = len(b)
 
-    var ap = a._data
-    var bp = b._data
+    var ap = a.unsafe_ptr()
+    var bp = b.unsafe_ptr()
 
     var pairs = len_b >> 1
-    var borrow = _subtract_word_pairs(ap, ap, bp, pairs, UInt64(0))
+    var borrow = _subtract_word_pairs(
+        ap, alias_as_immutable_source(ap), bp, pairs, UInt64(0)
+    )
     var i = pairs << 1
     while i < len_b:
         var ai = UInt64(ap[unsafe_offset=i])
@@ -1305,12 +1316,12 @@ def _shift_left_words_inplace(mut a: List[UInt32], n: Int):
 
     # Move existing words right by n positions using backward copy
     # (destination is always at higher address, so backward is overlap-safe)
-    var p = a._data
+    var p = a.unsafe_ptr()
     for i in range(old_len - 1, -1, -1):
         p[unsafe_offset=i + n] = p[unsafe_offset=i]
 
     # Fill the first n words with zeros
-    unsafe_memset_zero(ptr=a._data, count=n)
+    unsafe_memset_zero(ptr=a.unsafe_ptr(), count=n)
 
 
 def _divmod_single_word(
@@ -1659,7 +1670,7 @@ def _normalized_copy(a: ImmSpan[UInt32, _]) -> List[UInt32]:
         return zero^
     var result = List[UInt32](capacity=len_slice)
     result.resize(unsafe_uninit_length=len_slice)
-    unsafe_memcpy(dest=result._data, src=a.unsafe_ptr(), count=len_slice)
+    unsafe_memcpy(dest=result.unsafe_ptr(), src=a.unsafe_ptr(), count=len_slice)
     # Strip leading zeros
     while len(result) > 1 and result[len(result) - 1] == 0:
         result.shrink(len(result) - 1)
@@ -1704,11 +1715,13 @@ def _add_from_slice_inplace(mut a: List[UInt32], b: ImmSpan[UInt32, _]):
 
     # As in `_add_magnitudes_inplace()`, `a` now has `len_max + 1` words with a
     # zero on top, so the carry always lands inside it.
-    var ap = a._data
+    var ap = a.unsafe_ptr()
     var bp = b.unsafe_ptr()
 
     var pairs = len_b_slice >> 1
-    var carry = _add_word_pairs(ap, ap, bp, pairs, UInt64(0))
+    var carry = _add_word_pairs(
+        ap, alias_as_immutable_source(ap), bp, pairs, UInt64(0)
+    )
     var i = pairs << 1
     while i < len_b_slice:
         var s = (
@@ -1841,14 +1854,14 @@ def _divmod_knuth_d_from_slices(
     var m = len_a_eff - n
     var u = List[UInt32](capacity=len_a_eff + 1)
     u.resize(unsafe_uninit_length=len_a_eff)
-    unsafe_memcpy(dest=u._data, src=a.unsafe_ptr(), count=len_a_eff)
+    unsafe_memcpy(dest=u.unsafe_ptr(), src=a.unsafe_ptr(), count=len_a_eff)
     # Ensure u has an extra leading word
     if len(u) <= m + n:
         u.append(UInt32(0))
 
     var quotient = List[UInt32](capacity=m + 1)
     quotient.resize(unsafe_uninit_length=m + 1)
-    unsafe_memset_zero(ptr=quotient._data, count=m + 1)
+    unsafe_memset_zero(ptr=quotient.unsafe_ptr(), count=m + 1)
 
     # v_n_minus_1 and v_n_minus_2 read directly from b via offset
     var v_n_minus_1 = UInt64(b[n - 1])
@@ -1864,9 +1877,9 @@ def _divmod_knuth_d_from_slices(
     # pointers for the same reason the multiply kernels are: a `List[i]` reads
     # the list's `_data` field again on every element (Lesson 7). None of them
     # is resized while these pointers are live.
-    var u_ptr = u._data
+    var u_ptr = u.unsafe_ptr()
     var b_ptr = b.unsafe_ptr()
-    var quotient_ptr = quotient._data
+    var quotient_ptr = quotient.unsafe_ptr()
 
     for j in range(m, -1, -1):
         var u_jn = UInt64(u_ptr[unsafe_offset=j + n])
@@ -2024,7 +2037,7 @@ def _divmod_burnikel_ziegler(
     var q_total_words = (t - 1) * n
     var quotient = List[UInt32](capacity=q_total_words + 1)
     quotient.resize(unsafe_uninit_length=q_total_words)
-    unsafe_memset_zero(ptr=quotient._data, count=q_total_words)
+    unsafe_memset_zero(ptr=quotient.unsafe_ptr(), count=q_total_words)
 
     # First iteration: divide top 2n words by norm_b.
     var result_pair = _bz_two_by_one_slices(
