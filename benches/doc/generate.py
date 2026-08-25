@@ -53,8 +53,11 @@ def git_context() -> dict:
     dirty = bool(run(["git", "status", "--porcelain"]).strip())
     branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).strip()
     subject = run(["git", "log", "-1", "--format=%s"]).strip()
-    # `gh pr list` shows only open pull requests by default, so a merged one
-    # would be reported as none. `gh pr view <branch>` finds it either way.
+    # Two traps here. `gh pr list` shows only open pull requests, so a merged
+    # one reads as none. And `gh pr view <branch>` matches on branch *name*
+    # alone -- an old merged pull request that reused this branch name will be
+    # returned, with an unrelated head commit. So the head commit must match
+    # what is actually being measured, or no number is reported at all.
     pull_request = None
     pull_request_state = None
     if shutil.which("gh"):
@@ -67,9 +70,9 @@ def git_context() -> dict:
                         "view",
                         branch,
                         "--json",
-                        "number,state",
+                        "number,state,headRefOid",
                         "--jq",
-                        r'"\(.number) \(.state)"',
+                        r'"\(.number) \(.state) \(.headRefOid)"',
                     ],
                     cwd=ROOT,
                     capture_output=True,
@@ -79,7 +82,7 @@ def git_context() -> dict:
                 .stdout.strip()
                 .split()
             )
-            if len(found) == 2 and found[0].isdigit():
+            if len(found) == 3 and found[0].isdigit() and found[2] == commit:
                 pull_request = int(found[0])
                 pull_request_state = found[1].lower()
         except Exception:
@@ -303,6 +306,11 @@ def render(context, decimo, libmpdec, cpython, pi_table, agree, ours, reference)
     add("commit it was measured on is recorded below. Timings are the **minimum**")
     add("over several rounds rather than the mean: noise on a latency benchmark")
     add("only ever adds time, so the minimum is the stable estimator.")
+    add("")
+    add("Run this on an otherwise idle machine. The minimum removes most noise")
+    add("but not a machine that is busy throughout: back-to-back runs during a")
+    add("build moved the small-operation numbers by around 10%, which is enough")
+    add("to change a ratio near parity into one that reads as a gap.")
     add("")
     add("| | |")
     add("|---|---|")
