@@ -231,7 +231,81 @@ only 6% here. The exactness guarantee costs a divide and a square at full width,
 and the fix is to stop paying for them in base 10^9 (T-Sq2, same argument as
 T-PI4).
 
+### Where `pi()` stands against mpmath and MPFR, and what the exponent says
+
+Measured 20260825 on Apple M4 Pro, after the NTT landed. Every engine was
+verified to produce the same digits first: at 1 000 000 digits decimo agrees
+with MPFR on all of them, and where a shorter run appears to disagree in its
+last digit it is decimo rounding half-even against a truncated reference.
+mpmath and MPFR both cache pi internally, so each measurement ran in a cold
+process.
+
+Compute pi and produce the decimal digits — the fair column, because decimo's
+pi is decimal-native while the other two are binary and pay conversion only on
+demand:
+
+| digits    | decimo   | mpmath (py) | mpmath+GMP | MPFR     |
+| --------- | -------- | ----------- | ---------- | -------- |
+| 100       | 7.0 us   | 28.0 us     | 37.9 us    | 37.5 us  |
+| 1 000     | 63 us    | 153 us      | 99 us      | 63.8 us  |
+| 10 000    | 1.25 ms  | 5.71 ms     | 0.85 ms    | 0.65 ms  |
+| 100 000   | 33.0 ms  | 182 ms      | 15.1 ms    | 23.7 ms  |
+| 1 000 000 | 797 ms   | 8.49 s      | 262 ms     | 410 ms   |
+
+Empirical exponent `t ~ digits^k`, per decade:
+
+| engine      | 100->1k | 1k->10k | 10k->100k | 100k->1M |
+| ----------- | ------- | ------- | --------- | -------- |
+| decimo      | 0.95    | 1.30    | 1.42      | **1.38** |
+| mpmath (py) | 0.74    | 1.57    | 1.50      | 1.67     |
+| mpmath+GMP  | 0.42    | 0.93    | 1.25      | 1.24     |
+| MPFR        | 0.23    | 1.01    | 1.56      | 1.24     |
+
+The exponent is the whole story of the widening ratio: 1.47x behind mpmath+GMP
+at 10 000 digits becomes 3.04x at 10^6 purely by compounding 1.38 against 1.24.
+decimo is still at 1.38 rather than the ~1.1 a fully-FFT pipeline would show
+because 39% of `pi(10^6)` is division and base conversion, which run at
+Toom-3's 1.465 — Burnikel-Ziegler reaches multiplication only through operands
+half the size and smaller, where the transform has not opened up. The binary
+splitting stage itself measures 1.38, not ~1.05, for the same reason: only the
+top few levels of its tree are above the transform's crossover.
+
+decimo wins outright at 100 and 1 000 digits, including against MPFR. That is
+real and not a warm-up artifact — decimo was timed in-process, best-of-N.
+
+### MPFR computes pi by AGM, mpmath by Chudnovsky
+
+Why MPFR is the *slower* of the two GMP-backed engines, which is otherwise
+surprising. At 10^6 digits a single `gmpy2.agm()` costs 341 ms and
+`mpfr_const_pi` costs 371 ms: `mpfr_const_pi` is one Brent-Salamin AGM plus
+change. The AGM needs a full-precision square root per iteration and about
+`log2(bits)` iterations — 22 sqrt at 12.5 ms is already 275 ms of the 371.
+mpmath instead runs Chudnovsky with binary splitting over GMP integers, the
+same algorithm we use, and lands at 262 ms. Both are `O(M(n) log n)` and both
+measure an exponent of 1.24; the difference is entirely the constant, which is
+why every pi record uses Chudnovsky and not AGM.
+
+### GMP's own division and base-conversion ratios, as a target
+
+Measured at 104 200 words (10^6 digits), against a same-size multiply:
+
+| operation           | GMP      | ratio to mul | decimo ratio |
+| ------------------- | -------- | ------------ | ------------ |
+| mul n x n           | 5.83 ms  | 1.00         | 1.00         |
+| divmod 2n / n       | 15.69 ms | 2.69         | 4.90         |
+| base 2^k -> decimal | 33.71 ms | 5.78         | 8.50         |
+
+Two things to take from this. GMP's division is 2.69x a multiply *with* all of
+its Newton-reciprocal machinery, so 2.7x is the realistic floor for T-D6 — not
+the ~2.1x the textbook operation count suggests. And our raw multiply is
+24.0 ms against GMP's 5.83, a 4.1x gap that is pure constant factor: same
+algorithm class, thirty years of tuning apart.
+
 ### GMP is on FFT from ~32 000 digits, and that is most of the gap
+
+Superseded in part by the table above — the 6.1x multiply gap it describes is
+now 4.1x, and the FFT half of it is closed. Kept for the measurement method.
+
 
 `mpz_mul` normalised to Toom-3's exponent, `t / n^1.465` with `n` in 64-bit
 limbs, is flat until it suddenly isn't:
@@ -325,6 +399,41 @@ Reading a `UInt32` array two words at a time needs
 explicit alignment the load claims 8-byte alignment, which a slice starting at
 an odd word offset does not have — and the Karatsuba and Toom-3 helpers pass
 exactly those.
+
+### `_data` is not a substitute for `unsafe_ptr()` on an appended list
+
+`list._data` reads the wrong address for a list built with `append()`: the
+element at index 0 comes back as zero while every later index reads correctly.
+It cost an afternoon in the NTT twiddle table, where the first entry of the
+root-of-unity table is `w^0 = 1` and silently became `0`. `unsafe_ptr()` is
+right in every case; `_data` is only for the one situation described above,
+where an origin would trip the exclusivity checker, and those lists are all
+built with `resize(unsafe_uninit_length=...)`.
+
+### Where the NTT actually wins, and where it does not
+
+Per-stage timings for `pi(1000000)`, in milliseconds, before and after the
+transform landed:
+
+| Stage                     | before | after |
+| ------------------------- | ------ | ----- |
+| binary splitting          | 627    | 436   |
+| base 2^32 -> 10^9         | 206    | 204   |
+| final division, binary    | 145    | 135   |
+| `sqrt(10005)`             | 62     | 44    |
+| final multiplies          | 56     | 25    |
+| scaling multiply          | 52     | 12    |
+| `5^s`                     | 26     | 15    |
+
+Every stage that is a multiplication moved. The two that did not are the two
+that are divisions, and the reason is worth recording: Burnikel-Ziegler is
+built out of multiplications, but of operands half the size and smaller, where
+the transform's advantage has not opened up yet, and its own constant did not
+change. Division measured 2.64x a same-size multiplication before the
+transform and 4.9x after — the denominator got cheaper and the numerator did
+not. That inverts the earlier assessment of reciprocal-Newton division: it was
+worth about 4% of `pi` when division was 2.64x a multiply, and it is worth
+about 20% now.
 
 ### A missing `return` in `subtract_inplace()`
 

@@ -115,6 +115,8 @@ that range-reduces against π (`sin`/`cos`/`tan`) inherits it.
 |          |      | 100 000 words. Multiply and divide inherit ~1.3×. Total: 44.2 → 36.1 ms               |
 | 20260825 | —    | `exact_divide_by_3_inplace()` division taken off the carry chain (T-A4);              |
 |          |      | 2.50 → 1.13 ns/word, but only ~2% of a Toom-3 multiply                                |
+| 20260825 | —    | NTT multiplication on `BigInt` over `2^64 - 2^32 + 1` (T-5), with a floating chunk    |
+|          |      | width and a cost-model dispatch. 104 200 words 54.9 → 24.0 ms; pi(10^6) 1189 → 821 ms |
 
 ### 2.4 Performance tracking — absolute decimo median ns/iter (ascending precision)
 
@@ -190,7 +192,7 @@ kernels (parse/render are precision-insensitive ops).
 | 3g  | AGM-based ln for very high precision          | OPEN — long-term, complex                                     |
 | 4   | sqrt via Newton-with-division is slow         | DONE (T4) — reciprocal-Newton + precision doubling;           |
 |     |                                               | 20× improvement                                               |
-| 5   | NTT multiplication for n ≥ 1024 words         | OPEN — single biggest long-term gap vs libmpdec               |
+| 5   | NTT multiplication for n ≥ 1024 words         | DONE (T-5) — Goldilocks prime, 2.3× at 1M digits             |
 | 6   | Toom-3 between Karatsuba and NTT              | DONE (T6) — +14–29% for ≥256w                                 |
 | 7a  | `integer_root` via direct Newton              | DONE (T7a) — 0.14×→25× py at p=1000 for cbrt                  |
 |     | (was exp(ln(x)/n))                            |                                                               |
@@ -715,8 +717,35 @@ P5 — ln far-from-1 (4.6×–9.2× py → target ≤2×)
   largely addressed by T-3e, which removed the dominant constant-series
   cost.)
 
-- **T-5: NTT multiplication. The largest remaining lever, and it pays at
-  the sizes we already benchmark (re-assessed 20260824).** NTT is the
+- **T-5: NTT multiplication. DONE (20260825).** Built on `BigInt` in
+  `bigint/ntt.mojo`, over the Goldilocks prime `2^64 - 2^32 + 1`, single
+  prime and no CRT. Multiplication at 1M digits (104 200 words) went
+  54.9 → 24.0 ms; `pi(1000000)` went 1189 → 821 ms.
+
+  Two things decided the result, and neither was the transform itself.
+  *The chunk width is a free variable.* Fixing it at 16 bits — one
+  half-word, the obvious choice — leaves the transform length rounding up
+  to a power of two on its own. At 10 400 words a 16-bit cut needs 41 599
+  coefficients and so a transform of 65 536; 25 bits needs 26 623 and fits
+  in 32 768 — the same product in half the transform. Letting the width
+  float (the planner picks 22-26 bits) recovers that 2× wherever the fixed
+  width overshoots.
+  *The dispatch cannot be a word count.* The transform length steps by
+  powers of two while Toom-3 climbs smoothly, so the winner alternates —
+  at a quarter of the slots filled the transform loses at 4 096 words,
+  ties at 8 192 and wins from 16 384 up. Comparing the two fitted cost
+  models predicts every measured crossover; a flat cutoff cannot.
+
+  Also worth recording: `_multiply_magnitudes_slices()` is a second
+  dispatcher, and Burnikel-Ziegler reaches its multiplications only
+  through it. Wiring the transform into `_multiply_magnitudes()` alone
+  left division and base conversion entirely on Toom-3.
+
+  The follow-on is now T-D6, and it is worth far more than it was before
+  this: division was 2.64× multiply and is now 4.9×, because the multiply
+  got cheaper and B-Z's constant did not.
+
+- **T-5 (original assessment, kept for the reasoning). NTT is the
   enabler for T-D3 / T-L3 / T-7b. GMP's own FFT threshold measures at
   ~1 600 limbs (≈32 000 digits) and is worth 3.7× to it at 100 000
   digits — see `internal/internal_notes.md`. That kills the earlier
@@ -1014,7 +1043,8 @@ some ops < 1.0×):
 | T-A2   | 64-bit limb pairs in `BigInt` add/sub      | S      | **DONE** | 0.71 → 0.25 ns/word; mul 1.26×, div 1.22× at 10 400w    |
 | T-A3   | Carry-select single-pass `BigUInt` add/sub | M      | **DONE** | 1.75 → 0.83 ns/word; mul 1.30×, div 1.27×               |
 | T-A4   | Exact divide-by-3 off the carry chain      | S      | **DONE** | 2.50 → 1.13 ns/word; ~2% of a Toom-3 multiply           |
-| T-5    | NTT multiplication                         | XL     | **NEXT** | largest lever: 3.7× of the GMP mul gap is FFT           |
+| T-5    | NTT multiplication                         | XL     | **DONE** | 2.3× mul at 1M digits; pi(1M) 1189 → 821 ms             |
+| T-D6   | Newton reciprocal division                 | L      | **NEXT** | B-Z now 4.9× mul (was 2.6×); ~20% of pi(1M)             |
 | T-9    | deferred-carry schoolbook mul              | M      | **DONE** | deferred-carry (product-scanning);                      |
 |        |                                            |        |          | Definitely worth bringing it to `BigInt` too            |
 | T-3e   | Faster ln constant series                  | L      | **DONE** | exact-reciprocal divide; ln(2) 9–21×,                   |

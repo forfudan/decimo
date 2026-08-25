@@ -8,9 +8,12 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 `from_integral_scalar()` / `from_float_scalar()` naming used by the other
 numeric types, `BigInt10` is no longer referenced by the rest of the library,
 and `BigDecimal.pi()` gets four orders of magnitude faster — 100 000 digits in
-36 ms, and ahead of pure-Python mpmath from 500 digits up. Multiplication is
-2-3x faster for both `BigInt` and `BigUInt`, which puts `BigInt` ahead of
-CPython's `int` on every large operation. Addition and subtraction are 2-3x
+35 ms, a million in 0.8 s, and ahead of pure-Python mpmath from 500 digits up.
+`BigInt` multiplication gains a number-theoretic transform, which is 2.3x
+faster than Toom-3 at a million digits and closes the last asymptotic gap in
+the library. Multiplication is 2-3x faster for both `BigInt` and `BigUInt` at
+smaller sizes too, which puts `BigInt` ahead of CPython's `int` on every large
+operation. Addition and subtraction are 2-3x
 faster in turn, which the recursive multiplications and divisions inherit.
 Burnikel-Ziegler division loses a padding choice that cost it its own
 asymptotics on some sizes, which speeds up every division in the library. A
@@ -33,6 +36,30 @@ fixed.
    `BigInt10.from_bigint()` and `BigInt10.to_bigint()` (PR #269).
 
 ### 🦋 Changed in Unreleased
+
+1. **`BigInt` multiplication gains a number-theoretic transform, and `pi()`
+   inherits it.** Above Toom-3, `_multiply_magnitudes()` now evaluates the
+   product as a cyclic convolution modulo the Goldilocks prime
+   `2^64 - 2^32 + 1`, which brings the exponent down from `n^1.465` to
+   `n log n`. One prime, so there is no CRT step, and `P - 1 = 2^32 (2^32 - 1)`
+   supplies the powers-of-two roots of unity the transform needs. A 128-bit
+   product reduces in a shift, a subtract and two conditional fixups, because
+   `2^64 = 2^32 - 1 (mod P)`.
+
+   Two choices carried most of the speedup. The width of the chunks the
+   operands are cut into is left free rather than fixed at 16 bits: the
+   transform length has to be a power of two, so a fixed width leaves the
+   rounding up as pure waste, and at 10 400 words a 16-bit cut needs a
+   transform twice as long as a 25-bit cut does. The dispatch compares fitted
+   cost models rather than
+   a word count, because the transform's cost steps at powers of two while
+   Toom-3's climbs smoothly — the transform loses at 4 096 words, ties at
+   8 192, and wins from 16 384 up.
+
+   Multiplication at a million digits (104 200 words) goes from 54.7 ms to
+   24.0 ms, and 1.45x at 100 000 words. `BigDecimal.pi()` at a million digits
+   goes from 1189 ms to 821 ms; the binary-splitting stage, which is half the
+   run, goes from 627 ms to 436 ms.
 
 1. **Addition and subtraction are 2-3x faster, and everything built on them
    moves with them.** Both types carried word by word in 32-bit steps, and
