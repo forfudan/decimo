@@ -2791,13 +2791,17 @@ def floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
     In non-debug model, if n is less than or equal to 0, the function returns x
     unchanged. In debug mode, it asserts that n is non-negative.
     """
+    # The message is passed as separate pieces rather than concatenated: a
+    # `debug_assert` argument is built at the call site before the assert's
+    # own `comptime if` can discard it, so `"..." + String(n)` allocates a
+    # string on every call even in a build with assertions compiled out.
     debug_assert[assert_mode="none"](
         n >= 0,
         (
-            "biguint.arithmetics.floor_divide_by_power_of_ten(): "
-            "n must be non-negative but got "
-            + String(n)
+            "biguint.arithmetics.floor_divide_by_power_of_ten(): n must be"
+            " non-negative but got "
         ),
+        n,
     )
 
     if n <= 0:
@@ -2846,11 +2850,9 @@ def floor_divide_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
     """
     debug_assert[assert_mode="none"](
         n >= 0,
-        (
-            "biguint.arithmetics.floor_divide_by_power_of_ten_inplace(): "
-            "n must be non-negative but got "
-            + String(n)
-        ),
+        "biguint.arithmetics.floor_divide_by_power_of_ten_inplace(): ",
+        "n must be non-negative but got ",
+        n,
     )
 
     if n <= 0:
@@ -2935,13 +2937,14 @@ def floor_divide_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
     In non-debug model, if n is less than or equal to 0, the function returns x
     unchanged. In debug mode, it asserts that n is non-negative.
     """
+    # Message in pieces, not concatenated -- see `floor_divide_by_power_of_ten()`.
     debug_assert[assert_mode="none"](
         n >= 0,
         (
-            "biguint.arithmetics.floor_divide_by_power_of_billion(): "
-            "n must be non-negative but got "
-            + String(n)
+            "biguint.arithmetics.floor_divide_by_power_of_billion(): n must be"
+            " non-negative but got "
         ),
+        n,
     )
 
     if n <= 0:
@@ -2976,13 +2979,14 @@ def floor_divide_by_power_of_billion_inplace(mut x: BigUInt, n: Int):
     `x` becomes the canonical zero (a single word holding 0). In
     debug mode, asserts that `n` is non-negative.
     """
+    # Message in pieces, not concatenated -- see `floor_divide_by_power_of_ten()`.
     debug_assert[assert_mode="none"](
         n >= 0,
         (
-            "biguint.arithmetics.floor_divide_by_power_of_billion_inplace(): "
-            "n must be non-negative but got "
-            + String(n)
+            "biguint.arithmetics.floor_divide_by_power_of_billion_inplace(): n"
+            " must be non-negative but got "
         ),
+        n,
     )
 
     if n <= 0:
