@@ -34,6 +34,7 @@ Algorithms:
 """
 
 from std.bit import count_leading_zeros
+from std.sys import is_little_endian
 from std.memory import unsafe_memcpy, unsafe_memset_zero
 
 from decimo.bigint.bigint import BigInt
@@ -95,6 +96,10 @@ def _add_word_pairs[
     which a comparison recovers without the shift-and-mask the 32-bit form
     needs.
 
+    That identity — `a[2i] + 2^32 * a[2i+1]` being exactly what a 64-bit load
+    at `&a[2i]` returns — holds only on a little-endian target, hence the
+    assertion below. Nothing else here depends on byte order.
+
     The pointers only have to be word-aligned, not limb-aligned: the accesses
     request `alignment=4` explicitly, so `a`, `b` and `r` may each begin at any
     word offset, and at different ones. `r` may alias `a` or `b` exactly.
@@ -109,6 +114,11 @@ def _add_word_pairs[
     Returns:
         The carry out of the highest limb, 0 or 1.
     """
+    comptime assert is_little_endian(), (
+        "_add_word_pairs() reads two UInt32 words as one base-2^64 limb, which"
+        " is only the value they represent on a little-endian target"
+    )
+
     var r64 = rp.unsafe_bitcast[UInt64]()
     var a64 = ap.unsafe_bitcast[UInt64]()
     var b64 = bp.unsafe_bitcast[UInt64]()
@@ -150,6 +160,11 @@ def _subtract_word_pairs[
     Returns:
         The borrow out of the highest limb, 0 or 1.
     """
+    comptime assert is_little_endian(), (
+        "_subtract_word_pairs() reads two UInt32 words as one base-2^64 limb,"
+        " which is only the value they represent on a little-endian target"
+    )
+
     var r64 = rp.unsafe_bitcast[UInt64]()
     var a64 = ap.unsafe_bitcast[UInt64]()
     var b64 = bp.unsafe_bitcast[UInt64]()
