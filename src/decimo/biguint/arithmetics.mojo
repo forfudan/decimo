@@ -30,6 +30,7 @@ from decimo.errors import (
     ZeroDivisionError,
 )
 from decimo.rounding_mode import RoundingMode
+from decimo.utility import alias_as_immutable_source
 
 comptime CUTOFF_KARATSUBA = 256
 """The cutoff number of words for using Karatsuba multiplication.
@@ -127,11 +128,13 @@ comptime CUTOFF_BURNIKEL_ZIEGLER = 32
 
 @always_inline
 def _add_words_carry_select[
-    o: Origin[mut=True]
+    o: Origin[mut=True],
+    o_a: Origin[mut=False],
+    o_b: Origin[mut=False],
 ](
     rp: Pointer[UInt32, o],
-    ap: Pointer[UInt32, _],
-    bp: Pointer[UInt32, _],
+    ap: Pointer[UInt32, o_a],
+    bp: Pointer[UInt32, o_b],
     n_words: Int,
     carry_in: UInt32,
 ) -> UInt32:
@@ -163,11 +166,13 @@ def _add_words_carry_select[
 
 @always_inline
 def _subtract_words_borrow_select[
-    o: Origin[mut=True]
+    o: Origin[mut=True],
+    o_a: Origin[mut=False],
+    o_b: Origin[mut=False],
 ](
     rp: Pointer[UInt32, o],
-    ap: Pointer[UInt32, _],
-    bp: Pointer[UInt32, _],
+    ap: Pointer[UInt32, o_a],
+    bp: Pointer[UInt32, o_b],
     n_words: Int,
     borrow_in: UInt32,
 ) -> UInt32:
@@ -203,10 +208,10 @@ def _subtract_words_borrow_select[
 
 @always_inline
 def _carry_into_tail[
-    o: Origin[mut=True]
+    o: Origin[mut=True], o_a: Origin[mut=False]
 ](
     rp: Pointer[UInt32, o],
-    ap: Pointer[UInt32, _],
+    ap: Pointer[UInt32, o_a],
     start: Int,
     end: Int,
     carry_in: UInt32,
@@ -243,10 +248,10 @@ def _carry_into_tail[
 
 @always_inline
 def _borrow_into_tail[
-    o: Origin[mut=True]
+    o: Origin[mut=True], o_a: Origin[mut=False]
 ](
     rp: Pointer[UInt32, o],
-    ap: Pointer[UInt32, _],
+    ap: Pointer[UInt32, o_a],
     start: Int,
     end: Int,
     borrow_in: UInt32,
@@ -469,12 +474,16 @@ def add_slices_carry_select(
     var n_words_longer = max(n_words_x_slice, n_words_y_slice)
     var n_words_shorter = min(n_words_x_slice, n_words_y_slice)
 
-    var result = BigUInt(unsafe_uninit_length=n_words_longer)
-    result.words.reserve(n_words_longer + 1)
+    # One allocation sized for the possible carry word, not an exact-length
+    # allocation followed by a `reserve()` that has to move it.
+    var result = BigUInt(
+        unsafe_uninit_length=n_words_longer,
+        unsafe_uninit_capacity=n_words_longer + 1,
+    )
 
-    var xp = x.words._data.unsafe_offset(bounds_x[0])
-    var yp = y.words._data.unsafe_offset(bounds_y[0])
-    var rp = result.words._data
+    var xp = x.words.unsafe_ptr().unsafe_offset(bounds_x[0])
+    var yp = y.words.unsafe_ptr().unsafe_offset(bounds_y[0])
+    var rp = result.words.unsafe_ptr()
 
     var carry = _add_words_carry_select(rp, xp, yp, n_words_shorter, UInt32(0))
     var longer = xp if n_words_x_slice > n_words_y_slice else yp
@@ -520,11 +529,17 @@ def add_inplace(mut x: BigUInt, y: BigUInt) -> None:
     if len(x.words) < len(y.words):
         x.words.resize(length=len(y.words), fill=UInt32(0))
 
-    var xp = x.words._data
+    var xp = x.words.unsafe_ptr()
     var carry = _add_words_carry_select(
-        xp, xp, y.words._data, len(y.words), UInt32(0)
+        xp,
+        alias_as_immutable_source(xp),
+        y.words.unsafe_ptr(),
+        len(y.words),
+        UInt32(0),
     )
-    carry = _carry_into_tail(xp, xp, len(y.words), len(x.words), carry)
+    carry = _carry_into_tail(
+        xp, alias_as_immutable_source(xp), len(y.words), len(x.words), carry
+    )
     if carry != 0:
         x.words.append(UInt32(1))
 
@@ -567,15 +582,17 @@ def add_by_slice_inplace(
     if len(x.words) < n_words_y_slice:
         x.words.resize(length=n_words_y_slice, fill=UInt32(0))
 
-    var xp = x.words._data
+    var xp = x.words.unsafe_ptr()
     var carry = _add_words_carry_select(
         xp,
-        xp,
-        y.words._data.unsafe_offset(bounds_y[0]),
+        alias_as_immutable_source(xp),
+        y.words.unsafe_ptr().unsafe_offset(bounds_y[0]),
         n_words_y_slice,
         UInt32(0),
     )
-    carry = _carry_into_tail(xp, xp, n_words_y_slice, len(x.words), carry)
+    carry = _carry_into_tail(
+        xp, alias_as_immutable_source(xp), n_words_y_slice, len(x.words), carry
+    )
     if carry != 0:
         x.words.append(UInt32(1))
 
@@ -765,10 +782,10 @@ def subtract_carry_select(x: BigUInt, y: BigUInt) raises -> BigUInt:
     # The result will have no more words than the first number.
     var result = BigUInt(unsafe_uninit_length=len(x.words))
 
-    var xp = x.words._data
-    var rp = result.words._data
+    var xp = x.words.unsafe_ptr()
+    var rp = result.words.unsafe_ptr()
     var borrow = _subtract_words_borrow_select(
-        rp, xp, y.words._data, len(y.words), UInt32(0)
+        rp, xp, y.words.unsafe_ptr(), len(y.words), UInt32(0)
     )
     _ = _borrow_into_tail(rp, xp, len(y.words), len(x.words), borrow)
 
@@ -825,11 +842,17 @@ def subtract_inplace(mut x: BigUInt, y: BigUInt) raises -> None:
         return
 
     # Note that len(x.words) >= len(y.words) here
-    var xp = x.words._data
+    var xp = x.words.unsafe_ptr()
     var borrow = _subtract_words_borrow_select(
-        xp, xp, y.words._data, len(y.words), UInt32(0)
+        xp,
+        alias_as_immutable_source(xp),
+        y.words.unsafe_ptr(),
+        len(y.words),
+        UInt32(0),
     )
-    _ = _borrow_into_tail(xp, xp, len(y.words), len(x.words), borrow)
+    _ = _borrow_into_tail(
+        xp, alias_as_immutable_source(xp), len(y.words), len(x.words), borrow
+    )
 
     x.remove_leading_empty_words()
 
@@ -859,11 +882,17 @@ def subtract_no_check_inplace(mut x: BigUInt, y: BigUInt) -> None:
 
     # Underflow checks are skipped here, so we assume x >= y
     # Note that len(x.words) >= len(y.words) under this assumption
-    var xp = x.words._data
+    var xp = x.words.unsafe_ptr()
     var borrow = _subtract_words_borrow_select(
-        xp, xp, y.words._data, len(y.words), UInt32(0)
+        xp,
+        alias_as_immutable_source(xp),
+        y.words.unsafe_ptr(),
+        len(y.words),
+        UInt32(0),
     )
-    _ = _borrow_into_tail(xp, xp, len(y.words), len(x.words), borrow)
+    _ = _borrow_into_tail(
+        xp, alias_as_immutable_source(xp), len(y.words), len(x.words), borrow
+    )
 
     x.remove_leading_empty_words()
 
@@ -955,7 +984,10 @@ def multiply(x: BigUInt, y: BigUInt) -> BigUInt:
         elif x_word == 1:
             return y.copy()
         else:
-            var result = y.copy()
+            # Multiplying by a single word can add one word, so copy with room
+            # for it: growing the buffer afterwards would allocate a second
+            # time and copy what was just allocated.
+            var result = y.copy_with_extra_capacity(1)
             multiply_by_uint32_inplace(result, x_word)
             return result^
 
@@ -966,7 +998,10 @@ def multiply(x: BigUInt, y: BigUInt) -> BigUInt:
         if y_word == 1:
             return x.copy()
         else:
-            var result = x.copy()
+            # Multiplying by a single word can add one word, so copy with room
+            # for it: growing the buffer afterwards would allocate a second
+            # time and copy what was just allocated.
+            var result = x.copy_with_extra_capacity(1)
             multiply_by_uint32_inplace(result, y_word)
             return result^
 
@@ -1073,6 +1108,7 @@ def multiply_slices_schoolbook(
         else:
             var result = BigUInt.from_slice(y, (bounds_y[0], bounds_y[1]))
             multiply_by_uint32_inplace(result, x_word)
+            result.assert_invariant("multiply_slices_schoolbook")
             return result^
     if n_words_y_slice == 1:
         var y_word = y.words[bounds_y[0]]
@@ -1620,7 +1656,7 @@ def multiply_slices_toom3(
     # Maximum result length: nx + ny words (product of two numbers).
     var result_len = nx + ny
     var result = BigUInt(unsafe_uninit_length=result_len)
-    unsafe_memset_zero(ptr=result.words._data, count=result_len)
+    unsafe_memset_zero(ptr=result.words.unsafe_ptr(), count=result_len)
 
     # Helper: add a BigUInt value at a word offset into result
     @parameter
@@ -1951,11 +1987,11 @@ def multiply_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
 
     var res = BigUInt(unsafe_uninit_length=len(x.words) + n)
     # Fill the first n words with zeros
-    unsafe_memset_zero(ptr=res.words._data, count=n)
+    unsafe_memset_zero(ptr=res.words.unsafe_ptr(), count=n)
     # Copy the original words to the end of the new list
     unsafe_memcpy(
-        dest=res.words._data.unsafe_offset(n),
-        src=x.words._data,
+        dest=res.words.unsafe_ptr().unsafe_offset(n),
+        src=x.words.unsafe_ptr(),
         count=len(x.words),
     )
 
@@ -2062,7 +2098,7 @@ def exact_divide_by_3_inplace(mut x: BigUInt):
     comptime BASE_OVER_THREE = UInt32(333_333_333)  # (10^9 - 1) / 3
 
     var carry = UInt32(0)  # 0, 1 or 2
-    var xp = x.words._data
+    var xp = x.words.unsafe_ptr()
     for i in range(len(x.words) - 1, -1, -1):
         var word = xp[unsafe_offset=i]
         var word_quotient = word // 3  # off the chain
@@ -2460,11 +2496,10 @@ def floor_divide_by_uint32(x: BigUInt, y: UInt32) -> BigUInt:
         y != 0, "biguint.arithmetics.floor_divide_by_uint32(): Division by zero"
     )
 
-    # Single-word dividend: O(1) exact result. This also guards the pointer
-    # hoisting below — for a one-word `x` with `x.words[0] < y` the quotient is
-    # 0, and without this path `result` would be built with zero words, making
-    # `result.words.unsafe_ptr()` operate on an empty buffer and returning a
-    # BigUInt that violates the non-empty-words invariant.
+    # Single-word dividend: O(1) exact result. This path is also what keeps the
+    # loop below well-formed -- for a one-word `x` with `x.words[0] < y` the
+    # quotient is 0, and without it `result` would be built with zero words,
+    # returning a `BigUInt` that violates the non-empty-words invariant.
     if len(x.words) == 1:
         return BigUInt.from_uint32_unsafe(x.words[0] // y)
 
@@ -2480,20 +2515,19 @@ def floor_divide_by_uint32(x: BigUInt, y: UInt32) -> BigUInt:
         result.words[len(result.words) - 1] = UInt32(dividend)
 
     # Process the rest of the words.
-    # Use raw data pointers for both buffers:
-    # this loop reads `x.words[i]` and writes `result.words[i]` every iteration,
-    # so the indexed form reloads two `List._data` fields per element.
-    # Using both pointers once removes those reloads and is a stable
-    # +4-8% at >=256 words.
-    # Safety: neither buffer is resized inside the loop,
-    # `x` is borrowed (owned by the caller) and `result` outlives the loop;
-    # `unsafe_ptr()` is origin-tied so both Lists stay alive while the pointers
-    # are used. Every index `i` is in `[0, len-2]`, provably in-bounds.
-    var x_ptr = x.words.unsafe_ptr()
-    var res_ptr = result.words.unsafe_ptr()
+    #
+    # This loop used to hoist raw pointers out of both buffers, on the
+    # reasoning that the indexed form reloads a `List` data field per element;
+    # it was recorded as a stable +4-8% at >=256 words. That no longer
+    # reproduces. Measured on this function on Mojo 1.0.0, at 256 / 1024 /
+    # 8192 / 65536 words, the two forms are within 1.6% of each other and the
+    # indexed form is marginally ahead at the largest sizes -- the loop runs at
+    # ~3.35 ns/word either way, which is the two 64-bit divides, and addressing
+    # never surfaces behind them. The indexed form is kept because it is also
+    # bounds-checked under `-D ASSERT=all`.
     for i in range(len(x.words) - 2, -1, -1):
-        dividend = carry * UInt64(BigUInt.BASE) + UInt64(x_ptr[unsafe_offset=i])
-        res_ptr[unsafe_offset=i] = UInt32(dividend // y_uint64)
+        dividend = carry * UInt64(BigUInt.BASE) + UInt64(x.words[i])
+        result.words[i] = UInt32(dividend // y_uint64)
         carry = dividend % y_uint64
 
     debug_assert[assert_mode="none"](
@@ -2501,6 +2535,7 @@ def floor_divide_by_uint32(x: BigUInt, y: UInt32) -> BigUInt:
         "biguint.arithmetics.floor_divide_by_uint32(): ",
         "Result has leading zero words",
     )
+    result.assert_invariant("floor_divide_by_uint32")
     return result^
 
 
@@ -2764,13 +2799,20 @@ def floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
     In non-debug model, if n is less than or equal to 0, the function returns x
     unchanged. In debug mode, it asserts that n is non-negative.
     """
+    # The message is passed as separate pieces rather than concatenated: a
+    # `debug_assert` argument is built at the call site before the assert's
+    # own `comptime if` can discard it, so `"..." + String(n)` allocates a
+    # string on every call even in a build with assertions compiled out.
+    # That cost ~59 ns here, more than the division being guarded.
+    # Upstream bug, still open as of Mojo 1.0.0:
+    # https://github.com/modular/modular/issues/6439
     debug_assert[assert_mode="none"](
         n >= 0,
         (
-            "biguint.arithmetics.floor_divide_by_power_of_ten(): "
-            "n must be non-negative but got "
-            + String(n)
+            "biguint.arithmetics.floor_divide_by_power_of_ten(): n must be"
+            " non-negative but got "
         ),
+        n,
     )
 
     if n <= 0:
@@ -2791,8 +2833,8 @@ def floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
     var keep = len(x.words) - word_shift
     var result = BigUInt(unsafe_uninit_length=keep)
     unsafe_memcpy(
-        dest=result.words._data,
-        src=x.words._data.unsafe_offset(word_shift),
+        dest=result.words.unsafe_ptr(),
+        src=x.words.unsafe_ptr().unsafe_offset(word_shift),
         count=keep,
     )
     _shift_right_by_decimal_digits_inplace(result, digit_shift)
@@ -2819,11 +2861,9 @@ def floor_divide_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
     """
     debug_assert[assert_mode="none"](
         n >= 0,
-        (
-            "biguint.arithmetics.floor_divide_by_power_of_ten_inplace(): "
-            "n must be non-negative but got "
-            + String(n)
-        ),
+        "biguint.arithmetics.floor_divide_by_power_of_ten_inplace(): ",
+        "n must be non-negative but got ",
+        n,
     )
 
     if n <= 0:
@@ -2908,13 +2948,14 @@ def floor_divide_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
     In non-debug model, if n is less than or equal to 0, the function returns x
     unchanged. In debug mode, it asserts that n is non-negative.
     """
+    # Message in pieces, not concatenated -- see `floor_divide_by_power_of_ten()`.
     debug_assert[assert_mode="none"](
         n >= 0,
         (
-            "biguint.arithmetics.floor_divide_by_power_of_billion(): "
-            "n must be non-negative but got "
-            + String(n)
+            "biguint.arithmetics.floor_divide_by_power_of_billion(): n must be"
+            " non-negative but got "
         ),
+        n,
     )
 
     if n <= 0:
@@ -2927,8 +2968,8 @@ def floor_divide_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
     else:
         var result = BigUInt(unsafe_uninit_length=n_words_of_result)
         unsafe_memcpy(
-            dest=result.words._data,
-            src=x.words._data.unsafe_offset(n),
+            dest=result.words.unsafe_ptr(),
+            src=x.words.unsafe_ptr().unsafe_offset(n),
             count=n_words_of_result,
         )
         return result^
@@ -2949,13 +2990,14 @@ def floor_divide_by_power_of_billion_inplace(mut x: BigUInt, n: Int):
     `x` becomes the canonical zero (a single word holding 0). In
     debug mode, asserts that `n` is non-negative.
     """
+    # Message in pieces, not concatenated -- see `floor_divide_by_power_of_ten()`.
     debug_assert[assert_mode="none"](
         n >= 0,
         (
-            "biguint.arithmetics.floor_divide_by_power_of_billion_inplace(): "
-            "n must be non-negative but got "
-            + String(n)
+            "biguint.arithmetics.floor_divide_by_power_of_billion_inplace(): n"
+            " must be non-negative but got "
         ),
+        n,
     )
 
     if n <= 0:
@@ -3991,6 +4033,7 @@ def power_of_10(n: Int) raises -> BigUInt:
         # Add a 1 in the next position
         result.words.append(1)
 
+    result.assert_invariant("power_of_10")
     return result^
 
 

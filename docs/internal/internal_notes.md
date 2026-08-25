@@ -13,13 +13,41 @@ from a cheaper NTT butterfly — precomputed twiddles and radix-4, together
 about 2.5x. Detail in the sections on the NTT and on GMP's ratios below.
 
 **2. Beat CPython's `decimal` on small numbers** — this is what a
-`decimal.Decimal` drop-in is judged on, and today we are at parity on
-subtract, multiply and `from_string`, and 1.8-2.1x behind on add, round and
-divide. It is almost entirely memory management, not arithmetic: a small add
-does about 5 ns of real work and spends 36 ns allocating the result. Giving
-`BigUInt` inline storage for one or two words would remove the allocation
-and should put small operations clearly ahead of libmpdec. See "Small
-operations are allocation, not arithmetic".
+`decimal.Decimal` drop-in is judged on. It is almost entirely memory
+management, not arithmetic: a small operation does about 4 ns of real work
+and ~33 ns per allocation, so its speed is very nearly its allocation count.
+
+Most of the gap turned out to be allocations nothing needed, and removing
+them (20260825) roughly halved the small operations:
+
+| | before | after | |
+|---|---|---|---|
+| add | 79.7 ns | 42.0 ns | 1.90x |
+| subtract | 81.5 ns | 44.9 ns | 1.82x |
+| multiply | 81.6 ns | 39.7 ns | 2.06x |
+| round | 100.5 ns | 41.0 ns | 2.45x |
+| divide | 249.9 ns | 144.7 ns | 1.73x |
+| `BigUInt` add | 73.5 ns | 37.6 ns | 1.95x |
+
+Three causes, all worth watching for elsewhere: scaling both operands when
+only one needed it; allocating an exact-size buffer and then growing it; and
+a `debug_assert` building its message with `+ String(n)`, which allocates on
+every call even with assertions compiled out (upstream bug
+modular/modular#6439 — a pre-commit hook now guards against it).
+
+Still open, in order of size:
+
+- **`divide` still allocates a full product** to test whether the division
+  was exact (`coef * y == coef_x` in `true_divide_general()`). The remainder
+  would answer it for free; `floor_divide_by_uint32()` already computes it
+  and throws it away. Worth roughly one allocation.
+- **`subtract_inplace()` copies a whole coefficient** just to flip a sign
+  before calling `add_inplace()`.
+- **`from_string` is unchanged at ~93 ns**, about three allocations, and
+  was not investigated.
+
+After those, inline storage for one or two words (SBO) removes the last
+allocation and is what puts small operations clearly ahead of libmpdec.
 
 ## Inconsistencies between libraries
 

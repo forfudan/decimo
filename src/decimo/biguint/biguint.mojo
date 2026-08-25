@@ -69,10 +69,29 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     (1) words,
     (2) limbs,
     (3) base-billion digits.
+
+    Representation invariant:
+
+    Every `BigUInt` that leaves a function must satisfy all three of these.
+    Code may break them *inside* a function as long as it repairs them before
+    returning; `remove_leading_empty_words()` is the usual repair.
+
+    1. `words` is never empty. It always holds at least one word.
+    2. There are no leading zero words: `words[len(words) - 1] != 0`, unless
+       `len(words) == 1`. Zero is therefore exactly `[0]` and has no other
+       spelling, which is what lets `is_zero()` and comparison stay cheap.
+    3. Every word is a valid base-billion digit: `words[i] < BASE`.
+
+    Call `assert_invariant()` to check the first two. It is a `debug_assert`,
+    so it costs nothing in a normal build and fires in the test suite.
     """
 
     var words: List[UInt32]
-    """A list of UInt32 words representing the coefficient."""
+    """A list of UInt32 words representing the coefficient.
+
+    Little-endian: `words[0]` is the least significant base-billion digit.
+    Subject to the representation invariant documented on the struct.
+    """
 
     # ===------------------------------------------------------------------=== #
     # Constants
@@ -190,6 +209,40 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         time of initialization. You can access the words using indexing.
         """
         self.words = List[UInt32](unsafe_uninit_length=unsafe_uninit_length)
+
+    def __init__(
+        out self, *, unsafe_uninit_length: Int, unsafe_uninit_capacity: Int
+    ):
+        """Creates an uninitialized BigUInt with a given length and capacity.
+
+        As `__init__(unsafe_uninit_length=)`, but reserves room for more words
+        than the value starts with. Use it when the result may grow by a known
+        amount -- a carry word out of an addition, say. Allocating the larger
+        buffer once is a single `malloc`; allocating the exact length and then
+        calling `reserve()` is two, plus a copy, and at these sizes an
+        allocation is most of what the operation costs.
+
+        Args:
+            unsafe_uninit_length: The length of the BigUInt.
+            unsafe_uninit_capacity: The capacity to allocate. Must be at least
+                `unsafe_uninit_length`.
+
+        Notes:
+
+        **UNSAFE**
+
+        The words are uninitialized and may hold any value, exactly as with
+        `__init__(unsafe_uninit_length=)`.
+        """
+        debug_assert(
+            unsafe_uninit_capacity >= unsafe_uninit_length,
+            "BigUInt.__init__(): capacity ",
+            unsafe_uninit_capacity,
+            " is below length ",
+            unsafe_uninit_length,
+        )
+        self.words = List[UInt32](capacity=unsafe_uninit_capacity)
+        self.words.resize(unsafe_uninit_length=unsafe_uninit_length)
 
     def __init__(out self, var words: List[UInt32]) raises:
         """Initializes a BigUInt from a list of UInt32 words.
@@ -435,8 +488,8 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         # Now we can safely copy the words
         var result = BigUInt(unsafe_uninit_length=n_words)
         unsafe_memcpy(
-            dest=result.words._data,
-            src=value.words._data.unsafe_offset(start_index),
+            dest=result.words.unsafe_ptr(),
+            src=value.words.unsafe_ptr().unsafe_offset(start_index),
             count=n_words,
         )
         result.remove_leading_empty_words()
@@ -2028,7 +2081,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             "BigUInt should not contain leading zero words.",
         )  # 0 should have only one word by design
 
-        return len(self.words) == 1 and self.words._data[] == 0
+        return len(self.words) == 1 and self.words.unsafe_ptr()[] == 0
 
         # Yuhao ZHU:
         # The following code is commented out because BigUInt is designed
@@ -2267,6 +2320,62 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         return result
 
     @always_inline
+    def assert_invariant(self, context: StaticString = "") -> None:
+        """Checks the representation invariant documented on the struct.
+
+        A `debug_assert`, so it compiles away entirely unless the build sets
+        `-D ASSERT=all`. Call it at the end of any function that rebuilds
+        `words` by hand, and the test suite will catch a malformed result at
+        the point that produced it rather than wherever it later misbehaves.
+
+        Args:
+            context: Name of the calling function, shown if the check fires.
+        """
+        debug_assert(
+            len(self.words) > 0,
+            "BigUInt.assert_invariant(): empty words. ",
+            context,
+        )
+        debug_assert(
+            len(self.words) == 1 or self.words[len(self.words) - 1] != 0,
+            "BigUInt.assert_invariant(): leading zero word. ",
+            context,
+        )
+
+    def copy_with_extra_capacity(self, extra_words: Int) -> Self:
+        """Copies `self`, leaving room for `extra_words` more words.
+
+        For the common shape "copy a value, then grow it by a bounded amount":
+        multiplying by a single word can add one word, adding can carry into
+        one. A plain `copy()` allocates exactly what it holds, so the growth
+        then reallocates and copies again -- two allocations where one would
+        do, and at small sizes an allocation is most of the operation.
+
+        Args:
+            extra_words: Number of words of spare capacity. Must not be
+                negative.
+
+        Returns:
+            A copy of `self` whose capacity is `len(words) + extra_words`.
+        """
+        debug_assert(
+            extra_words >= 0,
+            "BigUInt.copy_with_extra_capacity(): negative extra_words ",
+            extra_words,
+        )
+        var count = len(self.words)
+        var result = Self(
+            unsafe_uninit_length=count,
+            unsafe_uninit_capacity=count + extra_words,
+        )
+        unsafe_memcpy(
+            dest=result.words.unsafe_ptr(),
+            src=self.words.unsafe_ptr(),
+            count=count,
+        )
+        return result^
+
+    @always_inline
     def remove_leading_empty_words(mut self):
         """Removes the most significant empty words of a BigUInt.
 
@@ -2297,6 +2406,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 else:
                     break
             self.words.shrink(len(self.words) - n_empty_words)
+            self.assert_invariant("remove_leading_empty_words")
 
     @always_inline
     def remove_trailing_digits_with_rounding(

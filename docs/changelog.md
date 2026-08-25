@@ -37,6 +37,27 @@ fixed.
 
 ### 🦋 Changed in Unreleased
 
+1. **Small operations are about twice as fast.** At these sizes the library
+   spends ~4 ns doing arithmetic and ~33 ns per allocation, so an operation's
+   speed is very nearly its allocation count -- and several were allocating
+   for nothing. `add()` and `subtract()` scaled both coefficients to a common
+   scale when only one of them ever needs it, since the target scale is by
+   construction one of the two. `add_slices_carry_select()` allocated an
+   exact-size buffer and then reserved one more word, which reallocates.
+   `multiply()`'s single-word paths copied the other operand and then grew the
+   copy. And three `debug_assert` calls in the division paths built their
+   message with `"..." + String(n)`, which allocates on every call even in a
+   build with assertions compiled out, because arguments are evaluated before
+   the assert can discard them (upstream bug modular/modular#6439).
+   Measured on small operands: add 1.90x, subtract 1.82x, multiply 2.06x,
+   round 2.45x, divide 1.73x, `BigUInt` add 1.95x.
+1. **`List._data` is no longer used anywhere.** All 63 sites moved to
+   `unsafe_ptr()`, which returns the same address with an origin attached, so
+   the compiler tracks the buffer's lifetime and we no longer depend on a
+   private field of the standard library. No performance change. Restoring
+   origins exposed twelve deliberate in-place aliases, which now say so
+   explicitly through `alias_as_immutable_source()` instead of hiding behind
+   an untracked pointer.
 1. **`BigDecimal` construction no longer copies its coefficient.** The
    component constructor took `coefficient` borrowed and then copied it, so
    every call site already written as `coefficient=coef^` — 27 of them, the
