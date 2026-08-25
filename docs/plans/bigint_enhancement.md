@@ -210,6 +210,46 @@ larger radix only helps if it avoids the software-emulated 128-bit divide.
 PR4d rejected 10^18 chunks for exactly this reason; re-verify on current
 hardware before trying again.
 
+### multiply — T-M5 (NTT) done (2026-08-25)
+
+**T-M5 — number-theoretic transform. DONE.** `bigint/ntt.mojo`, over the
+Goldilocks prime `2^64 - 2^32 + 1`: one prime, no CRT, and reduction of a
+128-bit product in a shift, a subtract and two conditional fixups. Against the
+Toom-3 path it displaces:
+
+| words   | Toom-3   | NTT      | speedup |
+| ------- | -------- | -------- | ------- |
+| 3 072   | 267 µs   | 244 µs   | 1.09    |
+| 6 144   | 735      | 574      | 1.28    |
+| 10 400  | 1 746    | 1 201    | 1.45    |
+| 20 000  | 4 755    | 2 388    | 1.99    |
+| 65 536  | 25 424   | 11 477   | 2.22    |
+| 104 200 | 54 748   | 24 030   | 2.28    |
+
+Two design points carried most of the win, and neither is the transform.
+
+*The chunk width is a free variable, not 16 bits.* A magnitude is a bit string;
+nothing forces the transform to see it in half-words. Since the transform
+length must be a power of two, a fixed width leaves the rounding-up as pure
+waste — at 10 400 words a 16-bit cut needs 41 599 coefficients and so a
+transform of 65 536, where 25 bits needs 26 623 and fits in 32 768. Letting the
+width float subject to the modulus bound (the planner lands on 22-26 bits)
+recovers that 2× wherever the fixed width overshoots and costs nothing where it
+does not.
+
+*The dispatch cannot be a word count.* The transform's cost steps at powers of
+two while Toom-3's climbs smoothly, so the winner alternates: at a quarter of
+the transform slots filled the transform loses at 4 096 words, ties at 8 192
+and wins from 16 384 up. `should_multiply_ntt()` compares the two fitted cost
+models — `L log2(L)` against `(len_a * len_b)^0.7325` — which predicts every
+measured crossover from 512 to 104 200 words. No flat cutoff can.
+
+One trap worth remembering: `_multiply_magnitudes_slices()` is a *second*
+dispatcher, and Burnikel-Ziegler reaches its multiplications only through it.
+Wiring the transform into `_multiply_magnitudes()` alone left division and
+base conversion entirely on Toom-3, and the division benchmark barely moved
+until both were done.
+
 ### multiply — T-M1 done (2026-08-24)
 
 **T-M1 — Toom-3 multiplication. DONE.** `_multiply_magnitudes_toom3()`,
@@ -427,4 +467,5 @@ and fix the base-conversion and SIMD fallout behind the test suite.
 | T-SH1 | Pre-size the shift result buffer                 | OPEN                                  |
 | T-W1  | Base-2^64 limbs throughout                       | PARTLY — T-M4 does it in the kernel   |
 | T-E1  | `reciprocal_sqrt_fixed_point()` binary recip. sqrt    | DONE 2026-08-24 — enables T-PI4       |
-| T-D4  | Reciprocal-Newton divide                         | DEFERRED — needs NTT, not Toom-3      |
+| T-M5  | NTT multiply over `2^64 - 2^32 + 1`              | DONE 2026-08-25 — 2.3× at 104 200w    |
+| T-D4  | Reciprocal-Newton divide                         | NEXT — NTT landed; B-Z now 4.9× mul   |

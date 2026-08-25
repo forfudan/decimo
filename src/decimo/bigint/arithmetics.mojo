@@ -34,10 +34,12 @@ Algorithms:
 """
 
 from std.bit import count_leading_zeros
+from std.sys import is_little_endian
 from std.memory import unsafe_memcpy, unsafe_memset_zero
 
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.comparison import compare_magnitudes
+import decimo.bigint.ntt as bigint_ntt
 from decimo.errors import ValueError, ZeroDivisionError
 
 
@@ -95,6 +97,10 @@ def _add_word_pairs[
     which a comparison recovers without the shift-and-mask the 32-bit form
     needs.
 
+    That identity — `a[2i] + 2^32 * a[2i+1]` being exactly what a 64-bit load
+    at `&a[2i]` returns — holds only on a little-endian target, hence the
+    assertion below. Nothing else here depends on byte order.
+
     The pointers only have to be word-aligned, not limb-aligned: the accesses
     request `alignment=4` explicitly, so `a`, `b` and `r` may each begin at any
     word offset, and at different ones. `r` may alias `a` or `b` exactly.
@@ -109,6 +115,11 @@ def _add_word_pairs[
     Returns:
         The carry out of the highest limb, 0 or 1.
     """
+    comptime assert is_little_endian(), (
+        "_add_word_pairs() reads two UInt32 words as one base-2^64 limb, which"
+        " is only the value they represent on a little-endian target"
+    )
+
     var r64 = rp.unsafe_bitcast[UInt64]()
     var a64 = ap.unsafe_bitcast[UInt64]()
     var b64 = bp.unsafe_bitcast[UInt64]()
@@ -150,6 +161,11 @@ def _subtract_word_pairs[
     Returns:
         The borrow out of the highest limb, 0 or 1.
     """
+    comptime assert is_little_endian(), (
+        "_subtract_word_pairs() reads two UInt32 words as one base-2^64 limb,"
+        " which is only the value they represent on a little-endian target"
+    )
+
     var r64 = rp.unsafe_bitcast[UInt64]()
     var a64 = ap.unsafe_bitcast[UInt64]()
     var b64 = bp.unsafe_bitcast[UInt64]()
@@ -301,8 +317,10 @@ def _subtract_magnitudes(a: List[UInt32], b: List[UInt32]) -> List[UInt32]:
 def _multiply_magnitudes(a: List[UInt32], b: List[UInt32]) -> List[UInt32]:
     """Multiplies two unsigned magnitudes, dispatching to the best algorithm.
 
-    Toom-3 O(n^1.465) above `CUTOFF_TOOM3`, Karatsuba O(n^1.585) above
-    `CUTOFF_KARATSUBA`, product-scanning schoolbook O(n*m) below it. The
+    A number-theoretic transform O(n log n) where its cost model beats Toom-3's
+    (see `ntt.should_multiply_ntt()`), Toom-3 O(n^1.465) above `CUTOFF_TOOM3`,
+    Karatsuba O(n^1.585) above `CUTOFF_KARATSUBA`, product-scanning schoolbook
+    O(n*m) below it. The
     schoolbook base case accumulates in `UInt128` over packed 64-bit limbs,
     or in `UInt64` over 32-bit words when the operands are too small to repay
     the packing - see `_multiply_magnitudes_schoolbook()`.
@@ -340,6 +358,10 @@ def _multiply_magnitudes(a: List[UInt32], b: List[UInt32]) -> List[UInt32]:
     if len_max <= CUTOFF_KARATSUBA:
         return _multiply_magnitudes_schoolbook(a, b)
     elif len_max > CUTOFF_TOOM3:
+        if bigint_ntt.should_multiply_ntt(len_a, len_b):
+            return bigint_ntt.multiply_magnitudes_ntt(
+                ImmSpan[UInt32](a), ImmSpan[UInt32](b)
+            )
         return _multiply_magnitudes_toom3(a, b)
     else:
         return _multiply_magnitudes_karatsuba(a, b)
@@ -1709,6 +1731,11 @@ def _multiply_magnitudes_slices(
 ) -> List[UInt32]:
     """Multiplies two magnitude slices, dispatching to the best algorithm.
 
+    The same ladder as `_multiply_magnitudes()`, over slices rather than owned
+    lists. Burnikel-Ziegler division reaches its multiplications only through
+    here, so leaving the transform out of this one would keep division - and
+    the base conversion built on it - on Toom-3 however large the operands got.
+
     Args:
         a: First magnitude.
         b: Second magnitude.
@@ -1729,6 +1756,8 @@ def _multiply_magnitudes_slices(
     if len_max <= CUTOFF_KARATSUBA:
         return _multiply_magnitudes_schoolbook(a, b)
     if len_max > CUTOFF_TOOM3:
+        if bigint_ntt.should_multiply_ntt(len_a, len_b):
+            return bigint_ntt.multiply_magnitudes_ntt(a, b)
         return _multiply_magnitudes_toom3(a, b)
     return _multiply_magnitudes_karatsuba(a, b)
 
