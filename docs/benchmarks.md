@@ -16,7 +16,7 @@ to change a ratio near parity into one that reads as a gap.
 | | |
 |---|---|
 | Measured | 2026-08-26 |
-| Commit | `876336d` — [docs] Correct what libmpdec does about allocation, and say so in the table |
+| Commit | `1851a08` — [bench] Include the decimal string in decimo's pi timing |
 | Branch | `update` |
 | Pull request | — |
 | Machine | arm64, macOS-26.5.2-arm64-arm-64bit-Mach-O |
@@ -51,12 +51,12 @@ allocates both the struct and its data array.
 
 | Operation | decimo | libmpdec (C) | | CPython `decimal` | libmpdec, result reused |
 |---|---|---|---|---|---|
-| add | 42.8 ns | 41.3 ns | parity | 47.7 ns | 13.9 ns |
-| subtract | 44.9 ns | 35.1 ns | 1.28× slower | 51.2 ns | 14.8 ns |
-| multiply | 40.1 ns | 29.2 ns | 1.38× slower | 43.3 ns | 7.5 ns |
-| divide | 144.9 ns | 51.0 ns | 2.84× slower | 67.5 ns | 28.6 ns |
-| round to 10 places | 41.0 ns | 35.8 ns | 1.15× slower | 72.3 ns | 14.9 ns |
-| parse from string | 91.7 ns | 43.4 ns | 2.11× slower | 78.7 ns | 21.2 ns |
+| add | 46.9 ns | 35.8 ns | 1.31× slower | 49.7 ns | 14.1 ns |
+| subtract | 48.2 ns | 36.5 ns | 1.32× slower | 49.7 ns | 16.2 ns |
+| multiply | 42.1 ns | 28.7 ns | 1.47× slower | 44.8 ns | 7.6 ns |
+| divide | 151.0 ns | 51.6 ns | 2.92× slower | 67.0 ns | 30.8 ns |
+| round to 10 places | 44.6 ns | 36.0 ns | 1.24× slower | 72.5 ns | 14.6 ns |
+| parse from string | 100.2 ns | 42.7 ns | 2.35× slower | 81.0 ns | 22.4 ns |
 
 ## BigInt against CPython's int
 
@@ -69,10 +69,10 @@ arithmetic dominates, as the meaningful ones.
 
 | Digits | decimo add | CPython add | | decimo multiply | CPython multiply | |
 |---|---|---|---|---|---|---|
-| 100 | 41.5 ns | 25.0 ns | 1.66× slower | 84.3 ns | 100.1 ns | **1.19× faster** |
-| 1,000 | 52.4 ns | 91.3 ns | **1.74× faster** | 1.09 µs | 5.35 µs | **4.90× faster** |
-| 10,000 | 268.0 ns | 800.9 ns | **2.99× faster** | 52.66 µs | 258.53 µs | **4.91× faster** |
-| 100,000 | 2.38 µs | 7.71 µs | **3.24× faster** | 1.15 ms | 8.61 ms | **7.50× faster** |
+| 100 | 40.3 ns | 25.4 ns | 1.58× slower | 82.7 ns | 100.4 ns | **1.21× faster** |
+| 1,000 | 57.8 ns | 91.0 ns | **1.57× faster** | 1.17 µs | 5.44 µs | **4.63× faster** |
+| 10,000 | 286.0 ns | 796.3 ns | **2.78× faster** | 53.65 µs | 261.16 µs | **4.87× faster** |
+| 100,000 | 2.38 µs | 7.65 µs | **3.22× faster** | 1.18 ms | 8.67 ms | **7.32× faster** |
 
 ## pi() against mpmath and MPFR
 
@@ -85,11 +85,11 @@ mpmath uses Chudnovsky binary splitting; MPFR uses the Brent–Salamin AGM.
 
 | Digits | decimo | mpmath + GMP | MPFR | mpmath (pure Python) |
 |---|---|---|---|---|
-| 100 | 7.39 µs | 39.17 µs | 43.71 µs | 32.58 µs |
-| 1,000 | 63.55 µs | 104.00 µs | 68.92 µs | 155.38 µs |
-| 10,000 | 1.22 ms | 880.96 µs | 676.17 µs | 5.69 ms |
-| 100,000 | 34.06 ms | 15.04 ms | 22.57 ms | 178.19 ms |
-| 1,000,000 | 814.31 ms | 266.32 ms | 410.08 ms | 8.283 s |
+| 100 | 8.26 µs | 41.62 µs | 41.33 µs | 33.67 µs |
+| 1,000 | 66.19 µs | 104.58 µs | 67.46 µs | 160.92 µs |
+| 10,000 | 1.26 ms | 863.54 µs | 681.33 µs | 5.71 ms |
+| 100,000 | 34.49 ms | 15.14 ms | 22.63 ms | 181.85 ms |
+| 1,000,000 | 820.04 ms | 261.34 ms | 409.90 ms | 8.384 s |
 
 decimo's first 100 digits of pi were checked against mpmath in this
 run and agree exactly.
