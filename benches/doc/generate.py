@@ -69,7 +69,7 @@ def git_context() -> dict:
                         "--json",
                         "number,state",
                         "--jq",
-                        '"\(.number) \(.state)"',
+                        r'"\(.number) \(.state)"',
                     ],
                     cwd=ROOT,
                     capture_output=True,
