@@ -323,11 +323,21 @@ def render(context, decimo, libmpdec, cpython, pi_table, agree, ours, reference)
     add("C library directly instead, which is the comparison that says something")
     add("about the arithmetic rather than about CPython.")
     add("")
-    add("Both allocate a fresh result per operation, which is what decimo's API")
-    add("does and what CPython's `decimal` does. Small operands, precision 28.")
+    add("The first three columns are the comparison. Both allocate a fresh")
+    add("result per operation, which is what decimo's API does and what")
+    add("CPython's `decimal` does. Small operands, precision 28.")
     add("")
-    add("| Operation | decimo | libmpdec (C) | |")
-    add("|---|---|---|---|")
+    add("The last two columns are context. CPython `decimal` is libmpdec seen")
+    add("through the interpreter. *Result reused* is libmpdec writing into a")
+    add("result allocated once, which is what tight C code does; the gap between")
+    add("it and the fresh column is what allocation costs libmpdec, and it is the")
+    add("same cost decimo pays.")
+    add("")
+    add(
+        "| Operation | decimo | libmpdec (C) | | CPython `decimal` | "
+        "libmpdec, result reused |"
+    )
+    add("|---|---|---|---|---|---|")
     for key, label in [
         ("add", "add"),
         ("subtract", "subtract"),
@@ -339,27 +349,10 @@ def render(context, decimo, libmpdec, cpython, pi_table, agree, ours, reference)
         ours_ns = decimo["bigdecimal"][key]
         theirs = libmpdec["fresh"][key]
         add(
-            f"| {label} | {human(ours_ns)} | {human(theirs)} | {ratio(ours_ns, theirs)} |"
-        )
-    add("")
-    add("For reference, the same operations in CPython (`decimal` through the")
-    add("interpreter), and libmpdec writing into a result allocated once instead")
-    add("of a fresh one. The second column is what tight C code does; the gap")
-    add("between it and the table above is what allocation costs libmpdec, and")
-    add("it is the same cost decimo pays.")
-    add("")
-    add("| Operation | CPython `decimal` | libmpdec, result reused |")
-    add("|---|---|---|")
-    for key, label in [
-        ("add", "add"),
-        ("subtract", "subtract"),
-        ("multiply", "multiply"),
-        ("divide", "divide"),
-        ("round", "round to 10 places"),
-        ("from_string", "parse from string"),
-    ]:
-        add(
-            f"| {label} | {human(cpython['cpython_decimal'][key])} | {human(libmpdec['reuse'][key])} |"
+            f"| {label} | {human(ours_ns)} | {human(theirs)} | "
+            f"{ratio(ours_ns, theirs)} | "
+            f"{human(cpython['cpython_decimal'][key])} | "
+            f"{human(libmpdec['reuse'][key])} |"
         )
     add("")
 
