@@ -553,6 +553,14 @@ P2 — Multiply small-precision (2.3× py → target ≤1.5×)
   at >=256 words across 3 runs with no small-input regression (the small-n path
   is allocation-bound, so it stays neutral). This is the same mechanism as
   `multiply_slices_deferred_carry` (Lesson #17), amplified by two buffers.
+
+  **No longer reproduces (20260826, Mojo 1.0.0).** Re-benched on the real
+  function at 256/1024/8192/65536 words: the two forms are within 1.6% and the
+  indexed form is marginally ahead at the largest sizes. The loop runs at
+  ~3.35 ns/word either way -- that is the two 64-bit divides, and addressing
+  never surfaces behind them. `floor_divide_by_uint32` is back on the indexed
+  form, which is also bounds-checked under `-D ASSERT=all`.
+
   **Reverted (no stable win / small-input regressions):**
   `multiply_by_uint32_inplace` (mixed; -3..-8% at 16-64w),
   `floor_divide_by_uint32_inplace` (single buffer; +3% only at large n,

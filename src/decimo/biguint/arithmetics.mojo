@@ -2496,11 +2496,10 @@ def floor_divide_by_uint32(x: BigUInt, y: UInt32) -> BigUInt:
         y != 0, "biguint.arithmetics.floor_divide_by_uint32(): Division by zero"
     )
 
-    # Single-word dividend: O(1) exact result. This also guards the pointer
-    # hoisting below — for a one-word `x` with `x.words[0] < y` the quotient is
-    # 0, and without this path `result` would be built with zero words, making
-    # `result.words.unsafe_ptr()` operate on an empty buffer and returning a
-    # BigUInt that violates the non-empty-words invariant.
+    # Single-word dividend: O(1) exact result. This path is also what keeps the
+    # loop below well-formed -- for a one-word `x` with `x.words[0] < y` the
+    # quotient is 0, and without it `result` would be built with zero words,
+    # returning a `BigUInt` that violates the non-empty-words invariant.
     if len(x.words) == 1:
         return BigUInt.from_uint32_unsafe(x.words[0] // y)
 
@@ -2516,20 +2515,19 @@ def floor_divide_by_uint32(x: BigUInt, y: UInt32) -> BigUInt:
         result.words[len(result.words) - 1] = UInt32(dividend)
 
     # Process the rest of the words.
-    # Use raw data pointers for both buffers:
-    # this loop reads `x.words[i]` and writes `result.words[i]` every iteration,
-    # so the indexed form reloads two `List._data` fields per element.
-    # Using both pointers once removes those reloads and is a stable
-    # +4-8% at >=256 words.
-    # Safety: neither buffer is resized inside the loop,
-    # `x` is borrowed (owned by the caller) and `result` outlives the loop;
-    # `unsafe_ptr()` is origin-tied so both Lists stay alive while the pointers
-    # are used. Every index `i` is in `[0, len-2]`, provably in-bounds.
-    var x_ptr = x.words.unsafe_ptr()
-    var res_ptr = result.words.unsafe_ptr()
+    #
+    # This loop used to hoist raw pointers out of both buffers, on the
+    # reasoning that the indexed form reloads a `List` data field per element;
+    # it was recorded as a stable +4-8% at >=256 words. That no longer
+    # reproduces. Measured on this function on Mojo 1.0.0, at 256 / 1024 /
+    # 8192 / 65536 words, the two forms are within 1.6% of each other and the
+    # indexed form is marginally ahead at the largest sizes -- the loop runs at
+    # ~3.35 ns/word either way, which is the two 64-bit divides, and addressing
+    # never surfaces behind them. The indexed form is kept because it is also
+    # bounds-checked under `-D ASSERT=all`.
     for i in range(len(x.words) - 2, -1, -1):
-        dividend = carry * UInt64(BigUInt.BASE) + UInt64(x_ptr[unsafe_offset=i])
-        res_ptr[unsafe_offset=i] = UInt32(dividend // y_uint64)
+        dividend = carry * UInt64(BigUInt.BASE) + UInt64(x.words[i])
+        result.words[i] = UInt32(dividend // y_uint64)
         carry = dividend % y_uint64
 
     debug_assert[assert_mode="none"](
