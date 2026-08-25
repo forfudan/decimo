@@ -53,27 +53,35 @@ def git_context() -> dict:
     dirty = bool(run(["git", "status", "--porcelain"]).strip())
     branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).strip()
     subject = run(["git", "log", "-1", "--format=%s"]).strip()
+    # `gh pr list` shows only open pull requests by default, so a merged one
+    # would be reported as none. `gh pr view <branch>` finds it either way.
     pull_request = None
+    pull_request_state = None
     if shutil.which("gh"):
         try:
-            listed = subprocess.run(
-                [
-                    "gh",
-                    "pr",
-                    "list",
-                    "--head",
-                    branch,
-                    "--json",
-                    "number",
-                    "--jq",
-                    ".[0].number",
-                ],
-                cwd=ROOT,
-                capture_output=True,
-                text=True,
-                timeout=30,
-            ).stdout.strip()
-            pull_request = int(listed) if listed.isdigit() else None
+            found = (
+                subprocess.run(
+                    [
+                        "gh",
+                        "pr",
+                        "view",
+                        branch,
+                        "--json",
+                        "number,state",
+                        "--jq",
+                        '"\(.number) \(.state)"',
+                    ],
+                    cwd=ROOT,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                .stdout.strip()
+                .split()
+            )
+            if len(found) == 2 and found[0].isdigit():
+                pull_request = int(found[0])
+                pull_request_state = found[1].lower()
         except Exception:
             pull_request = None
     return {
@@ -83,24 +91,48 @@ def git_context() -> dict:
         "subject": subject,
         "dirty": dirty,
         "pull_request": pull_request,
+        "pull_request_state": pull_request_state,
     }
 
 
-def build_libmpdec() -> Path:
-    prefix = (
-        subprocess.run(
+def libmpdec_flags() -> list[str]:
+    """Include and library flags for libmpdec, however it is installed.
+
+    `platforms` covers Linux as well as macOS, so this cannot assume Homebrew.
+    Tries pkg-config, then Homebrew, then the usual prefixes.
+    """
+    if shutil.which("pkg-config"):
+        probe = subprocess.run(
+            ["pkg-config", "--cflags", "--libs", "libmpdec"],
+            capture_output=True,
+            text=True,
+        )
+        if probe.returncode == 0 and probe.stdout.strip():
+            return probe.stdout.split()
+    candidates = []
+    if shutil.which("brew"):
+        found = subprocess.run(
             ["brew", "--prefix", "mpdecimal"], capture_output=True, text=True
         ).stdout.strip()
-        or "/opt/homebrew"
+        if found:
+            candidates.append(found)
+    candidates += ["/opt/homebrew", "/usr/local", "/usr"]
+    for prefix in candidates:
+        if (Path(prefix) / "include" / "mpdecimal.h").exists():
+            return [f"-I{prefix}/include", f"-L{prefix}/lib", "-lmpdec"]
+    raise SystemExit(
+        "libmpdec headers not found. Install mpdecimal (macOS: "
+        "`brew install mpdecimal`; Debian/Ubuntu: `apt install libmpdec-dev`)."
     )
+
+
+def build_libmpdec() -> Path:
     binary = Path(os.environ.get("TMPDIR", "/tmp")) / "decimo_bench_libmpdec"
     subprocess.run(
         [
             "cc",
             "-O2",
-            f"-I{prefix}/include",
-            f"-L{prefix}/lib",
-            "-lmpdec",
+            *libmpdec_flags(),
             str(HERE / "bench_libmpdec.c"),
             "-o",
             str(binary),
@@ -111,36 +143,48 @@ def build_libmpdec() -> Path:
 
 
 def pi_cold(library: str, precision: int) -> float | None:
-    """One cold measurement, in its own process. None when unavailable."""
+    """Minimum over several cold measurements, each in its own process.
+
+    One sample is not enough. A single descheduled process produced a
+    10 000-digit reading fifty times too slow, which is exactly the kind of
+    number that would sit in a published table looking plausible. Taking the
+    minimum of a few costs a little wall-clock and removes the whole class of
+    error.
+    """
     if library == "decimo":
         return None  # taken from the Mojo run, which is already cold per call
     env = dict(os.environ)
     if library == "mpmath":
         env["MPMATH_NOGMPY"] = "1"
-    proc = subprocess.run(
-        [
-            "pixi",
-            "run",
-            "-e",
-            "benchdoc",
-            "python",
-            str(HERE / "bench_python.py"),
-            "--pi",
-            library,
-            str(precision),
-        ],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-    tail = proc.stdout.strip().splitlines()
-    if not tail or tail[-1] == "null":
-        return None
-    try:
-        return float(tail[-1])
-    except ValueError:
-        return None
+    samples = 1 if precision >= 1_000_000 else 3
+    best = None
+    for _ in range(samples):
+        proc = subprocess.run(
+            [
+                "pixi",
+                "run",
+                "-e",
+                "benchdoc",
+                "python",
+                str(HERE / "bench_python.py"),
+                "--pi",
+                library,
+                str(precision),
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        tail = proc.stdout.strip().splitlines()
+        if not tail or tail[-1] == "null":
+            return None
+        try:
+            value = float(tail[-1])
+        except ValueError:
+            return None
+        best = value if best is None else min(best, value)
+    return best
 
 
 def human(nanoseconds: float | None) -> str:
@@ -159,7 +203,9 @@ def ratio(ours: float | None, theirs: float | None) -> str:
     if not ours or not theirs:
         return "—"
     value = theirs / ours
-    if value >= 1.0:
+    if 0.95 <= value <= 1.05:
+        return "parity"
+    if value > 1.0:
         return f"**{value:.2f}× faster**"
     return f"{1.0 / value:.2f}× slower"
 
@@ -239,7 +285,12 @@ def main() -> int:
 
 def render(context, decimo, libmpdec, cpython, pi_table, agree, ours, reference) -> str:
     pr = context["pull_request"]
-    pr_text = f"[#{pr}](https://github.com/forfudan/decimo/pull/{pr})" if pr else "—"
+    if pr:
+        state = context.get("pull_request_state")
+        suffix = f" ({state})" if state else ""
+        pr_text = f"[#{pr}](https://github.com/forfudan/decimo/pull/{pr}){suffix}"
+    else:
+        pr_text = "—"
     lines: list[str] = []
     add = lines.append
 
