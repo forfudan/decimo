@@ -2320,7 +2320,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         return result
 
     @always_inline
-    @always_inline
     def assert_invariant(self, context: StaticString = "") -> None:
         """Checks the representation invariant documented on the struct.
 
@@ -2376,6 +2375,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         )
         return result^
 
+    @always_inline
     def remove_leading_empty_words(mut self):
         """Removes the most significant empty words of a BigUInt.
 

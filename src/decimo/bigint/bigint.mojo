@@ -1807,7 +1807,6 @@ struct BigInt(
     # ===------------------------------------------------------------------=== #
 
     @always_inline
-    @always_inline
     def assert_invariant(self, context: StaticString = "") -> None:
         """Checks the representation invariant documented on the struct.
 
@@ -1828,6 +1827,7 @@ struct BigInt(
             context,
         )
 
+    @always_inline
     def is_zero(self) -> Bool:
         """Returns True if the value is zero.
 

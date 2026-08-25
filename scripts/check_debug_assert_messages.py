@@ -46,11 +46,22 @@ def spans(text: str):
         yield text.count("\n", 0, match.start()) + 1, text[start : i - 1]
 
 
+MOJO_SUFFIXES = (".mojo", ".\U0001f525")
+
+
+def discover() -> list[Path]:
+    """Every Mojo source under `src`, in either spelling of the suffix."""
+    found: list[Path] = []
+    for suffix in MOJO_SUFFIXES:
+        found.extend(Path("src").rglob("*" + suffix))
+    return sorted(found)
+
+
 def main(argv: list[str]) -> int:
-    paths = [Path(a) for a in argv[1:]] or sorted(Path("src").rglob("*.mojo"))
+    paths = [Path(a) for a in argv[1:]] or discover()
     failures = []
     for path in paths:
-        if path.suffix != ".mojo" or not path.exists():
+        if path.suffix not in MOJO_SUFFIXES or not path.exists():
             continue
         text = path.read_text()
         for line, args in spans(text):
