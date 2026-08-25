@@ -8,12 +8,17 @@ commit it was measured on is recorded below. Timings are the **minimum**
 over several rounds rather than the mean: noise on a latency benchmark
 only ever adds time, so the minimum is the stable estimator.
 
+Run this on an otherwise idle machine. The minimum removes most noise
+but not a machine that is busy throughout: back-to-back runs during a
+build moved the small-operation numbers by around 10%, which is enough
+to change a ratio near parity into one that reads as a gap.
+
 | | |
 |---|---|
 | Measured | 2026-08-26 |
-| Commit | `d2212ac` — [bench] Merge the two BigDecimal tables into one |
+| Commit | `876336d` — [docs] Correct what libmpdec does about allocation, and say so in the table |
 | Branch | `update` |
-| Pull request | [#225](https://github.com/forfudan/decimo/pull/225) (merged) |
+| Pull request | — |
 | Machine | arm64, macOS-26.5.2-arm64-arm-64bit-Mach-O |
 | Mojo | Mojo 1.0.0 (ed45d567) |
 | CPython | 3.14.6 |
@@ -30,20 +35,28 @@ The first three columns are the comparison. Both allocate a fresh
 result per operation, which is what decimo's API does and what
 CPython's `decimal` does. Small operands, precision 28.
 
-The last two columns are context. CPython `decimal` is libmpdec seen
-through the interpreter. *Result reused* is libmpdec writing into a
-result allocated once, which is what tight C code does; the gap between
-it and the fresh column is what allocation costs libmpdec, and it is the
-same cost decimo pays.
+The last two columns are context.
+
+*CPython `decimal`* is the same libmpdec, reached through the
+interpreter — the difference from the C column is CPython's overhead.
+
+*libmpdec, result reused* is the identical C call writing into an
+`mpd_t` allocated once, instead of allocating and freeing one per
+operation. Nothing else changes. The difference between the two
+libmpdec columns is therefore exactly `mpd_new()` + `mpd_del()`,
+measured separately at 22.9 ns, and it is why `add` costs 37.6 ns
+fresh but 14.9 ns reused. Note that libmpdec is not avoiding
+allocation for small values: `mpd_t` holds a pointer, and `mpd_new()`
+allocates both the struct and its data array.
 
 | Operation | decimo | libmpdec (C) | | CPython `decimal` | libmpdec, result reused |
 |---|---|---|---|---|---|
-| add | 49.6 ns | 37.6 ns | 1.32× slower | 51.1 ns | 14.9 ns |
-| subtract | 51.1 ns | 39.0 ns | 1.31× slower | 51.8 ns | 17.1 ns |
-| multiply | 44.0 ns | 30.2 ns | 1.45× slower | 44.7 ns | 7.8 ns |
-| divide | 147.7 ns | 54.6 ns | 2.71× slower | 69.5 ns | 30.8 ns |
-| round to 10 places | 42.2 ns | 38.3 ns | 1.10× slower | 74.1 ns | 16.0 ns |
-| parse from string | 102.8 ns | 49.4 ns | 2.08× slower | 81.3 ns | 23.7 ns |
+| add | 42.8 ns | 41.3 ns | parity | 47.7 ns | 13.9 ns |
+| subtract | 44.9 ns | 35.1 ns | 1.28× slower | 51.2 ns | 14.8 ns |
+| multiply | 40.1 ns | 29.2 ns | 1.38× slower | 43.3 ns | 7.5 ns |
+| divide | 144.9 ns | 51.0 ns | 2.84× slower | 67.5 ns | 28.6 ns |
+| round to 10 places | 41.0 ns | 35.8 ns | 1.15× slower | 72.3 ns | 14.9 ns |
+| parse from string | 91.7 ns | 43.4 ns | 2.11× slower | 78.7 ns | 21.2 ns |
 
 ## BigInt against CPython's int
 
@@ -56,10 +69,10 @@ arithmetic dominates, as the meaningful ones.
 
 | Digits | decimo add | CPython add | | decimo multiply | CPython multiply | |
 |---|---|---|---|---|---|---|
-| 100 | 38.3 ns | 26.4 ns | 1.45× slower | 83.9 ns | 103.9 ns | **1.24× faster** |
-| 1,000 | 54.4 ns | 94.7 ns | **1.74× faster** | 1.17 µs | 5.75 µs | **4.91× faster** |
-| 10,000 | 302.0 ns | 901.3 ns | **2.98× faster** | 54.95 µs | 279.53 µs | **5.09× faster** |
-| 100,000 | 2.72 µs | 8.43 µs | **3.10× faster** | 1.23 ms | 9.19 ms | **7.49× faster** |
+| 100 | 41.5 ns | 25.0 ns | 1.66× slower | 84.3 ns | 100.1 ns | **1.19× faster** |
+| 1,000 | 52.4 ns | 91.3 ns | **1.74× faster** | 1.09 µs | 5.35 µs | **4.90× faster** |
+| 10,000 | 268.0 ns | 800.9 ns | **2.99× faster** | 52.66 µs | 258.53 µs | **4.91× faster** |
+| 100,000 | 2.38 µs | 7.71 µs | **3.24× faster** | 1.15 ms | 8.61 ms | **7.50× faster** |
 
 ## pi() against mpmath and MPFR
 
@@ -72,11 +85,11 @@ mpmath uses Chudnovsky binary splitting; MPFR uses the Brent–Salamin AGM.
 
 | Digits | decimo | mpmath + GMP | MPFR | mpmath (pure Python) |
 |---|---|---|---|---|
-| 100 | 8.05 µs | 44.04 µs | 47.79 µs | 33.50 µs |
-| 1,000 | 67.00 µs | 114.25 µs | 72.46 µs | 175.58 µs |
-| 10,000 | 1.31 ms | 955.38 µs | 743.75 µs | 6.01 ms |
-| 100,000 | 36.35 ms | 15.72 ms | 23.48 ms | 188.58 ms |
-| 1,000,000 | 852.55 ms | 274.54 ms | 426.72 ms | 8.794 s |
+| 100 | 7.39 µs | 39.17 µs | 43.71 µs | 32.58 µs |
+| 1,000 | 63.55 µs | 104.00 µs | 68.92 µs | 155.38 µs |
+| 10,000 | 1.22 ms | 880.96 µs | 676.17 µs | 5.69 ms |
+| 100,000 | 34.06 ms | 15.04 ms | 22.57 ms | 178.19 ms |
+| 1,000,000 | 814.31 ms | 266.32 ms | 410.08 ms | 8.283 s |
 
 decimo's first 100 digits of pi were checked against mpmath in this
 run and agree exactly.

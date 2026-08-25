@@ -163,7 +163,13 @@ def main() raises -> None:
         for _ in range(pi_rounds):
             var t0 = perf_counter_ns()
             for _ in range(pi_reps):
-                sink += Int(bd_constants.pi(precision).sign)
+                # The decimal string is part of the measurement, as it is
+                # for mpmath and MPFR. Leaving it out would compare decimo's
+                # computation against their computation *plus* a base
+                # conversion, which is not the same question. decimo is
+                # already base-10 internally, so this step is cheap for it --
+                # but that is an advantage to be measured, not assumed.
+                sink += String(bd_constants.pi(precision)).byte_length()
             var t1 = perf_counter_ns()
             best_pi = min(best_pi, Float64(Int(t1 - t0)) / Float64(pi_reps))
         var comma2 = "," if pi_index < len(precisions) - 1 else ""
