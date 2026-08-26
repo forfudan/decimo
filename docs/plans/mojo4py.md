@@ -473,6 +473,34 @@ jobs:
    objects. For Python `int`/`float`, the caller must pass `str(value)` before
    calling the Mojo constructor — the Python wrapper handles this.
 
+### Measured cost of the binding (2026-08-26)
+
+Nothing in the phases below is done yet, but the current `add`/`mul` methods
+were benchmarked against CPython's `decimal`, which is worth knowing before
+building the rest.
+
+| Digits | decimo via Python | CPython `decimal` | |
+|---|---|---|---|
+| 9 | 147.9 ns | 39.2 ns | 3.77× slower |
+| 1 000 | 2.61 µs | 8.79 µs | **3.37× faster** |
+| 10 000 | 130.22 µs | 347.87 µs | **2.67× faster** |
+
+The ratios at 1 000 and 10 000 digits are within a few percent of the native
+ones, so the binding cost is fully absorbed once the work is real. It only
+matters on small operands, where about 110 ns lands on top of a 40 ns
+operation — roughly five times CPython's own per-call overhead.
+
+Two things account for most of it, and both are already listed below:
+
+- **Operator slots.** The binding exposes `.mul()`, not `__mul__`. Measured on
+  CPython's own `Decimal`, a method call costs 18.1 ns more than an operator
+  (59.3 ns against 41.2 ns). This is the second item in Phase 1 and it is worth
+  more than it looks.
+- **Object layout.** CPython's `PyDecObject` embeds the coefficient inline
+  (`sizeof` grows 120 → 208 bytes with the value), so it does one
+  variable-size object allocation where `mpd_new()` would do two. Doing the
+  same for `BigDecimal` should remove most of the remaining overhead.
+
 ### Phase 1 — BigDecimal Full Binding
 
 - [ ] Expose `RoundingMode` as Python constants or a Python enum.

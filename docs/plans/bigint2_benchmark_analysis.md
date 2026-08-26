@@ -778,4 +778,4 @@ sizes (100000+).
 | PR6  | Bitwise AND/OR/XOR/NOT          | ✓ **DONE** | MEDIUM      | API completeness           |
 | PR7  | GCD + Modular Arithmetic        | ✓ **DONE** | MEDIUM      | applications               |
 | PR8  | Reassign BInt → BigInt          | ✓ **DONE** | LOW         | ergonomics                 |
-| PR9  | Toom-Cook / NTT                 | TODO       | LOW         | extreme sizes (50000+ dig) |
+| PR9  | Toom-Cook / NTT                 | DONE       | LOW         | Toom-3 2026-08-24, NTT 2026-08-25 (base 2^32) and 2026-08-26 (base 10^9) |

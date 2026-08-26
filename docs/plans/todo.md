@@ -14,14 +14,22 @@ This is a to-do list for Decimo.
       complex number arithmetic.
 - [ ] Implement different methods for adding decimo types with `Int` types so
       that an implicit conversion is not required.
-- [ ] Use debug mode to check for unnecessary zero words before all arithmetic
-      operations. This will help ensure that there are no zero words, which can
-      simplify the speed of checking for zero because we only need to check the
-      first word.
+- [x] (20260825) Use debug mode to check for unnecessary zero words before all
+      arithmetic operations. `BigUInt.assert_invariant()` and
+      `BigInt.assert_invariant()` check that the words are non-empty and carry
+      no leading zero word. They are `debug_assert`, so they cost nothing in a
+      normal build and run in the test suite.
+      `remove_leading_empty_words()` carries the check as a post-condition,
+      which covers all thirty repair sites at once.
 - [ ] Check the `floor_divide()` function of `BigUInt`. Currently, the speed of
       division between similar-sized numbers are okay, but the speed of 2n-by-n,
       4n-by-n, and 8n-by-n divisions decreases disproportionally. This is likely
       due to the segmentation of the dividend in the Burnikel-Ziegler algorithm.
+      (20260826: still open, but `docs/benchmarks.md` now measures 2n-by-n
+      division for `BigInt` at every size, so the shape is visible. The
+      base-10^9 transform also helped indirectly — Burnikel-Ziegler reaches
+      multiplication underneath, and `BigUInt` division at 100 000 digits went
+      16.53 ms to 13.74 ms with no change of its own.)
 - [x] Consider using `Decimal` as the struct name instead of `BigDecimal`, and
       use `comptime BigDecimal = Decimal` to create an alias for the `Decimal`
       struct. This just switches the alias and the struct name, but it may be
