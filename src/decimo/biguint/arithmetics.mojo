@@ -2898,60 +2898,63 @@ def floor_divide_estimate_quotient(
     Goal: Estimate Q = R // D.
     """
 
-    # Extract three highest words of relevant dividend portion
-    # numerator = r2r1r0
-    # Extract 3-word dividend portion using SIMD for better performance
-    var numerator: UInt128
-    var base_index = index_of_word + len(divisor.words) - 2
+    # This is Knuth's step D3, and the point of writing it out is that every
+    # value in it fits in 64 bits.
+    #
+    # It used to build the three-word numerator and the two-word denominator
+    # as `UInt128` and divide them. arm64 has no 128-bit divide, so that was a
+    # call to the software helper once per quotient word -- about 30 ns for a
+    # step whose arithmetic is a single machine division. It is what made a
+    # 28-digit division cost more than three times what libmpdec charges.
+    #
+    # Knuth divides the top two words by the divisor's top word instead:
+    # `r2 * BASE + r1` is under 10^18 and `d1` is under 10^9, so the quotient
+    # comes from one 64-bit division. The estimate can then be up to two too
+    # large, which the correction below takes back one at a time; the caller
+    # is prepared for the same two, and normalization -- `d1 >= BASE / 2` --
+    # is what bounds it.
+    comptime BASE = UInt64(BigUInt.BASE)
 
-    # Ensure we don't read beyond bounds
-    if base_index + 2 < len(dividend.words):
-        # We can safely load 3 words: r0, r1, r2
-        numerator = (
-            dividend.words.unsafe_ptr()
-            .unsafe_load[width=4](base_index)
-            .cast[DType.uint128]()
-            * SIMD[DType.uint128, 4](
-                1, 1_000_000_000, 1_000_000_000_000_000_000, 0
-            )
-        ).reduce_add()
-    elif base_index + 1 < len(dividend.words):
-        # We can safely load 2 words: r0, r1 (r2 = 0)
-        numerator = (
-            dividend.words.unsafe_ptr()
-            .unsafe_load[width=2](base_index)
-            .cast[DType.uint128]()
-            * SIMD[DType.uint128, 2](1, 1_000_000_000)
-        ).reduce_add()
-    elif base_index < len(dividend.words):
-        # We can only load 1 word: r0 (r1 = r2 = 0)
-        numerator = UInt128(dividend.words[base_index])
-    else:
-        # All words are zero
-        numerator = UInt128(0)
+    var n = len(divisor.words)
+    var base_index = index_of_word + n - 2
+    var dividend_ptr = dividend.words.unsafe_ptr()
+    var n_dividend = len(dividend.words)
 
-    # Extract two highest words of divisor using SIMD
-    var denominator: UInt128
+    var r0 = UInt64(0)
+    var r1 = UInt64(0)
+    var r2 = UInt64(0)
+    if base_index < n_dividend:
+        r0 = UInt64(dividend_ptr[unsafe_offset=base_index])
+    if base_index + 1 < n_dividend:
+        r1 = UInt64(dividend_ptr[unsafe_offset=base_index + 1])
+    if base_index + 2 < n_dividend:
+        r2 = UInt64(dividend_ptr[unsafe_offset=base_index + 2])
+
+    var divisor_ptr = divisor.words.unsafe_ptr()
     debug_assert[assert_mode="none"](
-        len(divisor.words) >= 2,
+        n >= 2,
         "biguint.arithmetics.floor_divide_estimate_quotient(): ",
         "Divisor must have at least 2 words by design.",
     )
-    denominator = (
-        divisor.words.unsafe_ptr()
-        .unsafe_load[width=2](len(divisor.words) - 2)
-        .cast[DType.uint128]()
-        * SIMD[DType.uint128, 2](1, 1_000_000_000)
-    ).reduce_add()
+    var d0 = UInt64(divisor_ptr[unsafe_offset=n - 2])
+    var d1 = UInt64(divisor_ptr[unsafe_offset=n - 1])
 
-    # Use the SIMD-computed full dividend
-    var quotient_128 = numerator // denominator
+    var top = r2 * BASE + r1
+    var quotient = top // d1
+    var rest = top - quotient * d1
 
-    # Convert back to UInt32
-    var quotient = UInt32(quotient_128)
+    if quotient >= BASE:
+        quotient = BASE - 1
+        rest = top - quotient * d1
 
-    # Ensure we don't exceed the maximum value for a single word
-    return min(quotient, BigUInt.BASE_MAX)
+    # `quotient * d0` is below 10^18 and so is `rest * BASE + r0`, so the test
+    # is exact in 64 bits. At most two rounds: that is Knuth's bound for a
+    # normalized divisor.
+    while rest < BASE and quotient * d0 > rest * BASE + r0:
+        quotient -= 1
+        rest += d1
+
+    return UInt32(quotient)
 
 
 def floor_divide_by_uint32(x: BigUInt, y: UInt32) -> BigUInt:

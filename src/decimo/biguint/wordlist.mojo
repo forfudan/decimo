@@ -40,33 +40,27 @@ from std.memory import Layout, ThinAllocation, alloc, dealloc
 from std.memory import unsafe_memcpy
 from std.os import abort
 
-comptime INLINE_WORDS = 8
+comptime INLINE_WORDS = 10
 """How many words live in the struct before the heap is involved.
 
 It has to cover *results*, not operands. A 28-digit value is four words, but
-adding two of them can carry into a fifth and multiplying gives eight, so at
-four this setting allocated on every operation and was slower than the plain
-`List` it replaced -- the fatter struct with none of the benefit.
+adding two of them carries into a fifth and multiplying gives eight, so at
+four this allocated on every operation and was slower than the plain `List` it
+replaced -- the fatter struct with none of the benefit.
 
-Measured at 28 digits, against `List[UInt32]` (ns):
+Ten, because that is what a division needs. A 28-digit division pads the
+dividend out for the guard digits, normalizes it, and copies it with a guard
+word on top: nine or ten words, every one of which allocated at eight.
+Measured from Python at 28 digits, best of three runs (ns):
 
-    inline words        4      8     10     12    List
-    BigDecimal add   58.4   18.2   17.7   18.4    46.7
-    BigDecimal mul   72.6   35.7   35.7   35.8    61.5
-    BigDecimal div    428    312    294    178     407
+    inline words        8     10     12
+    a + b            51.5   51.9   53.0
+    a * b            70.5   71.5   71.3
+    a / b             263    143    146
 
-and against the same baseline at 100 000 digits, where the only thing the
-inline array does is make every value bigger to copy:
-
-    inline words        8     10     12    List
-    multiply       2.60ms 2.56ms 2.78ms  2.58ms
-    divide         11.2ms 11.2ms 11.3ms  11.1ms
-
-Eight is the settled answer: it takes essentially all of the small-size win,
-costs about one percent at large sizes where twelve costs seven, and wastes
-32 bytes per value rather than 48. Division would still rather have twelve --
-it pads a 28-digit dividend out to ten words -- but that padding is wider than
-it needs to be, and narrowing it is the better fix.
+Addition and multiplication do not care between eight and ten, division cares
+enormously, and twelve only makes the value bigger. At 1000 and 100 000 digits
+ten is within noise of a plain `List` everywhere.
 """
 
 
@@ -201,10 +195,14 @@ struct WordList(Copyable, Movable, Sized):
         # Spelling this as a scalar `for` loop instead cost 60% of an addition
         # -- moves are everywhere, and the compiler did not unroll it.
         if move._capacity == INLINE_WORDS:
-            Pointer(to=self._inline).unsafe_bitcast[UInt32]().unsafe_store(
-                Pointer(to=move._inline)
-                .unsafe_bitcast[UInt32]()
-                .unsafe_load[width=INLINE_WORDS]()
+            # A fixed count on purpose. Copying only `move._len` words looks
+            # like less work and is not: a constant size inlines to a couple of
+            # vector moves, while a variable one becomes a call to `memcpy`,
+            # which cost 60% of an addition.
+            unsafe_memcpy(
+                dest=Pointer(to=self._inline).unsafe_bitcast[UInt32](),
+                src=Pointer(to=move._inline).unsafe_bitcast[UInt32](),
+                count=INLINE_WORDS,
             )
 
     def __deinit__(deinit self):
