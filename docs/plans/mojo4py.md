@@ -475,10 +475,6 @@ jobs:
 
 ### Measured cost of the binding (2026-08-26)
 
-Nothing in the phases below is done yet, but the current `add`/`mul` methods
-were benchmarked against CPython's `decimal`, which is worth knowing before
-building the rest.
-
 | Digits | decimo via Python | CPython `decimal` |                  |
 | ------ | ----------------- | ----------------- | ---------------- |
 | 9      | 147.9 ns          | 39.2 ns           | 3.77× slower     |
@@ -487,36 +483,102 @@ building the rest.
 
 The ratios at 1 000 and 10 000 digits are within a few percent of the native
 ones, so the binding cost is fully absorbed once the work is real. It only
-matters on small operands, where about 110 ns lands on top of a 40 ns
-operation — roughly five times CPython's own per-call overhead.
+matters on small operands, where about 110 ns landed on top of a 40 ns
+operation.
 
-Two things account for most of it, and both are already listed below:
+Where that 110 ns actually was, measured per call in nanoseconds:
 
-- **Operator slots.** The binding exposes `.mul()`, not `__mul__`. Measured on
-  CPython's own `Decimal`, a method call costs 18.1 ns more than an operator
-  (59.3 ns against 41.2 ns). This is the second item in Phase 1 and it is worth
-  more than it looks.
-- **Object layout.** CPython's `PyDecObject` embeds the coefficient inline
-  (`sizeof` grows 120 → 208 bytes with the value), so it does one
-  variable-size object allocation where `mpd_new()` would do two. Doing the
-  same for `BigDecimal` should remove most of the remaining overhead.
+| layer                          | add |
+| ------------------------------ | --- |
+| Python wrapper class           | 74  |
+| call into Mojo and back        | 25  |
+| two `downcast_value_ptr`       | 44  |
+| the `BigDecimal` addition       | 47  |
+| wrapping the result            | 28  |
+
+**The prediction above this table was wrong, and worth recording why.** It
+expected ~18 ns from exposing `__mul__` instead of `.mul()`, on the strength of
+CPython's own `Decimal`, where a method call costs 18.1 ns more than an
+operator (59.3 ns against 41.2 ns). That gap does not transfer: measured on our
+own binding, `a + b` and `a.add(b)` are the same to within noise. What the
+operator slots really buy is permission to delete the Python wrapper class, and
+*that* was 74 ns — four times the predicted figure, and more than the addition
+itself.
+
+Done 2026-08-26:
+
+- `decimo.Decimal` is the Mojo type, with no Python class above it.
+- `self` uses `unchecked_downcast_value_ptr`. CPython has already checked that
+  argument against the bound type before the call, so the checked downcast was
+  doing the same work twice. The right operand is still checked, by comparing
+  its type against the type of `self`, which is about half the price and
+  doubles as the branch that converts an `int` or a `str`.
+
+| operation | before | after  |
+| --------- | ------ | ------ |
+| `a + b`   | 215 ns | 107 ns |
+| `a - b`   | 224 ns | 115 ns |
+| `a * b`   | 215 ns | 114 ns |
+| `a / b`   | 333 ns | 226 ns |
+
+Still open: the 28 ns result allocation. CPython's `PyDecObject` embeds the
+coefficient inline (`sizeof` grows 120 → 208 bytes with the value), so it does
+one variable-size allocation where `mpd_new()` would do two. Doing the same for
+`BigDecimal` needs `PythonObject(alloc=...)` to embed rather than allocate
+separately, which the bindings do not offer today.
+
+### Compatibility with `decimal.Decimal` (2026-08-26)
+
+The point of the Python layer is to be a drop-in for the standard library's
+`decimal`, so the Mojo side should move toward what `decimal` needs rather than
+the binding growing a thick compatibility layer on top.
+
+**Matching now**, each cross-checked against `decimal.Decimal` in
+`python/tests/test_decimo.py`:
+
+- Arithmetic converts an `int` (and a `bool`) and refuses a `float` or a `str`.
+  Refusing a float is deliberate on the standard library's part -- quietly
+  mixing a binary fraction into a decimal one is the mistake the type exists to
+  prevent -- so refusing it here is compatibility, not a limitation.
+- Comparison also takes a `float`.
+- Anything else gives `NotImplemented`, so `==` answers False while `<` and the
+  arithmetic operators raise `TypeError`.
+- The reflected operators behave the same with the plain value on the left.
+- `repr` is `Decimal("1.5")`; `str`, `bool`, and unary `+`/`-`/`abs` all agree.
+
+**Still missing**, roughly in the order a real program would hit them:
+
+| Gap | Note |
+| --- | ---- |
+| `__int__`, `__float__`, `__round__`, `__trunc__`, `__floor__`, `__ceil__` | conversions; all have a `BigDecimal` equivalent already |
+| `__mod__`, `__floordiv__`, `__divmod__`, `__pow__` and reflected forms | `BigDecimal` has the arithmetic; only the binding is missing |
+| `__hash__` | currently unhashable. A real one has to agree with `int` and `float` the way `decimal.Decimal` does, which is CPython's modular-inverse construction, not a digest of the digits |
+| `__format__` | `format(d, ".2f")` and the rest of the mini-language |
+| `__copy__`, `__deepcopy__`, `__reduce__` | copy and pickle |
+| `Decimal(0.1)` is not exact | **the one that needs the Mojo side to move,** and the decoder for it already exists in `Rational.from_float_scalar()`. See todo item 9 |
+| NaN and Infinity | decimo has no non-finite values, so `Decimal("NaN")` raises where the standard library returns one |
+| Context and precision | no `getcontext()`, no per-operation precision from Python |
+| `sqrt`, `exp`, `ln`, `log10`, `quantize`, `normalize`, `as_tuple`, `is_nan`, ... | ~55 methods, nearly all already on `BigDecimal` |
 
 ### Phase 1 — BigDecimal Full Binding
 
 - [ ] Expose `RoundingMode` as Python constants or a Python enum.
-- [ ] Expose all arithmetic operators: `__add__`, `__sub__`, `__mul__`,
-      `__truediv__`, `__mod__`, `__pow__`, `__neg__`, `__abs__`.
-- [ ] Expose comparison: `__eq__`, `__ne__`, `__lt__`, `__le__`, `__gt__`,
-      `__ge__`.
-- [ ] Expose constructors from `int`, `float`, `str`.
+- [x] (20260826) Expose the arithmetic operators `__add__`, `__sub__`,
+      `__mul__`, `__truediv__`, `__neg__`, `__pos__`, `__abs__`, their
+      reflected forms, and `__bool__`. `__mod__` and `__pow__` are still
+      open.
+- [x] (20260826) Expose comparison: `__eq__`, `__ne__`, `__lt__`, `__le__`,
+      `__gt__`, `__ge__`. An operand that will not convert gives
+      `NotImplemented`, so these behave the way `decimal.Decimal` does.
+- [x] Expose constructors from `int`, `float`, `str` (all via `str`).
 - [ ] Expose transcendentals: `sqrt`, `exp`, `ln`, `log10`.
 - [ ] Expose `round(d, ndigits)` via `__round__`.
 - [ ] Write Python test suite for `BigDecimal` (parity with
       `tests/bigdecimal/`).
 - [ ] Add `pixi run py_build_bigdecimal` task.
-- [ ] Write `.pyi` stub for `BigDecimal`.
-- [ ] Set `Decimal = BigDecimal` alias in `python/decimo/__init__.py`.
-- [ ] Add `test_aliases.py` to verify `Decimal is BigDecimal`.
+- [x] (20260826) Write `.pyi` stub for `BigDecimal`.
+- [x] Set `Decimal = BigDecimal` alias in `python/src/decimo/__init__.py`.
+- [x] Verify `Decimal is BigDecimal` (in `test_decimo.py`).
 
 ### Phase 2 — Decimal128 Binding
 

@@ -12,11 +12,13 @@ Last reviewed 2026-08-26.
 
 Ordered by value, judged against the two goals in `internal_notes.md`.
 
-1. **Python binding overhead.** ~110 ns on top of a ~40 ns operation, about
-   five times CPython's own per-call cost. Two parts, both known-good because
-   CPython does exactly this: expose operator slots instead of `.mul()` (18 ns,
-   measured), and embed `BigDecimal` in the PyObject rather than allocating
-   separately. This is the largest single lever for the `decimal` drop-in.
+1. **Python binding overhead.** Half done (20260826): `decimo.Decimal` is now
+   the Mojo type itself rather than a Python class wrapping one, and the type
+   check on `self` is gone. `a + b` went 215 ns to 107 ns, `a * b` 215 to 114.
+   The wrapper class, not the operator slots, was where the time was — see
+   `internal_notes.md`. What is left is the 28 ns result allocation, which
+   needs the bindings to embed the value in the PyObject instead of allocating
+   it separately; that is not something this side can do today.
    See `docs/plans/mojo4py.md`.
 2. **`divide`.** The free part is done (20260826): division hands back the
    remainder it already computed, so `true_divide_general()` reads exactness
@@ -39,6 +41,26 @@ Ordered by value, judged against the two goals in `internal_notes.md`.
    point removing a 33 ns allocation underneath a 110 ns wrapper.
 7. **`from_string`** at ~95 ns, roughly three allocations, never investigated.
 8. **`floor_divide()` 2n-by-n scaling** in `BigUInt` — see the note below.
+9. **Exact float conversion for `BigDecimal`.** `from_float_scalar()` goes
+   through the float's shortest string form, so `BigDecimal(0.1)` is `0.1`
+   where `decimal.Decimal(0.1)` is the 55-digit value the float actually
+   holds. Three things say to fix it in Mojo rather than in the Python
+   binding:
+   - **`Rational` already does it.** `Rational.from_float_scalar()` decodes
+     the IEEE bits and documents the position outright: "`from_float_scalar(0.1)`
+     is 3602879701896397/36028797018963968, not 1/10". `BigDecimal`
+     disagreeing with `Rational` inside one library is worse than either
+     answer on its own.
+   - **The decoder is already written and tested**, in `rational.mojo`. For a
+     decimal it needs one more step: `mantissa * 2^e` is `mantissa << e` at
+     scale 0 when `e >= 0`, and `mantissa * 5^-e` at scale `-e` when `e < 0`.
+   - **Nothing depends on the current behaviour.** `tests/bigdecimal/` has no
+     float-conversion test at all; every `from_float` test belongs to
+     `Decimal128` or `Rational`.
+
+   `Decimal128` must keep rounding — 28 digits cannot hold the 55 an exact
+   conversion produces — so this is a `BigDecimal` change only.
+   See `docs/plans/mojo4py.md`.
 
 ## Blocked on the language
 

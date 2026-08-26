@@ -637,7 +637,64 @@ type for a splitting tree whose whole point is that the fractions never need to
 be in lowest terms.
 
 
+## Calling decimo from Python
+
+### The Python wrapper class cost more than the arithmetic (20260826)
+
+`decimo.Decimal` used to be a Python class holding a Mojo `BigDecimal` in a
+`_inner` slot, and every operator went through a Python-level `__add__` that
+built a second object. Timed against the native type it was the single largest
+cost of a call, larger than the addition itself. One call, in nanoseconds:
+
+| layer                          | add  |
+| ------------------------------ | ---- |
+| Python wrapper class           | 74   |
+| call into Mojo and back        | 25   |
+| two `downcast_value_ptr`       | 44   |
+| the `BigDecimal` addition       | 47   |
+| wrapping the result            | 28   |
+
+Two of those went away. `Decimal` is now the Mojo type itself, with no Python
+class above it, and the type check on `self` is gone: CPython has already
+checked that argument against the bound type before the call, so
+`unchecked_downcast_value_ptr` is right there and the checked one was pure
+duplication. The right operand still has to be checked, but comparing its type
+against the type of `self` is about half the price of the checked downcast, and
+it doubles as the branch that converts an `int` or a `str`.
+
+| operation | before | after  |
+| --------- | ------ | ------ |
+| `a + b`   | 215 ns | 107 ns |
+| `a - b`   | 224 ns | 115 ns |
+| `a * b`   | 215 ns | 114 ns |
+| `a / b`   | 333 ns | 226 ns |
+
+The ranked list had predicted this differently: it expected ~18 ns from
+exposing operator slots instead of `.mul()`. The slot itself is worth nothing —
+`a + b` and `a.add(b)` time the same to within noise. What the slots buy is
+permission to delete the wrapper class, and that is where the 74 ns was.
+
+What is left is 60 ns above the arithmetic: 25 ns of call, 28 ns of result
+allocation, 10 ns of type guard. The allocation is the next lever and it needs
+the bindings to embed the value in the PyObject instead of allocating it
+separately, which is not something this side can do today.
+
 ## Traps worth remembering
+
+### A type built from a spec has empty operator slots
+
+`def_method[f]("__add__")` puts `__add__` in the type's dictionary, and
+`a.__add__(b)` works, but `a + b` still reports an unsupported operand.
+CPython fills the `nb_add` slot that `+` actually reads in
+`fixup_slot_dispatchers`, which runs when a class is *created* from a
+namespace, not when a type is built from a spec the way the Mojo bindings build
+one. Assigning the attribute back onto the type from Python
+(`Decimal.__add__ = Decimal.__dict__["__add__"]`) goes through `type_setattro`,
+which does run the fixup. That loop is in `python/decimo/__init__.py`.
+
+The same mechanism explains why `__repr__` cannot be registered from Mojo at
+all: the bindings install their own from `Representable` after ours, so it has
+to be assigned from Python too.
 
 ### Passing one pointer as both source and destination
 
