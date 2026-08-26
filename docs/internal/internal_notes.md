@@ -9,7 +9,6 @@ Current cross-library figures are not here. They are generated into
 `docs/benchmarks.md` by `pixi run benchdoc`; numbers quoted in this file are
 dated and may have moved.
 
-
 ## Goals
 
 Two targets, both about being competitive with the established libraries
@@ -33,15 +32,15 @@ With the base-billion transform in place and the tables extended to a million
 digits, the count across `docs/benchmarks.md` is 40 rows faster, 22 slower,
 3 at parity. The largest wins and the largest losses are both worth knowing:
 
-| | |
-|---|---|
-| `exp` at 10 000 digits | **27.2x faster** than libmpdec |
-| `sqrt` at 10 000 digits | **20.0x faster** |
+|                                  |                                     |
+| -------------------------------- | ----------------------------------- |
+| `exp` at 10 000 digits           | **27.2x faster** than libmpdec      |
+| `sqrt` at 10 000 digits          | **20.0x faster**                    |
 | `BigInt` multiply at 10^6 digits | **15.7x faster** than CPython `int` |
-| `power` / `ln` at 10 000 digits | **15.0x / 12.5x faster** |
-| `sqrt` at precision 28 | 2.94x slower |
-| `divide` at 9 digits | 2.92x slower |
-| `parse` at 9 digits | 2.24x slower |
+| `power` / `ln` at 10 000 digits  | **15.0x / 12.5x faster**            |
+| `sqrt` at precision 28           | 2.94x slower                        |
+| `divide` at 9 digits             | 2.92x slower                        |
+| `parse` at 9 digits              | 2.24x slower                        |
 
 No loss anywhere is worse than 3x, and every one of them is on a small
 operand. libmpdec's `exp` and `ln` scale badly -- 82 s and 239 s respectively
@@ -82,12 +81,12 @@ optimisation we lack. That is why `decimal` (47.6 ns) trails C libmpdec
 
 Ours, measured through the built binding:
 
-| Digits | decimo via Python | CPython `decimal` | |
-|---|---|---|---|
-| 9 | 147.9 ns | 39.2 ns | 3.77x slower |
-| 1 000 | 2.61 us | 8.79 us | **3.37x faster** |
-| 10 000 | 130.22 us | 347.87 us | **2.67x faster** |
-| 100 000 | 4.44 ms | 2.74 ms | 1.62x slower |
+| Digits  | decimo via Python | CPython `decimal` |                  |
+| ------- | ----------------- | ----------------- | ---------------- |
+| 9       | 147.9 ns          | 39.2 ns           | 3.77x slower     |
+| 1 000   | 2.61 us           | 8.79 us           | **3.37x faster** |
+| 10 000  | 130.22 us         | 347.87 us         | **2.67x faster** |
+| 100 000 | 4.44 ms           | 2.74 ms           | 1.62x slower     |
 
 The ratios at 1 000 and 10 000 digits barely differ from the native ones
 (3.55x, 2.89x): **the binding overhead is entirely absorbed once the work is
@@ -99,10 +98,10 @@ own Decimal, a method call costs 18.1 ns more than an operator.
 
 The measured exponent per decade says it plainly:
 
-| digits | decimo | libmpdec |
-|---|---|---|
-| 100 -> 1 000 | n^1.36 | n^1.85 |
-| 1 000 -> 10 000 | n^1.69 | n^1.60 |
+| digits            | decimo | libmpdec   |
+| ----------------- | ------ | ---------- |
+| 100 -> 1 000      | n^1.36 | n^1.85     |
+| 1 000 -> 10 000   | n^1.69 | n^1.60     |
 | 10 000 -> 100 000 | n^1.53 | **n^0.88** |
 
 decimo sits near Toom-3's n^1.465 the whole way — one algorithm, no change of
@@ -404,13 +403,13 @@ and came back. Run the same two passes **a block at a time** and the carry walk
 reads what the vector pass has just written, still in L1. Interleaved, same
 process, same buffers:
 
-| words | add   | subtract |
-| ----- | ----- | -------- |
+| words | add        | subtract   |
+| ----- | ---------- | ---------- |
 | 2-4   | 0.92-1.00x | 0.93-1.00x |
-| 8     | 1.61x | 1.34x    |
-| 32    | 1.87x | 1.70x    |
-| 112   | 2.09x | 1.94x    |
-| 1000  | 2.10x | 2.18x    |
+| 8     | 1.61x      | 1.34x      |
+| 32    | 1.87x      | 1.70x      |
+| 112   | 2.09x      | 1.94x      |
+| 1000  | 2.10x      | 2.18x      |
 
 The block is 64 words and the generate flags live in a stack buffer, so there
 is no allocation. Below one vector's worth of words the old chain still wins,
@@ -491,7 +490,6 @@ about 20% now.
 Superseded in part by the table above — the 6.1x multiply gap it describes is
 now 4.1x, and the FFT half of it is closed. Kept for the measurement method.
 
-
 `mpz_mul` normalised to Toom-3's exponent, `t / n^1.465` with `n` in 64-bit
 limbs, is flat until it suddenly isn't:
 
@@ -516,7 +514,6 @@ is code. NTT is not a >=10^6-digit concern - it is the largest single lever at
 the sizes we already benchmark, and it makes Toom-4 (which by the tree-shape
 argument above would be worth a couple of percent on `pi`) not worth doing.
 
-
 ## Division
 
 ### The remainder was there all along (20260826)
@@ -529,8 +526,8 @@ it away. `floor_modulo()` then rebuilt it as `x - y * quotient`, and
 an argument (a `BigUInt` still cannot be moved out of a returned tuple,
 modular/modular#5330) removed both.
 
-| operation                          | before   | after    |
-| ---------------------------------- | -------- | -------- |
+| operation                           | before   | after    |
+| ----------------------------------- | -------- | -------- |
 | `BigUInt` modulo, 2000 by 1000 dig. | 60.7 us  | 51.8 us  |
 | `BigDecimal` divide, 10^4 digits    | 539 us   | 409 us   |
 | `BigDecimal` divide, 10^5 digits    | 13.10 ms | 10.62 ms |
@@ -627,7 +624,6 @@ schedule has to land badly. `sqrt_via_reciprocal_iteration(10005, 1000)` and
 `12.345678 ** -0.5` is not. Any spot check picks a survivor. The test sweeps
 inputs against precisions for that reason.
 
-
 ### Where the last of a 1000-digit division goes (20260826)
 
 After the multiply-subtract and the base-case remainder, a 226-by-112 word
@@ -678,10 +674,10 @@ and that includes numbers written down in this file.
 The headline figures and what is still open are in the Goals section above;
 this is the measurement behind them.
 
-| | ns |
-|---|---|
-| `+=` in place, no allocation | 5.6 |
-| one `List[UInt32]` alloc + free | 33 |
+|                                             | ns   |
+| ------------------------------------------- | ---- |
+| `+=` in place, no allocation                | 5.6  |
+| one `List[UInt32]` alloc + free             | 33   |
 | `mpd_new()` + `mpd_del()` (two allocations) | 22.9 |
 
 An operation's speed is very nearly its allocation count: ~4 ns of arithmetic
@@ -751,7 +747,6 @@ numbers grow. `Rational` is the right type for exact fractions; it is the wrong
 type for a splitting tree whose whole point is that the fractions never need to
 be in lowest terms.
 
-
 ## Calling decimo from Python
 
 ### The Python wrapper class cost more than the arithmetic (20260826)
@@ -761,13 +756,13 @@ be in lowest terms.
 built a second object. Timed against the native type it was the single largest
 cost of a call, larger than the addition itself. One call, in nanoseconds:
 
-| layer                          | add  |
-| ------------------------------ | ---- |
-| Python wrapper class           | 74   |
-| call into Mojo and back        | 25   |
-| two `downcast_value_ptr`       | 44   |
-| the `BigDecimal` addition       | 47   |
-| wrapping the result            | 28   |
+| layer                     | add |
+| ------------------------- | --- |
+| Python wrapper class      | 74  |
+| call into Mojo and back   | 25  |
+| two `downcast_value_ptr`  | 44  |
+| the `BigDecimal` addition | 47  |
+| wrapping the result       | 28  |
 
 Two of those went away. `Decimal` is now the Mojo type itself, with no Python
 class above it, and the type check on `self` is gone: CPython has already
@@ -800,8 +795,8 @@ Making `decimo.Decimal` a drop-in replacement means `getcontext().prec` has to
 drive the operators, which means every operator reads a number that used to be
 a compile-time constant. Two builds, alternated three times, best of each:
 
-| build                                   | `a + b` | `a / b` |
-| --------------------------------------- | ------- | ------- |
+| build                                    | `a + b` | `a / b` |
+| ---------------------------------------- | ------- | ------- |
 | `+` operator, precision comptime 28      | 116 ns  | 213 ns  |
 | `.add(other, 28)`, constant folded       | 127 ns  | 230 ns  |
 | `.add(other, precision())`, real context | 141 ns  | 241 ns  |
@@ -820,13 +815,13 @@ sitting underneath it.
 Now that the same source file runs under both (`python/benchmarks/compare.py`),
 the comparison is direct rather than inferred:
 
-| | decimo | decimal | |
-| --- | --- | --- | --- |
-| four ops, 28 digits | 347 ns | 73 ns | 4.8x slower |
-| four ops, 200 digits | 593 ns | 385 ns | 1.5x slower |
-| four ops, 1000 digits | 4.75 us | 5.85 us | **1.23x faster** |
-| pi by Machin, 500 digits | 1.20 ms | 528 us | 2.3x slower |
-| sqrt by Newton, 1000 digits | 267 us | 238 us | 1.1x slower |
+|                             | decimo  | decimal |                  |
+| --------------------------- | ------- | ------- | ---------------- |
+| four ops, 28 digits         | 347 ns  | 73 ns   | 4.8x slower      |
+| four ops, 200 digits        | 593 ns  | 385 ns  | 1.5x slower      |
+| four ops, 1000 digits       | 4.75 us | 5.85 us | **1.23x faster** |
+| pi by Machin, 500 digits    | 1.20 ms | 528 us  | 2.3x slower      |
+| sqrt by Newton, 1000 digits | 267 us  | 238 us  | 1.1x slower      |
 
 Worth holding next to `docs/benchmarks.md`, which says decimo beats libmpdec
 at every operation at 1000 digits. Both are true. The Mojo arithmetic is
@@ -855,8 +850,6 @@ the runtime libraries through the interpreter's own rpath, so removing the
 vendored copies made the import *start working again*. The only test that means
 anything is a Python from outside the environment; a Homebrew interpreter and a
 fresh venv settled it in one command.
-
-
 
 ### A type built from a spec has empty operator slots
 

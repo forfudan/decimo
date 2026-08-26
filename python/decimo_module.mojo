@@ -27,12 +27,14 @@
 
 from std.ffi import _Global
 from std.python import Python, PythonObject
-from std.python._cpython import PyObjectPtr
+from std.python._cpython import PyObjectPtr, PyTypeObject, PyTypeObjectPtr
 from std.python.bindings import (
     ExceptionType,
     PythonModuleBuilder,
     _set_python_error,
+    lookup_py_type_object,
 )
+from std.python.python_object import _unsafe_alloc_init
 from std.os import abort
 
 from decimo import BigDecimal, RoundingMode
@@ -55,17 +57,62 @@ from decimo import BigDecimal, RoundingMode
 # ===----------------------------------------------------------------------=== #
 
 
-def _initial_precision() -> Int:
-    return 28
+struct _State(Defaultable, Movable):
+    """The two things every operation needs, in one cell.
+
+    Reaching a `_Global` costs about 14 ns, because the runtime hashes its
+    name. Two of them per operation was 28 ns of a 139 ns addition, so both
+    live here and one read serves both.
+
+    `decimal_type` is the `PyTypeObject*` that a result is allocated against.
+    The bindings will find it for you, but `lookup_py_type_object` re-reads
+    its own global and then looks the type up in a dictionary keyed by the
+    Mojo type's fully qualified *name* -- a string hash, per result. The
+    pointer never changes once the module is imported, so it is found once and
+    kept.
+    """
+
+    var precision: Int
+    var decimal_type: PyTypeObjectPtr
+
+    def __init__(out self):
+        self.precision = 28
+        self.decimal_type = PyTypeObjectPtr()
 
 
-comptime _PRECISION = _Global["decimo_python_precision", _initial_precision]
+def _new_state() -> _State:
+    return _State()
+
+
+comptime _STATE = _Global["decimo_python_state", _new_state]
+
+
+@always_inline
+def state() raises -> Pointer[_State, MutUntrackedOrigin]:
+    """The module's mutable state. One runtime lookup."""
+    return _STATE.get_or_create_ptr()
+
+
+@always_inline
+def decimal_type_ptr(mut cell: _State) raises -> PyTypeObjectPtr:
+    """The type object results are allocated against, found once and kept."""
+    if not cell.decimal_type:
+        cell.decimal_type = lookup_py_type_object[
+            BigDecimal
+        ]()._obj_ptr.bitcast[PyTypeObject]()
+    return cell.decimal_type
+
+
+@always_inline
+def new_decimal(mut cell: _State, var value: BigDecimal) raises -> PythonObject:
+    """Wrap a result, without re-deriving the type object every time."""
+    return _unsafe_alloc_init(decimal_type_ptr(cell), value^)
 
 
 @always_inline
 def precision() raises -> Int:
     """The working precision, in significant digits."""
-    return _PRECISION.get_or_create_ptr()[]
+    return _STATE.get_or_create_ptr()[].precision
 
 
 def get_precision() raises -> PythonObject:
@@ -78,7 +125,7 @@ def set_precision(value: PythonObject) raises -> PythonObject:
     var digits = Int(py=value)
     if digits < 1:
         raise Error("precision must be at least 1")
-    _PRECISION.get_or_create_ptr()[] = digits
+    _STATE.get_or_create_ptr()[].precision = digits
     return PythonObject(None)
 
 
@@ -187,8 +234,16 @@ def PyInit__decimo() abi("C") -> PythonObject:
 
 @always_inline
 def is_same_type(a: PythonObject, b: PythonObject) raises -> Bool:
-    """Whether two objects have the very same Python type."""
-    return Python.type(a) is Python.type(b)
+    """Whether two objects have the very same Python type.
+
+    `Python.type()` calls `PyObject_Type`, which takes a new reference and
+    wraps it in a `PythonObject` that has to be released again. Doing that
+    twice per operation cost more than the addition underneath it. The type of
+    an object is a plain field of its header, so read the field and compare the
+    pointers: no refcount, no allocation, no call into CPython at all.
+    """
+    ref cpython = Python().cpython()
+    return cpython.Py_TYPE(a._obj_ptr) == cpython.Py_TYPE(b._obj_ptr)
 
 
 def raise_as[
@@ -218,11 +273,9 @@ def not_implemented() raises -> PythonObject:
     return Python.import_module("builtins").NotImplemented
 
 
-def convert_int_subclass(other: PythonObject) raises -> BigDecimal:
-    """The tail of the two conversions below: an `int` that is not exactly an
-    `int`, which in practice means a `bool`. Kept out of line because the
-    common cases are settled by comparing types, and that is much cheaper than
-    reaching into `builtins` for `isinstance`.
+def convert_big_int(other: PythonObject) raises -> BigDecimal:
+    """An `int` too wide for a machine word, or an `int` subclass such as
+    `bool`. Off the hot path on purpose, so it can afford the text detour.
     """
     var builtins = Python.import_module("builtins")
     if not Bool(builtins.isinstance(other, builtins.int)):
@@ -239,21 +292,36 @@ def convert_operand(other: PythonObject) raises -> BigDecimal:
     fractions silently is the mistake the type exists to prevent -- and so is
     a `str`. The caller turns the refusal into `NotImplemented`, which is what
     makes the operator raise an ordinary `TypeError`.
+
+    Recognising the `int` is a pointer comparison against CPython's `int` type,
+    and reading it is one call. It used to build a throwaway Python `0` just to
+    ask what type it was, then format the operand as text and parse the text
+    back -- which is why `d + 2` cost twice what `d + d` did.
     """
-    if Python.type(other) is Python.type(PythonObject(0)):
-        return BigDecimal(String(other))
-    return convert_int_subclass(other)
+    ref cpython = Python().cpython()
+    if cpython.PyLong_CheckExact(other._obj_ptr):
+        var value = cpython.PyLong_AsSsize_t(other._obj_ptr)
+        # Anything wider than a machine word sets the error indicator instead.
+        if not cpython.PyErr_Occurred():
+            return BigDecimal.from_integral_scalar(Int64(value))
+        cpython.PyErr_Clear()
+    return convert_big_int(other)
 
 
 def from_python_float(other: PythonObject) raises -> BigDecimal:
     """Read a Python float exactly, the way `decimal.Decimal(float)` does.
 
-    The text detour is lossless: `repr()` of a float is by definition the
-    shortest string that parses back to the same double, so the value handed
-    to `from_float_scalar()` is bit-for-bit the one Python holds. What that
-    then produces is the number the float really is --
-    `Decimal(0.1)` is the 55-digit value, not `0.1`.
+    What that produces is the number the float really is: `Decimal(0.1)` is
+    the 55-digit value, not `0.1`.
     """
+    ref cpython = Python().cpython()
+    if cpython.PyFloat_CheckExact(other._obj_ptr):
+        return BigDecimal.from_float_scalar(
+            Float64(cpython.PyFloat_AsDouble(other._obj_ptr))
+        )
+    # A `float` subclass, or something that merely looks like one. `repr()` of
+    # a float is by definition the shortest string that reads back as the same
+    # double, so the text detour loses nothing.
     return BigDecimal.from_float_scalar(Float64(String(other)))
 
 
@@ -268,12 +336,14 @@ def convert_comparand(other: PythonObject) raises -> BigDecimal:
     the float is not one tenth, and saying so is the whole point of a decimal
     type.
     """
-    var other_type = Python.type(other)
-    if other_type is Python.type(PythonObject(0)):
-        return BigDecimal(String(other))
-    if other_type is Python.type(PythonObject(Float64(0))):
+    ref cpython = Python().cpython()
+    if cpython.PyFloat_CheckExact(other._obj_ptr):
+        return BigDecimal.from_float_scalar(
+            Float64(cpython.PyFloat_AsDouble(other._obj_ptr))
+        )
+    if cpython.PyFloat_Check(other._obj_ptr):
         return from_python_float(other)
-    return convert_int_subclass(other)
+    return convert_operand(other)
 
 
 def as_decimal(
@@ -422,7 +492,8 @@ def bigdecimal_add(
 ) raises -> PythonObject:
     """Return self + other."""
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
-    var digits = precision()
+    ref cell = state()[]
+    var digits = cell.precision
     var result: BigDecimal
     if is_same_type(other, py_self):
         result = self_ptr[].add(
@@ -435,7 +506,7 @@ def bigdecimal_add(
         except:
             return not_implemented()
         result = self_ptr[].add(converted, digits)
-    return PythonObject(alloc=result^)
+    return new_decimal(cell, result^)
 
 
 def bigdecimal_radd(
@@ -449,7 +520,7 @@ def bigdecimal_radd(
     except:
         return not_implemented()
     var result = converted.add(self_ptr[], precision())
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_sub(
@@ -457,7 +528,8 @@ def bigdecimal_sub(
 ) raises -> PythonObject:
     """Return self - other."""
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
-    var digits = precision()
+    ref cell = state()[]
+    var digits = cell.precision
     var result: BigDecimal
     if is_same_type(other, py_self):
         result = self_ptr[].subtract(
@@ -470,7 +542,7 @@ def bigdecimal_sub(
         except:
             return not_implemented()
         result = self_ptr[].subtract(converted, digits)
-    return PythonObject(alloc=result^)
+    return new_decimal(cell, result^)
 
 
 def bigdecimal_rsub(
@@ -484,7 +556,7 @@ def bigdecimal_rsub(
     except:
         return not_implemented()
     var result = converted.subtract(self_ptr[], precision())
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_mul(
@@ -492,7 +564,8 @@ def bigdecimal_mul(
 ) raises -> PythonObject:
     """Return self * other."""
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
-    var digits = precision()
+    ref cell = state()[]
+    var digits = cell.precision
     var result: BigDecimal
     if is_same_type(other, py_self):
         result = self_ptr[].multiply(
@@ -505,7 +578,7 @@ def bigdecimal_mul(
         except:
             return not_implemented()
         result = self_ptr[].multiply(converted, digits)
-    return PythonObject(alloc=result^)
+    return new_decimal(cell, result^)
 
 
 def bigdecimal_rmul(
@@ -519,7 +592,7 @@ def bigdecimal_rmul(
     except:
         return not_implemented()
     var result = converted.multiply(self_ptr[], precision())
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_div(
@@ -527,7 +600,8 @@ def bigdecimal_div(
 ) raises -> PythonObject:
     """Return self / other."""
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
-    var digits = precision()
+    ref cell = state()[]
+    var digits = cell.precision
     var result: BigDecimal
     if is_same_type(other, py_self):
         try:
@@ -546,7 +620,7 @@ def bigdecimal_div(
             result = self_ptr[].true_divide(converted, digits)
         except:
             return raise_as["PyExc_ZeroDivisionError"]("division by zero")
-    return PythonObject(alloc=result^)
+    return new_decimal(cell, result^)
 
 
 def bigdecimal_rdiv(
@@ -564,7 +638,7 @@ def bigdecimal_rdiv(
         result = converted.true_divide(self_ptr[], precision())
     except:
         return raise_as["PyExc_ZeroDivisionError"]("division by zero")
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_floordiv(
@@ -585,7 +659,7 @@ def bigdecimal_floordiv(
         result = self_ptr[] // converted
     except:
         return raise_as["PyExc_ZeroDivisionError"]("division by zero")
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_rfloordiv(
@@ -603,7 +677,7 @@ def bigdecimal_rfloordiv(
         result = converted // self_ptr[]
     except:
         return raise_as["PyExc_ZeroDivisionError"]("division by zero")
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_mod(
@@ -624,7 +698,7 @@ def bigdecimal_mod(
         result = self_ptr[] % converted
     except:
         return raise_as["PyExc_ZeroDivisionError"]("division by zero")
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_rmod(
@@ -642,7 +716,7 @@ def bigdecimal_rmod(
         result = converted % self_ptr[]
     except:
         return raise_as["PyExc_ZeroDivisionError"]("division by zero")
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_divmod(
@@ -702,7 +776,7 @@ def bigdecimal_pow(
         except:
             return not_implemented()
     var result = self_ptr[].power(converted, precision())
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_rpow(
@@ -716,7 +790,7 @@ def bigdecimal_rpow(
     except:
         return not_implemented()
     var result = converted.power(self_ptr[], precision())
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_neg(py_self: PythonObject) raises -> PythonObject:
@@ -726,7 +800,7 @@ def bigdecimal_neg(py_self: PythonObject) raises -> PythonObject:
     """
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
     var result = (-(self_ptr[])).round_to_precision(precision())
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_pos(py_self: PythonObject) raises -> PythonObject:
@@ -738,14 +812,14 @@ def bigdecimal_pos(py_self: PythonObject) raises -> PythonObject:
     """
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
     var result = self_ptr[].round_to_precision(precision())
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_abs(py_self: PythonObject) raises -> PythonObject:
     """Return abs(self)."""
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
     var result = abs(self_ptr[])
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_bool(py_self: PythonObject) raises -> PythonObject:
@@ -758,7 +832,7 @@ def bigdecimal_copy(py_self: PythonObject) raises -> PythonObject:
     """Return a copy of self. Backs `copy.copy()` and `copy.deepcopy()`."""
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
     var result = self_ptr[].copy()
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -829,7 +903,7 @@ def bigdecimal_round(
         var builtins = Python.import_module("builtins")
         return builtins.int(PythonObject(value.to_string(force_plain=True)))
     var result = self_ptr[].round(Int(py=args[0]), RoundingMode.ROUND_HALF_EVEN)
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -946,7 +1020,7 @@ def bigdecimal_compare(
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
     var converted = as_decimal(py_self, other)
     var result = BigDecimal(Int(self_ptr[].compare(converted)))
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_max(
@@ -955,7 +1029,7 @@ def bigdecimal_max(
     """Return the larger of self and other."""
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
     var result = self_ptr[].max(as_decimal(py_self, other))
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_min(
@@ -964,7 +1038,7 @@ def bigdecimal_min(
     """Return the smaller of self and other."""
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
     var result = self_ptr[].min(as_decimal(py_self, other))
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -986,7 +1060,7 @@ def bigdecimal_quantize(
     var template = as_decimal(py_self, args[0])
     var mode = rounding_from(arg_or_none(args, 1))
     var result = self_ptr[].quantize(template, mode)
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_sqrt(
@@ -999,7 +1073,7 @@ def bigdecimal_sqrt(
         result = self_ptr[].sqrt(precision())
     except:
         return raise_as["PyExc_ValueError"]("square root of a negative value")
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_exp(
@@ -1012,7 +1086,7 @@ def bigdecimal_exp(
         result = self_ptr[].exp(precision())
     except:
         return raise_as["PyExc_ValueError"]("exp() is undefined for this value")
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_ln(
@@ -1025,7 +1099,7 @@ def bigdecimal_ln(
         result = self_ptr[].ln(precision())
     except:
         return raise_as["PyExc_ValueError"]("ln() needs a positive value")
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_log10(
@@ -1038,7 +1112,7 @@ def bigdecimal_log10(
         result = self_ptr[].log10(precision())
     except:
         return raise_as["PyExc_ValueError"]("log10() needs a positive value")
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_to_integral(
@@ -1048,7 +1122,7 @@ def bigdecimal_to_integral(
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
     var mode = rounding_from(arg_or_none(args, 0))
     var result = self_ptr[].round(0, mode)
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_fma(
@@ -1059,14 +1133,14 @@ def bigdecimal_fma(
     var result = self_ptr[].fma(
         as_decimal(py_self, other), as_decimal(py_self, third)
     )
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_normalize(py_self: PythonObject) raises -> PythonObject:
     """Return self with trailing zeros of the coefficient removed."""
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
     var result = self_ptr[].normalize()
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_adjusted(py_self: PythonObject) raises -> PythonObject:
@@ -1082,21 +1156,21 @@ def bigdecimal_scaleb(
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
     var builtins = Python.import_module("builtins")
     var result = self_ptr[].scaleb(Int(py=builtins.int(other)))
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_copy_abs(py_self: PythonObject) raises -> PythonObject:
     """Return self with the sign cleared, without rounding."""
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
     var result = self_ptr[].copy_abs()
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_copy_negate(py_self: PythonObject) raises -> PythonObject:
     """Return self with the sign flipped, without rounding."""
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
     var result = self_ptr[].copy_negate()
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_copy_sign(
@@ -1105,7 +1179,7 @@ def bigdecimal_copy_sign(
     """Return self with the sign of other."""
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
     var result = self_ptr[].copy_sign(as_decimal(py_self, other))
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_same_quantum(
@@ -1152,17 +1226,17 @@ def bigdecimal_canonical(py_self: PythonObject) raises -> PythonObject:
     """Return self, which is already canonical."""
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
     var result = self_ptr[].copy()
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_conjugate(py_self: PythonObject) raises -> PythonObject:
     """Return self. Present because `decimal` has it, for the numeric tower."""
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
     var result = self_ptr[].copy()
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)
 
 
 def bigdecimal_radix(py_self: PythonObject) raises -> PythonObject:
     """Return 10, the base this type works in."""
     var result = BigDecimal(10)
-    return PythonObject(alloc=result^)
+    return new_decimal(state()[], result^)

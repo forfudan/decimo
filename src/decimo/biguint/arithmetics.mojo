@@ -2577,10 +2577,37 @@ def floor_divide(x: BigUInt, y: BigUInt) raises -> BigUInt:
         # Use `floor_divide_by_uint64` as it is more efficient
         return floor_divide_by_uint64(x, y.to_uint64_with_first_2_words())
 
-    # CASE: y is triple or quadruple words
-    if len(y.words) <= 4:
-        # Use `floor_divide_by_uint128` as it is more efficient
-        return floor_divide_by_uint128(x, y.to_uint128_with_first_4_words())
+    # CASE: y is three or four words
+    #
+    # There used to be a `floor_divide_by_uint128` shortcut here, on the
+    # reasoning that a divisor small enough to sit in one machine word should
+    # be divided by in one machine word. It measured the other way round.
+    # arm64 has no 128-bit divide, let alone a 256-bit one, so every step of
+    # that routine called a software division helper -- and the routine is
+    # written in `UInt256`, so it called the 256-bit one, twice per group of
+    # four dividend words. Knuth D over base-10^9 words does the same job with
+    # 64-bit divisions the hardware actually has.
+    #
+    # Measured, best of nine, this file at 6e63828 (ns):
+    #
+    #   divisor   dividend    uint128    Knuth D
+    #   3 words    6 words        306        239
+    #   3 words   10 words        669        292
+    #   3 words   16 words       1034        399
+    #   4 words   10 words        393        273
+    #   4 words   16 words        834        389
+    #
+    # The gap widens with the dividend, because the shortcut's cost is linear
+    # in dividend words with a large constant while Knuth D's is linear with a
+    # small one. It won only at two sizes, both of them a dividend that is an
+    # exact multiple of four words, where the routine skips its leading-group
+    # branch -- not a reason to keep a slower path for every other size.
+    #
+    # One- and two-word divisors keep their shortcuts: `UInt32` and `UInt64`
+    # division *is* a hardware instruction, and those paths win by 2-3x.
+    #
+    # The shortcut was correct, not just slow -- `x == q * y + r` with
+    # `r < y` was checked across 555 operand shapes before it was removed.
 
     # CASE: Divisor is 10^n
     if y.is_power_of_10():
@@ -2724,15 +2751,8 @@ def floor_divide_modulo_schoolbook(
         overwrite_with_uint64(remainder, word_remainder)
         return result^
 
-    # CASE: y is triple or quadruple words
-    if len(y.words) <= 4:
-        # Use `floor_divide_modulo_by_uint128` as it is more efficient
-        var word_remainder = UInt128(0)
-        var result = floor_divide_modulo_by_uint128(
-            x, y.to_uint128_with_first_4_words(), word_remainder
-        )
-        overwrite_with_uint128(remainder, word_remainder)
-        return result^
+    # See `floor_divide()` for why three- and four-word divisors no longer
+    # take a `UInt128` shortcut here.
 
     # ===----------------------------------------------=== #
     # ALL OTHER CASES
@@ -4501,14 +4521,8 @@ def floor_divide_modulo(
         overwrite_with_uint64(remainder, double_remainder)
         return quotient^
 
-    # CASE: y is triple or quadruple words
-    if len(y.words) <= 4:
-        var quad_remainder = UInt128(0)
-        var quotient = floor_divide_modulo_by_uint128(
-            x, y.to_uint128_with_first_4_words(), quad_remainder
-        )
-        overwrite_with_uint128(remainder, quad_remainder)
-        return quotient^
+    # See `floor_divide()` for why three- and four-word divisors no longer
+    # take a `UInt128` shortcut here.
 
     # CASE: Divisor is 10^n
     if y.is_power_of_10():
