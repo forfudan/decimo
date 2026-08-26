@@ -29,6 +29,7 @@ from std.ffi import _Global
 from std.python import Python, PythonObject
 from std.python._cpython import (
     PyObjectPtr,
+    Py_ssize_t,
     PyType_Slot,
     PyTypeObject,
     PyTypeObjectPtr,
@@ -207,20 +208,27 @@ def PyInit__decimo() abi("C") -> PythonObject:
             .def_method[bigdecimal_trunc]("__trunc__")
             .def_method[bigdecimal_floor]("__floor__")
             .def_method[bigdecimal_ceil]("__ceil__")
-            .def_py_method[bigdecimal_round]("__round__")
             .def_method[bigdecimal_components]("_components")
+            # Methods with an optional argument. `def_py_method` would put
+            # them on `METH_VARARGS`, which packs a tuple for every call --
+            # measured at 44 ns, most of what `quantize` costs.
+            .def_py_c_method[static_method=False](fastcall_quantize, "quantize")
+            .def_py_c_method[static_method=False](fastcall_sqrt, "sqrt")
+            .def_py_c_method[static_method=False](fastcall_exp, "exp")
+            .def_py_c_method[static_method=False](fastcall_ln, "ln")
+            .def_py_c_method[static_method=False](fastcall_log10, "log10")
+            .def_py_c_method[static_method=False](
+                fastcall_to_integral, "to_integral_value"
+            )
+            .def_py_c_method[static_method=False](
+                fastcall_to_integral, "to_integral"
+            )
+            .def_py_c_method[static_method=False](fastcall_round, "__round__")
             # --- comparison ---------------------------------------------
             .def_method[bigdecimal_compare]("compare")
             .def_method[bigdecimal_max]("max")
             .def_method[bigdecimal_min]("min")
             # --- the `decimal.Decimal` method surface -------------------
-            .def_py_method[bigdecimal_quantize]("quantize")
-            .def_py_method[bigdecimal_sqrt]("sqrt")
-            .def_py_method[bigdecimal_exp]("exp")
-            .def_py_method[bigdecimal_ln]("ln")
-            .def_py_method[bigdecimal_log10]("log10")
-            .def_py_method[bigdecimal_to_integral]("to_integral_value")
-            .def_py_method[bigdecimal_to_integral]("to_integral")
             .def_method[bigdecimal_fma]("fma")
             .def_method[bigdecimal_normalize]("normalize")
             .def_method[bigdecimal_adjusted]("adjusted")
@@ -1528,3 +1536,206 @@ def _compare_answer(order: Int8, operation: c_int) raises -> PyObjectPtr:
     else:
         answer = order >= 0
     return PythonObject(answer).steal_data()
+
+
+# ===----------------------------------------------------------------------=== #
+# Methods with an optional argument
+#
+# `def_py_method` registers a method as `METH_VARARGS`, and CPython packs the
+# arguments into a tuple before every such call. Measured on `quantize`, that
+# tuple cost 44 ns of a 106 ns call -- and the same method on the fastcall
+# path came out at 61 ns, against 61 for CPython's own.
+#
+# `def_method` uses fastcall but fixes the arity, which does not fit a method
+# whose second argument is optional. So these are written against the
+# vectorcall signature directly: CPython hands over a plain array of arguments
+# and a count, and the count is what says whether the optional one is there.
+#
+# `decimal` gives most of these a trailing `context` argument. We accept it
+# positionally and ignore it: there is one context here, and it is the one the
+# value was going to use anyway.
+# ===----------------------------------------------------------------------=== #
+
+
+@always_inline
+def _fastcall_argument(
+    args: Pointer[PyObjectPtr, MutUntrackedOrigin],
+    nargs: Py_ssize_t,
+    index: Int,
+) -> PythonObject:
+    """The argument at `index`, or `None` when it was not given."""
+    if Int(nargs) > index:
+        return PythonObject(from_borrowed=args[unsafe_offset=index])
+    return PythonObject(None)
+
+
+def fastcall_quantize(
+    py_self: PyObjectPtr,
+    args: Pointer[PyObjectPtr, MutUntrackedOrigin],
+    nargs: Py_ssize_t,
+) abi("C") -> PyObjectPtr:
+    """`quantize(exp, rounding=None)`."""
+    try:
+        if Int(nargs) < 1:
+            raise Error("quantize() takes at least 1 argument (0 given)")
+        ref cell = state()[]
+        ref cpython = Python().cpython()
+        var given = args[unsafe_offset=0]
+
+        # The template is nearly always another decimal, and reading it in
+        # place keeps its reference count out of it.
+        var template: BigDecimal
+        if cpython.Py_TYPE(given) == decimal_type_ptr(cell):
+            template = _value_of(given)[].copy()
+        else:
+            template = convert_operand(PythonObject(from_borrowed=given))
+
+        var mode = RoundingMode.ROUND_HALF_EVEN
+        if Int(nargs) > 1:
+            mode = rounding_from(
+                PythonObject(from_borrowed=args[unsafe_offset=1])
+            )
+
+        var result = _value_of(py_self)[].quantize(template, mode)
+        return new_decimal(cell, result^).steal_data()
+    except e:
+        return raise_python_exception(e)
+
+
+def _fastcall_to_precision[
+    operation: def(BigDecimal, Int) thin raises -> BigDecimal,
+    message: StaticString,
+](
+    py_self: PyObjectPtr,
+    args: Pointer[PyObjectPtr, MutUntrackedOrigin],
+    nargs: Py_ssize_t,
+) abi("C") -> PyObjectPtr:
+    """The shared body of `sqrt`, `exp`, `ln` and `log10`.
+
+    Each takes an optional context that we ignore, and each can be handed a
+    value outside its domain, which is a `ValueError` rather than a bare
+    `Exception`.
+    """
+    try:
+        ref cell = state()[]
+        var result: BigDecimal
+        try:
+            result = operation(_value_of(py_self)[], cell.precision)
+        except:
+            return _raise_value_error(message)
+        return new_decimal(cell, result^).steal_data()
+    except e:
+        return raise_python_exception(e)
+
+
+def _raise_value_error(message: StaticString) raises -> PyObjectPtr:
+    """Fail with a `ValueError` carrying a message a caller can read."""
+    return raise_python_exception(
+        Error(message), ExceptionType("PyExc_ValueError")
+    )
+
+
+def _do_sqrt(value: BigDecimal, digits: Int) raises -> BigDecimal:
+    return value.sqrt(digits)
+
+
+def _do_exp(value: BigDecimal, digits: Int) raises -> BigDecimal:
+    return value.exp(digits)
+
+
+def _do_ln(value: BigDecimal, digits: Int) raises -> BigDecimal:
+    return value.ln(digits)
+
+
+def _do_log10(value: BigDecimal, digits: Int) raises -> BigDecimal:
+    return value.log10(digits)
+
+
+def fastcall_sqrt(
+    py_self: PyObjectPtr,
+    args: Pointer[PyObjectPtr, MutUntrackedOrigin],
+    nargs: Py_ssize_t,
+) abi("C") -> PyObjectPtr:
+    """`sqrt(context=None)`, to the context precision."""
+    return _fastcall_to_precision[_do_sqrt, "square root of a negative value"](
+        py_self, args, nargs
+    )
+
+
+def fastcall_exp(
+    py_self: PyObjectPtr,
+    args: Pointer[PyObjectPtr, MutUntrackedOrigin],
+    nargs: Py_ssize_t,
+) abi("C") -> PyObjectPtr:
+    """`exp(context=None)`, to the context precision."""
+    return _fastcall_to_precision[_do_exp, "exp() is undefined for this value"](
+        py_self, args, nargs
+    )
+
+
+def fastcall_ln(
+    py_self: PyObjectPtr,
+    args: Pointer[PyObjectPtr, MutUntrackedOrigin],
+    nargs: Py_ssize_t,
+) abi("C") -> PyObjectPtr:
+    """`ln(context=None)`, to the context precision."""
+    return _fastcall_to_precision[_do_ln, "ln() needs a positive value"](
+        py_self, args, nargs
+    )
+
+
+def fastcall_log10(
+    py_self: PyObjectPtr,
+    args: Pointer[PyObjectPtr, MutUntrackedOrigin],
+    nargs: Py_ssize_t,
+) abi("C") -> PyObjectPtr:
+    """`log10(context=None)`, to the context precision."""
+    return _fastcall_to_precision[_do_log10, "log10() needs a positive value"](
+        py_self, args, nargs
+    )
+
+
+def fastcall_to_integral(
+    py_self: PyObjectPtr,
+    args: Pointer[PyObjectPtr, MutUntrackedOrigin],
+    nargs: Py_ssize_t,
+) abi("C") -> PyObjectPtr:
+    """`to_integral_value(rounding=None)`."""
+    try:
+        var mode = RoundingMode.ROUND_HALF_EVEN
+        if Int(nargs) > 0:
+            mode = rounding_from(
+                PythonObject(from_borrowed=args[unsafe_offset=0])
+            )
+        var result = _value_of(py_self)[].round(0, mode)
+        return new_decimal(state()[], result^).steal_data()
+    except e:
+        return raise_python_exception(e)
+
+
+def fastcall_round(
+    py_self: PyObjectPtr,
+    args: Pointer[PyObjectPtr, MutUntrackedOrigin],
+    nargs: Py_ssize_t,
+) abi("C") -> PyObjectPtr:
+    """`round(self)` and `round(self, ndigits)`.
+
+    With no argument Python expects an `int` back, and with one it expects the
+    same type as the input -- which is what `decimal` does too.
+    """
+    try:
+        var places = _fastcall_argument(args, nargs, 0)
+        if places is PythonObject(None):
+            var value = _value_of(py_self)[].round(
+                0, RoundingMode.ROUND_HALF_EVEN
+            )
+            var builtins = Python.import_module("builtins")
+            return builtins.int(
+                PythonObject(value.to_string(force_plain=True))
+            ).steal_data()
+        var result = _value_of(py_self)[].round(
+            Int(py=places), RoundingMode.ROUND_HALF_EVEN
+        )
+        return new_decimal(state()[], result^).steal_data()
+    except e:
+        return raise_python_exception(e)
