@@ -3988,14 +3988,15 @@ def floor_divide_slices_two_by_one(
         )
         # If n is odd or less than the cutoff, use the schoolbook division
         # algorithm.
+        #
+        # Schoolbook already has the remainder when it finishes -- Knuth D
+        # leaves it in the running window -- so take it. This used to call the
+        # quotient-only form and then rebuild the remainder as
+        # `a - q * b`, which is a full n-by-n multiply per base case, and the
+        # recursion reaches this base case many times.
         var a_slice = BigUInt.from_slice(a, bounds_a)
         var b_slice = BigUInt.from_slice(b, bounds_b)
-        var q = floor_divide_schoolbook(a_slice, b_slice)
-        # r = a_slice - q * b_slice
-        # We use inplace subtraction to avoid copying
-        a_slice -= multiply_slices(q, b, (0, len(q.words)), bounds_b)
-        remainder = a_slice^
-        return q^
+        return floor_divide_modulo_schoolbook(a_slice, b_slice, remainder)
 
     elif (bounds_a[0] + n + n // 2 >= bounds_a[1]) or a.is_zero_in_bounds(
         bounds=(bounds_a[0] + n + n // 2, bounds_a[1])
