@@ -46,38 +46,48 @@ comptime CUTOFF_TOOM3 = 768
 
 NOTE: Karatsuba is used for `CUTOFF_KARATSUBA < max_words <= CUTOFF_TOOM3`.
 """
-comptime CUTOFF_BURNIKEL_ZIEGLER = 32
+comptime CUTOFF_BURNIKEL_ZIEGLER = 48
 """The cutoff number of words for using Burnikel-Ziegler division.
 
 A divisor of this many words or fewer is divided by the schoolbook method
-outright. Measured 20260826: schoolbook still wins there, by 5% at 28 words
-and 10% at 25, so this is not the same number as the block size below.
+outright, so this is not the same number as the block size below.
+
+Raised from 32 on 20260826, after the Knuth D multiply-subtract step was taken
+off its carry chain. A 2.9x faster schoolbook stays ahead of the recursion for
+longer. Measured on 2n-by-n, best of nine:
+
+| divisor words | schoolbook | best Burnikel-Ziegler |
+| ------------- | ---------- | --------------------- |
+| 32            | 1972 ns    | 2662 ns               |
+| 48            | 3920 ns    | 4537 ns               |
+| 64            | 6515 ns    | 6480 ns               |
+
+64 is where they meet, so the crossover sits just below it.
 """
-comptime BURNIKEL_ZIEGLER_BLOCK_WORDS = 24
+comptime BURNIKEL_ZIEGLER_BLOCK_WORDS = 32
 """The block size the Burnikel-Ziegler recursion bottoms out at.
 
 Once the recursion reaches a divisor of at most this many words it calls
 schoolbook, so this sets the size of the base case rather than deciding
 whether the algorithm runs at all.
 
-Retuned 20260826, from 32, after the word kernels were vectorized: a faster
-base case moves the crossover, and the base case is where the schoolbook
-division sits. The recursion halves the divisor until a block fits, so what
-this really picks is a base size, and only a few distinct ones are reachable
-for a given divisor. Alternating the two settings inside one run:
+Retuned twice on 20260826, and the second time undid the first. Vectorizing
+the word kernels made the base case cheaper, which favoured a smaller one, and
+32 went to 24. Then taking the multiply-subtract off its carry chain made the
+base case cheaper again -- and that favoured a *larger* one, because what the
+base case now costs is closer to what the recursion's own bookkeeping costs.
+Back to 32:
 
-| dividend / divisor | at 32     | at 24     |         |
-| ------------------ | --------- | --------- | ------- |
-| 128 / 64           | 11872 ns  | 9793 ns   | 1.21x   |
-| 224 / 112          | 21329 ns  | 19717 ns  | 1.08x   |
-| 226 / 112          | 23322 ns  | 21931 ns  | 1.06x   |
-| 448 / 224          | 49108 ns  | 45381 ns  | 1.08x   |
-| 2224 / 1112        | 404480 ns | 397150 ns | 1.02x   |
+| divisor words | at 24     | at 32     | at 48     |
+| ------------- | --------- | --------- | --------- |
+| 112           | 15648 ns  | 13059 ns  | 13255 ns  |
+| 224           | 37998 ns  | 32644 ns  | 32742 ns  |
+| 448           | 99662 ns  | 88127 ns  | 88516 ns  |
+| 1112          | 341317 ns | 341121 ns | 325803 ns |
 
-Never worse, and most of the gain sits between 500 and 2000 digits. A block of
-16 or 20 is close but loses at the large end; 8 and 12 are clearly worse, so
-the base case wants to be big enough to amortize the recursion rather than as
-small as possible.
+48 is 4.5% better at 1112 words and within 1.5% everywhere else, so it is the
+other defensible choice; 32 is picked because the 1000-digit case, which is
+the 112-word row, is the one being tuned for.
 """
 # ===----------------------------------------------------------------------=== #
 # List of functions in this module:
@@ -479,6 +489,83 @@ def _subtract_words_borrow_select[
         rp[unsafe_offset=i] = word_if_1 if borrow != 0 else word_if_0
         borrow = borrow_if_1 if borrow != 0 else borrow_if_0
     return borrow
+
+
+def _multiply_subtract_words[
+    o: Origin[mut=True],
+    o_y: Origin[mut=False],
+](
+    rp: Pointer[UInt32, o],
+    yp: Pointer[UInt32, o_y],
+    n_words: Int,
+    quotient: UInt32,
+) -> UInt64:
+    """`r[0..n) -= quotient * y[0..n)`, returning what to take off `r[n]`.
+
+    The multiply-subtract step of Knuth D, and the whole of its inner cost.
+
+    Written the obvious way, `product = quotient * y[i] + carry` puts a
+    64-bit division by `BASE` on the loop-carried chain: carry feeds the
+    product, the product feeds the division, the division feeds the next
+    carry, about nine cycles a word. But `quotient * y[i]` does not actually
+    depend on the carry. Computing all of those first, with their base-10^9
+    splits, lets them pipeline, and leaves only a combine-and-subtract walk
+    running serially -- two chains, both an add and a compare deep.
+
+    Worth 2.1x at 112 words and 2.3x at 224, which is where the schoolbook
+    base case of Burnikel-Ziegler sits.
+
+    Args:
+        rp: The running remainder window, `n_words` words.
+        yp: The divisor, `n_words` words.
+        n_words: Number of words in the divisor.
+        quotient: The estimated quotient word, below `BASE`.
+
+    Returns:
+        The amount to subtract from the word above the window.
+    """
+    comptime BASE_64 = UInt64(BigUInt.BASE)
+    var highs = InlineArray[UInt32, WORDS_PER_CARRY_BLOCK](uninitialized=True)
+    var lows = InlineArray[UInt32, WORDS_PER_CARRY_BLOCK](uninitialized=True)
+    var hp = highs.unsafe_ptr()
+    var lp = lows.unsafe_ptr()
+
+    var quotient_64 = UInt64(quotient)
+    var pending_high = UInt32(0)
+    var borrow = UInt32(0)
+    var start = 0
+    while start < n_words:
+        var end = min(start + WORDS_PER_CARRY_BLOCK, n_words)
+
+        # Independent of the carry, so these pipeline.
+        for i in range(start, end):
+            var product = quotient_64 * UInt64(yp[unsafe_offset=i])
+            var high = product // BASE_64
+            hp[unsafe_offset=i - start] = UInt32(high)
+            lp[unsafe_offset=i - start] = UInt32(product - high * BASE_64)
+
+        # The serial part: carry the product's high word into the next digit,
+        # then take that digit out of the running remainder.
+        for i in range(start, end):
+            var digit = lp[unsafe_offset=i - start] + pending_high
+            pending_high = hp[unsafe_offset=i - start]
+            if digit >= BigUInt.BASE:
+                digit -= BigUInt.BASE
+                pending_high += 1
+            var biased = (
+                UInt64(rp[unsafe_offset=i])
+                + BASE_64
+                - UInt64(digit)
+                - UInt64(borrow)
+            )
+            borrow = UInt32(biased < BASE_64)
+            rp[unsafe_offset=i] = UInt32(
+                biased - BASE_64 + UInt64(borrow) * BASE_64
+            )
+
+        start = end
+
+    return UInt64(pending_high) + UInt64(borrow)
 
 
 @always_inline
@@ -2686,20 +2773,9 @@ def floor_divide_modulo_schoolbook(
         # later - the same trick the base-2^32 Knuth D uses. Biasing the
         # difference by BASE keeps it non-negative, so the borrow is just
         # whether the biased value stayed below BASE.
-        var carry = UInt64(0)
-        for i in range(n):
-            var product = (
-                UInt64(quotient) * UInt64(y_ptr[unsafe_offset=i]) + carry
-            )
-            carry = product // BASE
-            var biased = (
-                UInt64(r_ptr[unsafe_offset=index_of_word + i])
-                + BASE
-                - (product % BASE)
-            )
-            r_ptr[unsafe_offset=index_of_word + i] = UInt32(biased % BASE)
-            carry += 1 - biased // BASE
-
+        var carry = _multiply_subtract_words(
+            r_ptr.unsafe_offset(index_of_word), y_ptr, n, quotient
+        )
         # The estimate can be one or two too large. Each add-back returns the
         # divisor to the window and buys back one unit of the quotient.
         var top = index_of_word + n
