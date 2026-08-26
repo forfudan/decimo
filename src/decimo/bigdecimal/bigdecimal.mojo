@@ -3011,9 +3011,12 @@ struct BigDecimal(
             number_of_digits_to_remove % 9
         )
 
-        var words = List[UInt32](
-            self.coefficient.words[number_of_words_to_remove:]
-        )
+        var kept = len(self.coefficient.words) - number_of_words_to_remove
+        var words = List[UInt32](capacity=kept)
+        for index in range(
+            number_of_words_to_remove, len(self.coefficient.words)
+        ):
+            words.append(self.coefficient.words[index])
         var coefficient = BigUInt(raw_words=words^)
 
         if number_of_remaining_digits_to_remove == 0:

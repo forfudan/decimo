@@ -37,6 +37,7 @@ from decimo.errors import (
     ZeroDivisionError,
 )
 import decimo.str as decimo_str
+from decimo.biguint.wordlist import WordList, INLINE_WORDS
 from decimo.rounding_mode import RoundingMode
 from decimo.traits import Rootable
 from decimo.utility import unsigned_counterpart
@@ -86,7 +87,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     so it costs nothing in a normal build and fires in the test suite.
     """
 
-    var words: List[UInt32]
+    var words: WordList
     """A list of UInt32 words representing the coefficient.
 
     Little-endian: `words[0]` is the least significant base-billion digit.
@@ -188,7 +189,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         The length of the words list is 0. So you cannot access the words using
         indexing until you append the words to the list.
         """
-        self.words = List[UInt32](capacity=uninitialized_capacity)
+        self.words = WordList(capacity=uninitialized_capacity)
 
     def __init__(out self, *, unsafe_uninit_length: Int):
         """Creates an uninitialized BigUInt with a given length.
@@ -208,7 +209,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         Because the list is uninitialized, the elements may be any value at the
         time of initialization. You can access the words using indexing.
         """
-        self.words = List[UInt32](unsafe_uninit_length=unsafe_uninit_length)
+        self.words = WordList(unsafe_uninit_length=unsafe_uninit_length)
 
     def __init__(
         out self, *, unsafe_uninit_length: Int, unsafe_uninit_capacity: Int
@@ -241,7 +242,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             " is below length ",
             unsafe_uninit_length,
         )
-        self.words = List[UInt32](capacity=unsafe_uninit_capacity)
+        self.words = WordList(capacity=unsafe_uninit_capacity)
         self.words.resize(unsafe_uninit_length=unsafe_uninit_length)
 
     def __init__(out self, var words: List[UInt32]) raises:
@@ -291,9 +292,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         list of words, you can use `BigUInt(*, uninitialized_capacity=0)`.
         """
         if len(raw_words) == 0:
-            self.words = [UInt32(0)]
+            self.words = WordList(UInt32(0), __list_literal__=None)
         else:
-            self.words = raw_words^
+            self.words = WordList(raw_words^)
 
     @implicit
     def __init__(
@@ -2161,11 +2162,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         else:
             # Least significant word is 1 and there are other words
             # Check if all other words are zero
-            for i in self.words[1:]:
-                if i != 0:
+            for index in range(1, len(self.words)):
+                if self.words[index] != 0:
                     return False
-            else:
-                return True
+            return True
 
     @always_inline
     def is_two(self) -> Bool:
@@ -2176,8 +2176,8 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         """
         if len(self.words) != 2:
             return False
-        for i in self.words[1:]:
-            if i != 0:
+        for index in range(1, len(self.words)):
+            if self.words[index] != 0:
                 return False
         return True
 

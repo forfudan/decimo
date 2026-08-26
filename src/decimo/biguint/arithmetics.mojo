@@ -23,6 +23,7 @@ from std import math
 from std.memory import unsafe_memcpy, unsafe_memset_zero
 
 from decimo.biguint.biguint import BigUInt
+from decimo.biguint.wordlist import WordList
 import decimo.biguint.comparison as biguint_comparison
 from decimo.errors import (
     OverflowError,
@@ -2115,7 +2116,7 @@ def multiply_by_uint32_le_4_inplace(mut x: BigUInt, y: UInt32):
 
     # y is 0, x becomes 1
     if y == 0:
-        x.words = [UInt32(0)]
+        x.words = WordList(UInt32(0), __list_literal__=None)
         return
 
     # y is 1, x stays the same
