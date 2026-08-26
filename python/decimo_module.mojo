@@ -27,12 +27,21 @@
 
 from std.ffi import _Global
 from std.python import Python, PythonObject
-from std.python._cpython import PyObjectPtr, PyTypeObject, PyTypeObjectPtr
+from std.python._cpython import (
+    PyObjectPtr,
+    PyType_Slot,
+    PyTypeObject,
+    PyTypeObjectPtr,
+    _fn_ptr_as_opaque,
+)
+from std.ffi import c_int
 from std.python.bindings import (
     ExceptionType,
+    PyMojoObject,
     PythonModuleBuilder,
     _set_python_error,
     lookup_py_type_object,
+    raise_python_exception,
 )
 from std.python.python_object import _unsafe_alloc_init
 from std.os import abort
@@ -148,23 +157,38 @@ def PyInit__decimo() abi("C") -> PythonObject:
         m.def_function[get_precision]("get_precision")
         m.def_function[set_precision]("set_precision")
 
+        ref decimal_builder = m.add_type[BigDecimal]("Decimal")
+
+        # `+`, `-`, `*` and `/` are real C slots rather than dictionary
+        # entries. See the note above `slot_add` for why that is worth doing.
+        decimal_builder._insert_slot(
+            PyType_Slot(c_int(Py_nb_add), _fn_ptr_as_opaque(slot_add))
+        )
+        decimal_builder._insert_slot(
+            PyType_Slot(c_int(Py_nb_subtract), _fn_ptr_as_opaque(slot_subtract))
+        )
+        decimal_builder._insert_slot(
+            PyType_Slot(c_int(Py_nb_multiply), _fn_ptr_as_opaque(slot_multiply))
+        )
+        decimal_builder._insert_slot(
+            PyType_Slot(
+                c_int(Py_nb_true_divide), _fn_ptr_as_opaque(slot_true_divide)
+            )
+        )
+        decimal_builder._insert_slot(
+            PyType_Slot(
+                c_int(Py_tp_richcompare), _fn_ptr_as_opaque(slot_richcompare)
+            )
+        )
+
         _ = (
-            m.add_type[BigDecimal]("Decimal")
-            .def_py_init[bigdecimal_py_init]()
+            decimal_builder.def_py_init[bigdecimal_py_init]()
             # --- text ---------------------------------------------------
             .def_method[bigdecimal_to_string]("to_string")
             .def_method[bigdecimal_to_repr]("to_repr")
             .def_method[bigdecimal_to_eng_string]("to_eng_string")
             .def_method[bigdecimal_to_string]("__str__")
             # --- arithmetic ---------------------------------------------
-            .def_method[bigdecimal_add]("__add__")
-            .def_method[bigdecimal_radd]("__radd__")
-            .def_method[bigdecimal_sub]("__sub__")
-            .def_method[bigdecimal_rsub]("__rsub__")
-            .def_method[bigdecimal_mul]("__mul__")
-            .def_method[bigdecimal_rmul]("__rmul__")
-            .def_method[bigdecimal_div]("__truediv__")
-            .def_method[bigdecimal_rdiv]("__rtruediv__")
             .def_method[bigdecimal_floordiv]("__floordiv__")
             .def_method[bigdecimal_rfloordiv]("__rfloordiv__")
             .def_method[bigdecimal_mod]("__mod__")
@@ -186,12 +210,6 @@ def PyInit__decimo() abi("C") -> PythonObject:
             .def_py_method[bigdecimal_round]("__round__")
             .def_method[bigdecimal_components]("_components")
             # --- comparison ---------------------------------------------
-            .def_method[bigdecimal_eq]("__eq__")
-            .def_method[bigdecimal_ne]("__ne__")
-            .def_method[bigdecimal_lt]("__lt__")
-            .def_method[bigdecimal_le]("__le__")
-            .def_method[bigdecimal_gt]("__gt__")
-            .def_method[bigdecimal_ge]("__ge__")
             .def_method[bigdecimal_compare]("compare")
             .def_method[bigdecimal_max]("max")
             .def_method[bigdecimal_min]("min")
@@ -1240,3 +1258,226 @@ def bigdecimal_radix(py_self: PythonObject) raises -> PythonObject:
     """Return 10, the base this type works in."""
     var result = BigDecimal(10)
     return new_decimal(state()[], result^)
+
+
+# ===----------------------------------------------------------------------=== #
+# Operator slots
+#
+# `a + b` on a type built from a spec used to reach us the long way round:
+# CPython's `nb_add` held `slot_nb_add`, which looks `__add__` up in the type
+# dictionary and calls it as a Python method. Measured, that made the operator
+# *more* expensive than calling the method directly -- 69.7 ns against
+# 64.8 -- where for CPython's own `decimal` the operator is 18 ns *cheaper*
+# than the method, because its `nb_add` is a plain C function pointer.
+#
+# So these are plain C function pointers, handed to `PyType_FromSpec` the way
+# any C extension would. Nothing here writes into a type object; the slots go
+# in the spec and CPython builds the type from them, which is also what gives
+# us `__add__` in the dictionary for free.
+#
+# One consequence worth knowing: a binary slot is not one-sided. CPython calls
+# `nb_add(v, w)` with the decimal on either side, which is why each of these
+# begins by working out which operand is ours. That is also what makes
+# `__radd__` unnecessary -- the reflected case is the same function.
+# ===----------------------------------------------------------------------=== #
+
+comptime Py_nb_add = 7
+comptime Py_nb_multiply = 29
+comptime Py_nb_subtract = 36
+comptime Py_nb_true_divide = 37
+comptime Py_tp_richcompare = 67
+
+comptime binaryfunc = def(PyObjectPtr, PyObjectPtr) thin abi("C") -> PyObjectPtr
+comptime richcmpfunc = def(PyObjectPtr, PyObjectPtr, c_int) thin abi(
+    "C"
+) -> PyObjectPtr
+
+comptime Py_LT = 0
+comptime Py_LE = 1
+comptime Py_EQ = 2
+comptime Py_NE = 3
+comptime Py_GT = 4
+comptime Py_GE = 5
+
+
+@always_inline
+def _value_of(obj: PyObjectPtr) -> Pointer[BigDecimal, MutUntrackedOrigin]:
+    """The `BigDecimal` inside a decimal object, without touching its refcount.
+
+    `PythonObject(from_borrowed=)` fetches the CPython handle and increments a
+    reference count, and undoes both when it goes out of scope. For a slot that
+    is four global fetches and four refcount operations per operation, to
+    borrow something CPython already guarantees stays alive for the length of
+    the call. So read the value where it lies: a `PyMojoObject` is the object
+    header followed by the Mojo value.
+
+    Only call this after checking the type.
+    """
+    ref mojo_object = obj.bitcast[PyMojoObject[BigDecimal]]().value()[]
+    return Pointer(to=mojo_object.mojo_value).unsafe_origin_cast[
+        MutUntrackedOrigin
+    ]()
+
+
+def _not_implemented_ptr() raises -> PyObjectPtr:
+    """A new reference to `NotImplemented`, which a slot must return owned."""
+    return not_implemented().steal_data()
+
+
+def _binary_slot[
+    operation: def(BigDecimal, BigDecimal, Int) thin raises -> BigDecimal,
+    is_division: Bool = False,
+](left: PyObjectPtr, right: PyObjectPtr) abi("C") -> PyObjectPtr:
+    """The shared body of every arithmetic slot.
+
+    Works out which side is the decimal, converts the other, and applies
+    `operation` in the order the expression was written.
+
+    Parameters:
+        operation: What to do with the two values.
+        is_division: Whether a failure means division by zero. The slot has to
+            name the exception itself; letting the error escape would surface
+            as a bare `Exception`, which no `except ZeroDivisionError` catches.
+    """
+    try:
+        ref cell = state()[]
+        ref cpython = Python().cpython()
+        var ours = decimal_type_ptr(cell)
+        var left_is_ours = cpython.Py_TYPE(left) == ours
+        var right_is_ours = cpython.Py_TYPE(right) == ours
+
+        var result: BigDecimal
+        if left_is_ours and right_is_ours:
+            # The common case: no reference counting, no conversion.
+            result = operation(
+                _value_of(left)[], _value_of(right)[], cell.precision
+            )
+        elif left_is_ours:
+            var converted: BigDecimal
+            try:
+                converted = convert_operand(PythonObject(from_borrowed=right))
+            except:
+                return _not_implemented_ptr()
+            result = operation(_value_of(left)[], converted, cell.precision)
+        elif right_is_ours:
+            var converted: BigDecimal
+            try:
+                converted = convert_operand(PythonObject(from_borrowed=left))
+            except:
+                return _not_implemented_ptr()
+            result = operation(converted, _value_of(right)[], cell.precision)
+        else:
+            return _not_implemented_ptr()
+
+        return new_decimal(cell, result^).steal_data()
+    except e:
+        comptime if is_division:
+            return raise_python_exception(
+                Error("division by zero"),
+                ExceptionType("PyExc_ZeroDivisionError"),
+            )
+        return raise_python_exception(e)
+
+
+def _do_add(x: BigDecimal, y: BigDecimal, digits: Int) raises -> BigDecimal:
+    return x.add(y, digits)
+
+
+def _do_subtract(
+    x: BigDecimal, y: BigDecimal, digits: Int
+) raises -> BigDecimal:
+    return x.subtract(y, digits)
+
+
+def _do_multiply(
+    x: BigDecimal, y: BigDecimal, digits: Int
+) raises -> BigDecimal:
+    return x.multiply(y, digits)
+
+
+def _do_divide(x: BigDecimal, y: BigDecimal, digits: Int) raises -> BigDecimal:
+    return x.true_divide(y, digits)
+
+
+def slot_add(left: PyObjectPtr, right: PyObjectPtr) abi("C") -> PyObjectPtr:
+    """`nb_add`."""
+    return _binary_slot[_do_add](left, right)
+
+
+def slot_subtract(
+    left: PyObjectPtr, right: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`nb_subtract`."""
+    return _binary_slot[_do_subtract](left, right)
+
+
+def slot_multiply(
+    left: PyObjectPtr, right: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`nb_multiply`."""
+    return _binary_slot[_do_multiply](left, right)
+
+
+def slot_true_divide(
+    left: PyObjectPtr, right: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`nb_true_divide`. Division by zero is a `ZeroDivisionError`."""
+    return _binary_slot[_do_divide, is_division=True](left, right)
+
+
+def slot_richcompare(
+    left: PyObjectPtr, right: PyObjectPtr, operation: c_int
+) abi("C") -> PyObjectPtr:
+    """`tp_richcompare`: all six comparisons, one C function.
+
+    Same reasoning as the arithmetic slots. Comparison is the cheapest thing
+    the type does -- there is no result to allocate -- so the dispatch was
+    most of its cost.
+
+    A comparison accepts a `float` where arithmetic does not, because
+    comparing is not the operation that quietly loses the distinction between
+    a binary and a decimal fraction.
+    """
+    try:
+        ref cell = state()[]
+        ref cpython = Python().cpython()
+        var ours = decimal_type_ptr(cell)
+        var left_is_ours = cpython.Py_TYPE(left) == ours
+        var right_is_ours = cpython.Py_TYPE(right) == ours
+
+        var order: Int8
+        if left_is_ours and right_is_ours:
+            order = _value_of(left)[].compare(_value_of(right)[])
+        elif left_is_ours:
+            var converted: BigDecimal
+            try:
+                converted = convert_comparand(PythonObject(from_borrowed=right))
+            except:
+                return _not_implemented_ptr()
+            order = _value_of(left)[].compare(converted)
+        elif right_is_ours:
+            var converted: BigDecimal
+            try:
+                converted = convert_comparand(PythonObject(from_borrowed=left))
+            except:
+                return _not_implemented_ptr()
+            order = converted.compare(_value_of(right)[])
+        else:
+            return _not_implemented_ptr()
+
+        var answer: Bool
+        if operation == Py_LT:
+            answer = order < 0
+        elif operation == Py_LE:
+            answer = order <= 0
+        elif operation == Py_EQ:
+            answer = order == 0
+        elif operation == Py_NE:
+            answer = order != 0
+        elif operation == Py_GT:
+            answer = order > 0
+        else:
+            answer = order >= 0
+        return PythonObject(answer).steal_data()
+    except e:
+        return raise_python_exception(e)
