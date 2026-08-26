@@ -192,6 +192,10 @@ the 112-word row, is the one being tuned for.
 # kernels chew through between carry walks.
 comptime WORDS_PER_VECTOR = 8
 comptime WORDS_PER_CARRY_BLOCK = 64
+comptime WORDS_PER_NARROW_COLUMN = 16
+"""Up to this many words in the shorter operand, a Comba column is summed in
+`UInt64` rather than `UInt128`. See `multiply_slices_schoolbook`."""
+
 comptime WORDS_PER_SHORT_DIVISOR = 8
 """Below this many divisor words, Knuth D's multiply-subtract stays in one
 pass. See `_multiply_subtract_words`."""
@@ -1554,6 +1558,49 @@ def multiply_slices_schoolbook(
     var x_words_ptr = x.words.unsafe_ptr()
     var y_words_ptr = y.words.unsafe_ptr()
     var result_ptr = result.words.unsafe_ptr()
+
+    # A narrow column can be summed in 64 bits, and usually can. Each partial
+    # product is below `(10^9)^2 < 10^18`, so a column of at most sixteen of
+    # them, plus a carry that settles around `16 * 10^9`, stays under
+    # `1.61 * 10^19` -- comfortably inside `UInt64`'s `1.8446 * 10^19`.
+    #
+    # Worth doing because the accumulator is not where the time went: emitting
+    # a word costs a `% BASE` and a `// BASE`, and in `UInt128` those are a
+    # 128-bit divide by a constant. At four words by four -- a 28-digit
+    # multiplication, the commonest one there is -- that was most of the cost.
+    if min(n_words_x_slice, n_words_y_slice) <= WORDS_PER_NARROW_COLUMN:
+        comptime BASE_64 = UInt64(BigUInt.BASE)
+        var narrow_carry = UInt64(0)
+        for k in range(result_length - 1):
+            var i_low = 0 if k < n_words_y_slice else k - n_words_y_slice + 1
+            var i_high = k if k < n_words_x_slice else n_words_x_slice - 1
+
+            var sum0 = narrow_carry
+            var sum1 = UInt64(0)
+            var i = i_low
+            while i + 1 <= i_high:
+                sum0 += UInt64(x_words_ptr[unsafe_offset=start_x + i]) * UInt64(
+                    y_words_ptr[unsafe_offset=start_y + k - i]
+                )
+                sum1 += UInt64(
+                    x_words_ptr[unsafe_offset=start_x + i + 1]
+                ) * UInt64(y_words_ptr[unsafe_offset=start_y + k - i - 1])
+                i += 2
+            if i <= i_high:
+                sum0 += UInt64(x_words_ptr[unsafe_offset=start_x + i]) * UInt64(
+                    y_words_ptr[unsafe_offset=start_y + k - i]
+                )
+
+            var narrow_column = sum0 + sum1
+            var high = narrow_column // BASE_64
+            result_ptr[unsafe_offset=k] = UInt32(narrow_column - high * BASE_64)
+            narrow_carry = high
+
+        result_ptr[unsafe_offset=result_length - 1] = UInt32(
+            narrow_carry % BASE_64
+        )
+        result.remove_leading_empty_words()
+        return result^
 
     # `carry` is the part of the column sum at or above 10^9, which belongs to
     # the next column. The last column leaves it holding the top word.
