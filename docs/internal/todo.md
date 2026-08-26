@@ -6,7 +6,7 @@ enhancement plans in `docs/plans/` carry the detail and the reasoning, and
 ranking. There were four such lists in August 2026 and they had already
 drifted apart, so there is now one.
 
-Last reviewed 2026-08-26.
+Last reviewed 2026-08-27.
 
 ## The goal for this round: met (20260826)
 
@@ -42,27 +42,43 @@ of a 1000-digit division is recursion bookkeeping rather than arithmetic. See
 
 Ordered by value, judged against the two goals in `internal_notes.md`.
 
-1. **Python binding overhead.** Half done (20260826): `decimo.Decimal` is now
-   the Mojo type itself rather than a Python class wrapping one, and the type
-   check on `self` is gone. `a + b` went 215 ns to 107 ns, `a * b` 215 to 114.
-   The wrapper class, not the operator slots, was where the time was — see
-   `internal_notes.md`. What is left is the 28 ns result allocation, which
-   needs the bindings to embed the value in the PyObject instead of allocating
-   it separately; that is not something this side can do today.
+1. **Python binding overhead.** Now the top item by a wide margin, and it has
+   a number to beat. `decimo.Decimal` is a drop-in replacement for `decimal`
+   as of 20260827, so the two can be timed on the same source file
+   (`python/benchmarks/compare.py`), and CPython's `decimal` wins everything
+   below about 500 digits:
+
+   | | decimo | decimal | |
+   |---|---|---|---|
+   | `a + b`, 9 digits | 141 ns | 33 ns | 4.3x slower |
+   | `a / b`, 9 digits | 241 ns | 56 ns | 4.3x slower |
+   | four ops, 1000 digits | 4.75 us | 5.85 us | **1.23x faster** |
+
+   The arithmetic is not the problem: at 9 digits the Mojo addition is 47 ns
+   and libmpdec's is comparable. The problem is that a call costs ~110 ns
+   before any arithmetic happens -- roughly 25 ns to enter and leave Mojo,
+   ~22 ns to reach the operand, 14 ns to read the context precision, and
+   28 ns to allocate the result. CPython's `_decimal` does the whole
+   operation in 33 ns because the value lives inside the PyObject and small
+   coefficients need no second allocation.
+
+   So the fix is item 6 below plus a way to embed the value in the PyObject
+   rather than allocating it separately. That second half needs something
+   from the Mojo bindings that does not exist today.
    See `docs/plans/mojo4py.md`.
-2. **`divide`.** The free part is done (20260826): division hands back the
-   remainder it already computed, so `true_divide_general()` reads exactness
-   off it instead of building a product, and `%` no longer recomputes it.
-   Divide is 1.23-1.32x faster from 10^4 digits up and no longer loses at any
-   size we measure. What is left is Newton reciprocal division, which is also
-   worth ~115 ms of `pi(10^6)`. See `bigint_enhancement.md` T-D4 and
-   `bigdecimal_enhancement.md` T-D3.
+
+2. **`divide`.** Newton reciprocal division, which is also worth ~115 ms of
+   `pi(10^6)`. See `bigint_enhancement.md` T-D4 and
+   `bigdecimal_enhancement.md` T-D3. The free part was done 20260826:
+   division hands back the remainder it already computed, so
+   `true_divide_general()` reads exactness off it instead of building a
+   product, and `%` no longer recomputes it.
 3. **The last 12 ns of `subtract` at 1000 digits.** Diagnosed (20260826) and
    no longer a loop problem: the add and subtract kernels time the same. Two
    things are left. `subtract` is `raises` where `add` is not, so every caller
    pays the error path on the hot path. And `BigDecimal.subtract` compares the
    two coefficients to pick the larger, then calls a `BigUInt.subtract` that
-   compares them again in order to decide whether to raise — a non-raising
+   compares them again in order to decide whether to raise -- a non-raising
    `subtract_no_check()` that trusts an ordering the caller has already
    established would drop both.
 4. **`subtract_inplace()`** builds a negated copy of its right operand to flip
@@ -72,21 +88,32 @@ Ordered by value, judged against the two goals in `internal_notes.md`.
    Needed for goal 1: `pi(10^6)` at 1.2x of mpmath+GMP wants roughly 2.5x here
    on top of item 2.
 6. **Inline storage (SBO)** for one or two words in `BigUInt`, worth about
-   33 ns of a 44 ns operation. Deliberately after items 1 and 2: there is no
-   point removing a 33 ns allocation underneath a 110 ns wrapper.
+   33 ns of a 44 ns operation. Half of item 1's remaining gap.
 7. **`from_string`** at ~95 ns, roughly three allocations, never investigated.
-8. ~~**`floor_divide()` 2n-by-n scaling** in `BigUInt`~~ — answered, see the
+8. **A cheaper read of the context precision.** `std.ffi._Global` costs 14 ns
+   per call, because `KGEN_CompilerRT_GetOrCreateGlobal` hashes the name every
+   time. `get_or_create_indexed_ptr()` skips the hash but wants one of a small
+   set of reserved indices, and squatting on one in a published package would
+   collide with whatever the stdlib puts there next. Left alone deliberately.
+9. ~~**`floor_divide()` 2n-by-n scaling** in `BigUInt`~~ — answered, see the
    note below.
 
 ## Blocked on the language
 
 Nothing to do here until Mojo grows the feature.
 
-- [ ] When Mojo supports **global variables**, implement a type `Context` and a
-      global variable `context` for the `Decimal` class to store the precision
-      of the decimal number and other configurations. This will allow users to
-      set the precision globally, rather than having to set it for each function
-      of the `Decimal` class.
+- [x] (20260827) ~~When Mojo supports **global variables**~~ — **no longer
+      blocked.** `std.ffi._Global` gives a pointer to one heap cell that
+      outlives the call, which is a global by another name; the stdlib uses it
+      for the Python runtime handle and the random state. `decimo.Decimal` in
+      Python now has a real `getcontext().prec` built on it, and every operator
+      reads it. Reading costs 14 ns, measured.
+
+      What is *not* done is a `Context` in the Mojo library itself. The Mojo
+      API stays explicit on purpose — every operation takes its precision as an
+      argument, the way MPFR does — so the context lives in the Python binding,
+      where the `decimal` API asks for it. See `docs/plans/api_roadmap.md`
+      Part 0. If a Mojo-side context is ever wanted, `_Global` is how.
 
 - [ ] When Mojo supports **enum types**, implement an enum type for the rounding
       mode.
@@ -126,6 +153,38 @@ Nothing to do here until Mojo grows the feature.
 ## Done
 
 Kept as a record; the detail is in the plans.
+
+- [x] (20260827) **`decimo.Decimal` is a drop-in replacement for `decimal`.**
+      Context, hashing, `//` `%` `divmod` `**`, `int`/`float`/`round`/`floor`/
+      `ceil`/`trunc`, `quantize`, `sqrt`/`exp`/`ln`/`log10`, `as_tuple`,
+      `as_integer_ratio`, `format`, `copy`, `pickle`, and `ZeroDivisionError`
+      where a program expects it. `python/benchmarks/compare.py` runs the same
+      source file under both libraries and checks every answer matches.
+
+      Three real differences turned up on the way and were fixed in the Mojo
+      core, not papered over in the binding:
+
+      1. Rounding that carried into a new leading digit kept one significant
+         digit too many: at precision 5, `0.99999999 + 0` gave `1.00000`
+         instead of `1.0000`. `add`, `subtract`, `multiply` and the two
+         in-place forms now pass `remove_extra_digit_due_to_rounding=True`,
+         which the division and exponential paths were already doing.
+      2. `to_eng_string()` stripped trailing zeros and forced an exponent
+         where CPython prints plainly. It now matches CPython on every case
+         tried: engineering notation changes only the *choice* of exponent.
+      3. Unary `+` did not round. In `decimal` it does, and `+value` is the
+         standard way to bring a wide intermediate back to the working
+         precision — the `pi` benchmark depends on it. Added
+         `BigDecimal.round_to_precision(precision)` for this.
+
+- [x] (20260827) **A self-contained wheel.** `pixi run release` builds it,
+      `--testpypi` / `--pypi` upload it. The extension loads three Mojo
+      runtime libraries through an `@rpath` pointing into the local pixi
+      environment, so they are copied in beside it and the paths rewritten to
+      `@loader_path`; about 1.6 MB. Editing a Mach-O file invalidates its
+      signature and macOS answers that with SIGKILL and no message, so each
+      touched file is re-signed ad-hoc. Verified by installing the wheel into
+      a venv built from a Homebrew Python with pixi nowhere in sight.
 
 - [x] (20260825) Use debug mode to check for unnecessary zero words before all
       arithmetic operations. `BigUInt.assert_invariant()` and

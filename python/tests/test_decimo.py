@@ -3,8 +3,11 @@
 Cross-validates against Python's standard library decimal.Decimal where applicable.
 """
 
+import copy
 import decimal
+import math
 import operator
+import pickle
 from pathlib import Path
 import sys
 
@@ -139,7 +142,7 @@ assert "__add__" in type(decimo.Decimal("1")).__dict__
 print("[PASS] Decimal is the native type and carries its own operators")
 
 # --- repr keeps its Decimal(...) form ---
-assert repr(decimo.Decimal("1.5")) == 'Decimal("1.5")', repr(decimo.Decimal("1.5"))
+assert repr(decimo.Decimal("1.5")) == "Decimal('1.5')", repr(decimo.Decimal("1.5"))
 print("[PASS] repr")
 
 # --- Mixed operands, both directions (cross-validated) ---
@@ -260,15 +263,227 @@ print("[PASS] bool (cross-validated with stdlib decimal)")
 assert str(+decimo.Decimal("1.5")) == "1.5"
 print("[PASS] unary plus")
 
-# --- Unhashable, because __eq__ is defined and no matching __hash__ is ---
+# --- Hashing agrees with int, float and stdlib decimal ---
+for v in [
+    "0",
+    "-0",
+    "1",
+    "2",
+    "1.0",
+    "1.5",
+    "-1.5",
+    "100",
+    "1E+2",
+    "0.1",
+    "12345678901234567890.5",
+    "-7",
+]:
+    assert hash(decimo.Decimal(v)) == hash(decimal.Decimal(v)), v
+assert hash(decimo.Decimal("2")) == hash(2) == hash(2.0)
+assert hash(decimo.Decimal("1.5")) == hash(1.5)
+assert hash(decimo.Decimal("1")) == hash(decimo.Decimal("1.0"))
+assert len({decimo.Decimal("1"), decimo.Decimal("1.0"), 1}) == 1
+print("[PASS] hash agrees with int, float and stdlib decimal")
+
+# --- Precision comes from the context, as it does in decimal ---
+for prec in (5, 28, 50, 200):
+    decimo.getcontext().prec = prec
+    decimal.getcontext().prec = prec
+    assert decimo.getcontext().prec == prec
+    for a, b in [("1", "7"), ("2", "3"), ("355", "113")]:
+        assert str(decimo.Decimal(a) / decimo.Decimal(b)) == str(
+            decimal.Decimal(a) / decimal.Decimal(b)
+        ), (prec, a, b)
+decimo.getcontext().prec = 28
+decimal.getcontext().prec = 28
+print("[PASS] getcontext().prec drives the arithmetic")
+
+# --- localcontext restores the precision on the way out ---
+with decimo.localcontext() as context:
+    context.prec = 60
+    wide = str(decimo.Decimal(1) / decimo.Decimal(3))
+assert len(wide) == 62, wide  # "0." plus 60 digits
+assert decimo.getcontext().prec == 28
+narrow = str(decimo.Decimal(1) / decimo.Decimal(3))
+assert len(narrow) == 30, narrow
+print("[PASS] localcontext restores the precision")
+
+# --- Unary plus and minus round to the context precision, as in decimal ---
+with decimo.localcontext() as context:
+    context.prec = 5
+    decimal.getcontext().prec = 5
+    for v in ["1.2345678", "-1.2345678", "0.99999999"]:
+        assert str(+decimo.Decimal(v)) == str(+decimal.Decimal(v)), v
+        assert str(-decimo.Decimal(v)) == str(-decimal.Decimal(v)), v
+decimal.getcontext().prec = 28
+print("[PASS] unary plus and minus round to the context precision")
+
+# --- The remaining operators (cross-validated) ---
+for a, b in [
+    ("7", "2"),
+    ("-7", "2"),
+    ("7", "-2"),
+    ("7.5", "2.5"),
+    ("100", "7"),
+    ("1", "3"),
+]:
+    for name, op in [("//", operator.floordiv), ("%", operator.mod)]:
+        check_arith(name, a, b, op)
+    assert str(divmod(decimo.Decimal(a), decimo.Decimal(b))) == str(
+        divmod(decimal.Decimal(a), decimal.Decimal(b))
+    ), (a, b)
+for a, b in [("2", "10"), ("3", "4"), ("1.5", "3"), ("10", "-2")]:
+    check_arith("**", a, b, operator.pow)
+print("[PASS] floordiv, mod, divmod and pow (cross-validated)")
+
+# --- Conversion to the built-in numeric types ---
+for v in ["0", "2.7", "-2.7", "2.5", "3.5", "-0.5", "12345678901234567890.9", "1E+3"]:
+    assert int(decimo.Decimal(v)) == int(decimal.Decimal(v)), v
+    assert float(decimo.Decimal(v)) == float(decimal.Decimal(v)), v
+    assert round(decimo.Decimal(v)) == round(decimal.Decimal(v)), v
+    assert math.floor(decimo.Decimal(v)) == math.floor(decimal.Decimal(v)), v
+    assert math.ceil(decimo.Decimal(v)) == math.ceil(decimal.Decimal(v)), v
+    assert math.trunc(decimo.Decimal(v)) == math.trunc(decimal.Decimal(v)), v
+for v, places in [("2.675", 2), ("1.2345", 3), ("123.456", -1), ("-2.5", 0)]:
+    assert str(round(decimo.Decimal(v), places)) == str(
+        round(decimal.Decimal(v), places)
+    ), (v, places)
+# int() must not be capped at 64 bits the way Mojo's own Int is.
+big = "9" * 40
+assert int(decimo.Decimal(big)) == int(big)
+print("[PASS] int, float, round, floor, ceil, trunc (cross-validated)")
+
+# --- The named methods of decimal.Decimal ---
+for v, template in [
+    ("1.2345", "0.01"),
+    ("19.999", "0.01"),
+    ("1.5", "1"),
+    ("-0.5", "0.1"),
+]:
+    assert str(decimo.Decimal(v).quantize(decimo.Decimal(template))) == str(
+        decimal.Decimal(v).quantize(decimal.Decimal(template))
+    ), (v, template)
+for v in ["1.2300", "100", "0", "-1.50"]:
+    assert str(decimo.Decimal(v).normalize()) == str(decimal.Decimal(v).normalize()), v
+    assert decimo.Decimal(v).as_tuple() == decimal.Decimal(v).as_tuple(), v
+    assert decimo.Decimal(v).is_zero() == decimal.Decimal(v).is_zero(), v
+    assert decimo.Decimal(v).is_signed() == decimal.Decimal(v).is_signed(), v
+    assert decimo.Decimal(v).adjusted() == decimal.Decimal(v).adjusted(), v
+    assert str(decimo.Decimal(v).to_eng_string()) == str(
+        decimal.Decimal(v).to_eng_string()
+    ), v
+assert str(decimo.Decimal("2").fma(3, 4)) == str(decimal.Decimal("2").fma(3, 4))
+assert str(decimo.Decimal("1").compare(2)) == str(decimal.Decimal("1").compare(2))
+assert str(decimo.Decimal("3").max(2)) == str(decimal.Decimal("3").max(2))
+assert str(decimo.Decimal("3").min(2)) == str(decimal.Decimal("3").min(2))
+assert str(decimo.Decimal("1.5").scaleb(3)) == str(decimal.Decimal("1.5").scaleb(3))
+assert str(decimo.Decimal("-1").copy_abs()) == "1"
+assert str(decimo.Decimal("1").copy_negate()) == "-1"
+assert str(decimo.Decimal("1").copy_sign(decimo.Decimal("-2"))) == "-1"
+assert decimo.Decimal("1.50").same_quantum(decimo.Decimal("2.34")) is True
+assert decimo.Decimal("1.5").same_quantum(decimo.Decimal("2.34")) is False
+print("[PASS] quantize, normalize, as_tuple, fma and friends")
+
+# --- as_integer_ratio ---
+for v in ["0.25", "-0.25", "0", "1E+3", "1.5", "100"]:
+    assert (
+        decimo.Decimal(v).as_integer_ratio() == decimal.Decimal(v).as_integer_ratio()
+    ), v
+print("[PASS] as_integer_ratio")
+
+# --- sqrt, exp, ln and log10 follow the context precision ---
+for prec in (10, 28, 60):
+    decimo.getcontext().prec = prec
+    decimal.getcontext().prec = prec
+    for v in ["2", "10", "1.5"]:
+        for method in ("sqrt", "exp", "ln", "log10"):
+            ours = str(getattr(decimo.Decimal(v), method)())
+            theirs = str(getattr(decimal.Decimal(v), method)())
+            # The last digit may differ: decimo rounds the true value, and
+            # `decimal` is only required to be correctly rounded for sqrt.
+            assert ours[: prec - 1] == theirs[: prec - 1], (
+                prec,
+                v,
+                method,
+                ours,
+                theirs,
+            )
+decimo.getcontext().prec = 28
+decimal.getcontext().prec = 28
+print("[PASS] sqrt, exp, ln and log10 at three precisions")
+
+# --- Errors have the types a decimal program expects ---
+for expression in ["a / b", "a // b", "a % b", "divmod(a, b)"]:
+    try:
+        eval(expression, {"a": decimo.Decimal(1), "b": decimo.Decimal(0)})
+    except ZeroDivisionError:
+        pass
+    else:
+        raise AssertionError(f"{expression} should raise ZeroDivisionError")
 try:
-    hash(decimo.Decimal("1"))
-except TypeError:
-    print("[PASS] Decimal is unhashable (as before the native-type switch)")
+    decimo.Decimal(1) / 0
+except decimo.DivisionByZero:
+    pass
 else:
-    raise AssertionError(
-        "Decimal should be unhashable until __hash__ agrees with __eq__"
+    raise AssertionError("DivisionByZero should catch it too")
+for bad in ["abc", "1.2.3", ""]:
+    try:
+        decimo.Decimal(bad)
+    except decimo.InvalidOperation:
+        pass
+    else:
+        raise AssertionError(f"Decimal({bad!r}) should raise")
+for value, method in [("-2", "sqrt"), ("-1", "ln"), ("0", "log10")]:
+    try:
+        getattr(decimo.Decimal(value), method)()
+    except ValueError:
+        pass
+    else:
+        raise AssertionError(f"{method}({value}) should raise")
+print("[PASS] ZeroDivisionError and ValueError, not a bare Exception")
+
+# --- Rounding modes other than half-even are refused, not faked ---
+try:
+    decimo.getcontext().rounding = decimo.ROUND_FLOOR
+except NotImplementedError:
+    pass
+else:
+    raise AssertionError("a rounding mode we do not have should be refused")
+decimo.getcontext().rounding = decimo.ROUND_HALF_EVEN
+print("[PASS] an unsupported rounding mode is refused, not silently ignored")
+
+# --- copy, deepcopy, pickle and format ---
+original = decimo.Decimal("9.5")
+assert str(copy.copy(original)) == "9.5"
+assert str(copy.deepcopy(original)) == "9.5"
+assert str(pickle.loads(pickle.dumps(original))) == "9.5"
+for v, spec in [
+    ("1234.5", ",.2f"),
+    ("0.125", ".1%"),
+    ("1.5", ""),
+    ("42", ">10"),
+    ("1234567", "e"),
+]:
+    assert format(decimo.Decimal(v), spec) == format(decimal.Decimal(v), spec), (
+        v,
+        spec,
     )
+assert f"{decimo.Decimal('1.5')}" == "1.5"
+print("[PASS] copy, deepcopy, pickle and format")
+
+
+# --- The one program that has to work: the same source, both libraries ---
+def average(mod, values):
+    total = mod.Decimal(0)
+    for value in values:
+        total += mod.Decimal(value)
+    return total / mod.Decimal(len(values))
+
+
+sample = ["1.05", "2.10", "3.15", "0.001", "-4.2"]
+assert str(average(decimo, sample)) == str(average(decimal, sample))
+print("[PASS] the same function run against decimal and decimo agrees")
+
 print()
 
 print("=== All Phase 0 tests passed! ===")

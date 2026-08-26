@@ -27,6 +27,34 @@ should focus only on `BigDecimal` and `BigInt` because they have direct Python
 counterparties. For `BigUInt`, the priority is lower because it is not directly
 exposed to users.
 
+## Part 0: The shape of the API (added 2026-08-27)
+
+Decimo carries two APIs over one engine, and they are meant to stay distinct:
+
+- **The `decimal` layer.** A context holds the working precision, and the
+  operators read it. This is what `decimo.Decimal` gives Python, and the
+  target is exact agreement with `decimal.Decimal` -- same names, same
+  coercion rules, same digits.
+- **The MPFR layer.** Every operation also exists in a form that takes the
+  precision as an argument: `add(other, precision)`, `sqrt(precision)`,
+  `ln(precision)`. No global state, nothing implicit, which is what a static
+  compiled language wants and what MPFR does.
+
+The context layer is built on the precision layer, not beside it: the Python
+binding reads the context once per call and passes the number down. So the
+Mojo API stays explicit, and Python still gets `getcontext().prec`.
+
+Where the two disagree about behaviour, `decimal` wins and the Mojo core moves
+to match -- that is the direction settled on 2026-08-26. Where decimo does
+*more* than `decimal` (unbounded exponents, larger operands, faster
+multiplication), that is an extension, and it goes in the "what does not
+match" list in `python/README.md` rather than being quietly different.
+
+Mojo's lack of global variables used to block a real context. It no longer
+does: `std.ffi._Global` hands out a pointer to one heap cell that outlives the
+call, which is a global by another name, and the Python binding uses it. It
+costs about 14 ns per operation to read, measured.
+
 ## Part I: Cross-Type Consistency Issues
 
 These inconsistencies will confuse users who use both types in the same
@@ -343,31 +371,60 @@ x.is_close(y, rel_tol=BigDecimal("1e-9"))
 
 ## Appendix: Quick Reference — Python `decimal.Decimal` Full API
 
-For tracking against the above:
+Rechecked 2026-08-27 against what `decimo.Decimal` exposes to Python. A method
+counts as done only when the Python test suite compares it to the standard
+library and they agree.
 
 ```txt
-# Python decimal.Decimal methods (3.12)
-# ✓ = implemented, △ = partial/alias only, ✗ = missing
+# ✓ = implemented and cross-checked, △ = present but different, ✗ = missing
 
-✓ __abs__          ✓ __add__          ✓ __bool__         ✓ __ceil__
-✗ __complex__      ✓ __eq__           ✓ __float__        ✓ __floor__
-✓ __floordiv__     ✓ __ge__           ✓ __gt__           ✗ __hash__
-✓ __int__          ✓ __le__           ✓ __lt__           ✓ __mod__
-✓ __mul__          ✓ __ne__           ✓ __neg__          ✓ __pos__
-✓ __pow__          ✓ __radd__         ✓ __repr__         ✓ __rfloordiv__
-✓ __rmod__         ✓ __rmul__         ✓ __round__        ✓ __rpow__
-✓ __rsub__         ✓ __rtruediv__     ✓ __str__          ✓ __sub__
-✓ __truediv__      ✓ __trunc__
-✓ adjusted         ✗ as_integer_ratio ✓ as_tuple         ✗ canonical
-✓ compare          ✗ conjugate        ✓ copy_abs         ✓ copy_negate
-✓ copy_sign        ✓ exp              ✗ fma              ✗ is_canonical
-✗ is_finite        ✓ is_integer       ✗ is_nan           ✗ is_normal
-✗ is_signed        ✗ is_snan          ✗ is_subnormal     ✗ is_qnan
-✓ ln               ✓ log10            ✗ logb             ✗ logical_and
-✗ logical_invert   ✗ logical_or       ✗ logical_xor      ✓ max
-✗ max_mag          ✓ min              ✗ min_mag          ✗ next_minus
-✗ next_plus        ✗ next_toward      ✓ normalize        ✗ number_class
-✓ quantize         ✗ radix            ✗ remainder_near   ✗ rotate
-✓ same_quantum     ✗ scaleb           ✗ shift            ✓ sqrt
-✓ to_eng_string    ✗ to_integral_exact ✗ to_integral_value
+✓ __abs__          ✗ __complex__      ✓ __add__          ✓ __bool__
+✓ __ceil__         ✓ __eq__           ✓ __float__        ✓ __floor__
+✓ __floordiv__     ✓ __format__       ✓ __ge__           ✓ __gt__
+✓ __hash__         ✓ __int__          ✓ __le__           ✓ __lt__
+✓ __mod__          ✓ __mul__          ✓ __ne__           ✓ __neg__
+✓ __pos__          ✓ __pow__          ✓ __radd__         ✓ __reduce__
+✓ __repr__         ✓ __rfloordiv__    ✓ __rmod__         ✓ __rmul__
+✓ __round__        ✓ __rpow__         ✓ __rsub__         ✓ __rtruediv__
+✓ __str__          ✓ __sub__          ✓ __truediv__      ✓ __trunc__
+
+✓ adjusted         ✓ as_integer_ratio ✓ as_tuple         ✓ canonical
+✓ compare          ✓ conjugate        ✓ copy_abs         ✓ copy_negate
+✓ copy_sign        ✓ exp              ✓ fma              ✓ from_float
+✓ is_canonical     △ is_finite        ✓ is_signed        ✓ is_zero
+△ is_infinite      △ is_nan           ✗ is_normal        ✗ is_qnan
+✗ is_snan          ✗ is_subnormal     ✓ ln               ✓ log10
+✗ logb             ✗ logical_and      ✗ logical_invert   ✗ logical_or
+✗ logical_xor      ✓ max              ✗ max_mag          ✓ min
+✗ min_mag          ✗ next_minus       ✗ next_plus        ✗ next_toward
+✓ normalize        ✗ number_class     ✓ quantize         ✓ radix
+✗ remainder_near   ✗ rotate           ✓ same_quantum     ✓ scaleb
+✗ shift            ✓ sqrt             ✓ to_eng_string    ✗ to_integral_exact
+✓ to_integral_value
 ```
+
+The three `△` entries are the non-finite predicates. They answer, but they can
+only ever answer one way: decimo has no NaN and no infinity, so `is_finite()`
+is always True. That is a difference in the number model, not a missing
+method, and it is written down in `python/README.md`.
+
+The `✗` entries fall into two groups. The `logical_*`, `rotate` and `shift`
+family operate on the digit string of a value whose exponent is zero, and are
+rarely used outside conformance tests. `next_plus`, `next_minus`,
+`next_toward`, `number_class`, `is_normal`, `is_subnormal` and the `*_mag`
+pair all need an exponent range (`Emin`/`Emax`) to mean anything, and decimo
+does not have one.
+
+## Appendix B: Context
+
+```txt
+✓ prec             ✓ copy             ✓ clear_flags      ✓ clear_traps
+✓ create_decimal   ✓ create_decimal_from_float
+△ rounding         △ Emin  Emax  capitals  clamp  flags  traps
+✗ the arithmetic methods (ctx.add, ctx.multiply, ...)
+```
+
+`rounding` reads back `ROUND_HALF_EVEN` and refuses any other value rather
+than accepting it and rounding some other way. The rest are stored and
+reported but do not affect a result. There is one context per process, not
+one per thread.

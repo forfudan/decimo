@@ -70,7 +70,7 @@ def add(
             result,
             precision,
             RoundingMode.ROUND_HALF_EVEN,
-            remove_extra_digit_due_to_rounding=False,
+            remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
         return result^
@@ -204,7 +204,7 @@ def subtract(
             result,
             precision,
             RoundingMode.ROUND_HALF_EVEN,
-            remove_extra_digit_due_to_rounding=False,
+            remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
         return result^
@@ -316,7 +316,7 @@ def multiply(
             result,
             precision,
             RoundingMode.ROUND_HALF_EVEN,
-            remove_extra_digit_due_to_rounding=False,
+            remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
 
@@ -357,7 +357,7 @@ def multiply_inplace(
             x1,
             precision,
             RoundingMode.ROUND_HALF_EVEN,
-            remove_extra_digit_due_to_rounding=False,
+            remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
 
@@ -440,7 +440,7 @@ def add_inplace(mut x1: BigDecimal, x2: BigDecimal, precision: Int = 0) raises:
             x1,
             precision,
             RoundingMode.ROUND_HALF_EVEN,
-            remove_extra_digit_due_to_rounding=False,
+            remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
 

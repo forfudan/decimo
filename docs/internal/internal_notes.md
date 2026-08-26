@@ -794,7 +794,69 @@ allocation, 10 ns of type guard. The allocation is the next lever and it needs
 the bindings to embed the value in the PyObject instead of allocating it
 separately, which is not something this side can do today.
 
+### A real context costs 25 ns, and it is worth it (20260827)
+
+Making `decimo.Decimal` a drop-in replacement means `getcontext().prec` has to
+drive the operators, which means every operator reads a number that used to be
+a compile-time constant. Two builds, alternated three times, best of each:
+
+| build                                   | `a + b` | `a / b` |
+| --------------------------------------- | ------- | ------- |
+| `+` operator, precision comptime 28      | 116 ns  | 213 ns  |
+| `.add(other, 28)`, constant folded       | 127 ns  | 230 ns  |
+| `.add(other, precision())`, real context | 141 ns  | 241 ns  |
+
+So ~11 ns for taking the precision as an argument rather than a parameter, and
+~14 ns for reading `std.ffi._Global`. The global read measured 4.8 ns in a
+tight Mojo loop, where the compiler can hoist it; in a real call it is a full
+`KGEN_CompilerRT_GetOrCreateGlobal`, which hashes the name.
+
+Paid without much argument: without a context there is no drop-in replacement,
+and 25 ns of 141 is a smaller thing than the 110 ns of fixed call overhead
+sitting underneath it.
+
+### Where decimo actually stands against CPython's `decimal` (20260827)
+
+Now that the same source file runs under both (`python/benchmarks/compare.py`),
+the comparison is direct rather than inferred:
+
+| | decimo | decimal | |
+| --- | --- | --- | --- |
+| four ops, 28 digits | 347 ns | 73 ns | 4.8x slower |
+| four ops, 200 digits | 593 ns | 385 ns | 1.5x slower |
+| four ops, 1000 digits | 4.75 us | 5.85 us | **1.23x faster** |
+| pi by Machin, 500 digits | 1.20 ms | 528 us | 2.3x slower |
+| sqrt by Newton, 1000 digits | 267 us | 238 us | 1.1x slower |
+
+Worth holding next to `docs/benchmarks.md`, which says decimo beats libmpdec
+at every operation at 1000 digits. Both are true. The Mojo arithmetic is
+competitive or better; the Python call around it is not, and below ~500 digits
+the call is most of the cost. The crossover is where the arithmetic grows past
+the ~110 ns of overhead.
+
+One number in `benchmarks.md` deserves a second look because of this:
+libmpdec's add at 9 digits is recorded there as 46 ns, measured through the C
+harness, while CPython's `decimal` does an entire `a + b` — interpreter,
+allocation and all — in 33 ns. The harness appears to carry ~15 ns of its own.
+Not chased yet; it does not affect any of the large-size comparisons.
+
 ## Traps worth remembering
+
+### Editing a Mach-O file gets the process killed, silently (20260827)
+
+`install_name_tool` invalidates a binary's code signature, and macOS answers an
+invalid signature by killing the process: SIGKILL, exit 137, no exception, no
+message, nothing on stderr. `import decimo` simply produced no output.
+
+The cure is one line — `codesign --force --sign - <file>` after every edit —
+but the diagnosis is the hard part, because the failure looks like nothing at
+all. Worse, the bug hid itself: with the pixi environment present, dyld found
+the runtime libraries through the interpreter's own rpath, so removing the
+vendored copies made the import *start working again*. The only test that means
+anything is a Python from outside the environment; a Homebrew interpreter and a
+fresh venv settled it in one command.
+
+
 
 ### A type built from a spec has empty operator slots
 

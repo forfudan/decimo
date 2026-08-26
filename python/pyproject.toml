@@ -3,7 +3,16 @@ build-backend = "hatchling.build"
 requires = ["hatchling"]
 
 [tool.hatch.build.targets.wheel]
+# `.gitignore` excludes `*.so` and `*.dylib`, and hatchling honours that, so
+# the compiled parts have to be named here or the wheel ships without them.
+artifacts = ["src/decimo/*.so", "src/decimo/*.dylib"]
 packages = ["src/decimo"]
+
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "hatch_build.py"
+
+[tool.hatch.version]
+path = "src/decimo/_version.py"
 
 [project]
 authors = [{name = "ZHU Yuhao (朱宇浩)", email = "dr.yuhao.zhu@outlook.com"}]
@@ -31,7 +40,8 @@ license = {text = "Apache-2.0"}
 name = "decimo"
 readme = "README.md"
 requires-python = ">=3.11"
-version = "0.1.0.dev0"
+# Stamped by `pixi run release`, which writes src/decimo/_version.py.
+dynamic = ["version"]
 
 [project.urls]
 Changelog = "https://github.com/forfudan/decimo/blob/main/docs/changelog.md"
