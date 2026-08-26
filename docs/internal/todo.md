@@ -8,6 +8,32 @@ drifted apart, so there is now one.
 
 Last reviewed 2026-08-26.
 
+## The goal for this round
+
+Beat libmpdec on **every** operation at 1000 digits. Three gaps to close, and
+subtracting the 9-digit time separates the per-call overhead from the loop:
+
+| operation | our loop | their loop | our fixed cost | their fixed cost |
+| --------- | -------- | ---------- | -------------- | ---------------- |
+| add       | 78.6 ns  | 75.6 ns    | 45.4 ns        | 35.6 ns          |
+| subtract  | 69.6 ns  | 49.7 ns    | 46.3 ns        | 32.5 ns          |
+| divide    | 24.4 us  | 14.3 us    | 137 ns         | 51 ns            |
+
+So they are three different problems, and only one of them is an algorithm:
+
+- **add** — **done (20260826).** Vectorising the word kernels a block at a time
+  took it from 108 ns to 85 ns, against libmpdec's 111 ns. See
+  `internal_notes.md`.
+- **subtract** — 107 ns to 94 ns from the same change, against libmpdec's
+  82 ns. The kernel is no longer the problem: add and subtract time the same
+  there. What is left is that `subtract` is `raises` where `add` is not, and
+  that it re-derives an ordering `BigDecimal.subtract` already knows. Items 3
+  and 4, plus item 6.
+- **divide** is a real 1.7x algorithmic gap, and is item 2. The kernel work
+  bought it about 3%.
+
+multiply, round, and parse already win at 1000 digits and need nothing.
+
 ## Now
 
 Ordered by value, judged against the two goals in `internal_notes.md`.
@@ -27,9 +53,14 @@ Ordered by value, judged against the two goals in `internal_notes.md`.
    size we measure. What is left is Newton reciprocal division, which is also
    worth ~115 ms of `pi(10^6)`. See `bigint_enhancement.md` T-D4 and
    `bigdecimal_enhancement.md` T-D3.
-3. **`subtract` at large operands.** 2.1x slower than our own `add` at 100 000
-   and 10^6 digits, where libmpdec's subtract is *faster* than its add. That
-   asymmetry is ours, and it is not diagnosed.
+3. **The last 12 ns of `subtract` at 1000 digits.** Diagnosed (20260826) and
+   no longer a loop problem: the add and subtract kernels time the same. Two
+   things are left. `subtract` is `raises` where `add` is not, so every caller
+   pays the error path on the hot path. And `BigDecimal.subtract` compares the
+   two coefficients to pick the larger, then calls a `BigUInt.subtract` that
+   compares them again in order to decide whether to raise — a non-raising
+   `subtract_no_check()` that trusts an ordering the caller has already
+   established would drop both.
 4. **`subtract_inplace()`** builds a negated copy of its right operand to flip
    a sign: `x -= y` is 5.2x slower than libmpdec in place, where `x += y` is
    1.3x *faster*. See `bigdecimal_enhancement.md` H#21.

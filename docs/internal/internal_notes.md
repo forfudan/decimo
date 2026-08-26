@@ -387,6 +387,78 @@ same algorithm we use, and lands at 262 ms. Both are `O(M(n) log n)` and both
 measure an exponent of 1.24; the difference is entirely the constant, which is
 why every pi record uses Chudnovsky and not AGM.
 
+## Addition and subtraction
+
+### Blocking is what makes the vector pass win (20260826)
+
+The word kernels were a carry-select chain: compute both answers for a word,
+one for carry-in 0 and one for carry-in 1, and let the incoming carry pick.
+That keeps the loop-carried chain down to a select, and it beat the obvious
+add-compare-branch shape. It also beat an earlier two-pass shape — add the
+words in vectors with no carries, then normalise the whole result — which is
+why the header comment said one pass was better than two.
+
+One pass is *not* better than two. What was wrong with the old two-pass version
+was that it ran each pass over the whole operand, so the words went to memory
+and came back. Run the same two passes **a block at a time** and the carry walk
+reads what the vector pass has just written, still in L1. Interleaved, same
+process, same buffers:
+
+| words | add   | subtract |
+| ----- | ----- | -------- |
+| 2-4   | 0.92-1.00x | 0.93-1.00x |
+| 8     | 1.61x | 1.34x    |
+| 32    | 1.87x | 1.70x    |
+| 112   | 2.09x | 1.94x    |
+| 1000  | 2.10x | 2.18x    |
+
+The block is 64 words and the generate flags live in a stack buffer, so there
+is no allocation. Below one vector's worth of words the old chain still wins,
+so it stays as the short path — and as the reference implementation the new one
+is checked against.
+
+Two facts make the carry walk a single pass rather than a cascade. A word that
+generated a carry came out at `BASE - 2` or below, so it cannot generate a
+second one when it takes the carry beneath it; only a word sitting at exactly
+`BASE - 1` can, and that word did not generate. The subtraction side is the
+mirror image: a word that borrowed came out at 1 or above, and only a word left
+at zero can borrow again.
+
+At 1000 digits this moved `BigDecimal`:
+
+| operation | before | after | libmpdec |
+| --------- | ------ | ----- | -------- |
+| add       | 108 ns | 85 ns | 111 ns   |
+| subtract  | 107 ns | 94 ns | 82 ns    |
+
+So add crosses over from losing to winning. Subtract does not, and the reason
+is not the kernel — the two kernels time the same. `subtract` is `raises` where
+`add` is not, and it re-derives an ordering that `BigDecimal.subtract` has
+already established. Multiply is unchanged and divide gains about 3%: at
+1000 digits neither spends much of its time in these loops.
+
+### The 1000-digit deficit was never the loop
+
+Subtracting the 9-digit time from the 1000-digit time separates the per-call
+overhead from the loop, and the two numbers say different things:
+
+| operation | our loop | their loop | our fixed | their fixed |
+| --------- | -------- | ---------- | --------- | ----------- |
+| add       | 78.6 ns  | 75.6 ns    | 45.4 ns   | 35.6 ns     |
+| subtract  | 69.6 ns  | 49.7 ns    | 46.3 ns   | 32.5 ns     |
+| divide    | 24.4 us  | 14.3 us    | 137 ns    | 51 ns       |
+
+Before the change, our add loop already matched libmpdec's *despite* base-10^9
+giving us 2.1x their word count — per word we were twice as fast, and the whole
+1.12x deficit was fixed per-call cost. That is why the kernel work fixed add
+outright and why what is left of subtract is not a loop problem either.
+
+Two things measured along the way turned out not to be where the time was.
+Rounding to the working precision costs 2-4 ns at 1000 digits, not the pass it
+looks like, so libmpdec's add being slower than its own subtract is not
+explained by add needing a rounding pass. And the `BigDecimal` layer over
+`BigUInt` costs 1-2 ns, so the alignment and sign handling are not in the way.
+
 ## Multiplication and the transform
 
 ### Where the NTT actually wins, and where it does not
