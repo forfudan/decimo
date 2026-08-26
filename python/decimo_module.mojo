@@ -317,7 +317,7 @@ def convert_operand(other: PythonObject) raises -> BigDecimal:
     back -- which is why `d + 2` cost twice what `d + d` did.
     """
     ref cpython = Python().cpython()
-    if cpython.PyLong_CheckExact(other._obj_ptr):
+    if cpython.PyLong_Check(other._obj_ptr):
         var value = cpython.PyLong_AsSsize_t(other._obj_ptr)
         # Anything wider than a machine word comes back as -1 with the error
         # indicator set. -1 is also a perfectly good integer, so the indicator
@@ -446,15 +446,41 @@ def bigdecimal_py_init(
         )
     # A float is read exactly, like `decimal.Decimal(float)`. Everything else
     # -- str, int, another Decimal -- goes through its string form.
-    if Python.type(args[0]) is Python.type(PythonObject(Float64(0))):
-        self = from_python_float(args[0])
+    ref cpython = Python().cpython()
+    var argument = args[0]
+
+    # An `int` without the text detour. `Decimal(n)` inside a loop is how
+    # every series in `python/benchmarks/workload.py` is written, and
+    # formatting the integer and parsing it back was most of what it cost.
+    # `PyLong_Check` rather than `CheckExact`, so `Decimal(True)` is
+    # `Decimal("1")` as it is in `decimal`. Formatting the operand as text and
+    # parsing it back gave "True", which parsed as nothing at all.
+    if cpython.PyLong_Check(argument._obj_ptr):
+        var value = cpython.PyLong_AsSsize_t(argument._obj_ptr)
+        if value != -1:
+            self = BigDecimal.from_integral_scalar(Int64(value))
+            return
+        if not cpython.PyErr_Occurred():
+            self = BigDecimal.from_integral_scalar(Int64(-1))
+            return
+        cpython.PyErr_Clear()
+
+    if cpython.PyFloat_CheckExact(argument._obj_ptr):
+        self = BigDecimal.from_float_scalar(
+            Float64(cpython.PyFloat_AsDouble(argument._obj_ptr))
+        )
         return
+
+    if cpython.PyFloat_Check(argument._obj_ptr):
+        self = from_python_float(argument)
+        return
+
     # The Mojo error carries a whole traceback with terminal colours in it,
     # which is not what a Python programmer should see from a constructor.
     try:
-        self = BigDecimal(String(args[0]))
+        self = BigDecimal(String(argument))
     except:
-        raise Error(String("could not parse as a decimal: ", args[0]))
+        raise Error(String("could not parse as a decimal: ", argument))
 
 
 def bigdecimal_to_string(py_self: PythonObject) raises -> PythonObject:
