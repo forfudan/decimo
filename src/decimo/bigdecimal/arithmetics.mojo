@@ -733,12 +733,19 @@ def true_divide_general(
     else:
         coef_x = x.coefficient.copy()
 
-    var coef = coef_x // y.coefficient
+    # The division tells us whether it came out exact: the remainder is zero.
+    # This used to be answered with `coef * y.coefficient == coef_x`, a whole
+    # multiplication at quotient-by-divisor width plus a comparison, for
+    # something the division had already worked out and discarded.
+    #
+    # When `extra_words < 0` we have thrown low-order digits away, so the
+    # question is meaningless and the remainder is not worth keeping.
+    var remainder = BigUInt.zero_with_capacity(4)
+    var coef = biguint_arithmetics.floor_divide_modulo(
+        coef_x, y.coefficient, remainder
+    )
 
-    # Only check for exact division when we haven't truncated the dividend.
-    # When extra_words < 0, we've discarded low-order digits so the exact
-    # check would be meaningless.
-    if extra_words >= 0 and coef * y.coefficient == coef_x:
+    if extra_words >= 0 and remainder.is_zero():
         # The division is exact, so we need to remove the extra trailing zeros
         # so that the final scale is at least (x.scale - y.scale).
         # If x.scale - y.scale < 0, we can safely remove all trailing zeros.

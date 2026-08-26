@@ -9,7 +9,7 @@ wherever both apply.
 """
 
 from std import testing
-from std.testing import assert_equal, assert_raises
+from std.testing import assert_equal, assert_raises, assert_true
 
 from decimo.biguint.biguint import BigUInt
 
@@ -136,6 +136,21 @@ def test_constructor_accepts_all_integral_widths() raises:
     assert_equal(String(BigUInt(Int(12345))), "12345")
     with assert_raises():
         _ = BigUInt(Int(-1))
+
+
+def test_zero_with_capacity() raises:
+    """A reserved zero is an ordinary zero, whatever room it was given.
+
+    The capacity itself is not observable, so what is checked is that the
+    reserved buffer holds a valid single-word zero. Capacities below one are
+    rejected by a `debug_assert`, so they cannot be exercised here — the suite
+    runs with assertions on.
+    """
+    for capacity in [1, 2, 4, 64]:
+        var value = BigUInt.zero_with_capacity(capacity)
+        assert_equal(String(value), "0")
+        assert_equal(len(value.words), 1)
+        assert_true(value.is_zero())
 
 
 def main() raises:

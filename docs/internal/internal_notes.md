@@ -447,6 +447,35 @@ argument above would be worth a couple of percent on `pi`) not worth doing.
 
 ## Division
 
+### The remainder was there all along (20260826)
+
+Every division path computes the remainder on the way to the quotient — the
+scalar paths leave it in a carry, Knuth D in its running window,
+Burnikel-Ziegler carries it from block to block — and every one of them threw
+it away. `floor_modulo()` then rebuilt it as `x - y * quotient`, and
+`true_divide_general()` tested exactness the same way. Handing it back through
+an argument (a `BigUInt` still cannot be moved out of a returned tuple,
+modular/modular#5330) removed both.
+
+| operation                          | before   | after    |
+| ---------------------------------- | -------- | -------- |
+| `BigUInt` modulo, 2000 by 1000 dig. | 60.7 us  | 51.8 us  |
+| `BigDecimal` divide, 10^4 digits    | 539 us   | 409 us   |
+| `BigDecimal` divide, 10^5 digits    | 13.10 ms | 10.62 ms |
+| `BigInt` floor divide, 100 digits   | 451 ns   | 395 ns   |
+
+Two things were not obvious. The exactness multiply was worth 1-2%, not the
+~10% the operand widths suggest — it is a lopsided multiply against a division
+that is already superlinear. And handing the remainder back cost *more* than
+the multiply saved until the buffer stopped being reallocated: the argument
+arrives holding a buffer, and assigning a fresh `BigUInt` to it frees that one
+and allocates another. `overwrite_with_uint32()` and
+`BigUInt.zero_with_capacity()` turn that into a store, which is where the
+short-divisor gain actually came from (9-digit divide 168 ns -> 131 ns).
+
+The same tuple limitation was costing a copy at every level of both
+Burnikel-Ziegler recursions, base-10^9 and base-2^32. Worth ~3% each.
+
 ### Burnikel-Ziegler padding has to survive every halving
 
 Found while making the above change, and worth recording separately because it
@@ -625,6 +654,20 @@ Reading a `UInt32` array two words at a time needs
 explicit alignment the load claims 8-byte alignment, which a slice starting at
 an odd word offset does not have — and the Karatsuba and Toom-3 helpers pass
 exactly those.
+
+### A stray `.mojoc` silently wins over `-I src`
+
+Mojo resolves imports from the compiled file's own directory before the `-I`
+path. A `decimo.mojoc` left in the scratch directory meant a whole afternoon of
+benchmarks measured a package from a previous session: the "before" and "after"
+trees produced identical numbers, and the change looked worthless. The tests
+were unaffected only by luck — they live in `tests/biguint/`, one level below
+the `tests/decimo.mojoc` that would have shadowed them.
+
+Nothing warns. The check that settles it in one command is to append a syntax
+error to the file you think is being read and confirm the build now fails; if
+it still compiles, you are measuring something else. Worth doing before
+believing any benchmark that says a change did nothing.
 
 ### `_data` is not a substitute for `unsafe_ptr()` on an appended list
 

@@ -79,8 +79,8 @@ comptime CUTOFF_BURNIKEL_ZIEGLER = 32
 # floor_divide(x1: BigUInt, x2: BigUInt) -> BigUInt
 # floor_divide_schoolbook(x1: BigUInt, x2: BigUInt) -> BigUInt
 # floor_divide_estimate_quotient(x1: BigUInt, x2: BigUInt, j: Int, m: Int) -> UInt64
-# floor_divide_by_single_word_inplace(x1: BigUInt, x2: BigUInt) -> None
-# floor_divide_by_double_words_inplace(x1: BigUInt, x2: BigUInt) -> None
+# floor_divide_by_uint32_inplace(mut x: BigUInt, y: UInt32) -> None
+# floor_divide_by_uint64_inplace(mut x: BigUInt, y: UInt64) -> None
 # floor_divide_by_2_inplace(x: BigUInt) -> None
 # floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt
 # floor_divide_by_power_of_ten_inplace(x: BigUInt, n: Int) -> None
@@ -91,8 +91,15 @@ comptime CUTOFF_BURNIKEL_ZIEGLER = 32
 # ceil_divide(x1: BigUInt, x2: BigUInt) -> BigUInt
 #
 # floor_modulo(x1: BigUInt, x2: BigUInt) -> BigUInt
+# floor_modulo_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt
 # ceil_modulo(x1: BigUInt, x2: BigUInt) -> BigUInt
 # floor_divide_modulo(x1: BigUInt, x2: BigUInt) -> Tuple[BigUInt, BigUInt]
+# floor_divide_modulo(x: BigUInt, y: BigUInt, mut remainder: BigUInt) -> BigUInt
+# floor_divide_modulo_schoolbook(x, y, mut remainder: BigUInt) -> BigUInt
+# floor_divide_modulo_burnikel_ziegler(a, b, cut_off, mut remainder) -> BigUInt
+# floor_divide_modulo_by_uint32(x, y: UInt32, mut remainder: UInt32) -> BigUInt
+# floor_divide_modulo_by_uint64(x, y: UInt64, mut remainder: UInt64) -> BigUInt
+# floor_divide_modulo_by_uint128(x, y: UInt128, mut remainder: UInt128) -> BigUInt
 #
 # normalize_carries_lt_2_bases(x: BigUInt) -> None
 # normalize_carries_lt4_bases(x: BigUInt) -> None
@@ -2126,6 +2133,10 @@ def exact_divide_by_3_inplace(mut x: BigUInt):
 # floor_divide
 # floor_divide_schoolbook
 # floor_divide_burnikel_ziegler
+#
+# Each of these has a `floor_divide_modulo_*` sibling that also hands back the
+# remainder. The remainder is a by-product of the division either way, so the
+# siblings do the work and these drop it.
 # ===----------------------------------------------------------------------=== #
 
 
@@ -2210,7 +2221,7 @@ def floor_divide(x: BigUInt, y: BigUInt) raises -> BigUInt:
         # Use `floor_divide_by_uint64` as it is more efficient
         return floor_divide_by_uint64(x, y.to_uint64_with_first_2_words())
 
-    # CASE: y is triple or quadraple words
+    # CASE: y is triple or quadruple words
     if len(y.words) <= 4:
         # Use `floor_divide_by_uint128` as it is more efficient
         return floor_divide_by_uint128(x, y.to_uint128_with_first_4_words())
@@ -2265,6 +2276,36 @@ def floor_divide_schoolbook(x: BigUInt, y: BigUInt) raises -> BigUInt:
     Raises:
         ZeroDivisionError: If the divisor is zero.
     """
+    var remainder = BigUInt.zero_with_capacity(4)
+    return floor_divide_modulo_schoolbook(x, y, remainder)
+
+
+def floor_divide_modulo_schoolbook(
+    x: BigUInt, y: BigUInt, mut remainder: BigUInt
+) raises -> BigUInt:
+    """**[PRIVATE]** General schoolbook division algorithm for BigInt10 numbers,
+    keeping the remainder.
+
+    Args:
+        x: The dividend.
+        y: The divisor.
+        remainder: Set to `x % y` on return.
+
+    Returns:
+        The quotient of x // y.
+
+    Raises:
+        ZeroDivisionError: If the divisor is zero.
+
+    Notes:
+
+    Knuth D keeps a running remainder for the whole run and this is the same
+    buffer, handed back instead of dropped. Callers that want only the quotient
+    go through `floor_divide_schoolbook()`.
+
+    If the caller normalized the operands before calling, the remainder comes
+    back scaled by the same factor and has to be scaled back down.
+    """
 
     # Because the Burnikel-Ziegler division algorithm will fall back to this
     # function for small numbers, we need to ensure that special cases are
@@ -2281,39 +2322,59 @@ def floor_divide_schoolbook(x: BigUInt, y: BigUInt) raises -> BigUInt:
             len(x.words) == 1,
             "biguint.arithmetics.floor_divide(): x has leading zero words",
         )
+        overwrite_with_uint32(remainder, 0)
         return BigUInt.zero()  # Return zero
 
     # CASE: x is not greater than y
     var comparison_result: Int8 = x.compare(y)
     # SUB-CASE: dividend < divisor
     if comparison_result < 0:
+        remainder = x.copy()  # The dividend passes through untouched
         return BigUInt.zero()  # Return zero
     # SUB-CASE: dividend == divisor
     if comparison_result == 0:
+        overwrite_with_uint32(remainder, 0)
         return BigUInt.one()
 
     # CASE: y is single word
     if len(y.words) == 1:
         # SUB-CASE: Division by one
         if y.words[0] == 1:
+            overwrite_with_uint32(remainder, 0)
             return x.copy()
         # SUB-CASE: Single word // single word
         if len(x.words) == 1:
+            overwrite_with_uint32(remainder, x.words[0] % y.words[0])
             var result = BigUInt.from_uint32_unsafe(x.words[0] // y.words[0])
             return result^
         # SUB-CASE: Divisor is single word (<= 9 digits)
         else:
-            return floor_divide_by_uint32(x, y.words[0])
+            var word_remainder = UInt32(0)
+            var result = floor_divide_modulo_by_uint32(
+                x, y.words[0], word_remainder
+            )
+            overwrite_with_uint32(remainder, word_remainder)
+            return result^
 
     # CASE: y is double words
     if len(y.words) == 2:
-        # Use `floor_divide_by_uint64` as it is more efficient
-        return floor_divide_by_uint64(x, y.to_uint64_with_first_2_words())
+        # Use `floor_divide_modulo_by_uint64` as it is more efficient
+        var word_remainder = UInt64(0)
+        var result = floor_divide_modulo_by_uint64(
+            x, y.to_uint64_with_first_2_words(), word_remainder
+        )
+        overwrite_with_uint64(remainder, word_remainder)
+        return result^
 
-    # CASE: y is triple or quadraple words
+    # CASE: y is triple or quadruple words
     if len(y.words) <= 4:
-        # Use `floor_divide_by_uint128` as it is more efficient
-        return floor_divide_by_uint128(x, y.to_uint128_with_first_4_words())
+        # Use `floor_divide_modulo_by_uint128` as it is more efficient
+        var word_remainder = UInt128(0)
+        var result = floor_divide_modulo_by_uint128(
+            x, y.to_uint128_with_first_4_words(), word_remainder
+        )
+        overwrite_with_uint128(remainder, word_remainder)
+        return result^
 
     # ===----------------------------------------------=== #
     # ALL OTHER CASES
@@ -2339,17 +2400,15 @@ def floor_divide_schoolbook(x: BigUInt, y: BigUInt) raises -> BigUInt:
 
     # One guard word above the dividend, so `index_of_word + n` is always a
     # real position for the fused subtraction to take its final borrow from.
-    var remainder = BigUInt(uninitialized_capacity=len(x.words) + 1)
-    remainder.words = x.words.copy()
-    remainder.words.append(UInt32(0))
+    var running = BigUInt(uninitialized_capacity=len(x.words) + 1)
+    running.words = x.words.copy()
+    running.words.append(UInt32(0))
 
     var y_ptr = y.words.unsafe_ptr()
-    var r_ptr = remainder.words.unsafe_ptr()
+    var r_ptr = running.words.unsafe_ptr()
 
     for index_of_word in range(n_words_diff, -1, -1):
-        var quotient = floor_divide_estimate_quotient(
-            remainder, y, index_of_word
-        )
+        var quotient = floor_divide_estimate_quotient(running, y, index_of_word)
 
         # remainder[index .. index + n) -= quotient * y.
         #
@@ -2402,6 +2461,13 @@ def floor_divide_schoolbook(x: BigUInt, y: BigUInt) raises -> BigUInt:
         r_ptr[unsafe_offset=top] = UInt32(top_value - carry)
 
         result.words[index_of_word] = quotient
+
+    # Every quotient word has been subtracted out, so what is left of the
+    # dividend below the divisor's width is the remainder. The words above it
+    # are the guard word and the space the quotient was peeled from, all zero.
+    running.words.resize(n, UInt32(0))
+    running.remove_leading_empty_words()
+    remainder = running^
 
     result.remove_leading_empty_words()
     return result^
@@ -2503,8 +2569,35 @@ def floor_divide_by_uint32(x: BigUInt, y: UInt32) -> BigUInt:
     Returns:
         The quotient of x divided by y.
     """
+    # The remainder falls out of the loop for free, so there is one loop and
+    # this is the caller that does not want it.
+    var remainder = UInt32(0)
+    return floor_divide_modulo_by_uint32(x, y, remainder)
+
+
+def floor_divide_modulo_by_uint32(
+    x: BigUInt, y: UInt32, mut remainder: UInt32
+) -> BigUInt:
+    """**[PRIVATE]** Divides a BigUInt by a UInt32 divisor, keeping the
+    remainder.
+
+    Args:
+        x: The BigUInt value to divide by the divisor.
+        y: The UInt32 divisor. Must be non-zero.
+        remainder: Set to `x % y` on return.
+
+    Returns:
+        The quotient of x divided by y.
+
+    Notes:
+
+    The remainder is returned through an argument rather than in a tuple
+    because a `BigUInt` cannot be moved out of a returned tuple yet
+    (modular/modular#5330), and the quotient is the value worth keeping cheap.
+    """
     debug_assert[assert_mode="none"](
-        y != 0, "biguint.arithmetics.floor_divide_by_uint32(): Division by zero"
+        y != 0,
+        "biguint.arithmetics.floor_divide_modulo_by_uint32(): Division by zero",
     )
 
     # Single-word dividend: O(1) exact result. This path is also what keeps the
@@ -2512,6 +2605,7 @@ def floor_divide_by_uint32(x: BigUInt, y: UInt32) -> BigUInt:
     # quotient is 0, and without it `result` would be built with zero words,
     # returning a `BigUInt` that violates the non-empty-words invariant.
     if len(x.words) == 1:
+        remainder = x.words[0] % y
         return BigUInt.from_uint32_unsafe(x.words[0] // y)
 
     # Most significant word of the dividend
@@ -2541,12 +2635,16 @@ def floor_divide_by_uint32(x: BigUInt, y: UInt32) -> BigUInt:
         result.words[i] = UInt32(dividend // y_uint64)
         carry = dividend % y_uint64
 
+    # `carry` is what is left of the dividend once every word has been
+    # consumed, which is the remainder.
+    remainder = UInt32(carry)
+
     debug_assert[assert_mode="none"](
         (len(result.words) == 1) or (result.words[len(result.words) - 1] != 0),
-        "biguint.arithmetics.floor_divide_by_uint32(): ",
+        "biguint.arithmetics.floor_divide_modulo_by_uint32(): ",
         "Result has leading zero words",
     )
-    result.assert_invariant("floor_divide_by_uint32")
+    result.assert_invariant("floor_divide_modulo_by_uint32")
     return result^
 
 
@@ -2608,9 +2706,27 @@ def floor_divide_by_uint64(x: BigUInt, y: UInt64) -> BigUInt:
     Returns:
         The quotient of x divided by y.
     """
+    var remainder = UInt64(0)
+    return floor_divide_modulo_by_uint64(x, y, remainder)
+
+
+def floor_divide_modulo_by_uint64(
+    x: BigUInt, y: UInt64, mut remainder: UInt64
+) -> BigUInt:
+    """Divides a BigUInt by UInt64, keeping the remainder.
+
+    Args:
+        x: The `BigUInt` dividend.
+        y: The `UInt64` divisor. Must be smaller than 10^18.
+        remainder: Set to `x % y` on return. It is smaller than `y`, so it
+            always fits in a `UInt64`.
+
+    Returns:
+        The quotient of x divided by y.
+    """
     debug_assert[assert_mode="none"](
         y != 0,
-        "biguint.arithmetics.floor_divide_by_uint64(): ",
+        "biguint.arithmetics.floor_divide_modulo_by_uint64(): ",
         "Division by zero.",
     )
 
@@ -2637,6 +2753,10 @@ def floor_divide_by_uint64(x: BigUInt, y: UInt64) -> BigUInt:
         result.words[i] = UInt32(quotient // UInt128(BigUInt.BASE))
         result.words[i - 1] = UInt32(quotient % UInt128(BigUInt.BASE))
         carry = dividend % y_uint128
+
+    # What is left once every word pair has been consumed. It is below `y`,
+    # which the caller guarantees is below 10^18, so the narrowing is safe.
+    remainder = UInt64(carry)
 
     result.remove_leading_empty_words()
     return result^
@@ -2698,9 +2818,27 @@ def floor_divide_by_uint128(x: BigUInt, y: UInt128) -> BigUInt:
     Returns:
         The quotient of x divided by y.
     """
+    var remainder = UInt128(0)
+    return floor_divide_modulo_by_uint128(x, y, remainder)
+
+
+def floor_divide_modulo_by_uint128(
+    x: BigUInt, y: UInt128, mut remainder: UInt128
+) -> BigUInt:
+    """Divides a BigUInt by UInt128, keeping the remainder.
+
+    Args:
+        x: The `BigUInt` dividend.
+        y: The `UInt128` divisor. Must be smaller than 10^36.
+        remainder: Set to `x % y` on return. It is smaller than `y`, so it
+            always fits in a `UInt128`.
+
+    Returns:
+        The quotient of x divided by y.
+    """
     debug_assert[assert_mode="none"](
         y != 0,
-        "biguint.arithmetics.floor_divide_by_uint128(): ",
+        "biguint.arithmetics.floor_divide_modulo_by_uint128(): ",
         "Division by zero.",
     )
 
@@ -2761,6 +2899,9 @@ def floor_divide_by_uint128(x: BigUInt, y: UInt128) -> BigUInt:
         quotient %= UInt256(1_000_000_000)
         result.words[i - 3] = UInt32(quotient)
         carry = dividend % y_uint255
+
+    # Below `y`, which the caller guarantees is below 10^36, so it fits.
+    remainder = UInt128(carry)
 
     result.remove_leading_empty_words()
     return result^
@@ -2943,6 +3084,67 @@ def _shift_right_by_decimal_digits_inplace(mut x: BigUInt, digit_shift: Int):
     x.remove_leading_empty_words()
 
 
+def floor_modulo_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
+    """Returns `x % 10^n` (n >= 0), which is the last n digits of the number.
+
+    Args:
+        x: The BigUInt value to take the remainder of.
+        n: The power of 10 to take the remainder by. Should be non-negative.
+
+    Returns:
+        A new BigUInt holding the low n decimal digits of x.
+
+    Notes:
+
+    The companion of `floor_divide_by_power_of_ten()`: that one drops the low
+    n digits, this one keeps them.
+    """
+    debug_assert[assert_mode="none"](
+        n >= 0,
+        (
+            "biguint.arithmetics.floor_modulo_by_power_of_ten(): n must be"
+            " non-negative but got "
+        ),
+        n,
+    )
+
+    if n <= 0:
+        return BigUInt.zero()
+
+    var word_count = n // 9
+    var digit_count = n % 9
+
+    # Asking for more digits than the number has keeps all of them.
+    if word_count >= len(x.words):
+        return x.copy()
+
+    # A whole number of words is a straight prefix of the buffer.
+    if digit_count == 0:
+        var result = BigUInt(unsafe_uninit_length=word_count)
+        unsafe_memcpy(
+            dest=result.words.unsafe_ptr(),
+            src=x.words.unsafe_ptr(),
+            count=word_count,
+        )
+        result.remove_leading_empty_words()
+        return result^
+
+    # Otherwise the top kept word is a partial one: 10^digit_count of it.
+    var modulus = UInt32(1)
+    for _ in range(digit_count):
+        modulus *= 10
+
+    var result = BigUInt(unsafe_uninit_length=word_count + 1)
+    unsafe_memcpy(
+        dest=result.words.unsafe_ptr(),
+        src=x.words.unsafe_ptr(),
+        count=word_count,
+    )
+    result.words[word_count] = x.words[word_count] % modulus
+    result.remove_leading_empty_words()
+    return result^
+
+
 def floor_divide_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
     """Floor divides a BigUInt by (10^9)^n (n>=0).
     This function is equivalent to removing the last n words of the number.
@@ -3067,6 +3269,37 @@ def floor_divide_burnikel_ziegler(
     Raises:
         Error: If an arithmetic error occurs during computation.
     """
+    var remainder = BigUInt.zero_with_capacity(4)
+    return floor_divide_modulo_burnikel_ziegler(a, b, cut_off, remainder)
+
+
+def floor_divide_modulo_burnikel_ziegler(
+    a: BigUInt, b: BigUInt, cut_off: Int, mut remainder: BigUInt
+) raises -> BigUInt:
+    """Divides BigUInt using the Burnikel-Ziegler algorithm, keeping the
+    remainder.
+
+    Args:
+        a: The dividend.
+        b: The divisor.
+        cut_off: The cutoff value for the number of words in the divisor to use
+            the schoolbook division algorithm. It also determines the size of
+            the blocks used in the recursive division algorithm.
+        remainder: Set to `a % b` on return.
+
+    Returns:
+        The quotient of `a` divided by `b`.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
+
+    Notes:
+
+    The recursion already carries the remainder from block to block in `z`, so
+    the only work this adds over the quotient-only form is undoing the
+    normalization on the way out. Callers that want only the quotient go
+    through `floor_divide_burnikel_ziegler()`.
+    """
 
     var BLOCK_SIZE_OF_WORDS = cut_off
 
@@ -3165,29 +3398,30 @@ def floor_divide_burnikel_ziegler(
 
         if i == t - 2:
             # The first iteration, we can use the slize of normalized_a
-            # TODO: Refine this when Mojo support move values of unpacked tuples
-            # https://github.com/modular/modular/issues/5330
-            var _tuple = floor_divide_slices_two_by_one(
+            q = floor_divide_slices_two_by_one(
                 normalized_a,
                 normalized_b,
                 bounds_a=((t - 2) * n, len(normalized_a.words)),
                 bounds_b=(0, len(normalized_b.words)),
                 n=n,
                 cut_off=cut_off,
+                remainder=z,
             )
-            q = _tuple[0].copy()
-            z = _tuple[1].copy()
         else:
-            var _tuple = floor_divide_slices_two_by_one(
+            # `z` is both the dividend and where the next remainder goes, and
+            # it cannot be borrowed two ways at once, so the new remainder
+            # lands in its own value and is moved back over `z`.
+            var next_z = BigUInt.zero()
+            q_i = floor_divide_slices_two_by_one(
                 z,
                 normalized_b,
                 bounds_a=(0, len(z.words)),
                 bounds_b=(0, len(normalized_b.words)),
                 n=n,
                 cut_off=cut_off,
+                remainder=next_z,
             )
-            q_i = _tuple[0].copy()
-            z = _tuple[1].copy()
+            z = next_z^
             multiply_by_power_of_billion_inplace(q, n)
             q += q_i
 
@@ -3199,6 +3433,16 @@ def floor_divide_burnikel_ziegler(
                 normalized_a,
                 bounds_y=((i - 1) * n, i * n),
             )
+
+    # `z` is the remainder of the *normalized* division. The operands were
+    # scaled by 10^n_digits_to_scale_up and then by gap_ratio, so the remainder
+    # carries both factors and both divide out exactly.
+    if gap_ratio >= 2:
+        floor_divide_by_uint32_inplace(z, gap_ratio)
+    if n_digits_to_scale_up > 0:
+        floor_divide_by_power_of_ten_inplace(z, n_digits_to_scale_up)
+    z.remove_leading_empty_words()
+    remainder = z^
 
     q.remove_leading_empty_words()
     return q^
@@ -3344,7 +3588,8 @@ def floor_divide_slices_two_by_one(
     bounds_b: Tuple[Int, Int],
     n: Int,
     cut_off: Int,
-) raises -> Tuple[BigUInt, BigUInt]:
+    mut remainder: BigUInt,
+) raises -> BigUInt:
     """Divides a BigUInt by another BigUInt using a recursive approach.
     The divisor has n words and the dividend has 2n words.
 
@@ -3356,11 +3601,17 @@ def floor_divide_slices_two_by_one(
             The most significant word must be at least 500_000_000.
         n: The number of words in the divisor.
         cut_off: The minimum number of words for the recursive division.
+        remainder: Set to the remainder of the division on return.
 
     Returns:
-        A tuple containing the quotient and the remainder as BigUInt.
+        The quotient of the division.
 
     Notes:
+
+    The remainder comes back through an argument rather than in a tuple: a
+    BigUInt cannot be moved out of a returned tuple yet
+    (modular/modular#5330), so every level of this recursion used to copy the
+    values it wanted to keep.
 
     You need to ensure that n is even to continue with the algorithm.
     Otherwise, it will use the schoolbook division algorithm.
@@ -3398,7 +3649,8 @@ def floor_divide_slices_two_by_one(
         # r = a_slice - q * b_slice
         # We use inplace subtraction to avoid copying
         a_slice -= multiply_slices(q, b, (0, len(q.words)), bounds_b)
-        return (q^, a_slice^)
+        remainder = a_slice^
+        return q^
 
     elif (bounds_a[0] + n + n // 2 >= bounds_a[1]) or a.is_zero_in_bounds(
         bounds=(bounds_a[0] + n + n // 2, bounds_a[1])
@@ -3407,36 +3659,32 @@ def floor_divide_slices_two_by_one(
         # We just need to use three-by-two division once: a2a1a0 // b1b0
         # Note that the condition must be short-circuited to avoid slicing
         # an empty BigUInt.
-        var _tuple = floor_divide_slices_three_by_two(
-            a, b, bounds_a, bounds_b, n // 2, cut_off
+        return floor_divide_slices_three_by_two(
+            a, b, bounds_a, bounds_b, n // 2, cut_off, remainder
         )
-        # _tuple = (q, r)
-        return _tuple^
 
     else:
         var bounds_a1a3 = (bounds_a[0] + n // 2, bounds_a[1])
 
         # We use the most significant three parts of the dividend
         # a3a2a1 // b1b0
-        var _tuple = floor_divide_slices_three_by_two(
-            a, b, bounds_a1a3, bounds_b, n // 2, cut_off
-        )
-        var q = _tuple[0].copy()  # q is q1
-        ref r = _tuple[1]  # r is the carry
+        var r = BigUInt.zero()  # r is the carry
+        var q = floor_divide_slices_three_by_two(
+            a, b, bounds_a1a3, bounds_b, n // 2, cut_off, r
+        )  # q is q1
 
         multiply_by_power_of_billion_inplace(r, n // 2)
         add_by_slice_inplace(r, a, (bounds_a[0], bounds_a[0] + n // 2))
-        _tuple = floor_divide_slices_three_by_two(
-            r, b, (0, len(r.words)), bounds_b, n // 2, cut_off
+        # The final remainder is written straight into the caller's argument.
+        var q0 = floor_divide_slices_three_by_two(
+            r, b, (0, len(r.words)), bounds_b, n // 2, cut_off, remainder
         )
-        ref q0 = _tuple[0]  # q0
-        var s = _tuple[1].copy()  # s is the final remainder
 
         # q -> q1q0
         multiply_by_power_of_billion_inplace(q, n // 2)
         q += q0
 
-        return (q^, s^)
+        return q^
 
 
 def floor_divide_slices_three_by_two(
@@ -3446,7 +3694,8 @@ def floor_divide_slices_three_by_two(
     bounds_b: Tuple[Int, Int],
     n: Int,
     cut_off: Int,
-) raises -> Tuple[BigUInt, BigUInt]:
+    mut remainder: BigUInt,
+) raises -> BigUInt:
     """Divides a 3n-word BigUInt slice by a 2n-word BigUInt slice.
 
     Args:
@@ -3456,9 +3705,10 @@ def floor_divide_slices_three_by_two(
         bounds_b: The range of words in the divisor to consider [start, end).
         n: The number of words in each part of the dividend and divisor.
         cut_off: The minimum number of words for the recursive division.
+        remainder: Set to the remainder of the division on return.
 
     Returns:
-        A tuple containing the quotient and the remainder as BigUInt.
+        The quotient of the division.
 
     Notes:
 
@@ -3487,9 +3737,11 @@ def floor_divide_slices_three_by_two(
         var b_slice = BigUInt.from_slice(b, bounds_b)
         if a_slice.compare(b_slice) >= 0:
             subtract_inplace(a_slice, b_slice)
-            return (BigUInt.one(), a_slice^)
+            remainder = a_slice^
+            return BigUInt.one()
         else:
-            return (BigUInt.zero(), a_slice^)
+            remainder = a_slice^
+            return BigUInt.zero()
 
     # Now we can safely assume that a2 is not empty.
     var bounds_a0 = (bounds_a[0], bounds_a[0] + n)
@@ -3497,11 +3749,10 @@ def floor_divide_slices_three_by_two(
     var bounds_b1 = (bounds_b[0] + n, bounds_b[1])
     var bounds_b0 = (bounds_b[0], bounds_b[0] + n)
 
-    var _tuple = floor_divide_slices_two_by_one(
-        a, b, bounds_a2a1, bounds_b1, n, cut_off
+    var c = BigUInt.zero()  # c is the carry
+    var q = floor_divide_slices_two_by_one(
+        a, b, bounds_a2a1, bounds_b1, n, cut_off, c
     )
-    var q = _tuple[0].copy()
-    ref c = _tuple[1]  # c is the carry
 
     var d = multiply_slices(q, b, (0, len(q.words)), bounds_b0)
     multiply_by_power_of_billion_inplace(c, n)
@@ -3519,7 +3770,8 @@ def floor_divide_slices_three_by_two(
     r -= d
     q.remove_leading_empty_words()
     r.remove_leading_empty_words()
-    return (q^, r^)
+    remainder = r^
+    return q^
 
 
 # Yuhao ZHU:
@@ -3715,55 +3967,22 @@ def floor_modulo(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
 
     Notes:
         It is equal to floored modulo for positive numbers.
+
+        The division itself produces the remainder, so this drops the quotient
+        rather than computing `x1 - x2 * quotient` after the fact. All the
+        special cases it used to test first - zero divisor, zero dividend,
+        divisor of one, dividend below divisor - are the first branches of
+        `floor_divide_modulo()`, so they are still taken, just not twice.
     """
-    # CASE: Division by zero
-    if x2.is_zero():
-        debug_assert[assert_mode="none"](
-            len(x2.words) == 1,
-            "truncate_modulo(): leading zero words",
-        )
-        raise ZeroDivisionError(
-            function="floor_modulo()",
-            message="Division by zero",
-        )
-
-    # CASE: Dividend is zero
-    if x1.is_zero():
-        debug_assert[assert_mode="none"](
-            len(x1.words) == 1, "truncate_modulo(): leading zero words"
-        )
-        return BigUInt.zero()  # Return zero
-
-    # CASE: Divisor is one - no remainder
-    if x2.is_one():
-        return BigUInt.zero()  # Always divisible with no remainder
-
-    # CASE: |dividend| < |divisor| - the remainder is the dividend itself
-    if x1.compare(x2) < 0:
-        return x1.copy()
-
-    # Calculate quotient with truncation
-    var quotient: BigUInt
+    var remainder = BigUInt.zero_with_capacity(4)
     try:
-        quotient = floor_divide(x1, x2)
+        _ = floor_divide_modulo(x1, x2, remainder)
     except e:
         raise ZeroDivisionError(
             message="See the above exception.",
             function="floor_modulo()",
             previous_error=e^,
         )
-
-    # Calculate remainder: dividend - (divisor * quotient)
-    var remainder: BigUInt
-    try:
-        remainder = subtract(x1, multiply(x2, quotient))
-    except e:
-        raise ZeroDivisionError(
-            message="See the above exception.",
-            function="floor_modulo()",
-            previous_error=e^,
-        )
-
     return remainder^
 
 
@@ -3804,42 +4023,153 @@ def ceil_modulo(x1: BigUInt, x2: BigUInt) raises -> BigUInt:
     Raises:
         ZeroDivisionError: If the divisor is zero.
     """
-    # CASE: Division by zero
-    if x2.is_zero():
-        debug_assert[assert_mode="none"](
-            len(x2.words) == 1, "ceil_modulo(): leading zero words"
-        )
+    var remainder = BigUInt.zero_with_capacity(4)
+    try:
+        _ = floor_divide_modulo(x1, x2, remainder)
+    except e:
         raise ZeroDivisionError(
-            message="Division by zero", function="ceil_modulo()"
+            message="See the above exception.",
+            function="ceil_modulo()",
+            previous_error=e^,
         )
 
-    # CASE: Dividend is zero
-    if x1.is_zero():
-        debug_assert[assert_mode="none"](
-            len(x1.words) == 1, "ceil_modulo(): leading zero words"
-        )
-        return BigUInt.zero()  # Return zero
-
-    # CASE: Divisor is one - no remainder
-    if x2.is_one():
-        return BigUInt.zero()  # Always divisible with no remainder
-
-    # CASE: |dividend| < |divisor| - the remainder is the dividend itself
-    if x1.compare(x2) < 0:
-        return x1.copy()
-
-    # Calculate quotient with truncation
-    var quotient = floor_divide(x1, x2)
-    # Calculate remainder: dividend - (divisor * quotient)
-    var remainder = subtract(x1, multiply(x2, quotient))
-
+    # Rounding the quotient up instead of down moves the remainder to the far
+    # side of the divisor. An exact division has nothing to move.
     if remainder.is_zero():
         debug_assert[assert_mode="none"](
             len(remainder.words) == 1, "ceil_modulo(): leading zero words"
         )
-        return BigUInt.zero()  # No remainder
-    else:
-        return subtract(x2, remainder)
+        return BigUInt.zero()
+    return subtract(x2, remainder)
+
+
+def floor_divide_modulo(
+    x: BigUInt, y: BigUInt, mut remainder: BigUInt
+) raises -> BigUInt:
+    """Returns the quotient of two numbers, and sets the remainder.
+
+    Args:
+        x: The dividend.
+        y: The divisor.
+        remainder: Set to `x % y` on return.
+
+    Returns:
+        The quotient of x / y, truncated toward zero.
+
+    Raises:
+        ZeroDivisionError: If the divisor is zero.
+
+    Notes:
+
+    This mirrors the branches of `floor_divide()` one for one. Every one of
+    them already computes the remainder on the way to the quotient - the
+    scalar paths leave it in a carry, Knuth D leaves it in its running window,
+    and Burnikel-Ziegler carries it from block to block - so this costs
+    nothing over the quotient alone. The older version called `floor_divide()`
+    and then rebuilt the remainder as `x - y * quotient`, a full
+    multiplication and subtraction for something already in hand.
+    """
+
+    debug_assert[assert_mode="none"](
+        (len(x.words) != 0) and (len(y.words) != 0),
+        "biguint.arithmetics.floor_divide_modulo(): BigUInt x ",
+        x,
+        " and / or ",
+        y,
+        " is uninitialized!",
+    )
+
+    # CASE: y is zero
+    if y.is_zero():
+        raise ZeroDivisionError(
+            function="floor_divide_modulo()",
+            message="Division by zero",
+        )
+
+    # CASE: Dividend is zero
+    if x.is_zero():
+        overwrite_with_uint32(remainder, 0)
+        return BigUInt.zero()
+
+    # CASE: x is not greater than y
+    var comparison_result: Int8 = x.compare(y)
+    # SUB-CASE: dividend < divisor
+    if comparison_result < 0:
+        remainder = x.copy()  # The whole dividend is left over
+        return BigUInt.zero()
+    # SUB-CASE: dividend == divisor
+    if comparison_result == 0:
+        overwrite_with_uint32(remainder, 0)
+        return BigUInt.one()
+
+    # CASE: y is single word
+    if len(y.words) == 1:
+        # SUB-CASE: Division by one
+        if y.words[0] == 1:
+            overwrite_with_uint32(remainder, 0)
+            return x.copy()
+        # SUB-CASE: Single word // single word
+        if len(x.words) == 1:
+            overwrite_with_uint32(remainder, x.words[0] % y.words[0])
+            return BigUInt.from_uint32_unsafe(x.words[0] // y.words[0])
+        # SUB-CASE: Divisor is single word (<= 9 digits)
+        var word_remainder = UInt32(0)
+        var quotient = floor_divide_modulo_by_uint32(
+            x, y.words[0], word_remainder
+        )
+        overwrite_with_uint32(remainder, word_remainder)
+        return quotient^
+
+    # CASE: y is double words
+    if len(y.words) == 2:
+        var double_remainder = UInt64(0)
+        var quotient = floor_divide_modulo_by_uint64(
+            x, y.to_uint64_with_first_2_words(), double_remainder
+        )
+        overwrite_with_uint64(remainder, double_remainder)
+        return quotient^
+
+    # CASE: y is triple or quadruple words
+    if len(y.words) <= 4:
+        var quad_remainder = UInt128(0)
+        var quotient = floor_divide_modulo_by_uint128(
+            x, y.to_uint128_with_first_4_words(), quad_remainder
+        )
+        overwrite_with_uint128(remainder, quad_remainder)
+        return quotient^
+
+    # CASE: Divisor is 10^n
+    if y.is_power_of_10():
+        var n = y.number_of_trailing_zeros()
+        remainder = floor_modulo_by_power_of_ten(x, n)
+        return floor_divide_by_power_of_ten(x, n)
+
+    # CASE: Division of small numbers
+    if (len(x.words) <= CUTOFF_BURNIKEL_ZIEGLER * 2) and (
+        len(y.words) <= CUTOFF_BURNIKEL_ZIEGLER
+    ):
+        var ndigits_to_shift = calculate_ndigits_for_normalization(
+            y.words[len(y.words) - 1]
+        )
+
+        if ndigits_to_shift == 0:
+            return floor_divide_modulo_schoolbook(x, y, remainder)
+
+        # Normalizing scales both operands by the same power of ten, which
+        # leaves the quotient alone but scales the remainder with them. It
+        # divides back out exactly.
+        var normalized_x = multiply_by_power_of_ten(x, ndigits_to_shift)
+        var normalized_y = multiply_by_power_of_ten(y, ndigits_to_shift)
+        var quotient = floor_divide_modulo_schoolbook(
+            normalized_x, normalized_y, remainder
+        )
+        floor_divide_by_power_of_ten_inplace(remainder, ndigits_to_shift)
+        return quotient^
+
+    # CASE: division of very, very large numbers
+    return floor_divide_modulo_burnikel_ziegler(
+        x, y, cut_off=CUTOFF_BURNIKEL_ZIEGLER, remainder=remainder
+    )
 
 
 def floor_divide_modulo(
@@ -3861,21 +4191,63 @@ def floor_divide_modulo(
         It is equal to truncated division for positive numbers.
     """
 
-    try:
-        var quotient = floor_divide(x1, x2)
-        var remainder = subtract(x1, multiply(x2, quotient))
-        return (quotient^, remainder^)
-    except e:
-        raise ZeroDivisionError(
-            message="See the above exception.",
-            function="floor_divide_modulo()",
-            previous_error=e^,
-        )
+    var remainder = BigUInt.zero_with_capacity(4)
+    var quotient = floor_divide_modulo(x1, x2, remainder)
+    return (quotient^, remainder^)
 
 
 # ===----------------------------------------------------------------------=== #
 # Helper Functions
 # ===----------------------------------------------------------------------=== #
+
+
+def overwrite_with_uint32(mut x: BigUInt, value: UInt32):
+    """Overwrites `x` with a single-word value, reusing its buffer.
+
+    The remainder of a division is handed back through an argument, and that
+    argument arrives holding a buffer already. Assigning a freshly built
+    `BigUInt` to it would free that buffer and allocate another one, which on
+    a short division is most of the cost of the division. Resizing to one word
+    keeps the capacity, so this is a store.
+    """
+    x.words.resize(1, UInt32(0))
+    x.words[0] = value
+
+
+def overwrite_with_uint64(mut x: BigUInt, value: UInt64):
+    """As `overwrite_with_uint32()`, for a value of up to two words.
+
+    A remainder from a two-word divisor is below 10^18, so it never needs more.
+    """
+    if value < UInt64(BigUInt.BASE):
+        overwrite_with_uint32(x, UInt32(value))
+        return
+    x.words.resize(2, UInt32(0))
+    x.words[0] = UInt32(value % UInt64(BigUInt.BASE))
+    x.words[1] = UInt32(value // UInt64(BigUInt.BASE))
+
+
+def overwrite_with_uint128(mut x: BigUInt, value: UInt128):
+    """As `overwrite_with_uint32()`, for a value of up to four words.
+
+    A remainder from a four-word divisor is below 10^36, so it never needs
+    more.
+    """
+    if value < UInt128(BigUInt.BASE):
+        overwrite_with_uint32(x, UInt32(value))
+        return
+
+    var rest = value
+    var word_count = 0
+    while rest != 0:
+        rest //= UInt128(BigUInt.BASE)
+        word_count += 1
+
+    x.words.resize(word_count, UInt32(0))
+    rest = value
+    for i in range(word_count):
+        x.words[i] = UInt32(rest % UInt128(BigUInt.BASE))
+        rest //= UInt128(BigUInt.BASE)
 
 
 def normalize_carries_lt_2_bases(mut x: BigUInt):
