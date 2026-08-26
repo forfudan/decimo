@@ -327,33 +327,19 @@ def render(context, decimo, libmpdec, cpython, pi_table, agree, ours, reference)
     add("## BigDecimal against libmpdec")
     add("")
     add("CPython's `decimal` module *is* libmpdec, so timing it from Python")
-    add("measures libmpdec plus interpreter overhead. The column below links the")
-    add("C library directly instead, which is the comparison that says something")
-    add("about the arithmetic rather than about CPython.")
+    add("measures libmpdec plus interpreter overhead. The `libmpdec (C)` column")
+    add("links the C library directly, which is the comparison that says")
+    add("something about the arithmetic rather than about CPython.")
     add("")
-    add("The first three columns are the comparison. Both allocate a fresh")
-    add("result per operation, which is what decimo's API does and what")
-    add("CPython's `decimal` does. Small operands, precision 28.")
+    add("Every column is an operation a user writes. Both libraries allocate a")
+    add("fresh result per call here, which is what `a + b` does in each.")
     add("")
-    add("The last two columns are context.")
+    add("**Operands: 9-digit coefficients** (`12345.6789` and `9876.54321`),")
+    add("precision 28. Rounding uses a 30-digit value. This is the small end;")
+    add("the sweep below shows how it changes with size.")
     add("")
-    add("*CPython `decimal`* is the same libmpdec, reached through the")
-    add("interpreter — the difference from the C column is CPython's overhead.")
-    add("")
-    add("*libmpdec, result reused* is the identical C call writing into an")
-    add("`mpd_t` allocated once, instead of allocating and freeing one per")
-    add("operation. Nothing else changes. The difference between the two")
-    add("libmpdec columns is therefore exactly `mpd_new()` + `mpd_del()`,")
-    add("measured separately at 22.9 ns, and it is why `add` costs 37.6 ns")
-    add("fresh but 14.9 ns reused. Note that libmpdec is not avoiding")
-    add("allocation for small values: `mpd_t` holds a pointer, and `mpd_new()`")
-    add("allocates both the struct and its data array.")
-    add("")
-    add(
-        "| Operation | decimo | libmpdec (C) | | CPython `decimal` | "
-        "libmpdec, result reused |"
-    )
-    add("|---|---|---|---|---|---|")
+    add("| Operation | decimo | libmpdec (C) | | CPython `decimal` |")
+    add("|---|---|---|---|---|")
     for key, label in [
         ("add", "add"),
         ("subtract", "subtract"),
@@ -367,10 +353,55 @@ def render(context, decimo, libmpdec, cpython, pi_table, agree, ours, reference)
         add(
             f"| {label} | {human(ours_ns)} | {human(theirs)} | "
             f"{ratio(ours_ns, theirs)} | "
-            f"{human(cpython['cpython_decimal'][key])} | "
-            f"{human(libmpdec['reuse'][key])} |"
+            f"{human(cpython['cpython_decimal'][key])} |"
         )
     add("")
+
+    add("### In place")
+    add("")
+    add("Both libraries can accumulate into an existing value instead of")
+    add("building a new one — decimo's `add_inplace()` family, and passing the")
+    add("destination as an operand in C. Same starting values, same operand,")
+    add("same precision, so these two columns are directly comparable.")
+    add("")
+    add("This is where the arithmetic shows through, because neither side is")
+    add("allocating.")
+    add("")
+    add("| Operation | decimo | libmpdec (C) | |")
+    add("|---|---|---|---|")
+    for key, label in [
+        ("add", "`x += y`"),
+        ("subtract", "`x -= y`"),
+        ("multiply", "`x *= y`"),
+    ]:
+        ours_ns = decimo["bigdecimal_inplace"][key]
+        theirs = libmpdec["inplace"][key]
+        add(
+            f"| {label} | {human(ours_ns)} | {human(theirs)} | "
+            f"{ratio(ours_ns, theirs)} |"
+        )
+    add("")
+
+    add("### Across operand sizes")
+    add("")
+    add("One base-10⁹ word says nothing about how either library scales. Both")
+    add("switch algorithms as operands grow, so this is where the crossovers")
+    add("are. Exact arithmetic, except division, which needs a finite target")
+    add("(set to the operand width plus eight digits for both).")
+    add("")
+    for op, label in [("add", "Add"), ("multiply", "Multiply"), ("divide", "Divide")]:
+        add(f"**{label}**")
+        add("")
+        add("| Digits | decimo | libmpdec (C) | |")
+        add("|---|---|---|---|")
+        for width in ("9", "100", "1000", "10000", "100000"):
+            ours_ns = decimo["sweep"][width][op]
+            theirs = libmpdec["sweep"][width][op]
+            add(
+                f"| {int(width):,} | {human(ours_ns)} | {human(theirs)} | "
+                f"{ratio(ours_ns, theirs)} |"
+            )
+        add("")
 
     add("## BigInt against CPython's int")
     add("")

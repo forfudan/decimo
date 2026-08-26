@@ -31,6 +31,18 @@ def _num(value: Float64) -> String:
     return String(whole) + "." + frac_text
 
 
+def _digits_seeded(count: Int, seed: Int) -> String:
+    """A `count`-digit decimal string; same sequence as `bench_libmpdec.c`."""
+    var out = String("")
+    var state = seed
+    var step = 31 if seed == 7 else 37
+    var offset = 17 if seed == 7 else 11
+    for _ in range(count):
+        state = (state * step + offset) % 9
+        out += String(state + 1)
+    return out^
+
+
 def _digits(count: Int) -> String:
     """A `count`-digit decimal string, deterministic across runs."""
     var out = String("")
@@ -99,6 +111,49 @@ def main() raises -> None:
         t1 = perf_counter_ns()
         best_str = min(best_str, Float64(Int(t1 - t0)) / Float64(ITERS))
 
+    # In-place forms, the fair counterpart to libmpdec writing into an `mpd_t`
+    # allocated once. Comparing the out-of-place calls above against that would
+    # be comparing two different operations.
+    var best_add_inplace = 1.0e30
+    var best_sub_inplace = 1.0e30
+    var best_mul_inplace = 1.0e30
+    for _ in range(ROUNDS):
+        var acc = BigDecimal("12345.6789")
+        var t0 = perf_counter_ns()
+        for _ in range(ITERS):
+            bd_arithmetics.add_inplace(acc, b, 28)
+        var t1 = perf_counter_ns()
+        best_add_inplace = min(
+            best_add_inplace, Float64(Int(t1 - t0)) / Float64(ITERS)
+        )
+        sink += Int(acc.sign)
+
+        var acc2 = BigDecimal("12345.6789")
+        t0 = perf_counter_ns()
+        for _ in range(ITERS):
+            bd_arithmetics.subtract_inplace(acc2, b, 28)
+        t1 = perf_counter_ns()
+        best_sub_inplace = min(
+            best_sub_inplace, Float64(Int(t1 - t0)) / Float64(ITERS)
+        )
+        sink += Int(acc2.sign)
+
+        var acc3 = BigDecimal("1.0000001")
+        t0 = perf_counter_ns()
+        for _ in range(ITERS):
+            bd_arithmetics.multiply_inplace(acc3, a, 28)
+        t1 = perf_counter_ns()
+        best_mul_inplace = min(
+            best_mul_inplace, Float64(Int(t1 - t0)) / Float64(ITERS)
+        )
+        sink += Int(acc3.sign)
+
+    print('  "bigdecimal_inplace": {')
+    print('    "add": ' + _num(best_add_inplace) + ",")
+    print('    "subtract": ' + _num(best_sub_inplace) + ",")
+    print('    "multiply": ' + _num(best_mul_inplace))
+    print("  },")
+
     print('  "bigdecimal": {')
     print('    "add": ' + _num(best_add) + ",")
     print('    "subtract": ' + _num(best_sub) + ",")
@@ -106,6 +161,57 @@ def main() raises -> None:
     print('    "divide": ' + _num(best_div) + ",")
     print('    "round": ' + _num(best_round) + ",")
     print('    "from_string": ' + _num(best_str))
+    print("  },")
+
+    # --- Operand-size sweep, matching bench_libmpdec.c ---
+    # One base-10^9 word says nothing about how either library scales, and both
+    # switch to a transform for large operands, so this is where the crossover
+    # shows up. Exact arithmetic (precision 0), except division, which needs a
+    # finite target.
+    var widths = [9, 100, 1000, 10000, 100000]
+    print('  "sweep": {')
+    for wi in range(len(widths)):
+        var width = widths[wi]
+        var sx = BigDecimal(_digits_seeded(width, 7))
+        var sy = BigDecimal(_digits_seeded(width, 3))
+        var iters = max(3, 2000000 // width)
+        var sweep_rounds = 3 if width >= 10000 else ROUNDS
+
+        var w_add = 1.0e30
+        var w_mul = 1.0e30
+        var w_div = 1.0e30
+        for _ in range(sweep_rounds):
+            var t0 = perf_counter_ns()
+            for _ in range(iters):
+                sink += Int(bd_arithmetics.add(sx, sy, 0).sign)
+            var t1 = perf_counter_ns()
+            w_add = min(w_add, Float64(Int(t1 - t0)) / Float64(iters))
+
+            t0 = perf_counter_ns()
+            for _ in range(iters):
+                sink += Int(bd_arithmetics.multiply(sx, sy, 0).sign)
+            t1 = perf_counter_ns()
+            w_mul = min(w_mul, Float64(Int(t1 - t0)) / Float64(iters))
+
+            t0 = perf_counter_ns()
+            for _ in range(iters):
+                sink += Int(bd_arithmetics.true_divide(sx, sy, width + 8).sign)
+            t1 = perf_counter_ns()
+            w_div = min(w_div, Float64(Int(t1 - t0)) / Float64(iters))
+
+        var sweep_comma = "," if wi < len(widths) - 1 else ""
+        print(
+            '    "'
+            + String(width)
+            + '": {"add": '
+            + _num(w_add)
+            + ', "multiply": '
+            + _num(w_mul)
+            + ', "divide": '
+            + _num(w_div)
+            + "}"
+            + sweep_comma
+        )
     print("  },")
 
     # --- BigInt against CPython's int, at matched decimal widths ---
