@@ -18,11 +18,12 @@ Ordered by value, judged against the two goals in `internal_notes.md`.
    measured), and embed `BigDecimal` in the PyObject rather than allocating
    separately. This is the largest single lever for the `decimal` drop-in.
    See `docs/plans/mojo4py.md`.
-2. **`divide`.** The one operation losing consistently. Start with the free
-   part: `true_divide_general()` allocates a whole product to test exactness
-   when the remainder answers it for nothing, and `floor_divide_by_uint32()`
-   already computes and discards it. Then Newton reciprocal division, which is
-   also worth ~115 ms of `pi(10^6)`. See `bigint_enhancement.md` T-D4 and
+2. **`divide`.** The free part is done (20260826): division hands back the
+   remainder it already computed, so `true_divide_general()` reads exactness
+   off it instead of building a product, and `%` no longer recomputes it.
+   Divide is 1.23-1.32x faster from 10^4 digits up and no longer loses at any
+   size we measure. What is left is Newton reciprocal division, which is also
+   worth ~115 ms of `pi(10^6)`. See `bigint_enhancement.md` T-D4 and
    `bigdecimal_enhancement.md` T-D3.
 3. **`subtract` at large operands.** 2.1x slower than our own `add` at 100 000
    and 10^6 digits, where libmpdec's subtract is *faster* than its add. That

@@ -496,6 +496,28 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         return result^
 
     @staticmethod
+    def zero_with_capacity(capacity: Int) -> Self:
+        """Creates a zero whose buffer already has room for `capacity` words.
+
+        Args:
+            capacity: The number of words to reserve room for.
+
+        Returns:
+            A single-word zero `BigUInt` with the given capacity.
+
+        Notes:
+            For an argument that a function is about to overwrite with a small
+            result, such as the remainder of a division. A plain `zero()` has
+            room for one word, so a two-word remainder reallocates on the way
+            in; starting at the width it will need makes it a store.
+        """
+        var result = Self(
+            unsafe_uninit_length=1, unsafe_uninit_capacity=capacity
+        )
+        result.words[0] = 0
+        return result^
+
+    @staticmethod
     def from_uint32_unsafe(unsafe_value: UInt32) -> Self:
         """Creates a BigUInt from a `UInt32` object without checking the value.
 

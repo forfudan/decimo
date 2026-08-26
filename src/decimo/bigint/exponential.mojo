@@ -447,14 +447,16 @@ def _sqrt_precision_doubling_fast(x: BigInt) raises -> BigInt:
         # Shift x right (skips lower words efficiently)
         var n_shifted = _right_shift_magnitude_bits(x.words, shift_n)
 
-        # Divide n_shifted by current a (before shifting)
-        var div_result = bigint_arithmetics._divmod_magnitudes(
-            n_shifted, a_words
+        # Divide n_shifted by current a (before shifting). Only the quotient
+        # is wanted here; the remainder goes into a value that is dropped.
+        var discarded_remainder = List[UInt32]()
+        var quotient = bigint_arithmetics._divmod_magnitudes(
+            n_shifted, a_words, discarded_remainder
         )
 
         # Shift a left, then add quotient in-place (saves 2 allocations)
         a_words = _left_shift_magnitude_bits(a_words, shift_a)
-        bigint_arithmetics._add_magnitudes_inplace(a_words, div_result[0])
+        bigint_arithmetics._add_magnitudes_inplace(a_words, quotient)
 
     # Final check: a -= 1 if a*a > x
     var a_sq = bigint_arithmetics._multiply_magnitudes(a_words, a_words)

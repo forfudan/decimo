@@ -1325,8 +1325,8 @@ def _shift_left_words_inplace(mut a: List[UInt32], n: Int):
 
 
 def _divmod_single_word(
-    a: List[UInt32], d: UInt32
-) -> Tuple[List[UInt32], UInt32]:
+    a: List[UInt32], d: UInt32, mut remainder: UInt32
+) -> List[UInt32]:
     """Divides a magnitude by a single UInt32 word.
 
     This is the fast path for division when the divisor fits in one word.
@@ -1334,33 +1334,35 @@ def _divmod_single_word(
     Args:
         a: The dividend magnitude (little-endian UInt32 words).
         d: The single-word divisor (must be non-zero).
+        remainder: Set to `a % d` on return.
 
     Returns:
-        A tuple of (quotient_words, remainder).
+        The quotient words.
     """
     var n = len(a)
     var quotient = List[UInt32](capacity=n)
     for _ in range(n):
         quotient.append(UInt32(0))
 
-    var remainder: UInt64 = 0
+    var word_remainder: UInt64 = 0
     var divisor = UInt64(d)
     for i in range(n - 1, -1, -1):
-        var temp = (remainder << 32) + UInt64(a[i])
+        var temp = (word_remainder << 32) + UInt64(a[i])
         quotient[i] = UInt32(temp // divisor)
-        remainder = temp % divisor
+        word_remainder = temp % divisor
 
     # Strip leading zeros from quotient
     while len(quotient) > 1 and quotient[len(quotient) - 1] == 0:
         quotient.shrink(len(quotient) - 1)
 
-    return (quotient^, UInt32(remainder))
+    remainder = UInt32(word_remainder)
+    return quotient^
 
 
 def _divmod_magnitudes(
-    a: List[UInt32], b: List[UInt32]
-) raises -> Tuple[List[UInt32], List[UInt32]]:
-    """Divides magnitude a by magnitude b, returning (quotient, remainder).
+    a: List[UInt32], b: List[UInt32], mut remainder: List[UInt32]
+) raises -> List[UInt32]:
+    """Divides magnitude a by magnitude b, returning the quotient.
 
     Implements Knuth's Algorithm D (The Art of Computer Programming, Vol 2,
     Section 4.3.1) for multi-word division in base 2^32.
@@ -1368,12 +1370,18 @@ def _divmod_magnitudes(
     Args:
         a: The dividend magnitude (little-endian UInt32 words).
         b: The divisor magnitude (little-endian UInt32 words, must be non-zero).
+        remainder: Set to the normalized remainder on return.
 
     Returns:
-        A tuple of (quotient_words, remainder_words), both normalized.
+        The normalized quotient words.
 
     Raises:
         Error: If divisor is zero.
+
+    Notes:
+        The remainder comes back through an argument rather than in a tuple,
+        because a `List` cannot be moved out of a returned tuple yet
+        (modular/modular#5330), so every caller had to copy it.
     """
     var len_a = len(a)
     var len_b = len(b)
@@ -1397,21 +1405,22 @@ def _divmod_magnitudes(
         var rem_copy = List[UInt32](capacity=len_a)
         for word in a:
             rem_copy.append(word)
-        return ([UInt32(0)], rem_copy^)
+        remainder = rem_copy^
+        return [UInt32(0)]
     if cmp == 0:
-        return ([UInt32(1)], [UInt32(0)])
+        remainder = [UInt32(0)]
+        return [UInt32(1)]
 
     # Single-word divisor: use fast path
     if len_b == 1:
-        var result = _divmod_single_word(a, b[0])
-        var q = result[0].copy()
-        var r_word = result[1]
-        var r_words: List[UInt32] = [r_word]
-        return (q^, r_words^)
+        var r_word = UInt32(0)
+        var q = _divmod_single_word(a, b[0], r_word)
+        remainder = [r_word]
+        return q^
 
     # Burnikel-Ziegler for large divisors (slice-based, avoids excessive allocation)
     if len_b > CUTOFF_BURNIKEL_ZIEGLER:
-        return _divmod_burnikel_ziegler(a, b)
+        return _divmod_burnikel_ziegler(a, b, remainder)
 
     # ===--- Knuth's Algorithm D ---=== #
     # Step D1: Normalize
@@ -1505,9 +1514,9 @@ def _divmod_magnitudes(
         quotient.shrink(len(quotient) - 1)
 
     # Step D8: Unnormalize remainder by shifting right
-    var remainder = _shift_right_words(u, shift, n)
+    remainder = _shift_right_words(u, shift, n)
 
-    return (quotient^, remainder^)
+    return quotient^
 
 
 def _compare_word_lists(a: List[UInt32], b: List[UInt32]) -> Int8:
@@ -1787,7 +1796,8 @@ def _decrement_inplace(mut a: List[UInt32]):
 def _divmod_knuth_d_from_slices(
     a: ImmSpan[UInt32, _],
     b: ImmSpan[UInt32, _],
-) raises -> Tuple[List[UInt32], List[UInt32]]:
+    mut remainder: List[UInt32],
+) raises -> List[UInt32]:
     """Knuth Algorithm D operating directly on pre-normalized slices.
 
     Optimized for the B-Z base case: skips normalization/unnormalization
@@ -1797,9 +1807,10 @@ def _divmod_knuth_d_from_slices(
     Args:
         a: Dividend slice (pre-normalized).
         b: Divisor slice (pre-normalized, MSB of top word set).
+        remainder: Set to the normalized remainder on return.
 
     Returns:
-        A tuple of (quotient_words, remainder_words), both normalized.
+        The normalized quotient words.
     """
     # Effective lengths after stripping leading zero words
     var len_a_eff = len(a)
@@ -1810,7 +1821,8 @@ def _divmod_knuth_d_from_slices(
         len_b_eff -= 1
 
     if len_a_eff <= 0:
-        return ([UInt32(0)], [UInt32(0)])
+        remainder = [UInt32(0)]
+        return [UInt32(0)]
     if len_b_eff <= 0:
         raise ZeroDivisionError(
             function="_divmod_knuth_d_from_slices()",
@@ -1820,17 +1832,16 @@ def _divmod_knuth_d_from_slices(
     # Single-word divisor fast path
     if len_b_eff == 1:
         var a_slice = _normalized_copy(a[:len_a_eff])
-        var result = _divmod_single_word(a_slice, b[0])
-        var q = result[0].copy()
-        var r_word = result[1]
-        var r_words: List[UInt32] = [r_word]
-        return (q^, r_words^)
+        var r_word = UInt32(0)
+        var q = _divmod_single_word(a_slice, b[0], r_word)
+        remainder = [r_word]
+        return q^
 
     # Compare magnitudes
     var cmp_len_diff = len_a_eff - len_b_eff
     if cmp_len_diff < 0:
-        var rem = _normalized_copy(a[:len_a_eff])
-        return ([UInt32(0)], rem^)
+        remainder = _normalized_copy(a[:len_a_eff])
+        return [UInt32(0)]
     if cmp_len_diff == 0:
         # Same length — compare words from top
         var cmp = 0
@@ -1844,10 +1855,11 @@ def _divmod_knuth_d_from_slices(
                 cmp = -1
                 break
         if cmp < 0:
-            var rem = _normalized_copy(a[:len_a_eff])
-            return ([UInt32(0)], rem^)
+            remainder = _normalized_copy(a[:len_a_eff])
+            return [UInt32(0)]
         if cmp == 0:
-            return ([UInt32(1)], [UInt32(0)])
+            remainder = [UInt32(0)]
+            return [UInt32(1)]
 
     # Copy a slice into u (single copy — u is modified in-place by Knuth D)
     var n = len_b_eff
@@ -1954,12 +1966,13 @@ def _divmod_knuth_d_from_slices(
     while len(u) > 1 and u[len(u) - 1] == 0:
         u.shrink(len(u) - 1)
 
-    return (quotient^, u^)
+    remainder = u^
+    return quotient^
 
 
 def _divmod_burnikel_ziegler(
-    a: List[UInt32], b: List[UInt32]
-) raises -> Tuple[List[UInt32], List[UInt32]]:
+    a: List[UInt32], b: List[UInt32], mut remainder: List[UInt32]
+) raises -> List[UInt32]:
     """Divides magnitude a by magnitude b using Burnikel-Ziegler algorithm.
 
     Slice-based implementation: passes word-list bounds through the recursion
@@ -1971,9 +1984,10 @@ def _divmod_burnikel_ziegler(
     Args:
         a: The dividend magnitude (little-endian UInt32 words).
         b: The divisor magnitude (little-endian UInt32 words, non-zero).
+        remainder: Set to the normalized remainder on return.
 
     Returns:
-        A tuple of (quotient_words, remainder_words), both normalized.
+        The normalized quotient words.
 
     Raises:
         Error: If divisor is zero (should not happen; caller checks).
@@ -2040,14 +2054,14 @@ def _divmod_burnikel_ziegler(
     unsafe_memset_zero(ptr=quotient.unsafe_ptr(), count=q_total_words)
 
     # First iteration: divide top 2n words by norm_b.
-    var result_pair = _bz_two_by_one_slices(
+    var z = List[UInt32]()
+    var q_block = _bz_two_by_one_slices(
         _subspan(norm_a, (t - 2) * n, t * n),
         _subspan(norm_b, 0, n),
         n,
         block_size,
+        z,
     )
-    var q_block = result_pair[0].copy()
-    var z = result_pair[1].copy()
 
     # Place first quotient digit at its position.
     _add_at_offset_inplace(quotient, q_block, (t - 2) * n)
@@ -2058,18 +2072,19 @@ def _divmod_burnikel_ziegler(
         _shift_left_words_inplace(z, n)
         _add_from_slice_inplace(z, _subspan(norm_a, i * n, (i + 1) * n))
 
-        # Divide z by norm_b (slice-based)
-        result_pair = _bz_two_by_one_slices(
-            z, _subspan(norm_b, 0, n), n, block_size
+        # Divide z by norm_b (slice-based). `z` is both the dividend and
+        # where the next remainder goes, and it cannot be borrowed two ways at
+        # once, so the new remainder lands beside it and is moved back over.
+        var next_z = List[UInt32]()
+        var q_i = _bz_two_by_one_slices(
+            z, _subspan(norm_b, 0, n), n, block_size, next_z
         )
-        var q_i = result_pair[0].copy()
-        z = result_pair[1].copy()
+        z = next_z^
 
         # Place quotient digit at offset i*n
         _add_at_offset_inplace(quotient, q_i, i * n)
 
     # STEP 5: Un-normalize the remainder.
-    var remainder: List[UInt32]
     if word_pad > 0:
         var r_stripped = _normalized_copy(_subspan(z, word_pad, len(z)))
         remainder = _shift_right_words(r_stripped, bit_shift, len(r_stripped))
@@ -2082,7 +2097,7 @@ def _divmod_burnikel_ziegler(
     while len(remainder) > 1 and remainder[len(remainder) - 1] == 0:
         remainder.shrink(len(remainder) - 1)
 
-    return (quotient^, remainder^)
+    return quotient^
 
 
 def _bz_two_by_one_slices(
@@ -2090,7 +2105,8 @@ def _bz_two_by_one_slices(
     b: ImmSpan[UInt32, _],
     n: Int,
     cutoff: Int,
-) raises -> Tuple[List[UInt32], List[UInt32]]:
+    mut remainder: List[UInt32],
+) raises -> List[UInt32]:
     """Divides a (at most 2n words) by b (n words).
 
     Slice-based: a and b are borrowed views, not copied until the base case.
@@ -2101,41 +2117,40 @@ def _bz_two_by_one_slices(
         b: The divisor slice.
         n: Block size (number of words in the divisor slice).
         cutoff: Threshold for fallback to schoolbook.
+        remainder: Set to the remainder of the division on return.
 
     Returns:
-        A tuple of (quotient_words, remainder_words).
+        The quotient words.
     """
     # Base case: use prenormalized Knuth D directly on slices (avoids
     # redundant normalization and reduces copies from 5 to 1).
     if (n & 1 == 1) or (n <= cutoff):
-        return _divmod_knuth_d_from_slices(a, b)
+        return _divmod_knuth_d_from_slices(a, b, remainder)
 
     var half = n // 2
 
     # If a3 (top quarter, words n+half..2n) is zero or empty, the dividend
     # fits in 3*half words — use a single 3-by-2 division directly.
     if len(a) <= n + half or _is_zero_slice(a[n + half :]):
-        return _bz_three_by_two_slices(a, b, half, cutoff)
+        return _bz_three_by_two_slices(a, b, half, cutoff, remainder)
 
     # First 3-by-2: divide a[half:] (= a3a2a1, 3*half words)
     # by b (= b1b0, 2*half words).
-    var result1 = _bz_three_by_two_slices(a[half:], b, half, cutoff)
-    var q1 = result1[0].copy()
-    var r = result1[1].copy()
+    var r = List[UInt32]()
+    var q1 = _bz_three_by_two_slices(a[half:], b, half, cutoff, r)
 
     # Second 3-by-2: divide (r * B^half + a0) by b, where a0 = a[:half]
     _shift_left_words_inplace(r, half)
     _add_from_slice_inplace(r, _subspan(a, 0, half))
 
-    var result2 = _bz_three_by_two_slices(r, b, half, cutoff)
-    var q0 = result2[0].copy()
-    var s = result2[1].copy()
+    # The final remainder is written straight into the caller's argument.
+    var q0 = _bz_three_by_two_slices(r, b, half, cutoff, remainder)
 
     # Combine: q = q1 * B^half + q0
     _shift_left_words_inplace(q1, half)
     _add_magnitudes_inplace(q1, q0)
 
-    return (q1^, s^)
+    return q1^
 
 
 def _bz_three_by_two_slices(
@@ -2143,7 +2158,8 @@ def _bz_three_by_two_slices(
     b: ImmSpan[UInt32, _],
     n: Int,
     cutoff: Int,
-) raises -> Tuple[List[UInt32], List[UInt32]]:
+    mut remainder: List[UInt32],
+) raises -> List[UInt32]:
     """Divides a 3n-word slice by a 2n-word slice.
 
     a = a2 * B^(2n) + a1 * B^n + a0  (at most 3n words)
@@ -2158,9 +2174,10 @@ def _bz_three_by_two_slices(
         b: Divisor slice.
         n: Block size (number of words in each sub-part).
         cutoff: Threshold for fallback to schoolbook.
+        remainder: Set to the remainder of the division on return.
 
     Returns:
-        A tuple of (quotient_words, remainder_words).
+        The quotient words.
     """
     # Sub-part views (no data copying here, just pointer/length arithmetic).
     # The high parts may run past the end of a short operand, in which case
@@ -2171,9 +2188,8 @@ def _bz_three_by_two_slices(
     var a2a1 = _subspan(a, n, len(a))
 
     # (q, c) = divmod(a2a1, b1) — 2n-by-n division via recursion
-    var result = _bz_two_by_one_slices(a2a1, b1, n, cutoff)
-    var q = result[0].copy()
-    var c = result[1].copy()
+    var c = List[UInt32]()
+    var q = _bz_two_by_one_slices(a2a1, b1, n, cutoff, c)
 
     # d = q * b0 (multiply materialized q by slice of b — no b copy)
     var d = _multiply_magnitudes_slices(q, b0)
@@ -2202,7 +2218,8 @@ def _bz_three_by_two_slices(
     while len(c) > 1 and c[len(c) - 1] == 0:
         c.shrink(len(c) - 1)
 
-    return (q^, c^)
+    remainder = c^
+    return q^
 
 
 # ===----------------------------------------------------------------------=== #
@@ -2738,9 +2755,8 @@ def floor_divide_inplace(mut x: BigInt, imm other: BigInt) raises:
     Raises:
         ZeroDivisionError: If the divisor is zero.
     """
-    var result = _divmod_magnitudes(x.words, other.words)
-    var q_words = result[0].copy()
-    var r_words = result[1].copy()
+    var r_words = List[UInt32]()
+    var q_words = _divmod_magnitudes(x.words, other.words, r_words)
 
     # Check if remainder is zero
     var r_is_zero = True
@@ -2783,9 +2799,8 @@ def floor_modulo_inplace(mut x: BigInt, imm other: BigInt) raises:
     Raises:
         ZeroDivisionError: If the divisor is zero.
     """
-    var result = _divmod_magnitudes(x.words, other.words)
-    _ = result[0]
-    var r_words = result[1].copy()
+    var r_words = List[UInt32]()
+    _ = _divmod_magnitudes(x.words, other.words, r_words)
 
     # Check if remainder is zero
     var r_is_zero = True
@@ -2833,9 +2848,8 @@ def floor_divide(x1: BigInt, x2: BigInt) raises -> BigInt:
     Raises:
         ZeroDivisionError: If the divisor is zero.
     """
-    var result = _divmod_magnitudes(x1.words, x2.words)
-    var q_words = result[0].copy()
-    var r_words = result[1].copy()
+    var r_words = List[UInt32]()
+    var q_words = _divmod_magnitudes(x1.words, x2.words, r_words)
 
     # Check if remainder is zero
     var r_is_zero = True
@@ -2879,9 +2893,8 @@ def truncate_divide(x1: BigInt, x2: BigInt) raises -> BigInt:
     Raises:
         ZeroDivisionError: If the divisor is zero.
     """
-    var result = _divmod_magnitudes(x1.words, x2.words)
-    var q_words = result[0].copy()
-    _ = result[1]
+    var discarded_remainder = List[UInt32]()
+    var q_words = _divmod_magnitudes(x1.words, x2.words, discarded_remainder)
 
     # Sign is XOR of operand signs (positive if same, negative if different)
     # But if quotient is zero, sign should be positive
@@ -2911,9 +2924,8 @@ def floor_modulo(x1: BigInt, x2: BigInt) raises -> BigInt:
     Raises:
         ZeroDivisionError: If the divisor is zero.
     """
-    var result = _divmod_magnitudes(x1.words, x2.words)
-    _ = result[0]
-    var r_words = result[1].copy()
+    var r_words = List[UInt32]()
+    _ = _divmod_magnitudes(x1.words, x2.words, r_words)
 
     # Check if remainder is zero
     var r_is_zero = True
@@ -2951,9 +2963,8 @@ def truncate_modulo(x1: BigInt, x2: BigInt) raises -> BigInt:
     Raises:
         ZeroDivisionError: If the divisor is zero.
     """
-    var result = _divmod_magnitudes(x1.words, x2.words)
-    _ = result[0]
-    var r_words = result[1].copy()
+    var r_words = List[UInt32]()
+    _ = _divmod_magnitudes(x1.words, x2.words, r_words)
 
     # Check if remainder is zero
     var r_is_zero = True
@@ -2984,9 +2995,8 @@ def floor_divmod(x1: BigInt, x2: BigInt) raises -> Tuple[BigInt, BigInt]:
     Raises:
         ZeroDivisionError: If the divisor is zero.
     """
-    var result = _divmod_magnitudes(x1.words, x2.words)
-    var q_words = result[0].copy()
-    var r_words = result[1].copy()
+    var r_words = List[UInt32]()
+    var q_words = _divmod_magnitudes(x1.words, x2.words, r_words)
 
     # Check if remainder is zero
     var r_is_zero = True
