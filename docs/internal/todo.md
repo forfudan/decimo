@@ -74,7 +74,8 @@ Ordered by value, judged against the two goals in `internal_notes.md`.
    33 ns of a 44 ns operation. Deliberately after items 1 and 2: there is no
    point removing a 33 ns allocation underneath a 110 ns wrapper.
 7. **`from_string`** at ~95 ns, roughly three allocations, never investigated.
-8. **`floor_divide()` 2n-by-n scaling** in `BigUInt` — see the note below.
+8. ~~**`floor_divide()` 2n-by-n scaling** in `BigUInt`~~ — answered, see the
+   note below.
 9. **Exact float conversion for `BigDecimal`.** `from_float_scalar()` goes
    through the float's shortest string form, so `BigDecimal(0.1)` is `0.1`
    where `decimal.Decimal(0.1)` is the 55-digit value the float actually
@@ -120,15 +121,21 @@ Nothing to do here until Mojo grows the feature.
 
 ## Investigations
 
-- [ ] Check the `floor_divide()` function of `BigUInt`. Currently, the speed of
-      division between similar-sized numbers are okay, but the speed of 2n-by-n,
-      4n-by-n, and 8n-by-n divisions decreases disproportionally. This is likely
-      due to the segmentation of the dividend in the Burnikel-Ziegler algorithm.
-      (20260826: still open, but `docs/benchmarks.md` now measures 2n-by-n
-      division for `BigInt` at every size, so the shape is visible. The
-      base-10^9 transform also helped indirectly — Burnikel-Ziegler reaches
-      multiplication underneath, and `BigUInt` division at 100 000 digits went
-      16.53 ms to 13.74 ms with no change of its own.)
+- [x] (20260826) Check the `floor_divide()` function of `BigUInt`: 2n-by-n,
+      4n-by-n and 8n-by-n divisions looked as though they slowed down
+      disproportionally, and the suspicion was Burnikel-Ziegler's segmentation
+      of the dividend. **They do not.** Sweeping the dividend across a block
+      boundary with a fixed 112-word divisor costs 3.9% to cross it, not the
+      whole extra block the segmentation suggests — the first block division
+      only takes the real top slice of the dividend, so the cost tracks the
+      dividend's actual length. The `+2` guard words that `true_divide()` adds,
+      which happen to push a 1000-digit division from two blocks to three, are
+      worth about 4%.
+
+      What the investigation did turn up is that the base-case size was
+      mistuned: see `BURNIKEL_ZIEGLER_BLOCK_WORDS`, retuned from 32 to 24 for
+      6-21% between 500 and 2000 digits. That did not come from segmentation
+      either.
 
 ## Done
 

@@ -47,7 +47,38 @@ comptime CUTOFF_TOOM3 = 768
 NOTE: Karatsuba is used for `CUTOFF_KARATSUBA < max_words <= CUTOFF_TOOM3`.
 """
 comptime CUTOFF_BURNIKEL_ZIEGLER = 32
-"""The cutoff number of words for using Burnikel-Ziegler division."""
+"""The cutoff number of words for using Burnikel-Ziegler division.
+
+A divisor of this many words or fewer is divided by the schoolbook method
+outright. Measured 20260826: schoolbook still wins there, by 5% at 28 words
+and 10% at 25, so this is not the same number as the block size below.
+"""
+comptime BURNIKEL_ZIEGLER_BLOCK_WORDS = 24
+"""The block size the Burnikel-Ziegler recursion bottoms out at.
+
+Once the recursion reaches a divisor of at most this many words it calls
+schoolbook, so this sets the size of the base case rather than deciding
+whether the algorithm runs at all.
+
+Retuned 20260826, from 32, after the word kernels were vectorized: a faster
+base case moves the crossover, and the base case is where the schoolbook
+division sits. The recursion halves the divisor until a block fits, so what
+this really picks is a base size, and only a few distinct ones are reachable
+for a given divisor. Alternating the two settings inside one run:
+
+| dividend / divisor | at 32     | at 24     |         |
+| ------------------ | --------- | --------- | ------- |
+| 128 / 64           | 11872 ns  | 9793 ns   | 1.21x   |
+| 224 / 112          | 21329 ns  | 19717 ns  | 1.08x   |
+| 226 / 112          | 23322 ns  | 21931 ns  | 1.06x   |
+| 448 / 224          | 49108 ns  | 45381 ns  | 1.08x   |
+| 2224 / 1112        | 404480 ns | 397150 ns | 1.02x   |
+
+Never worse, and most of the gain sits between 500 and 2000 digits. A block of
+16 or 20 is close but loses at the large end; 8 and 12 are clearly worse, so
+the base case wants to be big enough to amortize the recursion rather than as
+small as possible.
+"""
 # ===----------------------------------------------------------------------=== #
 # List of functions in this module:
 #
@@ -2494,7 +2525,9 @@ def floor_divide(x: BigUInt, y: BigUInt) raises -> BigUInt:
 
     # CASE: division of very, very large numbers
     # Use the Burnikel-Ziegler division algorithm
-    return floor_divide_burnikel_ziegler(x, y, cut_off=CUTOFF_BURNIKEL_ZIEGLER)
+    return floor_divide_burnikel_ziegler(
+        x, y, cut_off=BURNIKEL_ZIEGLER_BLOCK_WORDS
+    )
 
 
 # TODO: Implement a `floor_divide_slices_schoolbook()` function that
@@ -4404,7 +4437,7 @@ def floor_divide_modulo(
 
     # CASE: division of very, very large numbers
     return floor_divide_modulo_burnikel_ziegler(
-        x, y, cut_off=CUTOFF_BURNIKEL_ZIEGLER, remainder=remainder
+        x, y, cut_off=BURNIKEL_ZIEGLER_BLOCK_WORDS, remainder=remainder
     )
 
 
