@@ -479,11 +479,11 @@ Nothing in the phases below is done yet, but the current `add`/`mul` methods
 were benchmarked against CPython's `decimal`, which is worth knowing before
 building the rest.
 
-| Digits | decimo via Python | CPython `decimal` | |
-|---|---|---|---|
-| 9 | 147.9 ns | 39.2 ns | 3.77× slower |
-| 1 000 | 2.61 µs | 8.79 µs | **3.37× faster** |
-| 10 000 | 130.22 µs | 347.87 µs | **2.67× faster** |
+| Digits | decimo via Python | CPython `decimal` |                  |
+| ------ | ----------------- | ----------------- | ---------------- |
+| 9      | 147.9 ns          | 39.2 ns           | 3.77× slower     |
+| 1 000  | 2.61 µs           | 8.79 µs           | **3.37× faster** |
+| 10 000 | 130.22 µs         | 347.87 µs         | **2.67× faster** |
 
 The ratios at 1 000 and 10 000 digits are within a few percent of the native
 ones, so the binding cost is fully absorbed once the work is real. It only

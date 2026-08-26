@@ -14,7 +14,6 @@
 > `pixi run bench bigint <op>`. BigUInt-only benchmarks remain in
 > `benches/biguint/`.
 
-
 > [!NOTE]
 > **This document can be closed (reviewed 2026-08-26).** It is the February
 > 2026 analysis that led to the base-2^32 `BigInt`, and every task in its
@@ -774,18 +773,18 @@ sizes (100000+).
 
 ## Summary: Priority Order
 
-| PR   | Title                           | Status     | Priority    | Impact                     |
-| ---- | ------------------------------- | ---------- | ----------- | -------------------------- |
-| PR0  | Fix sqrt correctness bug        | ✓ **DONE** | CRITICAL    | correctness (fixed)        |
-| PR1  | Karatsuba Multiplication        | ✓ **DONE** | HIGHEST     | mul 3.8× faster at scale   |
-| PR2  | Fast Division (Knuth D + B-Z)   | ✓ **DONE** | HIGHEST     | div, sqrt, to_string       |
-| PR3  | D&C to_string                   | ✓ **DONE** | HIGH        | to_string: 1.38× at 5K     |
-| PR4a | SIMD parse_numeric_string       | ✓ **DONE** | MEDIUM      | from_string +11% avg       |
-| PR4b | D&C from_string                 | ✓ **DONE** | MEDIUM      | from_string at scale       |
-| PR4c | from_string micro-optimizations | ✓ **DONE** | MEDIUM      | all sizes ≥ 0.98× Python   |
-| PR4d | to_string micro-optimizations   | ✓ **DONE** | MEDIUM      | to_string 0.97×→6.03× avg  |
-| PR5  | True in-place iadd/isub/imul    | ✓ **DONE** | MEDIUM-HIGH | perf infra, readability    |
-| PR6  | Bitwise AND/OR/XOR/NOT          | ✓ **DONE** | MEDIUM      | API completeness           |
-| PR7  | GCD + Modular Arithmetic        | ✓ **DONE** | MEDIUM      | applications               |
-| PR8  | Reassign BInt → BigInt          | ✓ **DONE** | LOW         | ergonomics                 |
+| PR   | Title                           | Status     | Priority    | Impact                                                                   |
+| ---- | ------------------------------- | ---------- | ----------- | ------------------------------------------------------------------------ |
+| PR0  | Fix sqrt correctness bug        | ✓ **DONE** | CRITICAL    | correctness (fixed)                                                      |
+| PR1  | Karatsuba Multiplication        | ✓ **DONE** | HIGHEST     | mul 3.8× faster at scale                                                 |
+| PR2  | Fast Division (Knuth D + B-Z)   | ✓ **DONE** | HIGHEST     | div, sqrt, to_string                                                     |
+| PR3  | D&C to_string                   | ✓ **DONE** | HIGH        | to_string: 1.38× at 5K                                                   |
+| PR4a | SIMD parse_numeric_string       | ✓ **DONE** | MEDIUM      | from_string +11% avg                                                     |
+| PR4b | D&C from_string                 | ✓ **DONE** | MEDIUM      | from_string at scale                                                     |
+| PR4c | from_string micro-optimizations | ✓ **DONE** | MEDIUM      | all sizes ≥ 0.98× Python                                                 |
+| PR4d | to_string micro-optimizations   | ✓ **DONE** | MEDIUM      | to_string 0.97×→6.03× avg                                                |
+| PR5  | True in-place iadd/isub/imul    | ✓ **DONE** | MEDIUM-HIGH | perf infra, readability                                                  |
+| PR6  | Bitwise AND/OR/XOR/NOT          | ✓ **DONE** | MEDIUM      | API completeness                                                         |
+| PR7  | GCD + Modular Arithmetic        | ✓ **DONE** | MEDIUM      | applications                                                             |
+| PR8  | Reassign BInt → BigInt          | ✓ **DONE** | LOW         | ergonomics                                                               |
 | PR9  | Toom-Cook / NTT                 | DONE       | LOW         | Toom-3 2026-08-24, NTT 2026-08-25 (base 2^32) and 2026-08-26 (base 10^9) |

@@ -3,7 +3,6 @@
 > A native arbitrary-precision command-line calculator powered by Decimo and
 > ArgMojo.
 
-
 > [!NOTE]
 > **This document can be closed (reviewed 2026-08-26).** The calculator is
 > built (`pixi run buildcli`), shipped, and covered by 58 integration tests.

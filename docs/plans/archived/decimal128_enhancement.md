@@ -8,7 +8,6 @@
 > 子曰：工欲善其事，必先利其器。 Confucius said: If a craftsman wants to do good
 > work, he must first sharpen his tools.
 
-
 > [!NOTE]
 > **This document can be closed (reviewed 2026-08-26).** Everything planned
 > here was executed by 2026-05-06. What remains are two micro-optimisations
@@ -411,7 +410,7 @@ context. All P1/P2 items have landed; P3 items are tracked in §5.
 
 ### 5.1 Worst-case ratios still > 1.5× rust
 
-These are the residual gaps. Each requires algorithmic work, not 
+These are the residual gaps. Each requires algorithmic work, not
 micro-optimisation.
 
 | Op          | Worst case                    | decimo |  rust | dm/rs | Likely root cause                                                       |
@@ -593,7 +592,7 @@ fused multiply-add); the three items below are still pending.
    `sec`, `arctan`, etc. Not commonly found in fixed-point decimal types,
    but can be a unique selling point for decimo. The problem is that the
    cumulative rounding errors in the Taylor series can be larger as we do not
-   have buffer digits to carry the intermediate precision. Need to make 
+   have buffer digits to carry the intermediate precision. Need to make
    notes that the ULPs can be larger than 1 for some inputs. For users needing
    more precision, they can use `BigDecimal`.
 

@@ -71,10 +71,10 @@ base case. This avoids the double π computation entirely.
 
 ### 4. Chudnovsky Binary Splitting: Factorial/Power Recomputation — DONE
 
-**Was:** Each leaf node in `chudnovsky_split()` called `compute_m_k_rational(k)`,
-which computed `(6k)! / (3k)!` and `(k!)^3` from scratch using loops, and
-`X(k) = (-262537412640768000)^k` by multiplying in a loop `k` times. Factorial
-products were rebuilt from 1 for every single term.
+**Was:** Each leaf node in `chudnovsky_split()` called
+`compute_m_k_rational(k)`, which computed `(6k)! / (3k)!` and `(k!)^3` from
+scratch using loops, and `X(k) = (-262537412640768000)^k` by multiplying in a
+loop `k` times. Factorial products were rebuilt from 1 for every single term.
 
 **Now:** `chudnovsky_split()` uses the standard 3-variable `P`/`Q`/`T`
 recurrence — the formulation used by y-cruncher, GMP's `mpfr_const_pi`, and
@@ -166,6 +166,6 @@ for the existing pure-Mojo code.
 | 4   | Chudnovsky P/Q/B recursion              | High   | Medium | Standard formulation, well-documented                        |
 | 5   | tan() skip redundant reduction          | Medium | Low    | Pass reduced input directly to Taylor                        |
 | 6   | Multiply instead of divide for π/2, π/4 | Low    | Low    | Trivial change                                               |
-| 7   | Toom-3 / NTT multiplication             | High   | High   | DONE — Toom-3 2026-08-24, NTT both bases 2026-08-25/26        |
+| 7   | Toom-3 / NTT multiplication             | High   | High   | DONE — Toom-3 2026-08-24, NTT both bases 2026-08-25/26       |
 | 8   | Base 2^64                               | —      | —      | Not planned; would break architecture                        |
 | 9   | Optional GMP backend                    | High   | High   | Long-term consideration                                      |

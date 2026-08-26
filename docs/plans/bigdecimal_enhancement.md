@@ -198,7 +198,7 @@ kernels (parse/render are precision-insensitive ops).
 | 3g  | AGM-based ln for very high precision          | OPEN — long-term, complex                                     |
 | 4   | sqrt via Newton-with-division is slow         | DONE (T4) — reciprocal-Newton + precision doubling;           |
 |     |                                               | 20× improvement                                               |
-| 5   | NTT multiplication for n ≥ 1024 words         | DONE (T-5) — Goldilocks prime, 2.3× at 1M digits             |
+| 5   | NTT multiplication for n ≥ 1024 words         | DONE (T-5) — Goldilocks prime, 2.3× at 1M digits              |
 | 6   | Toom-3 between Karatsuba and NTT              | DONE (T6) — +14–29% for ≥256w                                 |
 | 7a  | `integer_root` via direct Newton              | DONE (T7a) — 0.14×→25× py at p=1000 for cbrt                  |
 |     | (was exp(ln(x)/n))                            |                                                               |
@@ -211,22 +211,22 @@ kernels (parse/render are precision-insensitive ops).
 |     | eager allocation                              | `biguint/arithmetics.mojo` spelled `"..." + String(n)`.       |
 |     |                                               | `scripts/check_debug_assert_messages.py` guards it as a       |
 |     |                                               | pre-commit hook. Upstream bug modular/modular#6439.           |
-| 11  | Hot-path-first switch reorder in BigDecimal   | DONE (T-A3) — row was stale; code has the branch             |
+| 11  | Hot-path-first switch reorder in BigDecimal   | DONE (T-A3) — row was stale; code has the branch              |
 |     | `add`/`sub`                                   |                                                               |
-| 12  | `@no_inline` raise helpers in                 | DONE (T-A4) — row was stale; `errors.mojo` splits            |
+| 12  | `@no_inline` raise helpers in                 | DONE (T-A4) — row was stale; `errors.mojo` splits             |
 |     | BigDecimal/BigUInt                            |                                                               |
 | 13  | `from_string` digit batching                  | OPEN — borrowed from decimal128 H#17 follow-up                |
 |     | (UInt64 chunks of 9 or 19)                    |                                                               |
 | 14  | `to_string` `InlineArray` right-aligned       | OPEN — borrowed from decimal128 §2.4                          |
 |     | chunked emit                                  |                                                               |
-| 15  | Single-pass rounding in BigDecimal            | DONE (T-M2) — row was stale; already single-pass             |
+| 15  | Single-pass rounding in BigDecimal            | DONE (T-M2) — row was stale; already single-pass              |
 |     | `multiply` / `divide`                         |                                                               |
-| 16  | Short-divisor fast path in `divide`           | DONE (T-D1) — row was stale; routed via `//`                 |
+| 16  | Short-divisor fast path in `divide`           | DONE (T-D1) — row was stale; routed via `//`                  |
 |     | (single-word loop)                            | lift to BigDecimal                                            |
 | 17  | Add/sub `multiply_by_power_of_ten` allocates  | DONE (20260825) — `max_scale` is one of the two scales, so    |
 |     | oversized                                     | one call was always `n = 0`, a plain copy. Now scales only    |
-|     |                                               | the operand that needs it: add 1.90×, subtract 1.82×.        |
-| 18  | Small-coefficient mul fast path               | DISPROVEN (T-M1) — row was stale; reverted                   |
+|     |                                               | the operand that needs it: add 1.90×, subtract 1.82×.         |
+| 18  | Small-coefficient mul fast path               | DISPROVEN (T-M1) — row was stale; reverted                    |
 |     | (bypass Karatsuba dispatch)                   |                                                               |
 | 19  | `precision` arg on `add`/`sub`/`multiply`     | DONE (PR #233) — see T-API3                                   |
 | 20  | Private functions with `_`; Replace raises    | SPLIT (20260826) — the `_` half is no longer wanted: nothing  |
@@ -952,11 +952,11 @@ accumulator paths (`add_inplace()`, `add_by_slice_inplace()`, both in-place
 subtracts) now stop as soon as the carry dies instead of walking the rest of a
 much longer `x`, and `normalize_borrows()` has no callers left.
 
-| words   | before | after | |
-| ------- | ------ | ----- | ----------- |
-| 1 000   | 1.31   | 0.87  | ns/word     |
-| 11 112  | 1.21   | 0.84  | ns/word     |
-| 100 000 | 1.75   | 0.83  | ns/word     |
+| words   | before | after |         |
+| ------- | ------ | ----- | ------- |
+| 1 000   | 1.31   | 0.87  | ns/word |
+| 11 112  | 1.21   | 0.84  | ns/word |
+| 100 000 | 1.75   | 0.83  | ns/word |
 
 Multiply 6.29 → 4.84 ms and divide 15.5 → 12.2 ms at ~11 000 words. The
 `_simd` names went with the vectorization: `add_slices_carry_select()` and
