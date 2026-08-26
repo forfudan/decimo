@@ -282,7 +282,8 @@ x.is_close(y, rel_tol=BigDecimal("1e-9"))
 ## Part VI: Remaining Tasks (Re-ranked)
 
 > Updated after audit on 2026-02-27. Items already completed are removed.
-> Last updated: 2026-02-27 (Tier 1 completed).
+> Last reviewed 2026-08-26: Tiers 1 and 2 are complete. Tiers 3 and 4 remain
+> and are nice-to-have, so this document stays open but is not active work.
 
 ### ✓ Tier 1: Completed
 
@@ -295,7 +296,7 @@ x.is_close(y, rel_tol=BigDecimal("1e-9"))
    removed — identical behavior, not a Python API)
 5. ✓ **`to_scientific_string()`** and **`to_eng_string()`** on BigDecimal
 
-### Tier 2: Important (Remaining)
+### ✓ Tier 2: Important — Completed (all ten, reviewed 2026-08-26)
 
 1. ✓ **`as_tuple()`** on BigDecimal — returns
    `(sign: Bool, digits: List[UInt8], exponent: Int)` matching Python's
@@ -316,7 +317,7 @@ x.is_close(y, rel_tol=BigDecimal("1e-9"))
 10. ✓ **`to_string_with_separators()`** on BigDecimal — alias for
     `to_string(delimiter=...)`
 
-### Tier 3: Nice-to-Have (Remaining)
+### Tier 3: Nice-to-Have — Remaining
 
 1. `signum()` returning -1/0/1 on BigDecimal and BigInt
 2. `clamp(lower, upper)` on BigDecimal and BigInt

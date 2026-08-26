@@ -89,10 +89,20 @@ fi
 # prebuilt artifact via the `setup-decimo` action, in which case this is a
 # no-op.
 ensure_decimo_package() {
-    if [[ -f tests/decimo.mojoc ]]; then
+    # Rebuild when the artifact is missing *or older than any source file*.
+    # Only checking for existence meant that editing `src/` and running the
+    # tests would quietly test the previous build: this is how a merged branch
+    # once reached CI green while the package did not compile, and how a
+    # mutation test can pass against code that is no longer there.
+    if [[ -f tests/decimo.mojoc ]] \
+        && [[ -z $(find src/decimo -name '*.mojo' -newer tests/decimo.mojoc -print -quit) ]]; then
         return 0
     fi
-    echo "tests/decimo.mojoc not found; building it now..."
+    if [[ -f tests/decimo.mojoc ]]; then
+        echo "tests/decimo.mojoc is older than src/decimo; rebuilding..."
+    else
+        echo "tests/decimo.mojoc not found; building it now..."
+    fi
     pixi run mojo precompile src/decimo -o tests/decimo.mojoc
 }
 

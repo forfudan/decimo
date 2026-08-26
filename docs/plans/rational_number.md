@@ -67,14 +67,14 @@ This plan proposes a full public type.
 
 ### 3.2 Construction
 
-| Constructor         | Python                     | Java                      | Rust                     | Boost                 | Proposed                   |
-| ------------------- | -------------------------- | ------------------------- | ------------------------ | --------------------- | -------------------------- |
-| From two integers   | `Fraction(3, 7)`           | `BigFraction(3, 7)`       | `Ratio::new(3, 7)`       | `rational<int>(3, 7)` | `Rational(3, 7)`           |
-| From single integer | `Fraction(5)`              | `BigFraction(5)`          | `Ratio::from_integer(5)` | `rational<int>(5)`    | `Rational(5)`              |
-| From string `"3/7"` | `Fraction("3/7")`          | ✗                         | ✗ (via parse)            | `cin >> r`            | `Rational("3/7")`          |
-| From decimal string | `Fraction("1.5")`          | ✗                         | ✗                        | ✗                     | `Rational("1.5")`          |
+| Constructor         | Python                     | Java                      | Rust                     | Boost                 | Proposed                          |
+| ------------------- | -------------------------- | ------------------------- | ------------------------ | --------------------- | --------------------------------- |
+| From two integers   | `Fraction(3, 7)`           | `BigFraction(3, 7)`       | `Ratio::new(3, 7)`       | `rational<int>(3, 7)` | `Rational(3, 7)`                  |
+| From single integer | `Fraction(5)`              | `BigFraction(5)`          | `Ratio::from_integer(5)` | `rational<int>(5)`    | `Rational(5)`                     |
+| From string `"3/7"` | `Fraction("3/7")`          | ✗                         | ✗ (via parse)            | `cin >> r`            | `Rational("3/7")`                 |
+| From decimal string | `Fraction("1.5")`          | ✗                         | ✗                        | ✗                     | `Rational("1.5")`                 |
 | From float          | `Fraction.from_float(1.5)` | `BigFraction(1.5)`        | ✗                        | ✗                     | `Rational.from_float_scalar(1.5)` |
-| From BigDecimal     | —                          | `BigFraction(bigDecimal)` | —                        | —                     | `Rational(big_decimal)`    |
+| From BigDecimal     | —                          | `BigFraction(bigDecimal)` | —                        | —                     | `Rational(big_decimal)`           |
 
 ### 3.3 Arithmetic Operations
 
@@ -205,8 +205,8 @@ and divides both by `g`, then ensures the denominator is positive.
 - `__init__(value: Scalar)` — implicit, for any integral scalar
 - `__init__(value: String)` — parse `"3/7"`, `"1.5"`, `"-42"`, `"7e-3"`
 - `from_integral_scalar(value: Scalar) -> Rational` — any integral width
-- `from_float_scalar(value: Scalar) -> Rational` — exact float-to-rational, for any
-  binary floating-point width
+- `from_float_scalar(value: Scalar) -> Rational` — exact float-to-rational, for
+  any binary floating-point width
 - `from_bigdecimal(value: BigDecimal) -> Rational` — exact conversion
 
 #### Arithmetic (return new Rational — consider `__iadd__` etc. for in-place)
@@ -281,7 +281,8 @@ and divides both by `g`, then ensures the denominator is positive.
       Hashable, Copyable, Movable
       (done except `Hashable`, which needs `__hash__`; `Stringable` is not
       declared, though `String(r)` already works through `Writable`)
-- [x] Unit tests for all of the above — `tests/rational/test_rational_basic.mojo`
+- [x] Unit tests for all of the above —
+      `tests/rational/test_rational_basic.mojo`
 
 ### Phase 2: Conversions & Rounding
 

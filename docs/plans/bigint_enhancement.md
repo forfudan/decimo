@@ -149,6 +149,10 @@ unchanged for the variable-length signed case.
 
 ## 5. Open Items
 
+> Ranked by urgency in `docs/internal/todo.md`. This section holds the
+> detail, not the ordering.
+
+
 Worked in priority order. There is one real outlier, floor_divide; the
 rest are smaller. The limb-width question sits at the end, because the
 benchmark shows it is not why decimo trails today.
@@ -211,6 +215,13 @@ PR4d rejected 10^18 chunks for exactly this reason; re-verify on current
 hardware before trying again.
 
 ### multiply — T-M5 (NTT) done (2026-08-25)
+
+**T-M6 — the transform is now shared with `BigUInt`. DONE (2026-08-26).**
+`biguint/ntt.mojo` multiplies base-10^9 magnitudes with the same field
+arithmetic, twiddle tables and transforms. Those work on residues and do not
+depend on the base, so they lost their leading underscore and are imported
+rather than duplicated; only the packing differs, because a base-billion
+magnitude is not a bit string. See the BigDecimal plan, H#26.
 
 **T-M5 — number-theoretic transform. DONE.** `bigint/ntt.mojo`, over the
 Goldilocks prime `2^64 - 2^32 + 1`: one prime, no CRT, and reduction of a
@@ -448,24 +459,25 @@ and fix the base-conversion and SIMD fallout behind the test suite.
 
 ### Plan
 
-| Label | Item                                             | Status                                |
-| ----- | ------------------------------------------------ | ------------------------------------- |
-| T-D1  | Remove redundant `.copy()` /                     | OPEN — the floor_divide outlier (P0)  |
-|       | normalise allocs in divide                       |                                       |
-| T-D2  | Hoist Knuth-D inner loop;                        | OPEN — Lesson 7 (two buffers)         |
-|       | branchless offset-carry                          |                                       |
-| T-D3  | Re-tune `CUTOFF_BURNIKEL_ZIEGLER`                | OPEN — pair with the BigUInt todo     |
-| T-T1  | Lower to_string D&C entry threshold              | OPEN — after T-D1 / T-D2              |
-| T-M1  | Toom-3 multiply above 384 words                  | DONE 2026-08-24                       |
-| T-M2  | Product-scanning (Comba) schoolbook base case    | DONE 2026-08-24 — ~2× at the cutoff   |
-| T-M3  | Re-tune `CUTOFF_KARATSUBA` / `CUTOFF_TOOM3`      | DONE 2026-08-24 — 48→128→256, →768    |
-| T-M4  | Pack the base case into base-2^64 limbs          | DONE 2026-08-24 — 1.9× at the cutoff  |
-| T-P1  | `square()` plus inplace loop for power           | OPEN                                  |
-| T-A1  | add/sub dispatch reorder                         | DONE 2026-08-25                       |
-| T-A2  | 64-bit limb pairs in the add/sub kernels         | DONE 2026-08-25 — 2.8× at every size  |
-| T-A4  | Exact divide-by-3 off the carry chain            | DONE 2026-08-25 — 1.7×, but ~2% of mul|
-| T-SH1 | Pre-size the shift result buffer                 | OPEN                                  |
-| T-W1  | Base-2^64 limbs throughout                       | PARTLY — T-M4 does it in the kernel   |
-| T-E1  | `reciprocal_sqrt_fixed_point()` binary recip. sqrt    | DONE 2026-08-24 — enables T-PI4       |
-| T-M5  | NTT multiply over `2^64 - 2^32 + 1`              | DONE 2026-08-25 — 2.3× at 104 200w    |
-| T-D4  | Reciprocal-Newton divide                         | NEXT — NTT landed; B-Z now 4.9× mul   |
+| Label | Item                                               | Status                                 |
+| ----- | -------------------------------------------------- | -------------------------------------- |
+| T-D1  | Remove redundant `.copy()` /                       | OPEN — the floor_divide outlier (P0)   |
+|       | normalise allocs in divide                         |                                        |
+| T-D2  | Hoist Knuth-D inner loop;                          | OPEN — Lesson 7 (two buffers)          |
+|       | branchless offset-carry                            |                                        |
+| T-D3  | Re-tune `CUTOFF_BURNIKEL_ZIEGLER`                  | OPEN — pair with the BigUInt todo      |
+| T-T1  | Lower to_string D&C entry threshold                | OPEN — after T-D1 / T-D2               |
+| T-M1  | Toom-3 multiply above 384 words                    | DONE 2026-08-24                        |
+| T-M2  | Product-scanning (Comba) schoolbook base case      | DONE 2026-08-24 — ~2× at the cutoff    |
+| T-M3  | Re-tune `CUTOFF_KARATSUBA` / `CUTOFF_TOOM3`        | DONE 2026-08-24 — 48→128→256, →768     |
+| T-M4  | Pack the base case into base-2^64 limbs            | DONE 2026-08-24 — 1.9× at the cutoff   |
+| T-P1  | `square()` plus inplace loop for power             | OPEN                                   |
+| T-A1  | add/sub dispatch reorder                           | DONE 2026-08-25                        |
+| T-A2  | 64-bit limb pairs in the add/sub kernels           | DONE 2026-08-25 — 2.8× at every size   |
+| T-A4  | Exact divide-by-3 off the carry chain              | DONE 2026-08-25 — 1.7×, but ~2% of mul |
+| T-SH1 | Pre-size the shift result buffer                   | OPEN                                   |
+| T-W1  | Base-2^64 limbs throughout                         | PARTLY — T-M4 does it in the kernel    |
+| T-E1  | `reciprocal_sqrt_fixed_point()` binary recip. sqrt | DONE 2026-08-24 — enables T-PI4        |
+| T-M5  | NTT multiply over `2^64 - 2^32 + 1`                | DONE 2026-08-25 — 2.3× at 104 200w     |
+| T-M6  | Share the transform with base-10^9                 | DONE 2026-08-26 — `biguint/ntt.mojo`   |
+| T-D4  | Reciprocal-Newton divide                           | NEXT — NTT landed; B-Z now 4.9× mul    |

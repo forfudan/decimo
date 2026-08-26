@@ -120,8 +120,14 @@ that range-reduces against π (`sin`/`cos`/`tan`) inherits it.
 
 ### 2.4 Performance tracking — absolute decimo median ns/iter (ascending precision)
 
-Best-of-5, `-D ASSERT=none`. Append-only. Where a precision is omitted
-the operation only runs at p=100 in that snapshot.
+Best-of-5, `-D ASSERT=none`. Append-only, and **historical**: the newest rows
+are from 2026-04-30 and predate the allocation work, the base-10^9 transform
+and everything after. Do not read them as current. Current figures are
+generated into `docs/benchmarks.md` by `pixi run benchdoc`. These tables are
+kept because they are the record of what each change was worth at the time.
+
+Where a precision is omitted the operation only runs at p=100 in that
+snapshot.
 
 | Date     | op   | p=100 | p=1000 | p=10000 | p=100000 | note                                       |
 | -------- | ---- | ----: | -----: | ------: | -------: | ------------------------------------------ |
@@ -192,7 +198,7 @@ kernels (parse/render are precision-insensitive ops).
 | 3g  | AGM-based ln for very high precision          | OPEN — long-term, complex                                     |
 | 4   | sqrt via Newton-with-division is slow         | DONE (T4) — reciprocal-Newton + precision doubling;           |
 |     |                                               | 20× improvement                                               |
-| 5   | NTT multiplication for n ≥ 1024 words         | DONE (T-5) — Goldilocks prime, 2.3× at 1M digits             |
+| 5   | NTT multiplication for n ≥ 1024 words         | DONE (T-5) — Goldilocks prime, 2.3× at 1M digits              |
 | 6   | Toom-3 between Karatsuba and NTT              | DONE (T6) — +14–29% for ≥256w                                 |
 | 7a  | `integer_root` via direct Newton              | DONE (T7a) — 0.14×→25× py at p=1000 for cbrt                  |
 |     | (was exp(ln(x)/n))                            |                                                               |
@@ -201,29 +207,36 @@ kernels (parse/render are precision-insensitive ops).
 | 8   | BigDecimal-level inplace ops in Taylor loops  | DONE (T8) — +15–27% exp/ln, +9% sqrt                          |
 | 9   | deferred-carry schoolbook multiply            | DONE (T-9) — deferred-carry (product-scanning);               |
 |     |                                               | 32w 2×, 48w 2.4×, 64w 2.9× faster                             |
-| 10  | `debug_assert(..., "{}".format(...))`         | OPEN — sweep BigUInt + BigDecimal hot paths (Lesson #7)       |
-|     | eager allocation                              |                                                               |
-| 11  | Hot-path-first switch reorder in BigDecimal   | OPEN — same-scale & same-sign branch first (Lesson #12)       |
+| 10  | `debug_assert(..., "{}".format(...))`         | DONE (20260826) — repo-wide sweep; three survivors in         |
+|     | eager allocation                              | `biguint/arithmetics.mojo` spelled `"..." + String(n)`.       |
+|     |                                               | `scripts/check_debug_assert_messages.py` guards it as a       |
+|     |                                               | pre-commit hook. Upstream bug modular/modular#6439.           |
+| 11  | Hot-path-first switch reorder in BigDecimal   | DONE (T-A3) — row was stale; code has the branch              |
 |     | `add`/`sub`                                   |                                                               |
-| 12  | `@no_inline` raise helpers in                 | OPEN — sweep `from_string`, `from_uint32`, etc. (Lesson #10)  |
+| 12  | `@no_inline` raise helpers in                 | DONE (T-A4) — row was stale; `errors.mojo` splits             |
 |     | BigDecimal/BigUInt                            |                                                               |
 | 13  | `from_string` digit batching                  | OPEN — borrowed from decimal128 H#17 follow-up                |
 |     | (UInt64 chunks of 9 or 19)                    |                                                               |
 | 14  | `to_string` `InlineArray` right-aligned       | OPEN — borrowed from decimal128 §2.4                          |
 |     | chunked emit                                  |                                                               |
-| 15  | Single-pass rounding in BigDecimal            | OPEN — borrowed from decimal128 H#16                          |
+| 15  | Single-pass rounding in BigDecimal            | DONE (T-M2) — row was stale; already single-pass              |
 |     | `multiply` / `divide`                         |                                                               |
-| 16  | Short-divisor fast path in `divide`           | OPEN — `BigUInt.floor_divide_by_uint32` exists;               |
+| 16  | Short-divisor fast path in `divide`           | DONE (T-D1) — row was stale; routed via `//`                  |
 |     | (single-word loop)                            | lift to BigDecimal                                            |
-| 17  | Add/sub `multiply_by_power_of_ten` allocates  | OPEN — root cause of 4.7× py on small-precision add           |
-|     | oversized                                     |                                                               |
-| 18  | Small-coefficient mul fast path               | OPEN — borrowed from decimal128 H#4 dispatch-overhead lesson  |
+| 17  | Add/sub `multiply_by_power_of_ten` allocates  | DONE (20260825) — `max_scale` is one of the two scales, so    |
+|     | oversized                                     | one call was always `n = 0`, a plain copy. Now scales only    |
+|     |                                               | the operand that needs it: add 1.90×, subtract 1.82×.         |
+| 18  | Small-coefficient mul fast path               | DISPROVEN (T-M1) — row was stale; reverted                    |
 |     | (bypass Karatsuba dispatch)                   |                                                               |
 | 19  | `precision` arg on `add`/`sub`/`multiply`     | DONE (PR #233) — see T-API3                                   |
-| 20  | Private functions with `_`; Replace raises    | OPEN — improves runtime performance by avoiding               |
-|     | with debug asserts                            | unnecessary checks                                            |
-| 21  | More inplace variants for `BigUInt`           | OPEN — further reduces allocations and improves performance   |
-|     | and `BigDecimal`                              |                                                               |
+| 20  | Private functions with `_`; Replace raises    | SPLIT (20260826) — the `_` half is no longer wanted: nothing  |
+|     | with debug asserts                            | outside the package opens these modules, so the prefix buys   |
+|     |                                               | nothing and the house style avoids it. Replacing raises with  |
+|     |                                               | debug asserts on hot paths stays OPEN.                        |
+| 21  | More inplace variants for `BigUInt`           | OPEN — and one concrete instance measured (20260826):         |
+|     | and `BigDecimal`                              | `subtract_inplace()` builds a whole negated copy of its right |
+|     |                                               | operand to flip a sign, so `x -= y` is 5.2× slower than       |
+|     |                                               | libmpdec in place, where `x += y` is 1.3× *faster*.           |
 | 22  | Zero-copy scale alignment via word-offset     | DISPROVEN — see T-API2                                        |
 |     | add/sub                                       |                                                               |
 | 23  | Drop multiply pre-scaling; adjust scale       | OPEN — see T-API2.M                                           |
@@ -231,8 +244,15 @@ kernels (parse/render are precision-insensitive ops).
 | 24  | `round_to_precision` in-place audit           | DONE (T-R2) — code-quality cleanup; divide bench unchanged    |
 |     |                                               | (saved allocs lost in noise vs total divide cost;             |
 |     |                                               | will compound on rounding-dominated ops)                      |
-| 25  | Data-pointer over list indexing across        | DONE (T-U1) — only the two-buffer divide kernel won (4-8%)    |
-|     | BigUInt hot kernels                           | at ≥256w; single-pass O(n) loops within noise, reverted       |
+| 26  | Transform multiplication for base-10^9        | DONE (20260826) — `biguint/ntt.mojo`, six decimal digits per  |
+|     | (`BigUInt`, and so `BigDecimal`)              | coefficient. Toom-3 was the top tier, so `BigDecimal` ran at  |
+|     |                                               | O(n^1.465) while libmpdec switches to a transform. Crossover  |
+|     |                                               | measured between 1024 and 2048 words. Multiply at 100 000     |
+|     |                                               | digits 4.53 → 2.45 ms; divide follows via Burnikel-Ziegler.   |
+| 25  | Data-pointer over list indexing across        | SUPERSEDED (20260826) — the 4-8% no longer reproduces on      |
+|     | BigUInt hot kernels                           | Mojo 1.0.0. Re-benched on the real function at 256-65536w:    |
+|     |                                               | within 1.6%, indexed marginally ahead at the top. The loop    |
+|     |                                               | is division-bound at ~3.35 ns/word. Reverted to indexing.     |
 
 ## 4. Lessons Learnt (the reusable bits)
 
@@ -346,7 +366,17 @@ because the lesson generalises to the variable-length case unchanged.
     saved address reload is hidden, and the variants even regressed small
     operands — so they were reverted.
 
-## 5. Open Items / Future Improvements
+## 5. Task ledger — investigations, done and open
+
+> Ranked by urgency in `docs/internal/todo.md`. This section holds the
+> reasoning, not the ordering.
+
+
+Reviewed 2026-08-26: of the 26 entries below, 20 are finished (DONE,
+DISPROVEN or SUPERSEDED) and are kept for their reasoning, which is the point
+of the section. The six that are not are T-S1, T-D3, T-L3, T-IO2 and the two
+marked below. The section keeps its original order rather than being sorted by
+status, so that the entries still read as the sequence they were done in.
 
 ### 5.1 Worst-case ratios still > 1.5× python (latest sweep 2026-05-01, post-T-API1)
 
@@ -712,7 +742,10 @@ P5 — ln far-from-1 (4.6×–9.2× py → target ≤2×)
   fractions (`1/3`, `1/9`). Full binary splitting remains a future
   option if the constants ever dominate at very high precision.
 
-- **T-L3: AGM ln (T3g / H#3g). DEFERRED — gated on NTT; assessed during
+- **T-L3: AGM ln (T3g / H#3g). GATE LIFTED (20260826) — still deferred, but
+  no longer blocked.** The NTT landed in base 2^32 (2026-08-25) and base 10^9
+  (2026-08-26), so the multiplication AGM needs now exists. Whether it pays off
+  is untested. Original entry: DEFERRED — gated on NTT; assessed during
   the P4 sweep (20260618).** AGM-based `ln` converges quadratically
   (~log₂p iterations) but each iteration costs a full-precision multiply
   **plus a sqrt** (itself reciprocal-Newton = several multiplies), so the
@@ -821,6 +854,12 @@ P6 — `from_string` / `to_string` (1.2–1.3× py → target ≤1.0×)
 P7 — `round` (2× py → target ≤1.0×)
 
 - **T-R1: `debug_assert .format` sweep specific to rounding modes.**
+  **DONE (20260826) — superseded by the repo-wide sweep.** See H#10:
+  `scripts/check_debug_assert_messages.py` checks every `debug_assert` in
+  `src/`, in all the allocating spellings, and runs as a pre-commit hook. There
+  is nothing rounding-specific left to sweep.
+
+  Original entry:
   **INVALID — no such asserts; dispatch swap perf-neutral (20260615).**
   The premise (one `.format` `debug_assert` per mode branch in the round
   dispatcher) does not match the code: neither `bigdecimal/rounding.mojo`
@@ -917,11 +956,11 @@ accumulator paths (`add_inplace()`, `add_by_slice_inplace()`, both in-place
 subtracts) now stop as soon as the carry dies instead of walking the rest of a
 much longer `x`, and `normalize_borrows()` has no callers left.
 
-| words   | before | after | |
-| ------- | ------ | ----- | ----------- |
-| 1 000   | 1.31   | 0.87  | ns/word     |
-| 11 112  | 1.21   | 0.84  | ns/word     |
-| 100 000 | 1.75   | 0.83  | ns/word     |
+| words   | before | after |         |
+| ------- | ------ | ----- | ------- |
+| 1 000   | 1.31   | 0.87  | ns/word |
+| 11 112  | 1.21   | 0.84  | ns/word |
+| 100 000 | 1.75   | 0.83  | ns/word |
 
 Multiply 6.29 → 4.84 ms and divide 15.5 → 12.2 ms at ~11 000 words. The
 `_simd` names went with the vectorization: `add_slices_carry_select()` and

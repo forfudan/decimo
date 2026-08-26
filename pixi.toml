@@ -15,9 +15,7 @@ version = "0.14.0"
 argmojo = ">=0.8.0,<0.9.0"
 mojo = ">=1.0.0,<1.1.0" # Mojo language compiler and runtime
 python = ">=3.13" # For Python bindings and tests
-python-build = ">=0.2.0" # Build PyPI wheel (`pixi run wheel`)
 ruff = ">=0.15.0" # Python code formatter
-twine = ">=6.2.0" # Upload wheel to PyPI (`twine upload dist/*`)
 pre-commit = ">=4.6.1,<5"
 
 [tasks]
@@ -78,6 +76,8 @@ bf = {cmd = "bash examples/run_bigfloat.sh", description = "Build & run a single
 
 # bench
 bench = "pixi run package && bash benches/run_bench.sh"
+# regenerate docs/benchmarks.md from a fresh measurement run
+benchdoc = "python benches/doc/generate.py"
 
 # bench with debug assertions enabled
 bdec_debug = """clear && pixi run package && cd benches/bigdecimal \
@@ -120,7 +120,7 @@ buildpy = """pixi run mojo precompile src/decimo -o tests/decimo.mojoc \
 testpy = "pixi run buildpy && pixi run python python/tests/test_decimo.py"
 tpy = "clear && pixi run testpy"
 # build PyPI wheel (placeholder, no .so included)
-wheel = "cd python && pixi run python -m build --wheel"
+wheel = "cd python && pixi run -e publish python -m build --wheel"
 
 # All task
 all = """pixi run format \
@@ -131,3 +131,28 @@ all = """pixi run format \
 &&pixi run buildpy \
 &&pixi run testpy \
 &&pixi run clean"""
+
+
+# ===----------------------------------------------------------------------=== #
+# Optional environments
+#
+# Each of these adds packages that only one workflow needs, so a plain
+# `pixi install` stays small for someone who just wants to build and test.
+# They include the default feature, so everything above is still available.
+# ===----------------------------------------------------------------------=== #
+
+# `pixi run benchdoc`. Reference libraries for the pi comparison in
+# `docs/benchmarks.md`. The benchmark runs without them and reports the
+# missing entries rather than dropping the column.
+[feature.benchdoc.pypi-dependencies]
+mpmath = ">=1.3"
+gmpy2 = ">=2.2"
+
+# `pixi run wheel` and uploading it. Only needed to cut a release.
+[feature.publish.dependencies]
+python-build = ">=0.2.0"
+twine = ">=6.2.0"
+
+[environments]
+benchdoc = ["benchdoc"]
+publish = ["publish"]

@@ -30,6 +30,7 @@ from decimo.errors import (
     ZeroDivisionError,
 )
 from decimo.rounding_mode import RoundingMode
+import decimo.biguint.ntt as biguint_ntt
 from decimo.utility import alias_as_immutable_source
 
 comptime CUTOFF_KARATSUBA = 256
@@ -960,10 +961,10 @@ def multiply(x: BigUInt, y: BigUInt) -> BigUInt:
         The product of the two BigUInt numbers.
 
     Notes:
-        This function uses a three-tier dispatch based on operand size:
-        schoolbook multiplication for small numbers (≤64 words), Karatsuba
-        multiplication for medium numbers (65–256 words), and Toom-3
-        multiplication for large numbers (>256 words).
+        This function uses a four-tier dispatch based on operand size:
+        schoolbook multiplication for small numbers, Karatsuba for medium
+        numbers, Toom-3 for large numbers, and a number-theoretic transform
+        for very large ones. See `biguint.ntt` for the last one.
     """
 
     debug_assert[assert_mode="none"](
@@ -1017,8 +1018,14 @@ def multiply(x: BigUInt, y: BigUInt) -> BigUInt:
         # multiply_slices_schoolbook can also take x, y, and indices
 
     # CASE 2
-    # Use Toom-3 multiplication for very large numbers
+    # Use Toom-3 multiplication for very large numbers.
+    # Above a few thousand words the number-theoretic transform is cheaper
+    # than Toom-3, so ask it first. See `biguint.ntt`.
     elif max_words > CUTOFF_TOOM3:
+        if biguint_ntt.should_multiply_ntt(len(x.words), len(y.words)):
+            return biguint_ntt.multiply_slices_ntt(
+                x, y, (0, len(x.words)), (0, len(y.words))
+            )
         return multiply_slices_toom3(x, y, (0, len(x.words)), (0, len(y.words)))
 
     # CASE 3
@@ -1047,10 +1054,10 @@ def multiply_slices(
         The product of the two BigUInt numbers.
 
     Notes:
-        This function uses a three-tier dispatch based on operand size:
-        schoolbook multiplication for small numbers (≤64 words), Karatsuba
-        multiplication for medium numbers (65–256 words), and Toom-3
-        multiplication for large numbers (>256 words).
+        This function uses a four-tier dispatch based on operand size:
+        schoolbook multiplication for small numbers, Karatsuba for medium
+        numbers, Toom-3 for large numbers, and a number-theoretic transform
+        for very large ones. See `biguint.ntt` for the last one.
     """
     var n_words_x_slice = bounds_x[1] - bounds_x[0]
     var n_words_y_slice = bounds_y[1] - bounds_y[0]
@@ -1065,8 +1072,12 @@ def multiply_slices(
         # multiply_slices_schoolbook can also take x, y, and indices
 
     # CASE 2
-    # Use Toom-3 multiplication for very large numbers
+    # Use Toom-3 multiplication for very large numbers.
+    # Above a few thousand words the number-theoretic transform is cheaper
+    # than Toom-3, so ask it first. See `biguint.ntt`.
     elif max_words > CUTOFF_TOOM3:
+        if biguint_ntt.should_multiply_ntt(n_words_x_slice, n_words_y_slice):
+            return biguint_ntt.multiply_slices_ntt(x, y, bounds_x, bounds_y)
         return multiply_slices_toom3(x, y, bounds_x, bounds_y)
 
     # CASE 3

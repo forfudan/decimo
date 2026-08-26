@@ -1,6 +1,7 @@
 """Benchmark for BigUInt multiplication time complexity analysis.
 
-Tests word sizes from 8 to 262144 words (powers of 2).
+Tests word sizes from 8 to 262144 words (powers of 2), which spans all
+four multiplication tiers.
 Cases are generated programmatically — no TOML data file.
 """
 
@@ -141,19 +142,27 @@ def main() raises:
 
     log_print("", log_file)
     log_print("=== ANALYSIS ===", log_file)
-    log_print("Expected behavior:", log_file)
-    log_print("- For sizes <= 64 words: School multiplication O(n²)", log_file)
+    log_print("Expected behavior, by the cutoffs in the source:", log_file)
+    log_print("- <=  256 words (CUTOFF_KARATSUBA): schoolbook O(n^2)", log_file)
     log_print(
-        "- For sizes > 64 words: Karatsuba multiplication O(n^1.585)", log_file
+        "- <=  768 words (CUTOFF_TOOM3):     Karatsuba  O(n^1.585)", log_file
+    )
+    log_print(
+        "- <= 2048 words (CUTOFF_NTT):       Toom-3     O(n^1.465)", log_file
+    )
+    log_print(
+        "- above that:                       transform  O(n log n)", log_file
     )
     log_print("", log_file)
     log_print(
-        "If ratios are close to 4.0, it suggests O(n²) complexity", log_file
-    )
-    log_print(
-        "If ratios are close to 3.0, it suggests O(n^1.585) complexity",
+        "Each row doubles the word count, so the ratio to the row above says",
         log_file,
     )
+    log_print("which tier is in force:", log_file)
+    log_print("  ~4.0 -> O(n^2)      schoolbook", log_file)
+    log_print("  ~3.0 -> O(n^1.585)  Karatsuba", log_file)
+    log_print("  ~2.8 -> O(n^1.465)  Toom-3", log_file)
+    log_print("  ~2.1 -> O(n log n)  number-theoretic transform", log_file)
     log_print("", log_file)
 
     # Statistics

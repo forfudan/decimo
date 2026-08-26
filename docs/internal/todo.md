@@ -1,27 +1,90 @@
 # TODO
 
-This is a to-do list for Decimo.
+The one ranked list of what to do next. Everything else points here: the
+enhancement plans in `docs/plans/` carry the detail and the reasoning, and
+`internal_notes.md` carries the measurements, but neither keeps its own
+ranking. There were four such lists in August 2026 and they had already
+drifted apart, so there is now one.
+
+Last reviewed 2026-08-26.
+
+## Now
+
+Ordered by value, judged against the two goals in `internal_notes.md`.
+
+1. **Python binding overhead.** ~110 ns on top of a ~40 ns operation, about
+   five times CPython's own per-call cost. Two parts, both known-good because
+   CPython does exactly this: expose operator slots instead of `.mul()` (18 ns,
+   measured), and embed `BigDecimal` in the PyObject rather than allocating
+   separately. This is the largest single lever for the `decimal` drop-in.
+   See `docs/plans/mojo4py.md`.
+2. **`divide`.** The one operation losing consistently. Start with the free
+   part: `true_divide_general()` allocates a whole product to test exactness
+   when the remainder answers it for nothing, and `floor_divide_by_uint32()`
+   already computes and discards it. Then Newton reciprocal division, which is
+   also worth ~115 ms of `pi(10^6)`. See `bigint_enhancement.md` T-D4 and
+   `bigdecimal_enhancement.md` T-D3.
+3. **`subtract` at large operands.** 2.1x slower than our own `add` at 100 000
+   and 10^6 digits, where libmpdec's subtract is *faster* than its add. That
+   asymmetry is ours, and it is not diagnosed.
+4. **`subtract_inplace()`** builds a negated copy of its right operand to flip
+   a sign: `x -= y` is 5.2x slower than libmpdec in place, where `x += y` is
+   1.3x *faster*. See `bigdecimal_enhancement.md` H#21.
+5. **A cheaper NTT butterfly** — precomputed (Shoup) twiddles and radix-4.
+   Needed for goal 1: `pi(10^6)` at 1.2x of mpmath+GMP wants roughly 2.5x here
+   on top of item 2.
+6. **Inline storage (SBO)** for one or two words in `BigUInt`, worth about
+   33 ns of a 44 ns operation. Deliberately after items 1 and 2: there is no
+   point removing a 33 ns allocation underneath a 110 ns wrapper.
+7. **`from_string`** at ~95 ns, roughly three allocations, never investigated.
+8. **`floor_divide()` 2n-by-n scaling** in `BigUInt` — see the note below.
+
+## Blocked on the language
+
+Nothing to do here until Mojo grows the feature.
 
 - [ ] When Mojo supports **global variables**, implement a type `Context` and a
       global variable `context` for the `Decimal` class to store the precision
       of the decimal number and other configurations. This will allow users to
       set the precision globally, rather than having to set it for each function
       of the `Decimal` class.
+
 - [ ] When Mojo supports **enum types**, implement an enum type for the rounding
       mode.
+
+## Features, not yet started
+
 - [ ] Implement a complex number class `BigComplex` that uses `Decimal` for the
       real and imaginary parts. This will allow users to perform high-precision
       complex number arithmetic.
+
 - [ ] Implement different methods for adding decimo types with `Int` types so
       that an implicit conversion is not required.
-- [ ] Use debug mode to check for unnecessary zero words before all arithmetic
-      operations. This will help ensure that there are no zero words, which can
-      simplify the speed of checking for zero because we only need to check the
-      first word.
+
+## Investigations
+
 - [ ] Check the `floor_divide()` function of `BigUInt`. Currently, the speed of
       division between similar-sized numbers are okay, but the speed of 2n-by-n,
       4n-by-n, and 8n-by-n divisions decreases disproportionally. This is likely
       due to the segmentation of the dividend in the Burnikel-Ziegler algorithm.
+      (20260826: still open, but `docs/benchmarks.md` now measures 2n-by-n
+      division for `BigInt` at every size, so the shape is visible. The
+      base-10^9 transform also helped indirectly — Burnikel-Ziegler reaches
+      multiplication underneath, and `BigUInt` division at 100 000 digits went
+      16.53 ms to 13.74 ms with no change of its own.)
+
+## Done
+
+Kept as a record; the detail is in the plans.
+
+- [x] (20260825) Use debug mode to check for unnecessary zero words before all
+      arithmetic operations. `BigUInt.assert_invariant()` and
+      `BigInt.assert_invariant()` check that the words are non-empty and carry
+      no leading zero word. They are `debug_assert`, so they cost nothing in a
+      normal build and run in the test suite.
+      `remove_leading_empty_words()` carries the check as a post-condition,
+      which covers all thirty repair sites at once.
+
 - [x] Consider using `Decimal` as the struct name instead of `BigDecimal`, and
       use `comptime BigDecimal = Decimal` to create an alias for the `Decimal`
       struct. This just switches the alias and the struct name, but it may be
@@ -29,6 +92,7 @@ This is a to-do list for Decimo.
       consistent with Python's `decimal.Decimal`. Moreover, hovering over
       `Decimal` will show the docstring of the struct, which is more intuitive
       than hovering over `BigDecimal` to see the docstring of the struct.
+
 - [x] (PR #127, #128, #131) Make all default constructor "safe", which means
       that the words are checked and normalized to ensure that there are no zero
       words and that the number is in a valid state. This will help prevent bugs
@@ -45,10 +109,13 @@ This is a to-do list for Decimo.
       high-precision decimal multiplication with many digits after the decimal
       point. Internally, also use `Decimal` instead of `BigDecimal` or `BDec` to
       be consistent.
+
 - [x] Implement different methods for augmented arithmetic assignments to
       improve memory-efficiency and performance.
+
 - [x] Implement a method `remove_leading_zeros` for `BigUInt`, which removes the
       zero words from the most significant end of the number.
+
 - [x] Use debug mode to check for uninitialized `BigUInt` before all arithmetic
       operations. This will help ensure that there are no uninitialized
       `BigUInt`.

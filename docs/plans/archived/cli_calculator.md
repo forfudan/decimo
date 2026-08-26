@@ -3,6 +3,12 @@
 > A native arbitrary-precision command-line calculator powered by Decimo and
 > ArgMojo.
 
+> [!NOTE]
+> **This document can be closed (reviewed 2026-08-26).** The calculator is
+> built (`pixi run buildcli`), shipped, and covered by 58 integration tests.
+> One item from the implementation table is outstanding and minor: the `:vars`
+> meta-command. Kept as the design record.
+
 ## Motivation
 
 Decimo provides arbitrary-precision decimal arithmetic in Mojo, but currently
