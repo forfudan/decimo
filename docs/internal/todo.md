@@ -8,15 +8,47 @@ drifted apart, so there is now one.
 
 Last reviewed 2026-08-26.
 
+## The goal for this round: met (20260826)
+
+Beat libmpdec on every operation at 1000 digits. Measured side by side in one
+`benchdoc` run at 06bafb7:
+
+| operation | decimo   | libmpdec |                  |
+| --------- | -------- | -------- | ---------------- |
+| add       | 83.5 ns  | 113.2 ns | **1.36x faster** |
+| subtract  | 87.4 ns  | 88.8 ns  | parity           |
+| multiply  | 2.81 us  | 8.94 us  | **3.18x faster** |
+| divide    | 13.86 us | 14.38 us | parity           |
+| round     | 82.0 ns  | 97.7 ns  | **1.19x faster** |
+| parse     | 1.10 us  | 1.41 us  | **1.28x faster** |
+
+Nothing is slower. Divide started the day 1.68x behind and add 1.12x behind.
+Three changes did it, and all three carried to the larger sizes as well:
+
+1. The add and subtract word kernels vectorized a block at a time.
+2. Knuth D's multiply-subtract taken off its carry chain, 2.9x on schoolbook
+   division.
+3. The Burnikel-Ziegler base case taking the remainder schoolbook already had,
+   instead of rebuilding it with a multiply.
+
+Both cutoffs were re-swept after each of those, because a cheaper base case
+moves every crossover above it. That happened three times in one day.
+
+The next goal, if there is one, is to make divide *win* rather than tie: 30%
+of a 1000-digit division is recursion bookkeeping rather than arithmetic. See
+`internal_notes.md`.
+
 ## Now
 
 Ordered by value, judged against the two goals in `internal_notes.md`.
 
-1. **Python binding overhead.** ~110 ns on top of a ~40 ns operation, about
-   five times CPython's own per-call cost. Two parts, both known-good because
-   CPython does exactly this: expose operator slots instead of `.mul()` (18 ns,
-   measured), and embed `BigDecimal` in the PyObject rather than allocating
-   separately. This is the largest single lever for the `decimal` drop-in.
+1. **Python binding overhead.** Half done (20260826): `decimo.Decimal` is now
+   the Mojo type itself rather than a Python class wrapping one, and the type
+   check on `self` is gone. `a + b` went 215 ns to 107 ns, `a * b` 215 to 114.
+   The wrapper class, not the operator slots, was where the time was — see
+   `internal_notes.md`. What is left is the 28 ns result allocation, which
+   needs the bindings to embed the value in the PyObject instead of allocating
+   it separately; that is not something this side can do today.
    See `docs/plans/mojo4py.md`.
 2. **`divide`.** The free part is done (20260826): division hands back the
    remainder it already computed, so `true_divide_general()` reads exactness
@@ -25,9 +57,14 @@ Ordered by value, judged against the two goals in `internal_notes.md`.
    size we measure. What is left is Newton reciprocal division, which is also
    worth ~115 ms of `pi(10^6)`. See `bigint_enhancement.md` T-D4 and
    `bigdecimal_enhancement.md` T-D3.
-3. **`subtract` at large operands.** 2.1x slower than our own `add` at 100 000
-   and 10^6 digits, where libmpdec's subtract is *faster* than its add. That
-   asymmetry is ours, and it is not diagnosed.
+3. **The last 12 ns of `subtract` at 1000 digits.** Diagnosed (20260826) and
+   no longer a loop problem: the add and subtract kernels time the same. Two
+   things are left. `subtract` is `raises` where `add` is not, so every caller
+   pays the error path on the hot path. And `BigDecimal.subtract` compares the
+   two coefficients to pick the larger, then calls a `BigUInt.subtract` that
+   compares them again in order to decide whether to raise — a non-raising
+   `subtract_no_check()` that trusts an ordering the caller has already
+   established would drop both.
 4. **`subtract_inplace()`** builds a negated copy of its right operand to flip
    a sign: `x -= y` is 5.2x slower than libmpdec in place, where `x += y` is
    1.3x *faster*. See `bigdecimal_enhancement.md` H#21.
@@ -38,7 +75,8 @@ Ordered by value, judged against the two goals in `internal_notes.md`.
    33 ns of a 44 ns operation. Deliberately after items 1 and 2: there is no
    point removing a 33 ns allocation underneath a 110 ns wrapper.
 7. **`from_string`** at ~95 ns, roughly three allocations, never investigated.
-8. **`floor_divide()` 2n-by-n scaling** in `BigUInt` — see the note below.
+8. ~~**`floor_divide()` 2n-by-n scaling** in `BigUInt`~~ — answered, see the
+   note below.
 
 ## Blocked on the language
 
@@ -64,15 +102,26 @@ Nothing to do here until Mojo grows the feature.
 
 ## Investigations
 
-- [ ] Check the `floor_divide()` function of `BigUInt`. Currently, the speed of
-      division between similar-sized numbers are okay, but the speed of 2n-by-n,
-      4n-by-n, and 8n-by-n divisions decreases disproportionally. This is likely
-      due to the segmentation of the dividend in the Burnikel-Ziegler algorithm.
-      (20260826: still open, but `docs/benchmarks.md` now measures 2n-by-n
-      division for `BigInt` at every size, so the shape is visible. The
-      base-10^9 transform also helped indirectly — Burnikel-Ziegler reaches
-      multiplication underneath, and `BigUInt` division at 100 000 digits went
-      16.53 ms to 13.74 ms with no change of its own.)
+- [x] (20260826) Check the `floor_divide()` function of `BigUInt`: 2n-by-n,
+      4n-by-n and 8n-by-n divisions looked as though they slowed down
+      disproportionally, and the suspicion was Burnikel-Ziegler's segmentation
+      of the dividend. **They do not.** Sweeping the dividend across a block
+      boundary with a fixed 112-word divisor costs 3.9% to cross it, not the
+      whole extra block the segmentation suggests — the first block division
+      only takes the real top slice of the dividend, so the cost tracks the
+      dividend's actual length. The `+2` guard words that `true_divide()` adds,
+      which happen to push a 1000-digit division from two blocks to three, are
+      worth about 4%.
+
+      What the investigation did turn up is that the base-case size was
+      mistuned, which did not come from segmentation either. It was retuned
+      twice the same day and ended where it started: 32 to 24 once the word
+      kernels were vectorized, then 24 back to 32 once the Knuth D
+      multiply-subtract came off its carry chain. Each change made the base
+      case cheaper, but the first favoured a smaller base and the second a
+      larger one. See `BURNIKEL_ZIEGLER_BLOCK_WORDS` for the measurements;
+      `CUTOFF_BURNIKEL_ZIEGLER`, the separate question of whether the
+      recursion runs at all, went 32 to 48.
 
 ## Done
 

@@ -387,6 +387,78 @@ same algorithm we use, and lands at 262 ms. Both are `O(M(n) log n)` and both
 measure an exponent of 1.24; the difference is entirely the constant, which is
 why every pi record uses Chudnovsky and not AGM.
 
+## Addition and subtraction
+
+### Blocking is what makes the vector pass win (20260826)
+
+The word kernels were a carry-select chain: compute both answers for a word,
+one for carry-in 0 and one for carry-in 1, and let the incoming carry pick.
+That keeps the loop-carried chain down to a select, and it beat the obvious
+add-compare-branch shape. It also beat an earlier two-pass shape — add the
+words in vectors with no carries, then normalise the whole result — which is
+why the header comment said one pass was better than two.
+
+One pass is *not* better than two. What was wrong with the old two-pass version
+was that it ran each pass over the whole operand, so the words went to memory
+and came back. Run the same two passes **a block at a time** and the carry walk
+reads what the vector pass has just written, still in L1. Interleaved, same
+process, same buffers:
+
+| words | add   | subtract |
+| ----- | ----- | -------- |
+| 2-4   | 0.92-1.00x | 0.93-1.00x |
+| 8     | 1.61x | 1.34x    |
+| 32    | 1.87x | 1.70x    |
+| 112   | 2.09x | 1.94x    |
+| 1000  | 2.10x | 2.18x    |
+
+The block is 64 words and the generate flags live in a stack buffer, so there
+is no allocation. Below one vector's worth of words the old chain still wins,
+so it stays as the short path — and as the reference implementation the new one
+is checked against.
+
+Two facts make the carry walk a single pass rather than a cascade. A word that
+generated a carry came out at `BASE - 2` or below, so it cannot generate a
+second one when it takes the carry beneath it; only a word sitting at exactly
+`BASE - 1` can, and that word did not generate. The subtraction side is the
+mirror image: a word that borrowed came out at 1 or above, and only a word left
+at zero can borrow again.
+
+At 1000 digits this moved `BigDecimal`:
+
+| operation | before | after | libmpdec |
+| --------- | ------ | ----- | -------- |
+| add       | 108 ns | 85 ns | 111 ns   |
+| subtract  | 107 ns | 94 ns | 82 ns    |
+
+So add crosses over from losing to winning. Subtract does not, and the reason
+is not the kernel — the two kernels time the same. `subtract` is `raises` where
+`add` is not, and it re-derives an ordering that `BigDecimal.subtract` has
+already established. Multiply is unchanged and divide gains about 3%: at
+1000 digits neither spends much of its time in these loops.
+
+### The 1000-digit deficit was never the loop
+
+Subtracting the 9-digit time from the 1000-digit time separates the per-call
+overhead from the loop, and the two numbers say different things:
+
+| operation | our loop | their loop | our fixed | their fixed |
+| --------- | -------- | ---------- | --------- | ----------- |
+| add       | 78.6 ns  | 75.6 ns    | 45.4 ns   | 35.6 ns     |
+| subtract  | 69.6 ns  | 49.7 ns    | 46.3 ns   | 32.5 ns     |
+| divide    | 24.4 us  | 14.3 us    | 137 ns    | 51 ns       |
+
+Before the change, our add loop already matched libmpdec's *despite* base-10^9
+giving us 2.1x their word count — per word we were twice as fast, and the whole
+1.12x deficit was fixed per-call cost. That is why the kernel work fixed add
+outright and why what is left of subtract is not a loop problem either.
+
+Two things measured along the way turned out not to be where the time was.
+Rounding to the working precision costs 2-4 ns at 1000 digits, not the pass it
+looks like, so libmpdec's add being slower than its own subtract is not
+explained by add needing a rounding pass. And the `BigDecimal` layer over
+`BigUInt` costs 1-2 ns, so the alignment and sign handling are not in the way.
+
 ## Multiplication and the transform
 
 ### Where the NTT actually wins, and where it does not
@@ -556,6 +628,49 @@ schedule has to land badly. `sqrt_via_reciprocal_iteration(10005, 1000)` and
 inputs against precisions for that reason.
 
 
+### Where the last of a 1000-digit division goes (20260826)
+
+After the multiply-subtract and the base-case remainder, a 226-by-112 word
+division is 13.4 us. Splitting it against the work it cannot avoid:
+
+| part                        | ns    | share |
+| --------------------------- | ----- | ----- |
+| 4 base cases, 56-by-28      | 6390  | 48%   |
+| 2 multiplies, 56x56         | 1759  | 13%   |
+| 4 multiplies, 28x28         | 1207  | 9%    |
+| **essential**               | 9356  | 70%   |
+| **recursion bookkeeping**   | 4035  | 30%   |
+
+The multiplies are Burnikel-Ziegler's own `q * B0` step and cannot go. The
+30% is allocation, the shifts that place a partial quotient, and the O(n)
+compares in the correction path. Removing it means restructuring the
+recursion around preallocated buffers rather than returning fresh `BigUInt`
+values at every node -- the single largest remaining item in division, and
+not a small change.
+
+Two smaller things were measured and left alone. The `+ 2` guard words in
+`true_divide_general()` push a 1000-digit dividend from 224 words to 226,
+just past `2n`, which costs 6% because the driver then runs three blocks
+instead of two; the guard is load-bearing for rounding and is not worth 6% on
+a guess. And the base case copies its dividend twice, once into a slice and
+once into Knuth D's running window, worth about 1.5%.
+
+### Cross-run timing lies at the 5% scale
+
+Twice in one day a change looked like a 5-12% win when measured as "run the
+benchmark, change the code, run it again", and both times an interleaved
+measurement said it was nothing.
+
+The 64-bit quotient estimate is the clearest case. Separate runs said 13.39 us
+against 12.75 us, a 4.8% win. Building both versions as two binaries and
+alternating them said 14.10 against 14.09 -- neutral. It was rejected twice on
+that basis, hours apart, having looked like a win both times.
+
+The rule that follows: below about 10%, a comparison is only real if both
+sides run inside one process, or as two binaries alternated in one shell. A
+number from one run against a number written down earlier is not evidence,
+and that includes numbers written down in this file.
+
 ## Allocation and small operations
 
 ### Small operations are allocation, not arithmetic
@@ -637,7 +752,64 @@ type for a splitting tree whose whole point is that the fractions never need to
 be in lowest terms.
 
 
+## Calling decimo from Python
+
+### The Python wrapper class cost more than the arithmetic (20260826)
+
+`decimo.Decimal` used to be a Python class holding a Mojo `BigDecimal` in a
+`_inner` slot, and every operator went through a Python-level `__add__` that
+built a second object. Timed against the native type it was the single largest
+cost of a call, larger than the addition itself. One call, in nanoseconds:
+
+| layer                          | add  |
+| ------------------------------ | ---- |
+| Python wrapper class           | 74   |
+| call into Mojo and back        | 25   |
+| two `downcast_value_ptr`       | 44   |
+| the `BigDecimal` addition       | 47   |
+| wrapping the result            | 28   |
+
+Two of those went away. `Decimal` is now the Mojo type itself, with no Python
+class above it, and the type check on `self` is gone: CPython has already
+checked that argument against the bound type before the call, so
+`unchecked_downcast_value_ptr` is right there and the checked one was pure
+duplication. The right operand still has to be checked, but comparing its type
+against the type of `self` is about half the price of the checked downcast, and
+it doubles as the branch that converts an `int` or a `str`.
+
+| operation | before | after  |
+| --------- | ------ | ------ |
+| `a + b`   | 215 ns | 107 ns |
+| `a - b`   | 224 ns | 115 ns |
+| `a * b`   | 215 ns | 114 ns |
+| `a / b`   | 333 ns | 226 ns |
+
+The ranked list had predicted this differently: it expected ~18 ns from
+exposing operator slots instead of `.mul()`. The slot itself is worth nothing —
+`a + b` and `a.add(b)` time the same to within noise. What the slots buy is
+permission to delete the wrapper class, and that is where the 74 ns was.
+
+What is left is 60 ns above the arithmetic: 25 ns of call, 28 ns of result
+allocation, 10 ns of type guard. The allocation is the next lever and it needs
+the bindings to embed the value in the PyObject instead of allocating it
+separately, which is not something this side can do today.
+
 ## Traps worth remembering
+
+### A type built from a spec has empty operator slots
+
+`def_method[f]("__add__")` puts `__add__` in the type's dictionary, and
+`a.__add__(b)` works, but `a + b` still reports an unsupported operand.
+CPython fills the `nb_add` slot that `+` actually reads in
+`fixup_slot_dispatchers`, which runs when a class is *created* from a
+namespace, not when a type is built from a spec the way the Mojo bindings build
+one. Assigning the attribute back onto the type from Python
+(`Decimal.__add__ = Decimal.__dict__["__add__"]`) goes through `type_setattro`,
+which does run the fixup. That loop is in `python/decimo/__init__.py`.
+
+The same mechanism explains why `__repr__` cannot be registered from Mojo at
+all: the bindings install their own from `Representable` after ours, so it has
+to be assigned from Python too.
 
 ### Passing one pointer as both source and destination
 

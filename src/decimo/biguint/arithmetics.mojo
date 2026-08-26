@@ -46,8 +46,51 @@ comptime CUTOFF_TOOM3 = 768
 
 NOTE: Karatsuba is used for `CUTOFF_KARATSUBA < max_words <= CUTOFF_TOOM3`.
 """
-comptime CUTOFF_BURNIKEL_ZIEGLER = 32
-"""The cutoff number of words for using Burnikel-Ziegler division."""
+comptime CUTOFF_BURNIKEL_ZIEGLER = 48
+"""The cutoff number of words for using Burnikel-Ziegler division.
+
+Schoolbook is used outright when the divisor has at most this many words
+*and* the dividend has at most twice as many; a longer dividend goes to
+Burnikel-Ziegler whatever the divisor's width. So this is not the same number
+as the block size below, and it is not a divisor-width cutoff on its own.
+
+Raised from 32 on 20260826, after the Knuth D multiply-subtract step was taken
+off its carry chain. A 2.9x faster schoolbook stays ahead of the recursion for
+longer. Measured on the 2n-by-n shape the condition selects, best of nine:
+
+| divisor words | schoolbook | best Burnikel-Ziegler |
+| ------------- | ---------- | --------------------- |
+| 32            | 1972 ns    | 2662 ns               |
+| 48            | 3920 ns    | 4537 ns               |
+| 64            | 6515 ns    | 6480 ns               |
+
+64 is where they meet, so the crossover sits just below it.
+"""
+comptime BURNIKEL_ZIEGLER_BLOCK_WORDS = 32
+"""The block size the Burnikel-Ziegler recursion bottoms out at.
+
+Once the recursion reaches a divisor of at most this many words it calls
+schoolbook, so this sets the size of the base case rather than deciding
+whether the algorithm runs at all.
+
+Retuned twice on 20260826, and the second time undid the first. Vectorizing
+the word kernels made the base case cheaper, which favoured a smaller one, and
+32 went to 24. Then taking the multiply-subtract off its carry chain made the
+base case cheaper again -- and that favoured a *larger* one, because what the
+base case now costs is closer to what the recursion's own bookkeeping costs.
+Back to 32:
+
+| divisor words | at 24     | at 32     | at 48     |
+| ------------- | --------- | --------- | --------- |
+| 112           | 15648 ns  | 13059 ns  | 13255 ns  |
+| 224           | 37998 ns  | 32644 ns  | 32742 ns  |
+| 448           | 99662 ns  | 88127 ns  | 88516 ns  |
+| 1112          | 341317 ns | 341121 ns | 325803 ns |
+
+48 is 4.5% better at 1112 words and within 1.5% everywhere else, so it is the
+other defensible choice; 32 is picked because the 1000-digit case, which is
+the 112-word row, is the one being tuned for.
+"""
 # ===----------------------------------------------------------------------=== #
 # List of functions in this module:
 #
@@ -113,29 +156,45 @@ comptime CUTOFF_BURNIKEL_ZIEGLER = 32
 
 
 # ===----------------------------------------------------------------------=== #
-# Word-level carry-select kernels
+# Word-level addition and subtraction kernels
 #
 # A base-10^9 word does not carry by overflowing, so the carry out of a word
 # cannot be read off the hardware flags the way a base-2^32 one can: it is a
 # comparison against `BASE`, and the comparison depends on the carry coming in.
 # Written directly, that puts a compare on the loop-carried dependency chain.
 #
-# These kernels use the carry-select trick instead: both answers — the one for
-# carry-in 0 and the one for carry-in 1 — are computed from the operands alone,
-# off the critical path, and the incoming carry only picks between them. What
-# remains loop-carried is a select, so the chain is roughly one cycle per word
-# rather than the three or four an add-compare-branch chain costs.
+# Short runs use the carry-select trick: both answers — the one for carry-in 0
+# and the one for carry-in 1 — are computed from the operands alone, off the
+# critical path, and the incoming carry only picks between them. What remains
+# loop-carried is a select, so the chain is roughly one cycle per word rather
+# than the three or four an add-compare-branch chain costs.
 #
-# They also replace the older two-pass shape (a vectorized word-wise add over
-# the whole operand, then `normalize_carries_lt_2_bases()` over the whole
-# result). One pass touches the words once instead of twice, which is what the
-# large sizes were actually paying for, and a carry that dies early now stops
-# early instead of walking the rest of the accumulator.
+# From one vector's worth of words up, a two-pass shape wins instead: add the
+# words in vectors with no carries at all, then walk the carries. Two words of
+# base-10^9 sum to less than 2^32, so the vector pass cannot overflow, and the
+# reduction is a comparison and a masked subtract. The walk that follows stays
+# a single pass, because a word that generated a carry came out at `BASE - 2`
+# or below and cannot generate a second one when it takes the carry beneath it.
+# Only a word sitting exactly at `BASE - 1` can, and that word did not
+# generate.
+#
+# The two passes run a block at a time rather than over the whole operand, and
+# that is what makes this beat the carry-select chain. An earlier whole-operand
+# version of the same idea lost, because it walked the words twice through
+# memory; a block stays in L1, so the carry walk reads what the vector pass has
+# just written, and the generate flags live in a stack buffer instead of a heap
+# allocation. Measured on an M4 Pro: 2.1x faster from 100 words up, 1.6x at 16,
+# break-even at 8, and slower below that, which is why the short path stays.
 # ===----------------------------------------------------------------------=== #
+
+# One 256-bit vector of base-10^9 words, and the run length that the two-pass
+# kernels chew through between carry walks.
+comptime WORDS_PER_VECTOR = 8
+comptime WORDS_PER_CARRY_BLOCK = 64
 
 
 @always_inline
-def _add_words_carry_select[
+def _add_words[
     o: Origin[mut=True],
     o_a: Origin[mut=False],
     o_b: Origin[mut=False],
@@ -160,6 +219,111 @@ def _add_words_carry_select[
     Returns:
         The carry out of the highest word, 0 or 1.
     """
+    if n_words < WORDS_PER_VECTOR:
+        return _add_words_carry_select(rp, ap, bp, n_words, carry_in)
+    return _add_words_vectorized(rp, ap, bp, n_words, carry_in)
+
+
+def _add_words_vectorized[
+    o: Origin[mut=True],
+    o_a: Origin[mut=False],
+    o_b: Origin[mut=False],
+](
+    rp: Pointer[UInt32, o],
+    ap: Pointer[UInt32, o_a],
+    bp: Pointer[UInt32, o_b],
+    n_words: Int,
+    carry_in: UInt32,
+) -> UInt32:
+    """The long-run path of `_add_words()`. Not inlined on purpose.
+
+    It carries a block-sized stack buffer, and inlining that into the callers
+    made them set the frame up on every call, including the short ones that
+    never reach here. That cost the one-word add 17%.
+
+    Args:
+        rp: Destination, at least `n_words` words.
+        ap: First summand, at least `n_words` words.
+        bp: Second summand, at least `n_words` words.
+        n_words: Number of words to add, at least `WORDS_PER_VECTOR`.
+        carry_in: Carry into the lowest word, 0 or 1.
+
+    Returns:
+        The carry out of the highest word, 0 or 1.
+    """
+    var generated = InlineArray[UInt32, WORDS_PER_CARRY_BLOCK](
+        uninitialized=True
+    )
+    var gp = generated.unsafe_ptr()
+    var zeros = SIMD[DType.uint32, WORDS_PER_VECTOR](0)
+    var ones = SIMD[DType.uint32, WORDS_PER_VECTOR](1)
+    var bases = SIMD[DType.uint32, WORDS_PER_VECTOR](BigUInt.BASE)
+
+    var carry = carry_in
+    var start = 0
+    while start < n_words:
+        var end = min(start + WORDS_PER_CARRY_BLOCK, n_words)
+
+        var i = start
+        while i + WORDS_PER_VECTOR <= end:
+            var sums = (
+                ap.unsafe_offset(i).unsafe_load[width=WORDS_PER_VECTOR]()
+                + bp.unsafe_offset(i).unsafe_load[width=WORDS_PER_VECTOR]()
+            )
+            var carried = sums.ge(bases)
+            rp.unsafe_offset(i).unsafe_store(carried.select(sums - bases, sums))
+            gp.unsafe_offset(i - start).unsafe_store(
+                carried.select(ones, zeros)
+            )
+            i += WORDS_PER_VECTOR
+        while i < end:
+            var sum = ap[unsafe_offset=i] + bp[unsafe_offset=i]
+            var carried = UInt32(sum >= BigUInt.BASE)
+            rp[unsafe_offset=i] = sum - BigUInt.BASE if carried != 0 else sum
+            gp[unsafe_offset=i - start] = carried
+            i += 1
+
+        for j in range(start, end):
+            var word = rp[unsafe_offset=j] + carry
+            if word >= BigUInt.BASE:
+                rp[unsafe_offset=j] = word - BigUInt.BASE
+                carry = 1
+            else:
+                rp[unsafe_offset=j] = word
+                carry = gp[unsafe_offset=j - start]
+
+        start = end
+
+    return carry
+
+
+@always_inline
+def _add_words_carry_select[
+    o: Origin[mut=True],
+    o_a: Origin[mut=False],
+    o_b: Origin[mut=False],
+](
+    rp: Pointer[UInt32, o],
+    ap: Pointer[UInt32, o_a],
+    bp: Pointer[UInt32, o_b],
+    n_words: Int,
+    carry_in: UInt32,
+) -> UInt32:
+    """Adds `n_words` words with the carry off the critical path.
+
+    The short-run path of `_add_words()`, and the reference implementation for
+    it: same arguments, same result, no vectors.
+
+    Args:
+        rp: Destination, at least `n_words` words.
+        ap: First summand, at least `n_words` words.
+        bp: Second summand, at least `n_words` words.
+        n_words: Number of words to add.
+        carry_in: Carry into the lowest word, 0 or 1.
+
+    Returns:
+        The carry out of the highest word, 0 or 1.
+    """
     var carry = carry_in
     for i in range(n_words):
         var raw = ap[unsafe_offset=i] + bp[unsafe_offset=i]
@@ -170,6 +334,122 @@ def _add_words_carry_select[
         rp[unsafe_offset=i] = word_if_1 if carry != 0 else word_if_0
         carry = carry_if_1 if carry != 0 else carry_if_0
     return carry
+
+
+@always_inline
+def _subtract_words[
+    o: Origin[mut=True],
+    o_a: Origin[mut=False],
+    o_b: Origin[mut=False],
+](
+    rp: Pointer[UInt32, o],
+    ap: Pointer[UInt32, o_a],
+    bp: Pointer[UInt32, o_b],
+    n_words: Int,
+    borrow_in: UInt32,
+) -> UInt32:
+    """Subtracts `n_words` base-10^9 words: `r = a - b`, least significant first.
+
+    The borrow counterpart of `_add_words()`, with the same aliasing freedom
+    and the same two shapes. The wrapped `a - b` is deliberate: it is the right
+    answer modulo 2^32 once `BASE` is added back.
+
+    Args:
+        rp: Destination, at least `n_words` words.
+        ap: Minuend, at least `n_words` words.
+        bp: Subtrahend, at least `n_words` words.
+        n_words: Number of words to subtract.
+        borrow_in: Borrow into the lowest word, 0 or 1.
+
+    Returns:
+        The borrow out of the highest word, 0 or 1.
+    """
+    if n_words < WORDS_PER_VECTOR:
+        return _subtract_words_borrow_select(rp, ap, bp, n_words, borrow_in)
+    return _subtract_words_vectorized(rp, ap, bp, n_words, borrow_in)
+
+
+def _subtract_words_vectorized[
+    o: Origin[mut=True],
+    o_a: Origin[mut=False],
+    o_b: Origin[mut=False],
+](
+    rp: Pointer[UInt32, o],
+    ap: Pointer[UInt32, o_a],
+    bp: Pointer[UInt32, o_b],
+    n_words: Int,
+    borrow_in: UInt32,
+) -> UInt32:
+    """The long-run path of `_subtract_words()`. Not inlined, for the reason
+    given on `_add_words_vectorized()`.
+
+    Args:
+        rp: Destination, at least `n_words` words.
+        ap: Minuend, at least `n_words` words.
+        bp: Subtrahend, at least `n_words` words.
+        n_words: Number of words to subtract, at least `WORDS_PER_VECTOR`.
+        borrow_in: Borrow into the lowest word, 0 or 1.
+
+    Returns:
+        The borrow out of the highest word, 0 or 1.
+    """
+    var borrowed_flags = InlineArray[UInt32, WORDS_PER_CARRY_BLOCK](
+        uninitialized=True
+    )
+    var gp = borrowed_flags.unsafe_ptr()
+    var zeros = SIMD[DType.uint32, WORDS_PER_VECTOR](0)
+    var ones = SIMD[DType.uint32, WORDS_PER_VECTOR](1)
+    var bases = SIMD[DType.uint32, WORDS_PER_VECTOR](BigUInt.BASE)
+
+    var borrow = borrow_in
+    var start = 0
+    while start < n_words:
+        var end = min(start + WORDS_PER_CARRY_BLOCK, n_words)
+
+        var i = start
+        while i + WORDS_PER_VECTOR <= end:
+            var minuends = ap.unsafe_offset(i).unsafe_load[
+                width=WORDS_PER_VECTOR
+            ]()
+            var subtrahends = bp.unsafe_offset(i).unsafe_load[
+                width=WORDS_PER_VECTOR
+            ]()
+            var differences = minuends - subtrahends
+            var borrowed = minuends.lt(subtrahends)
+            rp.unsafe_offset(i).unsafe_store(
+                borrowed.select(differences + bases, differences)
+            )
+            gp.unsafe_offset(i - start).unsafe_store(
+                borrowed.select(ones, zeros)
+            )
+            i += WORDS_PER_VECTOR
+        while i < end:
+            var minuend = ap[unsafe_offset=i]
+            var subtrahend = bp[unsafe_offset=i]
+            var difference = minuend - subtrahend
+            var borrowed = UInt32(minuend < subtrahend)
+            rp[unsafe_offset=i] = (
+                difference + BigUInt.BASE if borrowed != 0 else difference
+            )
+            gp[unsafe_offset=i - start] = borrowed
+            i += 1
+
+        # A word that borrowed came out at 1 or above, so taking the borrow
+        # beneath it cannot make it borrow again. Only a word left at zero can.
+        for j in range(start, end):
+            var word = rp[unsafe_offset=j]
+            if borrow != 0:
+                if word == 0:
+                    rp[unsafe_offset=j] = BigUInt.BASE_MAX
+                    borrow = 1
+                    continue
+                word -= 1
+            rp[unsafe_offset=j] = word
+            borrow = gp[unsafe_offset=j - start]
+
+        start = end
+
+    return borrow
 
 
 @always_inline
@@ -184,11 +464,10 @@ def _subtract_words_borrow_select[
     n_words: Int,
     borrow_in: UInt32,
 ) -> UInt32:
-    """Subtracts `n_words` base-10^9 words: `r = a - b`, least significant first.
+    """Subtracts `n_words` words with the borrow off the critical path.
 
-    The borrow counterpart of `_add_words_carry_select()`, with the same
-    aliasing freedom. The wrapped `a - b` is deliberate: it is the right answer
-    modulo 2^32 once `BASE` is added back.
+    The short-run path of `_subtract_words()`, and the reference
+    implementation for it.
 
     Args:
         rp: Destination, at least `n_words` words.
@@ -212,6 +491,83 @@ def _subtract_words_borrow_select[
         rp[unsafe_offset=i] = word_if_1 if borrow != 0 else word_if_0
         borrow = borrow_if_1 if borrow != 0 else borrow_if_0
     return borrow
+
+
+def _multiply_subtract_words[
+    o: Origin[mut=True],
+    o_y: Origin[mut=False],
+](
+    rp: Pointer[UInt32, o],
+    yp: Pointer[UInt32, o_y],
+    n_words: Int,
+    quotient: UInt32,
+) -> UInt64:
+    """`r[0..n) -= quotient * y[0..n)`, returning what to take off `r[n]`.
+
+    The multiply-subtract step of Knuth D, and the whole of its inner cost.
+
+    Written the obvious way, `product = quotient * y[i] + carry` puts a
+    64-bit division by `BASE` on the loop-carried chain: carry feeds the
+    product, the product feeds the division, the division feeds the next
+    carry, about nine cycles a word. But `quotient * y[i]` does not actually
+    depend on the carry. Computing all of those first, with their base-10^9
+    splits, lets them pipeline, and leaves only a combine-and-subtract walk
+    running serially -- two chains, both an add and a compare deep.
+
+    Worth 2.1x at 112 words and 2.3x at 224, which is where the schoolbook
+    base case of Burnikel-Ziegler sits.
+
+    Args:
+        rp: The running remainder window, `n_words` words.
+        yp: The divisor, `n_words` words.
+        n_words: Number of words in the divisor.
+        quotient: The estimated quotient word, below `BASE`.
+
+    Returns:
+        The amount to subtract from the word above the window.
+    """
+    comptime BASE_64 = UInt64(BigUInt.BASE)
+    var highs = InlineArray[UInt32, WORDS_PER_CARRY_BLOCK](uninitialized=True)
+    var lows = InlineArray[UInt32, WORDS_PER_CARRY_BLOCK](uninitialized=True)
+    var hp = highs.unsafe_ptr()
+    var lp = lows.unsafe_ptr()
+
+    var quotient_64 = UInt64(quotient)
+    var pending_high = UInt32(0)
+    var borrow = UInt32(0)
+    var start = 0
+    while start < n_words:
+        var end = min(start + WORDS_PER_CARRY_BLOCK, n_words)
+
+        # Independent of the carry, so these pipeline.
+        for i in range(start, end):
+            var product = quotient_64 * UInt64(yp[unsafe_offset=i])
+            var high = product // BASE_64
+            hp[unsafe_offset=i - start] = UInt32(high)
+            lp[unsafe_offset=i - start] = UInt32(product - high * BASE_64)
+
+        # The serial part: carry the product's high word into the next digit,
+        # then take that digit out of the running remainder.
+        for i in range(start, end):
+            var digit = lp[unsafe_offset=i - start] + pending_high
+            pending_high = hp[unsafe_offset=i - start]
+            if digit >= BigUInt.BASE:
+                digit -= BigUInt.BASE
+                pending_high += 1
+            var biased = (
+                UInt64(rp[unsafe_offset=i])
+                + BASE_64
+                - UInt64(digit)
+                - UInt64(borrow)
+            )
+            borrow = UInt32(biased < BASE_64)
+            rp[unsafe_offset=i] = UInt32(
+                biased - BASE_64 + UInt64(borrow) * BASE_64
+            )
+
+        start = end
+
+    return UInt64(pending_high) + UInt64(borrow)
 
 
 @always_inline
@@ -474,7 +830,7 @@ def add_slices_carry_select(
 
     Working on the slices in place, through the indices, is what keeps this off
     the copy path: neither operand is materialised. See the kernel comment
-    above `_add_words_carry_select()` for why the loop is shaped the way it is.
+    above `_add_words()` for why the loops are shaped the way they are.
     """
 
     var n_words_x_slice = bounds_x[1] - bounds_x[0]
@@ -493,7 +849,7 @@ def add_slices_carry_select(
     var yp = y.words.unsafe_ptr().unsafe_offset(bounds_y[0])
     var rp = result.words.unsafe_ptr()
 
-    var carry = _add_words_carry_select(rp, xp, yp, n_words_shorter, UInt32(0))
+    var carry = _add_words(rp, xp, yp, n_words_shorter, UInt32(0))
     var longer = xp if n_words_x_slice > n_words_y_slice else yp
     carry = _carry_into_tail(rp, longer, n_words_shorter, n_words_longer, carry)
     if carry != 0:
@@ -538,7 +894,7 @@ def add_inplace(mut x: BigUInt, y: BigUInt) -> None:
         x.words.resize(length=len(y.words), fill=UInt32(0))
 
     var xp = x.words.unsafe_ptr()
-    var carry = _add_words_carry_select(
+    var carry = _add_words(
         xp,
         alias_as_immutable_source(xp),
         y.words.unsafe_ptr(),
@@ -591,7 +947,7 @@ def add_by_slice_inplace(
         x.words.resize(length=n_words_y_slice, fill=UInt32(0))
 
     var xp = x.words.unsafe_ptr()
-    var carry = _add_words_carry_select(
+    var carry = _add_words(
         xp,
         alias_as_immutable_source(xp),
         y.words.unsafe_ptr().unsafe_offset(bounds_y[0]),
@@ -752,7 +1108,7 @@ def subtract_carry_select(x: BigUInt, y: BigUInt) raises -> BigUInt:
     Notes:
 
     One pass over the words of `y`, then the borrow alone through the rest of
-    `x`. See the kernel comment above `_add_words_carry_select()`.
+    `x`. See the kernel comment above `_add_words()`.
     """
     debug_assert[assert_mode="none"](
         len(x.words) != 0, "BigUInt is uninitialized!"
@@ -792,7 +1148,7 @@ def subtract_carry_select(x: BigUInt, y: BigUInt) raises -> BigUInt:
 
     var xp = x.words.unsafe_ptr()
     var rp = result.words.unsafe_ptr()
-    var borrow = _subtract_words_borrow_select(
+    var borrow = _subtract_words(
         rp, xp, y.words.unsafe_ptr(), len(y.words), UInt32(0)
     )
     _ = _borrow_into_tail(rp, xp, len(y.words), len(x.words), borrow)
@@ -851,7 +1207,7 @@ def subtract_inplace(mut x: BigUInt, y: BigUInt) raises -> None:
 
     # Note that len(x.words) >= len(y.words) here
     var xp = x.words.unsafe_ptr()
-    var borrow = _subtract_words_borrow_select(
+    var borrow = _subtract_words(
         xp,
         alias_as_immutable_source(xp),
         y.words.unsafe_ptr(),
@@ -891,7 +1247,7 @@ def subtract_no_check_inplace(mut x: BigUInt, y: BigUInt) -> None:
     # Underflow checks are skipped here, so we assume x >= y
     # Note that len(x.words) >= len(y.words) under this assumption
     var xp = x.words.unsafe_ptr()
-    var borrow = _subtract_words_borrow_select(
+    var borrow = _subtract_words(
         xp,
         alias_as_immutable_source(xp),
         y.words.unsafe_ptr(),
@@ -2258,7 +2614,9 @@ def floor_divide(x: BigUInt, y: BigUInt) raises -> BigUInt:
 
     # CASE: division of very, very large numbers
     # Use the Burnikel-Ziegler division algorithm
-    return floor_divide_burnikel_ziegler(x, y, cut_off=CUTOFF_BURNIKEL_ZIEGLER)
+    return floor_divide_burnikel_ziegler(
+        x, y, cut_off=BURNIKEL_ZIEGLER_BLOCK_WORDS
+    )
 
 
 # TODO: Implement a `floor_divide_slices_schoolbook()` function that
@@ -2417,20 +2775,9 @@ def floor_divide_modulo_schoolbook(
         # later - the same trick the base-2^32 Knuth D uses. Biasing the
         # difference by BASE keeps it non-negative, so the borrow is just
         # whether the biased value stayed below BASE.
-        var carry = UInt64(0)
-        for i in range(n):
-            var product = (
-                UInt64(quotient) * UInt64(y_ptr[unsafe_offset=i]) + carry
-            )
-            carry = product // BASE
-            var biased = (
-                UInt64(r_ptr[unsafe_offset=index_of_word + i])
-                + BASE
-                - (product % BASE)
-            )
-            r_ptr[unsafe_offset=index_of_word + i] = UInt32(biased % BASE)
-            carry += 1 - biased // BASE
-
+        var carry = _multiply_subtract_words(
+            r_ptr.unsafe_offset(index_of_word), y_ptr, n, quotient
+        )
         # The estimate can be one or two too large. Each add-back returns the
         # divisor to the window and buys back one unit of the quotient.
         var top = index_of_word + n
@@ -3448,6 +3795,28 @@ def floor_divide_modulo_burnikel_ziegler(
     return q^
 
 
+# ===----------------------------------------------------------------------=== #
+# Legacy Burnikel-Ziegler recursion (hand-written, kept for reference)
+#
+# `floor_divide_two_by_one()` and `floor_divide_three_by_two()` below are the
+# original hand-written pair, and they call only each other -- nothing outside
+# this block reaches them. The live path is the `_slices_` pair, which does the
+# same recursion over index bounds instead of materialising `a0`, `a1`, `a2`,
+# `a3`, `b0`, `b1` as separate values, and hands its remainder back through an
+# argument instead of a tuple.
+#
+# They are kept deliberately: they read as the algorithm is written down, which
+# makes them the clearest statement of what the `_slices_` pair is doing, and
+# they are the reference the optimized form was checked against.
+#
+# Do not copy the base case here into new code. It calls the quotient-only
+# `floor_divide_schoolbook()` and then rebuilds the remainder as `a - q * b`,
+# which is a full multiply that the division had already done the work for.
+# The live pair took that out on 20260826 and it was worth 12% of a
+# 1000-digit division.
+# ===----------------------------------------------------------------------=== #
+
+
 def floor_divide_two_by_one(
     a: BigUInt, b: BigUInt, n: Int, cut_off: Int
 ) raises -> Tuple[BigUInt, BigUInt]:
@@ -3478,6 +3847,8 @@ def floor_divide_two_by_one(
     )
 
     if (n & 1 == 1) or (n <= cut_off):
+        # Legacy: rebuilding the remainder with a multiply. See the block
+        # comment above -- the live `_slices_` pair takes it from schoolbook.
         var q = floor_divide_schoolbook(a, b)
         var r = a - q * b
         return (q^, r^)
@@ -3643,14 +4014,15 @@ def floor_divide_slices_two_by_one(
         )
         # If n is odd or less than the cutoff, use the schoolbook division
         # algorithm.
+        #
+        # Schoolbook already has the remainder when it finishes -- Knuth D
+        # leaves it in the running window -- so take it. This used to call the
+        # quotient-only form and then rebuild the remainder as
+        # `a - q * b`, which is a full n-by-n multiply per base case, and the
+        # recursion reaches this base case many times.
         var a_slice = BigUInt.from_slice(a, bounds_a)
         var b_slice = BigUInt.from_slice(b, bounds_b)
-        var q = floor_divide_schoolbook(a_slice, b_slice)
-        # r = a_slice - q * b_slice
-        # We use inplace subtraction to avoid copying
-        a_slice -= multiply_slices(q, b, (0, len(q.words)), bounds_b)
-        remainder = a_slice^
-        return q^
+        return floor_divide_modulo_schoolbook(a_slice, b_slice, remainder)
 
     elif (bounds_a[0] + n + n // 2 >= bounds_a[1]) or a.is_zero_in_bounds(
         bounds=(bounds_a[0] + n + n // 2, bounds_a[1])
@@ -4168,7 +4540,7 @@ def floor_divide_modulo(
 
     # CASE: division of very, very large numbers
     return floor_divide_modulo_burnikel_ziegler(
-        x, y, cut_off=CUTOFF_BURNIKEL_ZIEGLER, remainder=remainder
+        x, y, cut_off=BURNIKEL_ZIEGLER_BLOCK_WORDS, remainder=remainder
     )
 
 

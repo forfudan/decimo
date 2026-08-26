@@ -12,7 +12,7 @@ __version__ = "0.1.0.dev0"
 __all__ = ["Decimal", "BigDecimal"]
 
 try:
-    from ._decimo import BigDecimal as _BigDecimal
+    from ._decimo import Decimal
 except ImportError as _err:
     raise ImportError(
         "decimo requires a compiled Mojo extension (_decimo native module).\n"
@@ -24,134 +24,58 @@ except ImportError as _err:
     ) from _err
 
 
-class Decimal:
-    """Arbitrary-precision decimal number.
+# --- Operator wiring -------------------------------------------------------
+#
+# `Decimal` is the Mojo type itself, not a Python class wrapping one. That
+# removes about 75 ns per operation, which used to be the largest single cost
+# of calling decimo from Python -- more than the arithmetic.
+#
+# The one thing the Mojo bindings cannot do for us is fill the operator slots.
+# A type built from a spec keeps `__add__` and friends in its dictionary, but
+# CPython only fills `nb_add` (the slot the `+` operator actually reads) when
+# the attribute is *assigned* on the type. So assign each one back onto itself:
+# the value does not change, but the assignment makes CPython notice it and
+# fill the matching slot. Without this loop, `a + b` reports an unsupported
+# operand even though `a.__add__(b)` works.
+#
+# Once Mojo's `PythonModuleBuilder` grows a way to declare slots directly, this
+# loop can go away and nothing else here needs to change.
 
-    This is a thin Python wrapper around decimo's Mojo-native BigDecimal type.
-    All heavy arithmetic is performed in Mojo at near-native speed.
-    """
+for _name in (
+    "__str__",
+    "__add__",
+    "__radd__",
+    "__sub__",
+    "__rsub__",
+    "__mul__",
+    "__rmul__",
+    "__truediv__",
+    "__rtruediv__",
+    "__neg__",
+    "__pos__",
+    "__abs__",
+    "__bool__",
+    "__eq__",
+    "__ne__",
+    "__lt__",
+    "__le__",
+    "__gt__",
+    "__ge__",
+):
+    setattr(Decimal, _name, Decimal.__dict__[_name])
+del _name
 
-    __slots__ = ("_inner",)
+# `__repr__` is the one operator the loop above cannot reach. The bindings
+# install their own from Mojo's `Representable`, which prints the Mojo type
+# name, so point it at our own text instead.
+Decimal.__repr__ = Decimal.to_repr
 
-    def __init__(self, value="0"):
-        if isinstance(value, Decimal):
-            self._inner = value._inner
-        elif isinstance(value, _BigDecimal):
-            self._inner = value
-        else:
-            self._inner = _BigDecimal(str(value))
-
-    # --- String ---
-
-    def __str__(self):
-        return self._inner.to_string()
-
-    def __repr__(self):
-        return self._inner.to_repr()
-
-    # --- Arithmetic ---
-
-    def __add__(self, other):
-        if not isinstance(other, Decimal):
-            other = Decimal(other)
-        result = Decimal.__new__(Decimal)
-        result._inner = self._inner.add(other._inner)
-        return result
-
-    def __radd__(self, other):
-        return Decimal(other).__add__(self)
-
-    def __sub__(self, other):
-        if not isinstance(other, Decimal):
-            other = Decimal(other)
-        result = Decimal.__new__(Decimal)
-        result._inner = self._inner.sub(other._inner)
-        return result
-
-    def __rsub__(self, other):
-        return Decimal(other).__sub__(self)
-
-    def __mul__(self, other):
-        if not isinstance(other, Decimal):
-            other = Decimal(other)
-        result = Decimal.__new__(Decimal)
-        result._inner = self._inner.mul(other._inner)
-        return result
-
-    def __rmul__(self, other):
-        return Decimal(other).__mul__(self)
-
-    def __truediv__(self, other):
-        if not isinstance(other, Decimal):
-            other = Decimal(other)
-        result = Decimal.__new__(Decimal)
-        result._inner = self._inner.div(other._inner)
-        return result
-
-    def __neg__(self):
-        result = Decimal.__new__(Decimal)
-        result._inner = self._inner.neg()
-        return result
-
-    def __abs__(self):
-        result = Decimal.__new__(Decimal)
-        result._inner = self._inner.abs_()
-        return result
-
-    def __pos__(self):
-        return self  # no-op
-
-    # --- Comparison ---
-
-    def __eq__(self, other):
-        if not isinstance(other, Decimal):
-            try:
-                other = Decimal(other)
-            except Exception:
-                return NotImplemented
-        return self._inner.eq(other._inner)
-
-    def __lt__(self, other):
-        if not isinstance(other, Decimal):
-            try:
-                other = Decimal(other)
-            except Exception:
-                return NotImplemented
-        return self._inner.lt(other._inner)
-
-    def __le__(self, other):
-        if not isinstance(other, Decimal):
-            try:
-                other = Decimal(other)
-            except Exception:
-                return NotImplemented
-        return self._inner.le(other._inner)
-
-    def __gt__(self, other):
-        if not isinstance(other, Decimal):
-            try:
-                other = Decimal(other)
-            except Exception:
-                return NotImplemented
-        return not self._inner.le(other._inner)
-
-    def __ge__(self, other):
-        if not isinstance(other, Decimal):
-            try:
-                other = Decimal(other)
-            except Exception:
-                return NotImplemented
-        return not self._inner.lt(other._inner)
-
-    def __ne__(self, other):
-        eq_result = self.__eq__(other)
-        if eq_result is NotImplemented:
-            return NotImplemented
-        return not eq_result
-
-    def __bool__(self):
-        return str(self) not in ("0", "-0")
-
+# A type that defines `__eq__` must not keep an inherited hash based on
+# identity: two equal decimals would land in different dictionary buckets.
+# The previous Python wrapper was unhashable for the same reason. A real hash
+# would have to agree with `int` and `float` the way `decimal.Decimal` does,
+# which is a separate piece of work.
+Decimal.__hash__ = None
 
 # Also expose as BigDecimal for users who prefer the full name
 BigDecimal = Decimal

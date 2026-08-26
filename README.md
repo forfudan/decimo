@@ -251,6 +251,9 @@ This will import the following types or aliases into your namespace:
 
 ---
 
+<details>
+<summary><b>BigDecimal — arbitrary precision, and how to set it</b></summary>
+
 Here are some examples showcasing the arbitrary-precision feature of the
 `BigDecimal` (`Decimal`) type. For some mathematical operations, the default
 precision (number of significant digits) is set to `28`. You can change the
@@ -331,7 +334,12 @@ def main() raises:
     # ----------------------------------------------
 ```
 
+</details>
+
 ---
+
+<details>
+<summary><b>BigInt — arbitrary-precision signed integers</b></summary>
 
 Here is a comprehensive quick-start guide showcasing each major function of the
 `BigInt` (`BInt`) type.
@@ -385,7 +393,12 @@ def main() raises:
     print(a.gcd(c))  # Greatest common divisor: 6
 ```
 
+</details>
+
 ---
+
+<details>
+<summary><b>Decimal128 — a fixed 128-bit decimal</b></summary>
 
 Here is a comprehensive quick-start guide showcasing each major function of the
 `Decimal128` (`Dec128`) type.
@@ -457,6 +470,8 @@ def main() raises:
     )  # Scientific notation: 1.234E+1
 ```
 
+</details>
+
 ## Objective
 
 Financial calculations and data analysis require precise decimal arithmetic that
@@ -490,6 +505,9 @@ Bug reports and feature requests are welcome! If you encounter issues, please
 [file them here](https://github.com/forfudan/decimo/issues).
 
 ## Project structure
+
+<details>
+<summary><b>The source tree</b></summary>
 
 ```text
 decimo/
@@ -532,6 +550,8 @@ be imported by external projects. The expression engine (`decimo.expression`),
 the numeral systems (`decimo.numerals`), and the TOML parser (`decimo.toml`) are
 included as subpackages. `src/cli/` is an application that consumes the `decimo`
 package and compiles to a standalone binary via `mojo build`.
+
+</details>
 
 ## Tests and benches
 
