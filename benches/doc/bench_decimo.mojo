@@ -176,7 +176,10 @@ def main() raises -> None:
         var sx = BigDecimal(_digits_seeded(width, 7))
         var sy = BigDecimal(_digits_seeded(width, 3))
         var iters = max(3, 2000000 // width)
-        var sweep_rounds = 3 if width >= 10000 else ROUNDS
+        # Same number of rounds at every width. Three was not enough at
+        # 100 000 digits: one bad run put a figure in the generated document
+        # that was 1.8x the truth and looked entirely plausible.
+        var sweep_rounds = ROUNDS
 
         var w_add = 1.0e30
         var w_mul = 1.0e30
