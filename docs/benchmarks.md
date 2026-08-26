@@ -16,7 +16,7 @@ to change a ratio near parity into one that reads as a gap.
 | | |
 |---|---|
 | Measured | 2026-08-26 |
-| Commit | `1851a08` — [bench] Include the decimal string in decimo's pi timing |
+| Commit | `738df14` — [bench] Compare only what a user actually writes, and sweep operand sizes |
 | Branch | `update` |
 | Pull request | — |
 | Machine | arm64, macOS-26.5.2-arm64-arm-64bit-Mach-O |
@@ -27,36 +27,78 @@ to change a ratio near parity into one that reads as a gap.
 ## BigDecimal against libmpdec
 
 CPython's `decimal` module *is* libmpdec, so timing it from Python
-measures libmpdec plus interpreter overhead. The column below links the
-C library directly instead, which is the comparison that says something
-about the arithmetic rather than about CPython.
+measures libmpdec plus interpreter overhead. The `libmpdec (C)` column
+links the C library directly, which is the comparison that says
+something about the arithmetic rather than about CPython.
 
-The first three columns are the comparison. Both allocate a fresh
-result per operation, which is what decimo's API does and what
-CPython's `decimal` does. Small operands, precision 28.
+Every column is an operation a user writes. Both libraries allocate a
+fresh result per call here, which is what `a + b` does in each.
 
-The last two columns are context.
+**Operands: 9-digit coefficients** (`12345.6789` and `9876.54321`),
+precision 28. Rounding uses a 30-digit value. This is the small end;
+the sweep below shows how it changes with size.
 
-*CPython `decimal`* is the same libmpdec, reached through the
-interpreter — the difference from the C column is CPython's overhead.
+| Operation | decimo | libmpdec (C) | | CPython `decimal` |
+|---|---|---|---|---|
+| add | 42.8 ns | 40.1 ns | 1.07× slower | 47.2 ns |
+| subtract | 43.2 ns | 35.1 ns | 1.23× slower | 51.7 ns |
+| multiply | 37.0 ns | 26.9 ns | 1.38× slower | 41.4 ns |
+| divide | 133.4 ns | 49.0 ns | 2.72× slower | 63.1 ns |
+| round to 10 places | 38.9 ns | 34.7 ns | 1.12× slower | 68.9 ns |
+| parse from string | 87.3 ns | 41.3 ns | 2.11× slower | 77.2 ns |
 
-*libmpdec, result reused* is the identical C call writing into an
-`mpd_t` allocated once, instead of allocating and freeing one per
-operation. Nothing else changes. The difference between the two
-libmpdec columns is therefore exactly `mpd_new()` + `mpd_del()`,
-measured separately at 22.9 ns, and it is why `add` costs 37.6 ns
-fresh but 14.9 ns reused. Note that libmpdec is not avoiding
-allocation for small values: `mpd_t` holds a pointer, and `mpd_new()`
-allocates both the struct and its data array.
+### In place
 
-| Operation | decimo | libmpdec (C) | | CPython `decimal` | libmpdec, result reused |
-|---|---|---|---|---|---|
-| add | 46.9 ns | 35.8 ns | 1.31× slower | 49.7 ns | 14.1 ns |
-| subtract | 48.2 ns | 36.5 ns | 1.32× slower | 49.7 ns | 16.2 ns |
-| multiply | 42.1 ns | 28.7 ns | 1.47× slower | 44.8 ns | 7.6 ns |
-| divide | 151.0 ns | 51.6 ns | 2.92× slower | 67.0 ns | 30.8 ns |
-| round to 10 places | 44.6 ns | 36.0 ns | 1.24× slower | 72.5 ns | 14.6 ns |
-| parse from string | 100.2 ns | 42.7 ns | 2.35× slower | 81.0 ns | 22.4 ns |
+Both libraries can accumulate into an existing value instead of
+building a new one — decimo's `add_inplace()` family, and passing the
+destination as an operand in C. Same starting values, same operand,
+same precision, so these two columns are directly comparable.
+
+This is where the arithmetic shows through, because neither side is
+allocating.
+
+| Operation | decimo | libmpdec (C) | |
+|---|---|---|---|
+| `x += y` | 6.3 ns | 8.2 ns | **1.31× faster** |
+| `x -= y` | 41.9 ns | 8.4 ns | 4.98× slower |
+| `x *= y` | 52.1 ns | 21.3 ns | 2.45× slower |
+
+### Across operand sizes
+
+One base-10⁹ word says nothing about how either library scales. Both
+switch algorithms as operands grow, so this is where the crossovers
+are. Exact arithmetic, except division, which needs a finite target
+(set to the operand width plus eight digits for both).
+
+**Add**
+
+| Digits | decimo | libmpdec (C) | |
+|---|---|---|---|
+| 9 | 36.4 ns | 29.1 ns | 1.25× slower |
+| 100 | 45.0 ns | 56.6 ns | **1.26× faster** |
+| 1,000 | 107.0 ns | 109.5 ns | parity |
+| 10,000 | 825.0 ns | 640.0 ns | 1.29× slower |
+| 100,000 | 7.60 µs | 6.00 µs | 1.27× slower |
+
+**Multiply**
+
+| Digits | decimo | libmpdec (C) | |
+|---|---|---|---|
+| 9 | 39.2 ns | 27.4 ns | 1.43× slower |
+| 100 | 108.6 ns | 137.3 ns | **1.26× faster** |
+| 1,000 | 2.48 µs | 8.94 µs | **3.60× faster** |
+| 10,000 | 125.64 µs | 357.31 µs | **2.84× faster** |
+| 100,000 | 4.28 ms | 2.71 ms | 1.58× slower |
+
+**Divide**
+
+| Digits | decimo | libmpdec (C) | |
+|---|---|---|---|
+| 9 | 127.9 ns | 45.4 ns | 2.82× slower |
+| 100 | 1.27 µs | 346.4 ns | 3.68× slower |
+| 1,000 | 26.39 µs | 14.36 µs | 1.84× slower |
+| 10,000 | 529.93 µs | 1.24 ms | **2.35× faster** |
+| 100,000 | 15.63 ms | 13.33 ms | 1.17× slower |
 
 ## BigInt against CPython's int
 
@@ -69,10 +111,10 @@ arithmetic dominates, as the meaningful ones.
 
 | Digits | decimo add | CPython add | | decimo multiply | CPython multiply | |
 |---|---|---|---|---|---|---|
-| 100 | 40.3 ns | 25.4 ns | 1.58× slower | 82.7 ns | 100.4 ns | **1.21× faster** |
-| 1,000 | 57.8 ns | 91.0 ns | **1.57× faster** | 1.17 µs | 5.44 µs | **4.63× faster** |
-| 10,000 | 286.0 ns | 796.3 ns | **2.78× faster** | 53.65 µs | 261.16 µs | **4.87× faster** |
-| 100,000 | 2.38 µs | 7.65 µs | **3.22× faster** | 1.18 ms | 8.67 ms | **7.32× faster** |
+| 100 | 34.0 ns | 24.6 ns | 1.38× slower | 79.0 ns | 91.7 ns | **1.16× faster** |
+| 1,000 | 48.2 ns | 84.7 ns | **1.76× faster** | 1.05 µs | 5.17 µs | **4.90× faster** |
+| 10,000 | 264.0 ns | 782.6 ns | **2.96× faster** | 51.21 µs | 248.98 µs | **4.86× faster** |
+| 100,000 | 2.36 µs | 7.85 µs | **3.33× faster** | 1.12 ms | 8.30 ms | **7.39× faster** |
 
 ## pi() against mpmath and MPFR
 
@@ -85,11 +127,11 @@ mpmath uses Chudnovsky binary splitting; MPFR uses the Brent–Salamin AGM.
 
 | Digits | decimo | mpmath + GMP | MPFR | mpmath (pure Python) |
 |---|---|---|---|---|
-| 100 | 8.26 µs | 41.62 µs | 41.33 µs | 33.67 µs |
-| 1,000 | 66.19 µs | 104.58 µs | 67.46 µs | 160.92 µs |
-| 10,000 | 1.26 ms | 863.54 µs | 681.33 µs | 5.71 ms |
-| 100,000 | 34.49 ms | 15.14 ms | 22.63 ms | 181.85 ms |
-| 1,000,000 | 820.04 ms | 261.34 ms | 409.90 ms | 8.384 s |
+| 100 | 7.19 µs | 71.46 µs | 46.58 µs | 33.46 µs |
+| 1,000 | 62.68 µs | 115.17 µs | 69.50 µs | 164.62 µs |
+| 10,000 | 1.21 ms | 826.25 µs | 664.58 µs | 6.28 ms |
+| 100,000 | 32.63 ms | 14.51 ms | 22.64 ms | 182.61 ms |
+| 1,000,000 | 777.20 ms | 256.72 ms | 409.52 ms | 8.160 s |
 
 decimo's first 100 digits of pi were checked against mpmath in this
 run and agree exactly.
