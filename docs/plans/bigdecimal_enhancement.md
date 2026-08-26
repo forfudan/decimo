@@ -120,8 +120,14 @@ that range-reduces against π (`sin`/`cos`/`tan`) inherits it.
 
 ### 2.4 Performance tracking — absolute decimo median ns/iter (ascending precision)
 
-Best-of-5, `-D ASSERT=none`. Append-only. Where a precision is omitted
-the operation only runs at p=100 in that snapshot.
+Best-of-5, `-D ASSERT=none`. Append-only, and **historical**: the newest rows
+are from 2026-04-30 and predate the allocation work, the base-10^9 transform
+and everything after. Do not read them as current. Current figures are
+generated into `docs/benchmarks.md` by `pixi run benchdoc`. These tables are
+kept because they are the record of what each change was worth at the time.
+
+Where a precision is omitted the operation only runs at p=100 in that
+snapshot.
 
 | Date     | op   | p=100 | p=1000 | p=10000 | p=100000 | note                                       |
 | -------- | ---- | ----: | -----: | ------: | -------: | ------------------------------------------ |
@@ -360,7 +366,13 @@ because the lesson generalises to the variable-length case unchanged.
     saved address reload is hidden, and the variants even regressed small
     operands — so they were reverted.
 
-## 5. Open Items / Future Improvements
+## 5. Task ledger — investigations, done and open
+
+Reviewed 2026-08-26: of the 26 entries below, 20 are finished (DONE,
+DISPROVEN or SUPERSEDED) and are kept for their reasoning, which is the point
+of the section. The six that are not are T-S1, T-D3, T-L3, T-IO2 and the two
+marked below. The section keeps its original order rather than being sorted by
+status, so that the entries still read as the sequence they were done in.
 
 ### 5.1 Worst-case ratios still > 1.5× python (latest sweep 2026-05-01, post-T-API1)
 
@@ -726,7 +738,10 @@ P5 — ln far-from-1 (4.6×–9.2× py → target ≤2×)
   fractions (`1/3`, `1/9`). Full binary splitting remains a future
   option if the constants ever dominate at very high precision.
 
-- **T-L3: AGM ln (T3g / H#3g). DEFERRED — gated on NTT; assessed during
+- **T-L3: AGM ln (T3g / H#3g). GATE LIFTED (20260826) — still deferred, but
+  no longer blocked.** The NTT landed in base 2^32 (2026-08-25) and base 10^9
+  (2026-08-26), so the multiplication AGM needs now exists. Whether it pays off
+  is untested. Original entry: DEFERRED — gated on NTT; assessed during
   the P4 sweep (20260618).** AGM-based `ln` converges quadratically
   (~log₂p iterations) but each iteration costs a full-precision multiply
   **plus a sqrt** (itself reciprocal-Newton = several multiplies), so the
@@ -835,6 +850,12 @@ P6 — `from_string` / `to_string` (1.2–1.3× py → target ≤1.0×)
 P7 — `round` (2× py → target ≤1.0×)
 
 - **T-R1: `debug_assert .format` sweep specific to rounding modes.**
+  **DONE (20260826) — superseded by the repo-wide sweep.** See H#10:
+  `scripts/check_debug_assert_messages.py` checks every `debug_assert` in
+  `src/`, in all the allocating spellings, and runs as a pre-commit hook. There
+  is nothing rounding-specific left to sweep.
+
+  Original entry:
   **INVALID — no such asserts; dispatch swap perf-neutral (20260615).**
   The premise (one `.format` `debug_assert` per mode branch in the round
   dispatcher) does not match the code: neither `bigdecimal/rounding.mojo`

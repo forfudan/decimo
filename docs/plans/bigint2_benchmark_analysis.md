@@ -14,6 +14,16 @@
 > `pixi run bench bigint <op>`. BigUInt-only benchmarks remain in
 > `benches/biguint/`.
 
+
+> [!NOTE]
+> **This document can be closed (reviewed 2026-08-26).** It is the February
+> 2026 analysis that led to the base-2^32 `BigInt`, and every task in its
+> roadmap is now done — PR9, Toom-Cook and NTT, was the last, closed
+> 2026-08-26. Its benchmark tables are a snapshot of that date and are not
+> maintained; current figures are generated into `docs/benchmarks.md` by
+> `pixi run benchdoc`. Kept for the reasoning, which is still the best
+> explanation of why the type is shaped the way it is.
+
 ## Benchmark Summary (2026-02-20, macOS arm64, Apple Silicon)
 
 All benchmarks compare **BigInt2** (base-2^32) against **BigInt10/BigUInt**

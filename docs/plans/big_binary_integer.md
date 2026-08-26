@@ -4,9 +4,12 @@
 > Author: Yuhao Zhu  
 > Scope: A new integer type with 2^32-based internal representation
 
-> [!Note] COMPLETED: The new `BigInt2` implementation is completed and renamed
-> to `BInt`. The old `BigInt` is renamed to `BigInt10` and will be hidden from
-> users in the future.
+> [!NOTE]
+> **This document can be closed (reviewed 2026-08-26).** The `BigInt2`
+> implementation is complete and is now `BigInt` (alias `BInt`); the old
+> base-10^9 type is `BigInt10`. The renaming plan below was carried out. Kept
+> as the record of why the binary type exists and how the limb size was
+> chosen.
 
 The current `BigInt10` is based on `BigUInt` which uses a decimal representation
 with a base of 10^9. This design choice is to re-use the same data structure for

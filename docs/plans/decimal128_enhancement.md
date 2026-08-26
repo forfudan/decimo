@@ -8,6 +8,14 @@
 > 子曰：工欲善其事，必先利其器。 Confucius said: If a craftsman wants to do good
 > work, he must first sharpen his tools.
 
+
+> [!NOTE]
+> **This document can be closed (reviewed 2026-08-26).** Everything planned
+> here was executed by 2026-05-06. What remains are two micro-optimisations
+> explicitly left as future work: a `rust_decimal`-style `partial_divide_64`
+> port, and a few-nanosecond follow-up noted in §7 P2. Neither is on the
+> roadmap. Kept as the record of how `Decimal128` reached its current shape.
+
 This document tracks the Decimal128 audit started on 2026-04-08 and the
 performance work that followed. It is the single source of truth for the
 arithmetic / parse / format hot-path optimisation effort.
