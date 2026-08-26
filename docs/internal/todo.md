@@ -48,10 +48,10 @@ Ordered by value, judged against the two goals in `internal_notes.md`.
    (`python/benchmarks/compare.py`), and CPython's `decimal` wins everything
    below about 500 digits:
 
-   | | decimo | decimal | |
-   |---|---|---|---|
-   | `a + b`, 9 digits | 141 ns | 33 ns | 4.3x slower |
-   | `a / b`, 9 digits | 241 ns | 56 ns | 4.3x slower |
+   |                       | decimo  | decimal |                  |
+   | --------------------- | ------- | ------- | ---------------- |
+   | `a + b`, 9 digits     | 141 ns  | 33 ns   | 4.3x slower      |
+   | `a / b`, 9 digits     | 241 ns  | 56 ns   | 4.3x slower      |
    | four ops, 1000 digits | 4.75 us | 5.85 us | **1.23x faster** |
 
    The arithmetic is not the problem: at 9 digits the Mojo addition is 47 ns

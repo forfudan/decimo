@@ -126,12 +126,23 @@ def vendor_runtime():
     return copied
 
 
+VERSION_FILE = PACKAGE / "_version.py"
+
+
 def write_version(version):
-    (PACKAGE / "_version.py").write_text(
+    """Stamp the version hatchling reads, keeping the old text to put back.
+
+    `_version.py` is tracked, so leaving a build stamp in it would leave the
+    working tree dirty -- and `pixi run benchdoc` refuses to measure a dirty
+    tree. The original is restored once the wheel is built.
+    """
+    previous = VERSION_FILE.read_text() if VERSION_FILE.exists() else None
+    VERSION_FILE.write_text(
         '"""Written by `pixi run release`. Do not edit."""\n\n'
         f'__version__ = "{version}"\n'
     )
     print(f"  version {version}")
+    return previous
 
 
 def main():
@@ -156,7 +167,7 @@ def main():
     )
 
     print("Preparing the package")
-    write_version(version)
+    previous_version_file = write_version(version)
     vendor_runtime()
 
     distribution = HERE / "dist"
@@ -168,6 +179,9 @@ def main():
         [sys.executable, "-m", "build", "--wheel", "--outdir", str(distribution)],
         cwd=HERE,
     )
+
+    if previous_version_file is not None:
+        VERSION_FILE.write_text(previous_version_file)
 
     wheels = sorted(distribution.glob("*.whl"))
     if not wheels:
