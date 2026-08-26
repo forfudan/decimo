@@ -16,6 +16,7 @@ Two things worth knowing when reading the output:
 from __future__ import annotations
 
 import json
+import math
 import platform
 import sys
 import time
@@ -36,28 +37,37 @@ def best_ns(fn, iterations: int, rounds: int = ROUNDS) -> float:
     return round(best, 3)
 
 
-def digits(count: int) -> str:
-    """Same sequence as `_digits()` in `bench_decimo.mojo`."""
+def digits(count: int, seed: int = 7) -> str:
+    """Same sequence as `build_digits()` in the Mojo and C benchmarks."""
+    step, offset = (31, 17) if seed == 7 else (37, 11)
     out = []
-    state = 7
+    state = seed
     for _ in range(count):
-        state = (state * 31 + 17) % 9
+        state = (state * step + offset) % 9
         out.append(str(state + 1))
     return "".join(out)
 
 
 def bench_cpython_int() -> dict:
+    """CPython's `int`, at the same widths as `bench_decimo.mojo`."""
     # CPython caps int(str) at 4300 digits by default (CVE-2020-10735); this
     # benchmark is not parsing untrusted input, and the parse is not timed.
-    sys.set_int_max_str_digits(200_000)
+    sys.set_int_max_str_digits(3_000_000)
+    widths = [100, 1000, 10000, 100000, 1000000]
+    iterations = [20000, 5000, 200, 20, 2]
+    rounds = [ROUNDS, ROUNDS, 5, 3, 3]
     result = {}
-    for n_digits in (100, 1000, 10000, 100000):
-        x = int(digits(n_digits))
-        y = int(digits(n_digits - 1))
-        reps = max(3, 20_000_000 // (n_digits * 4))
-        result[str(n_digits)] = {
-            "add": best_ns(lambda: x + y, reps),
-            "multiply": best_ns(lambda: x * y, reps),
+    for width, iters, rnds in zip(widths, iterations, rounds):
+        x = int(digits(width, 7))
+        y = int(digits(width, 3))
+        # A 2n-by-n division. Two operands of the same width give a one-digit
+        # quotient and measure nothing.
+        wide = x * y
+        result[str(width)] = {
+            "add": best_ns(lambda: x + y, iters, rnds),
+            "multiply": best_ns(lambda: x * y, iters, rnds),
+            "floor_divide": best_ns(lambda: wide // y, iters, rnds),
+            "sqrt": best_ns(lambda: math.isqrt(x), iters, rnds),
         }
     return result
 
@@ -66,20 +76,34 @@ def bench_decimal_via_python() -> dict:
     """CPython's `decimal`, i.e. libmpdec seen through the interpreter."""
     import decimal
 
-    decimal.getcontext().prec = 28
-    decimal.getcontext().rounding = decimal.ROUND_HALF_EVEN
-    a = decimal.Decimal("12345.6789")
-    b = decimal.Decimal("9876.54321")
-    wide = decimal.Decimal("1234.56789012345678901234567890")
-    quantum = decimal.Decimal("1E-10")
-    return {
-        "add": best_ns(lambda: a + b, ITERS),
-        "subtract": best_ns(lambda: a - b, ITERS),
-        "multiply": best_ns(lambda: a * b, ITERS),
-        "divide": best_ns(lambda: a / b, ITERS),
-        "round": best_ns(lambda: wide.quantize(quantum), ITERS),
-        "from_string": best_ns(lambda: decimal.Decimal("12345.6789"), ITERS),
-    }
+    widths = [9, 1000, 100000, 1000000]
+    precisions = [28, 1000, 100000, 1000000]
+    iterations = [200000, 20000, 20, 2]
+    rounds = [ROUNDS, ROUNDS, 3, 3]
+    result = {}
+    for width, precision, iters, rnds in zip(widths, precisions, iterations, rounds):
+        context = decimal.getcontext()
+        context.prec = precision
+        context.rounding = decimal.ROUND_HALF_EVEN
+        # The C benchmark uses `mpd_maxcontext`. Python's default `Emax` is
+        # 999999, so a product of two million-digit integers overflows before
+        # it can be timed.
+        context.Emax = decimal.MAX_EMAX
+        context.Emin = decimal.MIN_EMIN
+        text_x = digits(width, 7)
+        a = decimal.Decimal(text_x)
+        b = decimal.Decimal(digits(width, 3))
+        # Round away the low half of the operand, as the other benchmarks do.
+        quantum = decimal.Decimal("1E+%d" % (width // 2))
+        result["%d:%d" % (width, precision)] = {
+            "add": best_ns(lambda: a + b, iters, rnds),
+            "subtract": best_ns(lambda: a - b, iters, rnds),
+            "multiply": best_ns(lambda: a * b, iters, rnds),
+            "divide": best_ns(lambda: a / b, iters, rnds),
+            "round": best_ns(lambda: a.quantize(quantum), iters, rnds),
+            "from_string": best_ns(lambda: decimal.Decimal(text_x), iters, rnds),
+        }
+    return result
 
 
 def bench_pi_once(library: str, precision: int) -> float | None:

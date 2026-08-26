@@ -348,112 +348,88 @@ def render(
 
     add("## BigDecimal")
     add("")
-    add("9-digit operands, precision 28. libmpdec is the C library behind")
-    add("CPython's `decimal`, timed without the interpreter.")
+    add("Operands of *digits* decimal digits at working *precision*, so that")
+    add("precision grows with the operands. libmpdec is the C library behind")
+    add("CPython's `decimal`, timed without the interpreter. `round` drops the")
+    add("low half of the operand; `parse` builds the value from its string.")
+    add("")
+    if sweep_agree:
+        add("Verified this run: decimo and libmpdec produce the same")
+        add("2000-digit product from the same 1000-digit operands.")
+    else:
+        add("> **Cross-check failed.** decimo and libmpdec produced different")
+        add("> products from the same operands. Do not trust this table.")
     add("")
     add(
-        "| Operation | decimo | libmpdec | vs libmpdec | "
-        "CPython `decimal` | vs CPython |"
+        "| Digits / precision | Operation | decimo | libmpdec | | CPython `decimal` | |"
     )
-    add("|---|---|---|---|---|---|")
-    for key, label in [
-        ("add", "add"),
-        ("subtract", "subtract"),
-        ("multiply", "multiply"),
-        ("divide", "divide"),
-        ("round", "round"),
-        ("from_string", "parse"),
-    ]:
-        ours_ns = decimo["bigdecimal"][key]
-        add(
-            f"| {label} | {human(ours_ns)} | {human(libmpdec['fresh'][key])} | "
-            f"{ratio(ours_ns, libmpdec['fresh'][key])} | "
-            f"{human(cpython['cpython_decimal'][key])} | "
-            f"{ratio(ours_ns, cpython['cpython_decimal'][key])} |"
-        )
-    add("")
-    add("In place, where neither side allocates a result:")
-    add("")
-    add("| | decimo | libmpdec | |")
-    add("|---|---|---|---|")
-    for key, label in [
-        ("add", "`x += y`"),
-        ("subtract", "`x -= y`"),
-        ("multiply", "`x *= y`"),
-    ]:
-        ours_ns = decimo["bigdecimal_inplace"][key]
-        add(
-            f"| {label} | {human(ours_ns)} | {human(libmpdec['inplace'][key])} "
-            f"| {ratio(ours_ns, libmpdec['inplace'][key])} |"
-        )
+    add("|---|---|---|---|---|---|---|")
+    for combo in sorted(decimo["bigdecimal"], key=lambda c: int(c.split(":")[0])):
+        width, precision = combo.split(":")
+        label = f"{int(width):,} / {int(precision):,}"
+        for key, name in [
+            ("add", "add"),
+            ("subtract", "subtract"),
+            ("multiply", "multiply"),
+            ("divide", "divide"),
+            ("round", "round"),
+            ("from_string", "parse"),
+        ]:
+            ours_ns = decimo["bigdecimal"][combo][key]
+            theirs = libmpdec["bigdecimal"][combo][key]
+            python = cpython["cpython_decimal"][combo][key]
+            add(
+                f"| {label} | {name} | {human(ours_ns)} | {human(theirs)} | "
+                f"{ratio(ours_ns, theirs)} | {human(python)} | "
+                f"{ratio(ours_ns, python)} |"
+            )
     add("")
 
     add("## sqrt, exp, ln, power")
     add("")
-    add("A fixed set, chosen before the results were seen, at three")
-    add("precisions. `2.3456789`, and `**1.5` for power.")
+    add("A fixed set, chosen before the results were seen. `2.3456789`, and")
+    add("`** 1.5` for power. 100 000 digits is left out because `mpd_exp`")
+    add("needs 82 seconds there and `mpd_ln` 239 seconds.")
     add("")
-    add("| Precision | operation | decimo | libmpdec | |")
+    add("| Precision | Operation | decimo | libmpdec | |")
     add("|---|---|---|---|---|")
-    for prec in ("28", "100", "1000"):
-        for key, label in [
+    for precision in sorted(decimo["higher"], key=int):
+        for key, name in [
             ("sqrt", "sqrt"),
             ("exp", "exp"),
             ("ln", "ln"),
             ("power", "power"),
         ]:
-            ours_ns = decimo["higher"][prec][key]
-            theirs = libmpdec["higher"][prec][key]
+            ours_ns = decimo["higher"][precision][key]
+            theirs = libmpdec["higher"][precision][key]
             add(
-                f"| {int(prec):,} | {label} | {human(ours_ns)} | "
+                f"| {int(precision):,} | {name} | {human(ours_ns)} | "
                 f"{human(theirs)} | {ratio(ours_ns, theirs)} |"
             )
-    add("")
-
-    add("## BigDecimal across operand sizes")
-    add("")
-    add("Operand digits, not precision. Add and multiply are **exact** on both")
-    add("sides (decimo `precision=0`, libmpdec `mpd_maxcontext`); divide targets")
-    add("operand width + 8 digits on both. decimo's time, then how it compares.")
-    add("")
-    if sweep_agree:
-        add("Verified this run: both libraries produce the same 2000-digit")
-        add("product from the 1000-digit operands.")
-    else:
-        add("> **Cross-check failed.** decimo and libmpdec produced different")
-        add("> products from the same operands, so the precisions are not")
-        add("> matched and this table should not be trusted.")
-    add("")
-    add("| Digits | add | | multiply | | divide | |")
-    add("|---|---|---|---|---|---|---|")
-    for width in ("9", "100", "1000", "10000", "100000"):
-        row = [f"| {int(width):,} "]
-        for op in ("add", "multiply", "divide"):
-            ours_ns = decimo["sweep"][width][op]
-            row.append(f"| {human(ours_ns)} ")
-            row.append(f"| {ratio(ours_ns, libmpdec['sweep'][width][op])} ")
-        add("".join(row) + "|")
     add("")
 
     add("## BigInt against CPython's int")
     add("")
     add("CPython's integers can only be reached through the interpreter, so")
     add("these include its overhead — read the large sizes as the real ones.")
+    add("Division is 2n-by-n; two operands of the same width would give a")
+    add("one-digit quotient and measure nothing.")
     add("")
-    add(
-        "| Digits | decimo add | CPython add | | decimo multiply | CPython multiply | |"
-    )
-    add("|---|---|---|---|---|---|---|")
-    for size in ("100", "1000", "10000", "100000"):
-        ours_add = decimo["bigint"][size]["add"]
-        theirs_add = cpython["cpython_int"][size]["add"]
-        ours_mul = decimo["bigint"][size]["multiply"]
-        theirs_mul = cpython["cpython_int"][size]["multiply"]
-        add(
-            f"| {int(size):,} | {human(ours_add)} | {human(theirs_add)} | "
-            f"{ratio(ours_add, theirs_add)} | {human(ours_mul)} | "
-            f"{human(theirs_mul)} | {ratio(ours_mul, theirs_mul)} |"
-        )
+    add("| Digits | Operation | decimo | CPython `int` | |")
+    add("|---|---|---|---|---|")
+    for width in sorted(decimo["bigint"], key=int):
+        for key, name in [
+            ("add", "add"),
+            ("multiply", "multiply"),
+            ("floor_divide", "floor divide"),
+            ("sqrt", "sqrt"),
+        ]:
+            ours_ns = decimo["bigint"][width][key]
+            theirs = cpython["cpython_int"][width][key]
+            add(
+                f"| {int(width):,} | {name} | {human(ours_ns)} | "
+                f"{human(theirs)} | {ratio(ours_ns, theirs)} |"
+            )
     add("")
 
     add("## pi()")
@@ -472,8 +448,8 @@ def render(
         add(f"| {precision:,} | " + " | ".join(cells) + " |")
     add("")
     if not agree:
-        add("> **Cross-check failed.** decimo's pi(100) did not match mpmath in")
-        add("> this run. Treat the table above as unverified.")
+        add("> **Cross-check failed.** decimo's pi(100) did not match mpmath")
+        add("> in this run. Treat the table above as unverified.")
         add(">")
         add(f"> decimo: `{ours[:60]}`")
         add(f"> mpmath: `{reference[:60]}`")
