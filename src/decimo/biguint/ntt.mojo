@@ -49,6 +49,12 @@ number. Converting the base to avoid this would cost more.
 from std.memory import unsafe_memset_zero
 
 from decimo.biguint.biguint import BigUInt
+
+# Only for the unreachable guard in `multiply_slices_ntt()`. This is a cycle
+# -- `arithmetics` imports this module for its dispatch -- but a compile-time
+# one that Mojo resolves, and the alternative is an out-of-bounds write on a
+# path that should be impossible rather than merely unlikely.
+from decimo.biguint.arithmetics import multiply_slices_toom3
 from decimo.bigint.ntt import (
     MAX_TRANSFORM_LOG,
     NTT_PRIME,
@@ -166,6 +172,20 @@ def unpack_coefficients(
         var total = coefficients[unsafe_offset=k] + carry
         carried_ptr[unsafe_offset=k] = total % COEFFICIENT_BASE
         carry = total // COEFFICIENT_BASE
+    # The carry left after the last coefficient is always below the base, so
+    # the second slot written below is always zero.
+    #
+    # An individual convolution coefficient can be close to the prime, and
+    # therefore an intermediate carry can reach ~10^13. The *final* carry
+    # cannot. The product is below `10^(9 * number_of_words)`, and
+    # `6 * number_of_coefficients` is within six digits of that exponent, so
+    # what is left after carrying through every coefficient cannot reach
+    # `10^6`. The second slot exists only so the reconstruction loop can read
+    # `k + 2` without a bounds test.
+    debug_assert(
+        carry < COEFFICIENT_BASE,
+        "biguint.ntt.unpack_coefficients(): final carry does not fit",
+    )
     carried_ptr[unsafe_offset=number_of_coefficients] = carry % COEFFICIENT_BASE
     carried_ptr[unsafe_offset=number_of_coefficients + 1] = (
         carry // COEFFICIENT_BASE
@@ -268,8 +288,16 @@ def should_multiply_ntt(len_x: Int, len_y: Int) -> Bool:
     # The convolution must stay below the prime. This is the bound given in the
     # module docstring. It is checked, because exceeding it would wrap around
     # and give a wrong product rather than an error.
+    #
+    # The count is of *coefficients*, not words: a convolution coefficient sums
+    # at most `min(coefficients_a, coefficients_b)` products, and a word gives
+    # about 1.5 coefficients. Counting words here would allow operands half
+    # again as long as the prime can hold.
     var largest_term = (COEFFICIENT_BASE - 1) * (COEFFICIENT_BASE - 1)
-    if UInt64(min(len_x, len_y)) > NTT_PRIME // largest_term:
+    var terms = min(
+        coefficients_for_words(len_x), coefficients_for_words(len_y)
+    )
+    if UInt64(terms) > NTT_PRIME // largest_term:
         return False
 
     var transform_cost = (
@@ -314,6 +342,18 @@ def multiply_slices_ntt(
     var chosen = transform_length_for(len_x, len_y)
     var length = chosen[0]
     var log_length = chosen[1]
+    debug_assert(
+        length > 0,
+        (
+            "biguint.ntt.multiply_slices_ntt(): the product needs a transform"
+            " longer than MAX_TRANSFORM_LOG allows"
+        ),
+    )
+    if length == 0:
+        # Unreachable through the dispatcher, which rejects these sizes. Guard
+        # it anyway: this function is callable directly, and a zero length
+        # would send `pack_words()` past the end of an empty buffer.
+        return multiply_slices_toom3(x, y, bounds_x, bounds_y)
 
     var forward_twiddles = List[UInt64]()
     var inverse_twiddles = List[UInt64]()
