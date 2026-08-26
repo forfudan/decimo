@@ -319,8 +319,11 @@ def render(context, decimo, libmpdec, cpython, pi_table, agree, ours, reference)
     add("9-digit operands, precision 28. libmpdec is the C library behind")
     add("CPython's `decimal`, timed without the interpreter.")
     add("")
-    add("| Operation | decimo | libmpdec | CPython `decimal` | |")
-    add("|---|---|---|---|---|")
+    add(
+        "| Operation | decimo | libmpdec | vs libmpdec | "
+        "CPython `decimal` | vs CPython |"
+    )
+    add("|---|---|---|---|---|---|")
     for key, label in [
         ("add", "add"),
         ("subtract", "subtract"),
@@ -332,8 +335,9 @@ def render(context, decimo, libmpdec, cpython, pi_table, agree, ours, reference)
         ours_ns = decimo["bigdecimal"][key]
         add(
             f"| {label} | {human(ours_ns)} | {human(libmpdec['fresh'][key])} | "
+            f"{ratio(ours_ns, libmpdec['fresh'][key])} | "
             f"{human(cpython['cpython_decimal'][key])} | "
-            f"{ratio(ours_ns, libmpdec['fresh'][key])} |"
+            f"{ratio(ours_ns, cpython['cpython_decimal'][key])} |"
         )
     add("")
     add("In place, where neither side allocates a result:")
@@ -354,14 +358,16 @@ def render(context, decimo, libmpdec, cpython, pi_table, agree, ours, reference)
 
     add("## BigDecimal across operand sizes")
     add("")
+    add("decimo's time, and how it compares with libmpdec at that size.")
+    add("")
     add("| Digits | add | | multiply | | divide | |")
     add("|---|---|---|---|---|---|---|")
-    add("| | decimo | libmpdec | decimo | libmpdec | decimo | libmpdec |")
     for width in ("9", "100", "1000", "10000", "100000"):
         row = [f"| {int(width):,} "]
         for op in ("add", "multiply", "divide"):
-            row.append(f"| {human(decimo['sweep'][width][op])} ")
-            row.append(f"| {human(libmpdec['sweep'][width][op])} ")
+            ours_ns = decimo["sweep"][width][op]
+            row.append(f"| {human(ours_ns)} ")
+            row.append(f"| {ratio(ours_ns, libmpdec['sweep'][width][op])} ")
         add("".join(row) + "|")
     add("")
 
