@@ -201,29 +201,36 @@ kernels (parse/render are precision-insensitive ops).
 | 8   | BigDecimal-level inplace ops in Taylor loops  | DONE (T8) — +15–27% exp/ln, +9% sqrt                          |
 | 9   | deferred-carry schoolbook multiply            | DONE (T-9) — deferred-carry (product-scanning);               |
 |     |                                               | 32w 2×, 48w 2.4×, 64w 2.9× faster                             |
-| 10  | `debug_assert(..., "{}".format(...))`         | OPEN — sweep BigUInt + BigDecimal hot paths (Lesson #7)       |
-|     | eager allocation                              |                                                               |
-| 11  | Hot-path-first switch reorder in BigDecimal   | OPEN — same-scale & same-sign branch first (Lesson #12)       |
+| 10  | `debug_assert(..., "{}".format(...))`         | DONE (20260826) — repo-wide sweep; three survivors in         |
+|     | eager allocation                              | `biguint/arithmetics.mojo` spelled `"..." + String(n)`.       |
+|     |                                               | `scripts/check_debug_assert_messages.py` guards it as a       |
+|     |                                               | pre-commit hook. Upstream bug modular/modular#6439.           |
+| 11  | Hot-path-first switch reorder in BigDecimal   | DONE (T-A3) — row was stale; code has the branch             |
 |     | `add`/`sub`                                   |                                                               |
-| 12  | `@no_inline` raise helpers in                 | OPEN — sweep `from_string`, `from_uint32`, etc. (Lesson #10)  |
+| 12  | `@no_inline` raise helpers in                 | DONE (T-A4) — row was stale; `errors.mojo` splits            |
 |     | BigDecimal/BigUInt                            |                                                               |
 | 13  | `from_string` digit batching                  | OPEN — borrowed from decimal128 H#17 follow-up                |
 |     | (UInt64 chunks of 9 or 19)                    |                                                               |
 | 14  | `to_string` `InlineArray` right-aligned       | OPEN — borrowed from decimal128 §2.4                          |
 |     | chunked emit                                  |                                                               |
-| 15  | Single-pass rounding in BigDecimal            | OPEN — borrowed from decimal128 H#16                          |
+| 15  | Single-pass rounding in BigDecimal            | DONE (T-M2) — row was stale; already single-pass             |
 |     | `multiply` / `divide`                         |                                                               |
-| 16  | Short-divisor fast path in `divide`           | OPEN — `BigUInt.floor_divide_by_uint32` exists;               |
+| 16  | Short-divisor fast path in `divide`           | DONE (T-D1) — row was stale; routed via `//`                 |
 |     | (single-word loop)                            | lift to BigDecimal                                            |
-| 17  | Add/sub `multiply_by_power_of_ten` allocates  | OPEN — root cause of 4.7× py on small-precision add           |
-|     | oversized                                     |                                                               |
-| 18  | Small-coefficient mul fast path               | OPEN — borrowed from decimal128 H#4 dispatch-overhead lesson  |
+| 17  | Add/sub `multiply_by_power_of_ten` allocates  | DONE (20260825) — `max_scale` is one of the two scales, so    |
+|     | oversized                                     | one call was always `n = 0`, a plain copy. Now scales only    |
+|     |                                               | the operand that needs it: add 1.90×, subtract 1.82×.        |
+| 18  | Small-coefficient mul fast path               | DISPROVEN (T-M1) — row was stale; reverted                   |
 |     | (bypass Karatsuba dispatch)                   |                                                               |
 | 19  | `precision` arg on `add`/`sub`/`multiply`     | DONE (PR #233) — see T-API3                                   |
-| 20  | Private functions with `_`; Replace raises    | OPEN — improves runtime performance by avoiding               |
-|     | with debug asserts                            | unnecessary checks                                            |
-| 21  | More inplace variants for `BigUInt`           | OPEN — further reduces allocations and improves performance   |
-|     | and `BigDecimal`                              |                                                               |
+| 20  | Private functions with `_`; Replace raises    | SPLIT (20260826) — the `_` half is no longer wanted: nothing  |
+|     | with debug asserts                            | outside the package opens these modules, so the prefix buys   |
+|     |                                               | nothing and the house style avoids it. Replacing raises with  |
+|     |                                               | debug asserts on hot paths stays OPEN.                        |
+| 21  | More inplace variants for `BigUInt`           | OPEN — and one concrete instance measured (20260826):         |
+|     | and `BigDecimal`                              | `subtract_inplace()` builds a whole negated copy of its right |
+|     |                                               | operand to flip a sign, so `x -= y` is 5.2× slower than       |
+|     |                                               | libmpdec in place, where `x += y` is 1.3× *faster*.           |
 | 22  | Zero-copy scale alignment via word-offset     | DISPROVEN — see T-API2                                        |
 |     | add/sub                                       |                                                               |
 | 23  | Drop multiply pre-scaling; adjust scale       | OPEN — see T-API2.M                                           |
@@ -231,8 +238,15 @@ kernels (parse/render are precision-insensitive ops).
 | 24  | `round_to_precision` in-place audit           | DONE (T-R2) — code-quality cleanup; divide bench unchanged    |
 |     |                                               | (saved allocs lost in noise vs total divide cost;             |
 |     |                                               | will compound on rounding-dominated ops)                      |
-| 25  | Data-pointer over list indexing across        | DONE (T-U1) — only the two-buffer divide kernel won (4-8%)    |
-|     | BigUInt hot kernels                           | at ≥256w; single-pass O(n) loops within noise, reverted       |
+| 26  | Transform multiplication for base-10^9        | DONE (20260826) — `biguint/ntt.mojo`, six decimal digits per  |
+|     | (`BigUInt`, and so `BigDecimal`)              | coefficient. Toom-3 was the top tier, so `BigDecimal` ran at  |
+|     |                                               | O(n^1.465) while libmpdec switches to a transform. Crossover  |
+|     |                                               | measured between 1024 and 2048 words. Multiply at 100 000     |
+|     |                                               | digits 4.53 → 2.45 ms; divide follows via Burnikel-Ziegler.   |
+| 25  | Data-pointer over list indexing across        | SUPERSEDED (20260826) — the 4-8% no longer reproduces on      |
+|     | BigUInt hot kernels                           | Mojo 1.0.0. Re-benched on the real function at 256-65536w:    |
+|     |                                               | within 1.6%, indexed marginally ahead at the top. The loop    |
+|     |                                               | is division-bound at ~3.35 ns/word. Reverted to indexing.     |
 
 ## 4. Lessons Learnt (the reusable bits)
 

@@ -212,6 +212,13 @@ hardware before trying again.
 
 ### multiply — T-M5 (NTT) done (2026-08-25)
 
+**T-M6 — the transform is now shared with `BigUInt`. DONE (2026-08-26).**
+`biguint/ntt.mojo` multiplies base-10^9 magnitudes with the same field
+arithmetic, twiddle tables and transforms. Those work on residues and do not
+depend on the base, so they lost their leading underscore and are imported
+rather than duplicated; only the packing differs, because a base-billion
+magnitude is not a bit string. See the BigDecimal plan, H#26.
+
 **T-M5 — number-theoretic transform. DONE.** `bigint/ntt.mojo`, over the
 Goldilocks prime `2^64 - 2^32 + 1`: one prime, no CRT, and reduction of a
 128-bit product in a shift, a subtract and two conditional fixups. Against the
@@ -468,4 +475,5 @@ and fix the base-conversion and SIMD fallout behind the test suite.
 | T-W1  | Base-2^64 limbs throughout                       | PARTLY — T-M4 does it in the kernel   |
 | T-E1  | `reciprocal_sqrt_fixed_point()` binary recip. sqrt    | DONE 2026-08-24 — enables T-PI4       |
 | T-M5  | NTT multiply over `2^64 - 2^32 + 1`              | DONE 2026-08-25 — 2.3× at 104 200w    |
+| T-M6  | Share the transform with base-10^9               | DONE 2026-08-26 — `biguint/ntt.mojo`  |
 | T-D4  | Reciprocal-Newton divide                         | NEXT — NTT landed; B-Z now 4.9× mul   |
