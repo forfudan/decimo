@@ -10,29 +10,32 @@ Last reviewed 2026-08-26.
 
 ## The goal for this round
 
-Beat libmpdec on **every** operation at 1000 digits. Three gaps to close, and
-subtracting the 9-digit time separates the per-call overhead from the loop:
+Beat libmpdec on **every** operation at 1000 digits. Measured side by side in
+one `benchdoc` run at 275281f:
 
-| operation | our loop | their loop | our fixed cost | their fixed cost |
-| --------- | -------- | ---------- | -------------- | ---------------- |
-| add       | 78.6 ns  | 75.6 ns    | 45.4 ns        | 35.6 ns          |
-| subtract  | 69.6 ns  | 49.7 ns    | 46.3 ns        | 32.5 ns          |
-| divide    | 24.4 us  | 14.3 us    | 137 ns         | 51 ns            |
+| operation | decimo | libmpdec |                  |
+| --------- | ------ | -------- | ---------------- |
+| add       | 83.3 ns | 115.5 ns | **1.39x faster** |
+| subtract  | 90.2 ns | 92.2 ns  | **parity**       |
+| multiply  | 2.79 us | 9.04 us  | **3.24x faster** |
+| round     | 88.5 ns | 96.6 ns  | **1.09x faster** |
+| parse     | 1.07 us | 1.42 us  | **1.33x faster** |
+| divide    | 23.99 us | 14.29 us | 1.68x slower    |
 
-So they are three different problems, and only one of them is an algorithm:
+**Only divide is left.** Vectorising the word kernels (20260826) took add from
+1.12x slower to 1.39x faster and subtract from 1.41x slower to parity, and it
+carried the larger sizes too: add at 100 000 digits went from 1.25x slower to
+1.49x faster, and at 10^6 from 1.32x slower to 1.58x faster.
 
-- **add** — **done (20260826).** Vectorising the word kernels a block at a time
-  took it from 108 ns to 85 ns, against libmpdec's 111 ns. See
-  `internal_notes.md`.
-- **subtract** — 107 ns to 94 ns from the same change, against libmpdec's
-  82 ns. The kernel is no longer the problem: add and subtract time the same
-  there. What is left is that `subtract` is `raises` where `add` is not, and
-  that it re-derives an ordering `BigDecimal.subtract` already knows. Items 3
-  and 4, plus item 6.
-- **divide** is a real 1.7x algorithmic gap, and is item 2. The kernel work
-  bought it about 3%.
+Two things worth keeping in view while working on divide:
 
-multiply, round, and parse already win at 1000 digits and need nothing.
+- The 82.2 ns that an earlier run recorded for libmpdec's subtract, and that
+  item 3 was written against, was a favourable run. Measured in the same
+  session as ours it is 92.2 ns. Cross-run comparison against a recorded number
+  is not reliable at this scale; only a `benchdoc` run is.
+- Our own subtract is still slower than our own add at the large sizes — 5.15
+  against 4.05 us at 100 000 digits, 47.5 against 37.0 us at 10^6 — where at
+  1000 digits the two are within 8%. That asymmetry is ours and is item 3.
 
 ## Now
 
