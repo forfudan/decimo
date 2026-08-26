@@ -2221,7 +2221,7 @@ def floor_divide(x: BigUInt, y: BigUInt) raises -> BigUInt:
         # Use `floor_divide_by_uint64` as it is more efficient
         return floor_divide_by_uint64(x, y.to_uint64_with_first_2_words())
 
-    # CASE: y is triple or quadraple words
+    # CASE: y is triple or quadruple words
     if len(y.words) <= 4:
         # Use `floor_divide_by_uint128` as it is more efficient
         return floor_divide_by_uint128(x, y.to_uint128_with_first_4_words())
@@ -2366,7 +2366,7 @@ def floor_divide_modulo_schoolbook(
         overwrite_with_uint64(remainder, word_remainder)
         return result^
 
-    # CASE: y is triple or quadraple words
+    # CASE: y is triple or quadruple words
     if len(y.words) <= 4:
         # Use `floor_divide_modulo_by_uint128` as it is more efficient
         var word_remainder = UInt128(0)
@@ -4129,7 +4129,7 @@ def floor_divide_modulo(
         overwrite_with_uint64(remainder, double_remainder)
         return quotient^
 
-    # CASE: y is triple or quadraple words
+    # CASE: y is triple or quadruple words
     if len(y.words) <= 4:
         var quad_remainder = UInt128(0)
         var quotient = floor_divide_modulo_by_uint128(
