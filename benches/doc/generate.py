@@ -278,6 +278,18 @@ def main() -> int:
     ours = decimo.get("pi_digits_100", "")
     agree = bool(reference) and ours[:101] == reference[:101]
 
+    # Both sides claim exact arithmetic in the sweep. Check it rather than
+    # assume it: a precision mismatch would make every sweep row meaningless
+    # while still producing plausible timings.
+    sweep_agree = decimo.get("sweep_digest") == libmpdec.get("sweep_digest")
+    if not sweep_agree:
+        print(
+            "warning: decimo and libmpdec disagree on the 1000-digit product\n"
+            f"  decimo:   {decimo.get('sweep_digest')}\n"
+            f"  libmpdec: {libmpdec.get('sweep_digest')}",
+            file=sys.stderr,
+        )
+
     DOC.parent.mkdir(parents=True, exist_ok=True)
     DOC.write_text(
         render(context, decimo, libmpdec, cpython, pi_table, agree, ours, reference)
@@ -356,9 +368,41 @@ def render(context, decimo, libmpdec, cpython, pi_table, agree, ours, reference)
         )
     add("")
 
+    add("## sqrt, exp, ln, power")
+    add("")
+    add("A fixed set, chosen before the results were seen, at three")
+    add("precisions. `2.3456789`, and `**1.5` for power.")
+    add("")
+    add("| Precision | operation | decimo | libmpdec | |")
+    add("|---|---|---|---|---|")
+    for prec in ("28", "100", "1000"):
+        for key, label in [
+            ("sqrt", "sqrt"),
+            ("exp", "exp"),
+            ("ln", "ln"),
+            ("power", "power"),
+        ]:
+            ours_ns = decimo["higher"][prec][key]
+            theirs = libmpdec["higher"][prec][key]
+            add(
+                f"| {int(prec):,} | {label} | {human(ours_ns)} | "
+                f"{human(theirs)} | {ratio(ours_ns, theirs)} |"
+            )
+    add("")
+
     add("## BigDecimal across operand sizes")
     add("")
-    add("decimo's time, and how it compares with libmpdec at that size.")
+    add("Operand digits, not precision. Add and multiply are **exact** on both")
+    add("sides (decimo `precision=0`, libmpdec `mpd_maxcontext`); divide targets")
+    add("operand width + 8 digits on both. decimo's time, then how it compares.")
+    add("")
+    if sweep_agree:
+        add("Verified this run: both libraries produce the same 2000-digit")
+        add("product from the 1000-digit operands.")
+    else:
+        add("> **Cross-check failed.** decimo and libmpdec produced different")
+        add("> products from the same operands, so the precisions are not")
+        add("> matched and this table should not be trusted.")
     add("")
     add("| Digits | add | | multiply | | divide | |")
     add("|---|---|---|---|---|---|---|")

@@ -118,6 +118,53 @@ int main(void) {
     }
     printf("  },\n");
 
+    /* --- Higher-level operations ---------------------------------------- *
+     * sqrt, exp, ln and pow, at three precisions. Fixed set, chosen before
+     * the results were seen, and all four reported either way.              */
+    {
+        static const int PRECS[] = {28, 100, 1000};
+        mpd_t *sx = mpd_new(&ctx), *sy = mpd_new(&ctx);
+        printf("  \"higher\": {\n");
+        for (size_t k = 0; k < sizeof(PRECS) / sizeof(PRECS[0]); k++) {
+            mpd_context_t hc;
+            mpd_maxcontext(&hc);
+            hc.traps = 0;
+            hc.round = MPD_ROUND_HALF_EVEN;
+            hc.prec = PRECS[k];
+            mpd_set_string(sx, "2.3456789", &hc);
+            mpd_set_string(sy, "1.5", &hc);
+
+            long it = PRECS[k] >= 1000 ? 200L : (PRECS[k] >= 100 ? 5000L : 20000L);
+            int rd = PRECS[k] >= 1000 ? 3 : ROUNDS;
+            double bx;
+#define HI(body)                                                     \
+            do {                                                     \
+                bx = 1e30;                                           \
+                for (int r = 0; r < rd; r++) {                       \
+                    double t0 = now_ns();                            \
+                    for (long i = 0; i < it; i++) { body; }          \
+                    double per = (now_ns() - t0) / (double)it;       \
+                    if (per < bx) bx = per;                          \
+                }                                                    \
+            } while (0)
+            HI({ mpd_t *r = mpd_new(&hc); mpd_sqrt(r, sx, &hc); mpd_del(r); });
+            double h_sqrt = bx;
+            HI({ mpd_t *r = mpd_new(&hc); mpd_exp(r, sx, &hc); mpd_del(r); });
+            double h_exp = bx;
+            HI({ mpd_t *r = mpd_new(&hc); mpd_ln(r, sx, &hc); mpd_del(r); });
+            double h_ln = bx;
+            HI({ mpd_t *r = mpd_new(&hc); mpd_pow(r, sx, sy, &hc); mpd_del(r); });
+            double h_pow = bx;
+#undef HI
+            printf("    \"%d\": {\"sqrt\": %.3f, \"exp\": %.3f, "
+                   "\"ln\": %.3f, \"power\": %.3f}%s\n",
+                   PRECS[k], h_sqrt, h_exp, h_ln, h_pow,
+                   k + 1 < sizeof(PRECS) / sizeof(PRECS[0]) ? "," : "");
+        }
+        printf("  },\n");
+        mpd_del(sx); mpd_del(sy);
+    }
+
     /* --- Operand-size sweep -------------------------------------------- *
      * The numbers above are one base-10^9 word each, which is the extreme
      * small end and says nothing about how either library scales. libmpdec
@@ -187,7 +234,32 @@ int main(void) {
                w + 1 < sizeof(WIDTHS) / sizeof(WIDTHS[0]) ? "," : "");
         mpd_del(x); mpd_del(y); free(dx); free(dy);
     }
-    printf("  }\n}\n");
+    printf("  },\n");
+
+    /* Digest of the same 1000-digit product decimo reports, so the generator
+     * can confirm both sides computed the same number. Without it, "exact on
+     * both sides" is an assumption rather than a check. */
+    {
+        char *dx = malloc(1001), *dy = malloc(1001);
+        int sx2 = 7, sy2 = 3;
+        for (int i = 0; i < 1000; i++) {
+            sx2 = (sx2 * 31 + 17) % 9; dx[i] = (char)('1' + sx2);
+            sy2 = (sy2 * 37 + 11) % 9; dy[i] = (char)('1' + sy2);
+        }
+        dx[1000] = dy[1000] = '\0';
+        mpd_t *x = mpd_new(&big), *y = mpd_new(&big), *pr = mpd_new(&big);
+        mpd_set_string(x, dx, &big);
+        mpd_set_string(y, dy, &big);
+        mpd_mul(pr, x, y, &big);
+        char *text = mpd_to_sci(pr, 1);
+        size_t n = strlen(text);
+        printf("  \"sweep_digest\": {\"digits\": %zu, \"tail\": \"%s\"}\n",
+               n, n >= 24 ? text + n - 24 : text);
+        mpd_free(text);
+        mpd_del(x); mpd_del(y); mpd_del(pr);
+        free(dx); free(dy);
+    }
+    printf("}\n");
 
     mpd_del(a);
     mpd_del(b);

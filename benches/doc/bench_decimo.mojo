@@ -13,6 +13,7 @@ from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.bigdecimal import arithmetics as bd_arithmetics
 from decimo.bigdecimal import rounding as bd_rounding
 from decimo.bigdecimal import constants as bd_constants
+from decimo.bigdecimal import exponential as bd_exponential
 from decimo.bigint.bigint import BigInt
 from decimo.rounding_mode import RoundingMode
 
@@ -213,6 +214,79 @@ def main() raises -> None:
             + sweep_comma
         )
     print("  },")
+
+    # --- Higher-level operations, matching bench_libmpdec.c ---
+    # Fixed set chosen before the results were seen: sqrt, exp, ln, power.
+    var precs = [28, 100, 1000]
+    var hx = BigDecimal("2.3456789")
+    var hy = BigDecimal("1.5")
+    print('  "higher": {')
+    for hi in range(len(precs)):
+        var prec = precs[hi]
+        var hit = 200 if prec >= 1000 else (5000 if prec >= 100 else 20000)
+        var hrounds = 3 if prec >= 1000 else ROUNDS
+        var h_sqrt = 1.0e30
+        var h_exp = 1.0e30
+        var h_ln = 1.0e30
+        var h_pow = 1.0e30
+        for _ in range(hrounds):
+            var t0 = perf_counter_ns()
+            for _ in range(hit):
+                sink += Int(bd_exponential.sqrt(hx, prec).sign)
+            var t1 = perf_counter_ns()
+            h_sqrt = min(h_sqrt, Float64(Int(t1 - t0)) / Float64(hit))
+
+            t0 = perf_counter_ns()
+            for _ in range(hit):
+                sink += Int(bd_exponential.exp(hx, prec).sign)
+            t1 = perf_counter_ns()
+            h_exp = min(h_exp, Float64(Int(t1 - t0)) / Float64(hit))
+
+            t0 = perf_counter_ns()
+            for _ in range(hit):
+                sink += Int(bd_exponential.ln(hx, prec).sign)
+            t1 = perf_counter_ns()
+            h_ln = min(h_ln, Float64(Int(t1 - t0)) / Float64(hit))
+
+            t0 = perf_counter_ns()
+            for _ in range(hit):
+                sink += Int(bd_exponential.power(hx, hy, prec).sign)
+            t1 = perf_counter_ns()
+            h_pow = min(h_pow, Float64(Int(t1 - t0)) / Float64(hit))
+
+        var hcomma = "," if hi < len(precs) - 1 else ""
+        print(
+            '    "'
+            + String(prec)
+            + '": {"sqrt": '
+            + _num(h_sqrt)
+            + ', "exp": '
+            + _num(h_exp)
+            + ', "ln": '
+            + _num(h_ln)
+            + ', "power": '
+            + _num(h_pow)
+            + "}"
+            + hcomma
+        )
+    print("  },")
+
+    # A digest of the sweep's 1000-digit product, so the generator can confirm
+    # that decimo and libmpdec computed the same number. Without it, "exact
+    # arithmetic on both sides" is an assumption rather than a check.
+    var digest_product = bd_arithmetics.multiply(
+        BigDecimal(_digits_seeded(1000, 7)),
+        BigDecimal(_digits_seeded(1000, 3)),
+        0,
+    )
+    var digest_text = String(digest_product)
+    print(
+        '  "sweep_digest": {"digits": '
+        + String(digest_text.byte_length())
+        + ', "tail": "'
+        + String(digest_text[byte = digest_text.byte_length() - 24 :])
+        + '"},'
+    )
 
     # --- BigInt against CPython's int, at matched decimal widths ---
     var sizes = [100, 1000, 10000, 100000]
