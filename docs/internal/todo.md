@@ -114,9 +114,14 @@ Nothing to do here until Mojo grows the feature.
       worth about 4%.
 
       What the investigation did turn up is that the base-case size was
-      mistuned: see `BURNIKEL_ZIEGLER_BLOCK_WORDS`, retuned from 32 to 24 for
-      6-21% between 500 and 2000 digits. That did not come from segmentation
-      either.
+      mistuned, which did not come from segmentation either. It was retuned
+      twice the same day and ended where it started: 32 to 24 once the word
+      kernels were vectorized, then 24 back to 32 once the Knuth D
+      multiply-subtract came off its carry chain. Each change made the base
+      case cheaper, but the first favoured a smaller base and the second a
+      larger one. See `BURNIKEL_ZIEGLER_BLOCK_WORDS` for the measurements;
+      `CUTOFF_BURNIKEL_ZIEGLER`, the separate question of whether the
+      recursion runs at all, went 32 to 48.
 
 ## Done
 

@@ -49,12 +49,14 @@ NOTE: Karatsuba is used for `CUTOFF_KARATSUBA < max_words <= CUTOFF_TOOM3`.
 comptime CUTOFF_BURNIKEL_ZIEGLER = 48
 """The cutoff number of words for using Burnikel-Ziegler division.
 
-A divisor of this many words or fewer is divided by the schoolbook method
-outright, so this is not the same number as the block size below.
+Schoolbook is used outright when the divisor has at most this many words
+*and* the dividend has at most twice as many; a longer dividend goes to
+Burnikel-Ziegler whatever the divisor's width. So this is not the same number
+as the block size below, and it is not a divisor-width cutoff on its own.
 
 Raised from 32 on 20260826, after the Knuth D multiply-subtract step was taken
 off its carry chain. A 2.9x faster schoolbook stays ahead of the recursion for
-longer. Measured on 2n-by-n, best of nine:
+longer. Measured on the 2n-by-n shape the condition selects, best of nine:
 
 | divisor words | schoolbook | best Burnikel-Ziegler |
 | ------------- | ---------- | --------------------- |
