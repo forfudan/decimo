@@ -536,6 +536,11 @@ the binding growing a thick compatibility layer on top.
 **Matching now**, each cross-checked against `decimal.Decimal` in
 `python/tests/test_decimo.py`:
 
+- `Decimal(0.1)` is the 55-digit value the float actually holds, not `0.1`
+  (20260826). The Mojo side moved for this: `BigDecimal.from_float_scalar()`
+  now decodes the IEEE bits rather than going through the shortest repr, which
+  also makes it agree with `Rational`, which always did.
+
 - Arithmetic converts an `int` (and a `bool`) and refuses a `float` or a `str`.
   Refusing a float is deliberate on the standard library's part -- quietly
   mixing a binary fraction into a decimal one is the mistake the type exists to
@@ -555,7 +560,6 @@ the binding growing a thick compatibility layer on top.
 | `__hash__` | currently unhashable. A real one has to agree with `int` and `float` the way `decimal.Decimal` does, which is CPython's modular-inverse construction, not a digest of the digits |
 | `__format__` | `format(d, ".2f")` and the rest of the mini-language |
 | `__copy__`, `__deepcopy__`, `__reduce__` | copy and pickle |
-| `Decimal(0.1)` is not exact | **the one that needs the Mojo side to move,** and the decoder for it already exists in `Rational.from_float_scalar()`. See todo item 9 |
 | NaN and Infinity | decimo has no non-finite values, so `Decimal("NaN")` raises where the standard library returns one |
 | Context and precision | no `getcontext()`, no per-operation precision from Python |
 | `sqrt`, `exp`, `ln`, `log10`, `quantize`, `normalize`, `as_tuple`, `is_nan`, ... | ~55 methods, nearly all already on `BigDecimal` |

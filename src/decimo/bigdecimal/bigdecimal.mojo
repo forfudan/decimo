@@ -383,44 +383,88 @@ struct BigDecimal(
     def from_float_scalar[
         dtype: DType, //
     ](value: Scalar[dtype]) raises -> Self where dtype.is_floating_point():
-        """Initializes a BigDecimal from a floating-point scalar.
+        """Initializes a BigDecimal from a floating-point scalar, exactly.
 
         Args:
             value: The Scalar value to be converted to BigDecimal.
 
         Returns:
-            The BigDecimal representation of the Scalar value.
+            The exact value of `value` as a BigDecimal.
 
         Raises:
-            ValueError: If the value is NaN.
-            ConversionError: If the conversion from scalar to BigDecimal fails.
-
-        Notes:
-
-        If the value is a floating-point number, it is converted to a string
-        with full precision before converting to BigDecimal.
+            ValueError: If the value is NaN or infinite, neither of which is a
+                decimal number.
 
         Parameters:
             dtype: The data type of the scalar.
+
+        Notes:
+
+        The result is the value the float actually holds, not the literal
+        somebody wrote to produce it: `from_float_scalar(0.1)` is
+        0.1000000000000000055511151231257827021181583404541015625, not 0.1.
+        That is what `decimal.Decimal(0.1)` gives, and what `Rational`
+        already gave, so all three now agree.
+
+        Every finite binary float is `mantissa * 2^exponent`. When the
+        exponent is not negative that is already an integer. When it is,
+        `mantissa / 2^k` is `mantissa * 5^k / 10^k`, which is a coefficient of
+        `mantissa * 5^k` read at scale `k` -- exact, and no division.
+
+        Every narrower binary format is a subset of Float64 -- fewer
+        significand bits and a narrower exponent range -- so widening first is
+        exact, and one decoder serves them all.
         """
+        var widened = value.cast[DType.float64]()
+        var bits = widened.to_bits()
+        var exponent_field = Int((bits >> 52) & 0x7FF)
+        var mantissa_field = bits & 0x000F_FFFF_FFFF_FFFF
+        var negative = Bool((bits >> 63) != 0)
 
-        if value == 0:
-            return Self(coefficient=BigUInt.zero(), scale=0, sign=False)
-
-        if value != value:  # Check for NaN
+        if exponent_field == 0x7FF:
             raise ValueError(
-                message="Cannot convert NaN to BigDecimal.",
+                message=(
+                    "The value " + String(value) + " is not a decimal number."
+                ),
                 function="BigDecimal.from_float_scalar()",
             )
-        # Convert to string with full precision
-        try:
-            return Self.from_string(String(value))
-        except e:
-            raise ConversionError(
-                message="Cannot convert scalar to BigDecimal.",
-                function="BigDecimal.from_float_scalar()",
-                previous_error=e^,
-            )
+
+        var mantissa = UInt64(mantissa_field)
+        var exponent: Int
+        if exponent_field == 0:
+            # Subnormal: no implicit leading bit, fixed exponent.
+            exponent = -1074
+        else:
+            # Normal: restore the implicit leading bit. The bias is 1023 and
+            # the mantissa is read as a 53-bit integer, hence 1023 + 52.
+            mantissa |= UInt64(1) << 52
+            exponent = exponent_field - 1075
+
+        if mantissa == 0:
+            # Negative zero keeps its sign, which is both what
+            # `decimal.Decimal(-0.0)` gives and what `from_string("-0.0")`
+            # already gave here.
+            return Self(coefficient=BigUInt.zero(), scale=0, sign=negative)
+
+        # Reduce the fraction, the way `float.as_integer_ratio()` reports it:
+        # a trailing zero bit in the mantissa is a factor of two that cancels
+        # against the denominator. Without this, 0.5 would come back as
+        # 5 * 10^52 at scale 53 instead of 5 at scale 1 -- the same value, but
+        # padded with trailing zeros that `decimal.Decimal` does not produce.
+        # It also keeps the coefficient small, so there is far less to
+        # multiply.
+        while exponent < 0 and (mantissa & 1) == 0:
+            mantissa >>= 1
+            exponent += 1
+
+        var coefficient = BigUInt.from_unsigned_integral_scalar(mantissa)
+
+        if exponent >= 0:
+            _multiply_by_power_of_two(coefficient, exponent)
+            return Self(coefficient=coefficient^, scale=0, sign=negative)
+
+        _multiply_by_power_of_five(coefficient, -exponent)
+        return Self(coefficient=coefficient^, scale=-exponent, sign=negative)
 
     @staticmethod
     def from_string(value: String) raises -> Self:
@@ -3087,3 +3131,41 @@ def _insert_digit_separators(s: String, delimiter: String) -> String:
     if e_pos < n:
         result += String(s[byte=e_pos:])  # exponent suffix
     return result^
+
+
+# ===----------------------------------------------------------------------=== #
+# Helpers for exact float conversion
+#
+# `multiply_by_uint32_inplace()` needs its multiplier below BASE, or the carry
+# out of a word no longer fits in one. So both of these step by the largest
+# power that stays under 10^9 and finish with the remainder.
+# ===----------------------------------------------------------------------=== #
+
+
+def _multiply_by_power_of_five(mut x: BigUInt, n: Int):
+    """Multiplies `x` by `5^n` in place."""
+    comptime STEP = 12  # 5^12 = 244140625, and 5^13 is over BASE
+    comptime STEP_FACTOR = UInt32(244_140_625)
+    var remaining = n
+    while remaining >= STEP:
+        biguint_arithmetics.multiply_by_uint32_inplace(x, STEP_FACTOR)
+        remaining -= STEP
+    if remaining > 0:
+        var factor = UInt32(1)
+        for _ in range(remaining):
+            factor *= 5
+        biguint_arithmetics.multiply_by_uint32_inplace(x, factor)
+
+
+def _multiply_by_power_of_two(mut x: BigUInt, n: Int):
+    """Multiplies `x` by `2^n` in place."""
+    comptime STEP = 29  # 2^29 = 536870912, and 2^30 is over BASE
+    comptime STEP_FACTOR = UInt32(536_870_912)
+    var remaining = n
+    while remaining >= STEP:
+        biguint_arithmetics.multiply_by_uint32_inplace(x, STEP_FACTOR)
+        remaining -= STEP
+    if remaining > 0:
+        biguint_arithmetics.multiply_by_uint32_inplace(
+            x, UInt32(1) << UInt32(remaining)
+        )

@@ -77,26 +77,6 @@ Ordered by value, judged against the two goals in `internal_notes.md`.
 7. **`from_string`** at ~95 ns, roughly three allocations, never investigated.
 8. ~~**`floor_divide()` 2n-by-n scaling** in `BigUInt`~~ — answered, see the
    note below.
-9. **Exact float conversion for `BigDecimal`.** `from_float_scalar()` goes
-   through the float's shortest string form, so `BigDecimal(0.1)` is `0.1`
-   where `decimal.Decimal(0.1)` is the 55-digit value the float actually
-   holds. Three things say to fix it in Mojo rather than in the Python
-   binding:
-   - **`Rational` already does it.** `Rational.from_float_scalar()` decodes
-     the IEEE bits and documents the position outright: "`from_float_scalar(0.1)`
-     is 3602879701896397/36028797018963968, not 1/10". `BigDecimal`
-     disagreeing with `Rational` inside one library is worse than either
-     answer on its own.
-   - **The decoder is already written and tested**, in `rational.mojo`. For a
-     decimal it needs one more step: `mantissa * 2^e` is `mantissa << e` at
-     scale 0 when `e >= 0`, and `mantissa * 5^-e` at scale `-e` when `e < 0`.
-   - **Nothing depends on the current behaviour.** `tests/bigdecimal/` has no
-     float-conversion test at all; every `from_float` test belongs to
-     `Decimal128` or `Rational`.
-
-   `Decimal128` must keep rounding — 28 digits cannot hold the 55 an exact
-   conversion produces — so this is a `BigDecimal` change only.
-   See `docs/plans/mojo4py.md`.
 
 ## Blocked on the language
 

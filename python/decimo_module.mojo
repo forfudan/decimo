@@ -133,6 +133,18 @@ def convert_operand(other: PythonObject) raises -> BigDecimal:
     return convert_int_subclass(other)
 
 
+def from_python_float(other: PythonObject) raises -> BigDecimal:
+    """Read a Python float exactly, the way `decimal.Decimal(float)` does.
+
+    The text detour is lossless: `repr()` of a float is by definition the
+    shortest string that parses back to the same double, so the value handed
+    to `from_float_scalar()` is bit-for-bit the one Python holds. What that
+    then produces is the number the float really is --
+    `Decimal(0.1)` is the 55-digit value, not `0.1`.
+    """
+    return BigDecimal.from_float_scalar(Float64(String(other)))
+
+
 def convert_comparand(other: PythonObject) raises -> BigDecimal:
     """Convert the right operand of a comparison, or refuse.
 
@@ -140,17 +152,15 @@ def convert_comparand(other: PythonObject) raises -> BigDecimal:
     a `float` compares fine, because comparing is not the operation that
     quietly loses the distinction.
 
-    The float goes through its shortest string form, the way the rest of
-    decimo converts one. That is not what `decimal.Decimal` does, and it
-    shows: `Decimal("0.1") == 0.1` answers True here and False there, because
-    the float is not exactly one tenth. The fix belongs in
-    `BigDecimal.from_float_scalar()`, not in this layer.
+    The float is converted exactly, so `Decimal("0.1") == 0.1` is False --
+    the float is not one tenth, and saying so is the whole point of a decimal
+    type.
     """
     var other_type = Python.type(other)
     if other_type is Python.type(PythonObject(0)):
         return BigDecimal(String(other))
     if other_type is Python.type(PythonObject(Float64(0))):
-        return BigDecimal(String(other))
+        return from_python_float(other)
     return convert_int_subclass(other)
 
 
@@ -175,9 +185,12 @@ def bigdecimal_py_init(
             + String(len(args))
             + " given)"
         )
-    # Convert any Python object to its string representation, then construct.
-    # This handles str, int, and float gracefully.
-    self = BigDecimal(String(args[0]))
+    # A float is read exactly, like `decimal.Decimal(float)`. Everything else
+    # -- str, int, another Decimal -- goes through its string form.
+    if Python.type(args[0]) is Python.type(PythonObject(Float64(0))):
+        self = from_python_float(args[0])
+    else:
+        self = BigDecimal(String(args[0]))
 
 
 def bigdecimal_to_string(py_self: PythonObject) raises -> PythonObject:

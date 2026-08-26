@@ -219,6 +219,31 @@ assert (decimo.Decimal("1.5") != [1]) is True
 assert decimo.Decimal("1.5") not in [1, 2]
 print("[PASS] Equality against an unrelated type is False, not an error")
 
+# --- Floats are read exactly, like decimal.Decimal ---
+# Decimal(0.1) is the value the float actually holds, not the literal that was
+# typed. This used to be the one conversion where decimo and stdlib disagreed.
+for v in [
+    0.1,
+    0.5,
+    -2.5,
+    1 / 3,
+    123.456,
+    1e20,
+    1e-20,
+    2.220446049250313e-16,
+    5e-324,
+    -0.0,
+]:
+    ours, std = str(decimo.Decimal(v)), str(decimal.Decimal(v))
+    assert ours == std, f"Decimal({v!r}): decimo={ours!r}, stdlib={std!r}"
+print("[PASS] Floats convert exactly (cross-validated with stdlib decimal)")
+
+# ...and the comparisons that follow from it.
+assert (decimo.Decimal("0.1") == 0.1) is False
+assert (decimo.Decimal(0.1) == 0.1) is True
+assert (decimo.Decimal("0.5") == 0.5) is True
+print("[PASS] Comparison against a float follows the exact value")
+
 # --- bool ---
 for v, expected in [
     ("0", False),
