@@ -149,6 +149,10 @@ unchanged for the variable-length signed case.
 
 ## 5. Open Items
 
+> Ranked by urgency in `docs/internal/todo.md`. This section holds the
+> detail, not the ordering.
+
+
 Worked in priority order. There is one real outlier, floor_divide; the
 rest are smaller. The limb-width question sits at the end, because the
 benchmark shows it is not why decimo trails today.

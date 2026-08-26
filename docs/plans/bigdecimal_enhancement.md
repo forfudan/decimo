@@ -368,6 +368,10 @@ because the lesson generalises to the variable-length case unchanged.
 
 ## 5. Task ledger — investigations, done and open
 
+> Ranked by urgency in `docs/internal/todo.md`. This section holds the
+> reasoning, not the ordering.
+
+
 Reviewed 2026-08-26: of the 26 entries below, 20 are finished (DONE,
 DISPROVEN or SUPERSEDED) and are kept for their reasoning, which is the point
 of the section. The six that are not are T-S1, T-D3, T-L3, T-IO2 and the two

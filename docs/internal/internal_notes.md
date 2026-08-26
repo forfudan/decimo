@@ -118,20 +118,10 @@ at Toom-3 (`CUTOFF_TOOM3 = 768` words, nothing above). The *same* 100 000-digit
 product costs **1.14 ms through `BigInt`** and **4.19 ms through `BigDecimal`**
 — 3.7x, identical numbers. And 1.14 ms would beat libmpdec's 2.72 ms by 2.4x.
 
-### Still open, in rough order of value
+### What to do next
 
-- **A transform for base-10^9.** Takes the 100 000-digit column, and every
-  `BigDecimal` multiply above ~10 000 digits.
-- **Binding overhead.** Operator slots (~18 ns) and embedding `BigDecimal` in
-  the PyObject the way CPython does (most of the rest).
-- **`divide`.** `true_divide_general()` allocates a whole product to test
-  exactness (`coef * y == coef_x`) when the remainder answers it for free;
-  `floor_divide_by_uint32()` already computes and discards it.
-- **`subtract_inplace()`** copies a coefficient to flip a sign: 5.2x slower
-  than libmpdec in place, where `+=` is 1.3x *faster*.
-- **Inline storage (SBO)** for one or two words, worth ~33 ns of a ~44 ns
-  operation.
-- **`from_string`** at ~95 ns, about three allocations, never investigated.
+In `todo.md`, beside this file. It is the only ranked list; this file holds the
+measurements behind it and the plans in `docs/plans/` hold the detail.
 
 ## Inconsistencies between libraries
 
