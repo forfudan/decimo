@@ -628,6 +628,49 @@ schedule has to land badly. `sqrt_via_reciprocal_iteration(10005, 1000)` and
 inputs against precisions for that reason.
 
 
+### Where the last of a 1000-digit division goes (20260826)
+
+After the multiply-subtract and the base-case remainder, a 226-by-112 word
+division is 13.4 us. Splitting it against the work it cannot avoid:
+
+| part                        | ns    | share |
+| --------------------------- | ----- | ----- |
+| 4 base cases, 56-by-28      | 6390  | 48%   |
+| 2 multiplies, 56x56         | 1759  | 13%   |
+| 4 multiplies, 28x28         | 1207  | 9%    |
+| **essential**               | 9356  | 70%   |
+| **recursion bookkeeping**   | 4035  | 30%   |
+
+The multiplies are Burnikel-Ziegler's own `q * B0` step and cannot go. The
+30% is allocation, the shifts that place a partial quotient, and the O(n)
+compares in the correction path. Removing it means restructuring the
+recursion around preallocated buffers rather than returning fresh `BigUInt`
+values at every node -- the single largest remaining item in division, and
+not a small change.
+
+Two smaller things were measured and left alone. The `+ 2` guard words in
+`true_divide_general()` push a 1000-digit dividend from 224 words to 226,
+just past `2n`, which costs 6% because the driver then runs three blocks
+instead of two; the guard is load-bearing for rounding and is not worth 6% on
+a guess. And the base case copies its dividend twice, once into a slice and
+once into Knuth D's running window, worth about 1.5%.
+
+### Cross-run timing lies at the 5% scale
+
+Twice in one day a change looked like a 5-12% win when measured as "run the
+benchmark, change the code, run it again", and both times an interleaved
+measurement said it was nothing.
+
+The 64-bit quotient estimate is the clearest case. Separate runs said 13.39 us
+against 12.75 us, a 4.8% win. Building both versions as two binaries and
+alternating them said 14.10 against 14.09 -- neutral. It was rejected twice on
+that basis, hours apart, having looked like a win both times.
+
+The rule that follows: below about 10%, a comparison is only real if both
+sides run inside one process, or as two binaries alternated in one shell. A
+number from one run against a number written down earlier is not evidence,
+and that includes numbers written down in this file.
+
 ## Allocation and small operations
 
 ### Small operations are allocation, not arithmetic

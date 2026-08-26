@@ -8,34 +8,35 @@ drifted apart, so there is now one.
 
 Last reviewed 2026-08-26.
 
-## The goal for this round
+## The goal for this round: met (20260826)
 
-Beat libmpdec on **every** operation at 1000 digits. Measured side by side in
-one `benchdoc` run at 275281f:
+Beat libmpdec on every operation at 1000 digits. Measured side by side in one
+`benchdoc` run at 06bafb7:
 
-| operation | decimo | libmpdec |                  |
-| --------- | ------ | -------- | ---------------- |
-| add       | 83.3 ns | 115.5 ns | **1.39x faster** |
-| subtract  | 90.2 ns | 92.2 ns  | **parity**       |
-| multiply  | 2.79 us | 9.04 us  | **3.24x faster** |
-| round     | 88.5 ns | 96.6 ns  | **1.09x faster** |
-| parse     | 1.07 us | 1.42 us  | **1.33x faster** |
-| divide    | 23.99 us | 14.29 us | 1.68x slower    |
+| operation | decimo   | libmpdec |                  |
+| --------- | -------- | -------- | ---------------- |
+| add       | 83.5 ns  | 113.2 ns | **1.36x faster** |
+| subtract  | 87.4 ns  | 88.8 ns  | parity           |
+| multiply  | 2.81 us  | 8.94 us  | **3.18x faster** |
+| divide    | 13.86 us | 14.38 us | parity           |
+| round     | 82.0 ns  | 97.7 ns  | **1.19x faster** |
+| parse     | 1.10 us  | 1.41 us  | **1.28x faster** |
 
-**Only divide is left.** Vectorising the word kernels (20260826) took add from
-1.12x slower to 1.39x faster and subtract from 1.41x slower to parity, and it
-carried the larger sizes too: add at 100 000 digits went from 1.25x slower to
-1.49x faster, and at 10^6 from 1.32x slower to 1.58x faster.
+Nothing is slower. Divide started the day 1.68x behind and add 1.12x behind.
+Three changes did it, and all three carried to the larger sizes as well:
 
-Two things worth keeping in view while working on divide:
+1. The add and subtract word kernels vectorized a block at a time.
+2. Knuth D's multiply-subtract taken off its carry chain, 2.9x on schoolbook
+   division.
+3. The Burnikel-Ziegler base case taking the remainder schoolbook already had,
+   instead of rebuilding it with a multiply.
 
-- The 82.2 ns that an earlier run recorded for libmpdec's subtract, and that
-  item 3 was written against, was a favourable run. Measured in the same
-  session as ours it is 92.2 ns. Cross-run comparison against a recorded number
-  is not reliable at this scale; only a `benchdoc` run is.
-- Our own subtract is still slower than our own add at the large sizes — 5.15
-  against 4.05 us at 100 000 digits, 47.5 against 37.0 us at 10^6 — where at
-  1000 digits the two are within 8%. That asymmetry is ours and is item 3.
+Both cutoffs were re-swept after each of those, because a cheaper base case
+moves every crossover above it. That happened three times in one day.
+
+The next goal, if there is one, is to make divide *win* rather than tie: 30%
+of a 1000-digit division is recursion bookkeeping rather than arithmetic. See
+`internal_notes.md`.
 
 ## Now
 

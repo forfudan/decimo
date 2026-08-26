@@ -3793,6 +3793,28 @@ def floor_divide_modulo_burnikel_ziegler(
     return q^
 
 
+# ===----------------------------------------------------------------------=== #
+# Legacy Burnikel-Ziegler recursion (hand-written, kept for reference)
+#
+# `floor_divide_two_by_one()` and `floor_divide_three_by_two()` below are the
+# original hand-written pair, and they call only each other -- nothing outside
+# this block reaches them. The live path is the `_slices_` pair, which does the
+# same recursion over index bounds instead of materialising `a0`, `a1`, `a2`,
+# `a3`, `b0`, `b1` as separate values, and hands its remainder back through an
+# argument instead of a tuple.
+#
+# They are kept deliberately: they read as the algorithm is written down, which
+# makes them the clearest statement of what the `_slices_` pair is doing, and
+# they are the reference the optimized form was checked against.
+#
+# Do not copy the base case here into new code. It calls the quotient-only
+# `floor_divide_schoolbook()` and then rebuilds the remainder as `a - q * b`,
+# which is a full multiply that the division had already done the work for.
+# The live pair took that out on 20260826 and it was worth 12% of a
+# 1000-digit division.
+# ===----------------------------------------------------------------------=== #
+
+
 def floor_divide_two_by_one(
     a: BigUInt, b: BigUInt, n: Int, cut_off: Int
 ) raises -> Tuple[BigUInt, BigUInt]:
@@ -3823,6 +3845,8 @@ def floor_divide_two_by_one(
     )
 
     if (n & 1 == 1) or (n <= cut_off):
+        # Legacy: rebuilding the remainder with a multiply. See the block
+        # comment above -- the live `_slices_` pair takes it from schoolbook.
         var q = floor_divide_schoolbook(a, b)
         var r = a - q * b
         return (q^, r^)
