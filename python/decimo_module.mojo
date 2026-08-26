@@ -1444,16 +1444,26 @@ def slot_richcompare(
     a binary and a decimal fraction.
     """
     try:
-        ref cell = state()[]
         ref cpython = Python().cpython()
+        # CPython always hands `tp_richcompare` the type that owns it as the
+        # first argument -- `do_richcompare` calls `f(v, w, op)` for `v`'s slot
+        # and `f(w, v, swapped)` for `w`'s. So `left` is ours, and two operands
+        # of the same type are both ours. That settles the common case without
+        # reading the module state at all: a comparison has no result to
+        # allocate and no precision to apply, so the lookup was most of it.
+        var left_type = cpython.Py_TYPE(left)
+        var order: Int8
+        if left_type == cpython.Py_TYPE(right):
+            return _compare_answer(
+                _value_of(left)[].compare(_value_of(right)[]), operation
+            )
+
+        ref cell = state()[]
         var ours = decimal_type_ptr(cell)
-        var left_is_ours = cpython.Py_TYPE(left) == ours
+        var left_is_ours = left_type == ours
         var right_is_ours = cpython.Py_TYPE(right) == ours
 
-        var order: Int8
-        if left_is_ours and right_is_ours:
-            order = _value_of(left)[].compare(_value_of(right)[])
-        elif left_is_ours:
+        if left_is_ours:
             var converted: BigDecimal
             try:
                 converted = convert_comparand(PythonObject(from_borrowed=right))
@@ -1470,19 +1480,25 @@ def slot_richcompare(
         else:
             return _not_implemented_ptr()
 
-        var answer: Bool
-        if operation == Py_LT:
-            answer = order < 0
-        elif operation == Py_LE:
-            answer = order <= 0
-        elif operation == Py_EQ:
-            answer = order == 0
-        elif operation == Py_NE:
-            answer = order != 0
-        elif operation == Py_GT:
-            answer = order > 0
-        else:
-            answer = order >= 0
-        return PythonObject(answer).steal_data()
+        return _compare_answer(order, operation)
     except e:
         return raise_python_exception(e)
+
+
+@always_inline
+def _compare_answer(order: Int8, operation: c_int) raises -> PyObjectPtr:
+    """Turn a three-way ordering into the answer the comparison asked for."""
+    var answer: Bool
+    if operation == Py_LT:
+        answer = order < 0
+    elif operation == Py_LE:
+        answer = order <= 0
+    elif operation == Py_EQ:
+        answer = order == 0
+    elif operation == Py_NE:
+        answer = order != 0
+    elif operation == Py_GT:
+        answer = order > 0
+    else:
+        answer = order >= 0
+    return PythonObject(answer).steal_data()
