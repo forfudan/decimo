@@ -41,11 +41,16 @@ static double now_ns(void) {
         }                                                            \
     } while (0)
 
+/* Must match `build_digits()` in bench_decimo.mojo and `digits()` in
+ * bench_python.py exactly, or the three libraries are not being given the same
+ * numbers. The multiplier and offset differ by seed. */
 static char *make_digits(int count, int seed) {
     char *out = malloc((size_t)count + 1);
+    int step = seed == 7 ? 31 : 37;
+    int offset = seed == 7 ? 17 : 11;
     int state = seed;
     for (int i = 0; i < count; i++) {
-        state = (state * 31 + 17) % 9;
+        state = (state * step + offset) % 9;
         out[i] = (char)('1' + state);
     }
     out[count] = '\0';

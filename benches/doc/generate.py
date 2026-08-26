@@ -305,6 +305,17 @@ def main() -> int:
         )
     )
     print(f"wrote {DOC.relative_to(ROOT)}", file=sys.stderr)
+    # The document is written either way, carrying its own warning banner, but
+    # the exit status is what a script or a person running this will notice. A
+    # digest mismatch means the two libraries were given different numbers, and
+    # every row above it is then meaningless.
+    if not sweep_agree or not agree:
+        print(
+            "FAILED: a cross-check did not pass; the document is written but "
+            "its figures should not be used.",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
