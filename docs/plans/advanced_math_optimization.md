@@ -22,6 +22,12 @@ Trig is the part that has not been revisited; items 1, 2, 3, 5 and 6 below are
 still open and still worth doing. The accuracy was always good (full precision
 digits match WolframAlpha); this document is about performance.
 
+> Measurements live elsewhere. This document holds intent — what to do about
+> trig and pi, and why. What was actually measured is in
+> `docs/internal/internal_notes.md`, under "`pi()` — how it is computed and
+> where the time goes". Current cross-library figures are generated into
+> `docs/benchmarks.md` by `pixi run benchdoc`.
+
 ## Identified Optimization Opportunities
 
 ### 1. Pi Caching (High Impact, Low Effort)

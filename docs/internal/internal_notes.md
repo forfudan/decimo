@@ -1,5 +1,15 @@
 # Internal Notes
 
+What was measured and what was learned, grouped by topic. Plans live in
+`docs/plans/` and hold intent — what to do and why. This file holds the
+findings behind those decisions, including the ones that turned out negative,
+which is the half that is easy to lose and expensive to rediscover.
+
+Current cross-library figures are not here. They are generated into
+`docs/benchmarks.md` by `pixi run benchdoc`; numbers quoted in this file are
+dated and may have moved.
+
+
 ## Goals
 
 Two targets, both about being competitive with the established libraries
@@ -141,7 +151,7 @@ product costs **1.14 ms through `BigInt`** and **4.19 ms through `BigDecimal`**
     - WolframAlpha: 4.0994231605661201249788358050110815384367187427582 x 10-29
     - mpmath:       4.0994231605661201249789078578417210843506987202039e-29
 
-## Time complexity for pi() implementations
+## `pi()` — how it is computed and where the time goes
 
 - #94. Implementing pi() with Machin's formula. Time taken for precision 2048:
   33.580649 seconds.
@@ -375,23 +385,6 @@ decimo wins outright at 100 and 1 000 digits, including against MPFR, and that
 is not a warm-up artifact: every engine is measured in a cold process and
 verified to produce the same digits first.
 
-### Small operations are allocation, not arithmetic
-
-The headline figures and what is still open are in the Goals section above;
-this is the measurement behind them.
-
-| | ns |
-|---|---|
-| `+=` in place, no allocation | 5.6 |
-| one `List[UInt32]` alloc + free | 33 |
-| `mpd_new()` + `mpd_del()` (two allocations) | 22.9 |
-
-An operation's speed is very nearly its allocation count: ~4 ns of arithmetic
-against ~33 ns per allocation. libmpdec is not avoiding allocation — it does
-two for ~23 ns where one of ours costs ~33 — so per allocation it is roughly
-three times cheaper. Inline storage would therefore put us clearly ahead
-rather than merely level.
-
 ### MPFR computes pi by AGM, mpmath by Chudnovsky
 
 Why MPFR is the *slower* of the two GMP-backed engines, which is otherwise
@@ -404,21 +397,32 @@ same algorithm we use, and lands at 262 ms. Both are `O(M(n) log n)` and both
 measure an exponent of 1.24; the difference is entirely the constant, which is
 why every pi record uses Chudnovsky and not AGM.
 
-### GMP's own division and base-conversion ratios, as a target
+## Multiplication and the transform
 
-Measured at 104 200 words (10^6 digits), against a same-size multiply:
+### Where the NTT actually wins, and where it does not
 
-| operation           | GMP      | ratio to mul | decimo ratio |
-| ------------------- | -------- | ------------ | ------------ |
-| mul n x n           | 5.83 ms  | 1.00         | 1.00         |
-| divmod 2n / n       | 15.69 ms | 2.69         | 4.90         |
-| base 2^k -> decimal | 33.71 ms | 5.78         | 8.50         |
+Per-stage timings for `pi(1000000)`, in milliseconds, before and after the
+transform landed:
 
-Two things to take from this. GMP's division is 2.69x a multiply *with* all of
-its Newton-reciprocal machinery, so 2.7x is the realistic floor for T-D6 — not
-the ~2.1x the textbook operation count suggests. And our raw multiply is
-24.0 ms against GMP's 5.83, a 4.1x gap that is pure constant factor: same
-algorithm class, thirty years of tuning apart.
+| Stage                     | before | after |
+| ------------------------- | ------ | ----- |
+| binary splitting          | 627    | 436   |
+| base 2^32 -> 10^9         | 206    | 204   |
+| final division, binary    | 145    | 135   |
+| `sqrt(10005)`             | 62     | 44    |
+| final multiplies          | 56     | 25    |
+| scaling multiply          | 52     | 12    |
+| `5^s`                     | 26     | 15    |
+
+Every stage that is a multiplication moved. The two that did not are the two
+that are divisions, and the reason is worth recording: Burnikel-Ziegler is
+built out of multiplications, but of operands half the size and smaller, where
+the transform's advantage has not opened up yet, and its own constant did not
+change. Division measured 2.64x a same-size multiplication before the
+transform and 4.9x after — the denominator got cheaper and the numerator did
+not. That inverts the earlier assessment of reciprocal-Newton division: it was
+worth about 4% of `pi` when division was 2.64x a multiply, and it is worth
+about 20% now.
 
 ### GMP is on FFT from ~32 000 digits, and that is most of the gap
 
@@ -449,6 +453,9 @@ Of the 6.1x multiply gap at 100 000 digits, then, 3.7x is algorithm and 1.6x
 is code. NTT is not a >=10^6-digit concern - it is the largest single lever at
 the sizes we already benchmark, and it makes Toom-4 (which by the tree-shape
 argument above would be worth a couple of percent on `pi`) not worth doing.
+
+
+## Division
 
 ### Burnikel-Ziegler padding has to survive every halving
 
@@ -484,75 +491,70 @@ one decision, not two - the base case's condition (`n` odd) is what determines
 what the padding has to guarantee, and they were written far enough apart in
 the file to be changed independently.
 
-### Two size points are not a size sweep
+### GMP's own division and base-conversion ratios, as a target
 
-`floor_divide_by_uint128()` dropped the quotient of its leading partial group
-for over a year: a three-word divisor lost a factor of 10^9 when the dividend
-had `4k + 3` words, and crashed outright when the dividend *was* the leading
-group. `BigUInt("23334504672441144935") // BigUInt("1854056525350022197")`
-faulted.
+Measured at 104 200 words (10^6 digits), against a same-size multiply:
 
-Both randomized division cross-checks against Python used fixed sizes —
-2 214 digits over 810, and 200 000 over 14 000. `random_decimal_string(n)`
-counts 18-digit chunks, not digits, so both are far above
-`CUTOFF_BURNIKEL_ZIEGLER` and both take the B-Z path. The whole
-`len(y.words) <= 4` branch had no randomized cross-check at all.
+| operation           | GMP      | ratio to mul | decimo ratio |
+| ------------------- | -------- | ------------ | ------------ |
+| mul n x n           | 5.83 ms  | 1.00         | 1.00         |
+| divmod 2n / n       | 15.69 ms | 2.69         | 4.90         |
+| base 2^k -> decimal | 33.71 ms | 5.78         | 8.50         |
 
-The dispatch has four branches and the three-or-four-word one behaves
-differently for each residue of the dividend length mod 4. Two samples cannot
-cross that. `test_biguint_divide_across_the_dispatch_boundaries_against_python`
-now walks divisor 1-40 digits against dividend up to 90.
+Two things to take from this. GMP's division is 2.69x a multiply *with* all of
+its Newton-reciprocal machinery, so 2.7x is the realistic floor for T-D6 — not
+the ~2.1x the textbook operation count suggests. And our raw multiply is
+24.0 ms against GMP's 5.83, a 4.1x gap that is pure constant factor: same
+algorithm class, thirty years of tuning apart.
 
-### Passing one pointer as both source and destination
+### A Newton schedule reaches `seed * 2^n`, and nothing caps it
 
-The exclusivity checker rejects `kernel(p, p, ...)` when the destination
-parameter requires `Origin[mut=True]`: `list.unsafe_ptr()` carries
-`origin_of(list.words)`, and two arguments tied to the same origin, one of them
-mutable, is an aliasing error even when the aliasing is the whole point of an
-in-place loop. `list._data` yields the same address without the origin, so
-`kernel(x._data, x._data, ...)` compiles. Used by every in-place add/sub kernel
-in both types.
+Two bugs in `sqrt_via_reciprocal_iteration()` and `isqrt_via_reciprocal_seed()`,
+caught while measuring the above, both of which returned the full requested
+digit count with a wrong tail and raised nothing.
 
-Reading a `UInt32` array two words at a time needs
-`ptr.unsafe_bitcast[UInt64]().unsafe_load[alignment=4](i)`. Without the
-explicit alignment the load claims 8-byte alignment, which a slice starting at
-an odd word offset does not have — and the Karatsuba and Toom-3 helpers pass
-exactly those.
+The iteration `r <- r * (3 - x * r^2) / 2` doubles the correct digits. It does
+*not* get pulled up to whatever precision the arithmetic inside it runs at, so
+`n` iterations return `seed * 2^n` digits and no more. Both functions built
+their schedule by halving from the target down to 20, which credits the seed
+with 20 digits; and both seeded with `x ** -0.5`, which goes through `exp`/`log`
+and is accurate to about ten digits for some inputs while being exact for
+others. Instrumented, `sqrt_via_reciprocal_iteration(1234.5678, 1500)`:
 
-### `_data` is not a substitute for `unsafe_ptr()` on an appended list
+| iteration precision | 34 | 58 | 106 | 201 | 392 | 773 | 1535 |
+| ------------------- | -- | -- | --- | --- | --- | --- | ---- |
+| correct digits      | 19 | 38 | 78  | 156 | 312 | 624 | 1248 |
 
-`list._data` reads the wrong address for a list built with `append()`: the
-element at index 0 comes back as zero while every later index reads correctly.
-It cost an afternoon in the NTT twiddle table, where the first entry of the
-root-of-unity table is `w^0 = 1` and silently became `0`. `unsafe_ptr()` is
-right in every case; `_data` is only for the one situation described above,
-where an origin would trip the exclusivity checker, and those lists are all
-built with `resize(unsafe_uninit_length=...)`.
+Clean doubling from a ten-digit seed, never once reaching the precision the
+iteration was nominally running at. The schedule now halves down to
+`_F64_SEED_DIGITS`, and the seed is `1 / sqrt(x)`, which is correctly rounded.
 
-### Where the NTT actually wins, and where it does not
+The reason this survived so long is that both dials have to be wrong *and* the
+schedule has to land badly. `sqrt_via_reciprocal_iteration(10005, 1000)` and
+`(10005, 2000)` were correct in full; `(10005, 1500)` was correct in full but
+`(1234.5678, 1500)` was not, because `1.0005 ** -0.5` happens to be exact and
+`12.345678 ** -0.5` is not. Any spot check picks a survivor. The test sweeps
+inputs against precisions for that reason.
 
-Per-stage timings for `pi(1000000)`, in milliseconds, before and after the
-transform landed:
 
-| Stage                     | before | after |
-| ------------------------- | ------ | ----- |
-| binary splitting          | 627    | 436   |
-| base 2^32 -> 10^9         | 206    | 204   |
-| final division, binary    | 145    | 135   |
-| `sqrt(10005)`             | 62     | 44    |
-| final multiplies          | 56     | 25    |
-| scaling multiply          | 52     | 12    |
-| `5^s`                     | 26     | 15    |
+## Allocation and small operations
 
-Every stage that is a multiplication moved. The two that did not are the two
-that are divisions, and the reason is worth recording: Burnikel-Ziegler is
-built out of multiplications, but of operands half the size and smaller, where
-the transform's advantage has not opened up yet, and its own constant did not
-change. Division measured 2.64x a same-size multiplication before the
-transform and 4.9x after — the denominator got cheaper and the numerator did
-not. That inverts the earlier assessment of reciprocal-Newton division: it was
-worth about 4% of `pi` when division was 2.64x a multiply, and it is worth
-about 20% now.
+### Small operations are allocation, not arithmetic
+
+The headline figures and what is still open are in the Goals section above;
+this is the measurement behind them.
+
+| | ns |
+|---|---|
+| `+=` in place, no allocation | 5.6 |
+| one `List[UInt32]` alloc + free | 33 |
+| `mpd_new()` + `mpd_del()` (two allocations) | 22.9 |
+
+An operation's speed is very nearly its allocation count: ~4 ns of arithmetic
+against ~33 ns per allocation. libmpdec is not avoiding allocation — it does
+two for ~23 ns where one of ours costs ~33 — so per allocation it is roughly
+three times cheaper. Inline storage would therefore put us clearly ahead
+rather than merely level.
 
 ### A missing `return` in `subtract_inplace()`
 
@@ -586,35 +588,6 @@ of widths, *including equal operands* - that differential is now
 never land on the recursion's internal block boundaries, so structured
 adversarial inputs are the only thing that finds this class of bug.
 
-### A Newton schedule reaches `seed * 2^n`, and nothing caps it
-
-Two bugs in `sqrt_via_reciprocal_iteration()` and `isqrt_via_reciprocal_seed()`,
-caught while measuring the above, both of which returned the full requested
-digit count with a wrong tail and raised nothing.
-
-The iteration `r <- r * (3 - x * r^2) / 2` doubles the correct digits. It does
-*not* get pulled up to whatever precision the arithmetic inside it runs at, so
-`n` iterations return `seed * 2^n` digits and no more. Both functions built
-their schedule by halving from the target down to 20, which credits the seed
-with 20 digits; and both seeded with `x ** -0.5`, which goes through `exp`/`log`
-and is accurate to about ten digits for some inputs while being exact for
-others. Instrumented, `sqrt_via_reciprocal_iteration(1234.5678, 1500)`:
-
-| iteration precision | 34 | 58 | 106 | 201 | 392 | 773 | 1535 |
-| ------------------- | -- | -- | --- | --- | --- | --- | ---- |
-| correct digits      | 19 | 38 | 78  | 156 | 312 | 624 | 1248 |
-
-Clean doubling from a ten-digit seed, never once reaching the precision the
-iteration was nominally running at. The schedule now halves down to
-`_F64_SEED_DIGITS`, and the seed is `1 / sqrt(x)`, which is correctly rounded.
-
-The reason this survived so long is that both dials have to be wrong *and* the
-schedule has to land badly. `sqrt_via_reciprocal_iteration(10005, 1000)` and
-`(10005, 2000)` were correct in full; `(10005, 1500)` was correct in full but
-`(1234.5678, 1500)` was not, because `1.0005 ** -0.5` happens to be exact and
-`12.345678 ** -0.5` is not. Any spot check picks a survivor. The test sweeps
-inputs against precisions for that reason.
-
 ### Could the public `Rational` carry the split?
 
 Asked and measured, because it would be one type fewer. The answer is no, but
@@ -643,6 +616,54 @@ operands is a bad trade at any size, and it gets worse, not better, as the
 numbers grow. `Rational` is the right type for exact fractions; it is the wrong
 type for a splitting tree whose whole point is that the fractions never need to
 be in lowest terms.
+
+
+## Traps worth remembering
+
+### Passing one pointer as both source and destination
+
+The exclusivity checker rejects `kernel(p, p, ...)` when the destination
+parameter requires `Origin[mut=True]`: `list.unsafe_ptr()` carries
+`origin_of(list.words)`, and two arguments tied to the same origin, one of them
+mutable, is an aliasing error even when the aliasing is the whole point of an
+in-place loop. `list._data` yields the same address without the origin, so
+`kernel(x._data, x._data, ...)` compiles. Used by every in-place add/sub kernel
+in both types.
+
+Reading a `UInt32` array two words at a time needs
+`ptr.unsafe_bitcast[UInt64]().unsafe_load[alignment=4](i)`. Without the
+explicit alignment the load claims 8-byte alignment, which a slice starting at
+an odd word offset does not have — and the Karatsuba and Toom-3 helpers pass
+exactly those.
+
+### `_data` is not a substitute for `unsafe_ptr()` on an appended list
+
+`list._data` reads the wrong address for a list built with `append()`: the
+element at index 0 comes back as zero while every later index reads correctly.
+It cost an afternoon in the NTT twiddle table, where the first entry of the
+root-of-unity table is `w^0 = 1` and silently became `0`. `unsafe_ptr()` is
+right in every case; `_data` is only for the one situation described above,
+where an origin would trip the exclusivity checker, and those lists are all
+built with `resize(unsafe_uninit_length=...)`.
+
+### Two size points are not a size sweep
+
+`floor_divide_by_uint128()` dropped the quotient of its leading partial group
+for over a year: a three-word divisor lost a factor of 10^9 when the dividend
+had `4k + 3` words, and crashed outright when the dividend *was* the leading
+group. `BigUInt("23334504672441144935") // BigUInt("1854056525350022197")`
+faulted.
+
+Both randomized division cross-checks against Python used fixed sizes —
+2 214 digits over 810, and 200 000 over 14 000. `random_decimal_string(n)`
+counts 18-digit chunks, not digits, so both are far above
+`CUTOFF_BURNIKEL_ZIEGLER` and both take the B-Z path. The whole
+`len(y.words) <= 4` branch had no randomized cross-check at all.
+
+The dispatch has four branches and the three-or-four-word one behaves
+differently for each residue of the dividend length mod 4. Two samples cannot
+cross that. `test_biguint_divide_across_the_dispatch_boundaries_against_python`
+now walks divisor 1-40 digits against dividend up to 90.
 
 ## `Rational` addition and unbalanced `gcd`
 
