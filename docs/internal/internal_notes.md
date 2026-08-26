@@ -17,7 +17,36 @@ Through the Python binding we are 2-4x *behind* on small operands, because the
 binding costs ~110 ns on top of a ~40 ns operation. See "The Python binding is
 the dominant cost".
 
-### What the shape of the results is
+### What the shape of the results is (updated 20260826)
+
+With the base-billion transform in place and the tables extended to a million
+digits, the count across `docs/benchmarks.md` is 40 rows faster, 22 slower,
+3 at parity. The largest wins and the largest losses are both worth knowing:
+
+| | |
+|---|---|
+| `exp` at 10 000 digits | **27.2x faster** than libmpdec |
+| `sqrt` at 10 000 digits | **20.0x faster** |
+| `BigInt` multiply at 10^6 digits | **15.7x faster** than CPython `int` |
+| `power` / `ln` at 10 000 digits | **15.0x / 12.5x faster** |
+| `sqrt` at precision 28 | 2.94x slower |
+| `divide` at 9 digits | 2.92x slower |
+| `parse` at 9 digits | 2.24x slower |
+
+No loss anywhere is worse than 3x, and every one of them is on a small
+operand. libmpdec's `exp` and `ln` scale badly -- 82 s and 239 s respectively
+at 100 000 digits, which is why that row is absent from the table.
+
+Two losses that are not about small-operand overhead and are worth chasing:
+
+- **`subtract` is 2.1x slower than `add` at 100 000 and 10^6 digits** (76 us
+  against 58 us at 10^6, where libmpdec spends 35 us on subtract and 58 us on
+  add). libmpdec's subtract is *faster* than its add at that size and ours is
+  slower, so this is ours, not the operation's.
+- **`divide` at 10^6 digits is 1.26x slower** and at 1 000 digits 1.87x. This
+  is the Newton reciprocal work (T-D6) that has not been done.
+
+### The older summary
 
 Consistent across every comparison: **weak on per-operation overhead, strong
 on algorithms at scale.** Small operands lose to libmpdec on all six basic
