@@ -6,9 +6,9 @@ enhancement plans in `docs/plans/` carry the detail and the reasoning, and
 ranking. There were four such lists in August 2026 and they had already
 drifted apart, so there is now one.
 
-Last reviewed 2026-08-27.
+Last reviewed 2026-08-27 (second pass, evening).
 
-## The goal for this round: met (20260826)
+## Goal, round one: met (20260826)
 
 Beat libmpdec on every operation at 1000 digits. Measured side by side in one
 `benchdoc` run at 06bafb7:
@@ -34,68 +34,62 @@ Three changes did it, and all three carried to the larger sizes as well:
 Both cutoffs were re-swept after each of those, because a cheaper base case
 moves every crossover above it. That happened three times in one day.
 
-The next goal, if there is one, is to make divide *win* rather than tie: 30%
-of a 1000-digit division is recursion bookkeeping rather than arithmetic. See
-`internal_notes.md`.
+## Goal, round two: mostly met (20260827)
+
+Be no more than 1.2x of CPython's `decimal` from Python at 28 digits, now
+that `BigUInt` keeps small values inline. Measured with
+`python/benchmarks/compare.py`, which runs the same source file under both:
+
+| operation  | decimo | decimal |                  |
+| ---------- | ------ | ------- | ---------------- |
+| `a + b`    | 53.7   | 41.7    | 1.29x            |
+| `a * b`    | 59.7   | 48.8    | 1.22x            |
+| `a / b`    | 143.1  | 101.0   | 1.42x            |
+| `a < b`    | 22.6   | 18.1    | 1.25x            |
+| `a + 2`    | 63.4   | 63.4    | the same         |
+| `quantize` | 47.3   | 60.6    | **1.28x faster** |
+
+Whole programs: compound interest 1.16x, e from its series 1.13x, sqrt by
+Newton at parity, pi by Machin 1.32x, and 1000-digit arithmetic 1.48x faster.
+The day started at 4.8x on the four operators and 4.1x on compound interest.
+
+Division is the one left outside the bar, and it is item 1 below.
 
 ## Now
 
 Ordered by value, judged against the two goals in `internal_notes.md`.
 
-1. **Python binding overhead.** Now the top item by a wide margin, and it has
-   a number to beat. `decimo.Decimal` is a drop-in replacement for `decimal`
-   as of 20260827, so the two can be timed on the same source file
-   (`python/benchmarks/compare.py`), and CPython's `decimal` wins everything
-   below about 500 digits:
-
-   |                       | decimo  | decimal |                  |
-   | --------------------- | ------- | ------- | ---------------- |
-   | `a + b`, 9 digits     | 141 ns  | 33 ns   | 4.3x slower      |
-   | `a / b`, 9 digits     | 241 ns  | 56 ns   | 4.3x slower      |
-   | four ops, 1000 digits | 4.75 us | 5.85 us | **1.23x faster** |
-
-   The arithmetic is not the problem: at 9 digits the Mojo addition is 47 ns
-   and libmpdec's is comparable. The problem is that a call costs ~110 ns
-   before any arithmetic happens -- roughly 25 ns to enter and leave Mojo,
-   ~22 ns to reach the operand, 14 ns to read the context precision, and
-   28 ns to allocate the result. CPython's `_decimal` does the whole
-   operation in 33 ns because the value lives inside the PyObject and small
-   coefficients need no second allocation.
-
-   So the fix is item 6 below plus a way to embed the value in the PyObject
-   rather than allocating it separately. That second half needs something
-   from the Mojo bindings that does not exist today.
-   See `docs/plans/mojo4py.md`.
-
-2. **`divide`.** Newton reciprocal division, which is also worth ~115 ms of
-   `pi(10^6)`. See `bigint_enhancement.md` T-D4 and
-   `bigdecimal_enhancement.md` T-D3. The free part was done 20260826:
-   division hands back the remainder it already computed, so
-   `true_divide_general()` reads exactness off it instead of building a
-   product, and `%` no longer recomputes it.
-3. **The last 12 ns of `subtract` at 1000 digits.** Diagnosed (20260826) and
-   no longer a loop problem: the add and subtract kernels time the same. Two
-   things are left. `subtract` is `raises` where `add` is not, so every caller
-   pays the error path on the hot path. And `BigDecimal.subtract` compares the
-   two coefficients to pick the larger, then calls a `BigUInt.subtract` that
-   compares them again in order to decide whether to raise -- a non-raising
-   `subtract_no_check()` that trusts an ordering the caller has already
-   established would drop both.
-4. **`subtract_inplace()`** builds a negated copy of its right operand to flip
+1. **`divide` from Python, at 1.42x of CPython's `decimal`.** The only
+   operator still outside 1.3x. 143 ns against 101, of which 112 is Mojo and
+   ~33 is the call. Inside the Mojo half: 4.6 ns padding, 15.7 normalizing,
+   63 in Knuth D, ~15 rounding and construction, and about 13 of dispatch --
+   `floor_divide_modulo` re-runs every check that `floor_divide_modulo_schoolbook`
+   then runs again. Knuth D is 12.7 ns per quotient word for a four-word
+   divisor, which is close to what the arithmetic costs; the dispatch and the
+   normalization are the parts with slack left.
+2. **Newton reciprocal division**, worth ~115 ms of `pi(10^6)`. See
+   `bigint_enhancement.md` T-D4 and `bigdecimal_enhancement.md` T-D3.
+3. **`subtract_inplace()`** builds a negated copy of its right operand to flip
    a sign: `x -= y` is 5.2x slower than libmpdec in place, where `x += y` is
    1.3x *faster*. See `bigdecimal_enhancement.md` H#21.
-5. **A cheaper NTT butterfly** — precomputed (Shoup) twiddles and radix-4.
+4. **A cheaper NTT butterfly** -- precomputed (Shoup) twiddles and radix-4.
    Needed for goal 1: `pi(10^6)` at 1.2x of mpmath+GMP wants roughly 2.5x here
    on top of item 2.
-6. **Inline storage (SBO)** for one or two words in `BigUInt`, worth about
-   33 ns of a 44 ns operation. Half of item 1's remaining gap.
-7. **`from_string`** at ~95 ns, roughly three allocations, never investigated.
-8. **A cheaper read of the context precision.** `std.ffi._Global` costs 14 ns
-   per call, because `KGEN_CompilerRT_GetOrCreateGlobal` hashes the name every
-   time. `get_or_create_indexed_ptr()` skips the hash but wants one of a small
-   set of reserved indices, and squatting on one in a published package would
-   collide with whatever the stdlib puts there next. Left alone deliberately.
-9. ~~**`floor_divide()` 2n-by-n scaling** in `BigUInt`~~ — answered, see the
+5. **`from_string`** at ~95 ns, roughly three allocations, never investigated.
+   `parse and print` is the one whole-program benchmark still at 1.17x.
+6. **Audit the remaining `UInt128` and `UInt256` uses.** Two of the three big
+   wins today were removing one. The rule that came out of it: 128-bit as an
+   *accumulator* is fine, because a 64x64 multiply is one instruction; 128-bit
+   or 256-bit as the *left side of a divide* is a call to a software helper
+   and costs 20-40 ns. `grep -n "UInt128\|UInt256" src/decimo/**/*.mojo` and
+   look at every `//` and `%`. Known remaining: `decimal128/`, `rational/`,
+   `bigint/exponential.mojo`.
+7. **The last of the Python call overhead**, about 33 ns on every operation.
+   ~20 of that is CPython's own dispatch, which `decimal` pays too. What is
+   left is the result `PyObject` allocation, roughly 9 ns, which CPython's
+   `_decimal` avoids with a freelist. Installing our own `tp_dealloc` slot
+   would let us do the same.
+8. ~~**`floor_divide()` 2n-by-n scaling** in `BigUInt`~~ -- answered, see the
    note below.
 
 ## Blocked on the language
@@ -153,6 +147,30 @@ Nothing to do here until Mojo grows the feature.
 ## Done
 
 Kept as a record; the detail is in the plans.
+
+- [x] (20260827) **Small operations stopped being allocation.** `BigUInt.words`
+      is a `WordList` that keeps ten words in the struct. A four-word add was
+      40 ns of which 38 was the allocator; in place it was 1.2 ns. Ten words
+      because that is what a division's intermediates need -- eight allocated
+      twice per division, twelve only made every value bigger. See
+      `docs/plans/inline_storage.md`.
+
+- [x] (20260827) **Three 128-bit divisions removed, worth 2-3x each.**
+      `floor_divide_by_uint128` (written in `UInt256`, so two software
+      256-bit divides per four dividend words), Knuth D's quotient estimate
+      (a 128-bit divide per quotient word, replaced by Knuth's own step D3 in
+      64 bits), and Comba's column accumulator (a 128-bit divide by a constant
+      per result word, now 64-bit for a shorter operand). A 28-digit division
+      went 619 -> 112 ns in Mojo and a 4x4-word multiply 24.7 -> 12.2.
+
+- [x] (20260827) **The Python operators became real C slots.** `a + b` was
+      reaching Mojo through `slot_nb_add`, which looks `__add__` up in the
+      type dictionary on every operation -- so the operator cost *more* than
+      the method call it wrapped. `+ - * /` and all six comparisons are now
+      function pointers in the type spec, and the slots read their operands
+      in place instead of taking references. Also: `Decimal(int)` and
+      `Decimal + int` no longer format the integer and parse it back, and the
+      optional-argument methods use vectorcall instead of packing a tuple.
 
 - [x] (20260827) **`decimo.Decimal` is a drop-in replacement for `decimal`.**
       Context, hashing, `//` `%` `divmod` `**`, `int`/`float`/`round`/`floor`/

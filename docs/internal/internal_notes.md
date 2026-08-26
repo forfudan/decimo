@@ -835,7 +835,97 @@ harness, while CPython's `decimal` does an entire `a + b` — interpreter,
 allocation and all — in 33 ns. The harness appears to carry ~15 ns of its own.
 Not chased yet; it does not affect any of the large-size comparisons.
 
+### What a small operation is actually made of (20260827)
+
+Taking a 28-digit operation apart, from the Python call inwards. Every number
+is a measured difference, not an estimate:
+
+| layer                              | before | after |
+| ---------------------------------- | ------ | ----- |
+| CPython dispatch to a C slot       | ~20 ns | same  |
+| reaching the operand               | 22 ns  | ~2 ns |
+| reading the working precision      | 14 ns  | ~4 ns |
+| the arithmetic (`add`, 28 digits)  | 44 ns  | 17 ns |
+| allocating the result `PyObject`   | 42 ns  | ~9 ns |
+
+The three that moved, in order of size:
+
+**The allocator was the arithmetic.** A four-word `BigUInt` add cost 40 ns,
+of which 38 was one call to the allocator: the same addition in place was
+1.2 ns, and the cost of `add` barely moved with size -- 36.7 ns at one word
+against 67.2 at sixty-four. `WordList` keeps small values in the struct and
+the 40 became 3.5.
+
+**A binary operator was going through the type dictionary.** A type built
+from a spec keeps `__add__` in its dictionary and CPython fills `nb_add`
+with `slot_nb_add`, which looks the name up and calls it as a Python method.
+The tell was that the operator cost *more* than the method:
+
+| | `a + b` | `D.__add__(a, b)` |
+| --- | --- | --- |
+| decimo, before | 69.7 ns | 64.8 ns |
+| decimal | 41.5 ns | 59.6 ns |
+
+CPython's is 18 ns *cheaper* through the operator because its `nb_add` is a
+plain function pointer. Ours are now too.
+
+**Three separate 128-bit divisions.** See the next note.
+
+### 128-bit is free to multiply into and expensive to divide by (20260827)
+
+Three of the day's biggest wins were the same mistake in three places, and
+the rule that came out of it is worth keeping:
+
+- A `UInt128` **accumulator** is cheap. `64 x 64 -> 128` is one instruction,
+  and adding into a 128-bit register is two.
+- A `UInt128` or `UInt256` on the **left of a `/` or `%`** is a call to a
+  software helper -- arm64 has no 128-bit divide -- at 20-40 ns.
+
+Where they were:
+
+1. `floor_divide_by_uint128`, taken for any divisor of three or four words on
+   the reasoning that a divisor fitting one machine word should be divided in
+   one machine word. It is written in `UInt256`, so it called the 256-bit
+   helper twice per four dividend words. It lost to Knuth D by 2.5x at a
+   20-word dividend, and the gap grew with length.
+2. Knuth D's quotient estimate built a three-word numerator and a two-word
+   divisor as `UInt128` and divided them, once per quotient word. Knuth's own
+   step D3 does it with one 64-bit division.
+3. Comba's column accumulator reduced with `% BASE` and `// BASE` in
+   `UInt128` once per result word. A column of at most sixteen partial
+   products fits in 64 bits.
+
+None of them was *wrong* -- 555 operand shapes confirmed the first one before
+it was removed. They were all slow in the same way.
+
+### Timing a small operation is mostly a fight with the optimizer (20260827)
+
+Four separate measurements this day were wrong before they were right:
+
+- `List` and raw `malloc`/`free` in a loop both timed at 0.0 ns. LLVM
+  recognizes an allocation whose pointer does not escape and deletes it.
+  The number that held up came from comparing two things that both allocate:
+  `add` against `add_inplace`.
+- A sweep indexed by `Dict[Int, BigUInt]` charged every measurement ~30 ns of
+  dictionary lookup and made it look like a fixed cost in the arithmetic.
+- `floor_divide_modulo_schoolbook` compared against `floor_divide_modulo`
+  looked identical at every size because the first *is* the second -- the
+  "two paths" were one function.
+- Reading `INLINE_WORDS` as a sweep of one run each gave a non-monotonic mess;
+  three runs each made the answer obvious.
+
+The reliable shapes: make the sink depend on a value the callee computed, and
+compare two builds alternated in one session.
+
 ## Traps worth remembering
+
+### A constant-size copy is not the same as a small one (20260827)
+
+`WordList`'s move copies the whole inline array, and copying only the words
+in use is slower -- 60% of an addition slower. A constant count inlines to a
+couple of vector moves; a variable one becomes a call to `memcpy`.
+
+
 
 ### Editing a Mach-O file gets the process killed, silently (20260827)
 

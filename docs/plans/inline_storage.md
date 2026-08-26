@@ -1,7 +1,7 @@
 # Inline storage for `BigUInt`
 
-> Written 2026-08-27, mid-work. If the session ended before this was finished,
-> everything needed to continue is here.
+> Written 2026-08-27 mid-work as a hand-over note, and **done the same day**.
+> Kept for the reasoning and the measurements; what shipped is at the bottom.
 
 ## The finding
 
@@ -122,3 +122,54 @@ skips that but wants one of a few reserved indices, and squatting on one in a
 published package would collide later), and roughly 20 ns to allocate the
 result `PyObject`. The last of those needs the value embedded in the
 `PyObject` rather than allocated beside it, which the bindings cannot do yet.
+
+
+## What shipped
+
+`src/decimo/biguint/wordlist.mojo`, `INLINE_WORDS = 10`, `BigUInt.words`
+switched over. Thirteen of the 846 `.words` sites needed changing: list
+literals, two slices and a `Span`.
+
+Ten, not four, and the reason is worth keeping. The capacity has to cover
+**results**: adding two 28-digit values carries into a fifth word and
+multiplying gives eight, so at four it allocated on every operation and was
+*slower* than the `List` it replaced -- the fatter struct with none of the
+benefit. Division sets the final number, because a 28-digit division pads its
+dividend for the guard digits, normalizes it, then copies it with a guard word
+on top, so it works in nine- and ten-word intermediates.
+
+Best of three runs from Python at 28 digits (ns):
+
+| inline words | `a + b` | `a * b` | `a / b` |
+| ------------ | ------- | ------- | ------- |
+| 4            | 58.4    | 72.6    | 428     |
+| 8            | 51.5    | 70.5    | 263     |
+| **10**       | 51.9    | 71.5    | **143** |
+| 12           | 53.0    | 71.3    | 146     |
+
+At 1000 and 100 000 digits, ten is within noise of the plain `List`
+everywhere.
+
+Two things measured the wrong way round on the way:
+
+- Copying only `move._len` words on a move looks like less work and costs 60%
+  of an addition: a constant size inlines to a couple of vector moves, a
+  variable one becomes a call to `memcpy`.
+- The first `unsafe_ptr()` was written with a `comptime`-unrolled loop the
+  formatter could not parse; replacing it with a plain `for` quietly took
+  `a + b` from 71 to 114 ns, because moves are everywhere and the compiler did
+  not unroll it.
+
+The branch in `unsafe_ptr()` never showed up. The prediction in the plan was
+right: it is hoisted out of every loop that matters.
+
+### Still not the elegant shape
+
+`words` is still a public field, so the storage representation is still
+visible to all 846 sites; `WordList` preserves that rather than fixing it.
+The elegant version gives `BigUInt` the storage fields directly and makes
+them private. `BigInt` has the same `List[UInt32]` + sign shape and can reuse
+`WordList` as-is -- the base (2^32 against 10^9) is the number type's
+business, not the container's. If both adopt it, the inline capacity wants to
+become a parameter, `WordList[INLINE: Int = 10]`, since the two have different
+sweet spots.
