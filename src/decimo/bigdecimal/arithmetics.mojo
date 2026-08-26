@@ -715,8 +715,24 @@ def true_divide_general(
         )
 
     # --- Standard path (no truncation, no extra copies) ---
-    var diff_n_words = len(x.coefficient.words) - len(y.coefficient.words)
-    var extra_words = math.ceildiv(precision, 9) + 2 - diff_n_words
+    #
+    # How far to pad the dividend. Dividing a `dx`-digit number by a
+    # `dy`-digit one gives a quotient of `dx - dy` or `dx - dy + 1` digits, so
+    # padding with `s` zeros guarantees at least `dx + s - dy`. We want
+    # `precision` significant digits plus a couple to round on.
+    #
+    # This used to be counted in whole words -- `ceildiv(precision, 9) + 2`
+    # words, ignoring how many digits the operands actually had. At the default
+    # precision of 28 that padded a four-word dividend out to ten words and
+    # produced a 54-digit quotient to keep 28 of, roughly twice the necessary
+    # work, and pushed every intermediate past the point where `BigUInt` keeps
+    # its words inline.
+    comptime GUARD_DIGITS = 2
+    var digits_x = x.coefficient.number_of_digits()
+    var digits_y = y.coefficient.number_of_digits()
+    var extra_words = math.ceildiv(
+        precision + GUARD_DIGITS - digits_x + digits_y, 9
+    )
     var extra_digits = extra_words * 9
 
     var coef_x: BigUInt
@@ -744,6 +760,20 @@ def true_divide_general(
     var coef = biguint_arithmetics.floor_divide_modulo(
         coef_x, y.coefficient, remainder
     )
+
+    # Two guard digits are only enough if the discarded tail can be told from
+    # an exact tie. A non-zero remainder says the true quotient is strictly
+    # greater than the one we computed, so a tail that reads exactly 5000...0
+    # should round up rather than to even. Nudging the last computed digit off
+    # zero says so: it can only ever break a tie, because half is the one tail
+    # ending in a zero that a rounding decision balances on.
+    #
+    # Without this the wide padding above was doing the same job by accident,
+    # making a false tie merely improbable rather than impossible.
+    if not remainder.is_zero():
+        var lowest = coef.words[0]
+        if lowest % 10 == 0:
+            coef.words[0] = lowest + 1
 
     if extra_words >= 0 and remainder.is_zero():
         # The division is exact, so we need to remove the extra trailing zeros

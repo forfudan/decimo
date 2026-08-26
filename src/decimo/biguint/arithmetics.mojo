@@ -192,6 +192,9 @@ the 112-word row, is the one being tuned for.
 # kernels chew through between carry walks.
 comptime WORDS_PER_VECTOR = 8
 comptime WORDS_PER_CARRY_BLOCK = 64
+comptime WORDS_PER_SHORT_DIVISOR = 8
+"""Below this many divisor words, Knuth D's multiply-subtract stays in one
+pass. See `_multiply_subtract_words`."""
 
 
 @always_inline
@@ -528,12 +531,41 @@ def _multiply_subtract_words[
         The amount to subtract from the word above the window.
     """
     comptime BASE_64 = UInt64(BigUInt.BASE)
+    var quotient_64 = UInt64(quotient)
+
+    # A short divisor takes the obvious single pass. The two-pass form below
+    # buys latency with two blocks of stack, and at four or eight words the
+    # stack costs more than the carry chain does: a 28-digit division is a
+    # four-word divisor, and it spent most of its time setting up buffers it
+    # used four slots of.
+    if n_words <= WORDS_PER_SHORT_DIVISOR:
+        var short_pending = UInt32(0)
+        var short_borrow = UInt32(0)
+        for i in range(n_words):
+            var product = quotient_64 * UInt64(yp[unsafe_offset=i])
+            var high = UInt32(product // BASE_64)
+            var digit = UInt32(product - UInt64(high) * BASE_64) + short_pending
+            short_pending = high
+            if digit >= BigUInt.BASE:
+                digit -= BigUInt.BASE
+                short_pending += 1
+            var biased = (
+                UInt64(rp[unsafe_offset=i])
+                + BASE_64
+                - UInt64(digit)
+                - UInt64(short_borrow)
+            )
+            short_borrow = UInt32(biased < BASE_64)
+            rp[unsafe_offset=i] = UInt32(
+                biased - BASE_64 + UInt64(short_borrow) * BASE_64
+            )
+        return UInt64(short_pending) + UInt64(short_borrow)
+
     var highs = InlineArray[UInt32, WORDS_PER_CARRY_BLOCK](uninitialized=True)
     var lows = InlineArray[UInt32, WORDS_PER_CARRY_BLOCK](uninitialized=True)
     var hp = highs.unsafe_ptr()
     var lp = lows.unsafe_ptr()
 
-    var quotient_64 = UInt64(quotient)
     var pending_high = UInt32(0)
     var borrow = UInt32(0)
     var start = 0
