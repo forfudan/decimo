@@ -319,9 +319,14 @@ def convert_operand(other: PythonObject) raises -> BigDecimal:
     ref cpython = Python().cpython()
     if cpython.PyLong_CheckExact(other._obj_ptr):
         var value = cpython.PyLong_AsSsize_t(other._obj_ptr)
-        # Anything wider than a machine word sets the error indicator instead.
-        if not cpython.PyErr_Occurred():
+        # Anything wider than a machine word comes back as -1 with the error
+        # indicator set. -1 is also a perfectly good integer, so the indicator
+        # has to be consulted -- but only for that one value, and asking costs
+        # a call into CPython.
+        if value != -1:
             return BigDecimal.from_integral_scalar(Int64(value))
+        if not cpython.PyErr_Occurred():
+            return BigDecimal.from_integral_scalar(Int64(-1))
         cpython.PyErr_Clear()
     return convert_big_int(other)
 

@@ -730,7 +730,13 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
             var sign = True if value < 0 else False
 
-            var list_of_words = List[UInt32]()
+            # Built straight into the result's own storage. Filling a
+            # `List[UInt32]` and handing that to `raw_words=` cost 36 ns for
+            # the integer 2 -- an allocation for the list, another for the
+            # copy into place, to carry a single word. A 64-bit value needs
+            # three base-billion words, which is inside `WordList`'s inline
+            # capacity, so the common case now allocates nothing at all.
+            var result = Self(uninitialized_capacity=3)
             var remainder: Scalar[dtype] = value
             var quotient: Scalar[dtype]
 
@@ -738,16 +744,16 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 while remainder != 0:
                     quotient = remainder // (-Self.BASE)
                     remainder = remainder % (-Self.BASE)
-                    list_of_words.append(UInt32(-remainder))
+                    result.words.append(UInt32(-remainder))
                     remainder = -quotient
             else:
                 while remainder != 0:
                     quotient = remainder // Self.BASE
                     remainder = remainder % Self.BASE
-                    list_of_words.append(UInt32(remainder))
+                    result.words.append(UInt32(remainder))
                     remainder = quotient
 
-            return Self(raw_words=list_of_words^)
+            return result^
 
     @staticmethod
     def from_string(value: String, ignore_sign: Bool = False) raises -> BigUInt:
