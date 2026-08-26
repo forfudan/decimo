@@ -292,13 +292,33 @@ def main() -> int:
 
     DOC.parent.mkdir(parents=True, exist_ok=True)
     DOC.write_text(
-        render(context, decimo, libmpdec, cpython, pi_table, agree, ours, reference)
+        render(
+            context,
+            decimo,
+            libmpdec,
+            cpython,
+            pi_table,
+            agree,
+            ours,
+            reference,
+            sweep_agree,
+        )
     )
     print(f"wrote {DOC.relative_to(ROOT)}", file=sys.stderr)
     return 0
 
 
-def render(context, decimo, libmpdec, cpython, pi_table, agree, ours, reference) -> str:
+def render(
+    context,
+    decimo,
+    libmpdec,
+    cpython,
+    pi_table,
+    agree,
+    ours,
+    reference,
+    sweep_agree,
+) -> str:
     pr = context["pull_request"]
     pr_text = (
         f" · PR [#{pr}](https://github.com/forfudan/decimo/pull/{pr})" if pr else ""
