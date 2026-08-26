@@ -23,8 +23,8 @@ Reduction rests on `2^64 = 2^32 - 1 (mod P)`. Writing a 128-bit product as
 
     hi * 2^64 + lo = lo - h1 + h0 * (2^32 - 1)   (mod P)
 
-and each of the three terms is already a single word, so `_mod_mul()` finishes
-with one subtract and one add. See `_mod_mul()` for why no term can overflow.
+and each of the three terms is already a single word, so `mod_mul()` finishes
+with one subtract and one add. See `mod_mul()` for why no term can overflow.
 
 The operands are re-cut before the transform. A base-2^32 magnitude is a bit
 string, and nothing forces the transform to see it in 32-bit pieces: cutting it
@@ -54,7 +54,7 @@ comptime MAX_TRANSFORM_LOG: Int = 32
 
 
 @always_inline
-def _mod_add(a: UInt64, b: UInt64) -> UInt64:
+def mod_add(a: UInt64, b: UInt64) -> UInt64:
     """Adds two residues already reduced into `[0, P)`.
 
     A wrapped sum is short by `2^64`, and `2^64 = 2^32 - 1 (mod P)`, so the
@@ -71,7 +71,7 @@ def _mod_add(a: UInt64, b: UInt64) -> UInt64:
 
 
 @always_inline
-def _mod_sub(a: UInt64, b: UInt64) -> UInt64:
+def mod_sub(a: UInt64, b: UInt64) -> UInt64:
     """Subtracts two residues already reduced into `[0, P)`."""
     if a >= b:
         return a - b
@@ -79,7 +79,7 @@ def _mod_sub(a: UInt64, b: UInt64) -> UInt64:
 
 
 @always_inline
-def _mod_mul(a: UInt64, b: UInt64) -> UInt64:
+def mod_mul(a: UInt64, b: UInt64) -> UInt64:
     """Multiplies two residues already reduced into `[0, P)`.
 
     With the product written `hi * 2^64 + lo` and `hi = h1 * 2^32 + h0`, the
@@ -99,18 +99,18 @@ def _mod_mul(a: UInt64, b: UInt64) -> UInt64:
     var h0 = hi & 0xFFFF_FFFF
     var h1 = hi >> 32
     var reduced_lo = lo - NTT_PRIME if lo >= NTT_PRIME else lo
-    return _mod_add(_mod_sub(reduced_lo, h1), (h0 << 32) - h0)
+    return mod_add(mod_sub(reduced_lo, h1), (h0 << 32) - h0)
 
 
-def _mod_power(base: UInt64, exponent: UInt64) -> UInt64:
+def mod_power(base: UInt64, exponent: UInt64) -> UInt64:
     """Raises `base` to `exponent` modulo `NTT_PRIME`."""
     var result: UInt64 = 1
     var current = base
     var remaining = exponent
     while remaining > 0:
         if (remaining & 1) != 0:
-            result = _mod_mul(result, current)
-        current = _mod_mul(current, current)
+            result = mod_mul(result, current)
+        current = mod_mul(current, current)
         remaining >>= 1
     return result
 
@@ -199,7 +199,7 @@ def _plan(bits_a: Int, bits_b: Int) -> _TransformPlan:
 # ===----------------------------------------------------------------------=== #
 
 
-def _build_twiddles(
+def build_twiddles(
     log_length: Int, mut forward: List[UInt64], mut inverse: List[UInt64]
 ):
     """Fills the per-level twiddle tables for a transform of `2^log_length`.
@@ -222,10 +222,10 @@ def _build_twiddles(
     """
     var length = 1 << log_length
     var half = length >> 1
-    var root = _mod_power(_NTT_GENERATOR, (NTT_PRIME - 1) >> UInt64(log_length))
+    var root = mod_power(_NTT_GENERATOR, (NTT_PRIME - 1) >> UInt64(log_length))
 
     # `root^k` for `k < half`, generated in blocks rather than as one chain.
-    # Chaining every power makes the build latency-bound on `_mod_mul()` for
+    # Chaining every power makes the build latency-bound on `mod_mul()` for
     # `half` steps in a row; splitting it into blocks of about `sqrt(half)`
     # leaves only `sqrt(half)` steps on the chain and makes the rest - one
     # independent multiply per entry - throughput-bound instead.
@@ -241,7 +241,7 @@ def _build_twiddles(
         var head = min(block, half)
         for j in range(head):
             power_scratch[unsafe_offset=j] = current
-            current = _mod_mul(current, root)
+            current = mod_mul(current, root)
 
         var step = current  # root^block
         var start = step
@@ -249,10 +249,10 @@ def _build_twiddles(
         while base < half:
             var count = min(block, half - base)
             for j in range(count):
-                power_scratch[unsafe_offset=base + j] = _mod_mul(
+                power_scratch[unsafe_offset=base + j] = mod_mul(
                     start, power_scratch[unsafe_offset=j]
                 )
-            start = _mod_mul(start, step)
+            start = mod_mul(start, step)
             base += block
 
     forward.resize(unsafe_uninit_length=length)
@@ -295,7 +295,7 @@ def _build_twiddles(
 # ===----------------------------------------------------------------------=== #
 
 
-def _transform_forward[
+def transform_forward[
     o: Origin[mut=True]
 ](
     values: Pointer[UInt64, o],
@@ -322,9 +322,9 @@ def _transform_forward[
             for j in range(half):
                 var low = values[unsafe_offset=start + j]
                 var high = values[unsafe_offset=start + j + half]
-                values[unsafe_offset=start + j] = _mod_add(low, high)
-                values[unsafe_offset=start + j + half] = _mod_mul(
-                    _mod_sub(low, high), twiddles[unsafe_offset=offset + j]
+                values[unsafe_offset=start + j] = mod_add(low, high)
+                values[unsafe_offset=start + j + half] = mod_mul(
+                    mod_sub(low, high), twiddles[unsafe_offset=offset + j]
                 )
             start += block
         block = half
@@ -335,12 +335,12 @@ def _transform_forward[
         while start < length:
             var low = values[unsafe_offset=start]
             var high = values[unsafe_offset=start + 1]
-            values[unsafe_offset=start] = _mod_add(low, high)
-            values[unsafe_offset=start + 1] = _mod_sub(low, high)
+            values[unsafe_offset=start] = mod_add(low, high)
+            values[unsafe_offset=start + 1] = mod_sub(low, high)
             start += 2
 
 
-def _transform_inverse[
+def transform_inverse[
     o: Origin[mut=True]
 ](
     values: Pointer[UInt64, o],
@@ -350,7 +350,7 @@ def _transform_inverse[
 ):
     """Decimation-in-time transform: bit-reversed order in, natural out.
 
-    Undoes `_transform_forward()` up to the factor of `length` that a
+    Undoes `transform_forward()` up to the factor of `length` that a
     forward-then-inverse pair leaves behind, which the final scaling removes.
     The first level is peeled off for the same reason the forward transform
     peels its last: the twiddle there is `1`.
@@ -360,8 +360,8 @@ def _transform_inverse[
         while start < length:
             var low = values[unsafe_offset=start]
             var high = values[unsafe_offset=start + 1]
-            values[unsafe_offset=start] = _mod_add(low, high)
-            values[unsafe_offset=start + 1] = _mod_sub(low, high)
+            values[unsafe_offset=start] = mod_add(low, high)
+            values[unsafe_offset=start + 1] = mod_sub(low, high)
             start += 2
 
     var block = 4
@@ -373,19 +373,19 @@ def _transform_inverse[
         while start < length:
             for j in range(half):
                 var low = values[unsafe_offset=start + j]
-                var high = _mod_mul(
+                var high = mod_mul(
                     values[unsafe_offset=start + j + half],
                     twiddles[unsafe_offset=offset + j],
                 )
-                values[unsafe_offset=start + j] = _mod_add(low, high)
-                values[unsafe_offset=start + j + half] = _mod_sub(low, high)
+                values[unsafe_offset=start + j] = mod_add(low, high)
+                values[unsafe_offset=start + j + half] = mod_sub(low, high)
             start += block
         block <<= 1
         level += 1
 
-    var scale = _mod_power(UInt64(length) % NTT_PRIME, NTT_PRIME - 2)
+    var scale = mod_power(UInt64(length) % NTT_PRIME, NTT_PRIME - 2)
     for k in range(length):
-        values[unsafe_offset=k] = _mod_mul(values[unsafe_offset=k], scale)
+        values[unsafe_offset=k] = mod_mul(values[unsafe_offset=k], scale)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -567,7 +567,7 @@ def multiply_magnitudes_ntt(
 
     var forward_twiddles = List[UInt64]()
     var inverse_twiddles = List[UInt64]()
-    _build_twiddles(plan.log_length, forward_twiddles, inverse_twiddles)
+    build_twiddles(plan.log_length, forward_twiddles, inverse_twiddles)
 
     var left = List[UInt64](capacity=length)
     left.resize(unsafe_uninit_length=length)
@@ -583,13 +583,13 @@ def multiply_magnitudes_ntt(
 
     var forward_ptr = forward_twiddles.unsafe_ptr()
     var inverse_ptr = inverse_twiddles.unsafe_ptr()
-    _transform_forward(left_ptr, length, plan.log_length, forward_ptr)
-    _transform_forward(right_ptr, length, plan.log_length, forward_ptr)
+    transform_forward(left_ptr, length, plan.log_length, forward_ptr)
+    transform_forward(right_ptr, length, plan.log_length, forward_ptr)
     for i in range(length):
-        left_ptr[unsafe_offset=i] = _mod_mul(
+        left_ptr[unsafe_offset=i] = mod_mul(
             left_ptr[unsafe_offset=i], right_ptr[unsafe_offset=i]
         )
-    _transform_inverse(left_ptr, length, plan.log_length, inverse_ptr)
+    transform_inverse(left_ptr, length, plan.log_length, inverse_ptr)
 
     return _unpack(
         left_ptr,

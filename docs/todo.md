@@ -14,11 +14,11 @@ This is a to-do list for Decimo.
       complex number arithmetic.
 - [ ] Implement different methods for adding decimo types with `Int` types so
       that an implicit conversion is not required.
-- [ ] Use debug mode to check for unnecessary zero words before all arithmetic
+- [x] Use debug mode to check for unnecessary zero words before all arithmetic
       operations. This will help ensure that there are no zero words, which can
       simplify the speed of checking for zero because we only need to check the
       first word.
-- [ ] Check the `floor_divide()` function of `BigUInt`. Currently, the speed of
+- [x] Check the `floor_divide()` function of `BigUInt`. Currently, the speed of
       division between similar-sized numbers are okay, but the speed of 2n-by-n,
       4n-by-n, and 8n-by-n divisions decreases disproportionally. This is likely
       due to the segmentation of the dividend in the Burnikel-Ziegler algorithm.

@@ -22,6 +22,21 @@ fixed.
 
 ### ⭐️ New in Unreleased
 
+1. **`BigUInt` multiplication gains a number-theoretic transform.** Toom-3 was
+   the largest algorithm available for base-billion operands, so `BigDecimal`
+   multiplication was stuck at O(n^1.465) while libmpdec switches to a
+   transform above roughly ten thousand digits. `decimo.biguint.ntt` supplies
+   that tier, reusing the field arithmetic and transforms already in
+   `decimo.bigint.ntt` — only the packing differs, because a base-billion
+   magnitude is not a bit string and can only be cut at a power of ten. Six
+   decimal digits per coefficient: two words are eighteen digits, which is
+   three coefficients, and the convolution stays inside the Goldilocks prime up
+   to about 10^8 digits. The crossover against Toom-3 was measured rather than
+   guessed and sits between 1024 and 2048 words. At 100 000 decimal digits
+   multiplication goes from 4.53 ms to 2.58 ms (1.76x), and division follows at
+   16.53 ms to 13.74 ms, since Burnikel-Ziegler reaches multiplication
+   underneath.
+
 1. **`Rational` conversions.** Constructors from an integral scalar, a `String`
    and a `BigDecimal`; the factories `from_string()`, `from_integral_scalar()`,
    `from_float_scalar()` and `from_bigdecimal()`; and the outbound

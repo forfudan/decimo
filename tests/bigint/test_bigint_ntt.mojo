@@ -118,7 +118,7 @@ def test_ntt_generator_is_primitive() raises:
     ]
     var modulus = bigint_ntt.NTT_PRIME
     for i in range(len(prime_factors)):
-        var power = bigint_ntt._mod_power(
+        var power = bigint_ntt.mod_power(
             UInt64(7), (modulus - 1) // prime_factors[i]
         )
         testing.assert_not_equal(
@@ -128,7 +128,7 @@ def test_ntt_generator_is_primitive() raises:
             + String(prime_factors[i]),
         )
     testing.assert_equal(
-        bigint_ntt._mod_power(UInt64(7), modulus - 1),
+        bigint_ntt.mod_power(UInt64(7), modulus - 1),
         UInt64(1),
         "Fermat: 7^(P-1) should be 1",
     )
@@ -152,7 +152,7 @@ def test_ntt_modular_multiplication_reduces() raises:
             var a = samples[i] % modulus
             var b = samples[j] % modulus
             var expected = UInt64((UInt128(a) * UInt128(b)) % UInt128(modulus))
-            var actual = bigint_ntt._mod_mul(a, b)
+            var actual = bigint_ntt.mod_mul(a, b)
             testing.assert_equal(
                 actual,
                 expected,
