@@ -30,36 +30,48 @@ not a claim.
 The same benchmark file run against both libraries -- `python/benchmarks/compare.py`
 in the repository, which imports one or the other and runs identical code.
 
-| Program                       |   decimo |  decimal |                 |
-| ----------------------------- | -------: | -------: | --------------- |
-| compound interest, 150 years  | 16.8 µs  | 14.5 µs  | 1.16× slower    |
-| e from its series, 500 digits | 199.5 µs | 177.3 µs | 1.13× slower    |
-| sqrt by Newton, 1000 digits   | 234.7 µs | 232.3 µs | about the same  |
-| pi by Machin, 500 digits      | 722.0 µs | 547.1 µs | 1.32× slower    |
-| parse and print, 1000 digits  | 3.21 µs  | 2.75 µs  | 1.17× slower    |
-| arithmetic at 1000 digits     | 3.96 µs  | 5.85 µs  | **1.48× faster** |
+| Program                       |   decimo |  decimal |                  |
+| ----------------------------- | -------: | -------: | ---------------- |
+| compound interest, 150 years  | 13.0 µs  | 14.5 µs  | **1.12× faster** |
+| sqrt by Newton, 1000 digits   | 233.8 µs | 232.1 µs | about the same   |
+| e from its series, 500 digits | 199.1 µs | 170.3 µs | 1.17× slower     |
+| pi by Machin, 500 digits      | 719.2 µs | 554.3 µs | 1.30× slower     |
+| parse and print, 1000 digits  | 3.34 µs  | 2.71 µs  | 1.23× slower     |
+| arithmetic at 1000 digits     | 3.67 µs  | 5.83 µs  | **1.59× faster** |
 
-Operation by operation at the default precision of 28 digits, in nanoseconds:
+Operation by operation, in nanoseconds. At 9 digits:
 
 | | decimo | decimal | |
 | --- | ---: | ---: | --- |
-| `a + b`    |  53.7 | 41.7 | 1.29× slower |
-| `a * b`    |  59.7 | 48.8 | 1.22× slower |
-| `a / b`    | 143.1 | 101.0 | 1.42× slower |
-| `a < b`    |  22.6 | 18.1 | 1.25× slower |
-| `a + 2`    |  63.4 | 63.4 | the same |
-| `quantize` |  47.3 | 60.6 | **1.28× faster** |
+| `a + b` | 36.8 | 34.7 | 1.06× slower |
+| `a - b` | 41.4 | 35.5 | 1.17× slower |
+| `a * b` | 36.3 | 33.4 | 1.09× slower |
+| `a / b` | 71.0 | 57.1 | 1.24× slower |
 
-The short version: **decimo is faster on large numbers and a little slower on
-small ones.** CPython's `decimal` is a mature C library that keeps a 28-digit
-coefficient inside the object and never calls the allocator for it; decimo
-works in base 10^9 where libmpdec uses base 10^19, so it handles twice as many
-words for the same value. Neither of those goes away, and neither matters once
-the numbers are big enough for the arithmetic to dominate the call.
+and at the default precision of 28:
 
-The Mojo library underneath is further ahead -- measured against libmpdec
-directly, without either interpreter in the way, it is faster at every
-operation at 1000 digits and 3.2× faster at multiplication. See
+| | decimo | decimal | |
+| --- | ---: | ---: | --- |
+| `a + b`    |  45.8 |  42.7 | 1.07× slower |
+| `a * b`    |  52.8 |  47.3 | 1.12× slower |
+| `a / b`    | 138.8 | 100.3 | 1.38× slower |
+| `a < b`    |  21.9 |  18.8 | 1.16× slower |
+| `a + 2`    |  57.2 |  65.6 | **1.15× faster** |
+| `quantize` |  42.6 |  61.8 | **1.45× faster** |
+
+So: within about 10% on addition and multiplication, ahead on
+`Decimal + int` and `quantize`, and behind on division by roughly a third.
+
+**decimo is faster once the numbers are large, and close on small ones.**
+Two things are structural. CPython's `decimal` keeps a 28-digit coefficient
+inside the object and never calls the allocator for it. And it works in base
+10^19 where decimo works in base 10^9, so decimo handles twice as many words
+for the same value -- which is most of what is left in division.
+
+The Mojo library underneath is further ahead, because it does not pay for the
+Python call. Measured against libmpdec directly, decimo is faster at **every**
+operation at 1000 digits, and at 9 digits it is 3.4× faster at addition, 3.5×
+at multiplication and 4× at rounding. See
 [the benchmarks](https://github.com/forfudan/decimo/blob/main/docs/benchmarks.md).
 
 ## What works

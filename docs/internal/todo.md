@@ -6,7 +6,7 @@ enhancement plans in `docs/plans/` carry the detail and the reasoning, and
 ranking. There were four such lists in August 2026 and they had already
 drifted apart, so there is now one.
 
-Last reviewed 2026-08-27 (second pass, evening).
+Last reviewed 2026-08-27 (third pass).
 
 ## Goal, round one: met (20260826)
 
@@ -34,7 +34,7 @@ Three changes did it, and all three carried to the larger sizes as well:
 Both cutoffs were re-swept after each of those, because a cheaper base case
 moves every crossover above it. That happened three times in one day.
 
-## Goal, round two: mostly met (20260827)
+## Goal, round two: met for everything but division (20260827)
 
 Be no more than 1.2x of CPython's `decimal` from Python at 28 digits, now
 that `BigUInt` keeps small values inline. Measured with
@@ -42,66 +42,78 @@ that `BigUInt` keeps small values inline. Measured with
 
 | operation  | decimo | decimal |                  |
 | ---------- | ------ | ------- | ---------------- |
-| `a + b`    | 53.7   | 41.7    | 1.29x            |
-| `a * b`    | 59.7   | 48.8    | 1.22x            |
-| `a / b`    | 143.1  | 101.0   | 1.42x            |
-| `a < b`    | 22.6   | 18.1    | 1.25x            |
-| `a + 2`    | 63.4   | 63.4    | the same         |
-| `quantize` | 47.3   | 60.6    | **1.28x faster** |
+| `a + b`    | 45.8   | 42.7    | 1.07x            |
+| `a * b`    | 52.8   | 47.3    | 1.12x            |
+| `a / b`    | 138.8  | 100.3   | 1.38x            |
+| `a < b`    | 21.9   | 18.8    | 1.16x            |
+| `a + 2`    | 57.2   | 65.6    | **1.15x faster** |
+| `quantize` | 42.6   | 61.8    | **1.45x faster** |
 
-Whole programs: compound interest 1.16x, e from its series 1.13x, sqrt by
-Newton at parity, pi by Machin 1.32x, and 1000-digit arithmetic 1.48x faster.
-The day started at 4.8x on the four operators and 4.1x on compound interest.
+At 9 digits: add 1.06x, subtract 1.17x, multiply 1.09x, divide 1.24x.
+
+Whole programs: compound interest **1.12x faster**, sqrt by Newton at parity,
+e from its series 1.17x, pi by Machin 1.30x, and 1000-digit arithmetic 1.59x
+faster. The day started at 4.8x on the four operators and 4.1x on compound
+interest.
+
+Against libmpdec directly, without the Python call in the way, decimo is now
+faster at **every operation at 1000 digits** and 3.4x faster at addition at 9.
+See `docs/benchmarks.md`.
 
 Division is the one left outside the bar, and it is item 1 below.
 
 ## Now
 
-Ordered by value, judged against the two goals in `internal_notes.md`.
+Ordered by value. Three things are still behind CPython's `decimal`, and
+they are the first three.
 
-1. **`divide` from Python, at 1.42x of CPython's `decimal`.** The only
-   operator still outside 1.3x. 143 ns against 101, of which 112 is Mojo and
-   ~33 is the call. Inside the Mojo half: 4.6 ns padding, 15.7 normalizing,
-   63 in Knuth D, ~15 rounding and construction, and about 13 of dispatch --
-   `floor_divide_modulo` re-runs every check that `floor_divide_modulo_schoolbook`
-   then runs again. Knuth D is 12.7 ns per quotient word for a four-word
-   divisor, which is close to what the arithmetic costs; the dispatch and the
-   normalization are the parts with slack left.
-2. **Newton reciprocal division**, worth ~115 ms of `pi(10^6)`. See
-   `bigint_enhancement.md` T-D4 and `bigdecimal_enhancement.md` T-D3.
-3. **`subtract_inplace()`** builds a negated copy of its right operand to flip
+1. **`divide`, 1.24x at 9 digits and 1.38x at 28.** The only operator still
+   outside 1.2x. 138.8 ns against 100.3, of which ~109 is Mojo and ~30 the
+   call. Inside the Mojo half: 4.6 ns padding, 15.7 normalizing, ~60 in
+   Knuth D over five quotient words, ~15 rounding and construction. Four
+   things were tried and did not help -- calling Knuth D without the second
+   dispatch (neutral; the compiler had already inlined it), padding by digits
+   instead of whole words (worse, because `multiply_by_power_of_billion` only
+   prepends zero words while `multiply_by_power_of_ten` walks the number),
+   hoisting the estimator's invariants (neutral), and raising the inline
+   capacity past ten (no gain). What is left is either Newton reciprocal
+   division or base 10^18.
+2. **`subtract` at 100 000 digits and above, 1.25x and 1.09x slower**, where
+   `add` at the same sizes is 1.57x and 1.78x *faster*. Isolated to the
+   kernels: `_add_words_vectorized` runs 100 000 digits in ~3.9 us and
+   `_subtract_words_vectorized` in ~4.6-5.1 us, from code that looks
+   symmetric instruction for instruction. Flattening subtract's carry walk to
+   match add's measured neutral inside a ~10% noise band. Not yet explained.
+3. **`round` at 100 000 and 10^6, 1.11x and 1.33x slower.** Improved once
+   today by taking the pointer out of two shift loops; whatever is left is
+   elsewhere.
+4. **`parse`, 1.37x slower than libmpdec at 9 digits** (was 2.65x). What
+   remains is the digit list: `parse_numeric_string()` returns one `UInt8`
+   per digit, so a 9-digit number is allocated for and walked twice before
+   any packing happens. Parsing straight from the string into words would
+   remove both.
+5. **Newton reciprocal division**, worth ~115 ms of `pi(10^6)` as well as
+   item 1. See `bigint_enhancement.md` T-D4.
+6. **`subtract_inplace()`** builds a negated copy of its right operand to flip
    a sign: `x -= y` is 5.2x slower than libmpdec in place, where `x += y` is
    1.3x *faster*. See `bigdecimal_enhancement.md` H#21.
-4. **A cheaper NTT butterfly** -- precomputed (Shoup) twiddles and radix-4.
+7. **A cheaper NTT butterfly** -- precomputed (Shoup) twiddles and radix-4.
    Needed for goal 1: `pi(10^6)` at 1.2x of mpmath+GMP wants roughly 2.5x here
-   on top of item 2.
-5. **`from_string`** at ~95 ns, roughly three allocations, never investigated.
-   `parse and print` is the one whole-program benchmark still at 1.17x.
-6. **Audit the remaining `UInt128` and `UInt256` uses.** Two of the three big
-   wins today were removing one. The rule that came out of it: 128-bit as an
-   *accumulator* is fine, because a 64x64 multiply is one instruction; 128-bit
-   or 256-bit as the *left side of a divide* is a call to a software helper
-   and costs 20-40 ns. `grep -n "UInt128\|UInt256" src/decimo/**/*.mojo` and
-   look at every `//` and `%`. Known remaining: `decimal128/`, `rational/`,
-   `bigint/exponential.mojo`.
-7. **The last of the Python call overhead**, about 33 ns on every operation.
-   ~20 of that is CPython's own dispatch, which `decimal` pays too. What is
-   left is the result `PyObject` allocation, roughly 9 ns, which CPython's
-   `_decimal` avoids with a freelist. Installing our own `tp_dealloc` slot
-   would let us do the same.
-8. **`round` at 100 000 digits and above, 15-20% slower than it was.**
-   `benchdoc` at ca2ab3c against the run at 06bafb7: 4.75 -> 5.40 us at
-   100 000 digits, 47.0 -> 57.5 us at 10^6. Everything else at those sizes
-   held or improved, so this looks like the inline array making a large value
-   more expensive to move rather than anything about rounding. Not chased yet.
-9. **`add` reads 46.5 ns at 9 digits where `subtract` reads 13.4**, in the
-   same `benchdoc` run, from kernels that time the same in isolation. `add`
-   is the first measurement the harness takes, so this is probably a cold
-   start being charged to it -- which would mean the harness has been
-   flattering `subtract` and libmpdec's `parse` for a while. Worth one look
-   at `benches/doc/generate.py` before believing either number.
-10. ~~**`floor_divide()` 2n-by-n scaling** in `BigUInt`~~ -- answered, see the
-    note below.
+   on top of item 5.
+8. **Audit the remaining `UInt128` and `UInt256` uses.** Three of the day's
+   biggest wins were removing one. The rule: 128-bit as an *accumulator* is
+   fine, because a 64x64 multiply is one instruction; 128-bit or 256-bit as
+   the *left side of a divide* is a call to a software helper, 20-40 ns.
+   Known remaining: `decimal128/`, `rational/`, `bigint/exponential.mojo`.
+9. **Base 10^18.** The honest answer to "why is division still behind": for a
+   28-digit value libmpdec holds two words and decimo holds four, so every
+   loop runs twice as long. Nothing above closes that. It is a change to the
+   whole library and it is not obviously worth it -- multiplication and
+   division would halve their word counts, but every partial product would
+   need 128-bit accumulation, and `% BASE` on a `UInt128` is the thing that
+   was slow everywhere else today. Worth measuring on a prototype before
+   believing either way.
+10. ~~**`floor_divide()` 2n-by-n scaling** in `BigUInt`~~ -- answered below.
 
 ## Blocked on the language
 

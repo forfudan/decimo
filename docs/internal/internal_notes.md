@@ -917,7 +917,60 @@ Four separate measurements this day were wrong before they were right:
 The reliable shapes: make the sink depend on a value the callee computed, and
 compare two builds alternated in one session.
 
+### Two allocations to carry one word, in four places (20260827)
+
+`WordList` made a pattern expensive that had been merely wasteful. Anything
+that built a `List[UInt32]` and handed it to `BigUInt(raw_words=)` now
+allocated twice: once for the list, once to copy it into the inline storage.
+Four of those were on hot paths, and each was worth more than any tuning
+around it:
+
+| where                              | cost before | after   |
+| ---------------------------------- | ----------- | ------- |
+| `from_unsigned_integral_scalar`    | one-word add 43.1 ns | 9.0 ns |
+| `from_absolute_integral_scalar`    | `Decimal + int` 340 ns | 57 ns |
+| `from_string`                      | parse 9 digits 95.2 ns | 52.3 ns |
+| Knuth D's running remainder        | 28-digit divide 112.5 ns | 108.7 ns |
+
+The first one is the one worth remembering. `add` sends one-word operands to
+`from_unsigned_integral_scalar(x + y)`, so addition of *small* values was five
+times the cost of addition of large ones -- which is how it surfaced, as `add`
+reading 46.5 ns at 9 digits in `benchdoc` where `subtract` read 13.4 from
+kernels that time the same in isolation. It looked like a cold start in the
+harness. It was not.
+
+The Knuth D one was the worst-written: it gave a `BigUInt` room for `len + 1`
+words, then assigned `x.words.copy()` over it -- throwing that buffer away,
+allocating a second of exactly `len`, and leaving the `append` of the guard
+word able to grow it a third time.
+
+### Four division ideas that did not work (20260827)
+
+Kept so they are not tried again. Each was measured with two builds alternated
+in one session, three pairs:
+
+- **Calling Knuth D without the second dispatch.** `floor_divide_modulo`
+  normalizes and then called `floor_divide_modulo_schoolbook`, which re-runs
+  the zero tests, the comparison, the single- and double-word cases and
+  `is_power_of_10()`. Extracting Knuth D so it could be called directly made
+  it 5% *slower*, and neutral with `@always_inline`: the compiler had already
+  inlined the whole thing.
+- **Padding the dividend by digits instead of whole words.** Saves a quotient
+  word -- 36 digits of padding where 30 will do -- and costs more than it
+  saves, because `multiply_by_power_of_billion` only prepends zero words while
+  `multiply_by_power_of_ten` walks the whole number. 112.5 -> 117 ns.
+- **Hoisting the quotient estimator's invariants** out of the loop, so the
+  divisor's top two words and the running pointer are read once rather than
+  once per quotient word. Neutral.
+- **Raising the inline capacity past ten.** Twelve and sixteen are the same as
+  ten on division and slightly worse on everything else.
+
+What is left in division is not bookkeeping. It is that a 28-digit value is
+four base-10^9 words here and two base-10^19 words in libmpdec.
+
 ## Traps worth remembering
+
+
 
 ### A constant-size copy is not the same as a small one (20260827)
 
