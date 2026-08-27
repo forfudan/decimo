@@ -119,8 +119,18 @@ buildpy = """pixi run mojo precompile src/decimo -o tests/decimo.mojoc \
 --emit shared-lib -I tests -o python/src/decimo/_decimo.so"""
 testpy = "pixi run buildpy && pixi run python python/tests/test_decimo.py"
 tpy = "clear && pixi run testpy"
-# build PyPI wheel (placeholder, no .so included)
-wheel = "cd python && pixi run -e publish python -m build --wheel"
+# Build a self-contained PyPI wheel: compile the extension, copy the Mojo
+# runtime libraries in beside it, stamp a version, build, check.
+#   pixi run release              build only, leaves the wheel in python/dist/
+#   pixi run release --testpypi   upload to TestPyPI
+#   pixi run release --pypi       upload to PyPI
+#   pixi run release --version 0.2.0
+# Without --version the wheel is stamped 0.1.0.devYYYYMMDDHHMMSS in UTC, so
+# every development build has a version PyPI has not seen before.
+release = """pixi run buildpy \
+&& pixi run -e publish python python/build_wheel.py"""
+# The old name, kept because muscle memory is a real thing.
+wheel = "pixi run release"
 
 # All task
 all = """pixi run format \

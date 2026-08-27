@@ -368,8 +368,8 @@ def multiply_slices_ntt(
 
     unsafe_memset_zero(ptr=left_ptr, count=length)
     unsafe_memset_zero(ptr=right_ptr, count=length)
-    pack_words(left_ptr, ImmSpan[UInt32](x.words), bounds_x)
-    pack_words(right_ptr, ImmSpan[UInt32](y.words), bounds_y)
+    pack_words(left_ptr, x.words.as_span(), bounds_x)
+    pack_words(right_ptr, y.words.as_span(), bounds_y)
 
     var forward_ptr = forward_twiddles.unsafe_ptr()
     var inverse_ptr = inverse_twiddles.unsafe_ptr()

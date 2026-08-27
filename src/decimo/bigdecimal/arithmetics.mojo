@@ -70,7 +70,7 @@ def add(
             result,
             precision,
             RoundingMode.ROUND_HALF_EVEN,
-            remove_extra_digit_due_to_rounding=False,
+            remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
         return result^
@@ -204,7 +204,7 @@ def subtract(
             result,
             precision,
             RoundingMode.ROUND_HALF_EVEN,
-            remove_extra_digit_due_to_rounding=False,
+            remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
         return result^
@@ -220,12 +220,19 @@ def subtract(
                 scale=x1.scale,
                 sign=False if coef.is_zero() else x1.sign,
             )
-        # Same sign: actual subtraction
+        # Same sign: actual subtraction. The comparison below settles which
+        # way round it goes, so `subtract_greater()` is told rather than asked
+        # -- `-` would compare the pair a second time to decide whether to
+        # raise, for a case this branch has just ruled out.
         if x1.coefficient > x2.coefficient:
-            var coef = x1.coefficient - x2.coefficient
+            var coef = biguint_arithmetics.subtract_greater(
+                x1.coefficient, x2.coefficient
+            )
             return BigDecimal(coefficient=coef^, scale=x1.scale, sign=x1.sign)
         elif x2.coefficient > x1.coefficient:
-            var coef = x2.coefficient - x1.coefficient
+            var coef = biguint_arithmetics.subtract_greater(
+                x2.coefficient, x1.coefficient
+            )
             return BigDecimal(
                 coefficient=coef^, scale=x1.scale, sign=not x1.sign
             )
@@ -316,7 +323,7 @@ def multiply(
             result,
             precision,
             RoundingMode.ROUND_HALF_EVEN,
-            remove_extra_digit_due_to_rounding=False,
+            remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
 
@@ -357,7 +364,7 @@ def multiply_inplace(
             x1,
             precision,
             RoundingMode.ROUND_HALF_EVEN,
-            remove_extra_digit_due_to_rounding=False,
+            remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
 
@@ -440,7 +447,7 @@ def add_inplace(mut x1: BigDecimal, x2: BigDecimal, precision: Int = 0) raises:
             x1,
             precision,
             RoundingMode.ROUND_HALF_EVEN,
-            remove_extra_digit_due_to_rounding=False,
+            remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
 
@@ -715,18 +722,45 @@ def true_divide_general(
         )
 
     # --- Standard path (no truncation, no extra copies) ---
-    var diff_n_words = len(x.coefficient.words) - len(y.coefficient.words)
-    var extra_words = math.ceildiv(precision, 9) + 2 - diff_n_words
+    #
+    # How far to pad the dividend. Dividing a `dx`-digit number by a
+    # `dy`-digit one gives a quotient of `dx - dy` or `dx - dy + 1` digits, so
+    # padding with `s` zeros guarantees at least `dx + s - dy`. We want
+    # `precision` significant digits plus a couple to round on.
+    #
+    # This used to be counted in whole words -- `ceildiv(precision, 9) + 2`
+    # words, ignoring how many digits the operands actually had. At the default
+    # precision of 28 that padded a four-word dividend out to ten words and
+    # produced a 54-digit quotient to keep 28 of, roughly twice the necessary
+    # work, and pushed every intermediate past the point where `BigUInt` keeps
+    # its words inline.
+    comptime GUARD_DIGITS = 2
+    var digits_x = x.coefficient.number_of_digits()
+    var digits_y = y.coefficient.number_of_digits()
+    var extra_words = math.ceildiv(
+        precision + GUARD_DIGITS - digits_x + digits_y, 9
+    )
     var extra_digits = extra_words * 9
 
     var coef_x: BigUInt
+    # Whether anything was thrown away below the digits we kept. It is not the
+    # same question as whether the division came out exact, and rounding needs
+    # both -- see the sticky digit below.
+    var dropped_something = False
     if extra_words > 0:
         coef_x = biguint_arithmetics.multiply_by_power_of_billion(
             x.coefficient, extra_words
         )
     elif extra_words < 0:
         # Dividend already has more than enough words for the desired precision.
-        # Truncate low-order words to avoid computing unnecessary quotient digits.
+        # Truncate low-order words to avoid computing unnecessary quotient
+        # digits -- but remember whether they were zero. A dividend that
+        # divides exactly once truncated can have been inexact before it, and
+        # then a tie in the kept digits has to round up rather than to even.
+        for index in range(-extra_words):
+            if x.coefficient.words[index] != 0:
+                dropped_something = True
+                break
         coef_x = biguint_arithmetics.floor_divide_by_power_of_billion(
             x.coefficient, -extra_words
         )
@@ -744,6 +778,28 @@ def true_divide_general(
     var coef = biguint_arithmetics.floor_divide_modulo(
         coef_x, y.coefficient, remainder
     )
+
+    # Two guard digits are only enough if the discarded tail can be told from
+    # an exact tie. The true quotient is strictly greater than the one we
+    # computed whenever anything was left below it -- either a non-zero
+    # remainder, or dividend digits dropped before the division ran -- so a
+    # tail that reads exactly 5000...0 should round up rather than to even.
+    # Nudging the last computed digit off zero says so: it can only ever break
+    # a tie, because half is the one tail ending in a zero that a rounding
+    # decision balances on.
+    #
+    # Both halves are needed. A truncated dividend can divide exactly, leaving
+    # a zero remainder for a division that was not exact at all:
+    # `19058000000000000000000009 / 762320` at precision 1 is just above the
+    # tie at 2.5E+19 and must give 3E+19, and reading only the remainder gave
+    # 2E+19.
+    #
+    # Without this the wide padding above was doing the same job by accident,
+    # making a false tie merely improbable rather than impossible.
+    if dropped_something or not remainder.is_zero():
+        var lowest = coef.words[0]
+        if lowest % 10 == 0:
+            coef.words[0] = lowest + 1
 
     if extra_words >= 0 and remainder.is_zero():
         # The division is exact, so we need to remove the extra trailing zeros

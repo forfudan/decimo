@@ -70,7 +70,13 @@ def evaluate_and_print(
         if scientific:
             print(value.to_string(scientific=True, delimiter=delimiter))
         elif engineering:
-            print(value.to_string(engineering=True, delimiter=delimiter))
+            print(
+                value.to_string(
+                    engineering=True,
+                    force_exponent=True,
+                    delimiter=delimiter,
+                )
+            )
         elif pad:
             print(
                 pad_to_precision(value.to_string(force_plain=True), precision)
@@ -204,7 +210,13 @@ def evaluate_and_return(
         if scientific:
             print(value.to_string(scientific=True, delimiter=delimiter))
         elif engineering:
-            print(value.to_string(engineering=True, delimiter=delimiter))
+            print(
+                value.to_string(
+                    engineering=True,
+                    force_exponent=True,
+                    delimiter=delimiter,
+                )
+            )
         elif pad:
             print(
                 pad_to_precision(value.to_string(force_plain=True), precision)

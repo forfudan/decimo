@@ -37,6 +37,7 @@ from decimo.errors import (
     ZeroDivisionError,
 )
 import decimo.str as decimo_str
+from decimo.biguint.wordlist import WordList, INLINE_WORDS
 from decimo.rounding_mode import RoundingMode
 from decimo.traits import Rootable
 from decimo.utility import unsigned_counterpart
@@ -86,7 +87,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     so it costs nothing in a normal build and fires in the test suite.
     """
 
-    var words: List[UInt32]
+    var words: WordList
     """A list of UInt32 words representing the coefficient.
 
     Little-endian: `words[0]` is the least significant base-billion digit.
@@ -136,7 +137,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         Returns:
             A `BigUInt` with value 1.
         """
-        return Self(raw_words=[UInt32(1)])
+        return Self.from_uint32_unsafe(UInt32(1))
 
     @staticmethod
     @always_inline
@@ -188,7 +189,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         The length of the words list is 0. So you cannot access the words using
         indexing until you append the words to the list.
         """
-        self.words = List[UInt32](capacity=uninitialized_capacity)
+        self.words = WordList(capacity=uninitialized_capacity)
 
     def __init__(out self, *, unsafe_uninit_length: Int):
         """Creates an uninitialized BigUInt with a given length.
@@ -208,7 +209,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         Because the list is uninitialized, the elements may be any value at the
         time of initialization. You can access the words using indexing.
         """
-        self.words = List[UInt32](unsafe_uninit_length=unsafe_uninit_length)
+        self.words = WordList(unsafe_uninit_length=unsafe_uninit_length)
 
     def __init__(
         out self, *, unsafe_uninit_length: Int, unsafe_uninit_capacity: Int
@@ -241,7 +242,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             " is below length ",
             unsafe_uninit_length,
         )
-        self.words = List[UInt32](capacity=unsafe_uninit_capacity)
+        self.words = WordList(capacity=unsafe_uninit_capacity)
         self.words.resize(unsafe_uninit_length=unsafe_uninit_length)
 
     def __init__(out self, var words: List[UInt32]) raises:
@@ -291,9 +292,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         list of words, you can use `BigUInt(*, uninitialized_capacity=0)`.
         """
         if len(raw_words) == 0:
-            self.words = [UInt32(0)]
+            self.words = WordList(UInt32(0), __list_literal__=None)
         else:
-            self.words = raw_words^
+            self.words = WordList(raw_words^)
 
     @implicit
     def __init__(
@@ -541,7 +542,13 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         Returns:
             A single-word `BigUInt` containing the given value.
         """
-        return Self(raw_words=[unsafe_value])
+        # Built straight into the result's own storage. `raw_words=[value]`
+        # allocates a `List` for the literal and then allocates again to copy
+        # it into the `WordList` -- two calls to the allocator to carry one
+        # word, on the path that every single-word addition takes.
+        var result = Self(uninitialized_capacity=1)
+        result.words.append(unsafe_value)
+        return result^
 
     @staticmethod
     def from_integral_scalar[
@@ -645,21 +652,23 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         # 8- and 16-bit scalars are at most 65_535 < 10^9, so one word always
         # suffices and no division is needed.
         comptime if value_bits <= 16:
-            return Self(raw_words=[UInt32(value)])
+            return Self.from_uint32_unsafe(UInt32(value))
 
         # A 32-bit scalar needs one word or two, decided by a comparison that
         # is cheaper than the general division loop. This is a hot path: the
         # single-word `add` fast paths land here.
         elif value_bits == 32:
             if value <= Self.BASE_MAX:
-                return Self(raw_words=[UInt32(value)])
+                return Self.from_uint32_unsafe(UInt32(value))
             else:
-                return Self(
-                    raw_words=[
-                        UInt32(value) % UInt32(Self.BASE),
-                        UInt32(value) // UInt32(Self.BASE),
-                    ]
-                )
+                # Built straight into the result. A list literal here meant an
+                # allocation for the list and a second one to copy it into
+                # place -- 30 ns to carry two words, on the path every
+                # single-word addition takes.
+                var result = Self(uninitialized_capacity=2)
+                result.words.append(UInt32(value) % UInt32(Self.BASE))
+                result.words.append(UInt32(value) // UInt32(Self.BASE))
+                return result^
 
         else:
             if value == 0:
@@ -675,16 +684,16 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 decimal_digits + 8
             ) // 9  # Trick to round up division by the 9 digits per word
 
-            var words = List[UInt32](capacity=number_of_words)
+            var result = Self(uninitialized_capacity=number_of_words)
             var remainder: Scalar[dtype] = value
             var quotient: Scalar[dtype]
 
             while remainder != 0:
                 quotient = remainder // Self.BASE
-                words.append(UInt32(remainder % Self.BASE))
+                result.words.append(UInt32(remainder % Self.BASE))
                 remainder = quotient
 
-            return Self(raw_words=words^)
+            return result^
 
     @staticmethod
     def from_absolute_integral_scalar[
@@ -710,7 +719,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         comptime if (dtype == DType.uint8) or (dtype == DType.uint16):
             # For types that are smaller than word size
             # We can directly convert them to UInt32
-            return Self(raw_words=[UInt32(value)])
+            return Self.from_uint32_unsafe(UInt32(value))
 
         elif (dtype == DType.int8) or (dtype == DType.int16):
             # For signed types that are smaller than 1_000_000_000,
@@ -719,9 +728,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 # Because -Int16.MIN == Int16.MAX + 1,
                 # we need to handle the case by converting it to Int32
                 # before taking the absolute value.
-                return Self(raw_words=[UInt32(-Int32(value))])
+                return Self.from_uint32_unsafe(UInt32(-Int32(value)))
             else:
-                return Self(raw_words=[UInt32(value)])
+                return Self.from_uint32_unsafe(UInt32(value))
 
         else:
             if value == 0:
@@ -729,7 +738,13 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
             var sign = True if value < 0 else False
 
-            var list_of_words = List[UInt32]()
+            # Built straight into the result's own storage. Filling a
+            # `List[UInt32]` and handing that to `raw_words=` cost 36 ns for
+            # the integer 2 -- an allocation for the list, another for the
+            # copy into place, to carry a single word. A 64-bit value needs
+            # three base-billion words, which is inside `WordList`'s inline
+            # capacity, so the common case now allocates nothing at all.
+            var result = Self(uninitialized_capacity=3)
             var remainder: Scalar[dtype] = value
             var quotient: Scalar[dtype]
 
@@ -737,16 +752,16 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 while remainder != 0:
                     quotient = remainder // (-Self.BASE)
                     remainder = remainder % (-Self.BASE)
-                    list_of_words.append(UInt32(-remainder))
+                    result.words.append(UInt32(-remainder))
                     remainder = -quotient
             else:
                 while remainder != 0:
                     quotient = remainder // Self.BASE
                     remainder = remainder % Self.BASE
-                    list_of_words.append(UInt32(remainder))
+                    result.words.append(UInt32(remainder))
                     remainder = quotient
 
-            return Self(raw_words=list_of_words^)
+            return result^
 
     @staticmethod
     def from_string(value: String, ignore_sign: Bool = False) raises -> BigUInt:
@@ -1963,7 +1978,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             )
 
         if exponent == 0:
-            return Self(raw_words=[1])
+            return Self.from_uint32_unsafe(1)
 
         if exponent >= 1_000_000_000:
             raise ValueError(
@@ -1976,7 +1991,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 ),
             )
 
-        var result = Self(raw_words=[1])
+        var result = Self.from_uint32_unsafe(1)
         var base = self.copy()
         var exp = exponent
         while exp > 0:
@@ -2161,11 +2176,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         else:
             # Least significant word is 1 and there are other words
             # Check if all other words are zero
-            for i in self.words[1:]:
-                if i != 0:
+            for index in range(1, len(self.words)):
+                if self.words[index] != 0:
                     return False
-            else:
-                return True
+            return True
 
     @always_inline
     def is_two(self) -> Bool:
@@ -2176,8 +2190,8 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         """
         if len(self.words) != 2:
             return False
-        for i in self.words[1:]:
-            if i != 0:
+        for index in range(1, len(self.words)):
+            if self.words[index] != 0:
                 return False
         return True
 

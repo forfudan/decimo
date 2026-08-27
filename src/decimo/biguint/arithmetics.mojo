@@ -23,6 +23,7 @@ from std import math
 from std.memory import unsafe_memcpy, unsafe_memset_zero
 
 from decimo.biguint.biguint import BigUInt
+from decimo.biguint.wordlist import WordList
 import decimo.biguint.comparison as biguint_comparison
 from decimo.errors import (
     OverflowError,
@@ -191,6 +192,13 @@ the 112-word row, is the one being tuned for.
 # kernels chew through between carry walks.
 comptime WORDS_PER_VECTOR = 8
 comptime WORDS_PER_CARRY_BLOCK = 64
+comptime WORDS_PER_NARROW_COLUMN = 16
+"""Up to this many words in the shorter operand, a Comba column is summed in
+`UInt64` rather than `UInt128`. See `multiply_slices_schoolbook`."""
+
+comptime WORDS_PER_SHORT_DIVISOR = 8
+"""Below this many divisor words, Knuth D's multiply-subtract stays in one
+pass. See `_multiply_subtract_words`."""
 
 
 @always_inline
@@ -527,12 +535,41 @@ def _multiply_subtract_words[
         The amount to subtract from the word above the window.
     """
     comptime BASE_64 = UInt64(BigUInt.BASE)
+    var quotient_64 = UInt64(quotient)
+
+    # A short divisor takes the obvious single pass. The two-pass form below
+    # buys latency with two blocks of stack, and at four or eight words the
+    # stack costs more than the carry chain does: a 28-digit division is a
+    # four-word divisor, and it spent most of its time setting up buffers it
+    # used four slots of.
+    if n_words <= WORDS_PER_SHORT_DIVISOR:
+        var short_pending = UInt32(0)
+        var short_borrow = UInt32(0)
+        for i in range(n_words):
+            var product = quotient_64 * UInt64(yp[unsafe_offset=i])
+            var high = UInt32(product // BASE_64)
+            var digit = UInt32(product - UInt64(high) * BASE_64) + short_pending
+            short_pending = high
+            if digit >= BigUInt.BASE:
+                digit -= BigUInt.BASE
+                short_pending += 1
+            var biased = (
+                UInt64(rp[unsafe_offset=i])
+                + BASE_64
+                - UInt64(digit)
+                - UInt64(short_borrow)
+            )
+            short_borrow = UInt32(biased < BASE_64)
+            rp[unsafe_offset=i] = UInt32(
+                biased - BASE_64 + UInt64(short_borrow) * BASE_64
+            )
+        return UInt64(short_pending) + UInt64(short_borrow)
+
     var highs = InlineArray[UInt32, WORDS_PER_CARRY_BLOCK](uninitialized=True)
     var lows = InlineArray[UInt32, WORDS_PER_CARRY_BLOCK](uninitialized=True)
     var hp = highs.unsafe_ptr()
     var lp = lows.unsafe_ptr()
 
-    var quotient_64 = UInt64(quotient)
     var pending_high = UInt32(0)
     var borrow = UInt32(0)
     var start = 0
@@ -1158,6 +1195,43 @@ def subtract_carry_select(x: BigUInt, y: BigUInt) raises -> BigUInt:
     return result^
 
 
+def subtract_greater(x: BigUInt, y: BigUInt) -> BigUInt:
+    """Returns `x - y`, where the caller has already established `x > y`.
+
+    `subtract()` compares its operands to decide whether the result would be
+    negative, and raises if so. Its callers in `BigDecimal` have just done
+    that comparison themselves, to work out which way round to subtract and
+    what sign to give the answer -- so the comparison happens twice, and the
+    caller carries an error path for something it has proved cannot happen.
+
+    This is the same borrow-select pass with neither.
+
+    Args:
+        x: The minuend. Must be strictly greater than `y`.
+        y: The subtrahend, which must not be zero.
+
+    Returns:
+        `x - y`.
+    """
+    debug_assert[assert_mode="none"](
+        len(x.words) != 0 and len(y.words) != 0, "BigUInt is uninitialized!"
+    )
+    debug_assert[assert_mode="none"](
+        x.compare(y) > 0,
+        "biguint.arithmetics.subtract_greater(): x must be greater than y",
+    )
+
+    var result = BigUInt(unsafe_uninit_length=len(x.words))
+    var xp = x.words.unsafe_ptr()
+    var rp = result.words.unsafe_ptr()
+    var borrow = _subtract_words(
+        rp, xp, y.words.unsafe_ptr(), len(y.words), UInt32(0)
+    )
+    _ = _borrow_into_tail(rp, xp, len(y.words), len(x.words), borrow)
+    result.remove_leading_empty_words()
+    return result^
+
+
 def subtract_inplace(mut x: BigUInt, y: BigUInt) raises -> None:
     """Subtracts y from x in place.
 
@@ -1336,6 +1410,23 @@ def multiply(x: BigUInt, y: BigUInt) -> BigUInt:
     debug_assert[assert_mode="none"](
         len(y.words) != 0, "BigUInt is uninitialized!"
     )
+
+    # SPECIAL CASE: both operands are a single word.
+    #
+    # `(10^9 - 1)^2` is under 10^18, so the product is one machine multiply
+    # and the split back into base-billion words is two divisions by a
+    # constant, which the compiler folds. The general path below would copy
+    # one operand into a fresh buffer and then walk it, for a loop of length
+    # one -- 8.7 ns where this is about 3.
+    if len(x.words) == 1 and len(y.words) == 1:
+        comptime BASE_64 = UInt64(BigUInt.BASE)
+        var product = UInt64(x.words[0]) * UInt64(y.words[0])
+        var high = product // BASE_64
+        var result = BigUInt(uninitialized_capacity=2)
+        result.words.append(UInt32(product - high * BASE_64))
+        if high != 0:
+            result.words.append(UInt32(high))
+        return result^
 
     # SPECIAL CASES
     # If x or y is a single-word number
@@ -1521,6 +1612,49 @@ def multiply_slices_schoolbook(
     var x_words_ptr = x.words.unsafe_ptr()
     var y_words_ptr = y.words.unsafe_ptr()
     var result_ptr = result.words.unsafe_ptr()
+
+    # A narrow column can be summed in 64 bits, and usually can. Each partial
+    # product is below `(10^9)^2 < 10^18`, so a column of at most sixteen of
+    # them, plus a carry that settles around `16 * 10^9`, stays under
+    # `1.61 * 10^19` -- comfortably inside `UInt64`'s `1.8446 * 10^19`.
+    #
+    # Worth doing because the accumulator is not where the time went: emitting
+    # a word costs a `% BASE` and a `// BASE`, and in `UInt128` those are a
+    # 128-bit divide by a constant. At four words by four -- a 28-digit
+    # multiplication, the commonest one there is -- that was most of the cost.
+    if min(n_words_x_slice, n_words_y_slice) <= WORDS_PER_NARROW_COLUMN:
+        comptime BASE_64 = UInt64(BigUInt.BASE)
+        var narrow_carry = UInt64(0)
+        for k in range(result_length - 1):
+            var i_low = 0 if k < n_words_y_slice else k - n_words_y_slice + 1
+            var i_high = k if k < n_words_x_slice else n_words_x_slice - 1
+
+            var sum0 = narrow_carry
+            var sum1 = UInt64(0)
+            var i = i_low
+            while i + 1 <= i_high:
+                sum0 += UInt64(x_words_ptr[unsafe_offset=start_x + i]) * UInt64(
+                    y_words_ptr[unsafe_offset=start_y + k - i]
+                )
+                sum1 += UInt64(
+                    x_words_ptr[unsafe_offset=start_x + i + 1]
+                ) * UInt64(y_words_ptr[unsafe_offset=start_y + k - i - 1])
+                i += 2
+            if i <= i_high:
+                sum0 += UInt64(x_words_ptr[unsafe_offset=start_x + i]) * UInt64(
+                    y_words_ptr[unsafe_offset=start_y + k - i]
+                )
+
+            var narrow_column = sum0 + sum1
+            var high = narrow_column // BASE_64
+            result_ptr[unsafe_offset=k] = UInt32(narrow_column - high * BASE_64)
+            narrow_carry = high
+
+        result_ptr[unsafe_offset=result_length - 1] = UInt32(
+            narrow_carry % BASE_64
+        )
+        result.remove_leading_empty_words()
+        return result^
 
     # `carry` is the part of the column sum at or above 10^9, which belongs to
     # the next column. The last column leaves it holding the top word.
@@ -2115,7 +2249,7 @@ def multiply_by_uint32_le_4_inplace(mut x: BigUInt, y: UInt32):
 
     # y is 0, x becomes 1
     if y == 0:
-        x.words = [UInt32(0)]
+        x.words = WordList(UInt32(0), __list_literal__=None)
         return
 
     # y is 1, x stays the same
@@ -2577,10 +2711,37 @@ def floor_divide(x: BigUInt, y: BigUInt) raises -> BigUInt:
         # Use `floor_divide_by_uint64` as it is more efficient
         return floor_divide_by_uint64(x, y.to_uint64_with_first_2_words())
 
-    # CASE: y is triple or quadruple words
-    if len(y.words) <= 4:
-        # Use `floor_divide_by_uint128` as it is more efficient
-        return floor_divide_by_uint128(x, y.to_uint128_with_first_4_words())
+    # CASE: y is three or four words
+    #
+    # There used to be a `floor_divide_by_uint128` shortcut here, on the
+    # reasoning that a divisor small enough to sit in one machine word should
+    # be divided by in one machine word. It measured the other way round.
+    # arm64 has no 128-bit divide, let alone a 256-bit one, so every step of
+    # that routine called a software division helper -- and the routine is
+    # written in `UInt256`, so it called the 256-bit one, twice per group of
+    # four dividend words. Knuth D over base-10^9 words does the same job with
+    # 64-bit divisions the hardware actually has.
+    #
+    # Measured, best of nine, this file at 6e63828 (ns):
+    #
+    #   divisor   dividend    uint128    Knuth D
+    #   3 words    6 words        306        239
+    #   3 words   10 words        669        292
+    #   3 words   16 words       1034        399
+    #   4 words   10 words        393        273
+    #   4 words   16 words        834        389
+    #
+    # The gap widens with the dividend, because the shortcut's cost is linear
+    # in dividend words with a large constant while Knuth D's is linear with a
+    # small one. It won only at two sizes, both of them a dividend that is an
+    # exact multiple of four words, where the routine skips its leading-group
+    # branch -- not a reason to keep a slower path for every other size.
+    #
+    # One- and two-word divisors keep their shortcuts: `UInt32` and `UInt64`
+    # division *is* a hardware instruction, and those paths win by 2-3x.
+    #
+    # The shortcut was correct, not just slow -- `x == q * y + r` with
+    # `r < y` was checked across 555 operand shapes before it was removed.
 
     # CASE: Divisor is 10^n
     if y.is_power_of_10():
@@ -2724,15 +2885,8 @@ def floor_divide_modulo_schoolbook(
         overwrite_with_uint64(remainder, word_remainder)
         return result^
 
-    # CASE: y is triple or quadruple words
-    if len(y.words) <= 4:
-        # Use `floor_divide_modulo_by_uint128` as it is more efficient
-        var word_remainder = UInt128(0)
-        var result = floor_divide_modulo_by_uint128(
-            x, y.to_uint128_with_first_4_words(), word_remainder
-        )
-        overwrite_with_uint128(remainder, word_remainder)
-        return result^
+    # See `floor_divide()` for why three- and four-word divisors no longer
+    # take a `UInt128` shortcut here.
 
     # ===----------------------------------------------=== #
     # ALL OTHER CASES
@@ -2758,9 +2912,15 @@ def floor_divide_modulo_schoolbook(
 
     # One guard word above the dividend, so `index_of_word + n` is always a
     # real position for the fused subtraction to take its final borrow from.
-    var running = BigUInt(uninitialized_capacity=len(x.words) + 1)
-    running.words = x.words.copy()
-    running.words.append(UInt32(0))
+    # One buffer, filled once. Assigning `x.words.copy()` into a `BigUInt`
+    # that had just been given room for `len + 1` words threw that buffer
+    # away, allocated a second one of exactly `len`, and then the `append`
+    # below could grow it a third time.
+    var n_words_x = len(x.words)
+    var running = BigUInt(unsafe_uninit_length=n_words_x + 1)
+    var running_ptr = running.words.unsafe_ptr()
+    unsafe_memcpy(dest=running_ptr, src=x.words.unsafe_ptr(), count=n_words_x)
+    running_ptr[unsafe_offset=n_words_x] = UInt32(0)
 
     var y_ptr = y.words.unsafe_ptr()
     var r_ptr = running.words.unsafe_ptr()
@@ -2845,60 +3005,63 @@ def floor_divide_estimate_quotient(
     Goal: Estimate Q = R // D.
     """
 
-    # Extract three highest words of relevant dividend portion
-    # numerator = r2r1r0
-    # Extract 3-word dividend portion using SIMD for better performance
-    var numerator: UInt128
-    var base_index = index_of_word + len(divisor.words) - 2
+    # This is Knuth's step D3, and the point of writing it out is that every
+    # value in it fits in 64 bits.
+    #
+    # It used to build the three-word numerator and the two-word denominator
+    # as `UInt128` and divide them. arm64 has no 128-bit divide, so that was a
+    # call to the software helper once per quotient word -- about 30 ns for a
+    # step whose arithmetic is a single machine division. It is what made a
+    # 28-digit division cost more than three times what libmpdec charges.
+    #
+    # Knuth divides the top two words by the divisor's top word instead:
+    # `r2 * BASE + r1` is under 10^18 and `d1` is under 10^9, so the quotient
+    # comes from one 64-bit division. The estimate can then be up to two too
+    # large, which the correction below takes back one at a time; the caller
+    # is prepared for the same two, and normalization -- `d1 >= BASE / 2` --
+    # is what bounds it.
+    comptime BASE = UInt64(BigUInt.BASE)
 
-    # Ensure we don't read beyond bounds
-    if base_index + 2 < len(dividend.words):
-        # We can safely load 3 words: r0, r1, r2
-        numerator = (
-            dividend.words.unsafe_ptr()
-            .unsafe_load[width=4](base_index)
-            .cast[DType.uint128]()
-            * SIMD[DType.uint128, 4](
-                1, 1_000_000_000, 1_000_000_000_000_000_000, 0
-            )
-        ).reduce_add()
-    elif base_index + 1 < len(dividend.words):
-        # We can safely load 2 words: r0, r1 (r2 = 0)
-        numerator = (
-            dividend.words.unsafe_ptr()
-            .unsafe_load[width=2](base_index)
-            .cast[DType.uint128]()
-            * SIMD[DType.uint128, 2](1, 1_000_000_000)
-        ).reduce_add()
-    elif base_index < len(dividend.words):
-        # We can only load 1 word: r0 (r1 = r2 = 0)
-        numerator = UInt128(dividend.words[base_index])
-    else:
-        # All words are zero
-        numerator = UInt128(0)
+    var n = len(divisor.words)
+    var base_index = index_of_word + n - 2
+    var dividend_ptr = dividend.words.unsafe_ptr()
+    var n_dividend = len(dividend.words)
 
-    # Extract two highest words of divisor using SIMD
-    var denominator: UInt128
+    var r0 = UInt64(0)
+    var r1 = UInt64(0)
+    var r2 = UInt64(0)
+    if base_index < n_dividend:
+        r0 = UInt64(dividend_ptr[unsafe_offset=base_index])
+    if base_index + 1 < n_dividend:
+        r1 = UInt64(dividend_ptr[unsafe_offset=base_index + 1])
+    if base_index + 2 < n_dividend:
+        r2 = UInt64(dividend_ptr[unsafe_offset=base_index + 2])
+
+    var divisor_ptr = divisor.words.unsafe_ptr()
     debug_assert[assert_mode="none"](
-        len(divisor.words) >= 2,
+        n >= 2,
         "biguint.arithmetics.floor_divide_estimate_quotient(): ",
         "Divisor must have at least 2 words by design.",
     )
-    denominator = (
-        divisor.words.unsafe_ptr()
-        .unsafe_load[width=2](len(divisor.words) - 2)
-        .cast[DType.uint128]()
-        * SIMD[DType.uint128, 2](1, 1_000_000_000)
-    ).reduce_add()
+    var d0 = UInt64(divisor_ptr[unsafe_offset=n - 2])
+    var d1 = UInt64(divisor_ptr[unsafe_offset=n - 1])
 
-    # Use the SIMD-computed full dividend
-    var quotient_128 = numerator // denominator
+    var top = r2 * BASE + r1
+    var quotient = top // d1
+    var rest = top - quotient * d1
 
-    # Convert back to UInt32
-    var quotient = UInt32(quotient_128)
+    if quotient >= BASE:
+        quotient = BASE - 1
+        rest = top - quotient * d1
 
-    # Ensure we don't exceed the maximum value for a single word
-    return min(quotient, BigUInt.BASE_MAX)
+    # `quotient * d0` is below 10^18 and so is `rest * BASE + r0`, so the test
+    # is exact in 64 bits. At most two rounds: that is Knuth's bound for a
+    # normalized divisor.
+    while rest < BASE and quotient * d0 > rest * BASE + r0:
+        quotient -= 1
+        rest += d1
+
+    return UInt32(quotient)
 
 
 def floor_divide_by_uint32(x: BigUInt, y: UInt32) -> BigUInt:
@@ -3384,8 +3547,13 @@ def floor_divide_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
         # Forward shift is safe: dst index < src index, dst[i] is
         # written before src[i+1] is read.
         var keep = len(x.words) - word_shift
+        # The pointer is taken once. Indexing `x.words[i]` inside the loop
+        # would ask `WordList` where its storage lives on every access, and
+        # the answer is a branch the compiler will not always hoist out from
+        # under a store.
+        var pointer = x.words.unsafe_ptr()
         for i in range(keep):
-            x.words[i] = x.words[i + word_shift]
+            pointer[unsafe_offset=i] = pointer[unsafe_offset=i + word_shift]
         x.words.shrink(keep)
 
     _shift_right_by_decimal_digits_inplace(x, digit_shift)
@@ -3423,10 +3591,12 @@ def _shift_right_by_decimal_digits_inplace(mut x: BigUInt, digit_shift: Int):
         divisor = UInt32(100000000)
     var power_of_carry = BigUInt.BASE // divisor
     var carry = UInt32(0)
+    var pointer = x.words.unsafe_ptr()
     for i in range(len(x.words) - 1, -1, -1):
-        var quot = x.words[i] // divisor
-        var rem = x.words[i] % divisor
-        x.words[i] = quot + carry * power_of_carry
+        var word = pointer[unsafe_offset=i]
+        var quot = word // divisor
+        var rem = word % divisor
+        pointer[unsafe_offset=i] = quot + carry * power_of_carry
         carry = rem
     x.remove_leading_empty_words()
 
@@ -4501,14 +4671,8 @@ def floor_divide_modulo(
         overwrite_with_uint64(remainder, double_remainder)
         return quotient^
 
-    # CASE: y is triple or quadruple words
-    if len(y.words) <= 4:
-        var quad_remainder = UInt128(0)
-        var quotient = floor_divide_modulo_by_uint128(
-            x, y.to_uint128_with_first_4_words(), quad_remainder
-        )
-        overwrite_with_uint128(remainder, quad_remainder)
-        return quotient^
+    # See `floor_divide()` for why three- and four-word divisors no longer
+    # take a `UInt128` shortcut here.
 
     # CASE: Divisor is 10^n
     if y.is_power_of_10():

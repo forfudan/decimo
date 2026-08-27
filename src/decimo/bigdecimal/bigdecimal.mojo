@@ -259,13 +259,12 @@ struct BigDecimal(
         """
         comptime assert dtype.is_integral(), (
             "\n***********************************************************\n"
-            "BigDecimal does not allow floating-point numbers as input to"
-            " avoid unintentional loss of precision. If you want to create"
-            " a BigDecimal from a floating-point number, please consider"
-            " wrapping it with quotation marks or using the"
-            " `BigDecimal.from_float_scalar()` method"
-            " instead."
-            "\n***********************************************************"
+            "BigDecimal does not allow floating-point numbers as input to\n"
+            " avoid unintentional loss of precision. If you want to create\n"
+            " a BigDecimal from a floating-point number, please consider\n"
+            " wrapping it with quotation marks or using the\n"
+            " `BigDecimal.from_float_scalar()` method instead.\n"
+            "***********************************************************"
         )
 
         self = Self.from_integral_scalar(value)
@@ -490,7 +489,10 @@ struct BigDecimal(
         if number_of_digits % 9 != 0:
             number_of_words += 1
 
-        var coefficient_words = List[UInt32](capacity=number_of_words)
+        # Packed straight into the coefficient. Filling a `List[UInt32]` and
+        # handing it to `raw_words=` allocated once for the list and again to
+        # copy it into place.
+        var coefficient = BigUInt(uninitialized_capacity=number_of_words)
 
         var end: Int = number_of_digits
         var start: Int
@@ -499,15 +501,15 @@ struct BigDecimal(
             var word: UInt32 = 0
             for i in range(start, end):
                 word = word * 10 + UInt32(coef[i])
-            coefficient_words.append(word)
+            coefficient.words.append(word)
             end = start
         if end > 0:
             var word: UInt32 = 0
             for i in range(end):
                 word = word * 10 + UInt32(coef[i])
-            coefficient_words.append(word)
+            coefficient.words.append(word)
 
-        var coefficient = BigUInt(raw_words=coefficient_words^)
+        coefficient.remove_leading_empty_words()
 
         return Self(coefficient=coefficient^, scale=scale, sign=sign)
 
@@ -683,6 +685,7 @@ struct BigDecimal(
         scientific: Bool = False,
         engineering: Bool = False,
         force_plain: Bool = False,
+        force_exponent: Bool = False,
         delimiter: String = "",
         line_width: Int = 0,
     ) -> String:
@@ -691,9 +694,15 @@ struct BigDecimal(
         This method follows CPython's `Decimal.__str__` logic exactly for
         the default and scientific-notation paths.
 
-        - Engineering notation (`engineering=True`) is tried first.
-          The exponent is always a multiple of 3 (e.g. `12.34E+6`,
-          `500E-3`).  Trailing zeros in the mantissa are stripped.
+        - Engineering notation (`engineering=True`) changes only the choice
+          of exponent, to a multiple of 3 (e.g. `123E+3`, `500E-9`). Whether
+          an exponent is shown at all is decided by the same rules as below,
+          so `123456` still prints plainly. Trailing zeros are kept. This
+          matches CPython's `Decimal.to_eng_string()`.
+        - `force_exponent=True` shows one regardless. That is what someone
+          asking a formatter for engineering notation means -- the calculator's
+          `--engineering` flag, say -- as opposed to `to_eng_string()`, which
+          has to answer the way CPython does.
         - Scientific notation is used when:
           1. `scientific` parameter is True, OR
           2. The internal exponent > 0 (i.e., scale < 0), OR
@@ -708,9 +717,12 @@ struct BigDecimal(
             scientific: If True, the number is always represented in
                 scientific notation (trailing zeros stripped).  The format is
                 otherwise determined by the CPython-compatible rules above.
-            engineering: If True, the number is represented in engineering
-                notation (exponent is a multiple of 3, trailing zeros
-                stripped).
+            engineering: If True, any exponent shown is a multiple of 3, with
+                one to three digits before the point. Trailing zeros are
+                kept.
+            force_exponent: If True, always show an exponent, even where the
+                rules below would print the number plainly. Only meaningful
+                together with `engineering` or `scientific`.
             force_plain: If True, suppress the CPython-compatible
                 auto-detection of scientific notation (the `scale < 0` and
                 `leftdigits <= -6` rules are not applied).  Useful when a
@@ -757,9 +769,22 @@ struct BigDecimal(
             not force_plain and (self.scale < 0 or leftdigits <= -6)
         )
 
-        if engineering:
-            # Engineering notation: exponent is always a multiple of 3.
-            # Examples: 12345 -> 12.345E+3, 0.001 -> 1E-3, 0.5 -> 500E-3.
+        if engineering and (use_scientific or force_exponent):
+            # Engineering notation differs from scientific in one way only:
+            # the exponent is rounded down to a multiple of 3, so one to three
+            # digits stand before the point. Whether an exponent is shown at
+            # all is the same question as for scientific notation, which is
+            # why this branch is guarded by `use_scientific` -- CPython's
+            # `to_eng_string()` prints 123456 and 0.00012 plainly, exactly as
+            # `str()` does.
+            #
+            # `force_exponent` is the other reading: a caller who has asked a
+            # formatter for engineering notation wants to see one. The two are
+            # different questions and used to share an answer.
+            #
+            # Trailing zeros stay. They are not noise: `1.2300` and `1.23` are
+            # equal numbers with different exponents, and the string is what
+            # tells them apart.
             var adjusted_exp = leftdigits - 1
             var eng_exp: Int
             if adjusted_exp >= 0:
@@ -768,18 +793,7 @@ struct BigDecimal(
                 eng_exp = -((-adjusted_exp + 2) // 3) * 3
             var lead_digits = adjusted_exp - eng_exp + 1  # always 1, 2, or 3
 
-            # Strip trailing zeros (artifacts of working precision)
             var coef = coefficient_string
-            var coef_byte = StringSlice(coef).as_bytes()
-            var clen = len(coef_byte)
-            var cptr = coef_byte.unsafe_ptr()
-            while clen > 1 and cptr[unsafe_offset=clen - 1] == 48:  # '0'
-                clen -= 1
-            if clen < num_digits:
-                var trimmed = List[UInt8](capacity=clen)
-                for i in range(clen):
-                    trimmed.append(cptr[unsafe_offset=i])
-                coef = String(unsafe_from_utf8=trimmed^)
 
             # Zero-pad the right side if fewer sig-digits than lead_digits
             # e.g. coef="5", lead_digits=3  ->  coef="500"  (500E-3)
@@ -927,16 +941,23 @@ struct BigDecimal(
         return self.to_string(scientific=True)
 
     def to_eng_string(self) -> String:
-        """Returns the number in engineering notation (exponent is a multiple
-        of 3, trailing zeros stripped).
+        """Returns the number in engineering notation, as CPython does.
+
+        This is `String(self)` with one change: where that would show an
+        exponent, this shows one that is a multiple of 3, leaving one to three
+        digits before the point. Where `String(self)` prints plainly, so does
+        this. Matches `decimal.Decimal.to_eng_string()`.
 
         Convenience alias for `to_string(engineering=True)`.
 
         Examples:
 
         ```
-        BigDecimal("123456.789").to_eng_string()  # "123.456789E+3"
-        BigDecimal("0.00123").to_eng_string()     # "1.23E-3"
+        BigDecimal("123456").to_eng_string()   # "123456"   (as str does)
+        BigDecimal("0.00012").to_eng_string()  # "0.00012"  (as str does)
+        BigDecimal("1.23E+5").to_eng_string()  # "123E+3"
+        BigDecimal("5E-7").to_eng_string()     # "500E-9"
+        BigDecimal("1.2300").to_eng_string()   # "1.2300"   (zeros kept)
         ```
 
         Returns:
@@ -2368,6 +2389,44 @@ struct BigDecimal(
         """
         return bigdecimal_rounding.round(self, ndigits, rounding_mode)
 
+    def round_to_precision(self, precision: Int) raises -> Self:
+        """Rounds to `precision` significant digits, as an operation would.
+
+        This is what Python's unary `+` does: it takes a value computed at
+        some wider working precision and brings it back to the precision you
+        actually want, HALF_EVEN, with no trailing zeros added.
+
+        A carry out of the leading digit is handled, so the result never has
+        more than `precision` significant digits: at precision 5,
+        `0.99999999` rounds to `1.0000`, not `1.00000`.
+
+        Args:
+            precision: The number of significant digits to keep.
+
+        Returns:
+            A new `BigDecimal` rounded to `precision` significant digits.
+
+        Raises:
+            Error: If the underlying rounding operation fails.
+
+        Examples:
+
+        ```mojo
+        from decimo import BigDecimal
+
+        print(BigDecimal("1.2345678").round_to_precision(5))   # 1.2346
+        print(BigDecimal("0.99999999").round_to_precision(5))  # 1.0000
+        ```
+        """
+        var result = self.copy()
+        result.round_to_precision_inplace(
+            precision,
+            RoundingMode.ROUND_HALF_EVEN,
+            remove_extra_digit_due_to_rounding=True,
+            fill_zeros_to_precision=False,
+        )
+        return result^
+
     @always_inline
     def round_to_precision_inplace(
         mut self,
@@ -2967,9 +3026,12 @@ struct BigDecimal(
             number_of_digits_to_remove % 9
         )
 
-        var words = List[UInt32](
-            self.coefficient.words[number_of_words_to_remove:]
-        )
+        var kept = len(self.coefficient.words) - number_of_words_to_remove
+        var words = List[UInt32](capacity=kept)
+        for index in range(
+            number_of_words_to_remove, len(self.coefficient.words)
+        ):
+            words.append(self.coefficient.words[index])
         var coefficient = BigUInt(raw_words=words^)
 
         if number_of_remaining_digits_to_remove == 0:

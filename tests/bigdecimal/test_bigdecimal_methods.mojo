@@ -159,22 +159,62 @@ def test_to_scientific_string_zero() raises:
 
 
 def test_to_eng_string_basic() raises:
-    """Engineering notation: exponent is a multiple of 3."""
+    """An exponent, when shown, is a multiple of 3.
+
+    Every expected value here is what CPython's
+    `decimal.Decimal(...).to_eng_string()` returns. Engineering notation only
+    changes the *choice* of exponent -- it does not force one to appear, which
+    is why the first three cases print plainly.
+    """
+    testing.assert_equal(BigDecimal("123456.789").to_eng_string(), "123456.789")
+    testing.assert_equal(BigDecimal("0.00123").to_eng_string(), "0.00123")
+    testing.assert_equal(BigDecimal("1000000").to_eng_string(), "1000000")
+    # These do carry an exponent, and it is a multiple of three.
+    testing.assert_equal(BigDecimal("1E+6").to_eng_string(), "1E+6")
+    testing.assert_equal(BigDecimal("1.23E+5").to_eng_string(), "123E+3")
+    testing.assert_equal(BigDecimal("5E-7").to_eng_string(), "500E-9")
+    testing.assert_equal(BigDecimal("1234.5E+2").to_eng_string(), "123.45E+3")
+
+
+def test_to_string_force_exponent() raises:
+    """`force_exponent` shows one where `to_eng_string()` would not.
+
+    Two different questions. `to_eng_string()` answers the one the decimal
+    spec asks -- "identical to the scientific form, except that any exponent
+    is a multiple of three" -- so where `str()` prints plainly, so does it.
+    A caller who asks a formatter for engineering notation, such as the
+    calculator's `--engineering` flag, is asking the other one.
+    """
+    var value = BigDecimal("12345.678")
+    testing.assert_equal(value.to_eng_string(), "12345.678")
     testing.assert_equal(
-        BigDecimal("123456.789").to_eng_string(), "123.456789E+3"
+        value.to_string(engineering=True, force_exponent=True), "12.345678E+3"
     )
-    testing.assert_equal(BigDecimal("0.00123").to_eng_string(), "1.23E-3")
-    testing.assert_equal(BigDecimal("1000000").to_eng_string(), "1E+6")
+
+    var negative = BigDecimal("-12345.678")
+    testing.assert_equal(
+        negative.to_string(engineering=True, force_exponent=True),
+        "-12.345678E+3",
+    )
+
+    # Where an exponent was going to be shown anyway, the two agree.
+    var scaled = BigDecimal("1.23E+5")
+    testing.assert_equal(scaled.to_eng_string(), "123E+3")
+    testing.assert_equal(
+        scaled.to_string(engineering=True, force_exponent=True), "123E+3"
+    )
 
 
-def test_to_eng_string_trailing_zeros_stripped() raises:
-    """Trailing zeros are stripped in engineering notation."""
-    var v = BigDecimal("1230.00")
-    var s = v.to_eng_string()
-    # Should not have trailing zeros in mantissa
-    testing.assert_false(
-        s.startswith("1230.00"), "trailing zeros should be stripped: " + s
-    )
+def test_to_eng_string_keeps_trailing_zeros() raises:
+    """Trailing zeros stay, because they carry the exponent.
+
+    `1230.00` and `1230` are equal numbers written at different scales, and
+    the string is what distinguishes them. CPython keeps them here too.
+    """
+    testing.assert_equal(BigDecimal("1230.00").to_eng_string(), "1230.00")
+    testing.assert_equal(BigDecimal("1.2300").to_eng_string(), "1.2300")
+    testing.assert_equal(BigDecimal("-1.50").to_eng_string(), "-1.50")
+    testing.assert_equal(BigDecimal("0E+3").to_eng_string(), "0E+3")
 
 
 def test_to_eng_string_negative() raises:
