@@ -564,12 +564,14 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
 
 1. **`BigInt`'s words are `UInt64`, and its base is 2^64.** `BigInt.words`,
    `Magnitude` and `BInt(raw_words=..., sign=...)` all follow. Code that reads
-   or builds the magnitude directly has to change: a list literal becomes
-   `[UInt64(1)]` rather than `[UInt32(1)]`, and anything that assumed 32 bits
-   to a word -- a shift of 32, a mask of `0xFFFF_FFFF`, a word count from a
-   bit length -- has to be rewritten for 64. Values, strings and every
-   arithmetic result are unchanged; only the representation is. `BigUInt` is
-   untouched: base 10^9 in `uint32`.
+   or builds the magnitude directly has to change. A list literal becomes
+   `[UInt64(1)]` rather than `[UInt32(1)]`. Anywhere a word was taken to be 32
+   bits it now has to be taken as 64: shifting by 32 becomes shifting by 64,
+   masking with `0xFFFF_FFFF` becomes masking with `0xFFFF_FFFF_FFFF_FFFF` or
+   dropping the mask, and a word count derived as `(bits + 31) // 32` becomes
+   `(bits + 63) // 64`. Values, strings and every arithmetic result are
+   unchanged; only the representation is. `BigUInt` is untouched: base 10^9 in
+   `uint32`.
 
 1. **`BInt(raw_words=..., sign=...)` takes a `Magnitude`, not a
    `List[UInt32]`.** That is the inline word storage `BigInt` moved to, and

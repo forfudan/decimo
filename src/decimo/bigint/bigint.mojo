@@ -124,9 +124,10 @@ struct BigInt(
     This is analogous to GMP and most modern bigint libraries that use
     native-word-sized limbs with a separate sign.
 
-    Arithmetic intermediate results use UInt64 for single products
-    (UInt64 * UInt64 → UInt64) and UInt128 for accumulation, which allows
-    efficient schoolbook and Karatsuba multiplication on 64-bit hardware.
+    Arithmetic intermediate results use UInt128 for single products
+    (UInt64 * UInt64 → UInt128, which is `MUL` plus `UMULH` on arm64) and for
+    accumulation, which allows efficient schoolbook and Karatsuba
+    multiplication on 64-bit hardware.
 
     Representation invariant:
 
@@ -250,7 +251,7 @@ struct BigInt(
     @implicit
     def __init__(out self, value: Scalar) where value.dtype.is_integral():
         """Constructs a BigInt from an integral scalar.
-        This includes all SIMD integral types, such as Int8, Int16, UInt64, etc.
+        This includes all SIMD integral types, such as Int8, Int16, UInt32, etc.
 
         Constraints:
             The dtype of the scalar must be integral.
@@ -271,7 +272,7 @@ struct BigInt(
         """Initializes a BigInt from an integral scalar.
         This includes all SIMD integral types:
         Int8, Int16, Int32, Int64, Int128, Int256,
-        UInt8, UInt16, UInt64, UInt64, UInt128, UInt256,
+        UInt8, UInt16, UInt32, UInt64, UInt128, UInt256,
         and the platform-sized Int (DType.int) and UInt (DType.uint).
 
         Constraints:
@@ -2089,56 +2090,6 @@ struct BigInt(
 # ===----------------------------------------------------------------------=== #
 
 
-def _multiply_by_uint32_inplace(mut x: BigInt, y: UInt64):
-    """Multiplies a BigInt magnitude by a UInt64 scalar in-place.
-
-    This is used internally by from_string() during base conversion.
-
-    Args:
-        x: The BigInt to multiply (modified in-place).
-        y: The UInt64 scalar multiplier.
-    """
-    if y == 0:
-        x.words = [UInt64(0)]
-        x.sign = False
-        return
-    if y == 1:
-        return
-
-    var carry: UInt64 = 0
-    for i in range(len(x.words)):
-        var product = UInt128(x.words[i]) * UInt128(y) + UInt128(carry)
-        x.words[i] = UInt64(product)
-        carry = UInt64(product >> 64)
-
-    if carry > 0:
-        x.words.append(UInt64(carry))
-
-
-def _add_by_uint32_inplace(mut x: BigInt, y: UInt64):
-    """Adds a UInt64 value to a BigInt magnitude in-place.
-
-    This is used internally by from_string() during base conversion.
-
-    Args:
-        x: The BigInt to add to (modified in-place).
-        y: The UInt64 value to add.
-    """
-    if y == 0:
-        return
-
-    var carry: UInt64 = UInt64(y)
-    for i in range(len(x.words)):
-        if carry == 0:
-            break
-        var sum = x.words[i] + carry
-        x.words[i] = sum
-        carry = UInt64(sum < carry)
-
-    if carry > 0:
-        x.words.append(UInt64(carry))
-
-
 def _multiply_add_inplace(mut x: BigInt, mul: UInt64, add: UInt64):
     """Computes x = x * mul + add in a single pass over the word array.
 
@@ -2182,7 +2133,8 @@ def _multiply_add_inplace(mut x: BigInt, mul: UInt64, add: UInt64):
 
 # Thresholds for D&C from_string, measured in decimal digit count.
 # The simple multiply-and-add method has very low constant factors
-# (sequential UInt64 operations), so D&C only wins at much larger sizes
+# (one sequential pass of word-sized multiply-adds), so D&C only wins at
+# much larger sizes
 # than for to_string (where the saved divisions are each expensive).
 # Entry threshold: only enter D&C when the digit count is large enough
 # that the O(n²) simple method is significantly slower than the O(M(n)·log n)
@@ -2226,8 +2178,10 @@ def _from_decimal_digits_simple(
     var digit_count = end - start
 
     # ---- Fast path: <= 19 digits -> a single word, no allocation ----
-    # `10^18 - 1` is below `2^64`, so nineteen digits always fit one word and
-    # the running value cannot overflow on the way in either.
+    # `10^19 - 1` is below `2^64`, so nineteen digits always fit one word and
+    # the running value cannot overflow on the way in either. This is the one
+    # place that uses all nineteen; the chunk base below stops at eighteen for
+    # a different reason.
     if digit_count <= 19:
         var dp = digits.unsafe_ptr().unsafe_offset(start)
         var val: UInt64 = UInt64(dp[])
@@ -2264,7 +2218,7 @@ def _from_decimal_digits_simple(
     var word_count: Int = 1
     var remaining = digit_count - first_chunk
 
-    # Main loop: full 19-digit chunks with constant multiplier 10^18.
+    # Main loop: full 18-digit chunks with constant multiplier 10^18.
     comptime MUL18 = UInt128(_DECIMAL_CHUNK_BASE)
 
     while remaining > 0:

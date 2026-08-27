@@ -486,7 +486,9 @@ def reciprocal_sqrt_fixed_point(
     the root through one and returns the root.
 
     It exists because a `BigDecimal` holds its coefficient in base 10^9, where
-    the same multiplication costs about 2.8x what it does in base 2^64.
+    the same multiplication costs about 2.8x what it did in the base-2^32
+    `BigInt` that figure was measured against. `BigInt` is base 2^64 now and
+    multiplies 1.0x to 1.4x faster again, so the gap only widened.
 
     The iteration is Newton's for the reciprocal square root, written around
     the residual so that no step ever multiplies at the full target width:
