@@ -80,7 +80,7 @@ behind -- 1.4x at a hundred digits and 2.7x at ten. `docs/benchmarks.md`
 carries the current figures.
 """
 
-comptime Magnitude = WordList[INLINE_WORDS]
+comptime Magnitude = WordList[DType.uint32, INLINE_WORDS]
 """The word storage for a `BigInt` magnitude, little-endian, base 2^32."""
 
 # Type aliases
