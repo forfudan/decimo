@@ -957,7 +957,7 @@ in one session, three pairs:
   inlined the whole thing.
 - **Padding the dividend by digits instead of whole words.** Saves a quotient
   word -- 36 digits of padding where 30 will do -- and costs more than it
-  saves, because `multiply_by_power_of_billion` only prepends zero words while
+  saves, because `multiply_by_power_of_base` only prepends zero words while
   `multiply_by_power_of_ten` walks the whole number. 112.5 -> 117 ns.
 - **Hoisting the quotient estimator's invariants** out of the loop, so the
   divisor's top two words and the running pointer are read once rather than

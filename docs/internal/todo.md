@@ -6,7 +6,7 @@ enhancement plans in `docs/plans/` carry the detail and the reasoning, and
 ranking. There were four such lists in August 2026 and they had already
 drifted apart, so there is now one.
 
-Last reviewed 2026-08-28 (fifth pass).
+Last reviewed 2026-08-28 (sixth pass).
 
 ## Goal, round one: met (20260826)
 
@@ -277,7 +277,7 @@ they are the first three.
    Knuth D over five quotient words, ~15 rounding and construction. Four
    things were tried and did not help -- calling Knuth D without the second
    dispatch (neutral; the compiler had already inlined it), padding by digits
-   instead of whole words (worse, because `multiply_by_power_of_billion` only
+   instead of whole words (worse, because `multiply_by_power_of_base` only
    prepends zero words while `multiply_by_power_of_ten` walks the number),
    hoisting the estimator's invariants (neutral), and raising the inline
    capacity past ten (no gain). What is left is either Newton reciprocal
@@ -309,8 +309,24 @@ they are the first three.
 8. **Audit the remaining `UInt128` and `UInt256` uses.** Three of the day's
    biggest wins were removing one. The rule: 128-bit as an *accumulator* is
    fine, because a 64x64 multiply is one instruction; 128-bit or 256-bit as
-   the *left side of a divide* is a call to a software helper, 20-40 ns.
-   Known remaining: `decimal128/`, `rational/`, `bigint/exponential.mojo`.
+   the *left side of a divide by a variable* is a call to a software helper,
+   20-40 ns. Known remaining: `decimal128/`, `rational/`,
+   `bigint/exponential.mojo`.
+
+   **A constant divisor is not in that class** (20260828). LLVM expands
+   `UInt128 // <constant>` into multiply-high, so the `% BASE` and `// BASE`
+   in the wide Comba path are not calls. Marginal cost measured against an
+   empty loop, arm64:
+
+   | operation                                      | ns   |
+   | ---------------------------------------------- | ---- |
+   | `UInt64 // 10^9`, constant                     | 0.06 |
+   | `UInt128 // 10^9`, constant                    | 0.32 |
+   | `UInt128 // 10^18`, constant                   | 0.40 |
+   | `UInt128 // 10^18`, Moller-Granlund reciprocal | 0.50 |
+
+   The hand-rolled reciprocal is *slower* than what the compiler emits for a
+   constant. Reach for it only when the divisor is a runtime value.
 9. **Base 10^18 for `BigUInt`.** The honest answer to "why is division still
    behind": for a 28-digit value libmpdec holds two words and decimo holds
    four, so every loop runs twice as long. Nothing above closes that.
@@ -328,9 +344,40 @@ they are the first three.
 
    `BigUInt` is a smaller job -- base 10^18 is still a decimal base, so the
    conversion paths do not move -- but every partial product needs 128-bit
-   accumulation, and `% BASE` on a `UInt128` is the thing that was slow
-   everywhere else. Worth measuring on a prototype before believing either
-   way. The payoff is the four rows still behind CPython's `decimal`.
+   accumulation.
+
+   **Measured on a prototype (20260828), and it is worth doing.** The two
+   bases written the same way, same digit count, results cross-checked
+   against each other. Ratios are 10^9 over 10^18, so above 1.00 means the
+   wider word wins:
+
+   | digits | add   | Comba multiply | Knuth D multiply-subtract |
+   | ------ | ----- | -------------- | ------------------------- |
+   | 18     | 1.26x | 0.52x          | 0.71x                     |
+   | 36     | 1.19x | 0.94x          | 1.46x                     |
+   | 72-90  | 1.43x | 1.24x          | 1.58x                     |
+   | 288    | 1.15x | 2.41x          | 1.66x                     |
+   | 1 000  | 1.49x | 2.59x          | 1.67x                     |
+   | 9 000  | 1.48x | ~3.0x          | 1.69x                     |
+   | 10^6   | 1.10x | (transform)    | --                        |
+
+   Three things the numbers say that the model did not. Multiply passes 2x
+   and keeps going, because base 10^9's wide path pays a 128-bit *add* per
+   partial product and there are four times as many of them. Add gains from
+   the second pass of `_add_words_vectorized`, which walks every word
+   serially and so halves; the SIMD pass moves the same bytes either way, and
+   at 10^6 the whole thing is memory-bound and the gain falls to 1.10x. And
+   the wider word *loses* below about 36 digits, where the existing narrow
+   `UInt64` column path is strong and base 10^18 has no equivalent -- a
+   partial product is `10^36` and needs 128 bits whatever the operands are.
+   That is exactly where item 1 lives, so small-operand paths would have to
+   be written by hand rather than inherited.
+
+   Ground laid (20260828): `DIGITS_PER_WORD` now names the digits in a word,
+   `BASE` and friends are derived from it, `*_power_of_billion` is
+   `*_power_of_base`, and the `BigUInt` docstring lists what a base change
+   still has to rewrite by hand. A guard-digit count of 9 is not a word width
+   and was deliberately left alone.
 10. ~~**`floor_divide()` 2n-by-n scaling** in `BigUInt`~~ -- answered below.
 
 ## Blocked on the language

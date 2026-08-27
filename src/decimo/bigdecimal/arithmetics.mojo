@@ -564,8 +564,8 @@ def true_divide_fast(
     # We need to ensure that a * 10^s // b has more significant digits than p.
     # A quicker way is to add whole empty words to the dividend.
     # Let n_diff = len(a.words) - len(b.words).
-    # We add ceil(precision // 9) + 1 - n_diff empty words to the dividend.
-    # This ensures that we always have at least 9 extra digits in the dividend.
+    # We add ceil(precision / DIGITS_PER_WORD) + 1 - n_diff empty words to the
+    # dividend, which leaves at least one whole word of extra digits there.
 
     debug_assert[assert_mode="none"](
         minimum_precision > 0,
@@ -579,7 +579,9 @@ def true_divide_fast(
     # Early-return to avoid extra copies on the common (small-operand) path.
     comptime TRUNCATION_GUARD = 4
     var needed_divisor_words = (
-        math.ceildiv(minimum_precision, 9) + 2 + TRUNCATION_GUARD
+        math.ceildiv(minimum_precision, BigUInt.DIGITS_PER_WORD)
+        + 2
+        + TRUNCATION_GUARD
     )
 
     if len(y.coefficient.words) > needed_divisor_words:
@@ -589,16 +591,20 @@ def true_divide_fast(
 
     # --- Standard path (no truncation, no extra copies) ---
     var diff_n_words = len(x.coefficient.words) - len(y.coefficient.words)
-    var extra_words = math.ceildiv(minimum_precision, 9) + 2 - diff_n_words
-    var extra_digits = extra_words * 9
+    var extra_words = (
+        math.ceildiv(minimum_precision, BigUInt.DIGITS_PER_WORD)
+        + 2
+        - diff_n_words
+    )
+    var extra_digits = extra_words * BigUInt.DIGITS_PER_WORD
 
     var coef_x: BigUInt
     if extra_words > 0:
-        coef_x = biguint_arithmetics.multiply_by_power_of_billion(
+        coef_x = biguint_arithmetics.multiply_by_power_of_base(
             x.coefficient, extra_words
         )
     elif extra_words < 0:
-        coef_x = biguint_arithmetics.floor_divide_by_power_of_billion(
+        coef_x = biguint_arithmetics.floor_divide_by_power_of_base(
             x.coefficient, -extra_words
         )
     else:
@@ -626,30 +632,36 @@ def _true_divide_fast_truncated(
     )
     var y_only_remove = total_y_remove - common_remove
 
-    var y_coef_tr = biguint_arithmetics.floor_divide_by_power_of_billion(
+    var y_coef_tr = biguint_arithmetics.floor_divide_by_power_of_base(
         y.coefficient, total_y_remove
     )
     var x_coef_tr: BigUInt
     if common_remove > 0:
-        x_coef_tr = biguint_arithmetics.floor_divide_by_power_of_billion(
+        x_coef_tr = biguint_arithmetics.floor_divide_by_power_of_base(
             x.coefficient, common_remove
         )
     else:
         x_coef_tr = x.coefficient.copy()
 
-    var scale_adjust_digits = y_only_remove * 9
+    var scale_adjust_digits = y_only_remove * BigUInt.DIGITS_PER_WORD
 
     var diff_n_words = len(x_coef_tr.words) - len(y_coef_tr.words)
-    var extra_words = math.ceildiv(minimum_precision, 9) + 2 - diff_n_words
-    var extra_digits = extra_words * 9 + scale_adjust_digits
+    var extra_words = (
+        math.ceildiv(minimum_precision, BigUInt.DIGITS_PER_WORD)
+        + 2
+        - diff_n_words
+    )
+    var extra_digits = (
+        extra_words * BigUInt.DIGITS_PER_WORD + scale_adjust_digits
+    )
 
     var coef_x: BigUInt
     if extra_words > 0:
-        coef_x = biguint_arithmetics.multiply_by_power_of_billion(
+        coef_x = biguint_arithmetics.multiply_by_power_of_base(
             x_coef_tr, extra_words
         )
     elif extra_words < 0:
-        coef_x = biguint_arithmetics.floor_divide_by_power_of_billion(
+        coef_x = biguint_arithmetics.floor_divide_by_power_of_base(
             x_coef_tr, -extra_words
         )
     else:
@@ -714,7 +726,9 @@ def true_divide_general(
     # with relative error < 10^(-9*remaining_words), well below precision+guard.
     # Early-return to avoid extra copies on the common (small-operand) path.
     comptime TRUNCATION_GUARD = 4
-    var needed_divisor_words = math.ceildiv(precision, 9) + 2 + TRUNCATION_GUARD
+    var needed_divisor_words = (
+        math.ceildiv(precision, BigUInt.DIGITS_PER_WORD) + 2 + TRUNCATION_GUARD
+    )
 
     if len(y.coefficient.words) > needed_divisor_words:
         return _true_divide_general_truncated(
@@ -728,7 +742,8 @@ def true_divide_general(
     # padding with `s` zeros guarantees at least `dx + s - dy`. We want
     # `precision` significant digits plus a couple to round on.
     #
-    # This used to be counted in whole words -- `ceildiv(precision, 9) + 2`
+    # This used to be counted in whole words -- `ceildiv(precision,
+    # DIGITS_PER_WORD) + 2`
     # words, ignoring how many digits the operands actually had. At the default
     # precision of 28 that padded a four-word dividend out to ten words and
     # produced a 54-digit quotient to keep 28 of, roughly twice the necessary
@@ -738,9 +753,9 @@ def true_divide_general(
     var digits_x = x.coefficient.number_of_digits()
     var digits_y = y.coefficient.number_of_digits()
     var extra_words = math.ceildiv(
-        precision + GUARD_DIGITS - digits_x + digits_y, 9
+        precision + GUARD_DIGITS - digits_x + digits_y, BigUInt.DIGITS_PER_WORD
     )
-    var extra_digits = extra_words * 9
+    var extra_digits = extra_words * BigUInt.DIGITS_PER_WORD
 
     var coef_x: BigUInt
     # Whether anything was thrown away below the digits we kept. It is not the
@@ -748,7 +763,7 @@ def true_divide_general(
     # both -- see the sticky digit below.
     var dropped_something = False
     if extra_words > 0:
-        coef_x = biguint_arithmetics.multiply_by_power_of_billion(
+        coef_x = biguint_arithmetics.multiply_by_power_of_base(
             x.coefficient, extra_words
         )
     elif extra_words < 0:
@@ -761,7 +776,7 @@ def true_divide_general(
             if x.coefficient.words[index] != 0:
                 dropped_something = True
                 break
-        coef_x = biguint_arithmetics.floor_divide_by_power_of_billion(
+        coef_x = biguint_arithmetics.floor_divide_by_power_of_base(
             x.coefficient, -extra_words
         )
     else:
@@ -842,30 +857,34 @@ def _true_divide_general_truncated(
     )
     var y_only_remove = total_y_remove - common_remove
 
-    var y_coef_tr = biguint_arithmetics.floor_divide_by_power_of_billion(
+    var y_coef_tr = biguint_arithmetics.floor_divide_by_power_of_base(
         y.coefficient, total_y_remove
     )
     var x_coef_tr: BigUInt
     if common_remove > 0:
-        x_coef_tr = biguint_arithmetics.floor_divide_by_power_of_billion(
+        x_coef_tr = biguint_arithmetics.floor_divide_by_power_of_base(
             x.coefficient, common_remove
         )
     else:
         x_coef_tr = x.coefficient.copy()
 
-    var scale_adjust_digits = y_only_remove * 9
+    var scale_adjust_digits = y_only_remove * BigUInt.DIGITS_PER_WORD
 
     var diff_n_words = len(x_coef_tr.words) - len(y_coef_tr.words)
-    var extra_words = math.ceildiv(precision, 9) + 2 - diff_n_words
-    var extra_digits = extra_words * 9 + scale_adjust_digits
+    var extra_words = (
+        math.ceildiv(precision, BigUInt.DIGITS_PER_WORD) + 2 - diff_n_words
+    )
+    var extra_digits = (
+        extra_words * BigUInt.DIGITS_PER_WORD + scale_adjust_digits
+    )
 
     var coef_x: BigUInt
     if extra_words > 0:
-        coef_x = biguint_arithmetics.multiply_by_power_of_billion(
+        coef_x = biguint_arithmetics.multiply_by_power_of_base(
             x_coef_tr, extra_words
         )
     elif extra_words < 0:
-        coef_x = biguint_arithmetics.floor_divide_by_power_of_billion(
+        coef_x = biguint_arithmetics.floor_divide_by_power_of_base(
             x_coef_tr, -extra_words
         )
     else:
@@ -969,7 +988,9 @@ def true_divide_inexact(
     # --- Truncation optimization for oversized operands ---
     comptime TRUNCATION_GUARD = 4
     var needed_divisor_words = (
-        math.ceildiv(number_of_significant_digits, 9) + 2 + TRUNCATION_GUARD
+        math.ceildiv(number_of_significant_digits, BigUInt.DIGITS_PER_WORD)
+        + 2
+        + TRUNCATION_GUARD
     )
 
     if len(x2.coefficient.words) > needed_divisor_words:
@@ -1029,18 +1050,18 @@ def _true_divide_inexact_truncated(
     )
     var y_only_remove = total_y_remove - common_remove
 
-    var x2_coef_tr = biguint_arithmetics.floor_divide_by_power_of_billion(
+    var x2_coef_tr = biguint_arithmetics.floor_divide_by_power_of_base(
         x2.coefficient, total_y_remove
     )
     var x1_coef_tr: BigUInt
     if common_remove > 0:
-        x1_coef_tr = biguint_arithmetics.floor_divide_by_power_of_billion(
+        x1_coef_tr = biguint_arithmetics.floor_divide_by_power_of_base(
             x1.coefficient, common_remove
         )
     else:
         x1_coef_tr = x1.coefficient.copy()
 
-    var scale_adjust_digits = y_only_remove * 9
+    var scale_adjust_digits = y_only_remove * BigUInt.DIGITS_PER_WORD
 
     var x1_digits = x1_coef_tr.number_of_digits()
     var x2_digits = x2_coef_tr.number_of_digits()

@@ -23,6 +23,7 @@ operation dunders, and other dunders that implement traits, as well as
 mathematical methods that do not implement a trait.
 """
 
+from std import math
 from std.memory import Pointer, unsafe_memcpy, memcmp
 from std.sys import size_of
 
@@ -85,6 +86,36 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
     Call `assert_invariant()` to check the first two. It is a `debug_assert`,
     so it costs nothing in a normal build and fires in the test suite.
+
+    Changing the base:
+
+    `DIGITS_PER_WORD` is the one number that decides the representation, and
+    `BASE`, `BASE_MAX` and `BASE_HALF` are derived from it. Code that converts
+    between a digit position and a word position divides by it rather than by
+    a literal. What is *not* mechanical, and has to be rewritten by hand:
+
+    - `WordList`'s word type and `INLINE_WORDS`, and every `UInt32` in the
+      arithmetic kernels. A word of 18 digits does not fit a `UInt32`.
+    - The Comba accumulator in `multiply_slices_schoolbook`. Its narrow path
+      sums a column in `UInt64` because a partial product is below `10^18`;
+      a wider word puts the product itself past 64 bits.
+    - Knuth D's quotient estimate, for the same reason.
+    - `ntt.mojo`'s packing, which cuts *two* words into three six-digit
+      coefficients because two words are 18 digits.
+    - `MAX_UINT64` and `MAX_UINT128` here, which spell their words out.
+    - Every place that packs a *pair* of words into one machine integer, and
+      so is bound to the width rather than to the base: the SIMD lane vectors
+      in `to_uint64()`, `to_uint128()` and `to_int128()` here, the same shape
+      in `biguint.exponential.sqrt()`, `to_uint64_with_2_words()` and
+      `to_uint128_with_2_words()` in `arithmetics.mojo`, and
+      `floor_divide_three_by_two_uint32()` and its four-by-two sibling. These
+      keep their literals on purpose: a word of 18 digits does not fit a
+      `UInt64` at all, so a named constant here would let the code compile and
+      silently overflow where a literal makes someone look.
+
+    A guard-digit count is not a word width. `BUFFER_DIGITS`, `GUARD_DIGITS`
+    and the like happen to be 9 and stay 9: they say how many extra digits to
+    carry, not how many fit in a word.
     """
 
     var words: WordList[]
@@ -99,11 +130,21 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     # ===------------------------------------------------------------------=== #
 
     # TODO: Make these constants global, e.g., decimo.biguint.BASE
-    comptime BASE = 1_000_000_000
+    comptime DIGITS_PER_WORD = 9
+    """How many decimal digits one word holds.
+
+    The base is `10 ** DIGITS_PER_WORD`, so this is the one number that decides
+    the internal representation. Everything else here is derived from it, and
+    code that converts between a digit position and a word position divides by
+    it. Write `DIGITS_PER_WORD` rather than a literal `9` wherever the `9`
+    means "digits in a word" -- a literal reads the same as an unrelated nine
+    and does not move when the base does.
+    """
+    comptime BASE = 10**Self.DIGITS_PER_WORD
     """The base used for the BigUInt representation."""
-    comptime BASE_MAX = 999_999_999
+    comptime BASE_MAX = Self.BASE - 1
     """The maximum value of a single word in the BigUInt representation."""
-    comptime BASE_HALF = 500_000_000
+    comptime BASE_HALF = Self.BASE // 2
     """Half of the base used for the BigUInt representation."""
     comptime VECTOR_WIDTH = 4
     """The width of the SIMD vector used for arithmetic operations (128-bit)."""
@@ -376,12 +417,13 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
         # Check if the words are valid
         for word in words:
-            if word > UInt32(999_999_999):
+            if word > UInt32(Self.BASE_MAX):
                 raise OverflowError(
                     message=(
                         "Word value "
                         + String(word)
-                        + " exceeds maximum value of 999_999_999"
+                        + " exceeds maximum value of "
+                        + String(Self.BASE_MAX)
                     ),
                     function="BigUInt.from_list()",
                 )
@@ -440,12 +482,13 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
         # Check if the words are valid
         for word in words:
-            if word > UInt32(999_999_999):
+            if word > UInt32(Self.BASE_MAX):
                 raise OverflowError(
                     message=(
                         "Word value "
                         + String(word)
-                        + " exceeds maximum value of 999_999_999"
+                        + " exceeds maximum value of "
+                        + String(Self.BASE_MAX)
                     ),
                     function="BigUInt.from_words()",
                 )
@@ -680,9 +723,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             # decimal digits; 30103/100000 is log10(2) rounded up, which is
             # exact for every width in use (up to 256 bits).
             comptime decimal_digits = value_bits * 30103 // 100000 + 1
-            comptime number_of_words = (
-                decimal_digits + 8
-            ) // 9  # Trick to round up division by the 9 digits per word
+            comptime number_of_words = math.ceildiv(
+                decimal_digits, Self.DIGITS_PER_WORD
+            )
 
             var result = Self(uninitialized_capacity=number_of_words)
             var remainder: Scalar[dtype] = value
@@ -834,9 +877,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             scale = 0
 
         var number_of_digits = len(coef) - scale
-        var number_of_words = number_of_digits // 9
-        if number_of_digits % 9 != 0:
-            number_of_words += 1
+        var number_of_words = math.ceildiv(
+            number_of_digits, Self.DIGITS_PER_WORD
+        )
 
         var result_words = List[UInt32](capacity=number_of_words)
 
@@ -844,8 +887,8 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             # This is a true integer
             var end: Int = number_of_digits
             var start: Int
-            while end >= 9:
-                start = end - 9
+            while end >= Self.DIGITS_PER_WORD:
+                start = end - Self.DIGITS_PER_WORD
                 var word: UInt32 = 0
                 for i in range(start, end):
                     word = word * 10 + UInt32(coef[i])
@@ -861,8 +904,8 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
         else:  # scale < 0
             # This is a true integer with postive exponent
-            var number_of_trailing_zero_words = -scale // 9
-            var remaining_trailing_zero_digits = -scale % 9
+            var number_of_trailing_zero_words = -scale // Self.DIGITS_PER_WORD
+            var remaining_trailing_zero_digits = -scale % Self.DIGITS_PER_WORD
 
             for _ in range(number_of_trailing_zero_words):
                 result_words.append(UInt32(0))
@@ -874,8 +917,8 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 number_of_digits + scale + remaining_trailing_zero_digits
             )
             var start: Int
-            while end >= 9:
-                start = end - 9
+            while end >= Self.DIGITS_PER_WORD:
+                start = end - Self.DIGITS_PER_WORD
                 var word: UInt32 = 0
                 for i in range(start, end):
                     word = word * 10 + UInt32(coef[i])
@@ -962,7 +1005,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
         var value: Int128 = 0
         for i in range(len(self.words)):
-            value += Int128(self.words[i]) * Int128(1_000_000_000) ** i
+            value += Int128(self.words[i]) * Int128(Self.BASE) ** i
 
         if value > Int128(Int.MAX):
             raise OverflowError(
@@ -1190,15 +1233,17 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             # or concatenation needed.
             result = String(self.words[0])
         elif n_words < _BUFFER_PATH_MIN_WORDS:
-            # Reserve the exact upper-bound capacity (9 digits per word) so the
-            # `+=` concatenations never reallocate.
-            result = String(capacity=9 * n_words)
+            # Reserve the exact upper-bound capacity -- one word of digits
+            # each -- so the `+=` concatenations never reallocate.
+            result = String(capacity=Self.DIGITS_PER_WORD * n_words)
             for i in range(n_words - 1, -1, -1):
                 if i == n_words - 1:
                     result += String(self.words[i])
                 else:
                     result += decimo_str.rjust(
-                        String(self.words[i]), width=9, fillchar="0"
+                        String(self.words[i]),
+                        width=Self.DIGITS_PER_WORD,
+                        fillchar="0",
                     )
         else:
             # Count the digits of the most-significant word (no zero-padding).
@@ -1219,7 +1264,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             # The tight `//10` loop beats a per-word `String(UInt32)` + memcpy
             # (benchmarked ~2x slower at 23 words due to per-word allocation
             # and call overhead).
-            var total_len = (n_words - 1) * 9 + msb_len
+            var total_len = (n_words - 1) * Self.DIGITS_PER_WORD + msb_len
             var buf = List[UInt8](unsafe_uninit_length=total_len)
             var p = buf.unsafe_ptr()
             var pos = total_len
@@ -1228,7 +1273,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             # written right-to-left.
             for ci in range(n_words - 1):
                 var val = self.words[ci]
-                for _ in range(9):
+                for _ in range(Self.DIGITS_PER_WORD):
                     pos -= 1
                     p[unsafe_offset=pos] = UInt8(val % 10) + 48
                     val //= 10
@@ -1944,14 +1989,14 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         return biguint_arithmetics.floor_divide_by_power_of_ten(self, n)
 
     @always_inline
-    def multiply_by_power_of_billion_inplace(mut self, n: Int):
-        """Multiplies a BigUInt in-place by (10^9)^n if n > 0.
-        This equals to adding 9n zeros (n words) to the end of the number.
+    def multiply_by_power_of_base_inplace(mut self, n: Int):
+        """Multiplies a BigUInt in-place by `BASE^n` if n > 0.
+        This equals to appending `n` zero words to the end of the number.
 
         Args:
-            n: The power of 10^9 to multiply by. Should be non-negative.
+            n: The power of `BASE` to multiply by. Should be non-negative.
         """
-        biguint_arithmetics.multiply_by_power_of_billion_inplace(self, n)
+        biguint_arithmetics.multiply_by_power_of_base_inplace(self, n)
 
     def power(self, exponent: Int) raises -> Self:
         """Returns the result of raising this number to the power of `exponent`.
@@ -2104,7 +2149,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             var label = "word " + String(i) + ":"
             result += label + String(" ") * (col - label.byte_length())
             result += (
-                decimo_str.rjust(String(self.words[i]), 9, fillchar="0") + "\n"
+                decimo_str.rjust(
+                    String(self.words[i]), Self.DIGITS_PER_WORD, fillchar="0"
+                )
+                + "\n"
             )
 
         result += sep_line
@@ -2310,10 +2358,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                     + "Consider using a non-negative index."
                 ),
             )
-        if i >= len(self.words) * 9:
+        if i >= len(self.words) * Self.DIGITS_PER_WORD:
             return 0
-        var word_index = i // 9
-        var digit_index = i % 9
+        var word_index = i // Self.DIGITS_PER_WORD
+        var digit_index = i % Self.DIGITS_PER_WORD
         if word_index >= len(self.words):
             return 0
         var word = self.words[word_index]
@@ -2336,7 +2384,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             debug_assert(len(self.words) == 1, "There are leading zero words.")
             return 1
 
-        var result: Int = (len(self.words) - 1) * 9
+        var result: Int = (len(self.words) - 1) * Self.DIGITS_PER_WORD
         var last_word = self.words[len(self.words) - 1]
         while last_word > 0:
             result += 1
@@ -2360,7 +2408,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         var result: Int = 0
         for i in range(len(self.words)):
             if self.words[i] == 0:
-                result += 9
+                result += Self.DIGITS_PER_WORD
             else:
                 var word = self.words[i]
                 while word % 10 == 0:

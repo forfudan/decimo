@@ -2534,12 +2534,16 @@ def compute_ln2(working_precision: Int) raises -> BigDecimal:
 
     var max_terms = Int(Float64(working_precision) * 2.5) + 1
 
-    var number_of_words = working_precision // 9 + 1
+    var number_of_words = working_precision // BigUInt.DIGITS_PER_WORD + 1
     var words = List[UInt32](capacity=number_of_words)
+    # A word of all threes, whatever the word width: (BASE - 1) / 3.
+    comptime WORD_OF_THREES = UInt32(BigUInt.BASE_MAX // 3)
     for _ in range(number_of_words):
-        words.append(UInt32(333_333_333))
+        words.append(WORD_OF_THREES)
     var x = BigDecimal(
-        BigUInt(raw_words=words^), number_of_words * 9, False
+        BigUInt(raw_words=words^),
+        number_of_words * BigUInt.DIGITS_PER_WORD,
+        False,
     )  # x = 1/3
 
     var result = BigDecimal(BigUInt.zero(), 0, False)
@@ -2608,12 +2612,16 @@ def compute_ln1d25(precision: Int) raises -> BigDecimal:
     var working_precision = precision
     var max_terms = Int(Float64(working_precision) * 1.2) + 10
 
-    var number_of_words = working_precision // 9 + 1
+    var number_of_words = working_precision // BigUInt.DIGITS_PER_WORD + 1
     var words = List[UInt32](capacity=number_of_words)
+    # A word of all ones, whatever the word width: (BASE - 1) / 9.
+    comptime WORD_OF_ONES = UInt32(BigUInt.BASE_MAX // 9)
     for _ in range(number_of_words):
-        words.append(UInt32(111_111_111))
+        words.append(WORD_OF_ONES)
     var x = BigDecimal(
-        BigUInt(raw_words=words^), number_of_words * 9, False
+        BigUInt(raw_words=words^),
+        number_of_words * BigUInt.DIGITS_PER_WORD,
+        False,
     )  # x = 1/9
 
     var result = BigDecimal(BigUInt.zero(), 0, False)

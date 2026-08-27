@@ -33,6 +33,7 @@ Design:
     - RAII: destructor frees MPFR handle via `mpfrw_clear`
 """
 
+from std import math
 from std.ffi import external_call, c_char
 from std.memory import Pointer
 
@@ -368,14 +369,12 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         # e.g. digits "31415" with exp=1 → 3.1415 → scale = 5 - 1 = 4
         var scale = num_digits - exp
 
-        # 4. Pack ASCII bytes directly into base-10⁹ words
-        var number_of_words = num_digits // 9
-        if num_digits % 9 != 0:
-            number_of_words += 1
+        # 4. Pack ASCII bytes directly into the coefficient's words
+        var number_of_words = math.ceildiv(num_digits, BigUInt.DIGITS_PER_WORD)
         var words = List[UInt32](capacity=number_of_words)
         var end = num_digits
-        while end >= 9:
-            var start = end - 9
+        while end >= BigUInt.DIGITS_PER_WORD:
+            var start = end - BigUInt.DIGITS_PER_WORD
             var word: UInt32 = 0
             for j in range(start, end):
                 word = word * 10 + UInt32(
