@@ -2912,9 +2912,15 @@ def floor_divide_modulo_schoolbook(
 
     # One guard word above the dividend, so `index_of_word + n` is always a
     # real position for the fused subtraction to take its final borrow from.
-    var running = BigUInt(uninitialized_capacity=len(x.words) + 1)
-    running.words = x.words.copy()
-    running.words.append(UInt32(0))
+    # One buffer, filled once. Assigning `x.words.copy()` into a `BigUInt`
+    # that had just been given room for `len + 1` words threw that buffer
+    # away, allocated a second one of exactly `len`, and then the `append`
+    # below could grow it a third time.
+    var n_words_x = len(x.words)
+    var running = BigUInt(unsafe_uninit_length=n_words_x + 1)
+    var running_ptr = running.words.unsafe_ptr()
+    unsafe_memcpy(dest=running_ptr, src=x.words.unsafe_ptr(), count=n_words_x)
+    running_ptr[unsafe_offset=n_words_x] = UInt32(0)
 
     var y_ptr = y.words.unsafe_ptr()
     var r_ptr = running.words.unsafe_ptr()
