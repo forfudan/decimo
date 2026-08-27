@@ -1,5 +1,5 @@
 name: Setup Decimo with Pixi
-description: Install pixi (cached), activate the Mojo environment, and download the prebuilt decimo.mojoc artifact into tests/.
+description: Install pixi (cached), activate the Mojo environment, restore the Mojo compilation cache, and download the prebuilt decimo.mojoc artifact into tests/.
 
 runs:
   using: composite
@@ -7,6 +7,55 @@ runs:
     - uses: prefix-dev/setup-pixi@v0.9.5
       with:
         activate-environment: true
+
+    # Mojo keeps a content-addressed compilation cache under
+    # `$MODULAR_HOME/cache/.mojo_cache`, which pixi puts inside the
+    # environment. `setup-pixi` caches the environment's *packages* and
+    # writes that cache before anything is compiled, so without this the
+    # compiler starts cold in every job. Measured locally on one test file
+    # with its dependencies already warm: 24.6 s cold against 2.7 s warm.
+    #
+    # Restored after `setup-pixi`, because the path lives inside the
+    # directory `setup-pixi` populates.
+    #
+    # Keyed per job. Each test job compiles a different set of test files,
+    # and a shared key would have every job racing to save the same entry.
+    - name: Restore the Mojo compilation cache
+      uses: actions/cache@v4
+      with:
+        path: .pixi/envs/default/share/max/cache/.mojo_cache
+        key: mojo-cache-${{ runner.os }}-${{ hashFiles('pixi.lock') }}-${{ github.job }}-${{ github.sha }}
+        restore-keys: |
+          mojo-cache-${{ runner.os }}-${{ hashFiles('pixi.lock') }}-${{ github.job }}-
+
+    # The cache has no eviction of its own -- `mojo`'s only controls are
+    # `--print-cache-location` and `--clear-cache`, which is all or nothing --
+    # so it grows without limit. 81 GB in eight days on a working machine.
+    # Drop anything not touched in a week before the post-job step saves it,
+    # which keeps the entry inside GitHub's 10 GB per repository.
+    - name: Trim cache entries older than a week
+      shell: bash
+      run: |
+        cache_dir=.pixi/envs/default/share/max/cache/.mojo_cache
+        if [[ -d $cache_dir ]]; then
+          before=$(du -sm "$cache_dir" | cut -f1)
+          find "$cache_dir" -type f -mtime +7 -delete 2>/dev/null || true
+          find "$cache_dir" -type d -empty -delete 2>/dev/null || true
+          after=$(du -sm "$cache_dir" | cut -f1)
+          echo "Mojo cache restored: ${before} MB, ${after} MB after trimming"
+        else
+          echo "Mojo cache: cold, nothing restored"
+        fi
+
+    # Confirms the hard-coded path above is where this Mojo actually looks.
+    # If these disagree the cache silently does nothing, so it is worth a line
+    # of log rather than a silent miss.
+    - name: Report where Mojo keeps its cache
+      shell: bash
+      run: |
+        echo "compiler reports: $(pixi run mojo --print-cache-location 2>&1 | tail -1)"
+        echo "we cache        : $PWD/.pixi/envs/default/share/max/cache/.mojo_cache"
+
     - name: Download decimo.mojoc artifact
       uses: actions/download-artifact@v4
       with:
