@@ -1107,26 +1107,37 @@ def isqrt_via_reciprocal_seed(
     c_norm.scale += norm_shift
 
     # --- Float64 initial guess for 1/sqrt(c_norm) ---
-    var top_word = Float64(
-        c_norm.coefficient.words[len(c_norm.coefficient.words) - 1]
-    )
+    #
+    # The seed wants the leading digits and `Float64` holds about sixteen of
+    # them, which is two words at nine digits each and one and a bit at
+    # eighteen. Taking the top two words as one 128-bit integer covers both
+    # without knowing which: the only thing it has to be told is `BASE`.
+    #
+    # The version this replaces added the second word at a hand-written
+    # `10^(digits_in_top + 8)`, where the 8 was `DIGITS_PER_WORD - 1` spelled
+    # out. A wider word left that offset nine decades short, the seed was
+    # worth eight digits where the schedule below credits it with
+    # `_F64_SEED_DIGITS`, and every result came back with about two thirds of
+    # the digits it promised -- silently, because nothing checks the seed.
+    ref c_norm_words = c_norm.coefficient.words
+    var c_norm_n = len(c_norm_words)
+    var top = UInt128(c_norm_words[c_norm_n - 1])
+    if c_norm_n > 1:
+        top = top * UInt128(BigUInt.BASE) + UInt128(c_norm_words[c_norm_n - 2])
+
     var digits_in_top: Int = 0
-    var temp_val = c_norm.coefficient.words[len(c_norm.coefficient.words) - 1]
+    var temp_val = top
     while temp_val > 0:
         temp_val //= 10
         digits_in_top += 1
     if digits_in_top == 0:
         digits_in_top = 1
 
-    var mantissa = top_word / Float64(10.0) ** Float64(digits_in_top - 1)
-    if len(c_norm.coefficient.words) > 1:
-        mantissa += Float64(
-            c_norm.coefficient.words[len(c_norm.coefficient.words) - 2]
-        ) / (
-            Float64(10.0)
-            ** Float64(digits_in_top + BigUInt.DIGITS_PER_WORD - 1)
-        )
-
+    # `top` scaled into `[1, 10)`, then placed by the value's own exponent.
+    # Doing it in two steps keeps `10.0 ** e` away from the range where it
+    # underflows: `e` here is at most a couple, where the value's full
+    # exponent can be thousands.
+    var mantissa = Float64(top) / Float64(10.0) ** Float64(digits_in_top - 1)
     var c_norm_exp = c_norm.adjusted()
     var c_norm_f64 = mantissa * Float64(10.0) ** Float64(c_norm_exp)
     # `1 / sqrt(v)` rather than `v ** -0.5`: the latter goes through `exp`/`log`
@@ -1463,26 +1474,37 @@ def sqrt_via_reciprocal_iteration(
     x_norm.scale += shift  # x_norm = x * 10^(-shift)
 
     # --- Float64 initial guess for 1/sqrt(x_norm) ---
-    var top_word = Float64(
-        x_norm.coefficient.words[len(x_norm.coefficient.words) - 1]
-    )
+    #
+    # The seed wants the leading digits and `Float64` holds about sixteen of
+    # them, which is two words at nine digits each and one and a bit at
+    # eighteen. Taking the top two words as one 128-bit integer covers both
+    # without knowing which: the only thing it has to be told is `BASE`.
+    #
+    # The version this replaces added the second word at a hand-written
+    # `10^(digits_in_top + 8)`, where the 8 was `DIGITS_PER_WORD - 1` spelled
+    # out. A wider word left that offset nine decades short, the seed was
+    # worth eight digits where the schedule below credits it with
+    # `_F64_SEED_DIGITS`, and every result came back with about two thirds of
+    # the digits it promised -- silently, because nothing checks the seed.
+    ref x_norm_words = x_norm.coefficient.words
+    var x_norm_n = len(x_norm_words)
+    var top = UInt128(x_norm_words[x_norm_n - 1])
+    if x_norm_n > 1:
+        top = top * UInt128(BigUInt.BASE) + UInt128(x_norm_words[x_norm_n - 2])
+
     var digits_in_top: Int = 0
-    var temp_val = x_norm.coefficient.words[len(x_norm.coefficient.words) - 1]
+    var temp_val = top
     while temp_val > 0:
         temp_val //= 10
         digits_in_top += 1
     if digits_in_top == 0:
         digits_in_top = 1
 
-    var mantissa = top_word / Float64(10.0) ** Float64(digits_in_top - 1)
-    if len(x_norm.coefficient.words) > 1:
-        mantissa += Float64(
-            x_norm.coefficient.words[len(x_norm.coefficient.words) - 2]
-        ) / (
-            Float64(10.0)
-            ** Float64(digits_in_top + BigUInt.DIGITS_PER_WORD - 1)
-        )
-
+    # `top` scaled into `[1, 10)`, then placed by the value's own exponent.
+    # Doing it in two steps keeps `10.0 ** e` away from the range where it
+    # underflows: `e` here is at most a couple, where the value's full
+    # exponent can be thousands.
+    var mantissa = Float64(top) / Float64(10.0) ** Float64(digits_in_top - 1)
     var x_norm_exp = x_norm.adjusted()
     var x_norm_f64 = mantissa * Float64(10.0) ** Float64(x_norm_exp)
     # `1 / sqrt(v)`, not `v ** -0.5`. See the note in `isqrt_via_reciprocal_seed()`: the power
