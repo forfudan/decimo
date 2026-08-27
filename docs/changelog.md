@@ -20,8 +20,10 @@ asymptotics on some sizes, which speeds up every division in the library. A
 Newton iteration that silently returned short of its requested precision is
 fixed. `BigInt` now keeps small values inside the struct, takes its square
 root by Zimmermann's recursion above about six hundred digits, and is measured
-against GMP rather than against CPython's `int`. A `sqrt()` that hung for
-values at the top of a word is fixed.
+against GMP rather than against CPython's `int`. Knuth D's multiply-subtract
+moves to 64-bit limbs, which makes division 1.2x to 2x faster from ten digits
+to ten thousand and carries `sqrt()` with it. A `sqrt()` that hung for values
+at the top of a word is fixed.
 
 ### ⭐️ New in Unreleased
 
@@ -85,6 +87,35 @@ values at the top of a word is fixed.
    `BigInt10.from_bigint()` and `BigInt10.to_bigint()` (PR #269).
 
 ### 🦋 Changed in Unreleased
+
+1. **Division is 1.2x to 2x faster.** Knuth D was spending six of its own
+   multiplications on work a multiplication does in one -- at 500 digits, where
+   the whole division is a single Knuth D call, 2.50 us against 0.42 us for the
+   52x52 schoolbook multiply underneath it, for the same number of word
+   products. Its multiply-subtract now runs two words at a time on the identity
+   the addition kernels already use: two little-endian base-2^32 words *are*
+   one base-2^64 limb, so `q * limb` is a single 64x64 product. That halves
+   the steps and the loop-carried chain with them, and the chain is shortened
+   again by taking the debt off in two subtractions rather than summing it
+   first, which keeps the product and its borrow out of the chain.
+
+   Knuth D also stopped allocating a fifth word list for its remainder. The
+   working dividend *is* the remainder by then, so it is unnormalized in place
+   and moved out; Burnikel-Ziegler and `_sqrt_karatsuba()` do the same.
+
+   Two cutoffs were re-swept, because a cheaper base case moves everything
+   above it: `CUTOFF_BURNIKEL_ZIEGLER` 64 -> 96, and `_sqrtrem()`'s base case
+   32 -> 16 words, which is one more level of recursion.
+
+       digits             10     100    1000   10000   100000
+       floor divide     1.27x   1.31x   1.80x   1.20x    1.07x
+       sqrt             1.03x   1.13x   1.33x   1.40x    1.12x
+
+   Against GMP, floor divide goes from 4.98x slower at 1000 digits to 2.87x
+   and from 2.95x to 2.34x at 10 000; `sqrt` from 10.70x to 8.14x and from
+   6.13x to 4.28x. At ten digits division reaches parity. What is left is
+   mostly the 32-bit limb itself, which costs schoolbook division a factor of
+   two that no kernel can win back -- see `docs/internal/todo.md`.
 
 1. **Small operations are about twice as fast.** At these sizes the library
    spends ~4 ns doing arithmetic and ~33 ns per allocation, so an operation's

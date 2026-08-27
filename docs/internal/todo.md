@@ -6,7 +6,7 @@ enhancement plans in `docs/plans/` carry the detail and the reasoning, and
 ranking. There were four such lists in August 2026 and they had already
 drifted apart, so there is now one.
 
-Last reviewed 2026-08-27 (third pass).
+Last reviewed 2026-08-27 (fourth pass).
 
 ## Goal, round one: met (20260826)
 
@@ -66,15 +66,17 @@ Division is the one left outside the bar, and it is item 1 below.
 
 `BigInt` had only ever been measured against CPython's `int`, which is not an
 opponent: it is reached through the interpreter, so it loses on call overhead
-before the arithmetic starts. Against GMP, timed in C, GMP wins nearly every
-row. Ratios, decimo against GMP, bold where decimo is ahead:
+before the arithmetic starts. Against GMP, timed in C, GMP wins most rows.
+Ratios, decimo against GMP, bold where decimo is ahead (20260827, after the
+Knuth D work):
 
 | digits | add       | multiply  | floor divide | sqrt      |
 | ------ | --------- | --------- | ------------ | --------- |
-| 10     | **2.45x** | **1.94x** | 1.60x        | **1.50x** |
-| 100    | **1.33x** | 3.14x     | 4.36x        | 2.76x     |
-| 1 000  | 2.13x     | 1.91x     | 6.98x        | 11.49x    |
-| 10^6   | 2.04x     | 3.98x     | 7.56x        | 12.28x    |
+| 10     | **3.83x** | **2.74x** | parity       | **7.68x** |
+| 100    | **1.61x** | 2.66x     | 3.01x        | 2.22x     |
+| 1 000  | 2.13x     | 1.97x     | 2.87x        | 8.14x     |
+| 10 000 | 2.10x     | 2.87x     | 2.34x        | 4.28x     |
+| 10^6   | 2.00x     | 3.90x     | 7.00x        | 6.35x     |
 
 The small end is ours only since inline storage: an `mpz_t` always goes to the
 heap, and 10 of GMP's 14.6 ns at a hundred digits is `malloc` and `free`. An
@@ -104,12 +106,13 @@ is ours:
 
 | operation      | against GMP | floor | ours to fix |
 | -------------- | ----------- | ----- | ----------- |
-| add, 10^6      | 2.04x       | 1.0x  | 2.0x        |
-| multiply, 100  | 3.14x       | 2.0x  | 1.6x        |
-| multiply, 10^6 | 3.98x       | ~1.0x | 4.0x        |
-| divide, 100    | 4.36x       | 2.0x  | 2.2x        |
-| divide, 10^6   | 7.56x       | ~1.0x | 7.6x        |
-| sqrt, 1000+    | ~11x        | ~1.5x | 7x          |
+| add, 10^6      | 2.00x       | 1.0x  | 2.0x        |
+| multiply, 100  | 2.66x       | 2.0x  | 1.3x        |
+| multiply, 10^6 | 3.90x       | ~1.0x | 3.9x        |
+| divide, 100    | 3.01x       | 2.0x  | 1.5x        |
+| divide, 1000   | 2.87x       | 2.0x  | 1.4x        |
+| divide, 10^6   | 7.00x       | ~1.0x | 7.0x        |
+| sqrt, 1000     | 8.14x       | ~1.5x | 5.4x        |
 
 The NTT rows have no limb width to hide behind: a transform packs bits into
 coefficients and barely cares what the limbs were.
@@ -121,36 +124,57 @@ Both decompose into multiplication. Measure each library's division against
 
 |            | our mul | GMP mul | ratio | our div/mul | GMP div/mul | div gap |
 | ---------- | ------- | ------- | ----- | ----------- | ----------- | ------- |
-| 1 000      | 1.16 us | 605 ns  | 1.91x | 5.2x        | 2.0x        | 5.0x    |
-| 10^6       | 24.1 ms | 6.06 ms | 3.98x | 4.9x        | 2.6x        | 7.6x    |
+| 1 000      | 1.20 us | 608 ns  | 1.97x | 2.9x        | 2.0x        | 2.9x    |
+| 10^6       | 24.4 ms | 6.25 ms | 3.90x | 4.7x        | 2.6x        | 7.0x    |
 
-`1.91 * 2.6 = 5.0` and `3.98 * 1.9 = 7.6`, which is the whole of it. So the
-division gap is our multiplication being slow, times our division not being
-multiplication-bound. Neither factor needs a new division algorithm at 10^6:
-Barrett would cost about `4 * M(n)`, which is what we already pay.
+The gap is our multiplication being slow, times our division not being
+multiplication-bound. At 1000 digits the second factor is now only 1.45x and
+the first is the whole story; at 10^6 both are. Neither needs a new division
+algorithm: Barrett would cost about `4 * M(n)`, which is what we already pay.
 
-`sqrt` sits on top of the same stack -- profiled at 1000 and 10 000 digits it
-is 60% to 67% the one division at its last precision-doubling step, 10% to 20%
-the verifying squaring, and the rest driver. So it can never get ahead of the
-division underneath it. But it is also 2.2x further behind than that division
-is: ours costs 0.61 of a division where GMP's costs 0.28. Bringing only that
-ratio to GMP's, with division exactly as it is today, takes `sqrt` from 10.9x
-to 5.0x at 1000 digits.
+`sqrt` sits on top of the same stack, so it can never get ahead of the
+division underneath it. Its three levels at 1000 digits, timed separately:
+
+    level      division    squaring
+    m = 104     1199 ns      224 ns
+    m =  52      450 ns       96 ns
+    m =  26      245 ns       22 ns
+
+which is 2.24 us of the 2.94 the whole `sqrt` takes. The bottom levels do not
+shrink the way the recursion says they should -- level 26's division is 0.54
+of level 52's, not 0.25 -- because a division carries about 137 ns of fixed
+cost whatever its size, and at a 26-word divisor that is most of it.
 
 Ordered by what actually moves:
 
-1. **Karatsuba square root.** 2.2x, at every size from 1000 digits up, and it
-   depends on nothing else landing first. Zimmermann's recursion halves the
-   division at the last step and returns the remainder, which also deletes the
-   verifying squaring.
-2. **Burnikel-Ziegler's per-level cost.** Our division costs 5.2 of its own
+1. **Both the divisions and the fixed cost, done (20260827).** The diagnosis
+   below was wrong and is kept for the correction: the cost was never
+   Burnikel-Ziegler's per-level overhead, it was the Knuth D base case at the
+   bottom of it. Measured at 500 digits, where the whole division is one Knuth
+   D call, it took 2.50 us against 0.42 for the 52x52 schoolbook multiply
+   underneath it -- the same number of word products at six times the price,
+   3.3 cycles a word against 0.55. The multiply-subtract now runs two words at
+   a time, and the remainder is unnormalized in the buffer it is already in
+   rather than into a fifth allocation. Division is 1.2x to 2x faster, `sqrt`
+   1.0x to 1.4x, and both cutoffs above the base case moved
+   (`CUTOFF_BURNIKEL_ZIEGLER` 64 -> 96, `_sqrtrem()`'s base 32 -> 16).
+
+   ~~**Burnikel-Ziegler's per-level cost.** Our division costs 5.2 of its own
    multiplications where GMP's costs 2.0. The recursion is not too shallow:
-   cutoffs of 8, 16 and 24 words are all *worse* than 64 (10.1 us, 7.2 us and
-   7.6 us against 6.0 at 1000 digits), so each level is paying too much --
-   allocations, `_shift_left_words_inplace`, `_add_at_offset_inplace` and a
-   fresh result out of `_multiply_magnitudes_slices` every call. The cutoff
-   itself is flat from 32 to 96 and there is nothing to win by moving it.
-3. **The NTT butterfly**, where the honest answer is that we are close to
+   cutoffs of 8, 16 and 24 words are all *worse* than 64, so each level is
+   paying too much -- allocations, `_shift_left_words_inplace`,
+   `_add_at_offset_inplace` and a fresh result out of
+   `_multiply_magnitudes_slices` every call.~~ Those cutoffs were worse
+   because a smaller block means a smaller base case, and the base case was
+   the thing that was slow. With it fixed, the cutoff moved *up*.
+
+   It is now 2.9 of its own multiplications at 1000 digits against GMP's 2.0,
+   and the Knuth D loop is within about 1.4x of what a 32-bit limb allows.
+   What is left there is the limb width itself: a 64-bit limb would halve the
+   quotient word count, and with it the `UDIV` and the loop entry that every
+   quotient word pays. That is the same question item 9 of `Now` asks for
+   `BigUInt`, and it is the last big one division has.
+2. **The NTT butterfly**, where the honest answer is that we are close to
    the floor for the transform we chose, and GMP is winning by choosing a
    different one. 4x on multiplication at 10^6, with no limb-width
    excuse -- a transform packs bits, not limbs -- and division and `sqrt`
@@ -183,14 +207,14 @@ Ordered by what actually moves:
    Which leaves lazy reduction -- keeping residues in `[0, 2^64)` and
    canonicalizing rarely -- as the only cheap idea left, worth maybe 1.15x,
    and Schonhage-Strassen as the only one that would actually close the gap.
-4. **Break the carry chain in add and subtract.** We are latency-bound on it,
+3. **Break the carry chain in add and subtract.** We are latency-bound on it,
    not throughput-bound: 1038 words at 10 000 digits is 519 limbs and 271 ns,
    which is 1.8 cycles a limb, where GMP's `ADCS` chain runs at 1.0. Widen the
    words into 64-bit SIMD lanes to manufacture the slack that base 10^9 gives
    `BigUInt` for free, sum ignoring carry, then propagate. A lane only
    propagates when its digit is all ones, so the second pass can be a mask
    test that almost never fires rather than `BigUInt`'s serial walk.
-5. **Multiplication thresholds.** `CUTOFF_KARATSUBA` is 256 words, which is
+4. **Multiplication thresholds.** `CUTOFF_KARATSUBA` is 256 words, which is
    2466 decimal digits; GMP switches around 500. Our Comba is good enough that
    schoolbook at 104 words is only 1.91x of GMP's Karatsuba, so this is worth
    measuring rather than assuming.
@@ -223,6 +247,11 @@ Three things measured the wrong way round here, so they are not retried:
 - **A `UInt128` accumulator for the paired add and subtract.** It does not
   become `ADDS`/`ADCS`; add at 10 000 digits went 279 ns to 391, subtract 275
   to 503. The comparison-based carry that is there is the fast one.
+- **A precomputed reciprocal for Knuth D's quotient estimate.** Moller and
+  Granlund's `udiv_qrnnd_preinv`, replacing the 64-by-32 `UDIV` with one
+  multiply and two corrections. Slower at every size, two alternating builds
+  each way: 27 ns against 35 at 10 digits, 3.4 us against 3.7 at 1000.
+  arm64's `UDIV` is cheaper than what it takes to avoid it.
 
 ## Now
 
