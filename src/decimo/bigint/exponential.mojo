@@ -606,10 +606,9 @@ def reciprocal_sqrt_fixed_point(
 # Karatsuba square root
 # ===----------------------------------------------------------------------=== #
 
-comptime CUTOFF_SQRT_RECURSIVE: Int = 128
+comptime CUTOFF_SQRT_RECURSIVE: Int = 64
 """Words above which `sqrt()` uses Zimmermann's recursion.
 
-128 words is about 1230 decimal digits, and it is where the two curves cross.
 Below it the precision-doubling path wins because it spends its early
 iterations in `UInt64` and `UInt128` registers, where the recursion is
 already allocating word lists; above it the recursion wins because its
@@ -619,6 +618,10 @@ division is half the width. Measured, best of seven (us):
     precision-doubling 1.78   3.83   10.00   16.51   36.08   67.78
     Zimmermann         2.27   3.90    8.16   11.89   21.59   38.93
 
+The crossover itself is flat: 32, 64 and 128 words all measure within the
+noise band from 500 to 3000 digits. 64 is chosen because it is never worse
+and is about 5% better at 1000 digits, where it is the setting that changes
+what runs. 32 is clearly worse at 500 digits, so the flat region has a floor.
 """
 
 comptime CUTOFF_SQRT_BASE: Int = 32
