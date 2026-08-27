@@ -46,10 +46,21 @@ from decimo.errors import ValueError, ZeroDivisionError
 
 # Karatsuba cutoff: operands with this many words or fewer use schoolbook.
 # Tuned for Apple Silicon arm64. Adjust if benchmarking shows a better value.
-# Raised from 48 when the schoolbook base case became product-scanning: a
-# Comba column runs at well under a cycle per partial product, which pushes
-# the point where Karatsuba's three sub-products and its extra additions and
-# allocations start to pay well past where it used to be.
+#
+# It was 256 while a word was 32 bits, and fell to 64 with the wider word --
+# which is a bigger move than the halving of the word count alone accounts
+# for. Schoolbook pays twice per word product now (`MUL` plus `UMULH`, and a
+# column that no longer fits one accumulator), while what Karatsuba adds on
+# top is additions and shifts, and those got cheaper per bit. So the crossover
+# moved down in digits as well as in words. Best of five (microseconds):
+#
+#     words          64     96    128    192    256    384    512    768
+#     cutoff  64   1.56   3.15   5.50  10.54  17.64  33.15  54.58  102.1
+#     cutoff 128   1.58   3.32   6.07  10.95  18.44  35.00  53.16  107.2
+#     cutoff 256   1.51   3.34   5.97  13.35  22.54  41.68  65.77  128.0
+#
+# 96 ties with 64 and 48 is worse at every width above 64, so this is the
+# bottom of a shallow basin rather than a peak.
 comptime RADIX = UInt128(1) << 64
 """The base of the magnitude representation, where it has to be written down.
 
@@ -57,7 +68,7 @@ Only Knuth D needs it as a value: its quotient estimate compares against `b`
 and its refinement stops there, both a word wider than the words themselves.
 """
 
-comptime CUTOFF_KARATSUBA: Int = 256
+comptime CUTOFF_KARATSUBA: Int = 64
 """The minimum number of words above which Karatsuba multiplication is used."""
 
 # Toom-3 cutoff: operands with this many words or fewer use Karatsuba.
@@ -67,12 +78,19 @@ comptime CUTOFF_KARATSUBA: Int = 256
 # and interpolation step. The extra additions, the two exact divisions and
 # the five sub-results only pay for themselves once the operands are large.
 #
-# The crossover is soft rather than sharp, and it moves up every time the base
-# case gets faster. Measured on Apple Silicon arm64 after the base case was
-# packed into 64-bit limbs, 768 is the best of 384 / 512 / 768 / 1024 across
-# 512 to 11 000 words; before the packing it was 512. Adjust if benchmarking
-# on another target shows a better value.
-comptime CUTOFF_TOOM3: Int = 768
+# The crossover is soft rather than sharp, and it moves every time the base
+# case changes. It was 768 with a 32-bit word and is 256 with a 64-bit one,
+# for the same reason `CUTOFF_KARATSUBA` fell: what Toom-3 adds is linear work
+# on a magnitude that is now half as many words. Two passes, best of five
+# within each (microseconds):
+#
+#     words           256    384    512    768   1024   1536   2048
+#     cutoff 256    17.46  30.90  45.45  92.52  130.1  256.4  367.7
+#     cutoff 512    16.93  31.38  54.60  99.14  149.0  255.6  393.0
+#
+# The sizes that separate them are 512 and 1024, and 256 takes both by about
+# 10%. Adjust if benchmarking on another target shows a better value.
+comptime CUTOFF_TOOM3: Int = 256
 """The minimum number of words above which Toom-3 multiplication is used."""
 
 # Burnikel-Ziegler cutoff: divisors with this many words or fewer use

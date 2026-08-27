@@ -51,25 +51,28 @@ from decimo.errors import (
     ZeroDivisionError,
 )
 
-comptime INLINE_WORDS = 6
+comptime INLINE_WORDS = 7
 """How many words a `BigInt` keeps inside itself before it allocates.
 
-It has to cover *results*, not operands. Twelve words is 384 bits, and what
-sets it is the hundred-digit case: a hundred digits is eleven words and their
-sum is twelve, so at eight this allocated on every addition and the cliff was
-plain to see -- 5.4 ns at forty digits, 47 ns at a hundred. Best of seven,
-two passes alternating between builds, `-D ASSERT=none` (ns):
+It has to cover *results*, not operands, and what sets it is the hundred-digit
+case: a hundred digits is six 64-bit words and their sum is seven. At six the
+cliff is plain -- every addition of two hundred-digit values allocates.
 
-    inline words        8      12      16      20
-    add    40 digits   5.4     7.0    14.8     8.1
-    add   100 digits  47.6     8.9    13.8     9.9
-    mul    40 digits  56.0    20.6    21.8    22.2
-    div   100 digits   460     300     311     297
-    add  1000 digits  60.7    58.0    58.9    60.9
+This was twelve while a word was 32 bits, chosen the same way: eleven words
+for a hundred digits and twelve for their sum. Seven words is 448 bits against
+that twelve's 384, so the inline range went *up* slightly even as the struct
+grew by one word. Best of seven, three passes alternating between builds,
+`-D ASSERT=none`, addition (ns):
 
-Twelve is the first that covers a hundred digits and the cheapest that does.
-Beyond it the struct only gets bigger: sixteen and twenty pay for the extra
-words at forty digits and buy nothing back. At 1000 and 100 000 digits every
+    digits             10     28     40    100    120    150
+    inline  6         5.0    5.3    5.9   46.8   47.7   47.3
+    inline  7         5.4    5.1    5.4   10.0   45.4   44.5
+    inline 10         6.8    6.0    6.1   12.7   11.1    8.6
+
+Ten pushes the cliff past 150 digits and pays for it everywhere below forty,
+where inline storage is the whole point -- an 80-byte struct is moved on every
+operation whether or not the words are there. Seven is the first that covers a
+hundred digits and the cheapest that does. At 1000 digits and above every
 setting is within noise of the plain `List` this replaced.
 
 GMP has no inline buffer at all, and pays for it. Adding two 100-digit

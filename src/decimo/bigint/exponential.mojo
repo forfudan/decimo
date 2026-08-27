@@ -598,36 +598,37 @@ That is not the choice, though, because the shipped recursion stops at
 `CUTOFF_SQRT_BASE` and finishes in the older path. Sweeping this constant
 with that in place, `-D ASSERT=none` (us):
 
-    digits           200    300    500    700   1000   1500   5000
-    cutoff  32      0.50   0.86   1.81   1.93   3.09   3.84  13.57
-    cutoff  64      0.49   0.84   1.47   1.91   3.04   3.73  13.18
-    cutoff 128      0.49   0.81   1.54   2.05   3.04   3.69  13.73
+    digits           200    300    500    700   1000   1500   5000   10000
+    cutoff 16       0.42   0.60   1.44   1.85   2.27   2.96  10.24   27.82
+    cutoff 32       0.41   0.60   1.08   1.85   2.11   2.76   9.94   27.88
+    cutoff 64       0.43   0.60   1.08   1.59   2.17   2.97   9.34   27.31
 
 It reads better than the two-way table because one level of recursion halves
 the division and then hands the tail to the path that is best at that width.
-The three columns that separate them are 500, 700 and 5000, and 64 takes all
-three; 32 loses at 500 because a 52-word operand recurses when it should not.
-Re-measured after Knuth D went to 64-bit limbs, which did not move it.
+Re-measured twice since: after Knuth D went to 64-bit limbs, and again after
+the magnitude did. Neither moved it, which is not a coincidence -- the two
+paths it chooses between both scale with the value, not the word count.
 """
 
-comptime CUTOFF_SQRT_BASE: Int = 16
+comptime CUTOFF_SQRT_BASE: Int = 32
 """Words below which `_sqrtrem()` stops recursing and doubles precision.
 
 The recursion needs a remainder and the older path does not produce one, so
 the base case pays for a squaring to recover it. That is cheap at these sizes
 and buys back the register-resident early iterations.
 
-It was 32 while it sat in the middle of a flat range. Knuth D going to 64-bit
-limbs made the recursion's division about twice as cheap and tilted that
-range, so recursing one level further now pays; best of three alternating
-builds, best of five within each (us):
+It went 32 -> 16 when Knuth D's multiply-subtract moved to 64-bit limbs, and
+back to 32 when the magnitude itself did -- the same number of words is twice
+the value now, so the base case is back where it was in bits. Two passes, best
+of five within each (us):
 
-    digits           500    700   1000   1500   2000   5000   10000
-    cutoff 16       1.51   1.89   3.06   3.74   5.41  13.73   35.93
-    cutoff 32       1.54   2.40   3.14   4.40   5.66  14.68   37.22
+    digits           200    300    500    700   1000   1500   5000   10000
+    cutoff  8       0.43   0.60   1.07   1.64   2.02   2.70   9.81   26.21
+    cutoff 16       0.43   0.57   1.07   1.67   2.18   2.97   9.35   27.65
+    cutoff 32       0.42   0.53   1.01   1.55   1.98   2.74   9.08   25.57
 
-The width that moves most is 700, where 16 is the difference between two
-levels of recursion and three. 8 measures the same as 16.
+48 ties with 32 and 8 and 16 are behind it at most widths, so this is the
+bottom of a shallow basin rather than a peak.
 """
 
 
