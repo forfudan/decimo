@@ -100,7 +100,7 @@ struct BigInt10(
         self.magnitude = magnitude.copy()
         self.sign = sign
 
-    def __init__(out self, var words: List[UInt32], sign: Bool) raises:
+    def __init__(out self, var words: List[BigUInt.Word], sign: Bool) raises:
         """Initializes a BigInt10 from a list of UInt32 words and a sign.
         The BigInt10 constructed in this way is guaranteed to be valid.
         If the list is empty, the BigInt10 is initialized with value 0.
@@ -125,12 +125,13 @@ struct BigInt10(
             raise ConversionError(
                 message="See the above exception.",
                 function=(
-                    "BigInt10.__init__(var words: List[UInt32], sign: Bool)"
+                    "BigInt10.__init__(var words: List[BigUInt.Word], sign:"
+                    " Bool)"
                 ),
                 previous_error=e^,
             )
 
-    def __init__(out self, *, var raw_words: List[UInt32], sign: Bool):
+    def __init__(out self, *, var raw_words: List[BigUInt.Word], sign: Bool):
         """Initializes a BigInt10 from a list of raw words.
 
         Args:
@@ -204,7 +205,7 @@ struct BigInt10(
     # ===------------------------------------------------------------------=== #
 
     @staticmethod
-    def from_list(var words: List[UInt32], sign: Bool) raises -> Self:
+    def from_list(var words: List[BigUInt.Word], sign: Bool) raises -> Self:
         """Initializes a BigInt10 from a list of UInt32 words safely.
         If the list is empty, the BigInt10 is initialized with value 0.
         If there are leading zero words, they are removed.
@@ -228,13 +229,14 @@ struct BigInt10(
             raise ConversionError(
                 message="See the above exception.",
                 function=(
-                    "BigInt10.from_list(var words: List[UInt32], sign: Bool)"
+                    "BigInt10.from_list(var words: List[BigUInt.Word], sign:"
+                    " Bool)"
                 ),
                 previous_error=e^,
             )
 
     @staticmethod
-    def from_words(*words: UInt32, sign: Bool) raises -> Self:
+    def from_words(*words: BigUInt.Word, sign: Bool) raises -> Self:
         """Initializes a BigInt10 from raw words.
 
         Args:
@@ -254,11 +256,11 @@ struct BigInt10(
             ValueError: If any word exceeds 999_999_999.
         """
 
-        var list_of_words = List[UInt32](capacity=len(words))
+        var list_of_words = List[BigUInt.Word](capacity=len(words))
 
         # Check if the words are valid
         for word in words:
-            if word > UInt32(BigUInt.BASE_MAX):
+            if word > BigUInt.Word(BigUInt.BASE_MAX):
                 raise ValueError(
                     message=(
                         "Word value exceeds maximum value of "
@@ -783,7 +785,7 @@ struct BigInt10(
         # Optimize the case `i += 1`
         if (self >= 0) and (other >= 0) and (other <= BigUInt.BASE_MAX):
             biguint_arithmetics.add_by_word_inplace(
-                self.magnitude, UInt32(other)
+                self.magnitude, BigUInt.Word(other)
             )
         else:
             bigint10_arithmetics.add_inplace(self, Self(other))

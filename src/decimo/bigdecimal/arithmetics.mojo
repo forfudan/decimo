@@ -1095,7 +1095,7 @@ def _true_divide_inexact_truncated(
 
 
 def true_divide_inexact_by_word(
-    x1: BigDecimal, y: UInt32, number_of_significant_digits: Int
+    x1: BigDecimal, y: BigUInt.Word, number_of_significant_digits: Int
 ) raises -> BigDecimal:
     """Returns the quotient of a BigDecimal divided by a small UInt32 integer.
 

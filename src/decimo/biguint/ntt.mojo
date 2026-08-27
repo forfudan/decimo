@@ -75,84 +75,68 @@ comptime DIGITS_PER_COEFFICIENT = 6
 comptime COEFFICIENT_BASE: UInt64 = 1_000_000
 """`10^DIGITS_PER_COEFFICIENT`, the base of the convolution."""
 
-comptime STRADDLE_BASE: UInt64 = 1_000
-"""`10^3`. The middle coefficient of a word pair takes three digits from the
-low word and three from the high word."""
-
-comptime COEFFICIENTS_PER_WORD_PAIR = 3
-"""A full word pair gives three coefficients. A single last word gives two."""
+comptime COEFFICIENTS_PER_WORD = BigUInt.DIGITS_PER_WORD // DIGITS_PER_COEFFICIENT
+"""Three. A word is eighteen digits and a coefficient is six, so a word cuts
+into a whole number of coefficients and nothing straddles a word boundary."""
 
 
 def coefficients_for_words(number_of_words: Int) -> Int:
     """Returns the number of coefficients needed for that many words.
 
     Args:
-        number_of_words: Length of the magnitude in base-billion words.
+        number_of_words: Length of the magnitude in words.
 
     Returns:
         The number of six-digit coefficients.
     """
-    var pairs = number_of_words >> 1
-    var last_word = number_of_words & 1
-    return pairs * COEFFICIENTS_PER_WORD_PAIR + last_word * 2
+    return number_of_words * COEFFICIENTS_PER_WORD
 
 
 def pack_words[
     o: Origin[mut=True]
 ](
     coefficients: Pointer[UInt64, o],
-    words: ImmSpan[UInt32, _],
+    words: ImmSpan[BigUInt.Word, _],
     bounds: Tuple[Int, Int],
 ):
-    """Cuts a slice of base-billion words into six-digit coefficients.
+    """Cuts a slice of words into six-digit coefficients.
 
-    A word pair is `w0 + w1 * 10^9`, and we want `c0 + c1 * 10^6 + c2 * 10^12`:
+    A word is eighteen digits and a coefficient is six, so each word gives
+    exactly three and none of them straddles a word:
 
-        c0 = w0 % 10^6
-        c1 = w0 / 10^6 + (w1 % 10^3) * 10^3
-        c2 = w1 / 10^3
-
-    A single last word is the same with `w1 = 0`.
+        c0 = w % 10^6
+        c1 = (w / 10^6) % 10^6
+        c2 = w / 10^12
 
     Args:
         coefficients: Destination, zeroed and long enough.
         words: The magnitude that the slice belongs to.
         bounds: Slice bounds (start inclusive, end exclusive).
     """
-    var end = bounds[1]
+    comptime COEFFICIENT_BASE_SQUARED = COEFFICIENT_BASE * COEFFICIENT_BASE
     var out = 0
-    var i = bounds[0]
-
-    while i + 1 < end:
-        var low = UInt64(words[i])
-        var high = UInt64(words[i + 1])
-        coefficients[unsafe_offset=out] = low % COEFFICIENT_BASE
+    for i in range(bounds[0], bounds[1]):
+        var word = UInt64(words[i])
+        coefficients[unsafe_offset=out] = word % COEFFICIENT_BASE
         coefficients[unsafe_offset=out + 1] = (
-            low // COEFFICIENT_BASE + (high % STRADDLE_BASE) * STRADDLE_BASE
-        )
-        coefficients[unsafe_offset=out + 2] = high // STRADDLE_BASE
-        out += COEFFICIENTS_PER_WORD_PAIR
-        i += 2
-
-    if i < end:
-        var last = UInt64(words[i])
-        coefficients[unsafe_offset=out] = last % COEFFICIENT_BASE
-        coefficients[unsafe_offset=out + 1] = last // COEFFICIENT_BASE
+            word // COEFFICIENT_BASE
+        ) % COEFFICIENT_BASE
+        coefficients[unsafe_offset=out + 2] = word // COEFFICIENT_BASE_SQUARED
+        out += COEFFICIENTS_PER_WORD
 
 
 def unpack_coefficients(
     coefficients: Pointer[UInt64, _],
     number_of_coefficients: Int,
     number_of_words: Int,
-) -> List[UInt32]:
-    """Carries the convolution and writes it back as base-billion words.
+) -> List[BigUInt.Word]:
+    """Carries the convolution and writes it back as words.
 
     The coefficients returned by the transform are sums of products, so they
     are much larger than `10^6` and must be carried first. The words then
     follow from reversing `pack_words()`:
 
-        w0 = c0 + (c1 % 10^3) * 10^6
-        w1 = c1 / 10^3 + c2 * 10^3
+        w = c0 + c1 * 10^6 + c2 * 10^12
 
     Args:
         coefficients: The convolution.
@@ -191,13 +175,13 @@ def unpack_coefficients(
         carry // COEFFICIENT_BASE
     )
 
-    var words = List[UInt32](capacity=number_of_words)
+    comptime COEFFICIENT_BASE_SQUARED = COEFFICIENT_BASE * COEFFICIENT_BASE
+    var words = List[BigUInt.Word](capacity=number_of_words)
     words.resize(unsafe_uninit_length=number_of_words)
     var words_ptr = words.unsafe_ptr()
 
     var k = 0
-    var w = 0
-    while w < number_of_words:
+    for w in range(number_of_words):
         var c0: UInt64 = 0
         var c1: UInt64 = 0
         var c2: UInt64 = 0
@@ -209,14 +193,9 @@ def unpack_coefficients(
             c2 = carried_ptr[unsafe_offset=k + 2]
 
         words_ptr[unsafe_offset=w] = BigUInt.Word(
-            c0 + (c1 % STRADDLE_BASE) * COEFFICIENT_BASE
+            c0 + c1 * COEFFICIENT_BASE + c2 * COEFFICIENT_BASE_SQUARED
         )
-        if w + 1 < number_of_words:
-            words_ptr[unsafe_offset=w + 1] = BigUInt.Word(
-                c1 // STRADDLE_BASE + c2 * STRADDLE_BASE
-            )
-        k += COEFFICIENTS_PER_WORD_PAIR
-        w += 2
+        k += COEFFICIENTS_PER_WORD
 
     while len(words) > 1 and words[len(words) - 1] == 0:
         words.shrink(len(words) - 1)
@@ -231,12 +210,39 @@ def unpack_coefficients(
 comptime CUTOFF_NTT = 1024
 """Below this many words in either operand, Toom-3 always wins."""
 
-comptime NTT_RELATIVE_COST: Float64 = 0.60
-"""Cost of one butterfly against one Toom-3 word-step. Measured, not guessed:
-Toom-3 and the transform were timed against each other from 1024 to 32768
-words, and they cross between 1024 words (Toom-3 faster by 5%) and 2048 words
-(transform faster by 33%). Any value in `(0.53, 0.66)` puts the switch there;
-0.60 is the middle."""
+comptime NTT_RELATIVE_COST: Float64 = 0.313
+"""Cost of one butterfly against one Toom-3 word-step. Measured, not guessed.
+
+Re-swept at eighteen digits a word (20260828), because both sides moved and
+they did not move together. Toom-3's step count quartered -- half the words in
+each operand -- while a step only doubled in price, so Toom-3 gained about 2x.
+The transform packs *digits* into coefficients and so gained nothing: a word
+now gives three coefficients instead of one and a half, and the transform for
+a given number of digits is the length it always was. The crossover moved with
+the difference, from 1 024 to 2 048 base-10^9 words to somewhere between 3 052
+and 4 072 words here -- 9 000 digits to 55 000.
+
+       wa      wb   toom3 ms   ntt ms   toom/ntt
+      509     509      0.050    0.116      0.43
+    1 019   1 019      0.149    0.241      0.62
+    2 036   2 036      0.486    0.556      0.87
+    3 052   3 052      0.913    1.229      0.74
+    4 072   4 072      1.585    1.198      1.32   <- transform ahead
+    6 106   6 106      2.734    2.575      1.06
+    8 140   8 140      4.427    2.564      1.73
+    2 486   1 243      0.547    0.549      1.00
+    2 982   1 491      0.698    0.563      1.24
+    3 973   1 989      1.209    1.254      0.96
+    4 970   2 486      1.603    1.193      1.34
+    7 949   3 977      2.425    2.704      0.90
+
+The unbalanced rows are there because `a * b` with `b` half of `a` is the
+common shape and it is not the same question: fewer coefficients means a
+shorter transform, so the crossover sits lower. They are also why the answer
+is not monotonic -- 7 949 by 3 977 needs a 65 536-point transform where
+4 970 by 2 486 fits in 32 768, and the step costs more than the extra words.
+
+`(0.3068, 0.3186)` reproduces all twelve rows; 0.313 is the middle."""
 
 
 def transform_length_for(len_x: Int, len_y: Int) -> Tuple[Int, Int]:

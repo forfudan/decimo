@@ -47,7 +47,7 @@ from decimo.utility import unsigned_counterpart
 comptime BUInt = BigUInt
 """A shorthand alias for `BigUInt`."""
 
-comptime WORD_DTYPE = DType.uint32
+comptime WORD_DTYPE = DType.uint64
 """The machine type one coefficient word is stored in.
 
 Paired with `BigUInt.DIGITS_PER_WORD`: the word has to hold `BASE - 1`, so
@@ -58,7 +58,11 @@ Write `BigUInt.Word` for the type of a coefficient word, and a literal
 `UInt32`/`UInt64`/`UInt128` only where the *machine width* is the point.
 """
 
-comptime Coefficient = WordList[WORD_DTYPE, INLINE_WORDS]
+comptime INLINE_WORDS_BIGUINT = 5
+"""Words kept in the struct. Five of them is ninety digits, which is what
+ten base-10^9 words held before the base moved."""
+
+comptime Coefficient = WordList[WORD_DTYPE, INLINE_WORDS_BIGUINT]
 """The word storage of a `BigUInt`, little-endian."""
 
 
@@ -146,7 +150,14 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     # TODO: Make these constants global, e.g., decimo.biguint.BASE
     comptime Word = Scalar[WORD_DTYPE]
     """The type of one coefficient word. See `WORD_DTYPE`."""
-    comptime DIGITS_PER_WORD = 9
+    comptime BITS_ALWAYS_IN_ONE_WORD = Self._bits_always_in_one_word()
+    """Widest unsigned scalar, in bits, that always fits a single word.
+
+    `2^k - 1 < BASE`. Twenty-nine bits at nine digits a word, fifty-nine at
+    eighteen -- which is why a `UInt32` used to need the two-word branch below
+    and now never does.
+    """
+    comptime DIGITS_PER_WORD = 18
     """How many decimal digits one word holds.
 
     The base is `10 ** DIGITS_PER_WORD`, so this is the one number that decides
@@ -169,12 +180,27 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     """A `BigUInt` constant representing zero."""
     comptime ONE = Self.one()
     """A `BigUInt` constant representing one."""
-    comptime MAX_UINT64 = Self(raw_words=[709551615, 446744073, 18])
-    """A `BigUInt` constant representing the maximum value of `UInt64`."""
+    comptime MAX_UINT64 = Self(raw_words=[446744073709551615, 18])
+    """A `BigUInt` constant representing the maximum value of `UInt64`.
+
+    Words spelled out in the current base, so this moves with
+    `DIGITS_PER_WORD`. Same for `MAX_UINT128` and for the two overflow
+    predicates below.
+    """
     comptime MAX_UINT128 = Self(
-        raw_words=[768211455, 374607431, 938463463, 282366920, 340]
+        raw_words=[374607431768211455, 282366920938463463, 340]
     )
     """A `BigUInt` constant representing the maximum value of `UInt128`."""
+
+    @staticmethod
+    def _bits_always_in_one_word() -> Int:
+        """Largest `k` with `2^k - 1 < BASE`. See `BITS_ALWAYS_IN_ONE_WORD`."""
+        var bits = 0
+        var limit = 1
+        while limit * 2 <= Self.BASE:
+            limit *= 2
+            bits += 1
+        return bits
 
     @always_inline
     @staticmethod
@@ -225,7 +251,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
     def __init__(out self):
         """Initializes to zero by default."""
-        self.words = [UInt32(0)]
+        self.words = [Self.Word(0)]
 
     def __init__(out self, *, uninitialized_capacity: Int):
         """Creates an uninitialized BigUInt with a given capacity.
@@ -246,7 +272,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         The length of the words list is 0. So you cannot access the words using
         indexing until you append the words to the list.
         """
-        self.words = WordList(capacity=uninitialized_capacity)
+        self.words = Coefficient(capacity=uninitialized_capacity)
 
     def __init__(out self, *, unsafe_uninit_length: Int):
         """Creates an uninitialized BigUInt with a given length.
@@ -266,7 +292,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         Because the list is uninitialized, the elements may be any value at the
         time of initialization. You can access the words using indexing.
         """
-        self.words = WordList(unsafe_uninit_length=unsafe_uninit_length)
+        self.words = Coefficient(unsafe_uninit_length=unsafe_uninit_length)
 
     def __init__(
         out self, *, unsafe_uninit_length: Int, unsafe_uninit_capacity: Int
@@ -299,10 +325,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             " is below length ",
             unsafe_uninit_length,
         )
-        self.words = WordList(capacity=unsafe_uninit_capacity)
+        self.words = Coefficient(capacity=unsafe_uninit_capacity)
         self.words.resize(unsafe_uninit_length=unsafe_uninit_length)
 
-    def __init__(out self, var words: List[UInt32]) raises:
+    def __init__(out self, var words: List[Self.Word]) raises:
         """Initializes a BigUInt from a list of UInt32 words.
         The BigUInt constructed in this way is guaranteed to be valid.
         If the list is empty, the BigUInt is initialized with value 0.
@@ -330,7 +356,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 previous_error=e^,
             )
 
-    def __init__(out self, *, var raw_words: List[UInt32]):
+    def __init__(out self, *, var raw_words: List[Self.Word]):
         """Initializes a BigUInt from a list of raw words.
 
         Args:
@@ -349,9 +375,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         list of words, you can use `BigUInt(*, uninitialized_capacity=0)`.
         """
         if len(raw_words) == 0:
-            self.words = WordList(UInt32(0), __list_literal__=None)
+            self.words = Coefficient(Self.Word(0), __list_literal__=None)
         else:
-            self.words = WordList(raw_words^)
+            self.words = Coefficient(raw_words^)
 
     @implicit
     def __init__(
@@ -708,32 +734,22 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
         comptime value_bits = size_of[Scalar[dtype]]() * 8
 
-        # 8- and 16-bit scalars are at most 65_535 < 10^9, so one word always
-        # suffices and no division is needed.
-        comptime if value_bits <= 16:
-            return Self.from_word_unsafe(UInt32(value))
-
-        # A 32-bit scalar needs one word or two, decided by a comparison that
-        # is cheaper than the general division loop. This is a hot path: the
-        # single-word `add` fast paths land here.
-        elif value_bits == 32:
-            if value <= Self.BASE_MAX:
-                return Self.from_word_unsafe(UInt32(value))
-            else:
-                # Built straight into the result. A list literal here meant an
-                # allocation for the list and a second one to copy it into
-                # place -- 30 ns to carry two words, on the path every
-                # single-word addition takes.
-                var result = Self(uninitialized_capacity=2)
-                result.words.append(Self.Word(value) % Self.Word(Self.BASE))
-                result.words.append(Self.Word(value) // Self.Word(Self.BASE))
-                return result^
+        # A scalar no wider than `BITS_ALWAYS_IN_ONE_WORD` cannot fill a
+        # word, so it converts with no division at all. That is `UInt8` and
+        # `UInt16` at nine digits a word, and `UInt32` as well at eighteen.
+        #
+        # The base-10^9 version tested `value <= BASE_MAX` for a 32-bit
+        # scalar. Correct then; at eighteen digits `BASE_MAX` does not fit a
+        # `UInt32` and the comparison truncated it, which is why this branch
+        # is a width test now and not a value test.
+        comptime if value_bits <= Self.BITS_ALWAYS_IN_ONE_WORD:
+            return Self.from_word_unsafe(Self.Word(value))
 
         else:
             if value == 0:
                 return Self()
 
-            # Upper bound on the number of base-10^9 words, evaluated at
+            # Upper bound on the number of words, evaluated at
             # compile time so that the list is allocated once and never grows.
             # A `w`-bit unsigned value has at most `floor(w * log10(2)) + 1`
             # decimal digits; 30103/100000 is log10(2) rounded up, which is
@@ -1076,28 +1092,23 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 )
             ).reduce_add()
 
-    def to_uint64_with_first_2_words(self) -> UInt64:
-        """Convert the first two words of the BigUInt to UInt64.
+    def to_uint128_with_first_2_words(self) -> UInt128:
+        """Convert the first two words of the BigUInt to UInt128.
 
         Notes:
-            This method quickly convert BigUInt with 2 words into UInt64.
+            Two words are below `BASE^2 = 10^36`, which is 120 bits, so this
+            is a `UInt128` where the base-10^9 version of it was a `UInt64`.
+            The caller must know there are at most two words.
 
         Returns:
-            The `UInt64` representation of the first two words.
+            The `UInt128` representation of the first two words.
         """
         if len(self.words) == 1:
-            return (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=1]()
-                .cast[DType.uint64]()
-            )
+            return UInt128(self.words[0])
         else:  # len(self.words) == 2
-            return (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=2]()
-                .cast[DType.uint64]()
-                * SIMD[DType.uint64, 2](1, 1_000_000_000)
-            ).reduce_add()
+            return UInt128(self.words[1]) * UInt128(Self.BASE) + UInt128(
+                self.words[0]
+            )
 
     def to_uint128(self) -> UInt128:
         """Returns the number as UInt128.
@@ -2301,20 +2312,16 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             `True` if the value exceeds `UInt64.MAX`, `False` otherwise.
         """
         # UInt64.MAX:     18_446_744_073_709_551_615
-        # word 0:         709551615
-        # word 1:         446744073
-        # word 2:         18
-        if len(self.words) > 3:
+        # word 0:         446_744_073_709_551_615
+        # word 1:         18
+        if len(self.words) > 2:
             return True
-        elif len(self.words) == 3:
-            if self.words[2] > UInt32(18):
+        elif len(self.words) == 2:
+            if self.words[1] > Self.Word(18):
                 return True
-            elif self.words[2] == 18:
-                if self.words[1] > UInt32(446744073):
+            elif self.words[1] == Self.Word(18):
+                if self.words[0] > Self.Word(446_744_073_709_551_615):
                     return True
-                elif self.words[1] == UInt32(446744073):
-                    if self.words[0] > UInt32(709551615):
-                        return True
         return False
 
     @always_inline
@@ -2325,28 +2332,25 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             `True` if the value exceeds `UInt128.MAX`, `False` otherwise.
         """
         # UInt128.MAX:    340_282_366_920_938_463_463_374_607_431_768_211_455
-        # word 0:         768211455
-        # word 1:         374607431
-        # word 2:         938463463
-        # word 3:         282366920
-        # word 4:         340
-        if len(self.words) > 5:
+        # word 0:         374_607_431_768_211_455
+        # word 1:         282_366_920_938_463_463
+        # word 2:         340
+        #
+        # The base-10^9 version of this compared `words[4]` under
+        # `len(self.words) == 4`, which read one past the end, and let a
+        # five-word value -- the only length that can actually overflow --
+        # fall through to `False`. See `test_uint128_overflow_boundary`.
+        if len(self.words) > 3:
             return True
-        elif len(self.words) == 4:
-            if self.words[4] > UInt32(340):
+        elif len(self.words) == 3:
+            if self.words[2] > Self.Word(340):
                 return True
-            elif self.words[4] == UInt32(340):
-                if self.words[3] > UInt32(282366920):
+            elif self.words[2] == Self.Word(340):
+                if self.words[1] > Self.Word(282_366_920_938_463_463):
                     return True
-                elif self.words[3] == UInt32(282366920):
-                    if self.words[2] > UInt32(938463463):
+                elif self.words[1] == Self.Word(282_366_920_938_463_463):
+                    if self.words[0] > Self.Word(374_607_431_768_211_455):
                         return True
-                    elif self.words[2] == UInt32(938463463):
-                        if self.words[1] > UInt32(374607431):
-                            return True
-                        elif self.words[1] == UInt32(374607431):
-                            if self.words[0] > UInt32(768211455):
-                                return True
         return False
 
     @always_inline

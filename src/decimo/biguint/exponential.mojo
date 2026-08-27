@@ -20,7 +20,7 @@ from std import math
 from std.memory import unsafe_memset_zero
 
 from decimo.biguint.biguint import BigUInt
-from decimo.utility import isqrt_uint64
+from decimo.utility import isqrt_uint64, isqrt_uint128
 import decimo.biguint.arithmetics as biguint_arithmetics
 
 # ===----------------------------------------------------------------------=== #
@@ -53,21 +53,17 @@ def sqrt(x: BigUInt) -> BigUInt:
             return BigUInt.one()
         else:
             return BigUInt.from_word_unsafe(
-                UInt32(isqrt_uint64(UInt64(x.words[0])))
+                BigUInt.Word(isqrt_uint64(x.words[0]))
             )
 
     elif len(x.words) == 2:
-        var res = BigUInt.Word(
-            isqrt_uint64(
-                (
-                    x.words.unsafe_ptr()
-                    .unsafe_load[width=2]()
-                    .cast[DType.uint64]()
-                    * SIMD[DType.uint64, 2](1, 1_000_000_000)
-                ).reduce_add()
-            )
+        # Two words are `BASE^2`, so the value needs 128 bits and its root
+        # needs 64. The base-10^9 version packed the pair into a `UInt64` with
+        # a SIMD dot product; that only worked while two words fit one.
+        var value = UInt128(x.words[1]) * UInt128(BigUInt.BASE) + UInt128(
+            x.words[0]
         )
-        return BigUInt.from_word_unsafe(res)
+        return BigUInt.from_word_unsafe(BigUInt.Word(isqrt_uint128(value)))
 
     # Use Newton's method for larger numbers
     else:  # len(x.words) > 2
@@ -172,19 +168,15 @@ def sqrt_initial_guess(x: BigUInt) -> BigUInt:
     var nsw: BigUInt.Word  # Next significant word
     if len(x.words) & 1 == 0:  # If even, we use the most significant 2 words
         nsw = x.words[len(x.words) - 3]
-        msw_sqrt = BigUInt.Word(
-            isqrt_uint64(
-                (
-                    x.words.unsafe_ptr()
-                    .unsafe_load[width=2](len(x.words) - 2)
-                    .cast[DType.uint64]()
-                    * SIMD[DType.uint64, 2](1, 1_000_000_000)
-                ).reduce_add()
-            )
-        )
+        # Same as the two-word case above: the pair is `BASE^2` wide now, so
+        # it is a `UInt128` rather than a SIMD dot product into a `UInt64`.
+        var top_pair = UInt128(x.words[len(x.words) - 1]) * UInt128(
+            BigUInt.BASE
+        ) + UInt128(x.words[len(x.words) - 2])
+        msw_sqrt = BigUInt.Word(isqrt_uint128(top_pair))
     else:  # If odd, we use the most significant word
         nsw = x.words[len(x.words) - 2]
-        msw_sqrt = UInt32(isqrt_uint64(UInt64(x.words[len(x.words) - 1])))
+        msw_sqrt = BigUInt.Word(isqrt_uint64(x.words[len(x.words) - 1]))
 
     # Some additional adjustments based on the next significant word
     nsw //= 2 * msw_sqrt  # The next word contributes to the guess

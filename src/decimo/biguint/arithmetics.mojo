@@ -22,7 +22,7 @@ from std.algorithm import vectorize
 from std import math
 from std.memory import unsafe_memcpy, unsafe_memset_zero
 
-from decimo.biguint.biguint import BigUInt, WORD_DTYPE
+from decimo.biguint.biguint import BigUInt, WORD_DTYPE, Coefficient
 from decimo.wordlist import WordList
 import decimo.biguint.comparison as biguint_comparison
 from decimo.errors import (
@@ -34,7 +34,7 @@ from decimo.rounding_mode import RoundingMode
 import decimo.biguint.ntt as biguint_ntt
 from decimo.utility import alias_as_immutable_source
 
-comptime CUTOFF_KARATSUBA = 256
+comptime CUTOFF_KARATSUBA = 128
 """The cutoff number of words for using Karatsuba multiplication.
 
 Raised from 64 when the schoolbook base case became product-scanning. A Comba
@@ -42,12 +42,12 @@ column reduces base-10^9 once per result word instead of once per partial
 product, which makes the quadratic kernel fast enough that Karatsuba's extra
 `BigUInt` allocations and additions do not pay until much later.
 """
-comptime CUTOFF_TOOM3 = 768
+comptime CUTOFF_TOOM3 = 384
 """The cutoff number of words for using Toom-3 multiplication.
 
 NOTE: Karatsuba is used for `CUTOFF_KARATSUBA < max_words <= CUTOFF_TOOM3`.
 """
-comptime CUTOFF_BURNIKEL_ZIEGLER = 48
+comptime CUTOFF_BURNIKEL_ZIEGLER = 24
 """The cutoff number of words for using Burnikel-Ziegler division.
 
 Schoolbook is used outright when the divisor has at most this many words
@@ -67,7 +67,7 @@ longer. Measured on the 2n-by-n shape the condition selects, best of nine:
 
 64 is where they meet, so the crossover sits just below it.
 """
-comptime BURNIKEL_ZIEGLER_BLOCK_WORDS = 32
+comptime BURNIKEL_ZIEGLER_BLOCK_WORDS = 16
 """The block size the Burnikel-Ziegler recursion bottoms out at.
 
 Once the recursion reaches a divisor of at most this many words it calls
@@ -188,15 +188,14 @@ the 112-word row, is the one being tuned for.
 # break-even at 8, and slower below that, which is why the short path stays.
 # ===----------------------------------------------------------------------=== #
 
-# One 256-bit vector of base-10^9 words, and the run length that the two-pass
-# kernels chew through between carry walks.
-comptime WORDS_PER_VECTOR = 8
-comptime WORDS_PER_CARRY_BLOCK = 64
-comptime WORDS_PER_NARROW_COLUMN = 16
-"""Up to this many words in the shorter operand, a Comba column is summed in
-`UInt64` rather than `UInt128`. See `multiply_slices_schoolbook`."""
+# One 256-bit vector of words, and the run length that the two-pass kernels
+# chew through between carry walks. Both halved with the word count when the
+# base moved, to keep the same number of *bytes* per vector and per block.
+# Provisional: they want re-sweeping, like every other cutoff here.
+comptime WORDS_PER_VECTOR = 4
+comptime WORDS_PER_CARRY_BLOCK = 32
 
-comptime WORDS_PER_SHORT_DIVISOR = 8
+comptime WORDS_PER_SHORT_DIVISOR = 4
 """Below this many divisor words, Knuth D's multiply-subtract stays in one
 pass. See `_multiply_subtract_words`."""
 
@@ -505,22 +504,27 @@ def _multiply_subtract_words[
     o: Origin[mut=True],
     o_y: Origin[mut=False],
 ](
-    rp: Pointer[UInt32, o],
-    yp: Pointer[UInt32, o_y],
+    rp: Pointer[BigUInt.Word, o],
+    yp: Pointer[BigUInt.Word, o_y],
     n_words: Int,
-    quotient: UInt32,
-) -> UInt64:
+    quotient: BigUInt.Word,
+) -> BigUInt.Word:
     """`r[0..n) -= quotient * y[0..n)`, returning what to take off `r[n]`.
 
     The multiply-subtract step of Knuth D, and the whole of its inner cost.
 
-    Written the obvious way, `product = quotient * y[i] + carry` puts a
-    64-bit division by `BASE` on the loop-carried chain: carry feeds the
-    product, the product feeds the division, the division feeds the next
-    carry, about nine cycles a word. But `quotient * y[i]` does not actually
-    depend on the carry. Computing all of those first, with their base-10^9
-    splits, lets them pipeline, and leaves only a combine-and-subtract walk
-    running serially -- two chains, both an add and a compare deep.
+    Written the obvious way, `product = quotient * y[i] + carry` puts the
+    division by `BASE` on the loop-carried chain: carry feeds the product, the
+    product feeds the division, the division feeds the next carry, about nine
+    cycles a word. But `quotient * y[i]` does not actually depend on the
+    carry. Computing all of those first, with their splits, lets them
+    pipeline, and leaves only a combine-and-subtract walk running serially --
+    two chains, both an add and a compare deep.
+
+    A partial product is below `BASE^2`, which needs 128 bits, but the divide
+    that splits it is by a *constant* and the compiler expands that into a
+    multiply-high rather than calling a helper. The subtraction stays in one
+    word: `r[i] + BASE` is below `2 * BASE`, which a word holds.
 
     Worth 2.1x at 112 words and 2.3x at 224, which is where the schoolbook
     base case of Burnikel-Ziegler sits.
@@ -534,8 +538,9 @@ def _multiply_subtract_words[
     Returns:
         The amount to subtract from the word above the window.
     """
-    comptime BASE_64 = UInt64(BigUInt.BASE)
-    var quotient_64 = UInt64(quotient)
+    comptime BASE_WORD = BigUInt.Word(BigUInt.BASE)
+    comptime BASE_WIDE = UInt128(BigUInt.BASE)
+    var quotient_wide = UInt128(quotient)
 
     # A short divisor takes the obvious single pass. The two-pass form below
     # buys latency with two blocks of stack, and at four or eight words the
@@ -543,68 +548,63 @@ def _multiply_subtract_words[
     # four-word divisor, and it spent most of its time setting up buffers it
     # used four slots of.
     if n_words <= WORDS_PER_SHORT_DIVISOR:
-        var short_pending = UInt32(0)
-        var short_borrow = UInt32(0)
+        var short_pending = BigUInt.Word(0)
+        var short_borrow = BigUInt.Word(0)
         for i in range(n_words):
-            var product = quotient_64 * UInt64(yp[unsafe_offset=i])
-            var high = UInt32(product // BASE_64)
-            var digit = UInt32(product - UInt64(high) * BASE_64) + short_pending
+            var product = quotient_wide * UInt128(yp[unsafe_offset=i])
+            var high = BigUInt.Word(product // BASE_WIDE)
+            var digit = (
+                BigUInt.Word(product - UInt128(high) * BASE_WIDE)
+                + short_pending
+            )
             short_pending = high
-            if digit >= BigUInt.BASE:
-                digit -= BigUInt.BASE
+            if digit >= BASE_WORD:
+                digit -= BASE_WORD
                 short_pending += 1
-            var biased = (
-                UInt64(rp[unsafe_offset=i])
-                + BASE_64
-                - UInt64(digit)
-                - UInt64(short_borrow)
-            )
-            short_borrow = UInt32(biased < BASE_64)
-            rp[unsafe_offset=i] = UInt32(
-                biased - BASE_64 + UInt64(short_borrow) * BASE_64
-            )
-        return UInt64(short_pending) + UInt64(short_borrow)
+            var biased = rp[unsafe_offset=i] + BASE_WORD - digit - short_borrow
+            short_borrow = BigUInt.Word(biased < BASE_WORD)
+            rp[unsafe_offset=i] = biased - BASE_WORD + short_borrow * BASE_WORD
+        return short_pending + short_borrow
 
-    var highs = InlineArray[UInt32, WORDS_PER_CARRY_BLOCK](uninitialized=True)
-    var lows = InlineArray[UInt32, WORDS_PER_CARRY_BLOCK](uninitialized=True)
+    var highs = InlineArray[BigUInt.Word, WORDS_PER_CARRY_BLOCK](
+        uninitialized=True
+    )
+    var lows = InlineArray[BigUInt.Word, WORDS_PER_CARRY_BLOCK](
+        uninitialized=True
+    )
     var hp = highs.unsafe_ptr()
     var lp = lows.unsafe_ptr()
 
-    var pending_high = UInt32(0)
-    var borrow = UInt32(0)
+    var pending_high = BigUInt.Word(0)
+    var borrow = BigUInt.Word(0)
     var start = 0
     while start < n_words:
         var end = min(start + WORDS_PER_CARRY_BLOCK, n_words)
 
         # Independent of the carry, so these pipeline.
         for i in range(start, end):
-            var product = quotient_64 * UInt64(yp[unsafe_offset=i])
-            var high = product // BASE_64
-            hp[unsafe_offset=i - start] = UInt32(high)
-            lp[unsafe_offset=i - start] = UInt32(product - high * BASE_64)
+            var product = quotient_wide * UInt128(yp[unsafe_offset=i])
+            var high = product // BASE_WIDE
+            hp[unsafe_offset=i - start] = BigUInt.Word(high)
+            lp[unsafe_offset=i - start] = BigUInt.Word(
+                product - high * BASE_WIDE
+            )
 
         # The serial part: carry the product's high word into the next digit,
         # then take that digit out of the running remainder.
         for i in range(start, end):
             var digit = lp[unsafe_offset=i - start] + pending_high
             pending_high = hp[unsafe_offset=i - start]
-            if digit >= BigUInt.BASE:
-                digit -= BigUInt.BASE
+            if digit >= BASE_WORD:
+                digit -= BASE_WORD
                 pending_high += 1
-            var biased = (
-                UInt64(rp[unsafe_offset=i])
-                + BASE_64
-                - UInt64(digit)
-                - UInt64(borrow)
-            )
-            borrow = UInt32(biased < BASE_64)
-            rp[unsafe_offset=i] = UInt32(
-                biased - BASE_64 + UInt64(borrow) * BASE_64
-            )
+            var biased = rp[unsafe_offset=i] + BASE_WORD - digit - borrow
+            borrow = BigUInt.Word(biased < BASE_WORD)
+            rp[unsafe_offset=i] = biased - BASE_WORD + borrow * BASE_WORD
 
         start = end
 
-    return UInt64(pending_high) + UInt64(borrow)
+    return pending_high + borrow
 
 
 @always_inline
@@ -777,10 +777,12 @@ def add(x: BigUInt, y: BigUInt) -> BigUInt:
         add_by_word_inplace(result, y.words[0])
         return result^
 
-    # If both numbers are double-word, we can handle them with UInt64
+    # Two words are `10^36`, so the sum needs 128 bits where it used to need
+    # 64. Still worth a shortcut: the general path allocates and walks.
     if len(x.words) <= 2 and len(y.words) <= 2:
         return BigUInt.from_unsigned_integral_scalar(
-            x.to_uint64_with_first_2_words() + y.to_uint64_with_first_2_words()
+            x.to_uint128_with_first_2_words()
+            + y.to_uint128_with_first_2_words()
         )
 
     # Normal cases
@@ -1413,17 +1415,16 @@ def multiply(x: BigUInt, y: BigUInt) -> BigUInt:
 
     # SPECIAL CASE: both operands are a single word.
     #
-    # `(10^9 - 1)^2` is under 10^18, so the product is one machine multiply
-    # and the split back into base-billion words is two divisions by a
-    # constant, which the compiler folds. The general path below would copy
-    # one operand into a fresh buffer and then walk it, for a loop of length
-    # one -- 8.7 ns where this is about 3.
+    # `(BASE - 1)^2` needs 128 bits, so the product is `MUL` plus `UMULH`,
+    # and the split back into words is two divisions by a constant, which the
+    # compiler folds into multiply-high. The general path below would copy one
+    # operand into a fresh buffer and then walk it, for a loop of length one.
     if len(x.words) == 1 and len(y.words) == 1:
-        comptime BASE_64 = UInt64(BigUInt.BASE)
-        var product = UInt64(x.words[0]) * UInt64(y.words[0])
-        var high = product // BASE_64
+        comptime BASE_WIDE = UInt128(BigUInt.BASE)
+        var product = UInt128(x.words[0]) * UInt128(y.words[0])
+        var high = product // BASE_WIDE
         var result = BigUInt(uninitialized_capacity=2)
-        result.words.append(BigUInt.Word(product - high * BASE_64))
+        result.words.append(BigUInt.Word(product - high * BASE_WIDE))
         if high != 0:
             result.words.append(BigUInt.Word(high))
         return result^
@@ -1592,16 +1593,20 @@ def multiply_slices_schoolbook(
     #
     # The operand-scanning form this replaces did a `% BASE` and a `// BASE`
     # on every one of the `n_x * n_y` partial products, and read and wrote the
-    # result array on each of them too. Here the base-10^9 reduction happens
-    # once per result word - `n_x + n_y` of them, not `n_x * n_y` - and the
-    # column stays in registers. About 2.2x at 256 words, and ahead from two
+    # result array on each of them too. Here the reduction happens once per
+    # result word - `n_x + n_y` of them, not `n_x * n_y` - and the column
+    # stays in registers. About 2.2x at 256 words, and ahead from two
     # words up, so there is no size gate any more.
     #
-    # Overflow safety: each partial product is below `(10^9)^2 = 10^18 < 2^60`
-    # and a column has at most `n_min` of them, so a `UInt128` accumulator
-    # cannot overflow for any operand this library can allocate. The column is
-    # unrolled over four independent accumulators because a single one
-    # serialises on the 128-bit add.
+    # Overflow safety: each partial product is below `BASE^2 = 10^36`, which
+    # is 120 bits, so the operands are widened *before* the multiply and not
+    # after. The base-10^9 version could multiply in 64 bits and widen the
+    # result, because `(10^9)^2` fit; writing it that way at eighteen digits a
+    # word wraps before the cast ever happens, and every type in the
+    # expression is still correct. A column of `k` such products needs
+    # `k < 2^128 / 10^36`, about 340, and Karatsuba takes over long before a
+    # column is that long. The column is unrolled over four independent
+    # accumulators because a single one serialises on the 128-bit add.
     comptime BASE = UInt128(BigUInt.BASE)
 
     var result_length = n_words_x_slice + n_words_y_slice
@@ -1613,52 +1618,15 @@ def multiply_slices_schoolbook(
     var y_words_ptr = y.words.unsafe_ptr()
     var result_ptr = result.words.unsafe_ptr()
 
-    # A narrow column can be summed in 64 bits, and usually can. Each partial
-    # product is below `(10^9)^2 < 10^18`, so a column of at most sixteen of
-    # them, plus a carry that settles around `16 * 10^9`, stays under
-    # `1.61 * 10^19` -- comfortably inside `UInt64`'s `1.8446 * 10^19`.
-    #
-    # Worth doing because the accumulator is not where the time went: emitting
-    # a word costs a `% BASE` and a `// BASE`, and in `UInt128` those are a
-    # 128-bit divide by a constant. At four words by four -- a 28-digit
-    # multiplication, the commonest one there is -- that was most of the cost.
-    if min(n_words_x_slice, n_words_y_slice) <= WORDS_PER_NARROW_COLUMN:
-        comptime BASE_64 = UInt64(BigUInt.BASE)
-        var narrow_carry = UInt64(0)
-        for k in range(result_length - 1):
-            var i_low = 0 if k < n_words_y_slice else k - n_words_y_slice + 1
-            var i_high = k if k < n_words_x_slice else n_words_x_slice - 1
+    # There is no narrow path any more. The base-10^9 version summed a column
+    # of at most sixteen products in a `UInt64`, because a partial product was
+    # below `(10^9)^2 < 10^18`. A partial product is now below `(10^18)^2`,
+    # which is 120 bits, so every column needs the accumulator below whatever
+    # its length. That accumulator holds `2^128 / 10^36` -- about 340 --
+    # products before it can overflow, and Karatsuba takes over long before a
+    # column is that long.
 
-            var sum0 = narrow_carry
-            var sum1 = UInt64(0)
-            var i = i_low
-            while i + 1 <= i_high:
-                sum0 += UInt64(x_words_ptr[unsafe_offset=start_x + i]) * UInt64(
-                    y_words_ptr[unsafe_offset=start_y + k - i]
-                )
-                sum1 += UInt64(
-                    x_words_ptr[unsafe_offset=start_x + i + 1]
-                ) * UInt64(y_words_ptr[unsafe_offset=start_y + k - i - 1])
-                i += 2
-            if i <= i_high:
-                sum0 += UInt64(x_words_ptr[unsafe_offset=start_x + i]) * UInt64(
-                    y_words_ptr[unsafe_offset=start_y + k - i]
-                )
-
-            var narrow_column = sum0 + sum1
-            var high = narrow_column // BASE_64
-            result_ptr[unsafe_offset=k] = BigUInt.Word(
-                narrow_column - high * BASE_64
-            )
-            narrow_carry = high
-
-        result_ptr[unsafe_offset=result_length - 1] = BigUInt.Word(
-            narrow_carry % BASE_64
-        )
-        result.remove_leading_empty_words()
-        return result^
-
-    # `carry` is the part of the column sum at or above 10^9, which belongs to
+    # `carry` is the part of the column sum at or above BASE, which belongs to
     # the next column. The last column leaves it holding the top word.
     var carry = UInt128(0)
     for k in range(result_length - 1):
@@ -1672,27 +1640,22 @@ def multiply_slices_schoolbook(
 
         var i = i_low
         while i + 3 <= i_high:
-            acc0 += UInt128(
-                UInt64(x_words_ptr[unsafe_offset=start_x + i])
-                * UInt64(y_words_ptr[unsafe_offset=start_y + k - i])
+            acc0 += UInt128(x_words_ptr[unsafe_offset=start_x + i]) * UInt128(
+                y_words_ptr[unsafe_offset=start_y + k - i]
             )
             acc1 += UInt128(
-                UInt64(x_words_ptr[unsafe_offset=start_x + i + 1])
-                * UInt64(y_words_ptr[unsafe_offset=start_y + k - i - 1])
-            )
+                x_words_ptr[unsafe_offset=start_x + i + 1]
+            ) * UInt128(y_words_ptr[unsafe_offset=start_y + k - i - 1])
             acc2 += UInt128(
-                UInt64(x_words_ptr[unsafe_offset=start_x + i + 2])
-                * UInt64(y_words_ptr[unsafe_offset=start_y + k - i - 2])
-            )
+                x_words_ptr[unsafe_offset=start_x + i + 2]
+            ) * UInt128(y_words_ptr[unsafe_offset=start_y + k - i - 2])
             acc3 += UInt128(
-                UInt64(x_words_ptr[unsafe_offset=start_x + i + 3])
-                * UInt64(y_words_ptr[unsafe_offset=start_y + k - i - 3])
-            )
+                x_words_ptr[unsafe_offset=start_x + i + 3]
+            ) * UInt128(y_words_ptr[unsafe_offset=start_y + k - i - 3])
             i += 4
         while i <= i_high:
-            acc0 += UInt128(
-                UInt64(x_words_ptr[unsafe_offset=start_x + i])
-                * UInt64(y_words_ptr[unsafe_offset=start_y + k - i])
+            acc0 += UInt128(x_words_ptr[unsafe_offset=start_x + i]) * UInt128(
+                y_words_ptr[unsafe_offset=start_y + k - i]
             )
             i += 1
 
@@ -2200,7 +2163,7 @@ def multiply_slices_toom3(
     return result^
 
 
-def multiply_by_word_inplace(mut x: BigUInt, y: UInt32):
+def multiply_by_word_inplace(mut x: BigUInt, y: BigUInt.Word):
     """Multiplies in-place a BigUInt by a UInt32 value.
 
     Args:
@@ -2214,20 +2177,21 @@ def multiply_by_word_inplace(mut x: BigUInt, y: UInt32):
         multiply_by_word_le_4_inplace(x, y)
         return
 
-    var y_as_uint64 = UInt64(y)
-    var product: UInt64
-    var carry: UInt64 = 0
+    comptime BASE_WIDE = UInt128(BigUInt.BASE)
+    var y_wide = UInt128(y)
+    var product: UInt128
+    var carry = UInt128(0)
 
     for i in range(len(x.words)):
-        product = UInt64(x.words[i]) * y_as_uint64 + carry
-        x.words[i] = BigUInt.Word(product % UInt64(BigUInt.BASE))
-        carry = product // UInt64(BigUInt.BASE)
+        product = UInt128(x.words[i]) * y_wide + carry
+        x.words[i] = BigUInt.Word(product % BASE_WIDE)
+        carry = product // BASE_WIDE
 
     if carry > 0:
         x.words.append(BigUInt.Word(carry))
 
 
-def multiply_by_word_le_4_inplace(mut x: BigUInt, y: UInt32):
+def multiply_by_word_le_4_inplace(mut x: BigUInt, y: BigUInt.Word):
     """Multiplies in-place a BigUInt by a UInt32 value which is between 0 and 4.
 
     Args:
@@ -2251,7 +2215,7 @@ def multiply_by_word_le_4_inplace(mut x: BigUInt, y: UInt32):
 
     # y is 0, x becomes 1
     if y == 0:
-        x.words = WordList(UInt32(0), __list_literal__=None)
+        x.words = Coefficient(BigUInt.Word(0), __list_literal__=None)
         return
 
     # y is 1, x stays the same
@@ -2337,31 +2301,20 @@ def multiply_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
         for i in range(len(x.words)):
             result.words.append(x.words[i])
     else:  # number_of_remaining_digits > 0
-        var carry = UInt64(0)
-        var multiplier: UInt64
-        var product: UInt64
-
-        if number_of_remaining_digits == 1:
-            multiplier = UInt64(10)
-        elif number_of_remaining_digits == 2:
-            multiplier = UInt64(100)
-        elif number_of_remaining_digits == 3:
-            multiplier = UInt64(1000)
-        elif number_of_remaining_digits == 4:
-            multiplier = UInt64(10_000)
-        elif number_of_remaining_digits == 5:
-            multiplier = UInt64(100_000)
-        elif number_of_remaining_digits == 6:
-            multiplier = UInt64(1_000_000)
-        elif number_of_remaining_digits == 7:
-            multiplier = UInt64(10_000_000)
-        else:  # number_of_remaining_digits == 8
-            multiplier = UInt64(100_000_000)
+        # `number_of_remaining_digits` runs from 1 to `DIGITS_PER_WORD - 1`,
+        # so this is a lookup rather than the `if` chain it used to be: that
+        # chain stopped at 8 because a word held nine digits, and a wider word
+        # would have folded every larger shift into the last branch.
+        var carry = UInt128(0)
+        var product: UInt128
+        var multiplier = BigUInt.Word(1)
+        for _ in range(number_of_remaining_digits):
+            multiplier *= 10
 
         for i in range(len(x.words)):
-            product = UInt64(x.words[i]) * multiplier + carry
-            result.words.append(BigUInt.Word(product % UInt64(BigUInt.BASE)))
-            carry = product // UInt64(BigUInt.BASE)
+            product = UInt128(x.words[i]) * UInt128(multiplier) + carry
+            result.words.append(BigUInt.Word(product % UInt128(BigUInt.BASE)))
+            carry = product // UInt128(BigUInt.BASE)
         # Add the last carry if it exists
         if carry > 0:
             result.words.append(BigUInt.Word(carry))
@@ -2419,31 +2372,20 @@ def multiply_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
             unsafe_uninit_length=len(x.words) + number_of_zero_words + 1
         )  # New length = original length + number of zero words + 1
 
-        var carry = UInt64(0)
-        var multiplier: UInt64
-        var product: UInt64
-
-        if number_of_remaining_digits == 1:
-            multiplier = UInt64(10)
-        elif number_of_remaining_digits == 2:
-            multiplier = UInt64(100)
-        elif number_of_remaining_digits == 3:
-            multiplier = UInt64(1000)
-        elif number_of_remaining_digits == 4:
-            multiplier = UInt64(10_000)
-        elif number_of_remaining_digits == 5:
-            multiplier = UInt64(100_000)
-        elif number_of_remaining_digits == 6:
-            multiplier = UInt64(1_000_000)
-        elif number_of_remaining_digits == 7:
-            multiplier = UInt64(10_000_000)
-        else:  # number_of_remaining_digits == 8
-            multiplier = UInt64(100_000_000)
+        # `number_of_remaining_digits` runs from 1 to `DIGITS_PER_WORD - 1`,
+        # so this is a lookup rather than the `if` chain it used to be: that
+        # chain stopped at 8 because a word held nine digits, and a wider word
+        # would have folded every larger shift into the last branch.
+        var carry = UInt128(0)
+        var product: UInt128
+        var multiplier = BigUInt.Word(1)
+        for _ in range(number_of_remaining_digits):
+            multiplier *= 10
 
         for i in range(x_original_length):
-            product = UInt64(x.words[i]) * multiplier + carry
-            x.words[i] = BigUInt.Word(product % UInt64(BigUInt.BASE))
-            carry = product // UInt64(BigUInt.BASE)
+            product = UInt128(x.words[i]) * UInt128(multiplier) + carry
+            x.words[i] = BigUInt.Word(product % UInt128(BigUInt.BASE))
+            carry = product // UInt128(BigUInt.BASE)
 
         # Add the last carry no matter it is 0 or not
         x.words[x_original_length] = BigUInt.Word(carry)
@@ -2711,10 +2653,9 @@ def floor_divide(x: BigUInt, y: BigUInt) raises -> BigUInt:
         else:
             return floor_divide_by_word(x, y.words[0])
 
-    # CASE: y is double words
-    if len(y.words) == 2:
-        # Use `floor_divide_by_uint64` as it is more efficient
-        return floor_divide_by_uint64(x, y.to_uint64_with_first_2_words())
+    # A two-word divisor used to take a `UInt64` shortcut. Two words are now
+    # `10^36`, which no `UInt64` holds, so it goes through Knuth D with
+    # everything else. A single word still fits, and that path is above.
 
     # CASE: y is three or four words
     #
@@ -2873,22 +2814,16 @@ def floor_divide_modulo_schoolbook(
             return result^
         # SUB-CASE: Divisor is single word (<= 9 digits)
         else:
-            var word_remainder = UInt32(0)
+            var word_remainder = BigUInt.Word(0)
             var result = floor_divide_modulo_by_word(
                 x, y.words[0], word_remainder
             )
             overwrite_with_word(remainder, word_remainder)
             return result^
 
-    # CASE: y is double words
-    if len(y.words) == 2:
-        # Use `floor_divide_modulo_by_uint64` as it is more efficient
-        var word_remainder = UInt64(0)
-        var result = floor_divide_modulo_by_uint64(
-            x, y.to_uint64_with_first_2_words(), word_remainder
-        )
-        overwrite_with_uint64(remainder, word_remainder)
-        return result^
+    # A two-word divisor used to take a `UInt64` shortcut. Two words are now
+    # `10^36`, which no `UInt64` holds, so it goes through Knuth D with
+    # everything else. A single word still fits, and that path is above.
 
     # See `floor_divide()` for why three- and four-word divisors no longer
     # take a `UInt128` shortcut here.
@@ -2977,7 +2912,7 @@ def floor_divide_modulo_schoolbook(
     # Every quotient word has been subtracted out, so what is left of the
     # dividend below the divisor's width is the remainder. The words above it
     # are the guard word and the space the quotient was peeled from, all zero.
-    running.words.resize(n, UInt32(0))
+    running.words.resize(n, BigUInt.Word(0))
     running.remove_leading_empty_words()
     remainder = running^
 
@@ -3000,32 +2935,34 @@ def floor_divide_estimate_quotient(
         index_of_word: The current position in the division algorithm.
 
     Returns:
-        An estimated quotient digit (0 to 999_999_999).
+        An estimated quotient digit, below `BASE`.
 
     Notes:
 
     The function performs division of a 3-word number by a 2-word number:
-    Dividend portion: R = r2 * 10^18 + r1 * 10^9 + r0.
-    Divisor: D = d1 * 10^9 + d0.
+    Dividend portion: R = r2 * BASE^2 + r1 * BASE + r0.
+    Divisor: D = d1 * BASE + d0.
     Goal: Estimate Q = R // D.
     """
 
-    # This is Knuth's step D3, and the point of writing it out is that every
-    # value in it fits in 64 bits.
+    # This is Knuth's step D3. It divides the top two words of the remainder
+    # by the divisor's top word rather than building the full three-by-two,
+    # which is what keeps the estimate to a single division.
     #
-    # It used to build the three-word numerator and the two-word denominator
-    # as `UInt128` and divide them. arm64 has no 128-bit divide, so that was a
-    # call to the software helper once per quotient word -- about 30 ns for a
-    # step whose arithmetic is a single machine division. It is what made a
-    # 28-digit division cost more than three times what libmpdec charges.
+    # `r2 * BASE + r1` needs 128 bits now: at eighteen digits a word the
+    # product alone is `10^36`. It is a 128-by-64 divide with a runtime
+    # divisor, and the compiler's own expansion of that is the right tool --
+    # measured at 5.79 ns against 5.01 for the 64-bit divide it replaces, on a
+    # serial chain, and there are half as many quotient words to spend it on.
+    # A precomputed Moller-Granlund reciprocal, which is what `BigInt` needs
+    # at base 2^64, measures *slower* here (6.94 ns) because the numerator is
+    # not a full 128-bit value and the normalising shift lands on the critical
+    # path. Do not reach for it.
     #
-    # Knuth divides the top two words by the divisor's top word instead:
-    # `r2 * BASE + r1` is under 10^18 and `d1` is under 10^9, so the quotient
-    # comes from one 64-bit division. The estimate can then be up to two too
-    # large, which the correction below takes back one at a time; the caller
-    # is prepared for the same two, and normalization -- `d1 >= BASE / 2` --
-    # is what bounds it.
-    comptime BASE = UInt64(BigUInt.BASE)
+    # The estimate can be up to two too large, which the correction below
+    # takes back one at a time; the caller is prepared for the same two, and
+    # normalization -- `d1 >= BASE / 2` -- is what bounds it.
+    comptime BASE = UInt128(BigUInt.BASE)
 
     var n = len(divisor.words)
     var base_index = index_of_word + n - 2
@@ -3051,20 +2988,21 @@ def floor_divide_estimate_quotient(
     var d0 = UInt64(divisor_ptr[unsafe_offset=n - 2])
     var d1 = UInt64(divisor_ptr[unsafe_offset=n - 1])
 
-    var top = r2 * BASE + r1
-    var quotient = top // d1
-    var rest = top - quotient * d1
+    var top = UInt128(r2) * BASE + UInt128(r1)
+    var d1_wide = UInt128(d1)
+    var quotient = top // d1_wide
+    var rest = top - quotient * d1_wide
 
     if quotient >= BASE:
         quotient = BASE - 1
-        rest = top - quotient * d1
+        rest = top - quotient * d1_wide
 
-    # `quotient * d0` is below 10^18 and so is `rest * BASE + r0`, so the test
-    # is exact in 64 bits. At most two rounds: that is Knuth's bound for a
-    # normalized divisor.
-    while rest < BASE and quotient * d0 > rest * BASE + r0:
+    # `quotient * d0` and `rest * BASE + r0` are both below `BASE^2`, so the
+    # test is exact in 128 bits. At most two rounds: that is Knuth's bound for
+    # a normalized divisor.
+    while rest < BASE and quotient * UInt128(d0) > rest * BASE + UInt128(r0):
         quotient -= 1
-        rest += d1
+        rest += d1_wide
 
     return BigUInt.Word(quotient)
 
@@ -3091,7 +3029,7 @@ def floor_divide_by_word(x: BigUInt, y: BigUInt.Word) -> BigUInt:
 
 
 def floor_divide_modulo_by_word(
-    x: BigUInt, y: UInt32, mut remainder: UInt32
+    x: BigUInt, y: BigUInt.Word, mut remainder: BigUInt.Word
 ) -> BigUInt:
     """**[PRIVATE]** Divides a BigUInt by a UInt32 divisor, keeping the
     remainder.
@@ -3124,9 +3062,9 @@ def floor_divide_modulo_by_word(
         return BigUInt.from_word_unsafe(x.words[0] // y)
 
     # Most significant word of the dividend
-    var dividend = UInt64(x.words[len(x.words) - 1] // y)
-    var carry = UInt64(x.words[len(x.words) - 1] % y)
-    var y_uint64 = UInt64(y)
+    var dividend = UInt128(x.words[len(x.words) - 1] // y)
+    var carry = UInt128(x.words[len(x.words) - 1] % y)
+    var y_wide = UInt128(y)
     var result: BigUInt
     if dividend == 0:
         result = BigUInt(unsafe_uninit_length=len(x.words) - 1)
@@ -3146,13 +3084,13 @@ def floor_divide_modulo_by_word(
     # never surfaces behind them. The indexed form is kept because it is also
     # bounds-checked under `-D ASSERT=all`.
     for i in range(len(x.words) - 2, -1, -1):
-        dividend = carry * UInt64(BigUInt.BASE) + UInt64(x.words[i])
-        result.words[i] = BigUInt.Word(dividend // y_uint64)
-        carry = dividend % y_uint64
+        dividend = carry * UInt128(BigUInt.BASE) + UInt128(x.words[i])
+        result.words[i] = BigUInt.Word(dividend // y_wide)
+        carry = dividend % y_wide
 
     # `carry` is what is left of the dividend once every word has been
     # consumed, which is the remainder.
-    remainder = UInt32(carry)
+    remainder = BigUInt.Word(carry)
 
     debug_assert[assert_mode="none"](
         (len(result.words) == 1) or (result.words[len(result.words) - 1] != 0),
@@ -3163,7 +3101,7 @@ def floor_divide_modulo_by_word(
     return result^
 
 
-def floor_divide_by_word_inplace(mut x: BigUInt, y: UInt32) -> None:
+def floor_divide_by_word_inplace(mut x: BigUInt, y: BigUInt.Word) -> None:
     """Divides a BigUInt by a UInt32 divisor in-place.
 
     Args:
@@ -3185,9 +3123,9 @@ def floor_divide_by_word_inplace(mut x: BigUInt, y: UInt32) -> None:
     # deriving that bound from `len(x.words)` after a `shrink()` would skip the
     # word just below the one that was dropped and leave it undivided.
     var top = len(x.words) - 1
-    var dividend = UInt64(x.words[top] // y)
-    var carry = UInt64(x.words[top] % y)
-    var y_uint64 = UInt64(y)
+    var dividend = UInt128(x.words[top] // y)
+    var carry = UInt128(x.words[top] % y)
+    var y_wide = UInt128(y)
     if dividend == 0:
         if top == 0:
             # A single-word dividend smaller than the divisor has a quotient of
@@ -3203,9 +3141,9 @@ def floor_divide_by_word_inplace(mut x: BigUInt, y: UInt32) -> None:
 
     # Process the rest of the words
     for i in range(top - 1, -1, -1):
-        dividend = carry * UInt64(BigUInt.BASE) + UInt64(x.words[i])
-        x.words[i] = BigUInt.Word(dividend // y_uint64)
-        carry = dividend % y_uint64
+        dividend = carry * UInt128(BigUInt.BASE) + UInt128(x.words[i])
+        x.words[i] = BigUInt.Word(dividend // y_wide)
+        carry = dividend % y_wide
 
 
 def floor_divide_by_uint64(x: BigUInt, y: UInt64) -> BigUInt:
@@ -3229,49 +3167,28 @@ def floor_divide_modulo_by_uint64(
 
     Args:
         x: The `BigUInt` dividend.
-        y: The `UInt64` divisor. Must be smaller than 10^18.
+        y: The `UInt64` divisor. Must be smaller than `BASE`.
         remainder: Set to `x % y` on return. It is smaller than `y`, so it
             always fits in a `UInt64`.
 
     Returns:
         The quotient of x divided by y.
+
+    Notes:
+
+    A divisor below `BASE` *is* a word now, so this is `_by_word` under
+    another name and delegates to it. The base-10^9 version could not: a
+    `UInt64` spanned two words there, so it walked the dividend in pairs,
+    reassembling each pair with a SIMD dot product and carrying
+    `carry * 10^18` between them. None of that survives a word that already
+    holds eighteen digits.
     """
     debug_assert[assert_mode="none"](
-        y != 0,
+        UInt128(y) < UInt128(BigUInt.BASE),
         "biguint.arithmetics.floor_divide_modulo_by_uint64(): ",
-        "Division by zero.",
+        "divisor must be below BASE.",
     )
-
-    var carry = UInt128(0)
-    var y_uint128 = UInt128(y)
-    var result: BigUInt
-    if len(x.words) % 2 == 1:
-        carry = UInt128(x.words[len(x.words) - 1])
-        result = BigUInt(unsafe_uninit_length=len(x.words) - 1)
-    else:
-        result = BigUInt(unsafe_uninit_length=len(x.words))
-
-    for i in range(len(result.words) - 1, -1, -2):
-        var dividend = (
-            carry * UInt128(1_000_000_000_000_000_000)
-            + (
-                x.words.unsafe_ptr()
-                .unsafe_load[width=2](i - 1)
-                .cast[DType.uint128]()
-                * SIMD[DType.uint128, 2](1, 1_000_000_000)
-            ).reduce_add()
-        )
-        var quotient = dividend // y_uint128
-        result.words[i] = BigUInt.Word(quotient // UInt128(BigUInt.BASE))
-        result.words[i - 1] = BigUInt.Word(quotient % UInt128(BigUInt.BASE))
-        carry = dividend % y_uint128
-
-    # What is left once every word pair has been consumed. It is below `y`,
-    # which the caller guarantees is below 10^18, so the narrowing is safe.
-    remainder = UInt64(carry)
-
-    result.remove_leading_empty_words()
-    return result^
+    return floor_divide_modulo_by_word(x, BigUInt.Word(y), remainder)
 
 
 def floor_divide_by_uint64_inplace(mut x: BigUInt, y: UInt64) -> None:
@@ -3279,45 +3196,19 @@ def floor_divide_by_uint64_inplace(mut x: BigUInt, y: UInt64) -> None:
 
     Args:
         x: The BigUInt value to divide by the divisor.
-        y: The UInt64 divisor. Must be smaller than 10^18.
+        y: The UInt64 divisor. Must be smaller than `BASE`.
+
+    Notes:
+
+    See `floor_divide_modulo_by_uint64()` for why this is now the same
+    operation as the single-word one.
     """
     debug_assert[assert_mode="none"](
-        y != 0,
+        UInt128(y) < UInt128(BigUInt.BASE),
         "biguint.arithmetics.floor_divide_by_uint64_inplace(): ",
-        "Division by zero.",
+        "divisor must be below BASE.",
     )
-
-    if len(x.words) == 1:
-        # The loop below folds an odd top word into `carry` and shortens the
-        # value by one word, which for a one-word value leaves it with no words
-        # at all - not a valid `BigUInt`, and a fault in the first comparison
-        # that reads `words[len(words) - 1]`. A one-word quotient needs no loop.
-        x.words[0] = BigUInt.Word(UInt64(x.words[0]) // y)
-        return
-
-    var carry = UInt128(0)
-    var y_uint128 = UInt128(y)
-    if len(x.words) % 2 == 1:
-        carry = UInt128(x.words[len(x.words) - 1])
-        x.words.resize(len(x.words) - 1, UInt32(0))
-
-    for i in range(len(x.words) - 1, -1, -2):
-        var dividend = (
-            carry * UInt128(1_000_000_000_000_000_000)
-            + (
-                x.words.unsafe_ptr()
-                .unsafe_load[width=2](i - 1)
-                .cast[DType.uint128]()
-                * SIMD[DType.uint128, 2](1, 1_000_000_000)
-            ).reduce_add()
-        )
-        var quotient = dividend // y_uint128
-        x.words[i] = BigUInt.Word(quotient // UInt128(BigUInt.BASE))
-        x.words[i - 1] = BigUInt.Word(quotient % UInt128(BigUInt.BASE))
-        carry = dividend % y_uint128
-
-    x.remove_leading_empty_words()
-    return
+    floor_divide_by_word_inplace(x, BigUInt.Word(y))
 
 
 def floor_divide_by_uint128(x: BigUInt, y: UInt128) -> BigUInt:
@@ -3563,34 +3454,20 @@ def floor_divide_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
 
 def _shift_right_by_decimal_digits_inplace(mut x: BigUInt, digit_shift: Int):
     """Divides `x` in place by `10^digit_shift`, where
-    `1 <= digit_shift <= 8`. Assumes any whole-word shift has already
-    been applied; this only performs the sub-word digit shift and
+    `1 <= digit_shift < DIGITS_PER_WORD`. Assumes any whole-word shift has
+    already been applied; this only performs the sub-word digit shift and
     canonicalises the result.
     """
     debug_assert[assert_mode="none"](
-        digit_shift >= 1 and digit_shift <= 8,
+        digit_shift >= 1 and digit_shift < BigUInt.DIGITS_PER_WORD,
         (
             "biguint.arithmetics._shift_right_by_decimal_digits_inplace(): "
-            "digit_shift must be in [1, 8]"
+            "digit_shift must be below DIGITS_PER_WORD"
         ),
     )
-    var divisor: BigUInt.Word
-    if digit_shift == 1:
-        divisor = BigUInt.Word(10)
-    elif digit_shift == 2:
-        divisor = BigUInt.Word(100)
-    elif digit_shift == 3:
-        divisor = BigUInt.Word(1000)
-    elif digit_shift == 4:
-        divisor = BigUInt.Word(10000)
-    elif digit_shift == 5:
-        divisor = BigUInt.Word(100000)
-    elif digit_shift == 6:
-        divisor = BigUInt.Word(1000000)
-    elif digit_shift == 7:
-        divisor = BigUInt.Word(10000000)
-    else:  # digit_shift == 8
-        divisor = BigUInt.Word(100000000)
+    var divisor = BigUInt.Word(1)
+    for _ in range(digit_shift):
+        divisor *= 10
     var power_of_carry = BigUInt.BASE // divisor
     var carry = BigUInt.Word(0)
     var pointer = x.words.unsafe_ptr()
@@ -3863,20 +3740,22 @@ def floor_divide_modulo_burnikel_ziegler(
     multiply_by_power_of_ten_inplace(normalized_b, n_digits_to_scale_up)
     multiply_by_power_of_ten_inplace(normalized_a, n_digits_to_scale_up)
 
-    # normalized_b is now one word wide, but may still be below BASE_HALF.
-    var gap_ratio: BigUInt.Word
-    if (
-        normalized_b.words[len(normalized_b.words) - 1] >= BigUInt.BASE_HALF
-    ):  # Already normalized
-        gap_ratio = 1
-    elif (
-        normalized_b.words[len(normalized_b.words) - 1] >= 250_000_000
-    ):  # 2x is enough
-        gap_ratio = 2
-    else:  # The most significant word is in [100_000_000, 125_000_000)
-        gap_ratio = (
-            BigUInt.BASE_MAX // normalized_b.words[len(normalized_b.words) - 1]
-        )
+    # The digit shift lands the top word in `[BASE / 10, BASE)`, and
+    # Burnikel-Ziegler needs `[BASE_HALF, BASE)`. Scaling by
+    # `floor(BASE_MAX / msw)` closes the rest of the gap, and does it for any
+    # base: the product is at most `BASE_MAX`, and one more multiple would
+    # exceed it, so `msw * gap_ratio > BASE_MAX - msw >= BASE_HALF - 1`
+    # whenever `msw <= BASE_HALF`. Above that the ratio is 1 and there is
+    # nothing to do.
+    #
+    # This used to branch on `msw >= 250_000_000` -- `BASE / 4` written out --
+    # and take `gap_ratio = 2`. At eighteen digits a word that test is true
+    # for every normalised `msw`, so the ratio was always 2 and a top word
+    # below `BASE / 4` came out still under `BASE_HALF`.
+    var gap_ratio = (
+        BigUInt.Word(BigUInt.BASE_MAX)
+        // normalized_b.words[len(normalized_b.words) - 1]
+    )
 
     if gap_ratio >= 2:
         multiply_by_word_inplace(normalized_b, gap_ratio)
@@ -4330,8 +4209,12 @@ def floor_divide_slices_three_by_two(
 # division algorithm.
 # However, these functions are still valid and can be used if needed.
 def floor_divide_three_by_two_words(
-    a2: UInt32, a1: UInt32, a0: UInt32, b1: UInt32, b0: UInt32
-) raises -> Tuple[UInt32, UInt32, UInt32]:
+    a2: BigUInt.Word,
+    a1: BigUInt.Word,
+    a0: BigUInt.Word,
+    b1: BigUInt.Word,
+    b0: BigUInt.Word,
+) raises -> Tuple[BigUInt.Word, BigUInt.Word, BigUInt.Word]:
     """Divides a 3-word number by a 2-word number.
     b1 must be at least `BASE_HALF`.
 
@@ -4362,26 +4245,31 @@ def floor_divide_three_by_two_words(
             function="floor_divide_three_by_two_words()",
         )
 
-    var a2a1 = UInt64(a2) * 1_000_000_000 + UInt64(a1)
+    # Every intermediate here is two words wide, which was 64 bits at nine
+    # digits a word and is 128 at eighteen. The literal base is gone with it.
+    comptime BASE = UInt128(BigUInt.BASE)
 
-    var q: UInt64 = UInt64(a2a1) // UInt64(b1)
-    var c = a2a1 - q * UInt64(b1)
-    var d: UInt64 = q * UInt64(b0)
-    var r = UInt64(c * 1_000_000_000) + UInt64(a0)
+    var a2a1 = UInt128(a2) * BASE + UInt128(a1)
+    var b1_wide = UInt128(b1)
 
-    if r < UInt64(d):
-        var b = UInt64(b1) * 1_000_000_000 + UInt64(b0)
+    var q = a2a1 // b1_wide
+    var c = a2a1 - q * b1_wide
+    var d = q * UInt128(b0)
+    var r = c * BASE + UInt128(a0)
+
+    if r < d:
+        var b = b1_wide * BASE + UInt128(b0)
         q -= 1
         r += b
-        if r < UInt64(d):
+        if r < d:
             q -= 1
             r += b
 
     r -= d
-    var r1: UInt32 = UInt32(r // 1_000_000_000)
-    var r0: UInt32 = UInt32(r % 1_000_000_000)
+    var r1 = BigUInt.Word(r // BASE)
+    var r0 = BigUInt.Word(r % BASE)
 
-    return (UInt32(q), r1, r0)
+    return (BigUInt.Word(q), r1, r0)
 
 
 def floor_divide_four_by_two_words(
@@ -4667,14 +4555,9 @@ def floor_divide_modulo(
         overwrite_with_word(remainder, word_remainder)
         return quotient^
 
-    # CASE: y is double words
-    if len(y.words) == 2:
-        var double_remainder = UInt64(0)
-        var quotient = floor_divide_modulo_by_uint64(
-            x, y.to_uint64_with_first_2_words(), double_remainder
-        )
-        overwrite_with_uint64(remainder, double_remainder)
-        return quotient^
+    # A two-word divisor used to take a `UInt64` shortcut. Two words are now
+    # `10^36`, which no `UInt64` holds, so it goes through Knuth D with
+    # everything else. A single word still fits, and that path is above.
 
     # See `floor_divide()` for why three- and four-word divisors no longer
     # take a `UInt128` shortcut here.
@@ -4761,9 +4644,9 @@ def overwrite_with_uint64(mut x: BigUInt, value: UInt64):
     A remainder from a two-word divisor is below 10^18, so it never needs more.
     """
     if value < UInt64(BigUInt.BASE):
-        overwrite_with_word(x, UInt32(value))
+        overwrite_with_word(x, BigUInt.Word(value))
         return
-    x.words.resize(2, UInt32(0))
+    x.words.resize(2, BigUInt.Word(0))
     x.words[0] = BigUInt.Word(value % UInt64(BigUInt.BASE))
     x.words[1] = BigUInt.Word(value // UInt64(BigUInt.BASE))
 
@@ -4977,35 +4860,26 @@ def calculate_ndigits_for_normalization(msw: BigUInt.Word) -> Int:
 
     Notes:
 
-    This is a helper function for division algorithms.
-    The normalized word should be as close to BASE as possible.
-    """
-    var ndigits: Int
-    if msw < 10_000:
-        if msw < 100:
-            if msw < 10:
-                ndigits = 8  # Shift by 8 digits
-            else:  # 10 <= msw < 100
-                ndigits = 7  # Shift by 7 digits
-        else:  # 100 <= msw < 10_000
-            if msw < 1_000:  # 100 <= msw < 1_000
-                ndigits = 6  # Shift by 6 digits
-            else:  # 1_000 <= msw < 10_000:
-                ndigits = 5  # Shift by 5 digits
-    elif msw < 100_000_000:  # 10_000 <= msw < 100_000_000
-        if msw < 1_000_000:
-            if msw < 100_000:  # 10_000 <= msw < 100_000
-                ndigits = 4  # Shift by 4 digits
-            else:  # 100_000 <= msw < 1_000_000
-                ndigits = 3  # Shift by 3 digits
-        else:  # 1_000_000 <= msw < 100_000_000
-            if msw < 10_000_000:  # 1_000_000 <= msw < 10_000_000
-                ndigits = 2  # Shift by 2 digits
-            else:  # 10_000_000 <= msw < 100_000_000
-                ndigits = 1  # Shift by 1 digit
-    else:  # 100_000_000 <= msw < 1_000_000_000
-        ndigits = 0  # No shift needed
+    This is a helper function for division algorithms. The normalized word
+    should be as close to `BASE` as possible, so the answer is
+    `DIGITS_PER_WORD - 1 - floor(log10(msw))`, and the loop below counts it.
 
+    This used to be a hard-coded binary search over the nine decades a
+    base-10^9 word has, returning 0 to 8. Nothing about its type said so, and
+    at eighteen digits a word it silently under-normalised every divisor with
+    more than nine digits -- which broke Burnikel-Ziegler and nothing else,
+    because schoolbook tolerates a loose normalisation and BZ does not.
+    """
+    comptime TOP_DECADE = BigUInt.Word(BigUInt.BASE // 10)
+
+    if msw == 0:
+        return BigUInt.DIGITS_PER_WORD - 1
+
+    var ndigits = 0
+    var value = msw
+    while value < TOP_DECADE:
+        value *= 10
+        ndigits += 1
     return ndigits
 
 

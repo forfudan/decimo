@@ -26,7 +26,7 @@ from std import math
 import decimo.bigint.arithmetics as bigint_arithmetics
 from decimo.bigint.bigint import BigInt, Magnitude
 from decimo.errors import ValueError
-from decimo.utility import isqrt_uint64
+from decimo.utility import isqrt_uint64, isqrt_uint128
 
 
 # ===----------------------------------------------------------------------=== #
@@ -640,7 +640,7 @@ def _sqrtrem_two_words(
     """Square root of a one- or two-word magnitude, with its remainder.
 
     Two words is 128 bits now, so the hardware cannot be asked directly any
-    more; the root still fits one word, and `_isqrt_uint128()` finds it.
+    more; the root still fits one word, and `isqrt_uint128()` finds it.
 
     Args:
         n: The magnitude, one or two words.
@@ -652,7 +652,7 @@ def _sqrtrem_two_words(
     var value = UInt128(n[0])
     if len(n) > 1:
         value |= UInt128(n[1]) << 64
-    var root = _isqrt_uint128(value)
+    var root = isqrt_uint128(value)
     var left = value - UInt128(root) * UInt128(root)
     # The remainder is at most `2 * root`, so it can need a second word.
     remainder = [UInt64(left)]
@@ -661,34 +661,6 @@ def _sqrtrem_two_words(
         remainder.append(high)
     var out: Magnitude = [root]
     return out^
-
-
-def _isqrt_uint128(value: UInt128) -> UInt64:
-    """The integer square root of a 128-bit value.
-
-    Newton descending from an over-estimate, which is what makes the stopping
-    test exact: the sequence is strictly decreasing until it reaches
-    `floor(sqrt(value))` and then stops falling. The seed is
-    `(isqrt(high) + 1) * 2^32`, which is at or above the answer because
-    `value < (high + 1) * 2^64`.
-
-    Args:
-        value: The value to take the root of.
-
-    Returns:
-        The integer square root, which always fits a word.
-    """
-    if (value >> 64) == 0:
-        return isqrt_uint64(UInt64(value))
-
-    var high = UInt64(value >> 64)
-    var seed = (UInt128(isqrt_uint64(high)) + 1) << 32
-    var guess = UInt64(seed) if seed <= UInt128(~UInt64(0)) else ~UInt64(0)
-    while True:
-        var step = (UInt128(guess) + value // UInt128(guess)) >> 1
-        if step >= UInt128(guess):
-            return guess
-        guess = UInt64(step)
 
 
 def _sqrtrem_small(

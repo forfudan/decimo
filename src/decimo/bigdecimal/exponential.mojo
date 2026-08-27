@@ -755,9 +755,9 @@ def integer_root(
             numerator = r.multiply(n_minus_1_bd).add(x_div_r_pow)
 
         var r_new: BigDecimal
-        if n_int <= Int(UInt32.MAX):
+        if n_int <= Int(BigUInt.Word.MAX):
             r_new = numerator.true_divide_inexact_by_word(
-                UInt32(n_int), iter_precision
+                BigUInt.Word(n_int), iter_precision
             )
         else:
             r_new = numerator.true_divide_inexact(n_bd, iter_precision)
@@ -1122,7 +1122,10 @@ def isqrt_via_reciprocal_seed(
     if len(c_norm.coefficient.words) > 1:
         mantissa += Float64(
             c_norm.coefficient.words[len(c_norm.coefficient.words) - 2]
-        ) / (Float64(10.0) ** Float64(digits_in_top + 8))
+        ) / (
+            Float64(10.0)
+            ** Float64(digits_in_top + BigUInt.DIGITS_PER_WORD - 1)
+        )
 
     var c_norm_exp = c_norm.adjusted()
     var c_norm_f64 = mantissa * Float64(10.0) ** Float64(c_norm_exp)
@@ -1189,7 +1192,7 @@ def isqrt_via_reciprocal_seed(
             remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
-        residual = residual.true_divide_inexact_by_word(UInt32(2), ip)
+        residual = residual.true_divide_inexact_by_word(BigUInt.Word(2), ip)
 
         # r + r * e / 2
         r = r.add(residual)
@@ -1475,7 +1478,10 @@ def sqrt_via_reciprocal_iteration(
     if len(x_norm.coefficient.words) > 1:
         mantissa += Float64(
             x_norm.coefficient.words[len(x_norm.coefficient.words) - 2]
-        ) / (Float64(10.0) ** Float64(digits_in_top + 8))
+        ) / (
+            Float64(10.0)
+            ** Float64(digits_in_top + BigUInt.DIGITS_PER_WORD - 1)
+        )
 
     var x_norm_exp = x_norm.adjusted()
     var x_norm_f64 = mantissa * Float64(10.0) ** Float64(x_norm_exp)
@@ -1549,7 +1555,7 @@ def sqrt_via_reciprocal_iteration(
             remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
-        residual = residual.true_divide_inexact_by_word(UInt32(2), ip)
+        residual = residual.true_divide_inexact_by_word(BigUInt.Word(2), ip)
 
         # r + r * e / 2
         r = r.add(residual)
@@ -2036,7 +2042,7 @@ def exp_taylor_series(
     var max_number_of_terms = Int(Float64(minimum_precision) * 2.5) + 1
     var result = BigDecimal(BigUInt.one(), 0, False)
     var term = BigDecimal(BigUInt.one(), 0, False)
-    var n: UInt32 = 1
+    var n: BigUInt.Word = 1
 
     # Calculate Taylor series: 1 + x + x²/2! + x³/3! + ...
     for _ in range(1, max_number_of_terms):
@@ -2381,7 +2387,7 @@ def ln_series_expansion(
         var max_terms = Int(Float64(working_precision) * 2.5) + 1
         var result = BigDecimal(BigUInt.zero(), working_precision, False)
         var term = z.copy()
-        var k: UInt32 = 1
+        var k: BigUInt.Word = 1
 
         # ln(1+z) = z - z²/2 + z³/3 - z⁴/4 + ...
         result.add_inplace(term)  # first term is z
@@ -2451,8 +2457,8 @@ def ln_series_expansion(
     var max_terms = Int(Float64(working_precision) * 1.2) + 10
 
     for k in range(1, max_terms):
-        var old_denom = UInt32(2 * k - 1)
-        var new_denom = UInt32(2 * k + 1)
+        var old_denom = BigUInt.Word(2 * k - 1)
+        var new_denom = BigUInt.Word(2 * k + 1)
 
         # Step 1: Undo previous denominator: multiply by (2k-1).
         # Note: when k=1, old_denom=1, so this is a no-op by design;
@@ -2509,16 +2515,11 @@ def compute_ln2(working_precision: Int) raises -> BigDecimal:
         var result = BigDecimal(
             BigUInt(
                 raw_words=[
-                    UInt32(605863326),
-                    UInt32(969694715),
-                    UInt32(493393621),
-                    UInt32(120680009),
-                    UInt32(360255254),
-                    UInt32(75500134),
-                    UInt32(458176568),
-                    UInt32(417232121),
-                    UInt32(559945309),
-                    UInt32(693147180),
+                    BigUInt.Word(969_694_715_605_863_326),
+                    BigUInt.Word(120_680_009_493_393_621),
+                    BigUInt.Word(75_500_134_360_255_254),
+                    BigUInt.Word(417_232_121_458_176_568),
+                    BigUInt.Word(693_147_180_559_945_309),
                 ]
             ),
             90,
@@ -2535,9 +2536,9 @@ def compute_ln2(working_precision: Int) raises -> BigDecimal:
     var max_terms = Int(Float64(working_precision) * 2.5) + 1
 
     var number_of_words = working_precision // BigUInt.DIGITS_PER_WORD + 1
-    var words = List[UInt32](capacity=number_of_words)
+    var words = List[BigUInt.Word](capacity=number_of_words)
     # A word of all threes, whatever the word width: (BASE - 1) / 3.
-    comptime WORD_OF_THREES = UInt32(BigUInt.BASE_MAX // 3)
+    comptime WORD_OF_THREES = BigUInt.Word(BigUInt.BASE_MAX // 3)
     for _ in range(number_of_words):
         words.append(WORD_OF_THREES)
     var x = BigDecimal(
@@ -2550,7 +2551,7 @@ def compute_ln2(working_precision: Int) raises -> BigDecimal:
     var term = x.multiply(
         BigDecimal(BigUInt(raw_words=[2]), 0, False)
     )  # First term: 2*(1/3)
-    var k: UInt32 = 1
+    var k: BigUInt.Word = 1
 
     # Add terms: 2*(x + x³/3 + x⁵/5 + ...)
     # Series: term_k = 2 * x^(2k-1) * 1 * 3 * 5 * ... * (2k-3) / (1 * 3 * 5 * ... * (2k-1))
@@ -2613,9 +2614,9 @@ def compute_ln1d25(precision: Int) raises -> BigDecimal:
     var max_terms = Int(Float64(working_precision) * 1.2) + 10
 
     var number_of_words = working_precision // BigUInt.DIGITS_PER_WORD + 1
-    var words = List[UInt32](capacity=number_of_words)
+    var words = List[BigUInt.Word](capacity=number_of_words)
     # A word of all ones, whatever the word width: (BASE - 1) / 9.
-    comptime WORD_OF_ONES = UInt32(BigUInt.BASE_MAX // 9)
+    comptime WORD_OF_ONES = BigUInt.Word(BigUInt.BASE_MAX // 9)
     for _ in range(number_of_words):
         words.append(WORD_OF_ONES)
     var x = BigDecimal(
@@ -2628,7 +2629,7 @@ def compute_ln1d25(precision: Int) raises -> BigDecimal:
     var term = x.multiply(
         BigDecimal(BigUInt(raw_words=[2]), 0, False)
     )  # First term: 2*(1/9)
-    var k: UInt32 = 1
+    var k: BigUInt.Word = 1
 
     # Recurrence: term_{k+1} = term_k * x² * k / (k+2), with x² = 1/81.
     for _ in range(1, max_terms):

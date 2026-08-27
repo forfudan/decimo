@@ -131,3 +131,31 @@ def isqrt_uint64(value: UInt64) -> UInt64:
     while root < 0xFFFF_FFFF and (root + 1) * (root + 1) <= value:
         root += 1
     return root
+
+
+def isqrt_uint128(value: UInt128) -> UInt64:
+    """The integer square root of a 128-bit value.
+
+    Newton descending from an over-estimate, which is what makes the stopping
+    test exact: the sequence is strictly decreasing until it reaches
+    `floor(sqrt(value))` and then stops falling. The seed is
+    `(isqrt(high) + 1) * 2^32`, which is at or above the answer because
+    `value < (high + 1) * 2^64`.
+
+    Args:
+        value: The value to take the root of.
+
+    Returns:
+        The integer square root, which always fits a `UInt64`.
+    """
+    if (value >> 64) == 0:
+        return isqrt_uint64(UInt64(value))
+
+    var high = UInt64(value >> 64)
+    var seed = (UInt128(isqrt_uint64(high)) + 1) << 32
+    var guess = UInt64(seed) if seed <= UInt128(~UInt64(0)) else ~UInt64(0)
+    while True:
+        var step = (UInt128(guess) + value // UInt128(guess)) >> 1
+        if step >= UInt128(guess):
+            return guess
+        guess = UInt64(step)

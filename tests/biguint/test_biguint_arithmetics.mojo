@@ -516,9 +516,9 @@ def test_biguint_inplace_arithmetics_match_out_of_place() raises:
     its loop bound from the already-shortened list, skipping a word.
     """
     var widths = [1, 2, 3, 4, 8, 17, 18, 33, 64, 65, 100]
-    var by_uint32 = UInt32(999_999_937)
+    var by_word = BigUInt.Word(999_999_937)
     var by_uint64 = UInt64(999_999_999_999_999_989)
-    var as_biguint_32 = BigUInt(String("999999937"))
+    var as_biguint_word = BigUInt(String("999999937"))
     var as_biguint_64 = BigUInt(String("999999999999999989"))
 
     for i in range(len(widths)):
@@ -586,11 +586,11 @@ def test_biguint_inplace_arithmetics_match_out_of_place() raises:
 
         # The in-place single-word divisions, including the quotient-is-zero
         # case that used to leave the value with no words.
-        var quotient_32 = x.copy()
-        floor_divide_by_word_inplace(quotient_32, by_uint32)
+        var quotient_word = x.copy()
+        floor_divide_by_word_inplace(quotient_word, by_word)
         assert_equal(
-            String(quotient_32),
-            String(x // as_biguint_32),
+            String(quotient_word),
+            String(x // as_biguint_word),
             "floor_divide_by_word_inplace at " + String(wx) + " words",
         )
 
