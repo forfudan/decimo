@@ -1195,6 +1195,43 @@ def subtract_carry_select(x: BigUInt, y: BigUInt) raises -> BigUInt:
     return result^
 
 
+def subtract_greater(x: BigUInt, y: BigUInt) -> BigUInt:
+    """Returns `x - y`, where the caller has already established `x > y`.
+
+    `subtract()` compares its operands to decide whether the result would be
+    negative, and raises if so. Its callers in `BigDecimal` have just done
+    that comparison themselves, to work out which way round to subtract and
+    what sign to give the answer -- so the comparison happens twice, and the
+    caller carries an error path for something it has proved cannot happen.
+
+    This is the same borrow-select pass with neither.
+
+    Args:
+        x: The minuend. Must be strictly greater than `y`.
+        y: The subtrahend, which must not be zero.
+
+    Returns:
+        `x - y`.
+    """
+    debug_assert[assert_mode="none"](
+        len(x.words) != 0 and len(y.words) != 0, "BigUInt is uninitialized!"
+    )
+    debug_assert[assert_mode="none"](
+        x.compare(y) > 0,
+        "biguint.arithmetics.subtract_greater(): x must be greater than y",
+    )
+
+    var result = BigUInt(unsafe_uninit_length=len(x.words))
+    var xp = x.words.unsafe_ptr()
+    var rp = result.words.unsafe_ptr()
+    var borrow = _subtract_words(
+        rp, xp, y.words.unsafe_ptr(), len(y.words), UInt32(0)
+    )
+    _ = _borrow_into_tail(rp, xp, len(y.words), len(x.words), borrow)
+    result.remove_leading_empty_words()
+    return result^
+
+
 def subtract_inplace(mut x: BigUInt, y: BigUInt) raises -> None:
     """Subtracts y from x in place.
 

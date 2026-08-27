@@ -220,12 +220,19 @@ def subtract(
                 scale=x1.scale,
                 sign=False if coef.is_zero() else x1.sign,
             )
-        # Same sign: actual subtraction
+        # Same sign: actual subtraction. The comparison below settles which
+        # way round it goes, so `subtract_greater()` is told rather than asked
+        # -- `-` would compare the pair a second time to decide whether to
+        # raise, for a case this branch has just ruled out.
         if x1.coefficient > x2.coefficient:
-            var coef = x1.coefficient - x2.coefficient
+            var coef = biguint_arithmetics.subtract_greater(
+                x1.coefficient, x2.coefficient
+            )
             return BigDecimal(coefficient=coef^, scale=x1.scale, sign=x1.sign)
         elif x2.coefficient > x1.coefficient:
-            var coef = x2.coefficient - x1.coefficient
+            var coef = biguint_arithmetics.subtract_greater(
+                x2.coefficient, x1.coefficient
+            )
             return BigDecimal(
                 coefficient=coef^, scale=x1.scale, sign=not x1.sign
             )
