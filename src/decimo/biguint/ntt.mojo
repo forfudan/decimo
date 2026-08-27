@@ -177,8 +177,8 @@ def unpack_coefficients(
     #
     # An individual convolution coefficient can be close to the prime, and
     # therefore an intermediate carry can reach ~10^13. The *final* carry
-    # cannot. The product is below `10^(9 * number_of_words)`, and
-    # `6 * number_of_coefficients` is within six digits of that exponent, so
+    # cannot. The product is below `10^(DIGITS_PER_WORD * number_of_words)`,
+    # and `6 * number_of_coefficients` is within six digits of that exponent, so
     # what is left after carrying through every coefficient cannot reach
     # `10^6`. The second slot exists only so the reconstruction loop can read
     # `k + 2` without a bounds test.

@@ -23,6 +23,7 @@ operation dunders, and other dunders that implement traits, as well as
 mathematical methods that do not implement a trait.
 """
 
+from std import math
 from std.memory import Pointer
 from std.python import PythonObject
 from std import testing
@@ -485,9 +486,9 @@ struct BigDecimal(
         var sign: Bool = _tuple[2]
 
         var number_of_digits = len(coef)
-        var number_of_words = number_of_digits // 9
-        if number_of_digits % 9 != 0:
-            number_of_words += 1
+        var number_of_words = math.ceildiv(
+            number_of_digits, BigUInt.DIGITS_PER_WORD
+        )
 
         # Packed straight into the coefficient. Filling a `List[UInt32]` and
         # handing it to `raw_words=` allocated once for the list and again to
@@ -496,8 +497,8 @@ struct BigDecimal(
 
         var end: Int = number_of_digits
         var start: Int
-        while end >= 9:
-            start = end - 9
+        while end >= BigUInt.DIGITS_PER_WORD:
+            start = end - BigUInt.DIGITS_PER_WORD
             var word: UInt32 = 0
             for i in range(start, end):
                 word = word * 10 + UInt32(coef[i])
@@ -605,17 +606,17 @@ struct BigDecimal(
                 )
 
             # Build coefficient from digits
-            var number_of_words = num_digits // 9
-            if num_digits % 9 != 0:
-                number_of_words += 1
+            var number_of_words = math.ceildiv(
+                num_digits, BigUInt.DIGITS_PER_WORD
+            )
 
             var coefficient_words = List[UInt32](capacity=number_of_words)
 
-            # Process digits from right to left, grouping into 9-digit words
+            # Process digits from right to left, one word of digits at a time
             var end = num_digits
             var start: Int
-            while end >= 9:
-                start = end - 9
+            while end >= BigUInt.DIGITS_PER_WORD:
+                start = end - BigUInt.DIGITS_PER_WORD
                 var word: UInt32 = 0
                 for i in range(start, end):
                     var digit = Int(py=digits_tuple[i])
@@ -2881,7 +2882,9 @@ struct BigDecimal(
             result += label + String(" ") * (col - label.byte_length())
             result += (
                 decimo_str.rjust(
-                    String(self.coefficient.words[i]), 9, fillchar="0"
+                    String(self.coefficient.words[i]),
+                    BigUInt.DIGITS_PER_WORD,
+                    fillchar="0",
                 )
                 + "\n"
             )
@@ -3021,9 +3024,11 @@ struct BigDecimal(
 
         var number_of_digits_to_remove = self.number_of_trailing_zeros()
 
-        var number_of_words_to_remove = number_of_digits_to_remove // 9
+        var number_of_words_to_remove = (
+            number_of_digits_to_remove // BigUInt.DIGITS_PER_WORD
+        )
         var number_of_remaining_digits_to_remove = (
-            number_of_digits_to_remove % 9
+            number_of_digits_to_remove % BigUInt.DIGITS_PER_WORD
         )
 
         var kept = len(self.coefficient.words) - number_of_words_to_remove
@@ -3082,7 +3087,10 @@ struct BigDecimal(
             last_non_zero_word = last_non_zero_word // UInt32(10)
             number_of_trailing_zeros += 1
 
-        return number_of_zero_words * 9 + number_of_trailing_zeros
+        return (
+            number_of_zero_words * BigUInt.DIGITS_PER_WORD
+            + number_of_trailing_zeros
+        )
 
     def number_of_digits(self) -> Int:
         """Returns the total number of digits in the coefficient.

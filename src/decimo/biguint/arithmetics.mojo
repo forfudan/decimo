@@ -116,7 +116,7 @@ the 112-word row, is the one being tuned for.
 # multiply_slices_toom3(x: BigUInt, y: BigUInt, bounds_x: Tuple[Int, Int], bounds_y: Tuple[Int, Int]) -> BigUInt
 # multiply_by_uint32_inplace(x: BigUInt, y: UInt32) -> None
 # multiply_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt
-# multiply_by_power_of_billion_inplace(mut x: BigUInt, n: Int)
+# multiply_by_power_of_base_inplace(mut x: BigUInt, n: Int)
 # exact_divide_by_2_inplace(mut x: BigUInt)
 # exact_divide_by_3_inplace(mut x: BigUInt)
 #
@@ -128,8 +128,8 @@ the 112-word row, is the one being tuned for.
 # floor_divide_by_2_inplace(x: BigUInt) -> None
 # floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt
 # floor_divide_by_power_of_ten_inplace(x: BigUInt, n: Int) -> None
-# floor_divide_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt
-# floor_divide_by_power_of_billion_inplace(x: BigUInt, n: Int) -> None
+# floor_divide_by_power_of_base(x: BigUInt, n: Int) -> BigUInt
+# floor_divide_by_power_of_base_inplace(x: BigUInt, n: Int) -> None
 #
 # truncate_divide(x1: BigUInt, x2: BigUInt) -> BigUInt
 # ceil_divide(x1: BigUInt, x2: BigUInt) -> BigUInt
@@ -1791,7 +1791,7 @@ def multiply_slices_karatsuba(
         )
         # z2 = 0
 
-        z1.multiply_by_power_of_billion_inplace(m)
+        z1.multiply_by_power_of_base_inplace(m)
         z1 += z0
         z1.remove_leading_empty_words()
         return z1^
@@ -1819,7 +1819,7 @@ def multiply_slices_karatsuba(
             cutoff_number_of_words,
         )
         # z2 = 0
-        z1.multiply_by_power_of_billion_inplace(m)
+        z1.multiply_by_power_of_base_inplace(m)
         z1 += z0
         z1.remove_leading_empty_words()
         return z1^
@@ -1876,8 +1876,8 @@ def multiply_slices_karatsuba(
         subtract_no_check_inplace(z1, z0)
 
         # z2*9^(m * 2) + z1*9^m + z0
-        z2.multiply_by_power_of_billion_inplace(2 * m)
-        z1.multiply_by_power_of_billion_inplace(m)
+        z2.multiply_by_power_of_base_inplace(2 * m)
+        z1.multiply_by_power_of_base_inplace(m)
         z2 += z1
         z2 += z0
 
@@ -2321,8 +2321,8 @@ def multiply_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
         )
         return BigUInt.zero()  # Multiplying zero by anything is still zero
 
-    var number_of_zero_words = n // 9
-    var number_of_remaining_digits = n % 9
+    var number_of_zero_words = n // BigUInt.DIGITS_PER_WORD
+    var number_of_remaining_digits = n % BigUInt.DIGITS_PER_WORD
 
     var result = BigUInt(
         uninitialized_capacity=number_of_zero_words + len(x.words) + 1
@@ -2398,13 +2398,13 @@ def multiply_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
         # No need to add zeros, it will still be zero
         return
 
-    var number_of_zero_words = n // 9
-    var number_of_remaining_digits = n % 9
+    var number_of_zero_words = n // BigUInt.DIGITS_PER_WORD
+    var number_of_remaining_digits = n % BigUInt.DIGITS_PER_WORD
 
     # SPECIAL CASE: If n is a multiple of 9
     if number_of_remaining_digits == 0:
         # If n is a multiple of 9, we just need to add zero words
-        x.multiply_by_power_of_billion_inplace(number_of_zero_words)
+        x.multiply_by_power_of_base_inplace(number_of_zero_words)
         return
 
     else:  # number_of_remaining_digits > 0
@@ -2459,13 +2459,13 @@ def multiply_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
         return
 
 
-def multiply_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
-    """Multiplies a BigUInt by (10^9)^n (n >= 0).
-    This equals to adding 9n zeros (n words) to the end of the number.
+def multiply_by_power_of_base(x: BigUInt, n: Int) -> BigUInt:
+    """Multiplies a BigUInt by `BASE^n` (n >= 0).
+    This equals to appending `n` zero words to the end of the number.
 
     Args:
         x: The BigUInt value to multiply.
-        n: The power of 10^9 to multiply by. Should be non-negative.
+        n: The power of `BASE` to multiply by. Should be non-negative.
 
     Notes:
 
@@ -2477,7 +2477,7 @@ def multiply_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
     """
     debug_assert[assert_mode="none"](
         n >= 0,
-        "multiply_by_power_of_billion(): n must be non-negative, got ",
+        "multiply_by_power_of_base(): n must be non-negative, got ",
         n,
     )
 
@@ -2487,7 +2487,7 @@ def multiply_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
     if x.is_zero():
         debug_assert[assert_mode="none"](
             len(x.words) == 1,
-            "multiply_by_power_of_billion_inplace(): leading zero words",
+            "multiply_by_power_of_base_inplace(): leading zero words",
         )
         # If x is zero, we can just return
         # No need to add zeros, it will still be zero
@@ -2507,13 +2507,13 @@ def multiply_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
     return res^
 
 
-def multiply_by_power_of_billion_inplace(mut x: BigUInt, n: Int):
-    """Multiplies a BigUInt in-place by (10^9)^n (n >= 0).
-    This equals to adding 9n zeros (n words) to the end of the number.
+def multiply_by_power_of_base_inplace(mut x: BigUInt, n: Int):
+    """Multiplies a BigUInt in-place by `BASE^n` (n >= 0).
+    This equals to appending `n` zero words to the end of the number.
 
     Args:
         x: The BigUInt value to multiply.
-        n: The power of 10^9 to multiply by. Should be non-negative.
+        n: The power of `BASE` to multiply by. Should be non-negative.
 
     Notes:
 
@@ -2522,7 +2522,7 @@ def multiply_by_power_of_billion_inplace(mut x: BigUInt, n: Int):
     """
     debug_assert[assert_mode="none"](
         n >= 0,
-        "multiply_by_power_of_billion_inplace(): n must be non-negative, got ",
+        "multiply_by_power_of_base_inplace(): n must be non-negative, got ",
         n,
     )
 
@@ -2532,7 +2532,7 @@ def multiply_by_power_of_billion_inplace(mut x: BigUInt, n: Int):
     if x.is_zero():
         debug_assert[assert_mode="none"](
             len(x.words) == 1,
-            "multiply_by_power_of_billion_inplace(): leading zero words",
+            "multiply_by_power_of_base_inplace(): leading zero words",
         )
         # If x is zero, we can just return
         # No need to add zeros, it will still be zero
@@ -2599,11 +2599,12 @@ def exact_divide_by_3_inplace(mut x: BigUInt):
     `d` and `m` depend only on `word`, so the one division left is off the
     chain. See `bigint.arithmetics._exact_divide_by_3_inplace()`, which uses
     the same identity in base 2^32 — both bases happen to be `1 mod 3`.
+    Every power of ten is, so this survives a change of `DIGITS_PER_WORD`.
 
     Args:
         x: The `BigUInt` value to divide, modified in place.
     """
-    comptime BASE_OVER_THREE = UInt32(333_333_333)  # (10^9 - 1) / 3
+    comptime BASE_OVER_THREE = UInt32(BigUInt.BASE_MAX // 3)  # 333_333_333
 
     var carry = UInt32(0)  # 0, 1 or 2
     var xp = x.words.unsafe_ptr()
@@ -3443,8 +3444,8 @@ def floor_divide_by_2_inplace(mut x: BigUInt) -> None:
     x.remove_leading_empty_words()
 
 
-# TODO: If n % 9 == 0, the in-place version can be optimized by
-# delegating to `floor_divide_by_power_of_billion_inplace` directly.
+# TODO: If `n` is a multiple of `DIGITS_PER_WORD`, the in-place version can
+# be optimized by delegating to `floor_divide_by_power_of_base_inplace`.
 def floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
     """Floor divides a BigUInt by 10^n (n>=0).
     It is equal to removing the last n digits of the number.
@@ -3480,8 +3481,8 @@ def floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
     if n <= 0:
         return x.copy()
 
-    var word_shift = n // 9
-    var digit_shift = n % 9
+    var word_shift = n // BigUInt.DIGITS_PER_WORD
+    var digit_shift = n % BigUInt.DIGITS_PER_WORD
 
     # If we need to drop more words than exists, the result is zero.
     if word_shift >= len(x.words):
@@ -3489,7 +3490,7 @@ def floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
 
     # Whole-word divide: delegate to the cheaper specialised path.
     if digit_shift == 0:
-        return floor_divide_by_power_of_billion(x, word_shift)
+        return floor_divide_by_power_of_base(x, word_shift)
 
     # Drop the low `word_shift` words via memcpy, then sub-word shift.
     var keep = len(x.words) - word_shift
@@ -3517,9 +3518,9 @@ def floor_divide_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
 
     No-op when `n <= 0`. When `n` is at least the current decimal
     width, `x` becomes the canonical zero (a single word holding 0).
-    Delegates to `floor_divide_by_power_of_billion_inplace` whenever
-    `n` is a multiple of 9, which is the common case for word-aligned
-    truncation. In debug mode, asserts that `n` is non-negative.
+    Delegates to `floor_divide_by_power_of_base_inplace` whenever
+    `n` is a multiple of `DIGITS_PER_WORD`, which is the common case for
+    word-aligned truncation. In debug mode, asserts that `n` is non-negative.
     """
     debug_assert[assert_mode="none"](
         n >= 0,
@@ -3531,8 +3532,8 @@ def floor_divide_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
     if n <= 0:
         return
 
-    var word_shift = n // 9
-    var digit_shift = n % 9
+    var word_shift = n // BigUInt.DIGITS_PER_WORD
+    var digit_shift = n % BigUInt.DIGITS_PER_WORD
 
     if word_shift >= len(x.words):
         x.words.shrink(0)
@@ -3540,7 +3541,7 @@ def floor_divide_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
         return
 
     if digit_shift == 0:
-        floor_divide_by_power_of_billion_inplace(x, word_shift)
+        floor_divide_by_power_of_base_inplace(x, word_shift)
         return
 
     if word_shift > 0:
@@ -3628,8 +3629,8 @@ def floor_modulo_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
     if n <= 0:
         return BigUInt.zero()
 
-    var word_count = n // 9
-    var digit_count = n % 9
+    var word_count = n // BigUInt.DIGITS_PER_WORD
+    var digit_count = n % BigUInt.DIGITS_PER_WORD
 
     # Asking for more digits than the number has keeps all of them.
     if word_count >= len(x.words):
@@ -3662,13 +3663,13 @@ def floor_modulo_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
     return result^
 
 
-def floor_divide_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
-    """Floor divides a BigUInt by (10^9)^n (n>=0).
+def floor_divide_by_power_of_base(x: BigUInt, n: Int) -> BigUInt:
+    """Floor divides a BigUInt by `BASE^n` (n>=0).
     This function is equivalent to removing the last n words of the number.
 
     Args:
         x: The BigUInt value to divide.
-        n: The power of 10^9 to divide by. Should be non-negative.
+        n: The power of `BASE` to divide by. Should be non-negative.
 
     Returns:
         A new BigUInt containing the result of the division.
@@ -3682,7 +3683,7 @@ def floor_divide_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
     debug_assert[assert_mode="none"](
         n >= 0,
         (
-            "biguint.arithmetics.floor_divide_by_power_of_billion(): n must be"
+            "biguint.arithmetics.floor_divide_by_power_of_base(): n must be"
             " non-negative but got "
         ),
         n,
@@ -3705,14 +3706,14 @@ def floor_divide_by_power_of_billion(x: BigUInt, n: Int) -> BigUInt:
         return result^
 
 
-def floor_divide_by_power_of_billion_inplace(mut x: BigUInt, n: Int):
-    """In-place version of `floor_divide_by_power_of_billion`. Drops
-    the `n` lowest base-10^9 words of `x` directly inside its `words`
+def floor_divide_by_power_of_base_inplace(mut x: BigUInt, n: Int):
+    """In-place version of `floor_divide_by_power_of_base`. Drops
+    the `n` lowest words of `x` directly inside its `words`
     storage, avoiding an allocation.
 
     Args:
         x: The BigUInt value to divide in place.
-        n: The power of 10^9 to divide by. Should be non-negative.
+        n: The power of `BASE` to divide by. Should be non-negative.
 
     Notes:
 
@@ -3724,7 +3725,7 @@ def floor_divide_by_power_of_billion_inplace(mut x: BigUInt, n: Int):
     debug_assert[assert_mode="none"](
         n >= 0,
         (
-            "biguint.arithmetics.floor_divide_by_power_of_billion_inplace(): n"
+            "biguint.arithmetics.floor_divide_by_power_of_base_inplace(): n"
             " must be non-negative but got "
         ),
         n,
@@ -3823,13 +3824,13 @@ def floor_divide_modulo_burnikel_ziegler(
     # STEP 1:
     # Normalize the divisor b to n words so that
     # (1) it is of the form j*2^k and
-    # (2) the most significant word is at least 500_000_000.
+    # (2) the most significant word is at least `BASE_HALF`.
 
     var normalized_b = b.copy()
     var normalized_a = a.copy()
     var ndigits_to_shift: Int
 
-    if normalized_b.words[len(normalized_b.words) - 1] < 500_000_000:
+    if normalized_b.words[len(normalized_b.words) - 1] < BigUInt.BASE_HALF:
         ndigits_to_shift = calculate_ndigits_for_normalization(
             normalized_b.words[len(normalized_b.words) - 1]
         )
@@ -3856,15 +3857,15 @@ def floor_divide_modulo_burnikel_ziegler(
 
     var n_digits_to_scale_up = (
         n - len(normalized_b.words)
-    ) * 9 + ndigits_to_shift
+    ) * BigUInt.DIGITS_PER_WORD + ndigits_to_shift
 
     multiply_by_power_of_ten_inplace(normalized_b, n_digits_to_scale_up)
     multiply_by_power_of_ten_inplace(normalized_a, n_digits_to_scale_up)
 
-    # The normalized_b is now 9 digits, but may still be smaller than 500_000_000.
+    # normalized_b is now one word wide, but may still be below BASE_HALF.
     var gap_ratio: UInt32
     if (
-        normalized_b.words[len(normalized_b.words) - 1] >= 500_000_000
+        normalized_b.words[len(normalized_b.words) - 1] >= BigUInt.BASE_HALF
     ):  # Already normalized
         gap_ratio = 1
     elif (
@@ -3885,10 +3886,10 @@ def floor_divide_modulo_burnikel_ziegler(
     var t = math.ceildiv(len(normalized_a.words), n)
     if len(normalized_a.words) == t * n:
         # If the number of words in the dividend is already a multiple of n
-        # We check if the most significant word is >= 500_000_000.
+        # We check if the most significant word is >= `BASE_HALF`.
         # If it is, we need to add one more block to the dividend.
         # This ensures that the most significant word of the dividend
-        # is smaller than 500_000_000.
+        # is smaller than `BASE_HALF`.
         # In this sense, the first 2-by-1 division will generate a quotient
         # of either 0 or 1, which would otherwise exceed n-word capacity.
         #
@@ -3897,7 +3898,7 @@ def floor_divide_modulo_burnikel_ziegler(
         # power of ten as the divisor, so it is usually the longer of the two:
         # `len(a.words)` and `t * n` could only agree by accident. `BigInt`'s
         # copy of this algorithm has always tested the normalized length.
-        if normalized_a.words[len(normalized_a.words) - 1] >= 500_000_000:
+        if normalized_a.words[len(normalized_a.words) - 1] >= BigUInt.BASE_HALF:
             t += 1
 
     var z = BigUInt.zero()  # Remainder of the division
@@ -3939,11 +3940,11 @@ def floor_divide_modulo_burnikel_ziegler(
                 remainder=next_z,
             )
             z = next_z^
-            multiply_by_power_of_billion_inplace(q, n)
+            multiply_by_power_of_base_inplace(q, n)
             q += q_i
 
         if i > 0:
-            multiply_by_power_of_billion_inplace(z, n)
+            multiply_by_power_of_base_inplace(z, n)
             # z = r + a[(i - 1) * n : i * n]
             add_by_slice_inplace(
                 z,
@@ -3996,7 +3997,7 @@ def floor_divide_two_by_one(
     Args:
         a: The dividend as a BigUInt.
         b: The divisor as a BigUInt. The most significant word must be at least
-           500_000_000.
+           `BASE_HALF`.
         n: The number of words in the divisor.
         cut_off: The minimum number of words for the recursive division.
 
@@ -4012,8 +4013,8 @@ def floor_divide_two_by_one(
         Error: If an arithmetic error occurs during computation.
     """
     debug_assert[assert_mode="none"](
-        b.words[len(b.words) - 1] >= 500_000_000,
-        "b[-1] must be at least 500_000_000",
+        b.words[len(b.words) - 1] >= BigUInt.BASE_HALF,
+        "b[-1] must be at least half the base",
     )
 
     if (n & 1 == 1) or (n <= cut_off):
@@ -4047,7 +4048,7 @@ def floor_divide_two_by_one(
         var s = _tuple[1].copy()  # s is the final remainder
 
         # q -> q1q0
-        multiply_by_power_of_billion_inplace(q, n // 2)
+        multiply_by_power_of_base_inplace(q, n // 2)
         q += q0
 
         return (q^, s^)
@@ -4093,19 +4094,19 @@ def floor_divide_three_by_two(
         a2a1 = a1.copy()
     else:
         a2a1 = a2.copy()
-        multiply_by_power_of_billion_inplace(a2a1, n)
+        multiply_by_power_of_base_inplace(a2a1, n)
         a2a1 += a1
     # TODO: Refine this when Mojo support move values of unpacked tuples
     var _tuple = floor_divide_two_by_one(a2a1, b1, n, cut_off)
     var q = _tuple[0].copy()
     ref c = _tuple[1]  # c is the carry
     var d = q * b0
-    multiply_by_power_of_billion_inplace(c, n)
+    multiply_by_power_of_base_inplace(c, n)
     var r = c + a0
 
     if r < d:
         var b = b1.copy()
-        multiply_by_power_of_billion_inplace(b, n)
+        multiply_by_power_of_base_inplace(b, n)
         b += b0
         q -= BigUInt.one()
         r += b
@@ -4139,7 +4140,7 @@ def floor_divide_slices_two_by_one(
         b: The divisor.
         bounds_a: The range of words in the dividend to consider [start, end).
         bounds_b: The range of words in the divisor to consider [start, end).
-            The most significant word must be at least 500_000_000.
+            The most significant word must be at least `BASE_HALF`.
         n: The number of words in the divisor.
         cut_off: The minimum number of words for the recursive division.
         remainder: Set to the remainder of the division on return.
@@ -4171,8 +4172,11 @@ def floor_divide_slices_two_by_one(
     """
 
     debug_assert[assert_mode="none"](
-        b.words[len(b.words) - 1] >= 500_000_000,
-        "floor_divide_slices_two_by_one(): b[-1] must be at least 500_000_000",
+        b.words[len(b.words) - 1] >= BigUInt.BASE_HALF,
+        (
+            "floor_divide_slices_two_by_one(): b[-1] must be at least half"
+            " the\n base"
+        ),
     )
 
     if (n & 1 == 1) or (n <= cut_off):
@@ -4215,7 +4219,7 @@ def floor_divide_slices_two_by_one(
             a, b, bounds_a1a3, bounds_b, n // 2, cut_off, r
         )  # q is q1
 
-        multiply_by_power_of_billion_inplace(r, n // 2)
+        multiply_by_power_of_base_inplace(r, n // 2)
         add_by_slice_inplace(r, a, (bounds_a[0], bounds_a[0] + n // 2))
         # The final remainder is written straight into the caller's argument.
         var q0 = floor_divide_slices_three_by_two(
@@ -4223,7 +4227,7 @@ def floor_divide_slices_two_by_one(
         )
 
         # q -> q1q0
-        multiply_by_power_of_billion_inplace(q, n // 2)
+        multiply_by_power_of_base_inplace(q, n // 2)
         q += q0
 
         return q^
@@ -4268,7 +4272,7 @@ def floor_divide_slices_three_by_two(
 
     # SPECIAL CASE:
     # If a2 is empty or zero, than it becomes a2a1 // b1b0
-    # Because the most significant word of b1 is at least 500_000_000,
+    # Because the most significant word of b1 is at least `BASE_HALF`,
     # The quotient will be either 1 or 0.
     if bounds_a[0] + 2 * n == bounds_a[1]:
         debug_assert[assert_mode="none"](
@@ -4297,7 +4301,7 @@ def floor_divide_slices_three_by_two(
     )
 
     var d = multiply_slices(q, b, (0, len(q.words)), bounds_b0)
-    multiply_by_power_of_billion_inplace(c, n)
+    multiply_by_power_of_base_inplace(c, n)
     var r = add_slices(c, a, bounds_x=(0, len(c.words)), bounds_y=bounds_a0)
 
     if r < d:
@@ -4328,7 +4332,7 @@ def floor_divide_three_by_two_uint32(
     a2: UInt32, a1: UInt32, a0: UInt32, b1: UInt32, b0: UInt32
 ) raises -> Tuple[UInt32, UInt32, UInt32]:
     """Divides a 3-word number by a 2-word number.
-    b1 must be at least 500_000_000.
+    b1 must be at least `BASE_HALF`.
 
     Args:
         a2: The most significant word of the dividend.
@@ -4344,16 +4348,16 @@ def floor_divide_three_by_two_uint32(
         (3) the least significant word of the remainder (as UInt32).
 
     Raises:
-        ValueError: If b1 < 500_000_000.
+        ValueError: If b1 < `BASE_HALF`.
 
     Notes:
 
     a = a2 * BASE^2 + a1 * BASE + a0.
     b = b1 * BASE + b0.
     """
-    if b1 < 500_000_000:
+    if b1 < BigUInt.BASE_HALF:
         raise ValueError(
-            message="b1 must be at least 500_000_000",
+            message="b1 must be at least half the base",
             function="floor_divide_three_by_two_uint32()",
         )
 
@@ -4405,12 +4409,12 @@ def floor_divide_four_by_two_uint32(
         (4) the least significant word of the remainder (as UInt32).
 
     Raises:
-        ValueError: If b1 < 500_000_000 or a >= b * 10^18.
+        ValueError: If b1 < `BASE_HALF` or a >= b * 10^18.
     """
 
-    if b1 < 500_000_000:
+    if b1 < BigUInt.BASE_HALF:
         raise ValueError(
-            message="b1 must be at least 500_000_000",
+            message="b1 must be at least half the base",
             function="floor_divide_four_by_two_uint32()",
         )
     if a3 > b1:
@@ -4843,58 +4847,62 @@ def normalize_carries_lt_4_bases(mut x: BigUInt):
     # Yuhao ZHU:
     # By construction, the words of x are in the range [0, BASE*4).
     # Thus, the carry can only be 0, 1, 2, or 3.
+    #
+    # Every bound below is `k * BASE - carry`, written that way so a change of
+    # base moves the whole table at once.
+    comptime BASE = UInt32(BigUInt.BASE)
     var carry: UInt32 = 0
     for ref word in x.words:
         if carry == 0:
-            if word <= UInt32(999_999_999):
+            if word <= (BASE - 1):
                 pass  # carry = 0
-            elif word <= UInt32(1_999_999_999):
-                word -= UInt32(1_000_000_000)
+            elif word <= (2 * BASE - 1):
+                word -= BASE
                 carry = 1
-            elif word <= UInt32(2_999_999_999):
-                word -= UInt32(2_000_000_000)
+            elif word <= (3 * BASE - 1):
+                word -= 2 * BASE
                 carry = 2
-            else:  # 3_000_000_000 <= word <= 3_999_999_996
-                word -= UInt32(3_000_000_000)
+            else:  # 3 * BASE <= word <= 4 * BASE - 4
+                word -= 3 * BASE
                 carry = 3
         elif carry == 1:
-            if word <= UInt32(999_999_998):
+            if word <= (BASE - 2):
                 word += 1
                 carry = 0
-            elif word <= UInt32(1_999_999_998):
-                word = word + 1 - UInt32(1_000_000_000)
+            elif word <= (2 * BASE - 2):
+                word = word + 1 - (BASE)
                 carry = 1
-            elif word <= UInt32(2_999_999_998):
-                word = word + 1 - UInt32(2_000_000_000)
+            elif word <= (3 * BASE - 2):
+                word = word + 1 - (2 * BASE)
                 carry = 2
-            else:  # 2_999_999_999 <= word <= 3_999_999_996
-                word = word + 1 - UInt32(3_000_000_000)
+            else:  # 3 * BASE - 1 <= word <= 4 * BASE - 4
+                word = word + 1 - (3 * BASE)
                 carry = 3
         elif carry == 2:
-            if word <= UInt32(999_999_997):
+            if word <= (BASE - 3):
                 word += 2
                 carry = 0
-            elif word <= UInt32(1_999_999_997):
-                word = word + 2 - UInt32(1_000_000_000)
+            elif word <= (2 * BASE - 3):
+                word = word + 2 - (BASE)
                 carry = 1
-            elif word <= UInt32(2_999_999_997):
-                word = word + 2 - UInt32(2_000_000_000)
+            elif word <= (3 * BASE - 3):
+                word = word + 2 - (2 * BASE)
                 carry = 2
-            else:  # 2_999_999_998 <= word <= 3_999_999_996
-                word = word + 2 - UInt32(3_000_000_000)
+            else:  # 3 * BASE - 2 <= word <= 4 * BASE - 4
+                word = word + 2 - (3 * BASE)
                 carry = 3
         else:  # carry == 3
-            if word <= UInt32(999_999_996):
+            if word <= (BASE - 4):
                 word += 3
                 carry = 0
-            elif word <= UInt32(1_999_999_996):
-                word = word + 3 - UInt32(1_000_000_000)
+            elif word <= (2 * BASE - 4):
+                word = word + 3 - (BASE)
                 carry = 1
-            elif word <= UInt32(2_999_999_996):
-                word = word + 3 - UInt32(2_000_000_000)
+            elif word <= (3 * BASE - 4):
+                word = word + 3 - (2 * BASE)
                 carry = 2
-            else:  # 2_999_999_997 <= word <= 3_999_999_996
-                word = word + 3 - UInt32(3_000_000_000)
+            else:  # 3 * BASE - 3 <= word <= 4 * BASE - 4
+                word = word + 3 - (3 * BASE)
                 carry = 3
     if carry > 0:
         # If there is still a carry, we need to add a new word
@@ -4924,19 +4932,19 @@ def power_of_10(n: Int) raises -> BigUInt:
         return BigUInt.one()
 
     # Handle small powers directly
-    if n < 9:
+    if n < BigUInt.DIGITS_PER_WORD:
         var value: UInt32 = 1
         for _ in range(n):
             value *= 10
         return BigUInt.from_uint32_unsafe(value)
 
-    # For larger powers, split into groups of 9 digits
-    var words = n // 9
-    var remainder = n % 9
+    # For larger powers, split into whole words
+    var words = n // BigUInt.DIGITS_PER_WORD
+    var remainder = n % BigUInt.DIGITS_PER_WORD
 
     var result = BigUInt.zero()
 
-    # Add leading zeros for full power-of-billion words
+    # Add leading zeros for the whole words below the highest one
     for _ in range(words):
         result.words.append(0)
 

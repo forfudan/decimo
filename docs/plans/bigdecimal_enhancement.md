@@ -58,6 +58,7 @@ Dated by report file under `benches/bigdecimal/reports/`. Append-only.
 | 20260223 | BigDecimal `multiply_inplace`, `add_inplace`, `subtract_inplace`                      |
 | 20260223 | `__iadd__` / `__isub__` / `__imul__` route through inplace versions                   |
 | 20260224 | Toom-3 helpers: `_exact_divide_by_{2,3,6}_inplace` (carry-based, no BigUInt division) |
+| 20260828 | `BigUInt.DIGITS_PER_WORD` names the digits in a word; `BASE`/`BASE_MAX`/`BASE_HALF` derived from it, `*_power_of_billion` renamed `*_power_of_base`. No behaviour change. |
 
 ### 2.3 Performance — arithmetic & analytic ops
 
@@ -445,8 +446,8 @@ P1 — Add/Sub small-precision target (currently 4.7× / 3.6× py → target ≤
   (20260606).** The inplace variant
   [`multiply_by_power_of_ten_inplace`](../../src/decimo/biguint/arithmetics.mojo)
   exists, uses `words.resize(unsafe_uninit_length=...)` (O(1) capacity + memset,
-  not O(n) memcpy), and has a multiple-of-9 fast path that delegates to
-  `multiply_by_power_of_billion_inplace`. The hot mutating callers
+  not O(n) memcpy), and has a whole-word fast path that delegates to
+  `multiply_by_power_of_base_inplace`. The hot mutating callers
   (`add_inplace`, `subtract_inplace` in `bigdecimal/arithmetics.mojo`, plus the
   new `bigdecimal.mojo:2562` site) already use the inplace form. Residual: the
   public `add`/`subtract` at `bigdecimal/arithmetics.mojo:94-95,176-177` still
@@ -622,7 +623,7 @@ P3 — Divide all precisions (5× py → target ≤2×)
   vs general 303 ns (−73)** and noise elsewhere. Root cause: the
   digit-granular `multiply_by_power_of_ten(118)` buffer does a partial-
   word multiply + word insertion, costing more than the general path's
-  word-granular `multiply_by_power_of_billion` (a whole-word zero
+  word-granular `multiply_by_power_of_base` (a whole-word zero
   prepend) — buffer construction outweighs the few saved quotient
   digits, and high-precision non-terminating quotients (the typical
   "repeating decimal" divide) regress. No BigDecimal-level headroom.
@@ -1071,6 +1072,11 @@ some ops < 1.0×):
 |        |                                            |        |          | auto-cache blocked on Mojo                              |
 | T-L3   | AGM ln for p ≥ 1000 (T3g)                  | XL     | **WAIT** | gated on NTT (heavy per-iter sqrt);                     |
 |        |                                            |        |          | far-from-1 ln now addressed by T-3e                     |
+| T-B1   | Name the base: `DIGITS_PER_WORD`, derived  | M      | **DONE** | 20260828; groundwork for T-B2, no perf change           |
+|        | `BASE*`, `*_power_of_base`                 |        |          |                                                         |
+| T-B2   | Move `BigUInt` to base 10^18               | XL     | **OPEN** | prototype: add 1.1-1.5x, Comba 1.2-3.0x above           |
+|        |                                            |        |          | 72 digits, Knuth D 1.5-1.7x above 36; loses             |
+|        |                                            |        |          | below 36. See `docs/internal/todo.md` item 9            |
 | T-IO1  | `from_string` digit batching               | M      | **DONE** | batching already present;                               |
 |        |                                            |        |          | slice removed, 1.4×→1.2×                                |
 | T-IO2  | `to_string` right-aligned InlineArray      | M      | **DONE** | hybrid exact-size direct-write;                         |

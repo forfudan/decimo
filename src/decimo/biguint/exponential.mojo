@@ -188,8 +188,8 @@ def sqrt_initial_guess(x: BigUInt) -> BigUInt:
 
     # Some additional adjustments based on the next significant word
     nsw //= 2 * msw_sqrt  # The next word contributes to the guess
-    if nsw > 999_999_999:  # Cap at max word value
-        nsw = 999_999_999
+    if nsw > BigUInt.BASE_MAX:  # Cap at max word value
+        nsw = BigUInt.BASE_MAX
 
     var result = BigUInt(unsafe_uninit_length=n_words + 1)
     unsafe_memset_zero(ptr=result.words.unsafe_ptr(), count=n_words + 1)
