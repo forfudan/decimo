@@ -621,27 +621,38 @@ other's base case, best of seven (us):
 
 That is not the choice, though, because the shipped recursion stops at
 `CUTOFF_SQRT_BASE` and finishes in the older path. Sweeping this constant
-with that in place, best of seven, `-D ASSERT=none` (us):
+with that in place, `-D ASSERT=none` (us):
 
-    digits            500    700    1000    1500    2000
-    cutoff  32       1.89   2.60    3.43    5.26    6.97
-    cutoff  64       1.75   2.41    3.22    4.76    6.72
-    cutoff 128       1.78   2.64    3.85    4.96    7.24
+    digits           200    300    500    700   1000   1500   5000
+    cutoff  32      0.50   0.86   1.81   1.93   3.09   3.84  13.57
+    cutoff  64      0.49   0.84   1.47   1.91   3.04   3.73  13.18
+    cutoff 128      0.49   0.81   1.54   2.05   3.04   3.69  13.73
 
-64 wins at every width, by 16% at 1000 digits where it is the setting that
-decides what runs. It reads better than the two-way table because one level
-of recursion halves the division and then hands a 52-word tail to the path
-that is best at 52 words.
+It reads better than the two-way table because one level of recursion halves
+the division and then hands the tail to the path that is best at that width.
+The three columns that separate them are 500, 700 and 5000, and 64 takes all
+three; 32 loses at 500 because a 52-word operand recurses when it should not.
+Re-measured after Knuth D went to 64-bit limbs, which did not move it.
 """
 
-comptime CUTOFF_SQRT_BASE: Int = 32
+comptime CUTOFF_SQRT_BASE: Int = 16
 """Words below which `_sqrtrem()` stops recursing and doubles precision.
 
 The recursion needs a remainder and the older path does not produce one, so
 the base case pays for a squaring to recover it. That is cheap at these sizes
-and buys back the register-resident early iterations. Anywhere from 16 to 64
-measures the same -- 48.4 us against 49.2 at 10 000 digits -- so this is the
-middle of a flat range rather than a peak.
+and buys back the register-resident early iterations.
+
+It was 32 while it sat in the middle of a flat range. Knuth D going to 64-bit
+limbs made the recursion's division about twice as cheap and tilted that
+range, so recursing one level further now pays; best of three alternating
+builds, best of five within each (us):
+
+    digits           500    700   1000   1500   2000   5000   10000
+    cutoff 16       1.51   1.89   3.06   3.74   5.41  13.73   35.93
+    cutoff 32       1.54   2.40   3.14   4.40   5.66  14.68   37.22
+
+The width that moves most is 700, where 16 is the difference between two
+levels of recursion and three. 8 measures the same as 16.
 """
 
 
@@ -841,5 +852,5 @@ def _sqrt_karatsuba(x: BigInt) raises -> BigInt:
 
     var back = total >> 1
     if back > 0:
-        root = bigint_arithmetics._shift_right_words(root, back, len(root))
+        bigint_arithmetics._shift_right_words_inplace(root, back, len(root))
     return BigInt(raw_words=root^, sign=False)

@@ -2417,20 +2417,38 @@ def _dc_from_str_recursive(
 # Divide-and-conquer base conversion (binary → decimal string)
 # ===----------------------------------------------------------------------=== #
 
-# The threshold (in UInt32 words) below which we use the simple O(n²) method
-# of repeated division by 10^9. Above this, the D&C method is used.
-# D&C only wins when the internal divisions can use the sub-quadratic
-# Burnikel-Ziegler algorithm (CUTOFF_BURNIKEL_ZIEGLER = 64 words).
-# Since the D&C divisor is roughly half the dividend, we need the dividend
-# to be ≥ 2 × 64 = 128 words for B-Z to kick in at the first split.
+# The thresholds (in UInt32 words) below which we use the simple O(n^2) method
+# of repeated division by 10^9. Above them, the D&C method is used.
 #
-# We use TWO thresholds:
-# - _DC_TO_STR_ENTRY_THRESHOLD (128): gates the top-level decision to enter D&C
-#   (~1230 decimal digits; below this the simple O(n²) path is faster)
-# - _DC_TO_STR_BASE_THRESHOLD (64): base-case size within the recursion
-#   (~616 decimal digits; recursion bottoms out to simple path here)
-comptime _DC_TO_STR_ENTRY_THRESHOLD = 128
-comptime _DC_TO_STR_BASE_THRESHOLD = 64
+# - _DC_TO_STR_ENTRY_THRESHOLD (64): gates the top-level decision to enter D&C
+#   (~616 decimal digits; below this the simple O(n^2) path is faster)
+# - _DC_TO_STR_BASE_THRESHOLD (48): base-case size within the recursion
+#   (~462 decimal digits; recursion bottoms out to the simple path here)
+#
+# These were derived rather than measured, and the derivation was wrong. It
+# said D&C only wins once its internal divisions reach Burnikel-Ziegler, so
+# with a divisor half the dividend the entry point had to be `2 * 64 = 128`
+# words. But what D&C actually buys is the balanced split -- it replaces a
+# quadratic walk of `x % 10^9` with two half-sized problems, and that pays
+# long before any division inside it is large enough for B-Z. Measured, best
+# of seven, `String(BigInt)` in microseconds:
+#
+#     digits            700    900   1233   1500   3000   10000
+#     entry 128/64    10.65  18.23  36.37  31.24  87.93   492.9
+#     entry  64/48    10.28  14.85  26.03  33.55  84.31   477.6
+#
+# That is on the *old* Knuth D, so the derived pair was already losing 1.4x at
+# 1233 digits before anything else here changed. Faster division widened it,
+# since D&C divides and the simple path only ever divides by a single word:
+#
+#     digits            700    900   1233   1500   3000   10000
+#     entry 128/64    10.57  18.10  36.03  25.39  67.68   374.3
+#     entry  64/48     8.35  11.83  18.80  24.90  66.28   376.0
+#
+# 32 ties with 48 for the base case everywhere except 900 digits, where 48
+# stops one level earlier and wins by 7%. 24 and 96 are worse at every width.
+comptime _DC_TO_STR_ENTRY_THRESHOLD = 64
+comptime _DC_TO_STR_BASE_THRESHOLD = 48
 
 # Base for extracting 9-digit decimal chunks in the simple conversion path.
 # Same numerical value as BigUInt.BASE, but defined locally to avoid

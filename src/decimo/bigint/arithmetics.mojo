@@ -70,7 +70,20 @@ comptime CUTOFF_TOOM3: Int = 768
 
 # Burnikel-Ziegler cutoff: divisors with this many words or fewer use
 # Knuth D (schoolbook). Must be even for the recursive halving to work.
-comptime CUTOFF_BURNIKEL_ZIEGLER: Int = 64
+#
+# It moved 64 -> 96 when Knuth D's multiply-subtract went to 64-bit limbs and
+# got about 2x faster: a cheaper base case is worth more of, so the recursion
+# should stop sooner. The floor is broad -- 96, 112 and 128 are within the 1.5%
+# noise of each other everywhere -- and the only sizes that tell them apart are
+# the divisors between 97 and 128 words, which is where 96 is ahead:
+#
+#     digits          1000   1200   1500   3000   10000   100000
+#     cutoff  96       3.46   4.67   6.48  18.05  120.09  4066.78
+#     cutoff 128       3.64   4.81   6.40  17.83  120.69  4054.31
+#
+# (microseconds, 2n-by-n). 160 is worse at 1500 and 3000 and does not come
+# back at 100 000, so the top of the range is where it stops paying.
+comptime CUTOFF_BURNIKEL_ZIEGLER: Int = 96
 """The minimum number of words above which Burnikel-Ziegler division is used."""
 
 
@@ -184,6 +197,78 @@ def _subtract_word_pairs[
         r64.unsafe_store[alignment=4](i, total)
         borrow = borrowed | UInt64(difference < borrow)
     return borrow
+
+
+@always_inline
+def _submul_word_pairs[
+    o: Origin[mut=True],
+    o_b: Origin[mut=False],
+](
+    up: Pointer[UInt32, o],
+    bp: Pointer[UInt32, o_b],
+    n: Int,
+    q: UInt64,
+) -> UInt64:
+    """Knuth D step D4: `u[0..n-1] -= q * b[0..n-1]`, LSB first.
+
+    Two base-2^32 words at a time, on the same little-endian identity that
+    `_add_word_pairs()` rests on: a pair of words *is* one base-2^64 limb, so
+    `q * limb` is one 64x64 product -- `MUL` plus `UMULH` on arm64 -- and does
+    the work of two 32-bit multiplies. Halving the number of steps also halves
+    the loop-carried chain, which is what this loop is bound by.
+
+    `q` fits in 32 bits, so the product of a limb never exceeds 96 bits and
+    its high half is what the next limb owes. What comes back is that debt out
+    of the top limb, which the caller subtracts from `u[n]`. It is at most
+    `2^32`, exactly as in the word-at-a-time form.
+
+    That word-at-a-time form took the borrow with a branch, which was faster
+    than the branchless one written 32 bits wide -- biasing the difference by
+    `2^32` and reading the borrow out of bit 32 put the loaded word into the
+    chain, so every step waited on a load, and branching let the processor
+    speculate past it. Pairing wins for a different reason: it does not
+    lengthen the chain to remove the branch, it shortens it. Division went
+    2.5 us to 1.14 at 500 digits and 6.2 to 3.5 at 1000.
+
+    Args:
+        up: The dividend window, at least `n` words, modified in place.
+        bp: The divisor, at least `n` words.
+        n: Number of words. An odd one leaves a single word for the tail.
+        q: The trial quotient digit, below `2^32`.
+
+    Returns:
+        The amount still owed at word `n`.
+    """
+    comptime assert is_little_endian(), (
+        "_submul_word_pairs() reads two UInt32 words as one base-2^64 limb,"
+        " which is only the value they represent on a little-endian target"
+    )
+
+    var u64 = up.unsafe_bitcast[UInt64]()
+    var b64 = bp.unsafe_bitcast[UInt64]()
+    var pairs = n >> 1
+    var owed_high = UInt64(0)
+    for i in range(pairs):
+        # The debt is taken off in two steps rather than summed first, to keep
+        # everything that does not need the last limb's answer off the chain: the
+        # product, the borrow it causes, and their sum `owed` all compute while
+        # the previous limb is still finishing. What is left in the chain is a
+        # subtract, the borrow it sets, and one add.
+        var product = UInt128(q) * UInt128(b64.unsafe_load[alignment=4](i))
+        var current = u64.unsafe_load[alignment=4](i)
+        var low = UInt64(product)
+        var partial = current - low
+        var owed = UInt64(product >> 64) + UInt64(current < low)
+        u64.unsafe_store[alignment=4](i, partial - owed_high)
+        owed_high = owed + UInt64(partial < owed_high)
+    if n & 1 != 0:
+        var i = n - 1
+        var product = q * UInt64(bp[unsafe_offset=i]) + owed_high
+        var owed = product & 0xFFFF_FFFF
+        var current = UInt64(up[unsafe_offset=i])
+        up[unsafe_offset=i] = UInt32((current - owed) & 0xFFFF_FFFF)
+        owed_high = (product >> 32) + UInt64(current < owed)
+    return owed_high
 
 
 def _add_magnitudes(a: Magnitude, b: Magnitude) -> Magnitude:
@@ -1479,24 +1564,8 @@ def _divmod_magnitudes(
                 break
 
         # Step D4: multiply and subtract, u[j..j+n] -= q_hat * v[0..n-1].
-        #
-        # The borrow is a branch on purpose, for the reason spelled out in
-        # `_divmod_knuth_d_from_slices()`: the branchless form puts the loaded
-        # word into the loop-carried carry chain, so every iteration waits on
-        # a load.
-        var carry: UInt64 = 0
-        for i in range(n):
-            var product = q_hat * UInt64(v_ptr[unsafe_offset=i]) + carry
-            var product_lo = product & 0xFFFF_FFFF
-            carry = product >> 32
-            var current = UInt64(u_ptr[unsafe_offset=j + i])
-            if current >= product_lo:
-                u_ptr[unsafe_offset=j + i] = UInt32(current - product_lo)
-            else:
-                u_ptr[unsafe_offset=j + i] = UInt32(
-                    BigInt.BASE + current - product_lo
-                )
-                carry += 1
+        # Two words at a time; see `_submul_word_pairs()`.
+        var carry = _submul_word_pairs(u_ptr.unsafe_offset(j), v_ptr, n, q_hat)
 
         var jn = j + n
         if UInt64(u_ptr[unsafe_offset=jn]) >= carry:
@@ -1528,8 +1597,9 @@ def _divmod_magnitudes(
     while len(quotient) > 1 and quotient[len(quotient) - 1] == 0:
         quotient.shrink(len(quotient) - 1)
 
-    # Step D8: Unnormalize remainder by shifting right
-    remainder = _shift_right_words(u, shift, n)
+    # Step D8: unnormalize the remainder, in the buffer it is already in.
+    _shift_right_words_inplace(u, shift, n)
+    remainder = u^
 
     return quotient^
 
@@ -1647,6 +1717,50 @@ def _shift_right_words(a: Magnitude, shift: Int, num_words: Int) -> Magnitude:
     while len(result) > 1 and result[len(result) - 1] == 0:
         result.shrink(len(result) - 1)
     return result^
+
+
+def _shift_right_words_inplace(mut a: Magnitude, shift: Int, num_words: Int):
+    """Keeps the first `num_words` of a magnitude, shifted right `shift` bits.
+
+    The in-place form of `_shift_right_words()`, for the callers that own
+    their input and are finished with it: both divisions unnormalizing a
+    remainder out of the buffer they computed it in. Doing it in place lets
+    that buffer *become* the remainder, which takes Knuth D from four heap
+    allocations to three -- worth 37 ns a call, which is a quarter of a
+    100-digit division.
+
+    The pass runs low to high and a word is written only after the word above
+    it has been read, so writing over the source is safe.
+
+    Args:
+        a: The magnitude, truncated and shifted in place.
+        shift: The number of bits to shift right (must be < 32).
+        num_words: How many words of `a` to keep.
+    """
+    var n = min(num_words, len(a))
+    if n <= 0:
+        a = [UInt32(0)]
+        return
+
+    if shift != 0:
+        var ap = a.unsafe_ptr()
+        var carry_shift = UInt64(32) - UInt64(shift)
+        for i in range(n - 1):
+            ap[unsafe_offset=i] = UInt32(
+                (UInt64(ap[unsafe_offset=i]) >> UInt64(shift))
+                | (
+                    (UInt64(ap[unsafe_offset=i + 1]) << carry_shift)
+                    & UInt64(0xFFFF_FFFF)
+                )
+            )
+        ap[unsafe_offset=n - 1] = UInt32(
+            UInt64(ap[unsafe_offset=n - 1]) >> UInt64(shift)
+        )
+
+    while len(a) > n:
+        a.shrink(len(a) - 1)
+    while len(a) > 1 and a[len(a) - 1] == 0:
+        a.shrink(len(a) - 1)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -1935,27 +2049,10 @@ def _divmod_knuth_d_from_slices(
             if r_hat >= BigInt.BASE:
                 break
 
-        # Multiply and subtract: u[j..j+n] -= q_hat * v[0..n-1].
-        #
-        # The borrow is a branch on purpose. A branchless form -- bias the
-        # difference by 2^32, then read the borrow out of bit 32 -- looks
-        # cheaper and is not: it puts the loaded word into the loop-carried
-        # carry chain, so every iteration waits on a load. Branching lets the
-        # processor speculate past it. Worth 1.38x at 1000 digits and 1.11x at
-        # 10 000, measured both ways, twice, alternating builds.
-        var carry: UInt64 = 0
-        for i in range(n):
-            var product = q_hat * UInt64(b_ptr[unsafe_offset=i]) + carry
-            var product_lo = product & 0xFFFF_FFFF
-            carry = product >> 32
-            var current = UInt64(u_ptr[unsafe_offset=j + i])
-            if current >= product_lo:
-                u_ptr[unsafe_offset=j + i] = UInt32(current - product_lo)
-            else:
-                u_ptr[unsafe_offset=j + i] = UInt32(
-                    BigInt.BASE + current - product_lo
-                )
-                carry += 1
+        # Multiply and subtract: u[j..j+n] -= q_hat * v[0..n-1]. This is where
+        # division spends its time, so it has its own kernel; see
+        # `_submul_word_pairs()`.
+        var carry = _submul_word_pairs(u_ptr.unsafe_offset(j), b_ptr, n, q_hat)
 
         var jn = j + n
         if UInt64(u_ptr[unsafe_offset=jn]) >= carry:
@@ -2117,9 +2214,11 @@ def _divmod_burnikel_ziegler(
         var r_stripped = _normalized_copy(
             _subspan(z.as_span(), word_pad, len(z))
         )
-        remainder = _shift_right_words(r_stripped, bit_shift, len(r_stripped))
+        _shift_right_words_inplace(r_stripped, bit_shift, len(r_stripped))
+        remainder = r_stripped^
     else:
-        remainder = _shift_right_words(z, bit_shift, len(z))
+        _shift_right_words_inplace(z, bit_shift, len(z))
+        remainder = z^
 
     # Normalize results
     while len(quotient) > 1 and quotient[len(quotient) - 1] == 0:
