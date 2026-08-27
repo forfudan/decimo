@@ -27,7 +27,7 @@ Performance note: For the common case of two non-negative operands, no
 two's complement conversion is needed — just word-by-word operation.
 """
 
-from decimo.bigint.bigint import BigInt
+from decimo.bigint.bigint import BigInt, Magnitude
 
 
 # ===----------------------------------------------------------------------=== #
@@ -67,7 +67,7 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
         comptime if op == "and":
             # AND with zeros → zeros, so result is at most min_len words
             var min_len = min(len(a.words), len(b.words))
-            var result_words = List[UInt32](capacity=min_len)
+            var result_words = Magnitude(capacity=min_len)
             for i in range(min_len):
                 result_words.append(a.words[i] & b.words[i])
             while (
@@ -78,7 +78,7 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
             return BigInt(raw_words=result_words^, sign=False)
         elif op == "or":
             var max_len = max(len(a.words), len(b.words))
-            var result_words = List[UInt32](capacity=max_len)
+            var result_words = Magnitude(capacity=max_len)
             for i in range(max_len):
                 var wa = UInt32(0) if i >= len(a.words) else a.words[i]
                 var wb = UInt32(0) if i >= len(b.words) else b.words[i]
@@ -91,7 +91,7 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
             return BigInt(raw_words=result_words^, sign=False)
         else:  # xor
             var max_len = max(len(a.words), len(b.words))
-            var result_words = List[UInt32](capacity=max_len)
+            var result_words = Magnitude(capacity=max_len)
             for i in range(max_len):
                 var wa = UInt32(0) if i >= len(a.words) else a.words[i]
                 var wb = UInt32(0) if i >= len(b.words) else b.words[i]
@@ -112,7 +112,7 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
         max_len += 1
 
     # Pre-compute a's TC words: for negative, TC = ~(|a| - 1)
-    var a_tc = List[UInt32](capacity=a_n)
+    var a_tc = Magnitude(capacity=a_n)
     if a.sign:
         var borrow: UInt64 = 1
         for i in range(a_n):
@@ -124,7 +124,7 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
             a_tc.append(a.words[i])
 
     # Pre-compute b's TC words
-    var b_tc = List[UInt32](capacity=b_n)
+    var b_tc = Magnitude(capacity=b_n)
     if b.sign:
         var borrow: UInt64 = 1
         for i in range(b_n):
@@ -136,7 +136,7 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
             b_tc.append(b.words[i])
 
     # Perform the operation word-by-word
-    var result_tc = List[UInt32](capacity=max_len)
+    var result_tc = Magnitude(capacity=max_len)
     for i in range(max_len):
         var wa = a_fill if i >= len(a_tc) else a_tc[i]
         var wb = b_fill if i >= len(b_tc) else b_tc[i]
@@ -159,7 +159,7 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
     else:
         # Negative: magnitude = ~result_tc + 1
         var n = len(result_tc)
-        var mag = List[UInt32](capacity=n)
+        var mag = Magnitude(capacity=n)
         for i in range(n):
             mag.append(~result_tc[i])
         var carry: UInt64 = 1
@@ -256,7 +256,7 @@ def _binary_bitwise_op_inplace[op: StringLiteral](mut a: BigInt, imm b: BigInt):
         max_len += 1
 
     # Pre-compute a's TC words
-    var a_tc = List[UInt32](capacity=a_n)
+    var a_tc = Magnitude(capacity=a_n)
     if a.sign:
         var borrow: UInt64 = 1
         for i in range(a_n):
@@ -268,7 +268,7 @@ def _binary_bitwise_op_inplace[op: StringLiteral](mut a: BigInt, imm b: BigInt):
             a_tc.append(a.words[i])
 
     # Pre-compute b's TC words
-    var b_tc = List[UInt32](capacity=b_n)
+    var b_tc = Magnitude(capacity=b_n)
     if b.sign:
         var borrow: UInt64 = 1
         for i in range(b_n):
@@ -280,7 +280,7 @@ def _binary_bitwise_op_inplace[op: StringLiteral](mut a: BigInt, imm b: BigInt):
             b_tc.append(b.words[i])
 
     # Perform the operation word-by-word into a new list
-    var result_tc = List[UInt32](capacity=max_len)
+    var result_tc = Magnitude(capacity=max_len)
     for i in range(max_len):
         var wa = a_fill if i >= len(a_tc) else a_tc[i]
         var wb = b_fill if i >= len(b_tc) else b_tc[i]
@@ -305,7 +305,7 @@ def _binary_bitwise_op_inplace[op: StringLiteral](mut a: BigInt, imm b: BigInt):
             a.sign = False
     else:
         var n = len(result_tc)
-        var mag = List[UInt32](capacity=n)
+        var mag = Magnitude(capacity=n)
         for i in range(n):
             mag.append(~result_tc[i])
         var carry: UInt64 = 1
@@ -389,7 +389,7 @@ def bitwise_not(x: BigInt) -> BigInt:
     if not x.sign:
         # ~non_negative = -(x + 1)
         var n = len(x.words)
-        var result_words = List[UInt32](capacity=n + 1)
+        var result_words = Magnitude(capacity=n + 1)
         var carry: UInt64 = 1
         for i in range(n):
             var s = UInt64(x.words[i]) + carry
@@ -401,7 +401,7 @@ def bitwise_not(x: BigInt) -> BigInt:
     else:
         # ~negative = |x| - 1
         var n = len(x.words)
-        var result_words = List[UInt32](capacity=n)
+        var result_words = Magnitude(capacity=n)
         var borrow: UInt64 = 1
         for i in range(n):
             var diff = UInt64(x.words[i]) - borrow

@@ -37,7 +37,7 @@ from decimo.errors import (
     ZeroDivisionError,
 )
 import decimo.str as decimo_str
-from decimo.biguint.wordlist import WordList, INLINE_WORDS
+from decimo.wordlist import WordList, INLINE_WORDS
 from decimo.rounding_mode import RoundingMode
 from decimo.traits import Rootable
 from decimo.utility import unsigned_counterpart
@@ -87,7 +87,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     so it costs nothing in a normal build and fires in the test suite.
     """
 
-    var words: WordList
+    var words: WordList[]
     """A list of UInt32 words representing the coefficient.
 
     Little-endian: `words[0]` is the least significant base-billion digit.

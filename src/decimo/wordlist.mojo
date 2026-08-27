@@ -14,7 +14,8 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-"""The word storage behind `BigUInt`, with small values kept inside the struct.
+"""The word storage behind `BigUInt` and `BigInt`, with small values kept
+inside the struct.
 
 A small `BigUInt` operation is almost entirely allocation. Measured on arm64,
 best of nine, `-D ASSERT=none`:
@@ -32,8 +33,14 @@ which is what CPython's `decimal` does: `PyDecObject` carries four 64-bit
 words inline, so at the default precision of 28 digits libmpdec never calls
 the allocator at all.
 
-The API is the part of `List[UInt32]` that `BigUInt` uses, spelled the same
-way, so the eight hundred-odd `.words` sites did not have to change.
+GMP pays this too, and has no inline buffer: an `mpz_t` addition of two
+100-digit numbers takes about 15 ns into a fresh result and about 5 ns into a
+reused one, so two thirds of it is `malloc` and `free`. An immutable value
+type cannot use the reuse idiom, which makes inline storage the one place
+where we can be ahead of GMP rather than behind it.
+
+The API is the part of `List[UInt32]` that the number types use, spelled the
+same way, so the eight hundred-odd `.words` sites did not have to change.
 """
 
 from std.memory import Layout, ThinAllocation, alloc, dealloc
@@ -41,7 +48,9 @@ from std.memory import unsafe_memcpy
 from std.os import abort
 
 comptime INLINE_WORDS = 10
-"""How many words live in the struct before the heap is involved.
+"""How many words live in a `BigUInt` before the heap is involved.
+
+Also the default for `WordList`; `BigInt` passes its own.
 
 It has to cover *results*, not operands. A 28-digit value is four words, but
 adding two of them carries into a fifth and multiplying gives eight, so at
@@ -64,25 +73,34 @@ ten is within noise of a plain `List` everywhere.
 """
 
 
-struct WordList(Copyable, Movable, Sized):
-    """A list of base-billion words that keeps small ones inside itself.
+struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
+    """A list of 32-bit words that keeps small ones inside itself.
 
-    Only the `List[UInt32]` surface that `BigUInt` actually uses is provided:
-    `len()`, indexing, iteration, `unsafe_ptr()`, `append`, `resize`, `shrink`,
-    `clear`, `reserve`, `copy` and `capacity`.
+    What the words mean is the number type's business: `BigUInt` reads them as
+    base-billion digits and `BigInt` as a base-2^32 magnitude. The container
+    only knows how many there are and where they live.
 
-    Invariant: `_capacity >= INLINE_WORDS` always, and the words live in
-    `_inline` exactly when `_capacity == INLINE_WORDS`. So there is one test
-    for "where is the data", and it is on a field already in cache.
+    Only the `List[UInt32]` surface that the number types actually use is
+    provided: `len()`, indexing, iteration, `unsafe_ptr()`, `append`, `resize`,
+    `shrink`, `clear`, `reserve`, `copy` and `capacity`.
+
+    Invariant: `_capacity >= INLINE` always, and the words live in `_inline`
+    exactly when `_capacity == INLINE`. So there is one test for "where is the
+    data", and it is on a field already in cache.
+
+    Parameters:
+        INLINE: How many words fit inside the struct before the heap is
+            involved. The two number types have different sweet spots, so
+            each picks its own; see `INLINE_WORDS` for how to choose.
     """
 
     comptime _PointerType = Pointer[UInt32, MutUntrackedOrigin]
 
     var _heap: Self._PointerType
-    """Allocated storage. Only meaningful when `_capacity > INLINE_WORDS`."""
+    """Allocated storage. Only meaningful when `_capacity > INLINE`."""
     var _len: Int
     var _capacity: Int
-    var _inline: InlineArray[UInt32, INLINE_WORDS]
+    var _inline: InlineArray[UInt32, Self.INLINE]
 
     # ===------------------------------------------------------------------=== #
     # Life cycle
@@ -90,12 +108,11 @@ struct WordList(Copyable, Movable, Sized):
 
     @always_inline
     def __init__(out self):
-        """An empty list, with room for `INLINE_WORDS` words and no allocation.
-        """
+        """An empty list, with room for `INLINE` words and no allocation."""
         self._heap = Self._PointerType.unsafe_dangling()
         self._len = 0
-        self._capacity = INLINE_WORDS
-        self._inline = InlineArray[UInt32, INLINE_WORDS](uninitialized=True)
+        self._capacity = Self.INLINE
+        self._inline = InlineArray[UInt32, Self.INLINE](uninitialized=True)
 
     @always_inline
     def __init__(out self, *, capacity: Int):
@@ -105,12 +122,12 @@ struct WordList(Copyable, Movable, Sized):
             capacity: How many words to make room for.
         """
         self._len = 0
-        self._inline = InlineArray[UInt32, INLINE_WORDS](uninitialized=True)
-        if capacity > INLINE_WORDS:
+        self._inline = InlineArray[UInt32, Self.INLINE](uninitialized=True)
+        if capacity > Self.INLINE:
             self._capacity = capacity
             self._heap = alloc(Layout[UInt32](count=capacity)).unsafe_leak()
         else:
-            self._capacity = INLINE_WORDS
+            self._capacity = Self.INLINE
             self._heap = Self._PointerType.unsafe_dangling()
 
     @always_inline
@@ -194,12 +211,12 @@ struct WordList(Copyable, Movable, Sized):
         self._heap = move._heap
         self._len = move._len
         self._capacity = move._capacity
-        self._inline = InlineArray[UInt32, INLINE_WORDS](uninitialized=True)
+        self._inline = InlineArray[UInt32, Self.INLINE](uninitialized=True)
         # Only the inline case has anything worth carrying over, and it is a
         # fixed number of words, so it goes as one vector load and store.
         # Spelling this as a scalar `for` loop instead cost 60% of an addition
         # -- moves are everywhere, and the compiler did not unroll it.
-        if move._capacity == INLINE_WORDS:
+        if move._capacity == Self.INLINE:
             # A fixed count on purpose. Copying only `move._len` words looks
             # like less work and is not: a constant size inlines to a couple of
             # vector moves, while a variable one becomes a call to `memcpy`,
@@ -207,12 +224,12 @@ struct WordList(Copyable, Movable, Sized):
             unsafe_memcpy(
                 dest=Pointer(to=self._inline).unsafe_bitcast[UInt32](),
                 src=Pointer(to=move._inline).unsafe_bitcast[UInt32](),
-                count=INLINE_WORDS,
+                count=Self.INLINE,
             )
 
     def __deinit__(deinit self):
         """Release the storage, if any was ever taken."""
-        if self._capacity > INLINE_WORDS:
+        if self._capacity > Self.INLINE:
             dealloc(
                 ThinAllocation(unsafe_owned_ptr=self._heap).unsafe_with_layout(
                     Layout[UInt32](count=self._capacity)
@@ -239,7 +256,7 @@ struct WordList(Copyable, Movable, Sized):
         Returns:
             A pointer to the first word.
         """
-        if self._capacity == INLINE_WORDS:
+        if self._capacity == Self.INLINE:
             return (
                 Pointer(to=self._inline)
                 .unsafe_bitcast[UInt32]()
@@ -333,7 +350,7 @@ struct WordList(Copyable, Movable, Sized):
         var block = alloc(Layout[UInt32](count=wanted)).unsafe_leak()
         if self._len > 0:
             unsafe_memcpy(dest=block, src=self.unsafe_ptr(), count=self._len)
-        if self._capacity > INLINE_WORDS:
+        if self._capacity > Self.INLINE:
             dealloc(
                 ThinAllocation(unsafe_owned_ptr=self._heap).unsafe_with_layout(
                     Layout[UInt32](count=self._capacity)

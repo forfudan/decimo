@@ -7,11 +7,13 @@ over from a previous one. The document records the commit it was measured on,
 so a reader can tell whether it is current, and a stale table is visibly stale
 rather than quietly wrong.
 
-Three comparisons, and they are not equally fair -- the document says so:
+Four comparisons, and they are not equally fair -- the document says so:
 
 - `BigDecimal` against libmpdec, timed in C. CPython's `decimal` module *is*
   libmpdec, so this is an engine-to-engine comparison with no interpreter in
   the way.
+- `BigInt` against GMP, also timed in C. This is the honest opponent: GMP is
+  what a big-integer library is measured against.
 - `BigInt` against CPython's `int`, which can only be reached through the
   interpreter. Those numbers include interpreter overhead and therefore
   flatter decimo; there is no way to remove it.
@@ -98,51 +100,111 @@ def git_context() -> dict:
     }
 
 
-def libmpdec_flags() -> list[str]:
-    """Include and library flags for libmpdec, however it is installed.
+def pkg_config(package: str) -> tuple[list[str], list[str]] | None:
+    """Compile and link flags from pkg-config, asked for separately.
+
+    They have to stay apart. GNU ld resolves in command-line order and
+    defaults to `--as-needed`, so a `-l` that comes before the source file
+    sees no undefined symbols yet and is dropped, and the link fails. The
+    Apple linker does not care, which is exactly why this would only show up
+    on Linux.
+    """
+    if not shutil.which("pkg-config"):
+        return None
+    flags = []
+    for what in ("--cflags", "--libs"):
+        probe = subprocess.run(
+            ["pkg-config", what, package], capture_output=True, text=True
+        )
+        if probe.returncode != 0:
+            return None
+        flags.append(probe.stdout.split())
+    if not flags[1]:
+        return None
+    return flags[0], flags[1]
+
+
+def library_prefixes(brew_package: str) -> list[str]:
+    """Where to look for a library, Homebrew first if it is installed."""
+    prefixes = []
+    if shutil.which("brew"):
+        found = subprocess.run(
+            ["brew", "--prefix", brew_package], capture_output=True, text=True
+        ).stdout.strip()
+        if found:
+            prefixes.append(found)
+    return prefixes + ["/opt/homebrew", "/usr/local", "/usr"]
+
+
+def libmpdec_flags() -> tuple[list[str], list[str]]:
+    """Compile and link flags for libmpdec, however it is installed.
 
     `platforms` covers Linux as well as macOS, so this cannot assume Homebrew.
     Tries pkg-config, then Homebrew, then the usual prefixes.
     """
-    if shutil.which("pkg-config"):
-        probe = subprocess.run(
-            ["pkg-config", "--cflags", "--libs", "libmpdec"],
-            capture_output=True,
-            text=True,
-        )
-        if probe.returncode == 0 and probe.stdout.strip():
-            return probe.stdout.split()
-    candidates = []
-    if shutil.which("brew"):
-        found = subprocess.run(
-            ["brew", "--prefix", "mpdecimal"], capture_output=True, text=True
-        ).stdout.strip()
-        if found:
-            candidates.append(found)
-    candidates += ["/opt/homebrew", "/usr/local", "/usr"]
-    for prefix in candidates:
+    from_pkg_config = pkg_config("libmpdec")
+    if from_pkg_config:
+        return from_pkg_config
+    for prefix in library_prefixes("mpdecimal"):
         if (Path(prefix) / "include" / "mpdecimal.h").exists():
-            return [f"-I{prefix}/include", f"-L{prefix}/lib", "-lmpdec"]
+            return [f"-I{prefix}/include"], [f"-L{prefix}/lib", "-lmpdec"]
     raise SystemExit(
         "libmpdec headers not found. Install mpdecimal (macOS: "
         "`brew install mpdecimal`; Debian/Ubuntu: `apt install libmpdec-dev`)."
     )
 
 
-def build_libmpdec() -> Path:
-    binary = Path(os.environ.get("TMPDIR", "/tmp")) / "decimo_bench_libmpdec"
+def libgmp_flags() -> tuple[list[str], list[str]]:
+    """Compile and link flags for GMP, however it is installed.
+
+    Same shape as `libmpdec_flags()`, and the same reason: `platforms` covers
+    Linux as well as macOS.
+    """
+    from_pkg_config = pkg_config("gmp")
+    if from_pkg_config:
+        return from_pkg_config
+    for prefix in library_prefixes("gmp"):
+        if (Path(prefix) / "include" / "gmp.h").exists():
+            return [f"-I{prefix}/include"], [f"-L{prefix}/lib", "-lgmp"]
+    raise SystemExit(
+        "GMP headers not found. Install it (macOS: `brew install gmp`; "
+        "Debian/Ubuntu: `apt install libgmp-dev`)."
+    )
+
+
+def build_c_benchmark(
+    source: str, binary_name: str, flags: tuple[list[str], list[str]]
+) -> Path:
+    """Compile one of the C benchmarks.
+
+    The source comes before the link flags, which is not cosmetic -- see
+    `pkg_config()`.
+    """
+    binary = Path(os.environ.get("TMPDIR", "/tmp")) / binary_name
+    cflags, ldflags = flags
     subprocess.run(
         [
             "cc",
             "-O2",
-            *libmpdec_flags(),
-            str(HERE / "bench_libmpdec.c"),
+            *cflags,
+            str(HERE / source),
             "-o",
             str(binary),
+            *ldflags,
         ],
         check=True,
     )
     return binary
+
+
+def build_libgmp() -> Path:
+    return build_c_benchmark("bench_libgmp.c", "decimo_bench_libgmp", libgmp_flags())
+
+
+def build_libmpdec() -> Path:
+    return build_c_benchmark(
+        "bench_libmpdec.c", "decimo_bench_libmpdec", libmpdec_flags()
+    )
 
 
 def pi_cold(library: str, precision: int) -> float | None:
@@ -229,6 +291,11 @@ def main() -> int:
     print("running libmpdec ...", file=sys.stderr)
     libmpdec = json.loads(run([str(libmpdec_binary)]))
 
+    print("building GMP benchmark ...", file=sys.stderr)
+    libgmp_binary = build_libgmp()
+    print("running GMP ...", file=sys.stderr)
+    libgmp = json.loads(run([str(libgmp_binary)]))
+
     print("running decimo ...", file=sys.stderr)
     decimo = json.loads(
         run(
@@ -296,6 +363,7 @@ def main() -> int:
             context,
             decimo,
             libmpdec,
+            libgmp,
             cpython,
             pi_table,
             agree,
@@ -323,6 +391,7 @@ def render(
     context,
     decimo,
     libmpdec,
+    libgmp,
     cpython,
     pi_table,
     agree,
@@ -350,7 +419,8 @@ def render(
     add("")
     add(
         f"Mojo {mojo_version().replace('Mojo ', '')} · CPython "
-        f"{cpython['python']} · libmpdec {libmpdec['version']}, linked from C"
+        f"{cpython['python']} · libmpdec {libmpdec['version']} and GMP "
+        f"{libgmp['version']}, both linked from C"
     )
     add("")
     add("Each figure is the minimum over several rounds, on an idle machine.")
@@ -419,15 +489,26 @@ def render(
             )
     add("")
 
-    add("## BigInt against CPython's int")
+    add("## BigInt against GMP and CPython's int")
     add("")
-    add("CPython's integers can only be reached through the interpreter, so")
-    add("these include its overhead — read the large sizes as the real ones.")
-    add("Division is 2n-by-n; two operands of the same width would give a")
-    add("one-digit quotient and measure nothing.")
+    add("GMP is the reference implementation for big integers and the harder")
+    add("opponent, timed in C. CPython's integers can only be reached through")
+    add("the interpreter, so those include its overhead — read the large sizes")
+    add("as the real ones. Division is 2n-by-n; two operands of the same width")
+    add("would give a one-digit quotient and measure nothing.")
     add("")
-    add("| Digits | Operation | decimo | CPython `int` | |")
-    add("|---|---|---|---|---|")
+    reused = libgmp.get("bigint_reused", {}).get("100", {}).get("add")
+    fresh = libgmp.get("bigint", {}).get("100", {}).get("add")
+    if reused and fresh:
+        add("An `mpz_t` always lives on the heap. Adding two 100-digit values")
+        add(f"costs GMP {human(fresh)} into a fresh result against {human(reused)}")
+        add("into a reused one, so most of it is `malloc` and `free`. decimo")
+        add("keeps small values inside the struct, which is why it leads at the")
+        add("small end and trails at the large one, where the algorithm is all")
+        add("that is left.")
+        add("")
+    add("| Digits | Operation | decimo | GMP | | CPython `int` | |")
+    add("|---|---|---|---|---|---|---|")
     for width in sorted(decimo["bigint"], key=int):
         for key, name in [
             ("add", "add"),
@@ -436,9 +517,11 @@ def render(
             ("sqrt", "sqrt"),
         ]:
             ours_ns = decimo["bigint"][width][key]
+            gmp_ns = libgmp["bigint"][width][key]
             theirs = cpython["cpython_int"][width][key]
             add(
                 f"| {int(width):,} | {name} | {human(ours_ns)} | "
+                f"{human(gmp_ns)} | {ratio(ours_ns, gmp_ns)} | "
                 f"{human(theirs)} | {ratio(ours_ns, theirs)} |"
             )
     add("")

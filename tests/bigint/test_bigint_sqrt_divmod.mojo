@@ -66,6 +66,47 @@ def test_sqrt_large() raises:
     testing.assert_true(s1_sq > n, "(sqrt+1)^2 > n")
 
 
+def test_sqrt_at_the_top_of_a_word() raises:
+    """Values whose root is the largest that fits its word.
+
+    `(root + 1) * (root + 1)` overflows there, and the correcting walk used
+    to read the wrapped value as small, step up, and never stop. These all
+    hung rather than answering.
+    """
+    testing.assert_equal(String(BigInt(4294967295).sqrt()), "65535")
+    testing.assert_equal(String(BigInt(4294836225).sqrt()), "65535")
+    testing.assert_equal(String(BigInt(4294836224).sqrt()), "65534")
+    testing.assert_equal(
+        String(BigInt("18446744073709551615").sqrt()), "4294967295"
+    )
+    testing.assert_equal(
+        String(BigInt("18446744065119617025").sqrt()), "4294967295"
+    )
+    testing.assert_equal(
+        String(BigInt("18446744065119617024").sqrt()), "4294967294"
+    )
+
+
+def test_sqrt_matches_its_definition_across_sizes() raises:
+    """`s * s <= n < (s + 1)^2`, on both sides of both cutoffs.
+
+    Powers of two and their neighbours, because they are where a word count
+    turns odd and where the normalizing shift has the least to do. 4200 bits
+    is well past `CUTOFF_SQRT_RECURSIVE`, so this covers the recursion too.
+    """
+    for bit in range(1, 4200, 7):
+        for delta in range(-1, 2):
+            var n = (BigInt(1) << bit) + BigInt(delta)
+            if n.is_zero() or n.is_negative():
+                continue
+            var s = n.sqrt()
+            testing.assert_true(s * s <= n, "s*s <= n at 2^" + String(bit))
+            var next = s + BigInt(1)
+            testing.assert_true(
+                next * next > n, "(s+1)^2 > n at 2^" + String(bit)
+            )
+
+
 def test_sqrt_negative_raises() raises:
     """Test that sqrt of negative number raises."""
     var raised = False

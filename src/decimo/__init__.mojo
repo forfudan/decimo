@@ -42,7 +42,7 @@ from .traits import Numeric, Parsable, Rootable
 
 # Core types
 from .decimal128.decimal128 import Decimal128, Dec128
-from .bigint.bigint import BigInt, BInt
+from .bigint.bigint import BigInt, BInt, Magnitude
 from .biguint.biguint import BigUInt, BUInt
 from .bigdecimal.bigdecimal import BigDecimal, BDec, Decimal, PRECISION
 from .bigfloat.bigfloat import BigFloat, BFlt, Float

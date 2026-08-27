@@ -18,9 +18,43 @@ faster in turn, which the recursive multiplications and divisions inherit.
 Burnikel-Ziegler division loses a padding choice that cost it its own
 asymptotics on some sizes, which speeds up every division in the library. A
 Newton iteration that silently returned short of its requested precision is
-fixed.
+fixed. `BigInt` now keeps small values inside the struct, takes its square
+root by Zimmermann's recursion above about six hundred digits, and is measured
+against GMP rather than against CPython's `int`. A `sqrt()` that hung for
+values at the top of a word is fixed.
 
 ### ⭐️ New in Unreleased
+
+1. **`BigInt` keeps small values inside the struct.** `WordList`, written for
+   `BigUInt`, gains an inline-capacity parameter and moves to
+   `decimo.wordlist`; `BigInt` uses `WordList[12]` under the name `Magnitude`.
+   Twelve words because a hundred digits is eleven and their sum is twelve --
+   at eight the cliff was plain, 5.4 ns at forty digits against 47 ns at a
+   hundred. Addition at a hundred digits goes from 40.3 ns to 11.2 ns and
+   division from 406 ns to 296 ns. Above a thousand digits nothing moves.
+
+1. **`BigInt` is now measured against GMP.** `docs/benchmarks.md` times GMP in
+   C alongside libmpdec, which is the comparison a big-integer library should
+   be held to; CPython's `int` can only be reached through the interpreter and
+   loses on call overhead before the arithmetic starts. GMP wins most rows.
+   The exception is small values, where an `mpz_t` still goes to the heap and
+   decimo no longer does: at ten digits decimo is 2.45x faster at addition and
+   1.94x at multiplication. What is left is written down in
+   `docs/internal/todo.md`.
+
+1. **`BigInt.sqrt()` gains Zimmermann's recursion.** Above 64 words it uses
+   the Karatsuba square root of INRIA RR-3805 instead of CPython's
+   precision-doubling. The division at the last step is half the width, and
+   the remainder falls out of the recursion instead of being recovered with a
+   full-width squaring:
+
+       digits              1000    2000    5000   10000   100000
+       precision-doubling  3.83   10.00   36.08   87.75    2417 us
+       Zimmermann          3.90    8.16   21.59   50.04    1297 us
+
+   Below the crossover the older path still wins -- it spends its early
+   iterations in registers where this one is already allocating -- so it
+   stays, and it is also the recursion's base case.
 
 1. **`BigUInt` multiplication gains a number-theoretic transform.** Toom-3 was
    the largest algorithm available for base-billion operands, so `BigDecimal`
@@ -348,6 +382,23 @@ fixed.
 
 ### 🩹 Fixed in Unreleased
 
+1. **`BigInt.sqrt()` never returned for values at the top of a word.** The
+   one- and two-word paths refined a `math.sqrt` estimate with
+   `while (guess + 1) * (guess + 1) <= value`. Near the top of the range that
+   square overflows and wraps to something small, the test reads true forever,
+   and the walk does not stop. `sqrt(2^32 - 1)` hung, as did 131 071 other
+   single-word values and about 2^33 two-word ones. Both paths now go through
+   `decimo.utility.isqrt_uint64()`, which clamps the estimate to `2^32 - 1`
+   first so every square stays inside a `UInt64`. Present since v0.13.0, when
+   `sqrt()` was added, so released versions are affected.
+
+   That helper also stopped asking `math.sqrt` for an integer root. Mojo
+   resolves that to a software integer square root rather than the hardware
+   instruction -- 21.3 ns against 0.45 for `math.sqrt(Float64(...))` -- and
+   four more places in `biguint.exponential` were asking the same way. Small
+   `BigUInt.sqrt()` goes from 10.8 ns to 2.2 at one word and 26.4 to 2.1 at
+   two.
+
 1. **`BigUInt` division crashed, or silently lost a factor of 10^9, for
    three-word dividends.** `floor_divide()` routes any divisor of three or
    four words to `floor_divide_by_uint128()`, which consumes the dividend four
@@ -429,6 +480,13 @@ fixed.
 
 ### 💥 Breaking in Unreleased
 
+1. **`BInt(raw_words=..., sign=...)` takes a `Magnitude`, not a
+   `List[UInt32]`.** That is the inline word storage `BigInt` moved to, and
+   the constructor moves into it rather than copying. A list literal still
+   works unchanged; an existing `List` goes in as
+   `BInt(raw_words=Magnitude(words^), sign=False)`. `Magnitude` is exported
+   from `decimo`. `BigUInt`'s own `raw_words=` still takes a `List[UInt32]`
+   and is unaffected.
 1. **The `Integer` alias for `BigInt` is removed.** `BInt` remains, and matches
    `BDec` and `Dec128` in shape. `Integer` named a general concept rather than
    one concrete type, and collided with the ordinary English word used

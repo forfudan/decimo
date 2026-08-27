@@ -23,7 +23,7 @@ from std import math
 from std.memory import unsafe_memcpy, unsafe_memset_zero
 
 from decimo.biguint.biguint import BigUInt
-from decimo.biguint.wordlist import WordList
+from decimo.wordlist import WordList
 import decimo.biguint.comparison as biguint_comparison
 from decimo.errors import (
     OverflowError,

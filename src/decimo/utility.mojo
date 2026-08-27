@@ -18,6 +18,8 @@
 in the codebase.
 """
 
+from std import math
+
 
 def unsigned_counterpart[dtype: DType]() -> DType where dtype.is_integral():
     """The unsigned dtype with the same bit width as `dtype`.
@@ -96,3 +98,36 @@ def alias_as_immutable_source[
     return pointer.unsafe_mut_cast[False]().unsafe_origin_cast[
         ImmStaticOrigin
     ]()
+
+
+@always_inline
+def isqrt_uint64(value: UInt64) -> UInt64:
+    """The integer square root of a value that fits a `UInt64`.
+
+    Ask the hardware and correct the answer, rather than asking for an
+    integer square root: `math.sqrt` on an integer resolves to a software
+    routine, and the difference is not small -- 21.3 ns against 0.45 for
+    `math.sqrt(Float64(...))`, measured on arm64.
+
+    `Float64` carries 53 bits, so the estimate is out by one either way near
+    the top of the range, and for a value just under `2^64` it rounds *up*,
+    to `2^64`, whose root is `2^32` and does not fit the answer. Clamping to
+    `2^32 - 1` first keeps every square below inside a `UInt64`, the largest
+    being `(2^32 - 1)^2 = 2^64 - 2^33 + 1`. Without the clamp those squares
+    wrap to small values, both tests read the wrong way round, and the second
+    walk runs `2^32` times -- a hang, not a slow answer.
+
+    Args:
+        value: The value to take the root of.
+
+    Returns:
+        The largest `root` with `root * root <= value`.
+    """
+    var root = UInt64(math.sqrt(Float64(value)))
+    if root > 0xFFFF_FFFF:
+        root = 0xFFFF_FFFF
+    while root > 0 and root * root > value:
+        root -= 1
+    while root < 0xFFFF_FFFF and (root + 1) * (root + 1) <= value:
+        root += 1
+    return root

@@ -53,9 +53,9 @@ def bench_cpython_int() -> dict:
     # CPython caps int(str) at 4300 digits by default (CVE-2020-10735); this
     # benchmark is not parsing untrusted input, and the parse is not timed.
     sys.set_int_max_str_digits(3_000_000)
-    widths = [100, 1000, 10000, 100000, 1000000]
-    iterations = [20000, 5000, 200, 20, 2]
-    rounds = [ROUNDS, ROUNDS, 5, 3, 3]
+    widths = [10, 100, 1000, 10000, 100000, 1000000]
+    iterations = [200000, 20000, 5000, 200, 20, 2]
+    rounds = [ROUNDS, ROUNDS, ROUNDS, 5, 3, 3]
     result = {}
     for width, iters, rnds in zip(widths, iterations, rounds):
         x = int(digits(width, 7))

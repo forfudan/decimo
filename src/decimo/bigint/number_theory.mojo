@@ -22,7 +22,7 @@ Provides greatest common divisor (GCD), extended GCD, least common multiple
 
 from std.bit import count_trailing_zeros
 
-from decimo.bigint.bigint import BigInt
+from decimo.bigint.bigint import BigInt, Magnitude
 from decimo.bigint.comparison import compare_magnitudes
 from decimo.bigint.arithmetics import (
     absolute,
@@ -44,7 +44,7 @@ from decimo.errors import ValueError
 # ===----------------------------------------------------------------------=== #
 
 
-def _count_trailing_zeros(words: List[UInt32]) -> Int:
+def _count_trailing_zeros(words: Magnitude) -> Int:
     """Counts the number of trailing zero bits in a magnitude word list.
 
     Words are stored little-endian, so trailing zero bits correspond to
