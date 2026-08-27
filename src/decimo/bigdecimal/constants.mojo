@@ -420,13 +420,13 @@ def _bigint_from_uint128(value: UInt128, sign: Bool) -> BigInt:
     Returns:
         The corresponding `BigInt`.
     """
-    var words = Magnitude(capacity=4)
+    var words = Magnitude(capacity=2)
     var remaining = value
     while remaining != 0:
-        words.append(UInt32(remaining & UInt128(0xFFFF_FFFF)))
-        remaining >>= UInt128(32)
+        words.append(UInt64(remaining))
+        remaining >>= UInt128(64)
     if len(words) == 0:
-        words.append(UInt32(0))
+        words.append(UInt64(0))
     return BigInt(raw_words=words^, sign=sign)
 
 

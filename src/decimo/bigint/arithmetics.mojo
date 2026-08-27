@@ -17,7 +17,7 @@
 """
 Implements basic arithmetic functions for the BigInt type.
 
-BigInt uses base-2^32 representation with UInt32 words in little-endian order.
+BigInt uses base-2^32 representation with UInt64 words in little-endian order.
 Unlike the BigInt10 (base-10^9) type which delegates magnitude operations to
 BigUInt, BigInt implements all magnitude arithmetic directly since there is
 no separate unsigned counterpart.
@@ -30,7 +30,7 @@ Algorithms:
   All operations use zero-copy slice bounds to avoid intermediate allocations.
 - Division: Burnikel-Ziegler O(n^1.585) for large operands, with Knuth's
   Algorithm D (schoolbook O(n^2)) fallback for small operands
-  (< CUTOFF_BURNIKEL_ZIEGLER words). Single-word fast path for UInt32 divisors.
+  (< CUTOFF_BURNIKEL_ZIEGLER words). Single-word fast path for UInt64 divisors.
 """
 
 from std.bit import count_leading_zeros
@@ -50,6 +50,13 @@ from decimo.errors import ValueError, ZeroDivisionError
 # Comba column runs at well under a cycle per partial product, which pushes
 # the point where Karatsuba's three sub-products and its extra additions and
 # allocations start to pay well past where it used to be.
+comptime RADIX = UInt128(1) << 64
+"""The base of the magnitude representation, where it has to be written down.
+
+Only Knuth D needs it as a value: its quotient estimate compares against `b`
+and its refinement stops there, both a word wider than the words themselves.
+"""
+
 comptime CUTOFF_KARATSUBA: Int = 256
 """The minimum number of words above which Karatsuba multiplication is used."""
 
@@ -94,191 +101,201 @@ comptime CUTOFF_BURNIKEL_ZIEGLER: Int = 96
 
 
 @always_inline
-def _add_word_pairs[
+def _add_words[
     o: Origin[mut=True],
     o_a: Origin[mut=False],
     o_b: Origin[mut=False],
 ](
-    rp: Pointer[UInt32, o],
-    ap: Pointer[UInt32, o_a],
-    bp: Pointer[UInt32, o_b],
-    n_pairs: Int,
+    rp: Pointer[UInt64, o],
+    ap: Pointer[UInt64, o_a],
+    bp: Pointer[UInt64, o_b],
+    n: Int,
     carry_in: UInt64,
 ) -> UInt64:
-    """Adds `n_pairs` 64-bit limbs of two magnitudes: `r = a + b`, LSB first.
+    """Adds `n` words of two magnitudes: `r = a + b`, LSB first.
 
-    Two base-2^32 words at a time. The words are little-endian, so a pair of
-    them *is* one base-2^64 limb, and a single 64-bit add does the work of two
-    32-bit ones. The carry out of a limb is the unsigned overflow of that add,
-    which a comparison recovers without the shift-and-mask the 32-bit form
-    needs.
-
-    That identity — `a[2i] + 2^32 * a[2i+1]` being exactly what a 64-bit load
-    at `&a[2i]` returns — holds only on a little-endian target, hence the
-    assertion below. Nothing else here depends on byte order.
-
-    The pointers only have to be word-aligned, not limb-aligned: the accesses
-    request `alignment=4` explicitly, so `a`, `b` and `r` may each begin at any
-    word offset, and at different ones. `r` may alias `a` or `b` exactly.
+    The carry out of a word is the unsigned overflow of the add, which a
+    comparison recovers without the shift and mask a narrower word needs.
+    `r` may alias `a` or `b` exactly.
 
     Args:
-        rp: Destination, at least `2 * n_pairs` words.
-        ap: First summand, at least `2 * n_pairs` words.
-        bp: Second summand, at least `2 * n_pairs` words.
-        n_pairs: Number of 64-bit limbs to add.
-        carry_in: Carry into the lowest limb, 0 or 1.
+        rp: Destination, at least `n` words.
+        ap: First summand, at least `n` words.
+        bp: Second summand, at least `n` words.
+        n: Number of words to add.
+        carry_in: Carry into the lowest word, 0 or 1.
 
     Returns:
-        The carry out of the highest limb, 0 or 1.
+        The carry out of the highest word, 0 or 1.
     """
-    comptime assert is_little_endian(), (
-        "_add_word_pairs() reads two UInt32 words as one base-2^64 limb, which"
-        " is only the value they represent on a little-endian target"
-    )
-
-    var r64 = rp.unsafe_bitcast[UInt64]()
-    var a64 = ap.unsafe_bitcast[UInt64]()
-    var b64 = bp.unsafe_bitcast[UInt64]()
     var carry = carry_in
-    for i in range(n_pairs):
-        var x = a64.unsafe_load[alignment=4](i)
-        var y = b64.unsafe_load[alignment=4](i)
+    for i in range(n):
+        var x = ap[unsafe_offset=i]
+        var y = bp[unsafe_offset=i]
         var sum_xy = x + y
         var carried = UInt64(sum_xy < x)
         var total = sum_xy + carry
-        r64.unsafe_store[alignment=4](i, total)
+        rp[unsafe_offset=i] = total
         carry = carried | UInt64(total < sum_xy)
     return carry
 
 
 @always_inline
-def _subtract_word_pairs[
+def _subtract_words[
     o: Origin[mut=True],
     o_a: Origin[mut=False],
     o_b: Origin[mut=False],
 ](
-    rp: Pointer[UInt32, o],
-    ap: Pointer[UInt32, o_a],
-    bp: Pointer[UInt32, o_b],
-    n_pairs: Int,
+    rp: Pointer[UInt64, o],
+    ap: Pointer[UInt64, o_a],
+    bp: Pointer[UInt64, o_b],
+    n: Int,
     borrow_in: UInt64,
 ) -> UInt64:
-    """Subtracts `n_pairs` 64-bit limbs: `r = a - b`, LSB first.
+    """Subtracts `n` words: `r = a - b`, LSB first.
 
-    The borrow counterpart of `_add_word_pairs()`, with the same alignment and
-    aliasing freedom. A limb borrows exactly when its 64-bit subtraction
-    wraps, so the borrow is again a comparison rather than a mask.
+    The borrow counterpart of `_add_words()`, with the same aliasing freedom.
+    A word borrows exactly when its subtraction wraps, so the borrow is again
+    a comparison rather than a mask.
 
     Args:
-        rp: Destination, at least `2 * n_pairs` words.
-        ap: Minuend, at least `2 * n_pairs` words.
-        bp: Subtrahend, at least `2 * n_pairs` words.
-        n_pairs: Number of 64-bit limbs to subtract.
-        borrow_in: Borrow into the lowest limb, 0 or 1.
+        rp: Destination, at least `n` words.
+        ap: Minuend, at least `n` words.
+        bp: Subtrahend, at least `n` words.
+        n: Number of words to subtract.
+        borrow_in: Borrow into the lowest word, 0 or 1.
 
     Returns:
-        The borrow out of the highest limb, 0 or 1.
+        The borrow out of the highest word, 0 or 1.
     """
-    comptime assert is_little_endian(), (
-        "_subtract_word_pairs() reads two UInt32 words as one base-2^64 limb,"
-        " which is only the value they represent on a little-endian target"
-    )
-
-    var r64 = rp.unsafe_bitcast[UInt64]()
-    var a64 = ap.unsafe_bitcast[UInt64]()
-    var b64 = bp.unsafe_bitcast[UInt64]()
     var borrow = borrow_in
-    for i in range(n_pairs):
-        var x = a64.unsafe_load[alignment=4](i)
-        var y = b64.unsafe_load[alignment=4](i)
+    for i in range(n):
+        var x = ap[unsafe_offset=i]
+        var y = bp[unsafe_offset=i]
         var difference = x - y
         var borrowed = UInt64(x < y)
         var total = difference - borrow
-        r64.unsafe_store[alignment=4](i, total)
+        rp[unsafe_offset=i] = total
         borrow = borrowed | UInt64(difference < borrow)
     return borrow
 
 
 @always_inline
-def _submul_word_pairs[
+def _submul_words[
     o: Origin[mut=True],
     o_b: Origin[mut=False],
 ](
-    up: Pointer[UInt32, o],
-    bp: Pointer[UInt32, o_b],
+    up: Pointer[UInt64, o],
+    bp: Pointer[UInt64, o_b],
     n: Int,
     q: UInt64,
 ) -> UInt64:
     """Knuth D step D4: `u[0..n-1] -= q * b[0..n-1]`, LSB first.
 
-    Two base-2^32 words at a time, on the same little-endian identity that
-    `_add_word_pairs()` rests on: a pair of words *is* one base-2^64 limb, so
-    `q * limb` is one 64x64 product -- `MUL` plus `UMULH` on arm64 -- and does
-    the work of two 32-bit multiplies. Halving the number of steps also halves
-    the loop-carried chain, which is what this loop is bound by.
+    `q * word` is one 64x64 product -- `MUL` plus `UMULH` on arm64 -- whose
+    high half is what the next word owes. What comes back is that debt out of
+    the top word, which the caller subtracts from `u[n]`; it is at most `2^64`
+    minus one plus a borrow, and the caller's own bound keeps it inside a word.
 
-    `q` fits in 32 bits, so the product of a limb never exceeds 96 bits and
-    its high half is what the next limb owes. What comes back is that debt out
-    of the top limb, which the caller subtracts from `u[n]`. It is at most
-    `2^32`, exactly as in the word-at-a-time form.
-
-    That word-at-a-time form took the borrow with a branch, which was faster
-    than the branchless one written 32 bits wide -- biasing the difference by
-    `2^32` and reading the borrow out of bit 32 put the loaded word into the
-    chain, so every step waited on a load, and branching let the processor
-    speculate past it. Pairing wins for a different reason: it does not
-    lengthen the chain to remove the branch, it shortens it. Division went
-    2.5 us to 1.14 at 500 digits and 6.2 to 3.5 at 1000.
+    The debt is taken off in two steps rather than summed first, to keep
+    everything that does not need the last word's answer off the loop-carried
+    chain: the product, the borrow it causes, and their sum all compute while
+    the previous word is still finishing. What is left in the chain is a
+    subtract, the borrow it sets, and one add.
 
     Args:
         up: The dividend window, at least `n` words, modified in place.
         bp: The divisor, at least `n` words.
-        n: Number of words. An odd one leaves a single word for the tail.
-        q: The trial quotient digit, below `2^32`.
+        n: Number of words.
+        q: The trial quotient digit.
 
     Returns:
         The amount still owed at word `n`.
     """
-    comptime assert is_little_endian(), (
-        "_submul_word_pairs() reads two UInt32 words as one base-2^64 limb,"
-        " which is only the value they represent on a little-endian target"
-    )
-
-    var u64 = up.unsafe_bitcast[UInt64]()
-    var b64 = bp.unsafe_bitcast[UInt64]()
-    var pairs = n >> 1
     var owed_high = UInt64(0)
-    for i in range(pairs):
-        # The debt is taken off in two steps rather than summed first, to keep
-        # everything that does not need the last limb's answer off the chain: the
-        # product, the borrow it causes, and their sum `owed` all compute while
-        # the previous limb is still finishing. What is left in the chain is a
-        # subtract, the borrow it sets, and one add.
-        var product = UInt128(q) * UInt128(b64.unsafe_load[alignment=4](i))
-        var current = u64.unsafe_load[alignment=4](i)
+    for i in range(n):
+        var product = UInt128(q) * UInt128(bp[unsafe_offset=i])
+        var current = up[unsafe_offset=i]
         var low = UInt64(product)
         var partial = current - low
         var owed = UInt64(product >> 64) + UInt64(current < low)
-        u64.unsafe_store[alignment=4](i, partial - owed_high)
+        up[unsafe_offset=i] = partial - owed_high
         owed_high = owed + UInt64(partial < owed_high)
-    if n & 1 != 0:
-        var i = n - 1
-        var product = q * UInt64(bp[unsafe_offset=i]) + owed_high
-        var owed = product & 0xFFFF_FFFF
-        var current = UInt64(up[unsafe_offset=i])
-        up[unsafe_offset=i] = UInt32((current - owed) & 0xFFFF_FFFF)
-        owed_high = (product >> 32) + UInt64(current < owed)
     return owed_high
 
 
+@always_inline
+def _reciprocal_word(d: UInt64) -> UInt64:
+    """Precomputes `floor((2^128 - 1) / d) - 2^64` for a normalized `d`.
+
+    The companion of `_divide_two_by_one()`. `d` has its high bit set, so the
+    quotient is below `2^65` and what comes back fits in a word. This is a
+    128-by-64 divide and so a software helper, but it runs once per division
+    where the thing it replaces would run once per quotient word.
+
+    Args:
+        d: The normalized divisor word, `2^63 <= d < 2^64`.
+
+    Returns:
+        The reciprocal.
+    """
+    return UInt64((~UInt128(0)) // UInt128(d) - (UInt128(1) << 64))
+
+
+@always_inline
+def _divide_two_by_one(
+    n_high: UInt64, n_low: UInt64, d: UInt64, reciprocal: UInt64
+) -> Tuple[UInt64, UInt64]:
+    """Divides a two-word value by one normalized word, without dividing.
+
+    Moller and Granlund's `udiv_qrnnd_preinv`. The trial quotient is one
+    multiply by the precomputed reciprocal and two corrections settle it.
+
+    At a 32-bit limb this was pure loss, because 64-by-32 is a single `UDIV`
+    on arm64 and cheaper than the corrections. At 64 bits there is no such
+    instruction -- neither arm64 nor x86-64 divides 128 by 64 -- so the
+    alternative is a call to a software helper, and this is not optional.
+
+    Args:
+        n_high: High word of the dividend, strictly below `d`.
+        n_low: Low word of the dividend.
+        d: The divisor, normalized to `2^63 <= d < 2^64`.
+        reciprocal: The value `_reciprocal_word(d)` returned.
+
+    Returns:
+        The quotient and the remainder.
+    """
+    debug_assert(
+        n_high < d, "_divide_two_by_one() needs a quotient that fits a word"
+    )
+
+    # A two-word intermediate that wraps at 2^128, exactly as the one-word
+    # pieces wrap at 2^64.
+    var estimate = (
+        UInt128(reciprocal) * UInt128(n_high)
+        + ((UInt128(n_high) + 1) << 64)
+        + UInt128(n_low)
+    )
+    var quotient = UInt64(estimate >> 64)
+    var estimate_low = UInt64(estimate)
+    var remainder = n_low - quotient * d
+    if remainder > estimate_low:
+        quotient -= 1
+        remainder += d
+    if remainder >= d:
+        remainder -= d
+        quotient += 1
+    return (quotient, remainder)
+
+
 def _add_magnitudes(a: Magnitude, b: Magnitude) -> Magnitude:
-    """Adds two unsigned magnitudes represented as little-endian UInt32 words.
+    """Adds two unsigned magnitudes represented as little-endian UInt64 words.
 
     Uses UInt64 accumulation to handle carries naturally via bit shift.
 
     Args:
-        a: First magnitude (little-endian UInt32 words).
-        b: Second magnitude (little-endian UInt32 words).
+        a: First magnitude (little-endian UInt64 words).
+        b: Second magnitude (little-endian UInt64 words).
 
     Returns:
         The sum magnitude as a new word list.
@@ -294,23 +311,15 @@ def _add_magnitudes(a: Magnitude, b: Magnitude) -> Magnitude:
     var bp = b.unsafe_ptr()
     var rp = result.unsafe_ptr()
 
-    var pairs = len_min >> 1
-    var carry = _add_word_pairs(rp, ap, bp, pairs, UInt64(0))
-    var i = pairs << 1
-    while i < len_min:
-        var s = (
-            UInt64(ap[unsafe_offset=i]) + UInt64(bp[unsafe_offset=i]) + carry
-        )
-        rp[unsafe_offset=i] = UInt32(s & 0xFFFF_FFFF)
-        carry = s >> 32
-        i += 1
+    var carry = _add_words(rp, ap, bp, len_min, UInt64(0))
+    var i = len_min
 
     # Only the longer operand is left: absorb the carry, then copy the rest.
     var longer = ap if len_a > len_b else bp
     while i < len_max and carry != 0:
-        var s = UInt64(longer[unsafe_offset=i]) + carry
-        rp[unsafe_offset=i] = UInt32(s & 0xFFFF_FFFF)
-        carry = s >> 32
+        var s = longer[unsafe_offset=i] + carry
+        rp[unsafe_offset=i] = s
+        carry = UInt64(s < carry)
         i += 1
     if i < len_max:
         unsafe_memcpy(
@@ -320,12 +329,12 @@ def _add_magnitudes(a: Magnitude, b: Magnitude) -> Magnitude:
         )
 
     if carry > 0:
-        result.append(UInt32(carry))
+        result.append(UInt64(carry))
 
     return result^
 
 
-def _add_magnitudes(a: Magnitude, b: UInt32) -> Magnitude:
+def _add_magnitudes(a: Magnitude, b: UInt64) -> Magnitude:
     """Adds a single-word magnitude to a magnitude: a + b.
 
     Overload of the two-list version for the common `a + small` case. It
@@ -333,7 +342,7 @@ def _add_magnitudes(a: Magnitude, b: UInt32) -> Magnitude:
     per-word bounds test that the general version needs.
 
     Args:
-        a: The magnitude (little-endian UInt32 words).
+        a: The magnitude (little-endian UInt64 words).
         b: The single-word value to add.
 
     Returns:
@@ -345,12 +354,12 @@ def _add_magnitudes(a: Magnitude, b: UInt32) -> Magnitude:
 
     var carry = UInt64(b)
     for i in range(len_a):
-        var s = UInt64(a[i]) + carry
-        result[i] = UInt32(s & 0xFFFF_FFFF)
-        carry = s >> 32
+        var s = a[i] + carry
+        result[i] = s
+        carry = UInt64(s < carry)
 
     if carry > 0:
-        result.append(UInt32(carry))
+        result.append(UInt64(carry))
 
     return result^
 
@@ -361,8 +370,8 @@ def _subtract_magnitudes(a: Magnitude, b: Magnitude) -> Magnitude:
     The caller MUST ensure |a| >= |b|; otherwise the result is undefined.
 
     Args:
-        a: The larger magnitude (minuend), little-endian UInt32 words.
-        b: The smaller magnitude (subtrahend), little-endian UInt32 words.
+        a: The larger magnitude (minuend), little-endian UInt64 words.
+        b: The smaller magnitude (subtrahend), little-endian UInt64 words.
 
     Returns:
         The difference magnitude (a - b), normalized (no leading zeros).
@@ -376,20 +385,13 @@ def _subtract_magnitudes(a: Magnitude, b: Magnitude) -> Magnitude:
     var bp = b.unsafe_ptr()
     var rp = result.unsafe_ptr()
 
-    var pairs = len_b >> 1
-    var borrow = _subtract_word_pairs(rp, ap, bp, pairs, UInt64(0))
-    var i = pairs << 1
-    while i < len_b:
-        var ai = UInt64(ap[unsafe_offset=i])
-        var bi = UInt64(bp[unsafe_offset=i]) + borrow
-        borrow = UInt64(ai < bi)
-        rp[unsafe_offset=i] = UInt32((ai - bi) & 0xFFFF_FFFF)
-        i += 1
+    var borrow = _subtract_words(rp, ap, bp, len_b, UInt64(0))
+    var i = len_b
 
     # Only the minuend is left: absorb the borrow, then copy the rest.
     while i < len_a and borrow != 0:
         var ai = ap[unsafe_offset=i]
-        rp[unsafe_offset=i] = ai - UInt32(1)
+        rp[unsafe_offset=i] = ai - UInt64(1)
         borrow = UInt64(ai == 0)
         i += 1
     if i < len_a:
@@ -416,8 +418,8 @@ def _multiply_magnitudes(a: Magnitude, b: Magnitude) -> Magnitude:
     the packing - see `_multiply_magnitudes_schoolbook()`.
 
     Args:
-        a: First magnitude (little-endian UInt32 words).
-        b: Second magnitude (little-endian UInt32 words).
+        a: First magnitude (little-endian UInt64 words).
+        b: Second magnitude (little-endian UInt64 words).
 
     Returns:
         The product magnitude as a new word list.
@@ -427,15 +429,15 @@ def _multiply_magnitudes(a: Magnitude, b: Magnitude) -> Magnitude:
 
     # Zero check
     if len_a == 0 or len_b == 0:
-        var zero: Magnitude = [UInt32(0)]
+        var zero: Magnitude = [UInt64(0)]
         return zero^
 
     # Single-word fast paths
     if len_a == 1 and a[0] == 0:
-        var zero: Magnitude = [UInt32(0)]
+        var zero: Magnitude = [UInt64(0)]
         return zero^
     if len_b == 1 and b[0] == 0:
-        var zero: Magnitude = [UInt32(0)]
+        var zero: Magnitude = [UInt64(0)]
         return zero^
 
     if len_a == 1:
@@ -455,8 +457,8 @@ def _multiply_magnitudes(a: Magnitude, b: Magnitude) -> Magnitude:
         return _multiply_magnitudes_karatsuba(a.as_span(), b.as_span())
 
 
-def _multiply_magnitude_by_word(a: ImmSpan[UInt32, _], w: UInt32) -> Magnitude:
-    """Multiplies a magnitude slice by a single UInt32 word.
+def _multiply_magnitude_by_word(a: ImmSpan[UInt64, _], w: UInt64) -> Magnitude:
+    """Multiplies a magnitude slice by a single UInt64 word.
 
     Args:
         a: The magnitude.
@@ -466,7 +468,7 @@ def _multiply_magnitude_by_word(a: ImmSpan[UInt32, _], w: UInt32) -> Magnitude:
         The product magnitude as a new word list.
     """
     if w == 0:
-        var zero: Magnitude = [UInt32(0)]
+        var zero: Magnitude = [UInt64(0)]
         return zero^
     if w == 1:
         var result = Magnitude(capacity=len(a))
@@ -478,15 +480,15 @@ def _multiply_magnitude_by_word(a: ImmSpan[UInt32, _], w: UInt32) -> Magnitude:
     var result = Magnitude(capacity=len_a + 1)
     result.resize(unsafe_uninit_length=len_a + 1)
 
-    var carry: UInt64 = 0
-    var w64 = UInt64(w)
+    var carry = UInt64(0)
+    var w128 = UInt128(w)
     var ap = a.unsafe_ptr()
     var rp = result.unsafe_ptr()
     for i in range(len_a):
-        var product = UInt64(ap[unsafe_offset=i]) * w64 + carry
-        rp[unsafe_offset=i] = UInt32(product & 0xFFFF_FFFF)
-        carry = product >> 32
-    rp[unsafe_offset=len_a] = UInt32(carry)
+        var product = UInt128(ap[unsafe_offset=i]) * w128 + UInt128(carry)
+        rp[unsafe_offset=i] = UInt64(product)
+        carry = UInt64(product >> 64)
+    rp[unsafe_offset=len_a] = carry
 
     # Strip leading zeros
     var rlen = len_a + 1
@@ -498,124 +500,30 @@ def _multiply_magnitude_by_word(a: ImmSpan[UInt32, _], w: UInt32) -> Magnitude:
     return result^
 
 
-comptime CUTOFF_PACK_64_AREA: Int = 32 * 32
-"""Word-pair count at which the schoolbook kernel switches to 64-bit limbs.
-
-Packing costs three linear passes and two heap allocations either side of a
-quadratic loop. That is a rounding error at the Karatsuba cutoff but it is
-about 120 ns of fixed cost, which swamps a multiplication of a handful of
-words. Measured crossover is just under 30 words square.
-
-The gate is on `len_a * len_b`, the work the quadratic loop actually does,
-rather than on either operand alone. Packing is linear in `len_a + len_b`, so
-a lopsided product such as 31x250 words is worth packing even though one side
-is below the square crossover: it does 7 750 word pairs, and the 32-bit kernel
-needs all of them where the packed one needs 2 048.
-"""
-
-
-def _multiply_magnitudes_comba32(
-    a: ImmSpan[UInt32, _], b: ImmSpan[UInt32, _]
-) -> Magnitude:
-    """Product-scanning multiplication over 32-bit words, without packing.
-
-    The small-operand half of `_multiply_magnitudes_schoolbook()`. Allocates
-    nothing but the result, which is what makes it the better choice below
-    `CUTOFF_PACK_64_AREA`.
-
-    Args:
-        a: First magnitude, non-empty.
-        b: Second magnitude, non-empty.
-
-    Returns:
-        The product magnitude as a new word list.
-    """
-    var len_a = len(a)
-    var len_b = len(b)
-
-    var result_len = len_a + len_b
-    var result = Magnitude(capacity=result_len)
-    result.resize(unsafe_uninit_length=result_len)
-
-    var ap = a.unsafe_ptr()
-    var bp = b.unsafe_ptr()
-    var rp = result.unsafe_ptr()
-
-    var carry = UInt128(0)
-    for k in range(result_len - 1):
-        var i_low = 0 if k < len_b else k - len_b + 1
-        var i_high = k if k < len_a else len_a - 1
-
-        var acc0 = carry
-        var acc1 = UInt128(0)
-        var acc2 = UInt128(0)
-        var acc3 = UInt128(0)
-
-        var i = i_low
-        while i + 3 <= i_high:
-            acc0 += UInt128(
-                UInt64(ap[unsafe_offset=i]) * UInt64(bp[unsafe_offset=k - i])
-            )
-            acc1 += UInt128(
-                UInt64(ap[unsafe_offset=i + 1])
-                * UInt64(bp[unsafe_offset=k - i - 1])
-            )
-            acc2 += UInt128(
-                UInt64(ap[unsafe_offset=i + 2])
-                * UInt64(bp[unsafe_offset=k - i - 2])
-            )
-            acc3 += UInt128(
-                UInt64(ap[unsafe_offset=i + 3])
-                * UInt64(bp[unsafe_offset=k - i - 3])
-            )
-            i += 4
-        while i <= i_high:
-            acc0 += UInt128(
-                UInt64(ap[unsafe_offset=i]) * UInt64(bp[unsafe_offset=k - i])
-            )
-            i += 1
-
-        var column = (acc0 + acc1) + (acc2 + acc3)
-        rp[unsafe_offset=k] = UInt32(column & 0xFFFF_FFFF)
-        carry = column >> 32
-
-    rp[unsafe_offset=result_len - 1] = UInt32(carry & 0xFFFF_FFFF)
-
-    var rlen = result_len
-    while rlen > 1 and result[rlen - 1] == 0:
-        rlen -= 1
-    while len(result) > rlen:
-        result.shrink(len(result) - 1)
-
-    return result^
-
-
 def _multiply_magnitudes_schoolbook(
-    a: ImmSpan[UInt32, _], b: ImmSpan[UInt32, _]
+    a: ImmSpan[UInt64, _], b: ImmSpan[UInt64, _]
 ) -> Magnitude:
     """Product-scanning (Comba) multiplication on magnitude slices.
 
-    Packs the two magnitudes into base-2^64 limbs, walks the result one limb
-    at a time summing the whole column `sum(a[i] * b[k-i])`, and writes each
-    limb straight back out as two 32-bit words.
-
-    The packing is what makes this fast. A 32-bit kernel already runs at under
-    a cycle per word pair, so the only way left to cut the base case is to cut
-    the number of word pairs, and 64-bit limbs quarter it. That is worth about
-    1.9x at the Karatsuba cutoff. Small operands take
-    `_multiply_magnitudes_comba32()` instead, which skips the packing.
+    Walks the result one word at a time, summing the whole column
+    `sum(a[i] * b[k-i])` before writing it out, so each result word is stored
+    once and no partial product is ever re-read.
 
     A column of 64-bit products does not fit in 128 bits, and the usual answer
-    - a three-word accumulator with an explicit carry chain - gives most of
+    -- a three-word accumulator with an explicit carry chain -- gives most of
     the gain back. Instead each product is split at the word boundary and the
     two halves go into separate `UInt128` accumulators: every half is below
-    `2^64`, so neither can overflow until a column is `2^64` limbs long. On
-    arm64 the split is free, since `mul` and `umulh` already deliver the two
+    `2^64`, so neither can overflow until a column is `2^64` words long. On
+    arm64 the split is free, since `MUL` and `UMULH` already deliver the two
     halves in separate registers. Recombining is one add per column, not one
     per product.
 
     The columns are unrolled over two independent accumulator pairs because a
     single one serialises on the 128-bit add.
+
+    This used to pack pairs of 32-bit words into base-2^64 limbs first, with a
+    separate unpacked kernel below the area where the packing paid for itself.
+    Both are gone: the words are the limbs now.
 
     Operates on borrowed views of the operands without copying the input data.
 
@@ -630,60 +538,25 @@ def _multiply_magnitudes_schoolbook(
     var len_b = len(b)
 
     if len_a == 0 or len_b == 0:
-        var zero: Magnitude = [UInt32(0)]
+        var zero: Magnitude = [UInt64(0)]
         return zero^
-
-    if len_a * len_b < CUTOFF_PACK_64_AREA:
-        return _multiply_magnitudes_comba32(a, b)
 
     comptime LOW_HALF = UInt128(0xFFFF_FFFF_FFFF_FFFF)
 
     var ap = a.unsafe_ptr()
     var bp = b.unsafe_ptr()
 
-    # --- Pack both operands into base-2^64 limbs ---
-    var n_a = (len_a + 1) >> 1
-    var n_b = (len_b + 1) >> 1
-
-    var limbs_a = List[UInt64](capacity=n_a)
-    limbs_a.resize(unsafe_uninit_length=n_a)
-    var lap = limbs_a.unsafe_ptr()
-    for j in range(n_a - 1):
-        lap[unsafe_offset=j] = UInt64(ap[unsafe_offset=2 * j]) | (
-            UInt64(ap[unsafe_offset=2 * j + 1]) << 32
-        )
-    var last_a = UInt64(ap[unsafe_offset=2 * (n_a - 1)])
-    if 2 * n_a - 1 < len_a:
-        last_a |= UInt64(ap[unsafe_offset=2 * n_a - 1]) << 32
-    lap[unsafe_offset=n_a - 1] = last_a
-
-    var limbs_b = List[UInt64](capacity=n_b)
-    limbs_b.resize(unsafe_uninit_length=n_b)
-    var lbp = limbs_b.unsafe_ptr()
-    for j in range(n_b - 1):
-        lbp[unsafe_offset=j] = UInt64(bp[unsafe_offset=2 * j]) | (
-            UInt64(bp[unsafe_offset=2 * j + 1]) << 32
-        )
-    var last_b = UInt64(bp[unsafe_offset=2 * (n_b - 1)])
-    if 2 * n_b - 1 < len_b:
-        last_b |= UInt64(bp[unsafe_offset=2 * n_b - 1]) << 32
-    lbp[unsafe_offset=n_b - 1] = last_b
-
-    # --- Product scanning over the packed limbs ---
-    # `2 * (n_a + n_b)` is at most two words longer than `len_a + len_b`, and
-    # any such word is zero, so stripping below removes it.
-    var n_out = n_a + n_b
-    var result_len = n_out << 1
+    var result_len = len_a + len_b
     var result = Magnitude(capacity=result_len)
     result.resize(unsafe_uninit_length=result_len)
     var rp = result.unsafe_ptr()
 
     # `carry` is the part of the column sum above 64 bits, which belongs to
-    # the next column. The last column leaves it holding the top limb.
+    # the next column. The last column leaves it holding the top word.
     var carry = UInt128(0)
-    for k in range(n_out - 1):
-        var i_low = 0 if k < n_b else k - n_b + 1
-        var i_high = k if k < n_a else n_a - 1
+    for k in range(result_len - 1):
+        var i_low = 0 if k < len_b else k - len_b + 1
+        var i_high = k if k < len_a else len_a - 1
 
         var low0 = carry
         var high0 = UInt128(0)
@@ -692,38 +565,29 @@ def _multiply_magnitudes_schoolbook(
 
         var i = i_low
         while i + 1 <= i_high:
-            var product0 = UInt128(lap[unsafe_offset=i]) * UInt128(
-                lbp[unsafe_offset=k - i]
+            var product0 = UInt128(ap[unsafe_offset=i]) * UInt128(
+                bp[unsafe_offset=k - i]
             )
             low0 += product0 & LOW_HALF
             high0 += product0 >> 64
-            var product1 = UInt128(lap[unsafe_offset=i + 1]) * UInt128(
-                lbp[unsafe_offset=k - i - 1]
+            var product1 = UInt128(ap[unsafe_offset=i + 1]) * UInt128(
+                bp[unsafe_offset=k - i - 1]
             )
             low1 += product1 & LOW_HALF
             high1 += product1 >> 64
             i += 2
         if i <= i_high:
-            var product = UInt128(lap[unsafe_offset=i]) * UInt128(
-                lbp[unsafe_offset=k - i]
+            var product = UInt128(ap[unsafe_offset=i]) * UInt128(
+                bp[unsafe_offset=k - i]
             )
             low0 += product & LOW_HALF
             high0 += product >> 64
 
         var low = low0 + low1
-        rp[unsafe_offset=2 * k] = UInt32(low & 0xFFFF_FFFF)
-        rp[unsafe_offset=2 * k + 1] = UInt32((low >> 32) & 0xFFFF_FFFF)
+        rp[unsafe_offset=k] = UInt64(low & LOW_HALF)
         carry = (high0 + high1) + (low >> 64)
 
-    rp[unsafe_offset=result_len - 2] = UInt32(carry & 0xFFFF_FFFF)
-    rp[unsafe_offset=result_len - 1] = UInt32((carry >> 32) & 0xFFFF_FFFF)
-
-    # The packed operands are only ever touched through the raw pointers taken
-    # above, so their last *use* as values was where those pointers were
-    # taken. Without these the compiler is free to destroy them there, and the
-    # loop above then reads freed memory.
-    _ = limbs_a^
-    _ = limbs_b^
+    rp[unsafe_offset=result_len - 1] = UInt64(carry & LOW_HALF)
 
     # Strip leading zeros
     var rlen = result_len
@@ -736,7 +600,7 @@ def _multiply_magnitudes_schoolbook(
 
 
 def _multiply_magnitudes_karatsuba(
-    a: ImmSpan[UInt32, _], b: ImmSpan[UInt32, _]
+    a: ImmSpan[UInt64, _], b: ImmSpan[UInt64, _]
 ) -> Magnitude:
     """Karatsuba multiplication on magnitude slices.
 
@@ -765,7 +629,7 @@ def _multiply_magnitudes_karatsuba(
 
     # Base case: fall back to schoolbook
     if len_a == 0 or len_b == 0:
-        var zero: Magnitude = [UInt32(0)]
+        var zero: Magnitude = [UInt64(0)]
         return zero^
     if len_a == 1:
         return _multiply_magnitude_by_word(b, a[0])
@@ -877,12 +741,12 @@ def _double_inplace(mut a: Magnitude):
     Args:
         a: The magnitude to double in-place.
     """
-    var carry: UInt32 = 0
+    var carry: UInt64 = 0
     var ap = a.unsafe_ptr()
     for i in range(len(a)):
         var word = ap[unsafe_offset=i]
         ap[unsafe_offset=i] = (word << 1) | carry
-        carry = word >> 31
+        carry = word >> 63
     if carry != 0:
         a.append(carry)
 
@@ -896,11 +760,11 @@ def _exact_divide_by_2_inplace(mut a: Magnitude):
     Args:
         a: The magnitude to halve in-place. Must be even.
     """
-    var carry: UInt32 = 0
+    var carry: UInt64 = 0
     var ap = a.unsafe_ptr()
     for i in range(len(a) - 1, -1, -1):
         var word = ap[unsafe_offset=i]
-        ap[unsafe_offset=i] = (word >> 1) | (carry << 31)
+        ap[unsafe_offset=i] = (word >> 1) | (carry << 63)
         carry = word & 1
     _strip_leading_zeros_inplace(a)
 
@@ -912,16 +776,16 @@ def _exact_divide_by_3_inplace(mut a: Magnitude):
     once the last word is consumed. Toom-3's interpolation is the only caller
     and its dividend is exactly divisible by construction.
 
-    The straightforward form — build `remainder * 2^32 + word`, divide it, take
+    The straightforward form — build `remainder * 2^64 + word`, divide it, take
     the modulus — puts *two* dependent multiplications on the loop-carried
     chain, because a compiler turns both the division and the modulus by a
     constant into multiply-high. That cost about nine cycles per word, roughly
     nine times what the neighbouring word-at-a-time helpers cost.
 
-    The division comes off the chain by splitting it. Since `2^32 = 3 * T + 1`
-    with `T = 0x5555_5555`, writing `word = 3 * d + m`:
+    The division comes off the chain by splitting it. Since `2^64 = 3 * T + 1`
+    with `T = 0x5555_5555_5555_5555`, writing `word = 3 * d + m`:
 
-        remainder * 2^32 + word = 3 * (remainder * T + d) + (remainder + m)
+        remainder * 2^64 + word = 3 * (remainder * T + d) + (remainder + m)
 
     so, with `remainder + m <= 4`,
 
@@ -934,16 +798,16 @@ def _exact_divide_by_3_inplace(mut a: Magnitude):
     Args:
         a: The magnitude to divide in-place. Must be a multiple of three.
     """
-    comptime BASE_OVER_THREE = UInt32(0x5555_5555)  # (2^32 - 1) / 3
+    comptime BASE_OVER_THREE = UInt64(0x5555_5555_5555_5555)  # (2^64 - 1) / 3
 
-    var remainder = UInt32(0)  # 0, 1 or 2
+    var remainder = UInt64(0)  # 0, 1 or 2
     var ap = a.unsafe_ptr()
     for i in range(len(a) - 1, -1, -1):
         var word = ap[unsafe_offset=i]
         var word_quotient = word // 3  # off the chain
         var word_remainder = word - 3 * word_quotient  # off the chain, 0..2
         var total = remainder + word_remainder  # on the chain, 0..4
-        var carried = UInt32(total >= 3)
+        var carried = UInt64(total >= 3)
         ap[unsafe_offset=i] = (
             remainder * BASE_OVER_THREE + word_quotient + carried
         )
@@ -952,7 +816,7 @@ def _exact_divide_by_3_inplace(mut a: Magnitude):
 
 
 def _multiply_magnitudes_toom3(
-    a: ImmSpan[UInt32, _], b: ImmSpan[UInt32, _]
+    a: ImmSpan[UInt64, _], b: ImmSpan[UInt64, _]
 ) -> Magnitude:
     """Toom-Cook 3-way multiplication on magnitude slices.
 
@@ -1068,7 +932,7 @@ def _multiply_magnitudes_toom3(
     if len(a2) > 0 and len(b2) > 0:
         v_inf = _multiply_magnitudes_slices(a2, b2)
     else:
-        v_inf = [UInt32(0)]
+        v_inf = [UInt64(0)]
 
     var v1 = _multiply_magnitudes(a_at_1, b_at_1)
     var v_m1 = _multiply_magnitudes(a_at_m1, b_at_m1)
@@ -1119,7 +983,7 @@ def _multiply_magnitudes_toom3(
     var t3 = v2^
     _subtract_magnitudes_inplace(t3, v0)
     if not (len(v_inf) == 1 and v_inf[0] == 0):
-        var v_inf_16 = _multiply_magnitude_by_word(v_inf.as_span(), UInt32(16))
+        var v_inf_16 = _multiply_magnitude_by_word(v_inf.as_span(), UInt64(16))
         _subtract_magnitudes_inplace(t3, v_inf_16)
     _exact_divide_by_2_inplace(t3)
     _subtract_magnitudes_inplace(t3, w2)
@@ -1164,7 +1028,7 @@ def _multiply_magnitudes_toom3(
 # ===----------------------------------------------------------------------=== #
 
 
-def _add_slices(a: ImmSpan[UInt32, _], b: ImmSpan[UInt32, _]) -> Magnitude:
+def _add_slices(a: ImmSpan[UInt64, _], b: ImmSpan[UInt64, _]) -> Magnitude:
     """Adds two magnitude slices, returning a new word list.
 
     Used by Karatsuba to compute (x0 + x1) and (y0 + y1) without copying
@@ -1188,22 +1052,14 @@ def _add_slices(a: ImmSpan[UInt32, _], b: ImmSpan[UInt32, _]) -> Magnitude:
     var bp = b.unsafe_ptr()
     var rp = result.unsafe_ptr()
 
-    var pairs = len_min >> 1
-    var carry = _add_word_pairs(rp, ap, bp, pairs, UInt64(0))
-    var i = pairs << 1
-    while i < len_min:
-        var s = (
-            UInt64(ap[unsafe_offset=i]) + UInt64(bp[unsafe_offset=i]) + carry
-        )
-        rp[unsafe_offset=i] = UInt32(s & 0xFFFF_FFFF)
-        carry = s >> 32
-        i += 1
+    var carry = _add_words(rp, ap, bp, len_min, UInt64(0))
+    var i = len_min
 
     var longer = ap if len_a > len_b else bp
     while i < len_max and carry != 0:
-        var s = UInt64(longer[unsafe_offset=i]) + carry
-        rp[unsafe_offset=i] = UInt32(s & 0xFFFF_FFFF)
-        carry = s >> 32
+        var s = longer[unsafe_offset=i] + carry
+        rp[unsafe_offset=i] = s
+        carry = UInt64(s < carry)
         i += 1
     if i < len_max:
         unsafe_memcpy(
@@ -1213,7 +1069,7 @@ def _add_slices(a: ImmSpan[UInt32, _], b: ImmSpan[UInt32, _]) -> Magnitude:
         )
 
     if carry > 0:
-        rp[unsafe_offset=len_max] = UInt32(carry)
+        rp[unsafe_offset=len_max] = UInt64(carry)
     else:
         while len(result) > len_max:
             result.shrink(len(result) - 1)
@@ -1239,35 +1095,27 @@ def _add_magnitudes_inplace(mut a: Magnitude, imm b: Magnitude):
         a.resize(unsafe_uninit_length=len_max + 1)
         # Zero the newly added words
         for i in range(len_a, len_max + 1):
-            a[i] = UInt32(0)
+            a[i] = UInt64(0)
 
     # `a` is now `len_max + 1` words long with a zero on top, so the sum and
     # its carry both fit and every word of `b` has a counterpart in `a`.
     var ap = a.unsafe_ptr()
     var bp = b.unsafe_ptr()
 
-    var pairs = len_b >> 1
-    var carry = _add_word_pairs(
-        ap, alias_as_immutable_source(ap), bp, pairs, UInt64(0)
+    var carry = _add_words(
+        ap, alias_as_immutable_source(ap), bp, len_b, UInt64(0)
     )
-    var i = pairs << 1
-    while i < len_b:
-        var s = (
-            UInt64(ap[unsafe_offset=i]) + UInt64(bp[unsafe_offset=i]) + carry
-        )
-        ap[unsafe_offset=i] = UInt32(s & 0xFFFF_FFFF)
-        carry = s >> 32
-        i += 1
+    var i = len_b
     while carry != 0:
-        var s = UInt64(ap[unsafe_offset=i]) + carry
-        ap[unsafe_offset=i] = UInt32(s & 0xFFFF_FFFF)
-        carry = s >> 32
+        var s = ap[unsafe_offset=i] + carry
+        ap[unsafe_offset=i] = s
+        carry = UInt64(s < carry)
         i += 1
 
     _strip_leading_zeros_inplace(a)
 
 
-def _add_magnitudes_inplace(mut a: Magnitude, b: UInt32):
+def _add_magnitudes_inplace(mut a: Magnitude, b: UInt64):
     """Adds a single-word magnitude into a in-place: a += b.
 
     Overload of the two-list version for the common `a += small` case. Beyond
@@ -1282,13 +1130,13 @@ def _add_magnitudes_inplace(mut a: Magnitude, b: UInt32):
     var carry = UInt64(b)
     var i = 0
     while carry > 0 and i < len_a:
-        var s = UInt64(a[i]) + carry
-        a[i] = UInt32(s & 0xFFFF_FFFF)
-        carry = s >> 32
+        var s = a[i] + carry
+        a[i] = s
+        carry = UInt64(s < carry)
         i += 1
 
     if carry > 0:
-        a.append(UInt32(carry))
+        a.append(UInt64(carry))
         return
 
     # Trim trailing zero words, matching the two-list overload.
@@ -1318,24 +1166,16 @@ def _add_at_offset_inplace(mut a: Magnitude, imm b: Magnitude, offset: Int):
     )
     var ap = a.unsafe_ptr().unsafe_offset(offset)
     var bp = b.unsafe_ptr()
-    var pairs = len_b >> 1
-    var carry = _add_word_pairs(
-        ap, alias_as_immutable_source(ap), bp, pairs, UInt64(0)
+    var carry = _add_words(
+        ap, alias_as_immutable_source(ap), bp, len_b, UInt64(0)
     )
-    var i = pairs << 1
-    while i < len_b:
-        var s = (
-            UInt64(ap[unsafe_offset=i]) + UInt64(bp[unsafe_offset=i]) + carry
-        )
-        ap[unsafe_offset=i] = UInt32(s & 0xFFFF_FFFF)
-        carry = s >> 32
-        i += 1
+    var i = len_b
     # Propagate remaining carry
     var j = len_b
     while carry > 0 and (offset + j) < len(a):
-        var s = UInt64(a[offset + j]) + carry
-        a[offset + j] = UInt32(s & 0xFFFF_FFFF)
-        carry = s >> 32
+        var s = a[offset + j] + carry
+        a[offset + j] = s
+        carry = UInt64(s < carry)
         j += 1
 
 
@@ -1354,20 +1194,13 @@ def _subtract_magnitudes_inplace(mut a: Magnitude, imm b: Magnitude):
     var ap = a.unsafe_ptr()
     var bp = b.unsafe_ptr()
 
-    var pairs = len_b >> 1
-    var borrow = _subtract_word_pairs(
-        ap, alias_as_immutable_source(ap), bp, pairs, UInt64(0)
+    var borrow = _subtract_words(
+        ap, alias_as_immutable_source(ap), bp, len_b, UInt64(0)
     )
-    var i = pairs << 1
-    while i < len_b:
-        var ai = UInt64(ap[unsafe_offset=i])
-        var bi = UInt64(bp[unsafe_offset=i]) + borrow
-        borrow = UInt64(ai < bi)
-        ap[unsafe_offset=i] = UInt32((ai - bi) & 0xFFFF_FFFF)
-        i += 1
+    var i = len_b
     while i < len_a and borrow != 0:
         var ai = ap[unsafe_offset=i]
-        ap[unsafe_offset=i] = ai - UInt32(1)
+        ap[unsafe_offset=i] = ai - UInt64(1)
         borrow = UInt64(ai == 0)
         i += 1
 
@@ -1406,14 +1239,14 @@ def _shift_left_words_inplace(mut a: Magnitude, n: Int):
 
 
 def _divmod_single_word(
-    a: Magnitude, d: UInt32, mut remainder: UInt32
+    a: Magnitude, d: UInt64, mut remainder: UInt64
 ) -> Magnitude:
-    """Divides a magnitude by a single UInt32 word.
+    """Divides a magnitude by a single UInt64 word.
 
     This is the fast path for division when the divisor fits in one word.
 
     Args:
-        a: The dividend magnitude (little-endian UInt32 words).
+        a: The dividend magnitude (little-endian UInt64 words).
         d: The single-word divisor (must be non-zero).
         remainder: Set to `a % d` on return.
 
@@ -1422,21 +1255,47 @@ def _divmod_single_word(
     """
     var n = len(a)
     var quotient = Magnitude(capacity=n)
-    for _ in range(n):
-        quotient.append(UInt32(0))
+    quotient.resize(unsafe_uninit_length=n)
 
-    var word_remainder: UInt64 = 0
-    var divisor = UInt64(d)
-    for i in range(n - 1, -1, -1):
-        var temp = (word_remainder << 32) + UInt64(a[i])
-        quotient[i] = UInt32(temp // divisor)
-        word_remainder = temp % divisor
+    # `_divide_two_by_one()` wants a normalized divisor, and normalizing means
+    # shifting the dividend by the same amount -- which is done a word at a
+    # time here rather than materialized, since each step only needs the two
+    # words straddling the boundary. The quotient is unchanged by the scaling
+    # and the remainder comes back out of it at the end.
+    var shift = _count_leading_zeros(d)
+    var divisor = d << UInt64(shift)
+    var reciprocal = _reciprocal_word(divisor)
+    var word_remainder = UInt64(0)
+
+    if shift == 0:
+        for i in range(n - 1, -1, -1):
+            var step = _divide_two_by_one(
+                word_remainder, a[i], divisor, reciprocal
+            )
+            quotient[i] = step[0]
+            word_remainder = step[1]
+    else:
+        var carry_shift = UInt64(64 - shift)
+        # The top word of the scaled dividend is what `a`'s top word shifts
+        # out, which is below `2^shift <= 2^63` and so below the divisor.
+        word_remainder = a[n - 1] >> carry_shift
+        for i in range(n - 1, -1, -1):
+            var below = a[i - 1] >> carry_shift if i > 0 else UInt64(0)
+            var step = _divide_two_by_one(
+                word_remainder,
+                (a[i] << UInt64(shift)) | below,
+                divisor,
+                reciprocal,
+            )
+            quotient[i] = step[0]
+            word_remainder = step[1]
+        word_remainder >>= UInt64(shift)
 
     # Strip leading zeros from quotient
     while len(quotient) > 1 and quotient[len(quotient) - 1] == 0:
         quotient.shrink(len(quotient) - 1)
 
-    remainder = UInt32(word_remainder)
+    remainder = UInt64(word_remainder)
     return quotient^
 
 
@@ -1449,8 +1308,8 @@ def _divmod_magnitudes(
     Section 4.3.1) for multi-word division in base 2^32.
 
     Args:
-        a: The dividend magnitude (little-endian UInt32 words).
-        b: The divisor magnitude (little-endian UInt32 words, must be non-zero).
+        a: The dividend magnitude (little-endian UInt64 words).
+        b: The divisor magnitude (little-endian UInt64 words, must be non-zero).
         remainder: Set to the normalized remainder on return.
 
     Returns:
@@ -1487,14 +1346,14 @@ def _divmod_magnitudes(
         for word in a:
             rem_copy.append(word)
         remainder = rem_copy^
-        return [UInt32(0)]
+        return [UInt64(0)]
     if cmp == 0:
-        remainder = [UInt32(0)]
-        return [UInt32(1)]
+        remainder = [UInt64(0)]
+        return [UInt64(1)]
 
     # Single-word divisor: use fast path
     if len_b == 1:
-        var r_word = UInt32(0)
+        var r_word = UInt64(0)
         var q = _divmod_single_word(a, b[0], r_word)
         remainder = [r_word]
         return q^
@@ -1518,7 +1377,7 @@ def _divmod_magnitudes(
     var m = len(u) - n  # number of quotient words
 
     if len(u) <= m + n:
-        u.append(UInt32(0))
+        u.append(UInt64(0))
 
     var quotient = Magnitude(capacity=m + 1)
     quotient.resize(unsafe_uninit_length=m + 1)
@@ -1526,6 +1385,7 @@ def _divmod_magnitudes(
 
     var v_n_minus_1 = UInt64(v[n - 1])
     var v_n_minus_2 = UInt64(v[n - 2])
+    var reciprocal = _reciprocal_word(v_n_minus_1)
 
     # Step D2-D7: main loop. The same kernel as
     # `_divmod_knuth_d_from_slices()`, and for the same reasons: every index
@@ -1547,51 +1407,54 @@ def _divmod_magnitudes(
         var u_jn_minus_1 = UInt64(u_ptr[unsafe_offset=j + n - 1])
         var u_jn_minus_2 = UInt64(u_ptr[unsafe_offset=j + n - 2])
 
-        var two_digits = (u_jn << 32) + u_jn_minus_1
-        var q_hat = two_digits // v_n_minus_1
-        var r_hat = two_digits % v_n_minus_1
+        # Knuth's step D3. The estimate is exact when the top dividend word is
+        # below the top divisor word; where they are equal, `b - 1` is the
+        # answer Knuth names directly and no division is needed for it either.
+        # `r_hat` is two words wide because that case can carry it past `b`,
+        # which is also where the refinement stops.
+        var q_hat: UInt64
+        var r_hat: UInt128
+        if u_jn < v_n_minus_1:
+            var estimate = _divide_two_by_one(
+                u_jn, u_jn_minus_1, v_n_minus_1, reciprocal
+            )
+            q_hat = estimate[0]
+            r_hat = UInt128(estimate[1])
+        else:
+            q_hat = ~UInt64(0)
+            r_hat = UInt128(u_jn_minus_1) + UInt128(v_n_minus_1)
 
-        # Refine q_hat using Knuth's test:
-        # if q_hat * v[n-2] > (r_hat << 32) + u[j+n-2], decrease q_hat.
-        while True:
-            if q_hat < BigInt.BASE and not (
-                q_hat * v_n_minus_2 > (r_hat << 32) + u_jn_minus_2
-            ):
-                break
+        while r_hat < RADIX and (
+            UInt128(q_hat) * UInt128(v_n_minus_2)
+            > (r_hat << 64) + UInt128(u_jn_minus_2)
+        ):
             q_hat -= 1
-            r_hat += v_n_minus_1
-            if r_hat >= BigInt.BASE:
-                break
+            r_hat += UInt128(v_n_minus_1)
 
         # Step D4: multiply and subtract, u[j..j+n] -= q_hat * v[0..n-1].
-        # Two words at a time; see `_submul_word_pairs()`.
-        var carry = _submul_word_pairs(u_ptr.unsafe_offset(j), v_ptr, n, q_hat)
+        # Two words at a time; see `_submul_words()`.
+        var carry = _submul_words(u_ptr.unsafe_offset(j), v_ptr, n, q_hat)
 
+        # Step D5. Taking the debt off the top word wraps exactly when the
+        # estimate was one too large, which is the borrow the old base-2^32
+        # form spelled as `BASE + u - carry`.
         var jn = j + n
-        if UInt64(u_ptr[unsafe_offset=jn]) >= carry:
-            u_ptr[unsafe_offset=jn] = UInt32(
-                UInt64(u_ptr[unsafe_offset=jn]) - carry
-            )
-        else:
+        var top = u_ptr[unsafe_offset=jn]
+        u_ptr[unsafe_offset=jn] = top - carry
+        if top < carry:
             # Step D6: add back -- q_hat was one too large.
-            u_ptr[unsafe_offset=jn] = UInt32(
-                BigInt.BASE + UInt64(u_ptr[unsafe_offset=jn]) - carry
-            )
             q_hat -= 1
-            var add_carry: UInt64 = 0
-            for i in range(n):
-                var total = (
-                    UInt64(u_ptr[unsafe_offset=j + i])
-                    + UInt64(v_ptr[unsafe_offset=i])
-                    + add_carry
-                )
-                u_ptr[unsafe_offset=j + i] = UInt32(total & 0xFFFF_FFFF)
-                add_carry = total >> 32
-            u_ptr[unsafe_offset=jn] = UInt32(
-                UInt64(u_ptr[unsafe_offset=jn]) + add_carry
+            var window = u_ptr.unsafe_offset(j)
+            var add_carry = _add_words(
+                window,
+                alias_as_immutable_source(window),
+                v_ptr,
+                n,
+                UInt64(0),
             )
+            u_ptr[unsafe_offset=jn] = u_ptr[unsafe_offset=jn] + add_carry
 
-        quotient_ptr[unsafe_offset=j] = UInt32(q_hat)
+        quotient_ptr[unsafe_offset=j] = UInt64(q_hat)
 
     # Strip leading zeros from quotient
     while len(quotient) > 1 and quotient[len(quotient) - 1] == 0:
@@ -1624,26 +1487,26 @@ def _compare_word_lists(a: Magnitude, b: Magnitude) -> Int8:
     return 0
 
 
-def _count_leading_zeros(word: UInt32) -> Int:
-    """Counts the number of leading zero bits in a UInt32 word.
+def _count_leading_zeros(word: UInt64) -> Int:
+    """Counts the number of leading zero bits in a UInt64 word.
 
     Args:
         word: The word to count leading zeros of.
 
     Returns:
-        The number of leading zero bits (0-32).
+        The number of leading zero bits (0-64).
     """
     # `std.bit.count_leading_zeros` lowers to a single hardware `clz`
-    # instruction, and already returns 32 for a zero input.
+    # instruction, and already returns 64 for a zero input.
     return Int(count_leading_zeros(word))
 
 
 def _shift_left_words(a: Magnitude, shift: Int) -> Magnitude:
-    """Shifts a magnitude left by `shift` bits (0 <= shift < 32).
+    """Shifts a magnitude left by `shift` bits (0 <= shift < 64).
 
     Args:
         a: The magnitude to shift.
-        shift: The number of bits to shift left (must be < 32).
+        shift: The number of bits to shift left (must be < 64).
 
     Returns:
         The shifted magnitude as a new word list.
@@ -1662,11 +1525,14 @@ def _shift_left_words(a: Magnitude, shift: Int) -> Magnitude:
     result.resize(unsafe_uninit_length=n)
     var ap = a.unsafe_ptr()
     var rp = result.unsafe_ptr()
-    var carry: UInt32 = 0
+    # `shift` is between 1 and 63 here, the zero case having returned above,
+    # so neither shift below is the undefined full-word one.
+    var carry: UInt64 = 0
+    var carry_shift = UInt64(64 - shift)
     for i in range(n):
-        var shifted = UInt64(ap[unsafe_offset=i]) << UInt64(shift)
-        rp[unsafe_offset=i] = UInt32(shifted & UInt64(0xFFFF_FFFF)) | carry
-        carry = UInt32(shifted >> UInt64(32))
+        var word = ap[unsafe_offset=i]
+        rp[unsafe_offset=i] = (word << UInt64(shift)) | carry
+        carry = word >> carry_shift
     if carry > 0:
         result.append(carry)
 
@@ -1680,7 +1546,7 @@ def _shift_right_words(a: Magnitude, shift: Int, num_words: Int) -> Magnitude:
 
     Args:
         a: The magnitude to shift.
-        shift: The number of bits to shift right (must be < 32).
+        shift: The number of bits to shift right (must be < 64).
         num_words: The number of words to consider from `a`.
 
     Returns:
@@ -1688,7 +1554,7 @@ def _shift_right_words(a: Magnitude, shift: Int, num_words: Int) -> Magnitude:
     """
     var n = min(num_words, len(a))
     if n <= 0:
-        var zero: Magnitude = [UInt32(0)]
+        var zero: Magnitude = [UInt64(0)]
         return zero^
 
     var result = Magnitude(capacity=n)
@@ -1701,18 +1567,12 @@ def _shift_right_words(a: Magnitude, shift: Int, num_words: Int) -> Magnitude:
     else:
         # The top word has nothing above it to pull down, so it is peeled off
         # rather than tested for inside the loop.
-        var carry_shift = UInt64(32) - UInt64(shift)
+        var carry_shift = UInt64(64 - shift)
         for i in range(n - 1):
-            rp[unsafe_offset=i] = UInt32(
-                (UInt64(ap[unsafe_offset=i]) >> UInt64(shift))
-                | (
-                    (UInt64(ap[unsafe_offset=i + 1]) << carry_shift)
-                    & UInt64(0xFFFF_FFFF)
-                )
+            rp[unsafe_offset=i] = (ap[unsafe_offset=i] >> UInt64(shift)) | (
+                ap[unsafe_offset=i + 1] << carry_shift
             )
-        rp[unsafe_offset=n - 1] = UInt32(
-            UInt64(ap[unsafe_offset=n - 1]) >> UInt64(shift)
-        )
+        rp[unsafe_offset=n - 1] = ap[unsafe_offset=n - 1] >> UInt64(shift)
 
     while len(result) > 1 and result[len(result) - 1] == 0:
         result.shrink(len(result) - 1)
@@ -1734,28 +1594,22 @@ def _shift_right_words_inplace(mut a: Magnitude, shift: Int, num_words: Int):
 
     Args:
         a: The magnitude, truncated and shifted in place.
-        shift: The number of bits to shift right (must be < 32).
+        shift: The number of bits to shift right (must be < 64).
         num_words: How many words of `a` to keep.
     """
     var n = min(num_words, len(a))
     if n <= 0:
-        a = [UInt32(0)]
+        a = [UInt64(0)]
         return
 
     if shift != 0:
         var ap = a.unsafe_ptr()
-        var carry_shift = UInt64(32) - UInt64(shift)
+        var carry_shift = UInt64(64 - shift)
         for i in range(n - 1):
-            ap[unsafe_offset=i] = UInt32(
-                (UInt64(ap[unsafe_offset=i]) >> UInt64(shift))
-                | (
-                    (UInt64(ap[unsafe_offset=i + 1]) << carry_shift)
-                    & UInt64(0xFFFF_FFFF)
-                )
+            ap[unsafe_offset=i] = (ap[unsafe_offset=i] >> UInt64(shift)) | (
+                ap[unsafe_offset=i + 1] << carry_shift
             )
-        ap[unsafe_offset=n - 1] = UInt32(
-            UInt64(ap[unsafe_offset=n - 1]) >> UInt64(shift)
-        )
+        ap[unsafe_offset=n - 1] = ap[unsafe_offset=n - 1] >> UInt64(shift)
 
     while len(a) > n:
         a.shrink(len(a) - 1)
@@ -1773,7 +1627,7 @@ def _shift_right_words_inplace(mut a: Magnitude, shift: Int, num_words: Int):
 
 def _subspan[
     origin: ImmOrigin, //
-](s: ImmSpan[UInt32, origin], start: Int, end: Int) -> ImmSpan[UInt32, origin]:
+](s: ImmSpan[UInt64, origin], start: Int, end: Int) -> ImmSpan[UInt64, origin]:
     """Returns `s[start:end]`, clamped to the bounds of `s`.
 
     The Burnikel-Ziegler recursion routinely computes block bounds that run
@@ -1798,20 +1652,20 @@ def _subspan[
     return s[start:actual_end]
 
 
-def _normalized_copy(a: ImmSpan[UInt32, _]) -> Magnitude:
+def _normalized_copy(a: ImmSpan[UInt64, _]) -> Magnitude:
     """Copies a magnitude slice into a new list, stripping leading zeros.
 
     Returns [0] for an empty slice.
 
     Args:
-        a: The source magnitude (little-endian UInt32 words).
+        a: The source magnitude (little-endian UInt64 words).
 
     Returns:
         A new word list containing the slice, normalized.
     """
     var len_slice = len(a)
     if len_slice == 0:
-        var zero: Magnitude = [UInt32(0)]
+        var zero: Magnitude = [UInt64(0)]
         return zero^
     var result = Magnitude(capacity=len_slice)
     result.resize(unsafe_uninit_length=len_slice)
@@ -1822,7 +1676,7 @@ def _normalized_copy(a: ImmSpan[UInt32, _]) -> Magnitude:
     return result^
 
 
-def _is_zero_slice(a: ImmSpan[UInt32, _]) -> Bool:
+def _is_zero_slice(a: ImmSpan[UInt64, _]) -> Bool:
     """Checks whether every word in a magnitude slice is zero.
 
     Args:
@@ -1837,7 +1691,7 @@ def _is_zero_slice(a: ImmSpan[UInt32, _]) -> Bool:
     return True
 
 
-def _add_from_slice_inplace(mut a: Magnitude, b: ImmSpan[UInt32, _]):
+def _add_from_slice_inplace(mut a: Magnitude, b: ImmSpan[UInt64, _]):
     """Adds a magnitude slice into a in-place: a += b.
 
     Grows a if needed. An empty b is a no-op.
@@ -1856,36 +1710,28 @@ def _add_from_slice_inplace(mut a: Magnitude, b: ImmSpan[UInt32, _]):
     if len_a < len_max + 1:
         a.resize(unsafe_uninit_length=len_max + 1)
         for i in range(len_a, len_max + 1):
-            a[i] = UInt32(0)
+            a[i] = UInt64(0)
 
     # As in `_add_magnitudes_inplace()`, `a` now has `len_max + 1` words with a
     # zero on top, so the carry always lands inside it.
     var ap = a.unsafe_ptr()
     var bp = b.unsafe_ptr()
 
-    var pairs = len_b_slice >> 1
-    var carry = _add_word_pairs(
-        ap, alias_as_immutable_source(ap), bp, pairs, UInt64(0)
+    var carry = _add_words(
+        ap, alias_as_immutable_source(ap), bp, len_b_slice, UInt64(0)
     )
-    var i = pairs << 1
-    while i < len_b_slice:
-        var s = (
-            UInt64(ap[unsafe_offset=i]) + UInt64(bp[unsafe_offset=i]) + carry
-        )
-        ap[unsafe_offset=i] = UInt32(s & 0xFFFF_FFFF)
-        carry = s >> 32
-        i += 1
+    var i = len_b_slice
     while carry != 0:
-        var s = UInt64(ap[unsafe_offset=i]) + carry
-        ap[unsafe_offset=i] = UInt32(s & 0xFFFF_FFFF)
-        carry = s >> 32
+        var s = ap[unsafe_offset=i] + carry
+        ap[unsafe_offset=i] = s
+        carry = UInt64(s < carry)
         i += 1
 
     _strip_leading_zeros_inplace(a)
 
 
 def _multiply_magnitudes_slices(
-    a: ImmSpan[UInt32, _], b: ImmSpan[UInt32, _]
+    a: ImmSpan[UInt64, _], b: ImmSpan[UInt64, _]
 ) -> Magnitude:
     """Multiplies two magnitude slices, dispatching to the best algorithm.
 
@@ -1904,7 +1750,7 @@ def _multiply_magnitudes_slices(
     var len_a = len(a)
     var len_b = len(b)
     if len_a <= 0 or len_b <= 0:
-        var zero: Magnitude = [UInt32(0)]
+        var zero: Magnitude = [UInt64(0)]
         return zero^
     if len_a == 1:
         return _multiply_magnitude_by_word(b, a[0])
@@ -1926,12 +1772,12 @@ def _decrement_inplace(mut a: Magnitude):
         if a[i] > 0:
             a[i] -= 1
             return
-        a[i] = UInt32(0xFFFF_FFFF)
+        a[i] = ~UInt64(0)
 
 
 def _divmod_knuth_d_from_slices(
-    a: ImmSpan[UInt32, _],
-    b: ImmSpan[UInt32, _],
+    a: ImmSpan[UInt64, _],
+    b: ImmSpan[UInt64, _],
     mut remainder: Magnitude,
 ) raises -> Magnitude:
     """Knuth Algorithm D operating directly on pre-normalized slices.
@@ -1957,8 +1803,8 @@ def _divmod_knuth_d_from_slices(
         len_b_eff -= 1
 
     if len_a_eff <= 0:
-        remainder = [UInt32(0)]
-        return [UInt32(0)]
+        remainder = [UInt64(0)]
+        return [UInt64(0)]
     if len_b_eff <= 0:
         raise ZeroDivisionError(
             function="_divmod_knuth_d_from_slices()",
@@ -1968,7 +1814,7 @@ def _divmod_knuth_d_from_slices(
     # Single-word divisor fast path
     if len_b_eff == 1:
         var a_slice = _normalized_copy(a[:len_a_eff])
-        var r_word = UInt32(0)
+        var r_word = UInt64(0)
         var q = _divmod_single_word(a_slice, b[0], r_word)
         remainder = [r_word]
         return q^
@@ -1977,7 +1823,7 @@ def _divmod_knuth_d_from_slices(
     var cmp_len_diff = len_a_eff - len_b_eff
     if cmp_len_diff < 0:
         remainder = _normalized_copy(a[:len_a_eff])
-        return [UInt32(0)]
+        return [UInt64(0)]
     if cmp_len_diff == 0:
         # Same length — compare words from top
         var cmp = 0
@@ -1992,10 +1838,10 @@ def _divmod_knuth_d_from_slices(
                 break
         if cmp < 0:
             remainder = _normalized_copy(a[:len_a_eff])
-            return [UInt32(0)]
+            return [UInt64(0)]
         if cmp == 0:
-            remainder = [UInt32(0)]
-            return [UInt32(1)]
+            remainder = [UInt64(0)]
+            return [UInt64(1)]
 
     # Copy a slice into u (single copy — u is modified in-place by Knuth D)
     var n = len_b_eff
@@ -2005,7 +1851,7 @@ def _divmod_knuth_d_from_slices(
     unsafe_memcpy(dest=u.unsafe_ptr(), src=a.unsafe_ptr(), count=len_a_eff)
     # Ensure u has an extra leading word
     if len(u) <= m + n:
-        u.append(UInt32(0))
+        u.append(UInt64(0))
 
     var quotient = Magnitude(capacity=m + 1)
     quotient.resize(unsafe_uninit_length=m + 1)
@@ -2014,6 +1860,14 @@ def _divmod_knuth_d_from_slices(
     # v_n_minus_1 and v_n_minus_2 read directly from b via offset
     var v_n_minus_1 = UInt64(b[n - 1])
     var v_n_minus_2 = UInt64(b[n - 2]) if n >= 2 else UInt64(0)
+    debug_assert(
+        v_n_minus_1 >= (UInt64(1) << 63),
+        (
+            "_divmod_knuth_d_from_slices() was handed an unnormalized divisor;"
+            " the quotient estimate needs the top bit set"
+        ),
+    )
+    var reciprocal = _reciprocal_word(v_n_minus_1)
 
     # Knuth D main loop.
     #
@@ -2034,51 +1888,55 @@ def _divmod_knuth_d_from_slices(
         var u_jn_minus_1 = UInt64(u_ptr[unsafe_offset=j + n - 1])
         var u_jn_minus_2 = UInt64(u_ptr[unsafe_offset=j + n - 2])
 
-        var two_digits = (u_jn << 32) + u_jn_minus_1
-        var q_hat = two_digits // v_n_minus_1
-        var r_hat = two_digits % v_n_minus_1
+        # Knuth's step D3. The estimate is exact when the top dividend word is
+        # below the top divisor word; where they are equal, `b - 1` is the
+        # answer Knuth names directly and no division is needed for it either.
+        # `r_hat` is two words wide because that case can carry it past `b`,
+        # which is also where the refinement stops.
+        var q_hat: UInt64
+        var r_hat: UInt128
+        if u_jn < v_n_minus_1:
+            var estimate = _divide_two_by_one(
+                u_jn, u_jn_minus_1, v_n_minus_1, reciprocal
+            )
+            q_hat = estimate[0]
+            r_hat = UInt128(estimate[1])
+        else:
+            q_hat = ~UInt64(0)
+            r_hat = UInt128(u_jn_minus_1) + UInt128(v_n_minus_1)
 
-        # Refine q_hat
-        while True:
-            if q_hat < BigInt.BASE and not (
-                q_hat * v_n_minus_2 > (r_hat << 32) + u_jn_minus_2
-            ):
-                break
+        while r_hat < RADIX and (
+            UInt128(q_hat) * UInt128(v_n_minus_2)
+            > (r_hat << 64) + UInt128(u_jn_minus_2)
+        ):
             q_hat -= 1
-            r_hat += v_n_minus_1
-            if r_hat >= BigInt.BASE:
-                break
+            r_hat += UInt128(v_n_minus_1)
 
         # Multiply and subtract: u[j..j+n] -= q_hat * v[0..n-1]. This is where
         # division spends its time, so it has its own kernel; see
-        # `_submul_word_pairs()`.
-        var carry = _submul_word_pairs(u_ptr.unsafe_offset(j), b_ptr, n, q_hat)
+        # `_submul_words()`.
+        var carry = _submul_words(u_ptr.unsafe_offset(j), b_ptr, n, q_hat)
 
+        # Step D5. Taking the debt off the top word wraps exactly when the
+        # estimate was one too large, which is the borrow the old base-2^32
+        # form spelled as `BASE + u - carry`.
         var jn = j + n
-        if UInt64(u_ptr[unsafe_offset=jn]) >= carry:
-            u_ptr[unsafe_offset=jn] = UInt32(
-                UInt64(u_ptr[unsafe_offset=jn]) - carry
-            )
-        else:
-            u_ptr[unsafe_offset=jn] = UInt32(
-                BigInt.BASE + UInt64(u_ptr[unsafe_offset=jn]) - carry
-            )
+        var top = u_ptr[unsafe_offset=jn]
+        u_ptr[unsafe_offset=jn] = top - carry
+        if top < carry:
+            # Step D6, add back: u[j..j+n-1] += v
             q_hat -= 1
-            # Add back: u[j..j+n-1] += v
-            var add_carry: UInt64 = 0
-            for i in range(n):
-                var total = (
-                    UInt64(u_ptr[unsafe_offset=j + i])
-                    + UInt64(b_ptr[unsafe_offset=i])
-                    + add_carry
-                )
-                u_ptr[unsafe_offset=j + i] = UInt32(total & 0xFFFF_FFFF)
-                add_carry = total >> 32
-            u_ptr[unsafe_offset=jn] = UInt32(
-                UInt64(u_ptr[unsafe_offset=jn]) + add_carry
+            var window = u_ptr.unsafe_offset(j)
+            var add_carry = _add_words(
+                window,
+                alias_as_immutable_source(window),
+                b_ptr,
+                n,
+                UInt64(0),
             )
+            u_ptr[unsafe_offset=jn] = u_ptr[unsafe_offset=jn] + add_carry
 
-        quotient_ptr[unsafe_offset=j] = UInt32(q_hat)
+        quotient_ptr[unsafe_offset=j] = UInt64(q_hat)
 
     # Extract remainder: first n words of u (no shift needed)
     while len(u) > n:
@@ -2105,8 +1963,8 @@ def _divmod_burnikel_ziegler(
     where multiplication by a normalization factor is needed).
 
     Args:
-        a: The dividend magnitude (little-endian UInt32 words).
-        b: The divisor magnitude (little-endian UInt32 words, non-zero).
+        a: The dividend magnitude (little-endian UInt64 words).
+        b: The divisor magnitude (little-endian UInt64 words, non-zero).
         remainder: Set to the normalized remainder on return.
 
     Returns:
@@ -2167,7 +2025,7 @@ def _divmod_burnikel_ziegler(
     if len_norm_a < target_len_a:
         norm_a.resize(unsafe_uninit_length=target_len_a)
         for i in range(len_norm_a, target_len_a):
-            norm_a[i] = UInt32(0)
+            norm_a[i] = UInt64(0)
 
     # STEP 4: Long division with n-word blocks (slice-based).
     # Pre-allocate quotient array: at most (t-1)*n words.
@@ -2230,8 +2088,8 @@ def _divmod_burnikel_ziegler(
 
 
 def _bz_two_by_one_slices(
-    a: ImmSpan[UInt32, _],
-    b: ImmSpan[UInt32, _],
+    a: ImmSpan[UInt64, _],
+    b: ImmSpan[UInt64, _],
     n: Int,
     cutoff: Int,
     mut remainder: Magnitude,
@@ -2283,8 +2141,8 @@ def _bz_two_by_one_slices(
 
 
 def _bz_three_by_two_slices(
-    a: ImmSpan[UInt32, _],
-    b: ImmSpan[UInt32, _],
+    a: ImmSpan[UInt64, _],
+    b: ImmSpan[UInt64, _],
     n: Int,
     cutoff: Int,
     mut remainder: Magnitude,
@@ -2538,7 +2396,7 @@ def add_inplace(mut x: BigInt, imm other: BigInt):
         if cmp == 0:
             # Equal magnitudes → result is zero
             x.words.clear()
-            x.words.append(UInt32(0))
+            x.words.append(UInt64(0))
             x.sign = False
         elif cmp > 0:
             # |x| > |other|: x.words -= other.words, keep x.sign
@@ -2579,10 +2437,10 @@ def add_int_inplace(mut x: BigInt, value: Int):
             magnitude = UInt(value)
         x.words.clear()
         while magnitude != 0:
-            x.words.append(UInt32(magnitude & 0xFFFF_FFFF))
-            magnitude >>= 32
+            x.words.append(UInt64(magnitude & UInt(~UInt64(0))))
+            magnitude >>= 64
         if len(x.words) == 0:
-            x.words.append(UInt32(0))
+            x.words.append(UInt64(0))
         return
 
     # Determine other's sign and magnitude words
@@ -2598,14 +2456,14 @@ def add_int_inplace(mut x: BigInt, value: Int):
         other_sign = False
         other_magnitude = UInt(value)
 
-    # Build the Int's words (at most 2 on 64-bit platform)
-    var other_words = Magnitude(capacity=2)
+    # Build the Int's words: one, on any target with a 64-bit `Int`.
+    var other_words = Magnitude(capacity=1)
     var mag = other_magnitude
     while mag != 0:
-        other_words.append(UInt32(mag & 0xFFFF_FFFF))
-        mag >>= 32
+        other_words.append(UInt64(mag & UInt(~UInt64(0))))
+        mag >>= 64
     if len(other_words) == 0:
-        other_words.append(UInt32(0))
+        other_words.append(UInt64(0))
 
     if x.sign == other_sign:
         # Same sign: add magnitudes
@@ -2615,7 +2473,7 @@ def add_int_inplace(mut x: BigInt, value: Int):
         var cmp = _compare_magnitudes_words(x.words, other_words)
         if cmp == 0:
             x.words.clear()
-            x.words.append(UInt32(0))
+            x.words.append(UInt64(0))
             x.sign = False
         elif cmp > 0:
             _subtract_magnitudes_inplace(x.words, other_words)
@@ -2662,7 +2520,7 @@ def subtract_inplace(mut x: BigInt, imm other: BigInt):
         var cmp = _compare_magnitudes_words(x.words, other.words)
         if cmp == 0:
             x.words.clear()
-            x.words.append(UInt32(0))
+            x.words.append(UInt64(0))
             x.sign = False
         elif cmp > 0:
             _subtract_magnitudes_inplace(x.words, other.words)
@@ -2690,7 +2548,7 @@ def multiply_inplace(mut x: BigInt, imm other: BigInt):
         return
     if other.is_zero():
         x.words.clear()
-        x.words.append(UInt32(0))
+        x.words.append(UInt64(0))
         x.sign = False
         return
 
@@ -2699,8 +2557,8 @@ def multiply_inplace(mut x: BigInt, imm other: BigInt):
     x.sign = x.sign != other.sign
 
 
-def multiply_by_word_inplace(mut x: BigInt, word: UInt32):
-    """Multiplies a BigInt in place by a single UInt32 word.
+def multiply_by_word_inplace(mut x: BigInt, word: UInt64):
+    """Multiplies a BigInt in place by a single UInt64 word.
 
     Only the magnitude is scaled; the sign is preserved (a zero result is
     normalized to non-negative). Unlike `_multiply_magnitude_by_word`, no new
@@ -2714,23 +2572,23 @@ def multiply_by_word_inplace(mut x: BigInt, word: UInt32):
     # Keep the magnitude non-empty so the BigInt invariant holds even if an
     # uninitialized value is passed in.
     if len(x.words) == 0:
-        x.words.append(UInt32(0))
+        x.words.append(UInt64(0))
     if word == 0:
         # Anything times zero is zero, in canonical single-word form.
         x.words.clear()
-        x.words.append(UInt32(0))
+        x.words.append(UInt64(0))
         x.sign = False
         return
     if word == 1:
         return
-    var multiplier = UInt64(word)
+    var multiplier = UInt128(word)
     var carry: UInt64 = 0
     for j in range(len(x.words)):
-        var product = UInt64(x.words[j]) * multiplier + carry
-        x.words[j] = UInt32(product & BigInt.WORD_MASK)
-        carry = product >> BigInt.BITS_PER_WORD
+        var product = UInt128(x.words[j]) * multiplier + UInt128(carry)
+        x.words[j] = UInt64(product)
+        carry = UInt64(product >> 64)
     if carry != 0:
-        x.words.append(UInt32(carry))
+        x.words.append(UInt64(carry))
 
 
 def left_shift_inplace(mut x: BigInt, shift: Int):
@@ -2751,8 +2609,8 @@ def left_shift_inplace(mut x: BigInt, shift: Int):
         return
 
     # Split shift into whole-word and sub-word parts
-    var word_shift = shift // 32
-    var bit_shift = shift % 32
+    var word_shift = shift // 64
+    var bit_shift = shift % 64
 
     var n = len(x.words)
     var new_len = n + word_shift + (1 if bit_shift > 0 else 0)
@@ -2760,18 +2618,19 @@ def left_shift_inplace(mut x: BigInt, shift: Int):
 
     # Prepend zero words for the whole-word shift
     for _ in range(word_shift):
-        new_words.append(UInt32(0))
+        new_words.append(UInt64(0))
 
     # Shift existing words (low to high, with carry propagation)
     if bit_shift == 0:
         for i in range(n):
             new_words.append(x.words[i])
     else:
-        var carry: UInt32 = 0
+        var carry: UInt64 = 0
+        var carry_shift = UInt64(64 - bit_shift)
         for i in range(n):
-            var shifted = UInt64(x.words[i]) << UInt64(bit_shift)
-            new_words.append(UInt32(shifted & UInt64(0xFFFF_FFFF)) | carry)
-            carry = UInt32(shifted >> UInt64(32))
+            var word = x.words[i]
+            new_words.append((word << UInt64(bit_shift)) | carry)
+            carry = word >> carry_shift
         if carry > 0:
             new_words.append(carry)
 
@@ -2795,8 +2654,8 @@ def right_shift_inplace(mut x: BigInt, shift: Int):
         left_shift_inplace(x, -shift)
         return
 
-    var word_shift = shift // 32
-    var bit_shift = shift % 32
+    var word_shift = shift // 64
+    var bit_shift = shift % 64
     var n = len(x.words)
 
     # If shifting by more words than we have, result is 0 or -1
@@ -2804,11 +2663,11 @@ def right_shift_inplace(mut x: BigInt, shift: Int):
         if x.sign:
             # -1
             x.words.clear()
-            x.words.append(UInt32(1))
+            x.words.append(UInt64(1))
             # sign stays True
         else:
             x.words.clear()
-            x.words.append(UInt32(0))
+            x.words.append(UInt64(0))
             x.sign = False
         return
 
@@ -2817,7 +2676,7 @@ def right_shift_inplace(mut x: BigInt, shift: Int):
     if x.sign:
         # Check sub-word bits of the boundary word
         if bit_shift > 0:
-            var mask = UInt32((1 << bit_shift) - 1)
+            var mask = UInt64((1 << bit_shift) - 1)
             if (x.words[word_shift] & mask) != 0:
                 any_bits_lost = True
         # Check fully-shifted-out words
@@ -2834,14 +2693,11 @@ def right_shift_inplace(mut x: BigInt, shift: Int):
             x.words[i] = x.words[i + word_shift]
     else:
         for i in range(new_len):
-            var lo = UInt64(x.words[i + word_shift]) >> UInt64(bit_shift)
+            var lo = x.words[i + word_shift] >> UInt64(bit_shift)
             var hi: UInt64 = 0
             if i + word_shift + 1 < n:
-                hi = (
-                    UInt64(x.words[i + word_shift + 1])
-                    << (UInt64(32) - UInt64(bit_shift))
-                ) & UInt64(0xFFFF_FFFF)
-            x.words[i] = UInt32(lo | hi)
+                hi = x.words[i + word_shift + 1] << UInt64(64 - bit_shift)
+            x.words[i] = UInt64(lo | hi)
 
     # Truncate to new length in a single shrink call
     if len(x.words) > new_len:
@@ -2852,19 +2708,19 @@ def right_shift_inplace(mut x: BigInt, shift: Int):
         x.words.shrink(len(x.words) - 1)
 
     if len(x.words) == 0:
-        x.words.append(UInt32(0))
+        x.words.append(UInt64(0))
 
     # For negative numbers with lost bits, round toward negative infinity
     if x.sign and any_bits_lost:
         var carry: UInt64 = 1
         for i in range(len(x.words)):
-            var s = UInt64(x.words[i]) + carry
-            x.words[i] = UInt32(s & 0xFFFF_FFFF)
-            carry = s >> 32
+            var s = x.words[i] + carry
+            x.words[i] = s
+            carry = UInt64(s < carry)
             if carry == 0:
                 break
         if carry > 0:
-            x.words.append(UInt32(carry))
+            x.words.append(UInt64(carry))
 
     x._normalize()
 
@@ -2910,7 +2766,7 @@ def floor_divide_inplace(mut x: BigInt, imm other: BigInt) raises:
             x.sign = not q_is_zero
         else:
             # Non-exact: floor division rounds away from zero for negative
-            _add_magnitudes_inplace(q_words, UInt32(1))
+            _add_magnitudes_inplace(q_words, UInt64(1))
             x.words = q_words^
             x.sign = True
 
@@ -2940,7 +2796,7 @@ def floor_modulo_inplace(mut x: BigInt, imm other: BigInt) raises:
 
     if r_is_zero:
         x.words.clear()
-        x.words.append(UInt32(0))
+        x.words.append(UInt64(0))
         x.sign = False
         return
 
@@ -3003,7 +2859,7 @@ def floor_divide(x1: BigInt, x2: BigInt) raises -> BigInt:
         else:
             # Non-exact: floor division rounds away from zero for negative
             # results, so quotient = -(|q| + 1)
-            var q_plus_one = _add_magnitudes(q_words, UInt32(1))
+            var q_plus_one = _add_magnitudes(q_words, UInt64(1))
             return BigInt(raw_words=q_plus_one^, sign=True)
 
 
@@ -3151,7 +3007,7 @@ def floor_divmod(x1: BigInt, x2: BigInt) raises -> Tuple[BigInt, BigInt]:
             return (BigInt(raw_words=q_words^, sign=not q_is_zero), BigInt())
         else:
             # floor_div rounds toward negative infinity, mod has sign of divisor
-            var q_plus_one = _add_magnitudes(q_words, UInt32(1))
+            var q_plus_one = _add_magnitudes(q_words, UInt64(1))
             var adjusted = _subtract_magnitudes(x2.words, r_words)
             return (
                 BigInt(raw_words=q_plus_one^, sign=True),
@@ -3218,7 +3074,7 @@ def power(base: BigInt, exponent: Int) raises -> BigInt:
     var result_sign = base.sign and (exponent % 2 == 1)
 
     # Binary exponentiation on the magnitude
-    var result_words: Magnitude = [UInt32(1)]
+    var result_words: Magnitude = [UInt64(1)]
     var base_words = Magnitude(capacity=len(base.words))
     for word in base.words:
         base_words.append(word)
@@ -3254,8 +3110,8 @@ def left_shift(x: BigInt, shift: Int) -> BigInt:
         return right_shift(x, -shift)
 
     # Split shift into whole-word and sub-word parts
-    var word_shift = shift // 32
-    var bit_shift = shift % 32
+    var word_shift = shift // 64
+    var bit_shift = shift % 64
 
     var n = len(x.words)
     var new_len = n + word_shift + (1 if bit_shift > 0 else 0)
@@ -3263,18 +3119,19 @@ def left_shift(x: BigInt, shift: Int) -> BigInt:
 
     # Prepend zero words for the whole-word shift
     for _ in range(word_shift):
-        result.append(UInt32(0))
+        result.append(UInt64(0))
 
     # Shift the existing words
     if bit_shift == 0:
         for i in range(n):
             result.append(x.words[i])
     else:
-        var carry: UInt32 = 0
+        var carry: UInt64 = 0
+        var carry_shift = UInt64(64 - bit_shift)
         for i in range(n):
-            var shifted = UInt64(x.words[i]) << UInt64(bit_shift)
-            result.append(UInt32(shifted & UInt64(0xFFFF_FFFF)) | carry)
-            carry = UInt32(shifted >> UInt64(32))
+            var word = x.words[i]
+            result.append((word << UInt64(bit_shift)) | carry)
+            carry = word >> carry_shift
         if carry > 0:
             result.append(carry)
 
@@ -3301,8 +3158,8 @@ def right_shift(x: BigInt, shift: Int) -> BigInt:
         return left_shift(x, -shift)
 
     # Split shift into whole-word and sub-word parts
-    var word_shift = shift // 32
-    var bit_shift = shift % 32
+    var word_shift = shift // 64
+    var bit_shift = shift % 64
 
     var n = len(x.words)
 
@@ -3320,20 +3177,18 @@ def right_shift(x: BigInt, shift: Int) -> BigInt:
             result.append(x.words[i])
     else:
         for i in range(word_shift, n):
-            var lo = UInt64(x.words[i]) >> UInt64(bit_shift)
+            var lo = x.words[i] >> UInt64(bit_shift)
             var hi: UInt64 = 0
             if i + 1 < n:
-                hi = (
-                    UInt64(x.words[i + 1]) << (UInt64(32) - UInt64(bit_shift))
-                ) & UInt64(0xFFFF_FFFF)
-            result.append(UInt32(lo | hi))
+                hi = x.words[i + 1] << UInt64(64 - bit_shift)
+            result.append(lo | hi)
 
     # Strip leading zeros
     while len(result) > 1 and result[len(result) - 1] == 0:
         result.shrink(len(result) - 1)
 
     if len(result) == 0:
-        result.append(UInt32(0))
+        result.append(UInt64(0))
 
     var shifted = BigInt(raw_words=result^, sign=x.sign)
 
@@ -3343,7 +3198,7 @@ def right_shift(x: BigInt, shift: Int) -> BigInt:
         var any_bits_lost = False
         # Check sub-word bits of the first skipped word
         if word_shift < n and bit_shift > 0:
-            var mask = UInt32((1 << bit_shift) - 1)
+            var mask = UInt64((1 << bit_shift) - 1)
             if (x.words[word_shift] & mask) != 0:
                 any_bits_lost = True
         # Check fully-shifted-out words
@@ -3357,13 +3212,13 @@ def right_shift(x: BigInt, shift: Int) -> BigInt:
             # Round toward negative infinity by adding 1 to the magnitude
             var carry: UInt64 = 1
             for i in range(len(shifted.words)):
-                var s = UInt64(shifted.words[i]) + carry
-                shifted.words[i] = UInt32(s & 0xFFFF_FFFF)
-                carry = s >> 32
+                var s = shifted.words[i] + carry
+                shifted.words[i] = s
+                carry = UInt64(s < carry)
                 if carry == 0:
                     break
             if carry > 0:
-                shifted.words.append(UInt32(carry))
+                shifted.words.append(UInt64(carry))
 
     shifted._normalize()
     return shifted^

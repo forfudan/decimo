@@ -120,9 +120,9 @@ def product_range(low: Int, high: Int) raises -> BigInt:
     # reserve the result up front to avoid reallocating while it grows.
     if high - low + 1 <= PRODUCT_RANGE_LEAF_CUTOFF:
         var result = BigInt(uninitialized_capacity=high - low + 2)
-        result.words.append(UInt32(low))
+        result.words.append(UInt64(low))
         for factor in range(low + 1, high + 1):
-            multiply_by_word_inplace(result, UInt32(factor))
+            multiply_by_word_inplace(result, UInt64(factor))
         return result^
     var mid = low + (high - low) // 2
     return product_range(low, mid) * product_range(mid + 1, high)

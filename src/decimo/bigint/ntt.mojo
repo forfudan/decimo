@@ -399,31 +399,35 @@ def _pack[
     o: Origin[mut=True]
 ](
     destination: Pointer[UInt64, o],
-    words: ImmSpan[UInt32, _],
+    words: ImmSpan[UInt64, _],
     count: Int,
     chunk_bits: Int,
 ):
     """Cuts `words` into `count` chunks of `chunk_bits` bits each, LSB first.
 
     A chunk starts at an arbitrary bit offset, so the read takes the two words
-    straddling it as one 64-bit value and shifts. That needs
-    `chunk_bits + 31 <= 64`, which holds because `_plan()` never returns a
-    width above 32.
+    straddling it and shifts. `_plan()` never returns a width above 32, so a
+    chunk never spans more than two words however the offset falls.
     """
     var word_count = len(words)
     var source = words.unsafe_ptr()
     var mask = (UInt64(1) << UInt64(chunk_bits)) - 1
     for i in range(count):
         var bit = i * chunk_bits
-        var index = bit >> 5
-        var shift = UInt64(bit & 31)
-        var low = UInt64(
-            source[unsafe_offset=index]
-        ) if index < word_count else UInt64(0)
-        var high = UInt64(
-            source[unsafe_offset=index + 1]
-        ) if index + 1 < word_count else UInt64(0)
-        destination[unsafe_offset=i] = ((low | (high << 32)) >> shift) & mask
+        var index = bit >> 6
+        var shift = bit & 63
+        var low = source[unsafe_offset=index] if index < word_count else UInt64(
+            0
+        )
+        var high = source[
+            unsafe_offset=index + 1
+        ] if index + 1 < word_count else UInt64(0)
+        # A shift of a whole word is undefined, and at offset zero there is
+        # nothing above to pull down anyway.
+        var value = low >> UInt64(shift)
+        if shift != 0:
+            value |= high << UInt64(64 - shift)
+        destination[unsafe_offset=i] = value & mask
 
 
 def _unpack(
@@ -434,38 +438,47 @@ def _unpack(
 ) -> Magnitude:
     """Reassembles `sum(coefficients[k] * 2^(k * chunk_bits))` into words.
 
-    The coefficients overlap once `chunk_bits` is not a multiple of 32, and
-    each is far wider than its own chunk - it is a sum of products, not a
-    chunk - so this is a carry propagation rather than a concatenation. A
-    128-bit accumulator holds the words still being written into: the
-    coefficients landing in one output word number about `32 / chunk_bits`,
-    each below `2^62` and shifted by at most 31, which leaves the accumulator
-    far short of overflowing.
+    The coefficients overlap once `chunk_bits` is not a multiple of the step,
+    and each is far wider than its own chunk - it is a sum of products, not a
+    chunk - so this is a carry propagation rather than a concatenation.
+
+    The walk steps 32 bits at a time even though the words are 64, which is
+    what keeps the accumulator inside 128 bits: the coefficients landing on
+    one step number about `32 / chunk_bits`, each below `2^62` and shifted by
+    at most 31. Stepping a whole word instead would shift by up to 63 and
+    take twice as many of them, and the accumulator would no longer fit.
     """
     var result = Magnitude(capacity=word_count)
     result.resize(unsafe_uninit_length=word_count)
     var destination = result.unsafe_ptr()
+    var half_count = word_count << 1
 
     var accumulator = UInt128(0)
-    var next_word = 0
+    var next_half = 0
     for k in range(count):
         var bit = k * chunk_bits
         var index = bit >> 5
         var shift = bit & 31
-        while next_word < index and next_word < word_count:
-            destination[unsafe_offset=next_word] = UInt32(
-                accumulator & 0xFFFF_FFFF
-            )
+        while next_half < index and next_half < half_count:
+            var piece = UInt64(accumulator & 0xFFFF_FFFF)
+            if next_half & 1 == 0:
+                destination[unsafe_offset=next_half >> 1] = piece
+            else:
+                destination[unsafe_offset=next_half >> 1] |= piece << 32
             accumulator >>= 32
-            next_word += 1
-        if next_word >= word_count:
+            next_half += 1
+        if next_half >= half_count:
             break
         accumulator += UInt128(coefficients[unsafe_offset=k]) << UInt128(shift)
 
-    while next_word < word_count:
-        destination[unsafe_offset=next_word] = UInt32(accumulator & 0xFFFF_FFFF)
+    while next_half < half_count:
+        var piece = UInt64(accumulator & 0xFFFF_FFFF)
+        if next_half & 1 == 0:
+            destination[unsafe_offset=next_half >> 1] = piece
+        else:
+            destination[unsafe_offset=next_half >> 1] |= piece << 32
         accumulator >>= 32
-        next_word += 1
+        next_half += 1
 
     var length = word_count
     while length > 1 and result[length - 1] == 0:
@@ -480,14 +493,14 @@ def _unpack(
 # ===----------------------------------------------------------------------=== #
 
 
-def _bit_length(words: ImmSpan[UInt32, _]) -> Int:
+def _bit_length(words: ImmSpan[UInt64, _]) -> Int:
     """Returns the bit length of a magnitude, or zero for a zero magnitude."""
     var top = len(words)
     while top > 0 and words[top - 1] == 0:
         top -= 1
     if top == 0:
         return 0
-    return top * 32 - Int(count_leading_zeros(words[top - 1]))
+    return top * 64 - Int(count_leading_zeros(words[top - 1]))
 
 
 comptime CUTOFF_NTT: Int = 1024
@@ -535,7 +548,7 @@ def should_multiply_ntt(len_a: Int, len_b: Int) -> Bool:
     if len_a < CUTOFF_NTT or len_b < CUTOFF_NTT:
         return False
 
-    var plan = _plan(len_a * 32, len_b * 32)
+    var plan = _plan(len_a * 64, len_b * 64)
     if plan.log_length > MAX_TRANSFORM_LOG:
         return False
 
@@ -547,7 +560,7 @@ def should_multiply_ntt(len_a: Int, len_b: Int) -> Bool:
 
 
 def multiply_magnitudes_ntt(
-    a: ImmSpan[UInt32, _], b: ImmSpan[UInt32, _]
+    a: ImmSpan[UInt64, _], b: ImmSpan[UInt64, _]
 ) -> Magnitude:
     """Multiplies two magnitudes through a number-theoretic transform.
 
@@ -558,8 +571,8 @@ def multiply_magnitudes_ntt(
     only cost does.
 
     Args:
-        a: First magnitude (little-endian UInt32 words).
-        b: Second magnitude (little-endian UInt32 words).
+        a: First magnitude (little-endian UInt64 words).
+        b: Second magnitude (little-endian UInt64 words).
 
     Returns:
         The product magnitude as a new word list.

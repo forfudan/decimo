@@ -47,8 +47,8 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
     """
 
     # Determine fills (sign extension for infinite-width two's complement)
-    var a_fill = UInt32(0xFFFF_FFFF) if a.sign else UInt32(0)
-    var b_fill = UInt32(0xFFFF_FFFF) if b.sign else UInt32(0)
+    var a_fill = ~UInt64(0) if a.sign else UInt64(0)
+    var b_fill = ~UInt64(0) if b.sign else UInt64(0)
 
     # Determine result sign from operation on sign-extension bits
     var result_negative: Bool
@@ -80,8 +80,8 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
             var max_len = max(len(a.words), len(b.words))
             var result_words = Magnitude(capacity=max_len)
             for i in range(max_len):
-                var wa = UInt32(0) if i >= len(a.words) else a.words[i]
-                var wb = UInt32(0) if i >= len(b.words) else b.words[i]
+                var wa = UInt64(0) if i >= len(a.words) else a.words[i]
+                var wb = UInt64(0) if i >= len(b.words) else b.words[i]
                 result_words.append(wa | wb)
             while (
                 len(result_words) > 1
@@ -93,8 +93,8 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
             var max_len = max(len(a.words), len(b.words))
             var result_words = Magnitude(capacity=max_len)
             for i in range(max_len):
-                var wa = UInt32(0) if i >= len(a.words) else a.words[i]
-                var wb = UInt32(0) if i >= len(b.words) else b.words[i]
+                var wa = UInt64(0) if i >= len(a.words) else a.words[i]
+                var wb = UInt64(0) if i >= len(b.words) else b.words[i]
                 result_words.append(wa ^ wb)
             while (
                 len(result_words) > 1
@@ -116,9 +116,9 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
     if a.sign:
         var borrow: UInt64 = 1
         for i in range(a_n):
-            var diff = UInt64(a.words[i]) - borrow
-            a_tc.append(~UInt32(diff & 0xFFFF_FFFF))
-            borrow = (diff >> 63) & 1
+            var word = a.words[i]
+            a_tc.append(~(word - borrow))
+            borrow = UInt64(word < borrow)
     else:
         for i in range(a_n):
             a_tc.append(a.words[i])
@@ -128,9 +128,9 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
     if b.sign:
         var borrow: UInt64 = 1
         for i in range(b_n):
-            var diff = UInt64(b.words[i]) - borrow
-            b_tc.append(~UInt32(diff & 0xFFFF_FFFF))
-            borrow = (diff >> 63) & 1
+            var word = b.words[i]
+            b_tc.append(~(word - borrow))
+            borrow = UInt64(word < borrow)
     else:
         for i in range(b_n):
             b_tc.append(b.words[i])
@@ -165,12 +165,12 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
         var carry: UInt64 = 1
         for i in range(len(mag)):
             var s = UInt64(mag[i]) + carry
-            mag[i] = UInt32(s & 0xFFFF_FFFF)
-            carry = s >> 32
+            mag[i] = s
+            carry = UInt64(s < carry)
             if carry == 0:
                 break
         if carry > 0:
-            mag.append(UInt32(carry))
+            mag.append(UInt64(carry))
         # Strip leading zeros
         while len(mag) > 1 and mag[len(mag) - 1] == 0:
             mag.shrink(len(mag) - 1)
@@ -197,8 +197,8 @@ def _binary_bitwise_op_inplace[op: StringLiteral](mut a: BigInt, imm b: BigInt):
     """
 
     # Determine fills (sign extension for infinite-width two's complement)
-    var a_fill = UInt32(0xFFFF_FFFF) if a.sign else UInt32(0)
-    var b_fill = UInt32(0xFFFF_FFFF) if b.sign else UInt32(0)
+    var a_fill = ~UInt64(0) if a.sign else UInt64(0)
+    var b_fill = ~UInt64(0) if b.sign else UInt64(0)
 
     # Determine result sign from operation on sign-extension bits
     var result_negative: Bool
@@ -230,7 +230,7 @@ def _binary_bitwise_op_inplace[op: StringLiteral](mut a: BigInt, imm b: BigInt):
             var b_len = len(b.words)
             # Extend a if b is longer
             while len(a.words) < b_len:
-                a.words.append(UInt32(0))
+                a.words.append(UInt64(0))
             for i in range(b_len):
                 a.words[i] = a.words[i] | b.words[i]
             # Words beyond b_len remain as-is (OR with 0)
@@ -240,7 +240,7 @@ def _binary_bitwise_op_inplace[op: StringLiteral](mut a: BigInt, imm b: BigInt):
         else:  # xor
             var b_len = len(b.words)
             while len(a.words) < b_len:
-                a.words.append(UInt32(0))
+                a.words.append(UInt64(0))
             for i in range(b_len):
                 a.words[i] = a.words[i] ^ b.words[i]
             # Words beyond b_len remain as-is (XOR with 0)
@@ -260,9 +260,9 @@ def _binary_bitwise_op_inplace[op: StringLiteral](mut a: BigInt, imm b: BigInt):
     if a.sign:
         var borrow: UInt64 = 1
         for i in range(a_n):
-            var diff = UInt64(a.words[i]) - borrow
-            a_tc.append(~UInt32(diff & 0xFFFF_FFFF))
-            borrow = (diff >> 63) & 1
+            var word = a.words[i]
+            a_tc.append(~(word - borrow))
+            borrow = UInt64(word < borrow)
     else:
         for i in range(a_n):
             a_tc.append(a.words[i])
@@ -272,9 +272,9 @@ def _binary_bitwise_op_inplace[op: StringLiteral](mut a: BigInt, imm b: BigInt):
     if b.sign:
         var borrow: UInt64 = 1
         for i in range(b_n):
-            var diff = UInt64(b.words[i]) - borrow
-            b_tc.append(~UInt32(diff & 0xFFFF_FFFF))
-            borrow = (diff >> 63) & 1
+            var word = b.words[i]
+            b_tc.append(~(word - borrow))
+            borrow = UInt64(word < borrow)
     else:
         for i in range(b_n):
             b_tc.append(b.words[i])
@@ -298,7 +298,7 @@ def _binary_bitwise_op_inplace[op: StringLiteral](mut a: BigInt, imm b: BigInt):
             result_tc.shrink(len(result_tc) - 1)
         if len(result_tc) == 1 and result_tc[0] == 0:
             a.words.clear()
-            a.words.append(UInt32(0))
+            a.words.append(UInt64(0))
             a.sign = False
         else:
             a.words = result_tc^
@@ -311,17 +311,17 @@ def _binary_bitwise_op_inplace[op: StringLiteral](mut a: BigInt, imm b: BigInt):
         var carry: UInt64 = 1
         for i in range(len(mag)):
             var s = UInt64(mag[i]) + carry
-            mag[i] = UInt32(s & 0xFFFF_FFFF)
-            carry = s >> 32
+            mag[i] = s
+            carry = UInt64(s < carry)
             if carry == 0:
                 break
         if carry > 0:
-            mag.append(UInt32(carry))
+            mag.append(UInt64(carry))
         while len(mag) > 1 and mag[len(mag) - 1] == 0:
             mag.shrink(len(mag) - 1)
         if len(mag) == 1 and mag[0] == 0:
             a.words.clear()
-            a.words.append(UInt32(0))
+            a.words.append(UInt64(0))
             a.sign = False
         else:
             a.words = mag^
@@ -393,10 +393,10 @@ def bitwise_not(x: BigInt) -> BigInt:
         var carry: UInt64 = 1
         for i in range(n):
             var s = UInt64(x.words[i]) + carry
-            result_words.append(UInt32(s & 0xFFFF_FFFF))
-            carry = s >> 32
+            result_words.append(s)
+            carry = UInt64(s < carry)
         if carry > 0:
-            result_words.append(UInt32(carry))
+            result_words.append(UInt64(carry))
         return BigInt(raw_words=result_words^, sign=True)
     else:
         # ~negative = |x| - 1
@@ -404,9 +404,9 @@ def bitwise_not(x: BigInt) -> BigInt:
         var result_words = Magnitude(capacity=n)
         var borrow: UInt64 = 1
         for i in range(n):
-            var diff = UInt64(x.words[i]) - borrow
-            result_words.append(UInt32(diff & 0xFFFF_FFFF))
-            borrow = (diff >> 63) & 1
+            var word = x.words[i]
+            result_words.append(word - borrow)
+            borrow = UInt64(word < borrow)
         # Strip leading zeros
         while (
             len(result_words) > 1 and result_words[len(result_words) - 1] == 0

@@ -65,7 +65,7 @@ def _count_trailing_zeros(words: Magnitude) -> Int:
 
     # `std.bit.count_trailing_zeros` lowers to `rbit`+`clz` on arm64,
     # replacing the bit-at-a-time shift loop.
-    return i * 32 + Int(count_trailing_zeros(words[i]))
+    return i * 64 + Int(count_trailing_zeros(words[i]))
 
 
 # ===----------------------------------------------------------------------=== #
