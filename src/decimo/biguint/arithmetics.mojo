@@ -3146,20 +3146,6 @@ def floor_divide_by_word_inplace(mut x: BigUInt, y: BigUInt.Word) -> None:
         carry = dividend % y_wide
 
 
-def floor_divide_by_uint64(x: BigUInt, y: UInt64) -> BigUInt:
-    """Divides a BigUInt by UInt64.
-
-    Args:
-        x: The `BigUInt` dividend.
-        y: The `UInt64` divisor. Must be smaller than 10^18.
-
-    Returns:
-        The quotient of x divided by y.
-    """
-    var remainder = UInt64(0)
-    return floor_divide_modulo_by_uint64(x, y, remainder)
-
-
 def floor_divide_modulo_by_uint64(
     x: BigUInt, y: UInt64, mut remainder: UInt64
 ) -> BigUInt:
@@ -4638,42 +4624,6 @@ def overwrite_with_word(mut x: BigUInt, value: BigUInt.Word):
     x.words[0] = value
 
 
-def overwrite_with_uint64(mut x: BigUInt, value: UInt64):
-    """As `overwrite_with_word()`, for a value of up to two words.
-
-    A remainder from a two-word divisor is below 10^18, so it never needs more.
-    """
-    if value < UInt64(BigUInt.BASE):
-        overwrite_with_word(x, BigUInt.Word(value))
-        return
-    x.words.resize(2, BigUInt.Word(0))
-    x.words[0] = BigUInt.Word(value % UInt64(BigUInt.BASE))
-    x.words[1] = BigUInt.Word(value // UInt64(BigUInt.BASE))
-
-
-def overwrite_with_uint128(mut x: BigUInt, value: UInt128):
-    """As `overwrite_with_word()`, for a value of up to four words.
-
-    A remainder from a four-word divisor is below 10^36, so it never needs
-    more.
-    """
-    if value < UInt128(BigUInt.BASE):
-        overwrite_with_word(x, BigUInt.Word(value))
-        return
-
-    var rest = value
-    var word_count = 0
-    while rest != 0:
-        rest //= UInt128(BigUInt.BASE)
-        word_count += 1
-
-    x.words.resize(word_count, BigUInt.Word(0))
-    rest = value
-    for i in range(word_count):
-        x.words[i] = BigUInt.Word(rest % UInt128(BigUInt.BASE))
-        rest //= UInt128(BigUInt.BASE)
-
-
 def normalize_carries_lt_2_bases(mut x: BigUInt):
     """Normalizes the values of words into valid range by carrying over.
     The initial values of the words should be in the range [0, BASE*2).
@@ -4932,51 +4882,4 @@ def to_uint128_with_2_words(a: BigUInt, bounds_x: Tuple[Int, Int]) -> UInt128:
             .unsafe_load[width=2](bounds_x[0])
             .cast[DType.uint128]()
             * SIMD[DType.uint128, 2](1, 1_000_000_000)
-        ).reduce_add()
-
-
-def to_uint128_with_4_words(a: BigUInt, bounds_x: Tuple[Int, Int]) -> UInt128:
-    """Convert four words at given index of the BigUInt to UInt128.
-
-    Args:
-        a: The `BigUInt` containing the words to convert.
-        bounds_x: A tuple of (start, end) indices specifying the word slice.
-
-    Returns:
-        The `UInt128` representation of the specified words.
-    """
-    var n_words = bounds_x[1] - bounds_x[0]
-    if n_words == 1:
-        return (
-            a.words.unsafe_ptr()
-            .unsafe_load[width=1](bounds_x[0])
-            .cast[DType.uint128]()
-        )
-    elif n_words == 2:
-        return (
-            a.words.unsafe_ptr()
-            .unsafe_load[width=2](bounds_x[0])
-            .cast[DType.uint128]()
-            * SIMD[DType.uint128, 2](1, 1_000_000_000)
-        ).reduce_add()
-    elif n_words == 3:
-        return (
-            a.words.unsafe_ptr()
-            .unsafe_load[width=4](bounds_x[0])
-            .cast[DType.uint128]()
-            * SIMD[DType.uint128, 4](
-                1, 1_000_000_000, 1_000_000_000_000_000_000, 0
-            )
-        ).reduce_add()
-    else:  # len(self.words) == 4
-        return (
-            a.words.unsafe_ptr()
-            .unsafe_load[width=4](bounds_x[0])
-            .cast[DType.uint128]()
-            * SIMD[DType.uint128, 4](
-                1,
-                1_000_000_000,
-                1_000_000_000_000_000_000,
-                1_000_000_000_000_000_000_000_000_000,
-            )
         ).reduce_add()

@@ -2091,43 +2091,6 @@ struct BigInt(
 # ===----------------------------------------------------------------------=== #
 
 
-def _multiply_add_inplace(mut x: BigInt, mul: UInt64, add: UInt64):
-    """Computes x = x * mul + add in a single pass over the word array.
-
-    Fuses the multiply-by-scalar and add-scalar operations into one O(n) pass
-    instead of two separate O(n) passes, halving memory traffic. This is the
-    inner loop of the simple base-conversion path, a chunk at a time.
-
-    Correctness: at each word position i,
-        product = x.words[i] * mul + carry
-    where carry starts at `add` and propagates upward. This correctly computes
-    x * mul + add because the carry chain handles both the multiplication
-    carry and the initial addend.
-
-    Overflow safety: product <= (2^64-1)*(2^64-1) + carry, which is what the
-    128-bit accumulator is for; the carry out is below `mul` and so fits a
-    word again.
-
-    Args:
-        x: The BigInt to modify in-place.
-        mul: The UInt64 multiplier (e.g. 10^18).
-        add: The UInt64 addend (e.g. a chunk value).
-    """
-    if mul == 0:
-        x.words = [UInt64(add)]
-        x.sign = False
-        return
-
-    var carry: UInt64 = add
-    for i in range(len(x.words)):
-        var product = UInt128(x.words[i]) * UInt128(mul) + UInt128(carry)
-        x.words[i] = UInt64(product)
-        carry = UInt64(product >> 64)
-
-    if carry > 0:
-        x.words.append(UInt64(carry))
-
-
 # ===----------------------------------------------------------------------=== #
 # Divide-and-conquer base conversion (decimal string → binary)
 # ===----------------------------------------------------------------------=== #
