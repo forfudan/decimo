@@ -1021,29 +1021,36 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
         Raises:
             OverflowError: If the number exceeds the size of Int (2^63-1).
-        """
 
-        # 2^63-1 = 9_223_372_036_854_775_807
-        # is larger than 10^18 -1 but smaller than 10^27 - 1
+        Notes:
+
+        Horner from the top word down, testing before each multiply rather
+        than after summing. The form this replaces built the whole value in an
+        `Int128` and compared once at the end, guarded by a word count -- and
+        that count was 3, one word more than `Int.MAX` needs at eighteen
+        digits a word. A three-word value reached `word * BASE^2 = 10^54`,
+        which no `Int128` holds, so it wrapped and the comparison passed:
+        `to_int()` of `10^21` returned 6873995514006732800 instead of raising.
+        Testing first cannot overflow, whatever the base.
+        """
+        comptime LIMIT = UInt128(Int.MAX)
+        comptime LIMIT_BEFORE_SHIFT = LIMIT // UInt128(Self.BASE)
 
         var overflow_msg = (
             "The number exceeds the size of Int (" + String(Int.MAX) + ")"
         )
-        if len(self.words) > 3:
-            raise OverflowError(
-                function="BigUInt.to_int()",
-                message=overflow_msg,
-            )
 
-        var value: Int128 = 0
-        for i in range(len(self.words)):
-            value += Int128(self.words[i]) * Int128(Self.BASE) ** i
-
-        if value > Int128(Int.MAX):
-            raise OverflowError(
-                function="BigUInt.to_int()",
-                message=overflow_msg,
-            )
+        var value = UInt128(0)
+        for i in range(len(self.words) - 1, -1, -1):
+            if value > LIMIT_BEFORE_SHIFT:
+                raise OverflowError(
+                    function="BigUInt.to_int()", message=overflow_msg
+                )
+            value = value * UInt128(Self.BASE) + UInt128(self.words[i])
+            if value > LIMIT:
+                raise OverflowError(
+                    function="BigUInt.to_int()", message=overflow_msg
+                )
 
         return Int(value)
 
@@ -1055,6 +1062,17 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
         Raises:
             OverflowError: If the number exceeds the size of UInt64.
+
+        Notes:
+
+        `is_uint64_overflow()` has already ruled out anything that does not
+        fit, so Horner from the top word down cannot overflow on the way.
+
+        This used to reassemble the words with a SIMD dot product against
+        `(1, 10^9, 10^18, 0)`. Those multipliers are the base spelled out, so
+        once a word held eighteen digits every value of more than one word
+        came back scaled by `10^9` instead of `10^18` -- `to_uint64()` of
+        `10^18` returned `10^9`. The loop below names the base once.
         """
         if self.is_uint64_overflow():
             raise OverflowError(
@@ -1066,31 +1084,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 ),
             )
 
-        if len(self.words) == 1:
-            return (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=1]()
-                .cast[DType.uint64]()
-            )
-        elif len(self.words) == 2:
-            return (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=2]()
-                .cast[DType.uint64]()
-                * SIMD[DType.uint64, 2](1, 1_000_000_000)
-            ).reduce_add()
-        else:
-            return (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=4]()
-                .cast[DType.uint64]()
-                * SIMD[DType.uint64, 4](
-                    1,
-                    1_000_000_000,
-                    1_000_000_000_000_000_000,
-                    0,
-                )
-            ).reduce_add()
+        var result = UInt64(0)
+        for i in range(len(self.words) - 1, -1, -1):
+            result = result * UInt64(Self.BASE) + UInt64(self.words[i])
+        return result
 
     def to_uint128_with_first_2_words(self) -> UInt128:
         """Convert the first two words of the BigUInt to UInt128.
@@ -1112,122 +1109,31 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
     def to_uint128(self) -> UInt128:
         """Returns the number as UInt128.
-        **UNSAFE** You need to ensure that the number of words is less than 5.
+
+        **UNSAFE** The caller must know the value fits. `is_uint128_overflow()`
+        answers that; a value that does not fit wraps silently.
 
         Returns:
             The number as UInt128.
-        """
-
-        # FIXME: Due to an unknown bug in Mojo,
-        # The returned value changed in the caller when we use raises
-        # So I have to comment out the raises part
-        # In the future, we need to fix this bug and add raises back
-        #
-        # if self.is_uint128_overflow():
-        #     raise Error(
-        #         "`BigUInt.to_int()`: The number exceeds the size"
-        #         " of UInt128 (340282366920938463463374607431768211455)"
-        #     )
-
-        var result: UInt128
-
-        if len(self.words) == 1:
-            result = (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=1]()
-                .cast[DType.uint128]()
-            )
-        elif len(self.words) == 2:
-            result = (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=2]()
-                .cast[DType.uint128]()
-                * SIMD[DType.uint128, 2](1, 1_000_000_000)
-            ).reduce_add()
-        elif len(self.words) == 3:
-            result = (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=4]()
-                .cast[DType.uint128]()
-                * SIMD[DType.uint128, 4](
-                    1, 1_000_000_000, 1_000_000_000_000_000_000, 0
-                )
-            ).reduce_add()
-        elif len(self.words) == 4:
-            result = (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=4]()
-                .cast[DType.uint128]()
-                * SIMD[DType.uint128, 4](
-                    1,
-                    1_000_000_000,
-                    1_000_000_000_000_000_000,
-                    1_000_000_000_000_000_000_000_000_000,
-                )
-            ).reduce_add()
-        else:
-            result = (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=8]()
-                .cast[DType.uint128]()
-                * SIMD[DType.uint128, 8](
-                    1,
-                    1_000_000_000,
-                    1_000_000_000_000_000_000,
-                    1_000_000_000_000_000_000_000_000_000,
-                    1_000_000_000_000_000_000_000_000_000_000_000_000,
-                    0,
-                    0,
-                    0,
-                )
-            ).reduce_add()
-
-        return result
-
-    def to_uint128_with_first_4_words(self) -> UInt128:
-        """Convert the first four words of the BigUInt to UInt128.
 
         Notes:
-            This method quickly convert BigUInt with 4 words into UInt128.
 
-        Returns:
-            The `UInt128` representation of the first four words.
+        Horner, with the base named once. The SIMD form this replaces spelled
+        its multipliers out as powers of `10^9`, so every value of more than
+        one word came back wrong the moment a word held eighteen digits.
+
+        It also loaded `width=4` for a three-word value and `width=8` for a
+        five-word one, reading past the end of the allocation in both cases.
+        The extra lanes were multiplied by zero so the answer was unaffected,
+        which is why it never showed up.
         """
-
-        if len(self.words) == 1:
-            return (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=1]()
-                .cast[DType.uint128]()
-            )
-        elif len(self.words) == 2:
-            return (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=2]()
-                .cast[DType.uint128]()
-                * SIMD[DType.uint128, 2](1, 1_000_000_000)
-            ).reduce_add()
-        elif len(self.words) == 3:
-            return (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=4]()
-                .cast[DType.uint128]()
-                * SIMD[DType.uint128, 4](
-                    1, 1_000_000_000, 1_000_000_000_000_000_000, 0
-                )
-            ).reduce_add()
-        else:  # len(self.words) == 4
-            return (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=4]()
-                .cast[DType.uint128]()
-                * SIMD[DType.uint128, 4](
-                    1,
-                    1_000_000_000,
-                    1_000_000_000_000_000_000,
-                    1_000_000_000_000_000_000_000_000_000,
-                )
-            ).reduce_add()
+        # FIXME: Due to an unknown bug in Mojo, the returned value changed in
+        # the caller when this function raised, so the overflow check is left
+        # to the caller. Restore it when that is fixed.
+        var result = UInt128(0)
+        for i in range(len(self.words) - 1, -1, -1):
+            result = result * UInt128(Self.BASE) + UInt128(self.words[i])
+        return result
 
     def to_string(self, line_width: Int = 0) -> String:
         """Returns string representation of the BigUInt.
