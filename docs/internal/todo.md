@@ -81,25 +81,70 @@ heap, and 10 of GMP's 14.6 ns at a hundred digits is `malloc` and `free`. An
 immutable value type cannot use GMP's reuse idiom, so this is the one place
 where the shape of the API works for us.
 
-Everything else is an algorithm we do not have, not assembly we cannot write.
+### How much of this is the 32-bit limb?
+
+Less than it looks. A 64-bit limb halves the limb count, but a 64x64 product
+costs *two* instructions on arm64 (`MUL` plus `UMULH`) where a 32x32 product
+costs one, so the widening pays back half of what the count costs. For work
+that grows as `L^e` in the limb count:
+
+    penalty = 2^e * (cost per 32-bit op / cost per 64-bit op) = 2^(e-1)
+
+| algorithm                    | e     | penalty |
+| ---------------------------- | ----- | ------- |
+| schoolbook, Knuth D          | 2     | 2.0x    |
+| Karatsuba                    | 1.585 | 1.50x   |
+| Toom-3                       | 1.465 | 1.38x   |
+| NTT                          | ~1    | ~1.0x   |
+
+Addition is not on that list, because `_add_word_pairs()` already reads two
+words as one base-2^64 limb -- the array *is* a base-2^64 magnitude on a
+little-endian target. So its penalty is 1.0x, and everything above the floor
+is ours:
+
+| operation      | against GMP | floor | ours to fix |
+| -------------- | ----------- | ----- | ----------- |
+| add, 10^6      | 2.04x       | 1.0x  | 2.0x        |
+| multiply, 100  | 3.14x       | 2.0x  | 1.6x        |
+| multiply, 10^6 | 3.98x       | ~1.0x | 4.0x        |
+| divide, 100    | 4.36x       | 2.0x  | 2.2x        |
+| divide, 10^6   | 7.56x       | ~1.0x | 7.6x        |
+| sqrt, 1000+    | ~11x        | ~1.5x | 7x          |
+
+The NTT rows have no limb width to hide behind: a transform packs bits into
+coefficients and barely cares what the limbs were.
+
 Ordered by the size of the gap:
 
 1. **Karatsuba square root.** 11x to 12x from a thousand digits up, and the
    largest single gap in the library. At 10^6 digits GMP's `mpz_sqrt` is
-   faster than our multiplication. Zimmermann's recursive algorithm; ours is
-   Newton over full-width operands.
-2. **Newton or Barrett division above a threshold.** 7x at 10^6. Burnikel-
+   faster than our multiplication. Ours is CPython's precision-doubling, whose
+   last step is a full n-by-n/2 division; Zimmermann's recursion halves that
+   division and returns the remainder, which also deletes the verifying
+   squaring at the end.
+2. **Newton or Barrett division above a threshold.** 7.6x at 10^6. Burnikel-
    Ziegler bottoms out at Knuth D and GMP does not. Already item 5 of `Now`
    for `BigDecimal`, and the same work serves both.
-3. **Base 2^64 magnitude.** 2x on `add` at every size, and it is nothing but
-   the word width: we hold twice as many limbs as GMP for the same value.
-   Multiplication inherits it. Unlike base 10^18 for `BigUInt` (item 9 of
-   `Now`) there is no division by a base here -- 64x64 into 128 is a single
-   instruction, and the accumulator use of 128-bit is the safe one.
-4. **Multiplication thresholds.** Comba, schoolbook, Karatsuba, Toom-3 and an
-   NTT are all present, so 2x to 4x is crossover points and constants rather
-   than a missing tier. Measure the crossovers again once item 3 lands, since
-   halving the word count moves all of them.
+3. **The NTT itself**, which is 4x at 10^6 on multiplication with no limb-width
+   excuse. See item 7 of `Now` for the butterfly.
+4. **Break the carry chain in add and subtract.** We are latency-bound on it,
+   not throughput-bound: 1038 words at 10 000 digits is 519 limbs and 271 ns,
+   which is 1.8 cycles a limb, where GMP's `ADCS` chain runs at 1.0. Two
+   passes would break the dependency -- sum every limb ignoring carry, then
+   propagate, which cascades only when a sum is all ones and so essentially
+   never -- and the first pass vectorizes.
+5. **Multiplication thresholds.** Comba, schoolbook, Karatsuba, Toom-3 and an
+   NTT are all present, so the small and middle sizes are crossover points and
+   constants rather than a missing tier.
+
+Two things measured the wrong way round here, so they are not retried:
+
+- **A branchless borrow in Knuth D.** Biasing by 2^32 and reading the borrow
+  out of bit 32 puts the loaded word in the loop-carried carry chain. The
+  branch is worth 1.38x at 1000 digits.
+- **A `UInt128` accumulator for the paired add and subtract.** It does not
+  become `ADDS`/`ADCS`; add at 10 000 digits went 279 ns to 391, subtract 275
+  to 503. The comparison-based carry that is there is the fast one.
 
 ## Now
 
