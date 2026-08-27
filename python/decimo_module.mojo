@@ -862,8 +862,9 @@ def bigdecimal_divmod(
         pair = self_ptr[].__divmod__(converted)
     except:
         return raise_as["PyExc_ZeroDivisionError"]("division by zero")
+    ref cell = state()[]
     return Python.tuple(
-        PythonObject(alloc=pair[0].copy()), PythonObject(alloc=pair[1].copy())
+        new_decimal(cell, pair[0].copy()), new_decimal(cell, pair[1].copy())
     )
 
 
@@ -882,8 +883,9 @@ def bigdecimal_rdivmod(
         pair = converted.__divmod__(self_ptr[])
     except:
         return raise_as["PyExc_ZeroDivisionError"]("division by zero")
+    ref cell = state()[]
     return Python.tuple(
-        PythonObject(alloc=pair[0].copy()), PythonObject(alloc=pair[1].copy())
+        new_decimal(cell, pair[0].copy()), new_decimal(cell, pair[1].copy())
     )
 
 

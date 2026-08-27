@@ -148,10 +148,15 @@ struct WordList(Copyable, Movable, Sized):
         )
 
     def __init__(out self, var other: List[UInt32]):
-        """Adopt the contents of a `List[UInt32]`.
+        """Copy the contents of a `List[UInt32]`.
+
+        The words are copied, not adopted: a `List` owns a heap buffer and a
+        `WordList` may keep its words inline, so there is nothing to hand over.
+        Callers on a hot path should build into a `WordList` directly rather
+        than fill a `List` and pass it here.
 
         Args:
-            other: The list to take the words from.
+            other: The list to copy the words from.
         """
         self = Self(capacity=len(other))
         self._len = len(other)

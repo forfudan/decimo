@@ -10,7 +10,12 @@ from std.python import Python
 from std import testing
 
 from decimo import BDec
-from decimo.bigdecimal.arithmetics import add, subtract, multiply
+from decimo.bigdecimal.arithmetics import (
+    add,
+    subtract,
+    multiply,
+    true_divide,
+)
 from decimo.bigdecimal.rounding import round_to_precision_inplace
 from decimo.rounding_mode import RoundingMode
 from decimo.tests import TestCase, parse_file, load_test_cases
@@ -471,6 +476,31 @@ def test_bigdecimal_operators_round_to_precision() raises:
         count_wrong,
         0,
         "Operators must round HALF_EVEN to PRECISION matching Python decimal.",
+    )
+
+
+def test_divide_tie_with_a_truncated_dividend() raises:
+    """A dropped digit still has to break a tie.
+
+    When the dividend is far longer than the precision needs, its low words
+    are dropped before the division runs. That can leave a dividend which
+    divides *exactly*, so the remainder is zero for a division that was never
+    exact -- and a tie in the kept digits then rounds to even when it should
+    round up.
+
+    `19058000000000000000000009 / 762320` is a hair above the tie at 2.5E+19.
+    Reading only the remainder gave `2E+19`; CPython gives `3E+19`.
+    """
+    var dividend = BDec("19058000000000000000000009")
+    var divisor = BDec("762320")
+    testing.assert_equal(String(true_divide(dividend, divisor, 1)), "3E+19")
+
+    # The same shape at a few more precisions, and the exact-division case
+    # beside it, which must still round to even.
+    testing.assert_equal(String(true_divide(dividend, divisor, 2)), "2.5E+19")
+    testing.assert_equal(
+        String(true_divide(BDec("19058000000000000000000000"), divisor, 1)),
+        "2E+19",
     )
 
 

@@ -743,13 +743,24 @@ def true_divide_general(
     var extra_digits = extra_words * 9
 
     var coef_x: BigUInt
+    # Whether anything was thrown away below the digits we kept. It is not the
+    # same question as whether the division came out exact, and rounding needs
+    # both -- see the sticky digit below.
+    var dropped_something = False
     if extra_words > 0:
         coef_x = biguint_arithmetics.multiply_by_power_of_billion(
             x.coefficient, extra_words
         )
     elif extra_words < 0:
         # Dividend already has more than enough words for the desired precision.
-        # Truncate low-order words to avoid computing unnecessary quotient digits.
+        # Truncate low-order words to avoid computing unnecessary quotient
+        # digits -- but remember whether they were zero. A dividend that
+        # divides exactly once truncated can have been inexact before it, and
+        # then a tie in the kept digits has to round up rather than to even.
+        for index in range(-extra_words):
+            if x.coefficient.words[index] != 0:
+                dropped_something = True
+                break
         coef_x = biguint_arithmetics.floor_divide_by_power_of_billion(
             x.coefficient, -extra_words
         )
@@ -769,15 +780,23 @@ def true_divide_general(
     )
 
     # Two guard digits are only enough if the discarded tail can be told from
-    # an exact tie. A non-zero remainder says the true quotient is strictly
-    # greater than the one we computed, so a tail that reads exactly 5000...0
-    # should round up rather than to even. Nudging the last computed digit off
-    # zero says so: it can only ever break a tie, because half is the one tail
-    # ending in a zero that a rounding decision balances on.
+    # an exact tie. The true quotient is strictly greater than the one we
+    # computed whenever anything was left below it -- either a non-zero
+    # remainder, or dividend digits dropped before the division ran -- so a
+    # tail that reads exactly 5000...0 should round up rather than to even.
+    # Nudging the last computed digit off zero says so: it can only ever break
+    # a tie, because half is the one tail ending in a zero that a rounding
+    # decision balances on.
+    #
+    # Both halves are needed. A truncated dividend can divide exactly, leaving
+    # a zero remainder for a division that was not exact at all:
+    # `19058000000000000000000009 / 762320` at precision 1 is just above the
+    # tie at 2.5E+19 and must give 3E+19, and reading only the remainder gave
+    # 2E+19.
     #
     # Without this the wide padding above was doing the same job by accident,
     # making a false tie merely improbable rather than impossible.
-    if not remainder.is_zero():
+    if dropped_something or not remainder.is_zero():
         var lowest = coef.words[0]
         if lowest % 10 == 0:
             coef.words[0] = lowest + 1
