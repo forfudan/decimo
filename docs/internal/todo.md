@@ -78,8 +78,10 @@ they are the first three.
    hoisting the estimator's invariants (neutral), and raising the inline
    capacity past ten (no gain). What is left is either Newton reciprocal
    division or base 10^18.
-2. **`subtract` at 100 000 digits and above, 1.25x and 1.09x slower**, where
-   `add` at the same sizes is 1.57x and 1.78x *faster*. Isolated to the
+2. **`subtract` at 1000 digits and above, 1.11x to 1.32x slower than
+   CPython's `decimal`**, where `add` at the same sizes is 1.18x to 1.73x
+   *faster*. The only operation still behind at any size against `decimal`,
+   together with `round`. Isolated to the
    kernels: `_add_words_vectorized` runs 100 000 digits in ~3.9 us and
    `_subtract_words_vectorized` in ~4.6-5.1 us, from code that looks
    symmetric instruction for instruction. Flattening subtract's carry walk to
