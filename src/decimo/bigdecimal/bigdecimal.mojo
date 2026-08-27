@@ -489,7 +489,10 @@ struct BigDecimal(
         if number_of_digits % 9 != 0:
             number_of_words += 1
 
-        var coefficient_words = List[UInt32](capacity=number_of_words)
+        # Packed straight into the coefficient. Filling a `List[UInt32]` and
+        # handing it to `raw_words=` allocated once for the list and again to
+        # copy it into place.
+        var coefficient = BigUInt(uninitialized_capacity=number_of_words)
 
         var end: Int = number_of_digits
         var start: Int
@@ -498,15 +501,15 @@ struct BigDecimal(
             var word: UInt32 = 0
             for i in range(start, end):
                 word = word * 10 + UInt32(coef[i])
-            coefficient_words.append(word)
+            coefficient.words.append(word)
             end = start
         if end > 0:
             var word: UInt32 = 0
             for i in range(end):
                 word = word * 10 + UInt32(coef[i])
-            coefficient_words.append(word)
+            coefficient.words.append(word)
 
-        var coefficient = BigUInt(raw_words=coefficient_words^)
+        coefficient.remove_leading_empty_words()
 
         return Self(coefficient=coefficient^, scale=scale, sign=sign)
 
