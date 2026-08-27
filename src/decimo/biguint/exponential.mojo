@@ -52,12 +52,12 @@ def sqrt(x: BigUInt) -> BigUInt:
         elif x.words[0] == 1:
             return BigUInt.one()
         else:
-            return BigUInt.from_uint32_unsafe(
+            return BigUInt.from_word_unsafe(
                 UInt32(isqrt_uint64(UInt64(x.words[0])))
             )
 
     elif len(x.words) == 2:
-        var res = UInt32(
+        var res = BigUInt.Word(
             isqrt_uint64(
                 (
                     x.words.unsafe_ptr()
@@ -67,7 +67,7 @@ def sqrt(x: BigUInt) -> BigUInt:
                 ).reduce_add()
             )
         )
-        return BigUInt.from_uint32_unsafe(res)
+        return BigUInt.from_word_unsafe(res)
 
     # Use Newton's method for larger numbers
     else:  # len(x.words) > 2
@@ -117,7 +117,7 @@ def sqrt(x: BigUInt) -> BigUInt:
         # var guess_squared = guess * guess
         # if guess_squared > x:
         #     # guess must be larger than 1
-        #     decimo.biguint.arithmetics.subtract_by_uint32_inplace(guess, 1)
+        #     decimo.biguint.arithmetics.subtract_by_word_inplace(guess, 1)
 
         return guess^
 
@@ -168,11 +168,11 @@ def sqrt_initial_guess(x: BigUInt) -> BigUInt:
     )
 
     var n_words = (len(x.words) - 1) // 2  # Number of words to append later
-    var msw_sqrt: UInt32
-    var nsw: UInt32  # Next significant word
+    var msw_sqrt: BigUInt.Word
+    var nsw: BigUInt.Word  # Next significant word
     if len(x.words) & 1 == 0:  # If even, we use the most significant 2 words
         nsw = x.words[len(x.words) - 3]
-        msw_sqrt = UInt32(
+        msw_sqrt = BigUInt.Word(
             isqrt_uint64(
                 (
                     x.words.unsafe_ptr()
@@ -196,7 +196,7 @@ def sqrt_initial_guess(x: BigUInt) -> BigUInt:
     # Boundary checks are not needed here because len(x.words) > 2
     result.words.unsafe_set(n_words, msw_sqrt)
     result.words.unsafe_set(
-        n_words - 1, UInt32(nsw)
+        n_words - 1, BigUInt.Word(nsw)
     )  # Set the next significant word contribution
 
     return result^

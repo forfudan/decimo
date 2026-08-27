@@ -11,7 +11,7 @@ from decimo.biguint.biguint import BigUInt
 from decimo.biguint.arithmetics import (
     add,
     add_inplace,
-    floor_divide_by_uint32_inplace,
+    floor_divide_by_word_inplace,
     floor_divide_by_uint64_inplace,
     subtract,
     subtract_inplace,
@@ -587,11 +587,11 @@ def test_biguint_inplace_arithmetics_match_out_of_place() raises:
         # The in-place single-word divisions, including the quotient-is-zero
         # case that used to leave the value with no words.
         var quotient_32 = x.copy()
-        floor_divide_by_uint32_inplace(quotient_32, by_uint32)
+        floor_divide_by_word_inplace(quotient_32, by_uint32)
         assert_equal(
             String(quotient_32),
             String(x // as_biguint_32),
-            "floor_divide_by_uint32_inplace at " + String(wx) + " words",
+            "floor_divide_by_word_inplace at " + String(wx) + " words",
         )
 
         var quotient_64 = x.copy()

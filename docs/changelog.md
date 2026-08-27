@@ -532,7 +532,7 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
    have their own subtraction and were never affected.
 1. **The in-place single-word divisions left a `BigUInt` with no words at all**
    when the quotient was zero, which faults the next comparison that reads
-   `words[len(words) - 1]`, and `floor_divide_by_uint32_inplace()` also read
+   `words[len(words) - 1]`, and `floor_divide_by_word_inplace()` also read
    its loop bound from the already-shortened list and so skipped a word
    whenever the leading word was smaller than the divisor. Neither function is
    called anywhere in the library today; the out-of-place versions that `//`
@@ -843,7 +843,7 @@ arithmetic. It also renames the `BigDecimal` `round_to_precision` APIs to
    is retuned and the "school" helpers are renamed to "schoolbook" (PR #250).
 1. **Logarithm constants** — `compute_ln2` and `compute_ln1d25` fold their
    series factor into a single `UInt32` division per term, and
-   `BigUInt.floor_divide_by_uint32` hoists its buffer pointers out of the inner
+   `BigUInt.floor_divide_by_word` hoists its buffer pointers out of the inner
    loop (PR #251).
 
 **Code quality and tooling:**

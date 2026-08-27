@@ -2318,11 +2318,11 @@ struct BigDecimal(
         )
 
     @always_inline
-    def true_divide_inexact_by_uint32(
+    def true_divide_inexact_by_word(
         self, y: UInt32, number_of_significant_digits: Int
     ) raises -> Self:
         """Returns the result of division by a small UInt32 integer.
-        See `arithmetics.true_divide_inexact_by_uint32()` for more information.
+        See `arithmetics.true_divide_inexact_by_word()` for more information.
 
         Args:
             y: The small unsigned integer divisor.
@@ -2334,7 +2334,7 @@ struct BigDecimal(
         Raises:
             ZeroDivisionError: If `y` is zero.
         """
-        return bigdecimal_arithmetics.true_divide_inexact_by_uint32(
+        return bigdecimal_arithmetics.true_divide_inexact_by_word(
             self, y, number_of_significant_digits
         )
 
@@ -3206,7 +3206,7 @@ def _insert_digit_separators(s: String, delimiter: String) -> String:
 # ===----------------------------------------------------------------------=== #
 # Helpers for exact float conversion
 #
-# `multiply_by_uint32_inplace()` needs its multiplier below BASE, or the carry
+# `multiply_by_word_inplace()` needs its multiplier below BASE, or the carry
 # out of a word no longer fits in one. So both of these step by the largest
 # power that stays under 10^9 and finish with the remainder.
 # ===----------------------------------------------------------------------=== #
@@ -3218,13 +3218,13 @@ def _multiply_by_power_of_five(mut x: BigUInt, n: Int):
     comptime STEP_FACTOR = UInt32(244_140_625)
     var remaining = n
     while remaining >= STEP:
-        biguint_arithmetics.multiply_by_uint32_inplace(x, STEP_FACTOR)
+        biguint_arithmetics.multiply_by_word_inplace(x, STEP_FACTOR)
         remaining -= STEP
     if remaining > 0:
         var factor = UInt32(1)
         for _ in range(remaining):
             factor *= 5
-        biguint_arithmetics.multiply_by_uint32_inplace(x, factor)
+        biguint_arithmetics.multiply_by_word_inplace(x, factor)
 
 
 def _multiply_by_power_of_two(mut x: BigUInt, n: Int):
@@ -3233,9 +3233,9 @@ def _multiply_by_power_of_two(mut x: BigUInt, n: Int):
     comptime STEP_FACTOR = UInt32(536_870_912)
     var remaining = n
     while remaining >= STEP:
-        biguint_arithmetics.multiply_by_uint32_inplace(x, STEP_FACTOR)
+        biguint_arithmetics.multiply_by_word_inplace(x, STEP_FACTOR)
         remaining -= STEP
     if remaining > 0:
-        biguint_arithmetics.multiply_by_uint32_inplace(
+        biguint_arithmetics.multiply_by_word_inplace(
             x, UInt32(1) << UInt32(remaining)
         )

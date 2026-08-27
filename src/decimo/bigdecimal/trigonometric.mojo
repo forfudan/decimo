@@ -199,9 +199,9 @@ def sin_taylor_series(
         n += 2
         # Use inplace multiply to avoid BigDecimal allocation
         term.multiply_inplace(x_squared)
-        # Use O(n) uint32 division instead of full BigDecimal divide
+        # Use O(n) single-word division instead of full BigDecimal divide
         # n*(n-1) fits in UInt32 for any practical Taylor series iteration count
-        term = term.true_divide_inexact_by_uint32(
+        term = term.true_divide_inexact_by_word(
             UInt32(n * (n - 1)), working_precision
         )
         if sign == 1:
@@ -294,8 +294,8 @@ def cos_taylor_series(
         n += 2  # Next even power: 2, 4, 6, 8, ...
         # Use inplace multiply to avoid BigDecimal allocation
         term.multiply_inplace(x_squared)
-        # Use O(n) uint32 division instead of full BigDecimal divide
-        term = term.true_divide_inexact_by_uint32(
+        # Use O(n) single-word division instead of full BigDecimal divide
+        term = term.true_divide_inexact_by_word(
             UInt32(n * (n - 1)), working_precision
         )
 
@@ -630,8 +630,8 @@ def arctan_taylor_series(
         n += 2
         # Use inplace multiply to avoid BigDecimal allocation
         term.multiply_inplace(x_squared)  # x^n = x^(n-2) * x^2
-        # Use O(n) uint32 division instead of full BigDecimal divide
-        term_divided = term.true_divide_inexact_by_uint32(
+        # Use O(n) single-word division instead of full BigDecimal divide
+        term_divided = term.true_divide_inexact_by_word(
             UInt32(n), working_precision
         )  # x^n / n
         if sign == 1:

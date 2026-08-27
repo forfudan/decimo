@@ -208,11 +208,11 @@ def unpack_coefficients(
         if k + 2 < carried_length:
             c2 = carried_ptr[unsafe_offset=k + 2]
 
-        words_ptr[unsafe_offset=w] = UInt32(
+        words_ptr[unsafe_offset=w] = BigUInt.Word(
             c0 + (c1 % STRADDLE_BASE) * COEFFICIENT_BASE
         )
         if w + 1 < number_of_words:
-            words_ptr[unsafe_offset=w + 1] = UInt32(
+            words_ptr[unsafe_offset=w + 1] = BigUInt.Word(
                 c1 // STRADDLE_BASE + c2 * STRADDLE_BASE
             )
         k += COEFFICIENTS_PER_WORD_PAIR

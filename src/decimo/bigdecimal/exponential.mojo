@@ -756,7 +756,7 @@ def integer_root(
 
         var r_new: BigDecimal
         if n_int <= Int(UInt32.MAX):
-            r_new = numerator.true_divide_inexact_by_uint32(
+            r_new = numerator.true_divide_inexact_by_word(
                 UInt32(n_int), iter_precision
             )
         else:
@@ -1189,7 +1189,7 @@ def isqrt_via_reciprocal_seed(
             remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
-        residual = residual.true_divide_inexact_by_uint32(UInt32(2), ip)
+        residual = residual.true_divide_inexact_by_word(UInt32(2), ip)
 
         # r + r * e / 2
         r = r.add(residual)
@@ -1371,7 +1371,7 @@ def sqrt_exact(x: BigDecimal, precision: Int) raises -> BigDecimal:
         # Check: n % 5 == 0
         # Since our BigUInt base is 10^9, n % 5 == (last_word % 5)
         if n.words[0] % 5 == 0:
-            biguint_arithmetics.add_by_uint32_inplace(n, 1)
+            biguint_arithmetics.add_by_word_inplace(n, 1)
 
     # Construct result: coefficient=n, scale=-e (since exponent=e means *10^e)
     var result = BigDecimal(n^, -e, False)
@@ -1549,7 +1549,7 @@ def sqrt_via_reciprocal_iteration(
             remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
-        residual = residual.true_divide_inexact_by_uint32(UInt32(2), ip)
+        residual = residual.true_divide_inexact_by_word(UInt32(2), ip)
 
         # r + r * e / 2
         r = r.add(residual)
@@ -1806,8 +1806,8 @@ def sqrt_decimal_approach(x: BigDecimal, precision: Int) raises -> BigDecimal:
         prev_guess = guess.copy()
         var quotient = x.true_divide_inexact(guess, working_precision)
         var sum_val = guess.add(quotient)
-        # Use O(n) uint32 division instead of full BigDecimal divide-by-2
-        guess = sum_val.true_divide_inexact_by_uint32(2, working_precision)
+        # Use O(n) single-word division instead of full BigDecimal divide-by-2
+        guess = sum_val.true_divide_inexact_by_word(2, working_precision)
         iteration_count += 1
 
     # Round to the desired precision (in-place, no intermediate copy)
@@ -1966,7 +1966,7 @@ def exp(x: BigDecimal, precision: Int) raises -> BigDecimal:
         # This is exact — no rounding needed.
         var reduced_coeff = x.coefficient.copy()
         for _ in range(m):
-            biguint_arithmetics.multiply_by_uint32_inplace(reduced_coeff, 5)
+            biguint_arithmetics.multiply_by_word_inplace(reduced_coeff, 5)
         var reduced_x = BigDecimal(reduced_coeff^, x.scale + m, False)
 
         # Compute exp(x/2^M) via Taylor series (converges in ~√(3.3·p) terms)
@@ -2043,7 +2043,7 @@ def exp_taylor_series(
         # Calculate next term: x^i/i! = x^{i-1} * x/i
         # We can use the previous term to calculate the next one
         # Use O(n) single-word division instead of full BigDecimal div
-        var add_on = x.true_divide_inexact_by_uint32(n, minimum_precision)
+        var add_on = x.true_divide_inexact_by_word(n, minimum_precision)
         # Use inplace multiply to avoid BigDecimal allocation
         bigdecimal_arithmetics.multiply_inplace(term, add_on)
         term.round_to_precision_inplace(
@@ -2405,7 +2405,7 @@ def ln_series_expansion(
             k += 1
 
             var is_even = k % 2 == 0
-            var next_term = term.true_divide_inexact_by_uint32(
+            var next_term = term.true_divide_inexact_by_word(
                 k, working_precision
             )
 
@@ -2457,13 +2457,13 @@ def ln_series_expansion(
         # Step 1: Undo previous denominator: multiply by (2k-1).
         # Note: when k=1, old_denom=1, so this is a no-op by design;
         # the first term (k=0) has denominator 1, which needs no undoing.
-        biguint_arithmetics.multiply_by_uint32_inplace(
+        biguint_arithmetics.multiply_by_word_inplace(
             term.coefficient, old_denom
         )
         # Step 2: Multiply by u²
         bigdecimal_arithmetics.multiply_inplace(term, u_squared)
         # Step 3: Divide by (2k+1) — also truncates to working_precision
-        term = term.true_divide_inexact_by_uint32(new_denom, working_precision)
+        term = term.true_divide_inexact_by_word(new_denom, working_precision)
 
         result.add_inplace(term)
 
@@ -2567,9 +2567,9 @@ def compute_ln2(working_precision: Int) raises -> BigDecimal:
         result.add_inplace(term)
         var new_k = k + 2
         # Multiply by k using coefficient-level UInt32 multiply (avoids BigDecimal alloc)
-        biguint_arithmetics.multiply_by_uint32_inplace(term.coefficient, k)
+        biguint_arithmetics.multiply_by_word_inplace(term.coefficient, k)
         # term *= 1/9 * 1/(k+2): one O(n) single-word divide by 9*(k+2)
-        term = term.true_divide_inexact_by_uint32(9 * new_k, working_precision)
+        term = term.true_divide_inexact_by_word(9 * new_k, working_precision)
         k = new_k
         if term.adjusted() < -working_precision:
             break
@@ -2635,9 +2635,9 @@ def compute_ln1d25(precision: Int) raises -> BigDecimal:
         result.add_inplace(term)
         var new_k = k + 2
         # Multiply by k using coefficient-level UInt32 multiply (avoids BigDecimal alloc)
-        biguint_arithmetics.multiply_by_uint32_inplace(term.coefficient, k)
+        biguint_arithmetics.multiply_by_word_inplace(term.coefficient, k)
         # term *= 1/81 * 1/(k+2): one O(n) single-word divide by 81*(k+2)
-        term = term.true_divide_inexact_by_uint32(81 * new_k, working_precision)
+        term = term.true_divide_inexact_by_word(81 * new_k, working_precision)
         k = new_k
         if term.adjusted() < -working_precision:
             break

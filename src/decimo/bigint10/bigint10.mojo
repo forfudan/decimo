@@ -782,7 +782,7 @@ struct BigInt10(
         """
         # Optimize the case `i += 1`
         if (self >= 0) and (other >= 0) and (other <= BigUInt.BASE_MAX):
-            biguint_arithmetics.add_by_uint32_inplace(
+            biguint_arithmetics.add_by_word_inplace(
                 self.magnitude, UInt32(other)
             )
         else:

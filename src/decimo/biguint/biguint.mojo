@@ -47,6 +47,20 @@ from decimo.utility import unsigned_counterpart
 comptime BUInt = BigUInt
 """A shorthand alias for `BigUInt`."""
 
+comptime WORD_DTYPE = DType.uint32
+"""The machine type one coefficient word is stored in.
+
+Paired with `BigUInt.DIGITS_PER_WORD`: the word has to hold `BASE - 1`, so
+the two move together. Named, rather than spelled `Self.Word` at each use, so
+that a change of base is a change to this line and to the code that genuinely
+depends on the width -- not a blanket text replace over three hundred sites.
+Write `BigUInt.Word` for the type of a coefficient word, and a literal
+`UInt32`/`UInt64`/`UInt128` only where the *machine width* is the point.
+"""
+
+comptime Coefficient = WordList[WORD_DTYPE, INLINE_WORDS]
+"""The word storage of a `BigUInt`, little-endian."""
+
 
 struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     """Represents a base-10 arbitrary-precision unsigned integer.
@@ -57,9 +71,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
     Use base-10^9 (base-billion) representation for the unsigned integer.
     BigUInt uses a dynamic structure in memory, which contains:
-    An pointer to an array of UInt32 words for the coefficient on the heap,
+    An pointer to an array of Self.Word words for the coefficient on the heap,
     which can be of arbitrary length stored in little-endian order.
-    Each UInt32 word represents digits ranging from 0 to 10^9 - 1.
+    Each Self.Word word represents digits ranging from 0 to 10^9 - 1.
 
     The value of the BigUInt is calculated as follows:
 
@@ -94,8 +108,8 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     between a digit position and a word position divides by it rather than by
     a literal. What is *not* mechanical, and has to be rewritten by hand:
 
-    - `WordList`'s word type and `INLINE_WORDS`, and every `UInt32` in the
-      arithmetic kernels. A word of 18 digits does not fit a `UInt32`.
+    - `WordList`'s word type and `INLINE_WORDS`, and every `Self.Word` in the
+      arithmetic kernels. A word of 18 digits does not fit a `Self.Word`.
     - The Comba accumulator in `multiply_slices_schoolbook`. Its narrow path
       sums a column in `UInt64` because a partial product is below `10^18`;
       a wider word puts the product itself past 64 bits.
@@ -108,7 +122,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
       in `to_uint64()`, `to_uint128()` and `to_int128()` here, the same shape
       in `biguint.exponential.sqrt()`, `to_uint64_with_2_words()` and
       `to_uint128_with_2_words()` in `arithmetics.mojo`, and
-      `floor_divide_three_by_two_uint32()` and its four-by-two sibling. These
+      `floor_divide_three_by_two_words()` and its four-by-two sibling. These
       keep their literals on purpose: a word of 18 digits does not fit a
       `UInt64` at all, so a named constant here would let the code compile and
       silently overflow where a literal makes someone look.
@@ -118,8 +132,8 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     carry, not how many fit in a word.
     """
 
-    var words: WordList[]
-    """A list of UInt32 words representing the coefficient.
+    var words: Coefficient
+    """A list of Self.Word words representing the coefficient.
 
     Little-endian: `words[0]` is the least significant base-billion digit.
     Subject to the representation invariant documented on the struct.
@@ -130,6 +144,8 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     # ===------------------------------------------------------------------=== #
 
     # TODO: Make these constants global, e.g., decimo.biguint.BASE
+    comptime Word = Scalar[WORD_DTYPE]
+    """The type of one coefficient word. See `WORD_DTYPE`."""
     comptime DIGITS_PER_WORD = 9
     """How many decimal digits one word holds.
 
@@ -178,7 +194,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         Returns:
             A `BigUInt` with value 1.
         """
-        return Self.from_uint32_unsafe(UInt32(1))
+        return Self.from_word_unsafe(Self.Word(1))
 
     @staticmethod
     @always_inline
@@ -200,8 +216,8 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     # Constructors and life time dunder methods
     #
     # __init__(out self)
-    # __init__(out self, var words: List[UInt32])
-    # __init__(out self, var *words: UInt32)
+    # __init__(out self, var words: List[Self.Word])
+    # __init__(out self, var *words: Self.Word)
     # __init__(out self, value: Int) raises
     # __init__(out self, value: Scalar) raises
     # __init__(out self, value: String, ignore_sign: Bool = False) raises
@@ -394,22 +410,22 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     # ===------------------------------------------------------------------=== #
 
     @staticmethod
-    def from_list(var words: List[UInt32]) raises -> Self:
-        """Initializes a BigUInt from a list of UInt32 words safely.
+    def from_list(var words: List[Self.Word]) raises -> Self:
+        """Initializes a BigUInt from a list of Self.Word words safely.
         If the list is empty, the BigUInt is initialized with value 0.
         If there are leading zero words, they are removed.
         The words are validated to ensure they are smaller than `999_999_999`.
 
         Args:
-            words: A list of UInt32 words representing the coefficient.
-                Each UInt32 word represents digits ranging from 0 to 10^9 - 1.
+            words: A list of Self.Word words representing the coefficient.
+                Each Self.Word word represents digits ranging from 0 to 10^9 - 1.
                 The words are stored in little-endian order.
 
         Raises:
             OverflowError: If any word exceeds 999_999_999.
 
         Returns:
-            The BigUInt representation of the list of UInt32 words.
+            The BigUInt representation of the list of Self.Word words.
         """
         # Return 0 if the list is empty
         if len(words) == 0:
@@ -417,7 +433,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
         # Check if the words are valid
         for word in words:
-            if word > UInt32(Self.BASE_MAX):
+            if word > Self.Word(Self.BASE_MAX):
                 raise OverflowError(
                     message=(
                         "Word value "
@@ -433,31 +449,31 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         return res^
 
     @staticmethod
-    def from_list_unsafe(var words: List[UInt32]) -> Self:
-        """Initializes a BigUInt from a list of UInt32 words without checks.
+    def from_list_unsafe(var words: List[Self.Word]) -> Self:
+        """Initializes a BigUInt from a list of Self.Word words without checks.
         If the list is empty, the BigUInt is initialized with value 0.
         If there are leading empty words, they are removed.
         The words are not validated to ensure they are smaller than a billion.
 
         Args:
-            words: A list of UInt32 words representing the coefficient.
-                Each UInt32 word represents digits ranging from 0 to 10^9 - 1.
+            words: A list of Self.Word words representing the coefficient.
+                Each Self.Word word represents digits ranging from 0 to 10^9 - 1.
                 The words are stored in little-endian order.
 
         Returns:
-            The BigUInt representation of the list of UInt32 words.
+            The BigUInt representation of the list of Self.Word words.
         """
         var result = Self(raw_words=words^)
         result.remove_leading_empty_words()
         return result^
 
     @staticmethod
-    def from_words(*words: UInt32) raises -> Self:
+    def from_words(*words: Self.Word) raises -> Self:
         """Initializes a BigUInt from raw words safely.
 
         Args:
-            words: The UInt32 words representing the coefficient.
-                Each UInt32 word represents digits ranging from 0 to 10^9 - 1.
+            words: The Self.Word words representing the coefficient.
+                Each Self.Word word represents digits ranging from 0 to 10^9 - 1.
                 The words are stored in little-endian order.
 
         Raises:
@@ -478,11 +494,11 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             The `BigUInt` representation of the given words.
         """
 
-        var list_of_words = List[UInt32](capacity=len(words))
+        var list_of_words = List[Self.Word](capacity=len(words))
 
         # Check if the words are valid
         for word in words:
-            if word > UInt32(Self.BASE_MAX):
+            if word > Self.Word(Self.BASE_MAX):
                 raise OverflowError(
                     message=(
                         "Word value "
@@ -576,11 +592,11 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         return result^
 
     @staticmethod
-    def from_uint32_unsafe(unsafe_value: UInt32) -> Self:
-        """Creates a BigUInt from a `UInt32` object without checking the value.
+    def from_word_unsafe(unsafe_value: Self.Word) -> Self:
+        """Creates a BigUInt from a `Self.Word` object without checking the value.
 
         Args:
-            unsafe_value: The `UInt32` value to wrap directly as a single word.
+            unsafe_value: The `Self.Word` value to wrap directly as a single word.
 
         Returns:
             A single-word `BigUInt` containing the given value.
@@ -695,22 +711,22 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         # 8- and 16-bit scalars are at most 65_535 < 10^9, so one word always
         # suffices and no division is needed.
         comptime if value_bits <= 16:
-            return Self.from_uint32_unsafe(UInt32(value))
+            return Self.from_word_unsafe(UInt32(value))
 
         # A 32-bit scalar needs one word or two, decided by a comparison that
         # is cheaper than the general division loop. This is a hot path: the
         # single-word `add` fast paths land here.
         elif value_bits == 32:
             if value <= Self.BASE_MAX:
-                return Self.from_uint32_unsafe(UInt32(value))
+                return Self.from_word_unsafe(UInt32(value))
             else:
                 # Built straight into the result. A list literal here meant an
                 # allocation for the list and a second one to copy it into
                 # place -- 30 ns to carry two words, on the path every
                 # single-word addition takes.
                 var result = Self(uninitialized_capacity=2)
-                result.words.append(UInt32(value) % UInt32(Self.BASE))
-                result.words.append(UInt32(value) // UInt32(Self.BASE))
+                result.words.append(Self.Word(value) % Self.Word(Self.BASE))
+                result.words.append(Self.Word(value) // Self.Word(Self.BASE))
                 return result^
 
         else:
@@ -733,7 +749,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
             while remainder != 0:
                 quotient = remainder // Self.BASE
-                result.words.append(UInt32(remainder % Self.BASE))
+                result.words.append(Self.Word(remainder % Self.BASE))
                 remainder = quotient
 
             return result^
@@ -761,8 +777,8 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
         comptime if (dtype == DType.uint8) or (dtype == DType.uint16):
             # For types that are smaller than word size
-            # We can directly convert them to UInt32
-            return Self.from_uint32_unsafe(UInt32(value))
+            # We can directly convert them to Self.Word
+            return Self.from_word_unsafe(Self.Word(value))
 
         elif (dtype == DType.int8) or (dtype == DType.int16):
             # For signed types that are smaller than 1_000_000_000,
@@ -771,9 +787,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 # Because -Int16.MIN == Int16.MAX + 1,
                 # we need to handle the case by converting it to Int32
                 # before taking the absolute value.
-                return Self.from_uint32_unsafe(UInt32(-Int32(value)))
+                return Self.from_word_unsafe(Self.Word(-Int32(value)))
             else:
-                return Self.from_uint32_unsafe(UInt32(value))
+                return Self.from_word_unsafe(Self.Word(value))
 
         else:
             if value == 0:
@@ -782,7 +798,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             var sign = True if value < 0 else False
 
             # Built straight into the result's own storage. Filling a
-            # `List[UInt32]` and handing that to `raw_words=` cost 36 ns for
+            # `List[Self.Word]` and handing that to `raw_words=` cost 36 ns for
             # the integer 2 -- an allocation for the list, another for the
             # copy into place, to carry a single word. A 64-bit value needs
             # three base-billion words, which is inside `WordList`'s inline
@@ -795,13 +811,13 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 while remainder != 0:
                     quotient = remainder // (-Self.BASE)
                     remainder = remainder % (-Self.BASE)
-                    result.words.append(UInt32(-remainder))
+                    result.words.append(Self.Word(-remainder))
                     remainder = -quotient
             else:
                 while remainder != 0:
                     quotient = remainder // Self.BASE
                     remainder = remainder % Self.BASE
-                    result.words.append(UInt32(remainder))
+                    result.words.append(Self.Word(remainder))
                     remainder = quotient
 
             return result^
@@ -881,7 +897,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             number_of_digits, Self.DIGITS_PER_WORD
         )
 
-        var result_words = List[UInt32](capacity=number_of_words)
+        var result_words = List[Self.Word](capacity=number_of_words)
 
         if scale == 0:
             # This is a true integer
@@ -889,15 +905,15 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             var start: Int
             while end >= Self.DIGITS_PER_WORD:
                 start = end - Self.DIGITS_PER_WORD
-                var word: UInt32 = 0
+                var word: Self.Word = 0
                 for i in range(start, end):
-                    word = word * 10 + UInt32(coef[i])
+                    word = word * 10 + Self.Word(coef[i])
                 result_words.append(word)
                 end = start
             if end > 0:
-                var word: UInt32 = 0
+                var word: Self.Word = 0
                 for i in range(end):
-                    word = word * 10 + UInt32(coef[i])
+                    word = word * 10 + Self.Word(coef[i])
                 result_words.append(word)
 
             return Self(raw_words=result_words^)
@@ -908,7 +924,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             var remaining_trailing_zero_digits = -scale % Self.DIGITS_PER_WORD
 
             for _ in range(number_of_trailing_zero_words):
-                result_words.append(UInt32(0))
+                result_words.append(Self.Word(0))
 
             for _ in range(remaining_trailing_zero_digits):
                 coef.append(UInt8(0))
@@ -919,15 +935,15 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             var start: Int
             while end >= Self.DIGITS_PER_WORD:
                 start = end - Self.DIGITS_PER_WORD
-                var word: UInt32 = 0
+                var word: Self.Word = 0
                 for i in range(start, end):
-                    word = word * 10 + UInt32(coef[i])
+                    word = word * 10 + Self.Word(coef[i])
                 result_words.append(word)
                 end = start
             if end > 0:
-                var word: UInt32 = 0
+                var word: Self.Word = 0
                 for i in range(end):
-                    word = word * 10 + UInt32(coef[i])
+                    word = word * 10 + Self.Word(coef[i])
                 result_words.append(word)
 
             return Self(raw_words=result_words^)
@@ -1261,7 +1277,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             # of that exact size and write digits straight into it via the
             # pointer (no per-byte `append`, no reallocation, no
             # over-allocation), then move the buffer into the result `String`.
-            # The tight `//10` loop beats a per-word `String(UInt32)` + memcpy
+            # The tight `//10` loop beats a per-word `String(Self.Word)` + memcpy
             # (benchmarked ~2x slower at 23 words due to per-word allocation
             # and call overhead).
             var total_len = (n_words - 1) * Self.DIGITS_PER_WORD + msb_len
@@ -2023,7 +2039,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             )
 
         if exponent == 0:
-            return Self.from_uint32_unsafe(1)
+            return Self.from_word_unsafe(1)
 
         if exponent >= 1_000_000_000:
             raise ValueError(
@@ -2036,7 +2052,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 ),
             )
 
-        var result = Self.from_uint32_unsafe(1)
+        var result = Self.from_word_unsafe(1)
         var base = self.copy()
         var exp = exponent
         while exp > 0:
@@ -2255,15 +2271,15 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 return False
         var word = x.words[len(x.words) - 1]
         if (
-            (word == UInt32(1))
-            or (word == UInt32(10))
-            or (word == UInt32(100))
-            or (word == UInt32(1000))
-            or (word == UInt32(10_000))
-            or (word == UInt32(100_000))
-            or (word == UInt32(1_000_000))
-            or (word == UInt32(10_000_000))
-            or (word == UInt32(100_000_000))
+            (word == Self.Word(1))
+            or (word == Self.Word(10))
+            or (word == Self.Word(100))
+            or (word == Self.Word(1000))
+            or (word == Self.Word(10_000))
+            or (word == Self.Word(100_000))
+            or (word == Self.Word(1_000_000))
+            or (word == Self.Word(10_000_000))
+            or (word == Self.Word(100_000_000))
         ):
             return True
         return False
@@ -2395,7 +2411,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         """Returns the number of words in the BigUInt.
 
         Returns:
-            The number of `UInt32` words in the internal representation.
+            The number of `Self.Word` words in the internal representation.
         """
         return len(self.words)
 
@@ -2713,7 +2729,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             self, ndigits_to_remove
         )
         if round_up:
-            biguint_arithmetics.add_by_uint32_inplace(self, UInt32(1))
+            biguint_arithmetics.add_by_word_inplace(self, Self.Word(1))
             if self.is_power_of_10():
                 if remove_extra_digit_due_to_rounding:
                     biguint_arithmetics.floor_divide_by_power_of_ten_inplace(
