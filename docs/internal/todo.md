@@ -131,16 +131,18 @@ Barrett would cost about `4 * M(n)`, which is what we already pay.
 
 `sqrt` sits on top of the same stack -- profiled at 1000 and 10 000 digits it
 is 60% to 67% the one division at its last precision-doubling step, 10% to 20%
-the verifying squaring, and the rest driver. Even with the division and the
-squaring free it would still be 7.6x. Zimmermann's recursion is worth having,
-but it cannot get ahead of the division underneath it, so it comes after.
+the verifying squaring, and the rest driver. So it can never get ahead of the
+division underneath it. But it is also 2.2x further behind than that division
+is: ours costs 0.61 of a division where GMP's costs 0.28. Bringing only that
+ratio to GMP's, with division exactly as it is today, takes `sqrt` from 10.9x
+to 5.0x at 1000 digits.
 
 Ordered by what actually moves:
 
-1. **The NTT butterfly.** 4x on multiplication at 10^6, with no limb-width
-   excuse -- a transform packs bits, not limbs -- and division and `sqrt`
-   inherit all of it. Precomputed (Shoup) twiddles and radix-4; see item 7 of
-   `Now`, which wants the same thing for `pi()`.
+1. **Karatsuba square root.** 2.2x, at every size from 1000 digits up, and it
+   depends on nothing else landing first. Zimmermann's recursion halves the
+   division at the last step and returns the remainder, which also deletes the
+   verifying squaring.
 2. **Burnikel-Ziegler's per-level cost.** Our division costs 5.2 of its own
    multiplications where GMP's costs 2.0. The recursion is not too shallow:
    cutoffs of 8, 16 and 24 words are all *worse* than 64 (10.1 us, 7.2 us and
@@ -148,9 +150,17 @@ Ordered by what actually moves:
    allocations, `_shift_left_words_inplace`, `_add_at_offset_inplace` and a
    fresh result out of `_multiply_magnitudes_slices` every call. The cutoff
    itself is flat from 32 to 96 and there is nothing to win by moving it.
-3. **Karatsuba square root**, once 1 and 2 have landed. Zimmermann's recursion
-   halves the division at the last step and returns the remainder, which also
-   deletes the verifying squaring.
+3. **The NTT butterfly.** 4x on multiplication at 10^6, with no limb-width
+   excuse -- a transform packs bits, not limbs -- and division and `sqrt`
+   inherit all of it. But the butterfly is already 5 cycles, and 94% of the
+   multiplication is the three transforms (14.0 ms forward, 7.6 ms inverse,
+   1.4 ms for everything else at 10^6). Two things measured neutral there and
+   are not to be retried: branchless `mod_add`/`mod_sub`, which the compiler
+   already emits as `CSEL`, and there is no cheap win in the packing or the
+   pointwise product. What is left is radix-4 and Shoup twiddles, worth maybe
+   1.7x to 2x together -- not 4x. GMP is ahead here because Schonhage-Strassen
+   multiplies by a root of unity with a bit shift, where we do a modular
+   multiply. See item 7 of `Now`, which wants the same thing for `pi()`.
 4. **Break the carry chain in add and subtract.** We are latency-bound on it,
    not throughput-bound: 1038 words at 10 000 digits is 519 limbs and 271 ns,
    which is 1.8 cycles a limb, where GMP's `ADCS` chain runs at 1.0. Widen the
