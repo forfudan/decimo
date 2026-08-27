@@ -1578,18 +1578,24 @@ def _shift_left_words(a: Magnitude, shift: Int) -> Magnitude:
     Returns:
         The shifted magnitude as a new word list.
     """
+    var n = len(a)
     if shift == 0:
-        var copy = Magnitude(capacity=len(a))
-        for word in a:
-            copy.append(word)
+        var copy = Magnitude(capacity=n)
+        copy.resize(unsafe_uninit_length=n)
+        unsafe_memcpy(dest=copy.unsafe_ptr(), src=a.unsafe_ptr(), count=n)
         return copy^
 
-    var n = len(a)
+    # Sized once, then written through pointers. Appending word by word costs
+    # a capacity test per word and re-reads the list's storage field on every
+    # `a[i]`: 48 ns to copy 22 words, against 8 for the memcpy above.
     var result = Magnitude(capacity=n + 1)
+    result.resize(unsafe_uninit_length=n)
+    var ap = a.unsafe_ptr()
+    var rp = result.unsafe_ptr()
     var carry: UInt32 = 0
     for i in range(n):
-        var shifted = UInt64(a[i]) << UInt64(shift)
-        result.append(UInt32(shifted & UInt64(0xFFFF_FFFF)) | carry)
+        var shifted = UInt64(ap[unsafe_offset=i]) << UInt64(shift)
+        rp[unsafe_offset=i] = UInt32(shifted & UInt64(0xFFFF_FFFF)) | carry
         carry = UInt32(shifted >> UInt64(32))
     if carry > 0:
         result.append(carry)
@@ -1610,33 +1616,36 @@ def _shift_right_words(a: Magnitude, shift: Int, num_words: Int) -> Magnitude:
     Returns:
         The shifted magnitude as a new word list, normalized.
     """
-    if shift == 0:
-        var copy = Magnitude(capacity=num_words)
-        for i in range(min(num_words, len(a))):
-            copy.append(a[i])
-        while len(copy) > 1 and copy[len(copy) - 1] == 0:
-            copy.shrink(len(copy) - 1)
-        if len(copy) == 0:
-            copy.append(UInt32(0))
-        return copy^
-
     var n = min(num_words, len(a))
-    var result = Magnitude(capacity=n)
-    for i in range(n):
-        var lo = UInt64(a[i]) >> UInt64(shift)
-        var hi: UInt64 = 0
-        if i + 1 < n:
-            hi = (UInt64(a[i + 1]) << (UInt64(32) - UInt64(shift))) & UInt64(
-                0xFFFF_FFFF
-            )
-        result.append(UInt32(lo | hi))
+    if n <= 0:
+        var zero: Magnitude = [UInt32(0)]
+        return zero^
 
-    # Strip leading zeros
+    var result = Magnitude(capacity=n)
+    result.resize(unsafe_uninit_length=n)
+    var ap = a.unsafe_ptr()
+    var rp = result.unsafe_ptr()
+
+    if shift == 0:
+        unsafe_memcpy(dest=rp, src=ap, count=n)
+    else:
+        # The top word has nothing above it to pull down, so it is peeled off
+        # rather than tested for inside the loop.
+        var carry_shift = UInt64(32) - UInt64(shift)
+        for i in range(n - 1):
+            rp[unsafe_offset=i] = UInt32(
+                (UInt64(ap[unsafe_offset=i]) >> UInt64(shift))
+                | (
+                    (UInt64(ap[unsafe_offset=i + 1]) << carry_shift)
+                    & UInt64(0xFFFF_FFFF)
+                )
+            )
+        rp[unsafe_offset=n - 1] = UInt32(
+            UInt64(ap[unsafe_offset=n - 1]) >> UInt64(shift)
+        )
+
     while len(result) > 1 and result[len(result) - 1] == 0:
         result.shrink(len(result) - 1)
-    if len(result) == 0:
-        result.append(UInt32(0))
-
     return result^
 
 
