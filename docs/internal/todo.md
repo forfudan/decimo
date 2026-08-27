@@ -318,11 +318,11 @@ they are the first three.
    in the wide Comba path are not calls. Marginal cost measured against an
    empty loop, arm64:
 
-   | operation                        | ns   |
-   | -------------------------------- | ---- |
-   | `UInt64 // 10^9`, constant       | 0.06 |
-   | `UInt128 // 10^9`, constant      | 0.32 |
-   | `UInt128 // 10^18`, constant     | 0.40 |
+   | operation                                      | ns   |
+   | ---------------------------------------------- | ---- |
+   | `UInt64 // 10^9`, constant                     | 0.06 |
+   | `UInt128 // 10^9`, constant                    | 0.32 |
+   | `UInt128 // 10^18`, constant                   | 0.40 |
    | `UInt128 // 10^18`, Moller-Granlund reciprocal | 0.50 |
 
    The hand-rolled reciprocal is *slower* than what the compiler emits for a

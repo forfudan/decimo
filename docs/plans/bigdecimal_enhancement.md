@@ -58,7 +58,8 @@ Dated by report file under `benches/bigdecimal/reports/`. Append-only.
 | 20260223 | BigDecimal `multiply_inplace`, `add_inplace`, `subtract_inplace`                      |
 | 20260223 | `__iadd__` / `__isub__` / `__imul__` route through inplace versions                   |
 | 20260224 | Toom-3 helpers: `_exact_divide_by_{2,3,6}_inplace` (carry-based, no BigUInt division) |
-| 20260828 | `BigUInt.DIGITS_PER_WORD` names the digits in a word; `BASE`/`BASE_MAX`/`BASE_HALF` derived from it, `*_power_of_billion` renamed `*_power_of_base`. No behaviour change. |
+| 20260828 | `BigUInt.DIGITS_PER_WORD` names the digits in a word; `BASE`/`BASE_MAX`/`BASE_HALF`   |
+|          | derived from it, `*_power_of_billion` renamed `*_power_of_base`. No behaviour change. |
 
 ### 2.3 Performance — arithmetic & analytic ops
 
