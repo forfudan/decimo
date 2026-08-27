@@ -143,7 +143,6 @@ the 112-word row, is the one being tuned for.
 # floor_divide_modulo_burnikel_ziegler(a, b, cut_off, mut remainder) -> BigUInt
 # floor_divide_modulo_by_word(x, y: BigUInt.Word, mut remainder: BigUInt.Word) -> BigUInt
 # floor_divide_modulo_by_uint64(x, y: UInt64, mut remainder: UInt64) -> BigUInt
-# floor_divide_modulo_by_uint128(x, y: UInt128, mut remainder: UInt128) -> BigUInt
 #
 # normalize_carries_lt_2_bases(x: BigUInt) -> None
 # normalize_carries_lt4_bases(x: BigUInt) -> None
@@ -3197,105 +3196,6 @@ def floor_divide_by_uint64_inplace(mut x: BigUInt, y: UInt64) -> None:
     floor_divide_by_word_inplace(x, BigUInt.Word(y))
 
 
-def floor_divide_by_uint128(x: BigUInt, y: UInt128) -> BigUInt:
-    """Divides a BigUInt by UInt128.
-
-    Args:
-        x: The `BigUInt` dividend.
-        y: The `UInt128` divisor. Must be smaller than 10^36.
-
-    Returns:
-        The quotient of x divided by y.
-    """
-    var remainder = UInt128(0)
-    return floor_divide_modulo_by_uint128(x, y, remainder)
-
-
-def floor_divide_modulo_by_uint128(
-    x: BigUInt, y: UInt128, mut remainder: UInt128
-) -> BigUInt:
-    """Divides a BigUInt by UInt128, keeping the remainder.
-
-    Args:
-        x: The `BigUInt` dividend.
-        y: The `UInt128` divisor. Must be smaller than 10^36.
-        remainder: Set to `x % y` on return. It is smaller than `y`, so it
-            always fits in a `UInt128`.
-
-    Returns:
-        The quotient of x divided by y.
-    """
-    debug_assert[assert_mode="none"](
-        y != 0,
-        "biguint.arithmetics.floor_divide_modulo_by_uint128(): ",
-        "Division by zero.",
-    )
-
-    comptime BILLION = UInt256(1_000_000_000)
-
-    var y_uint255 = UInt256(y)
-    var n_words = len(x.words)
-    var lead_words = n_words % 4
-    var result = BigUInt(unsafe_uninit_length=n_words)
-    var carry = UInt256(0)
-
-    # The dividend is consumed four words at a time, so a word count that is
-    # not a multiple of four leaves a short leading group.
-    #
-    # That group has a quotient of its own, and the previous version of this
-    # function threw it away: it kept only `lead % y` as the carry and sized
-    # the result at `n - lead_words` words. Two things went wrong. A quotient
-    # that needed the dropped words came back too small - `y` of three words
-    # against `x` of seven silently lost the top word, a factor of 10^9. And
-    # when the dividend *was* the leading group, at three words or fewer, the
-    # result was left with no words at all, which faults the first operation
-    # that reads `words[len(words) - 1]`.
-    if lead_words != 0:
-        var lead = UInt256(0)
-        for k in range(n_words - 1, n_words - lead_words - 1, -1):
-            lead = lead * BILLION + UInt256(x.words[k])
-        var lead_quotient = lead // y_uint255
-        carry = lead % y_uint255
-        for k in range(n_words - lead_words, n_words):
-            result.words[k] = BigUInt.Word(lead_quotient % BILLION)
-            lead_quotient //= BILLION
-
-    for i in range(n_words - lead_words - 1, -1, -4):
-        var dividend = (
-            carry * UInt256(1_000_000_000_000_000_000_000_000_000_000_000_000)
-            + (
-                x.words.unsafe_ptr()
-                .unsafe_load[width=4](i - 3)
-                .cast[DType.uint256]()
-                * SIMD[DType.uint256, 4](
-                    1,
-                    1_000_000_000,
-                    1_000_000_000_000_000_000,
-                    1_000_000_000_000_000_000_000_000_000,
-                )
-            ).reduce_add()
-        )
-        var quotient = dividend // y_uint255
-        result.words[i] = BigUInt.Word(
-            quotient // UInt256(1_000_000_000_000_000_000_000_000_000)
-        )
-        quotient %= UInt256(1_000_000_000_000_000_000_000_000_000)
-        result.words[i - 1] = BigUInt.Word(
-            quotient // UInt256(1_000_000_000_000_000_000)
-        )
-        quotient %= UInt256(1_000_000_000_000_000_000)
-        result.words[i - 2] = BigUInt.Word(quotient // UInt256(1_000_000_000))
-        quotient %= UInt256(1_000_000_000)
-        result.words[i - 3] = BigUInt.Word(quotient)
-        carry = dividend % y_uint255
-
-    # Below `y`, which the caller guarantees is below 10^36, so it fits.
-    remainder = UInt128(carry)
-
-    result.remove_leading_empty_words()
-    return result^
-
-
 def floor_divide_by_2_inplace(mut x: BigUInt) -> None:
     """Divides a BigUInt by 2 in-place.
 
@@ -4831,55 +4731,3 @@ def calculate_ndigits_for_normalization(msw: BigUInt.Word) -> Int:
         value *= 10
         ndigits += 1
     return ndigits
-
-
-def to_uint64_with_2_words(a: BigUInt, bounds_x: Tuple[Int, Int]) -> UInt64:
-    """Convert two words at given index of the BigUInt to UInt64.
-
-    Args:
-        a: The `BigUInt` containing the words to convert.
-        bounds_x: A tuple of (start, end) indices specifying the word slice.
-
-    Returns:
-        The `UInt64` representation of the specified words.
-    """
-    var n_words = bounds_x[1] - bounds_x[0]
-    if n_words == 1:
-        return (
-            a.words.unsafe_ptr()
-            .unsafe_load[width=1](bounds_x[0])
-            .cast[DType.uint64]()
-        )
-    else:
-        return (
-            a.words.unsafe_ptr()
-            .unsafe_load[width=2](bounds_x[0])
-            .cast[DType.uint64]()
-            * SIMD[DType.uint64, 2](1, 1_000_000_000)
-        ).reduce_add()
-
-
-def to_uint128_with_2_words(a: BigUInt, bounds_x: Tuple[Int, Int]) -> UInt128:
-    """Convert two words at given index of the BigUInt to UInt128.
-
-    Args:
-        a: The `BigUInt` containing the words to convert.
-        bounds_x: A tuple of (start, end) indices specifying the word slice.
-
-    Returns:
-        The `UInt128` representation of the specified words.
-    """
-    var n_words = bounds_x[1] - bounds_x[0]
-    if n_words == 1:
-        return (
-            a.words.unsafe_ptr()
-            .unsafe_load[width=1](bounds_x[0])
-            .cast[DType.uint128]()
-        )
-    else:
-        return (
-            a.words.unsafe_ptr()
-            .unsafe_load[width=2](bounds_x[0])
-            .cast[DType.uint128]()
-            * SIMD[DType.uint128, 2](1, 1_000_000_000)
-        ).reduce_add()

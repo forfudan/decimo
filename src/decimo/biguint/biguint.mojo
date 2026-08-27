@@ -108,28 +108,32 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     Changing the base:
 
     `DIGITS_PER_WORD` is the one number that decides the representation, and
-    `BASE`, `BASE_MAX` and `BASE_HALF` are derived from it. Code that converts
-    between a digit position and a word position divides by it rather than by
-    a literal. What is *not* mechanical, and has to be rewritten by hand:
+    `BASE`, `BASE_MAX` and `BASE_HALF` are derived from it. `WORD_DTYPE` is
+    the machine type that has to hold `BASE - 1`, and the two move together.
+    Code that converts between a digit position and a word position divides by
+    the constant rather than by a literal.
 
-    - `WordList`'s word type and `INLINE_WORDS`, and every `Self.Word` in the
-      arithmetic kernels. A word of 18 digits does not fit a `Self.Word`.
-    - The Comba accumulator in `multiply_slices_schoolbook`. Its narrow path
-      sums a column in `UInt64` because a partial product is below `10^18`;
-      a wider word puts the product itself past 64 bits.
-    - Knuth D's quotient estimate, for the same reason.
-    - `ntt.mojo`'s packing, which cuts *two* words into three six-digit
-      coefficients because two words are 18 digits.
-    - `MAX_UINT64` and `MAX_UINT128` here, which spell their words out.
-    - Every place that packs a *pair* of words into one machine integer, and
-      so is bound to the width rather than to the base: the SIMD lane vectors
-      in `to_uint64()`, `to_uint128()` and `to_int128()` here, the same shape
-      in `biguint.exponential.sqrt()`, `to_uint64_with_2_words()` and
-      `to_uint128_with_2_words()` in `arithmetics.mojo`, and
-      `floor_divide_three_by_two_words()` and its four-by-two sibling. These
-      keep their literals on purpose: a word of 18 digits does not fit a
-      `UInt64` at all, so a named constant here would let the code compile and
-      silently overflow where a literal makes someone look.
+    What is *not* mechanical, and has to be rewritten by hand:
+
+    - The Comba accumulator in `multiply_slices_schoolbook`, and Knuth D's
+      quotient estimate. Both size an intermediate against `BASE^2`, so both
+      need a wider type when the base grows, and both type-check either way.
+    - `ntt.mojo`'s packing, which cuts words into six-digit coefficients.
+    - `MAX_UINT64` and `MAX_UINT128` here, and `is_uint64_overflow()` and
+      `is_uint128_overflow()`, which spell those limits out word by word.
+    - Anything that reassembles several words into one machine integer.
+
+    That last one is worth being blunt about, because getting it wrong is what
+    the base-10^18 change actually cost. Those sites were left alone at the
+    time on the reasoning that a wider word would not fit the machine integer
+    anyway, so a literal there "makes someone look". It does not: nobody
+    looked, and `to_uint64()`, `to_uint128()`, `to_int()` and
+    `_rational_root_decomposition()` all returned wrong answers for months of
+    nothing in particular happening.
+
+    A site that cannot be correct in the new base is not future work. Either
+    rewrite it -- these are Horner loops now, with the base named once -- or
+    delete it if nothing calls it, which is what happened to five of them.
 
     A guard-digit count is not a word width. `BUFFER_DIGITS`, `GUARD_DIGITS`
     and the like happen to be 9 and stay 9: they say how many extra digits to

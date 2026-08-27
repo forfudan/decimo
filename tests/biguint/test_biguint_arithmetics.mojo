@@ -331,20 +331,18 @@ def _bz_digit_run(count: Int, seed: Int) -> String:
 def test_biguint_divide_short_operands_of_every_word_count() raises:
     """`//` and `%` are correct for every small dividend/divisor word count.
 
-    `floor_divide()` routes any divisor of three or four words to
-    `floor_divide_by_uint128()`, which consumes the dividend four words at a
-    time. A dividend whose word count is not a multiple of four leaves a short
-    leading group, and that group's own quotient used to be discarded: a
+    Written for a `floor_divide_by_uint128()` shortcut that consumed the
+    dividend four words at a time and mishandled a short leading group: a
     seven-word dividend over a three-word divisor came back a factor of 10^9
-    too small, and a three-word dividend - where the leading group *is* the
-    whole number - produced a `BigUInt` with no words at all, which faults the
-    next operation that reads `words[len(words) - 1]`.
+    too small, and a three-word one produced a `BigUInt` with no words at all.
+    `23334504672441144935 // 1854056525350022197` crashed.
 
-    Neither shape is exotic: `23334504672441144935 // 1854056525350022197`
-    crashed. The sweep below walks every dividend length from one to nine
-    words against every divisor length from one to five, which covers all four
-    residues of the group size, and pins each result with `q * b + r == a`
-    and `0 <= r < b`.
+    That shortcut is gone -- three- and four-word divisors go through Knuth D
+    with everything else -- but the sweep is worth keeping on its own terms.
+    It walks every dividend length from one to nine words against every
+    divisor length from one to five and pins each result with `q * b + r == a`
+    and `0 <= r < b`, which is the property every dispatch path owes,
+    whichever one the sizes happen to select.
     """
     for divisor_words in range(1, 6):
         for dividend_words in range(1, 10):
