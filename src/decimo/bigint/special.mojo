@@ -93,25 +93,35 @@ def product_range(low: Int, high: Int) raises -> BigInt:
 
     Args:
         low: The first integer in the range (must be `>= 0`).
-        high: The last integer in the range (must be `<= 2^32 - 1` so every
-            factor fits in a single word).
+        high: The last integer in the range.
 
     Returns:
         `low * (low + 1) * ... * high` (1 when the range is empty).
 
     Raises:
-        ValueError: If the range is non-empty and `low < 0` or
-            `high > 2^32 - 1`, since the leaf multiplies cast each factor to a
-            single word.
+        ValueError: If the range is non-empty and `low < 0`, or if it has
+            more than `FACTORIAL_MAX_INPUT` factors.
+
+    Notes:
+        The upper bound used to be `high <= 2^32 - 1`, because the leaf
+        multiplies cast each factor to a single word. A word now holds every
+        non-negative `Int`, so that bound says nothing -- but it was also
+        doing a second job, keeping absurd ranges from running forever, and
+        that job still needs doing. The cap is on the number of factors now,
+        which is what it was really about: the same `FACTORIAL_MAX_INPUT`
+        that `factorial()` and `permutation()` already answer to, and which
+        every internal caller is inside by construction.
     """
     if low > high:
         return BigInt.one()
-    if low < 0 or high > Int(BigInt.WORD_MAX):
+    if low < 0:
         raise ValueError(
-            message=(
-                "product_range bounds must satisfy 0 <= low <= high <= 2^32 -"
-                " 1."
-            ),
+            message="product_range bounds must satisfy 0 <= low <= high.",
+            function="product_range()",
+        )
+    if high - low + 1 > FACTORIAL_MAX_INPUT:
+        raise ValueError(
+            message="product_range covers too many factors (must be <= 10^6).",
             function="product_range()",
         )
     # `high - low + 1` is the number of factors; accumulate the leaf directly
@@ -144,7 +154,8 @@ def permutation(x: BigInt, k: Int) raises -> BigInt:
     Raises:
         ValueError: If `x` or `k` is negative, if `k` is larger than
             `FACTORIAL_MAX_INPUT` (10^6, the cap on the number of factors),
-            or if `n` does not fit in a single word (`> 2^32 - 1`).
+            or if `n` does not fit an `Int`, which is what `product_range()`
+            takes its bounds as.
     """
     if x < BigInt.zero():
         raise ValueError(
@@ -161,10 +172,10 @@ def permutation(x: BigInt, k: Int) raises -> BigInt:
             message="Permutation k is too large to compute (must be <= 10^6).",
             function="permutation()",
         )
-    if x > BigInt(BigInt.WORD_MAX):
+    if x > BigInt(Int.MAX):
         raise ValueError(
             message=(
-                "Permutation n is too large to compute (must be <= 2^32 - 1)."
+                "Permutation n is too large to compute (must be <= 2^63 - 1)."
             ),
             function="permutation()",
         )

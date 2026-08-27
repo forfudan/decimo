@@ -84,7 +84,7 @@ def gcd(a: BigInt, b: BigInt) raises -> BigInt:
     """Computes the greatest common divisor of two integers.
 
     Uses the binary GCD (Stein's) algorithm, which is efficient for the
-    base-2^32 representation since it relies only on subtraction and
+    base-2^64 representation since it relies only on subtraction and
     right-shifts rather than expensive division. Operands of very different
     sizes are balanced with Euclidean steps first (see below).
 

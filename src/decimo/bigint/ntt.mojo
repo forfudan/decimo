@@ -1,4 +1,4 @@
-"""Number-theoretic transform multiplication for base-2^32 magnitudes.
+"""Number-theoretic transform multiplication for base-2^64 magnitudes.
 
 Multiplying two `n`-word magnitudes is a convolution of their digit sequences,
 and a convolution is a pointwise product under a discrete Fourier transform.
@@ -26,8 +26,8 @@ Reduction rests on `2^64 = 2^32 - 1 (mod P)`. Writing a 128-bit product as
 and each of the three terms is already a single word, so `mod_mul()` finishes
 with one subtract and one add. See `mod_mul()` for why no term can overflow.
 
-The operands are re-cut before the transform. A base-2^32 magnitude is a bit
-string, and nothing forces the transform to see it in 32-bit pieces: cutting it
+The operands are re-cut before the transform. A base-2^64 magnitude is a bit
+string, and nothing forces the transform to see it in word-sized pieces: cutting it
 into `chunk_bits`-bit pieces instead trades the number of coefficients against
 how large each convolution coefficient can grow. That freedom is what
 `_plan()` spends, and it is worth up to a factor of two - see there.
@@ -512,16 +512,32 @@ only keeps the planning arithmetic off the path of the small multiplications
 that dominate the recursion of every other algorithm.
 """
 
-comptime _NTT_RELATIVE_COST: Float64 = 1.10
+comptime _NTT_RELATIVE_COST: Float64 = 0.34
 """Cost of one `L * log2(L)` transform step against one `n^1.465` Toom-3 step.
 
-Both algorithms were fitted over 512 to 104 200 words on Apple Silicon arm64.
-The transform came out at 2.3-2.5e-3 microseconds per `L * log2(L)` and Toom-3
-at 1.8-2.4e-3 per `n^1.465`, so their ratio sits between 1.0 and 1.25 with no
-trend in size - which is what makes a single constant the right shape for this.
-The value is the upper end of that band rather than the middle, so that a tie
-goes to Toom-3, which allocates far less. Adjust if benchmarking on another
-target shows a better value.
+It was 1.10 while a word was 32 bits. Both terms are written over word counts,
+and only one of them still means the same thing at 64: the transform's `L`
+comes from the *bit* length, which a wider word leaves alone, while Toom-3's
+`n^1.465` is over words, and the same value now has half as many. So the
+constant had to be re-fitted rather than reasoned about, and the crossover
+moved from about 8 000 words to about 2 300.
+
+Measured against Toom-3 on the same operands, Apple Silicon arm64, best of
+three (microseconds):
+
+    words     2048   2304   2560   3072   3584    4096    8192   16384
+    Toom-3     545    645    681    955   1234    1562    3845   11353
+    transform  581    589    596    595   1220    1221    2610    5780
+
+The transform is flat inside a transform length and steps when `L` doubles,
+which is why the winner alternates rather than crossing once -- and why the
+answer has to come from comparing the two models rather than from a word
+count. Every size above wants `_NTT_RELATIVE_COST` below its own
+`toom3_cost / (L * log2 L)`: 0.309 at 2048 (where Toom-3 wins, so the constant
+must be at least that) and 0.368 at 2304 (where the transform does). 0.34 sits
+between them, which gets every measured size right except 3584, where it picks
+Toom-3 and gives up 1.1%. A tie going to Toom-3 is the right way round, since
+it allocates far less. Adjust if benchmarking on another target shows better.
 """
 
 
@@ -530,9 +546,10 @@ def should_multiply_ntt(len_a: Int, len_b: Int) -> Bool:
 
     A flat word count cannot answer this. The transform length has to be a
     power of two, so its cost climbs in steps while Toom-3's climbs smoothly,
-    and the winner alternates: at a quarter of the transform slots filled the
-    transform loses at 4 096 words, ties at 8 192 and wins from 16 384 up. What
-    settles it is comparing the two cost models directly.
+    and the winner alternates: the transform loses at 2 048 words, wins from
+    2 304 to 3 072, loses again at 3 584 where `L` has just doubled, and wins
+    everywhere above. What settles it is comparing the two cost models
+    directly.
 
     Toom-3's `n^1.465` is written over the operand area so that it still means
     something when the operands differ in size - `(len_a * len_b)^0.7325` is

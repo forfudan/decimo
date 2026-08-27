@@ -833,7 +833,7 @@ struct BigInt(
                     first_word = False
             else:
                 var b = bin(word)[byte=2:]
-                for _ in range(32 - b.byte_length()):
+                for _ in range(BigInt.BITS_PER_WORD - b.byte_length()):
                     result += "0"
                 result += b
 

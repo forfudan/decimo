@@ -24,7 +24,7 @@ from decimo.bigint.bigint import BigInt
 def compare_magnitudes(x1: BigInt, x2: BigInt) -> Int8:
     """Compares the magnitudes (absolute values) of two BigInt numbers.
 
-    The comparison is performed on the unsigned word arrays in base-2^32:
+    The comparison is performed on the unsigned word arrays in base-2^64:
     first by word count (more words → larger magnitude), then by comparing
     words from most-significant to least-significant.
 

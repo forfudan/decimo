@@ -17,7 +17,7 @@
 """
 Implements basic arithmetic functions for the BigInt type.
 
-BigInt uses base-2^32 representation with UInt64 words in little-endian order.
+BigInt uses base-2^64 representation with UInt64 words in little-endian order.
 Unlike the BigInt10 (base-10^9) type which delegates magnitude operations to
 BigUInt, BigInt implements all magnitude arithmetic directly since there is
 no separate unsigned counterpart.
@@ -612,7 +612,7 @@ def _multiply_magnitudes_karatsuba(
         z1 = (x0 + x1) * (y0 + y1) - z0 - z2
         result = z2 * B^(2m) + z1 * B^m + z0
 
-    In base-2^32, B^m shift = prepending m zero words (memcpy + memset_zero).
+    In base-2^64, B^m shift = prepending m zero words (memcpy + memset_zero).
 
     Operates on borrowed views to avoid copying the original input data.
     Falls back to schoolbook for small operands.
@@ -1169,7 +1169,6 @@ def _add_at_offset_inplace(mut a: Magnitude, imm b: Magnitude, offset: Int):
     var carry = _add_words(
         ap, alias_as_immutable_source(ap), bp, len_b, UInt64(0)
     )
-    var i = len_b
     # Propagate remaining carry
     var j = len_b
     while carry > 0 and (offset + j) < len(a):
@@ -1210,7 +1209,7 @@ def _subtract_magnitudes_inplace(mut a: Magnitude, imm b: Magnitude):
 def _shift_left_words_inplace(mut a: Magnitude, n: Int):
     """Shifts a magnitude left by n whole words in-place (multiply by B^n).
 
-    This is equivalent to prepending n zero words. In base-2^32, B^n shift
+    This is equivalent to prepending n zero words. In base-2^64, B^n shift
     is a pure memory operation — no arithmetic needed.
 
     Args:
@@ -1305,7 +1304,7 @@ def _divmod_magnitudes(
     """Divides magnitude a by magnitude b, returning the quotient.
 
     Implements Knuth's Algorithm D (The Art of Computer Programming, Vol 2,
-    Section 4.3.1) for multi-word division in base 2^32.
+    Section 4.3.1) for multi-word division in base 2^64.
 
     Args:
         a: The dividend magnitude (little-endian UInt64 words).
@@ -1959,7 +1958,7 @@ def _divmod_burnikel_ziegler(
     Slice-based implementation: passes word-list bounds through the recursion
     to avoid copying the large inputs until the Knuth D base case.
 
-    In base-2^32, normalization is a simple bit-shift (unlike base-10^9
+    In base-2^64, normalization is a simple bit-shift (unlike base-10^9
     where multiplication by a normalization factor is needed).
 
     Args:
@@ -2435,12 +2434,12 @@ def add_int_inplace(mut x: BigInt, value: Int):
         else:
             x.sign = False
             magnitude = UInt(value)
+        # One word holds the whole magnitude of any `Int`, so there is no
+        # loop to run -- and a loop here would not terminate anyway: shifting
+        # a 64-bit value right by 64 is undefined, and on arm64 the shift
+        # amount is taken modulo the width, so `>>= 64` leaves it unchanged.
         x.words.clear()
-        while magnitude != 0:
-            x.words.append(UInt64(magnitude & UInt(~UInt64(0))))
-            magnitude >>= 64
-        if len(x.words) == 0:
-            x.words.append(UInt64(0))
+        x.words.append(UInt64(magnitude))
         return
 
     # Determine other's sign and magnitude words
@@ -2456,14 +2455,10 @@ def add_int_inplace(mut x: BigInt, value: Int):
         other_sign = False
         other_magnitude = UInt(value)
 
-    # Build the Int's words: one, on any target with a 64-bit `Int`.
+    # One word holds the whole magnitude of any `Int`; see above for why this
+    # must not be written as a shift loop.
     var other_words = Magnitude(capacity=1)
-    var mag = other_magnitude
-    while mag != 0:
-        other_words.append(UInt64(mag & UInt(~UInt64(0))))
-        mag >>= 64
-    if len(other_words) == 0:
-        other_words.append(UInt64(0))
+    other_words.append(UInt64(other_magnitude))
 
     if x.sign == other_sign:
         # Same sign: add magnitudes
@@ -3093,7 +3088,7 @@ def power(base: BigInt, exponent: Int) raises -> BigInt:
 def left_shift(x: BigInt, shift: Int) -> BigInt:
     """Shifts a BigInt left by `shift` bits (multiply by 2^shift).
 
-    This is an efficient operation for base-2^32 representation since it
+    This is an efficient operation for base-2^64 representation since it
     operates directly on the word boundaries.
 
     Args:

@@ -24,8 +24,8 @@ def _pseudo_random_words(count: Int, seed: UInt64) -> Magnitude:
     var words = Magnitude(capacity=count)
     for _ in range(count):
         state = state * 6364136223846793005 + 1442695040888963407
-        words.append(UInt32(state >> 32))
-    words[count - 1] |= UInt32(1) << 31
+        words.append(state)
+    words[count - 1] |= UInt64(1) << 63
     return words^
 
 
@@ -49,15 +49,15 @@ def _assert_matches_reference(
         len_a: Word count of the first operand.
         len_b: Word count of the second operand.
         seed: Seed for the operand generator.
-        top_bits: When in `1..31`, shortens the first operand's top word to
-            this many bits, so that bit lengths are not all multiples of 32.
+        top_bits: When in `1..63`, shortens the first operand's top word to
+            this many bits, so that bit lengths are not all multiples of 64.
             The chunk width the planner picks depends on the bit length, not
             the word count.
     """
     var words_a = _pseudo_random_words(len_a, seed)
     var words_b = _pseudo_random_words(len_b, seed ^ 0xFFFF_FFFF_FFFF_FFFF)
-    if top_bits > 0 and top_bits < 32:
-        words_a[len_a - 1] = UInt32(1) << UInt32(top_bits - 1)
+    if top_bits > 0 and top_bits < 64:
+        words_a[len_a - 1] = UInt64(1) << UInt64(top_bits - 1)
 
     var expected = bigint_arithmetics._multiply_magnitudes_schoolbook(
         words_a.as_span(), words_b.as_span()
@@ -189,7 +189,7 @@ def test_ntt_plan_never_overflows_the_modulus() raises:
         1000000,
     ]
     for i in range(len(word_counts)):
-        var bits = word_counts[i] * 32
+        var bits = word_counts[i] * 64
         var plan = bigint_ntt._plan(bits, bits)
         var terms = UInt128(min(plan.coefficients_a, plan.coefficients_b))
         var chunk_max = UInt128((UInt64(1) << UInt64(plan.chunk_bits)) - 1)
@@ -304,7 +304,7 @@ def test_ntt_matches_reference_on_extreme_words() raises:
     def _all_ones(count: Int) -> Magnitude:
         var words = Magnitude(capacity=count)
         for _ in range(count):
-            words.append(UInt32(0xFFFF_FFFF))
+            words.append(~UInt64(0))
         return words^
 
     var word_counts = [1, 2, 17, 64, 1024, 2048, 4096]
