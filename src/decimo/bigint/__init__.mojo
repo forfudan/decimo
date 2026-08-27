@@ -14,9 +14,9 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-"""Sub-package for binary base-2^32 big integer type.
+"""Sub-package for binary base-2^64 big integer type.
 
-BigInt is a signed arbitrary-precision integer that uses base-2^32
+BigInt is a signed arbitrary-precision integer that uses base-2^64
 representation internally. This is the binary counterpart to BigInt10 (base-10^9).
 
 `BInt` now names BigInt. BigInt10 is no longer referenced by any other module

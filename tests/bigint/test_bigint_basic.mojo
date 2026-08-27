@@ -42,7 +42,7 @@ def test_from_int() raises:
         "BigInt(-9876543210): " + String(large_neg),
     )
 
-    # Test value that spans exactly 2 UInt32 words
+    # A value past the old 32-bit word boundary; one word now
     var two_words = BigInt(0xFFFF_FFFF + 1)  # 2^32 = 4294967296
     assert_true(
         String(two_words) == "4294967296",
@@ -174,13 +174,13 @@ def test_copy() raises:
 
 def test_normalize() raises:
     """Test _normalize strips leading zeros and normalizes -0."""
-    var x = BigInt(raw_words=[UInt32(42), UInt32(0), UInt32(0)], sign=False)
+    var x = BigInt(raw_words=[UInt64(42), UInt64(0), UInt64(0)], sign=False)
     x._normalize()
     assert_true(len(x.words) == 1, "normalize should strip leading zeros")
     assert_true(x.words[0] == 42, "normalize should preserve value")
 
     # Test -0 normalization
-    var neg_zero = BigInt(raw_words=[UInt32(0)], sign=True)
+    var neg_zero = BigInt(raw_words=[UInt64(0)], sign=True)
     neg_zero._normalize()
     assert_true(not neg_zero.sign, "-0 should normalize to +0")
 

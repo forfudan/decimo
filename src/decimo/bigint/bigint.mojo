@@ -23,11 +23,11 @@ operation dunders, and other dunders that implement traits, as well as
 mathematical methods that do not implement a trait.
 
 BigInt is the core binary-represented arbitrary-precision signed integer
-for the Decimo library. It uses base-2^32 representation with UInt32 words
+for the Decimo library. It uses base-2^64 representation with UInt64 words
 in little-endian order, and a separate sign bit.
 """
 
-from std.bit import bit_width, pop_count
+from std.bit import bit_width, count_leading_zeros, pop_count
 from std.memory import Pointer, unsafe_memcpy, unsafe_memset_zero
 from std.sys import size_of
 
@@ -51,25 +51,28 @@ from decimo.errors import (
     ZeroDivisionError,
 )
 
-comptime INLINE_WORDS = 12
+comptime INLINE_WORDS = 7
 """How many words a `BigInt` keeps inside itself before it allocates.
 
-It has to cover *results*, not operands. Twelve words is 384 bits, and what
-sets it is the hundred-digit case: a hundred digits is eleven words and their
-sum is twelve, so at eight this allocated on every addition and the cliff was
-plain to see -- 5.4 ns at forty digits, 47 ns at a hundred. Best of seven,
-two passes alternating between builds, `-D ASSERT=none` (ns):
+It has to cover *results*, not operands, and what sets it is the hundred-digit
+case: a hundred digits is six 64-bit words and their sum is seven. At six the
+cliff is plain -- every addition of two hundred-digit values allocates.
 
-    inline words        8      12      16      20
-    add    40 digits   5.4     7.0    14.8     8.1
-    add   100 digits  47.6     8.9    13.8     9.9
-    mul    40 digits  56.0    20.6    21.8    22.2
-    div   100 digits   460     300     311     297
-    add  1000 digits  60.7    58.0    58.9    60.9
+This was twelve while a word was 32 bits, chosen the same way: eleven words
+for a hundred digits and twelve for their sum. Seven words is 448 bits against
+that twelve's 384, so the inline range went *up* slightly even as the struct
+grew by one word. Best of seven, three passes alternating between builds,
+`-D ASSERT=none`, addition (ns):
 
-Twelve is the first that covers a hundred digits and the cheapest that does.
-Beyond it the struct only gets bigger: sixteen and twenty pay for the extra
-words at forty digits and buy nothing back. At 1000 and 100 000 digits every
+    digits             10     28     40    100    120    150
+    inline  6         5.0    5.3    5.9   46.8   47.7   47.3
+    inline  7         5.4    5.1    5.4   10.0   45.4   44.5
+    inline 10         6.8    6.0    6.1   12.7   11.1    8.6
+
+Ten pushes the cliff past 150 digits and pays for it everywhere below forty,
+where inline storage is the whole point -- an 80-byte struct is moved on every
+operation whether or not the words are there. Seven is the first that covers a
+hundred digits and the cheapest that does. At 1000 digits and above every
 setting is within noise of the plain `List` this replaced.
 
 GMP has no inline buffer at all, and pays for it. Adding two 100-digit
@@ -78,10 +81,12 @@ one, so two thirds of it is `malloc` and `free`. An immutable value type
 cannot reuse a destination, so this is where we come out ahead rather than
 behind -- 1.4x at a hundred digits and 2.7x at ten. `docs/benchmarks.md`
 carries the current figures.
+
+7 is a prime number. I love prime numbers. 😃
 """
 
-comptime Magnitude = WordList[INLINE_WORDS]
-"""The word storage for a `BigInt` magnitude, little-endian, base 2^32."""
+comptime Magnitude = WordList[DType.uint64, INLINE_WORDS]
+"""The word storage for a `BigInt` magnitude, little-endian, base 2^64."""
 
 # Type aliases
 comptime BInt = BigInt
@@ -106,31 +111,32 @@ struct BigInt(
 
     Internal Representation:
 
-    Uses base-2^32 representation for the integer magnitude.
+    Uses base-2^64 representation for the integer magnitude.
     BigInt uses a dynamic structure in memory, which contains:
     - A `Magnitude` of words for the magnitude, little-endian ordered.
-      Each UInt32 word uses the full 32-bit range [0, 2^32 - 1].
+      Each UInt64 word uses the full 64-bit range [0, 2^64 - 1].
     - A Bool for the sign (True = negative, False = non-negative).
 
     The absolute value is calculated as:
 
-    |x| = words[0] + words[1] * 2^32 + words[2] * 2^64 + ... + words[n] * 2^(32n)
+    |x| = words[0] + words[1] * 2^64 + words[2] * 2^128 + ... + words[n] * 2^(64n)
 
     The actual value is: (-1)^sign * |x|.
 
     This is analogous to GMP and most modern bigint libraries that use
     native-word-sized limbs with a separate sign.
 
-    Arithmetic intermediate results use UInt64 for single products
-    (UInt32 * UInt32 → UInt64) and UInt128 for accumulation, which allows
-    efficient schoolbook and Karatsuba multiplication on 64-bit hardware.
+    Arithmetic intermediate results use UInt128 for single products
+    (UInt64 * UInt64 → UInt128, which is `MUL` plus `UMULH` on arm64) and for
+    accumulation, which allows efficient schoolbook and Karatsuba
+    multiplication on 64-bit hardware.
 
     Representation invariant:
 
     1. `words` is never empty. It always holds at least one word.
     2. There are no leading zero words: `words[len(words) - 1] != 0`, unless
        `len(words) == 1`.
-    3. Unlike `BigUInt`, a word here uses the full `[0, 2^32 - 1]` range, so
+    3. Unlike `BigUInt`, a word here uses the full `[0, 2^64 - 1]` range, so
        there is no per-word bound to check.
 
     Note that the sign of zero is *not* canonical: `is_zero()` scans the words
@@ -144,8 +150,8 @@ struct BigInt(
     """
 
     var words: Magnitude
-    """A list of UInt32 words representing the magnitude in little-endian order.
-    Each word uses the full [0, 2^32 - 1] range."""
+    """A list of UInt64 words representing the magnitude in little-endian order.
+    Each word uses the full [0, 2^64 - 1] range."""
 
     var sign: Bool
     """True if the number is negative, False if zero or positive."""
@@ -154,14 +160,10 @@ struct BigInt(
     # Constants
     # ===------------------------------------------------------------------=== #
 
-    comptime BITS_PER_WORD = 32
+    comptime BITS_PER_WORD = 64
     """Number of bits per word."""
-    comptime BASE: UInt64 = 1 << 32  # 4294967296
-    """The base used for the BigInt representation (2^32)."""
-    comptime WORD_MAX: UInt32 = ~UInt32(0)  # 0xFFFF_FFFF = 4294967295
-    """The maximum value of a single word (2^32 - 1)."""
-    comptime WORD_MASK: UInt64 = (1 << 32) - 1
-    """Mask to extract the lower 32 bits from a UInt64."""
+    comptime WORD_MAX: UInt64 = ~UInt64(0)
+    """The maximum value of a single word (2^64 - 1)."""
 
     comptime ZERO = Self.zero()
     """The value 0."""
@@ -186,7 +188,7 @@ struct BigInt(
         Returns:
             A `BigInt` with value 1.
         """
-        return Self(raw_words=[UInt32(1)], sign=False)
+        return Self(raw_words=[UInt64(1)], sign=False)
 
     @always_inline
     @staticmethod
@@ -196,7 +198,7 @@ struct BigInt(
         Returns:
             A `BigInt` with value -1.
         """
-        return Self(raw_words=[UInt32(1)], sign=True)
+        return Self(raw_words=[UInt64(1)], sign=True)
 
     # ===------------------------------------------------------------------=== #
     # Constructors and life time dunder methods
@@ -204,7 +206,7 @@ struct BigInt(
 
     def __init__(out self):
         """Initializes a BigInt with value 0."""
-        self.words = [UInt32(0)]
+        self.words = [UInt64(0)]
         self.sign = False
 
     def __init__(out self, *, uninitialized_capacity: Int):
@@ -223,7 +225,7 @@ struct BigInt(
         form with no unnecessary leading zeros.
 
         Args:
-            raw_words: A list of UInt32 words in little-endian order.
+            raw_words: A list of UInt64 words in little-endian order.
             sign: True if negative, False if non-negative.
 
         Notes:
@@ -231,7 +233,7 @@ struct BigInt(
             Always ensures at least one word exists.
         """
         if len(raw_words) == 0:
-            self.words = [UInt32(0)]
+            self.words = [UInt64(0)]
             self.sign = False
         else:
             self.words = raw_words^
@@ -326,7 +328,7 @@ struct BigInt(
         else:
             magnitude = Scalar[unsigned_dtype](value)
 
-        # Split the magnitude into base-2^32 words, least significant first.
+        # Split the magnitude into base-2^64 words, least significant first.
         # The peeling loop below is parameterized by `BITS_PER_WORD` for
         # future extension to other word sizes (e.g. 64-bit words).
         comptime value_bits = size_of[Scalar[unsigned_dtype]]() * 8
@@ -337,7 +339,7 @@ struct BigInt(
 
         comptime for i in range(number_of_words):
             words.append(
-                UInt32(magnitude & Scalar[unsigned_dtype](Self.WORD_MAX))
+                UInt64(magnitude & Scalar[unsigned_dtype](Self.WORD_MAX))
             )
 
             comptime if i < number_of_words - 1:  # No need after reading the last word
@@ -449,7 +451,7 @@ struct BigInt(
 
     @staticmethod
     def from_biguint(magnitude: BigUInt, sign: Bool = False) -> Self:
-        """Converts a base-10^9 magnitude and a sign to a base-2^32 BigInt.
+        """Converts a base-10^9 magnitude and a sign to a base-2^64 BigInt.
 
         Args:
             magnitude: The unsigned base-10^9 magnitude to convert.
@@ -457,32 +459,35 @@ struct BigInt(
                 is zero, which is always stored unsigned.
 
         Returns:
-            The BigInt (base-2^32) representation.
+            The BigInt (base-2^64) representation.
         """
         if magnitude.is_zero():
             return Self()
 
-        # Convert from base 10^9 to base 2^32 using repeated division
+        # Convert from base 10^9 to base 2^64 using repeated division
         var div_words = Magnitude(capacity=len(magnitude.words))
         for word in magnitude.words:
-            div_words.append(word)
+            div_words.append(UInt64(word))
         var result = Self(uninitialized_capacity=len(magnitude.words))
 
         var all_zero = False
         while not all_zero:
-            var remainder: UInt64 = 0
+            # The dividend is base 10^9 and the divisor is 2^64, so the
+            # running remainder is up to `2^64 - 1` and `remainder * 10^9`
+            # needs the wider type.
+            var remainder = UInt128(0)
             for i in range(len(div_words) - 1, -1, -1):
-                var temp = remainder * UInt64(BigUInt.BASE) + UInt64(
+                var temp = remainder * UInt128(BigUInt.BASE) + UInt128(
                     div_words[i]
                 )
-                div_words[i] = UInt32(temp >> 32)
-                remainder = temp & 0xFFFF_FFFF
+                div_words[i] = UInt64(temp >> 64)
+                remainder = temp & UInt128(~UInt64(0))
 
             # Remove leading zeros from dividend
             while len(div_words) > 1 and div_words[len(div_words) - 1] == 0:
                 div_words.shrink(len(div_words) - 1)
 
-            result.words.append(UInt32(remainder))
+            result.words.append(UInt64(remainder))
 
             # Check if dividend is zero
             all_zero = True
@@ -560,17 +565,15 @@ struct BigInt(
         Raises:
             OverflowError: If the number exceeds the size of Int.
         """
-        # Int is 64-bit, so we need at most 2 words to represent it.
-        # Int.MAX = 9_223_372_036_854_775_807 = 0x7FFF_FFFF_FFFF_FFFF
-        if len(self.words) > 2:
+        # A word is as wide as an `Int`, so anything past the first is an
+        # overflow on its own.
+        if len(self.words) > 1:
             raise OverflowError(
                 message="The number exceeds the size of Int",
                 function="BigInt.to_int()",
             )
 
-        var magnitude: UInt64 = UInt64(self.words[0])
-        if len(self.words) == 2:
-            magnitude += UInt64(self.words[1]) << 32
+        var magnitude: UInt64 = self.words[0]
 
         if self.sign:
             # Negative: check against Int.MIN magnitude (2^63)
@@ -609,22 +612,31 @@ struct BigInt(
 
         # Above the divide-and-conquer threshold, split on powers of 10^9:
         # repeated division is O(n^2), while the recursion is O(M(n) log n)
-        # and lands each half on a base-10^9 word boundary, so the words go
+        # and lands each half on a base-10^18 word boundary, so the words go
         # straight into the result with no decimal string in between.
+        var chunks: List[UInt64]
         if effective_words > _DC_TO_STR_ENTRY_THRESHOLD:
             try:
-                return BigUInt(
-                    raw_words=_magnitude_to_base_1e9_dc(
-                        self.words, effective_words
-                    )
-                )
+                chunks = _magnitude_to_chunks_dc(self.words, effective_words)
             except:
                 # Fall through to the simple path if D&C raises.
-                pass
+                chunks = _magnitude_to_chunks_simple(
+                    self.words, effective_words
+                )
+        else:
+            chunks = _magnitude_to_chunks_simple(self.words, effective_words)
 
-        return BigUInt(
-            raw_words=_magnitude_to_base_1e9_simple(self.words, effective_words)
-        )
+        # A chunk is `10^18`, which is `(10^9)^2`, so each one splits into
+        # exactly two of `BigUInt`'s words. That is the whole reason the chunk
+        # is eighteen digits rather than the nineteen a word would hold.
+        var words = List[UInt32](capacity=2 * len(chunks))
+        for i in range(len(chunks)):
+            var chunk = chunks[i]
+            words.append(UInt32(chunk % 1_000_000_000))
+            words.append(UInt32(chunk // 1_000_000_000))
+        while len(words) > 1 and words[len(words) - 1] == 0:
+            words.shrink(len(words) - 1)
+        return BigUInt(raw_words=words^)
 
     def to_string(self, line_width: Int = 0) -> String:
         """Returns the decimal string representation of the BigInt.
@@ -827,7 +839,7 @@ struct BigInt(
                     first_word = False
             else:
                 var b = bin(word)[byte=2:]
-                for _ in range(32 - b.byte_length()):
+                for _ in range(BigInt.BITS_PER_WORD - b.byte_length()):
                     result += "0"
                 result += b
 
@@ -1923,7 +1935,7 @@ struct BigInt(
 
         # `std.bit.bit_width` lowers to a hardware `clz`, replacing the
         # bit-at-a-time probe loop.
-        return (n_words - 1) * 32 + Int(bit_width(msw))
+        return (n_words - 1) * 64 + Int(bit_width(msw))
 
     def bit_count(self) -> Int:
         """Returns the number of ones in the binary representation of the
@@ -1953,7 +1965,7 @@ struct BigInt(
         """Returns the number of words in the magnitude.
 
         Returns:
-            The number of `UInt32` words used to represent the magnitude.
+            The number of `UInt64` words used to represent the magnitude.
         """
         return len(self.words)
 
@@ -2080,62 +2092,12 @@ struct BigInt(
 # ===----------------------------------------------------------------------=== #
 
 
-def _multiply_by_uint32_inplace(mut x: BigInt, y: UInt32):
-    """Multiplies a BigInt magnitude by a UInt32 scalar in-place.
-
-    This is used internally by from_string() during base conversion.
-
-    Args:
-        x: The BigInt to multiply (modified in-place).
-        y: The UInt32 scalar multiplier.
-    """
-    if y == 0:
-        x.words = [UInt32(0)]
-        x.sign = False
-        return
-    if y == 1:
-        return
-
-    var carry: UInt64 = 0
-    for i in range(len(x.words)):
-        var product = UInt64(x.words[i]) * UInt64(y) + carry
-        x.words[i] = UInt32(product & 0xFFFF_FFFF)
-        carry = product >> 32
-
-    if carry > 0:
-        x.words.append(UInt32(carry))
-
-
-def _add_by_uint32_inplace(mut x: BigInt, y: UInt32):
-    """Adds a UInt32 value to a BigInt magnitude in-place.
-
-    This is used internally by from_string() during base conversion.
-
-    Args:
-        x: The BigInt to add to (modified in-place).
-        y: The UInt32 value to add.
-    """
-    if y == 0:
-        return
-
-    var carry: UInt64 = UInt64(y)
-    for i in range(len(x.words)):
-        if carry == 0:
-            break
-        var sum = UInt64(x.words[i]) + carry
-        x.words[i] = UInt32(sum & 0xFFFF_FFFF)
-        carry = sum >> 32
-
-    if carry > 0:
-        x.words.append(UInt32(carry))
-
-
-def _multiply_add_inplace(mut x: BigInt, mul: UInt32, add: UInt32):
+def _multiply_add_inplace(mut x: BigInt, mul: UInt64, add: UInt64):
     """Computes x = x * mul + add in a single pass over the word array.
 
     Fuses the multiply-by-scalar and add-scalar operations into one O(n) pass
     instead of two separate O(n) passes, halving memory traffic. This is the
-    inner loop of the simple base-conversion path (9 digits at a time).
+    inner loop of the simple base-conversion path, a chunk at a time.
 
     Correctness: at each word position i,
         product = x.words[i] * mul + carry
@@ -2143,27 +2105,28 @@ def _multiply_add_inplace(mut x: BigInt, mul: UInt32, add: UInt32):
     x * mul + add because the carry chain handles both the multiplication
     carry and the initial addend.
 
-    Overflow safety: product <= (2^32-1)*(2^32-1) + carry. Since carry < 2^32
-    after the first step, product < 2^64, fitting in UInt64.
+    Overflow safety: product <= (2^64-1)*(2^64-1) + carry, which is what the
+    128-bit accumulator is for; the carry out is below `mul` and so fits a
+    word again.
 
     Args:
         x: The BigInt to modify in-place.
-        mul: The UInt32 multiplier (e.g. 10^9).
-        add: The UInt32 addend (e.g. a 9-digit chunk value).
+        mul: The UInt64 multiplier (e.g. 10^18).
+        add: The UInt64 addend (e.g. a chunk value).
     """
     if mul == 0:
-        x.words = [UInt32(add)]
+        x.words = [UInt64(add)]
         x.sign = False
         return
 
-    var carry: UInt64 = UInt64(add)
+    var carry: UInt64 = add
     for i in range(len(x.words)):
-        var product = UInt64(x.words[i]) * UInt64(mul) + carry
-        x.words[i] = UInt32(product & 0xFFFF_FFFF)
-        carry = product >> 32
+        var product = UInt128(x.words[i]) * UInt128(mul) + UInt128(carry)
+        x.words[i] = UInt64(product)
+        carry = UInt64(product >> 64)
 
     if carry > 0:
-        x.words.append(UInt32(carry))
+        x.words.append(UInt64(carry))
 
 
 # ===----------------------------------------------------------------------=== #
@@ -2172,7 +2135,8 @@ def _multiply_add_inplace(mut x: BigInt, mul: UInt32, add: UInt32):
 
 # Thresholds for D&C from_string, measured in decimal digit count.
 # The simple multiply-and-add method has very low constant factors
-# (sequential UInt32 operations), so D&C only wins at much larger sizes
+# (one sequential pass of word-sized multiply-adds), so D&C only wins at
+# much larger sizes
 # than for to_string (where the saved divisions are each expensive).
 # Entry threshold: only enter D&C when the digit count is large enough
 # that the O(n²) simple method is significantly slower than the O(M(n)·log n)
@@ -2215,75 +2179,67 @@ def _from_decimal_digits_simple(
 
     var digit_count = end - start
 
-    # ---- Fast path: ≤ 9 digits → single UInt32 word, no allocation ----
-    if digit_count <= 9:
-        var dp = digits.unsafe_ptr().unsafe_offset(start)
-        var val: UInt32 = UInt32(dp[])
-        for j in range(1, digit_count):
-            val = val * 10 + UInt32(dp[unsafe_offset=j])
-        var result = BigInt()
-        result.words[0] = val
-        return result^
-
-    # ---- Fast path: 10–19 digits → parse into UInt64, at most 2 words ----
+    # ---- Fast path: <= 19 digits -> a single word, no allocation ----
+    # `10^19 - 1` is below `2^64`, so nineteen digits always fit one word and
+    # the running value cannot overflow on the way in either. This is the one
+    # place that uses all nineteen; the chunk base below stops at eighteen for
+    # a different reason.
     if digit_count <= 19:
         var dp = digits.unsafe_ptr().unsafe_offset(start)
         var val: UInt64 = UInt64(dp[])
         for j in range(1, digit_count):
             val = val * 10 + UInt64(dp[unsafe_offset=j])
         var result = BigInt()
-        result.words[0] = UInt32(val & 0xFFFF_FFFF)
-        var high_word = UInt32(val >> 32)
-        if high_word > 0:
-            result.words.append(high_word)
+        result.words[0] = val
         return result^
 
-    # ---- General path: pre-allocate and multiply-add by 10^9 chunks ----
+    # ---- General path: pre-allocate and multiply-add by 10^18 chunks ----
 
-    # Pre-allocate words: ceil(digit_count * log2(10) / 32) + 2.
-    # 107/1024 ≈ 0.10449 > log2(10)/32 ≈ 0.10381, so always sufficient.
+    # Pre-allocate words: ceil(digit_count * log2(10) / 64) + 2.
+    # 107/2048 ≈ 0.052246 > log2(10)/64 ≈ 0.051905, so always sufficient.
     # The +2 guarantees room for a carry word at the end of every iteration.
-    var max_words = (digit_count * 107 + 1023) // 1024 + 2
+    var max_words = (digit_count * 107 + 2047) // 2048 + 2
 
     var result = BigInt()
     result.words = Magnitude(capacity=max_words)
     result.words.resize(unsafe_uninit_length=max_words)
     var wp = result.words.unsafe_ptr()  # stable pointer: no reallocation occurs
 
-    # Handle first chunk (1–9 digits) to align the rest to 9-digit boundaries.
-    var first_chunk = digit_count % 9
+    # Handle the first chunk to align the rest to chunk boundaries.
+    var first_chunk = digit_count % _DECIMAL_CHUNK_DIGITS
     if first_chunk == 0:
-        first_chunk = 9
+        first_chunk = _DECIMAL_CHUNK_DIGITS
 
     var dp = digits.unsafe_ptr().unsafe_offset(start)
-    var chunk_val: UInt32 = UInt32(dp[])
+    var chunk_val: UInt64 = UInt64(dp[])
     for j in range(1, first_chunk):
-        chunk_val = chunk_val * 10 + UInt32(dp[unsafe_offset=j])
+        chunk_val = chunk_val * 10 + UInt64(dp[unsafe_offset=j])
     dp = dp.unsafe_offset(first_chunk)
 
     wp[] = chunk_val
     var word_count: Int = 1
     var remaining = digit_count - first_chunk
 
-    # Main loop: full 9-digit chunks with constant multiplier 10^9.
-    comptime MUL9: UInt64 = 1_000_000_000
+    # Main loop: full 18-digit chunks with constant multiplier 10^18.
+    comptime MUL18 = UInt128(_DECIMAL_CHUNK_BASE)
 
     while remaining > 0:
-        # Parse 9 digit values → UInt32 chunk
-        var cv: UInt32 = UInt32(dp[])
-        for j in range(1, 9):
-            cv = cv * 10 + UInt32(dp[unsafe_offset=j])
-        dp = dp.unsafe_offset(9)
-        remaining -= 9
+        # Parse a chunk's worth of digit values into one word
+        var cv: UInt64 = UInt64(dp[])
+        for j in range(1, _DECIMAL_CHUNK_DIGITS):
+            cv = cv * 10 + UInt64(dp[unsafe_offset=j])
+        dp = dp.unsafe_offset(_DECIMAL_CHUNK_DIGITS)
+        remaining -= _DECIMAL_CHUNK_DIGITS
 
-        # Fused multiply-add: result = result * 10^9 + cv  (single O(n) pass)
-        var carry: UInt64 = UInt64(cv)
+        # Fused multiply-add: result = result * 10^18 + cv (one O(n) pass).
+        # The carry stays below 10^18 and so inside a word.
+        var carry: UInt64 = cv
         for k in range(word_count):
-            var product = UInt64(wp[unsafe_offset=k]) * MUL9 + carry
-            wp[unsafe_offset=k] = UInt32(product & 0xFFFF_FFFF)
-            carry = product >> 32
+            var product = UInt128(wp[unsafe_offset=k]) * MUL18 + UInt128(carry)
+            wp[unsafe_offset=k] = UInt64(product)
+            carry = UInt64(product >> 64)
         if carry > 0:
-            wp[unsafe_offset=word_count] = UInt32(carry)
+            wp[unsafe_offset=word_count] = carry
             word_count += 1
 
     # Trim pre-allocated words to the actual live word count.
@@ -2417,7 +2373,7 @@ def _dc_from_str_recursive(
 # Divide-and-conquer base conversion (binary → decimal string)
 # ===----------------------------------------------------------------------=== #
 
-# The thresholds (in UInt32 words) below which we use the simple O(n^2) method
+# The thresholds (in UInt64 words) below which we use the simple O(n^2) method
 # of repeated division by 10^9. Above them, the D&C method is used.
 #
 # - _DC_TO_STR_ENTRY_THRESHOLD (64): gates the top-level decision to enter D&C
@@ -2450,25 +2406,31 @@ def _dc_from_str_recursive(
 comptime _DC_TO_STR_ENTRY_THRESHOLD = 64
 comptime _DC_TO_STR_BASE_THRESHOLD = 48
 
-# Base for extracting 9-digit decimal chunks in the simple conversion path.
-# Same numerical value as BigUInt.BASE, but defined locally to avoid
-# coupling the binary→decimal conversion logic to the BigUInt type.
-comptime _DECIMAL_CHUNK_BASE: UInt64 = 1_000_000_000
+# Base for extracting decimal chunks, both ways.
+#
+# Nineteen digits is the most that fit a word, but eighteen is the right
+# number, for two reasons that agree. It carries exactly twice what `10^9`
+# carried in a half-as-wide word, so the density is unchanged and the
+# three-digit grouping people read numbers by survives; and `to_biguint()`
+# hands these chunks straight to `BigUInt`, whose own base is `10^9`, where
+# only a whole number of nine-digit groups splits cleanly.
+comptime _DECIMAL_CHUNK_DIGITS = 18
+comptime _DECIMAL_CHUNK_BASE: UInt64 = 1_000_000_000_000_000_000
 
 
 def _magnitude_to_decimal_simple(words: Magnitude, eff_words: Int) -> String:
     """Converts a magnitude (unsigned word list) to a decimal string using
-    the simple O(n²) method of repeated division by 10^9.
+    the simple O(n²) method of repeated division by a power of ten.
 
     Optimizations over naive approach:
-    - Divides by 10^9, collecting base-10^9 chunks, then writes digits
+    - Divides by `10^18`, collecting chunks, then writes digits
       to a byte buffer in one pass (no string concatenation).
     - Tracks effective dividend length (`div_len`) instead of scanning
       for is_zero.
     - Uses `unsafe_ptr()` for the inner division loop.
 
     Args:
-        words: The magnitude in little-endian UInt32 words.
+        words: The magnitude in little-endian UInt64 words.
         eff_words: Effective number of words (excluding trailing zeros).
 
     Returns:
@@ -2477,27 +2439,25 @@ def _magnitude_to_decimal_simple(words: Magnitude, eff_words: Int) -> String:
     if eff_words == 1 and words[0] == 0:
         return String("0")
 
-    # Fast path for single-word values.
+    # Fast path for single-word values. `String(UInt64)` rather than
+    # `String(Int(...))`: a word above `2^63` is not an `Int`.
     if eff_words == 1:
-        return String(Int(words[0]))
+        return String(words[0])
 
-    # Fast path for two-word values (fits in UInt64).
-    if eff_words == 2:
-        var val = (UInt64(words[1]) << 32) | UInt64(words[0])
-        return String(val)
-
-    var chunks = _magnitude_to_base_1e9_simple(words, eff_words)
+    var chunks = _magnitude_to_chunks_simple(words, eff_words)
     var num_chunks = len(chunks)
     if num_chunks == 0:
         return String("0")
 
     # --- Build the decimal string in a byte buffer ---
-    var max_digits = num_chunks * 9
+    # The chunks stay `UInt64` rather than being narrowed to `Int` the way
+    # the base-10^9 form did; nothing here needs a signed type.
+    var max_digits = num_chunks * _DECIMAL_CHUNK_DIGITS
     var buf = List[UInt8](capacity=max_digits + 1)
 
     # Most-significant chunk: no zero-padding.
-    var msb = Int(chunks[num_chunks - 1])
-    var msb_digits = Array[UInt8, 10](fill=0)
+    var msb = chunks[num_chunks - 1]
+    var msb_digits = Array[UInt8, 20](fill=0)
     var msb_len = 0
     if msb == 0:
         buf.append(48)  # '0'
@@ -2510,23 +2470,23 @@ def _magnitude_to_decimal_simple(words: Magnitude, eff_words: Int) -> String:
         for j in range(msb_len - 1, -1, -1):
             buf.append(msb_digits[j])
 
-    # Remaining chunks: zero-padded to exactly 9 digits.
+    # Remaining chunks: zero-padded to exactly a chunk's width.
     for ci in range(num_chunks - 2, -1, -1):
-        var val = Int(chunks[ci])
-        var digits9 = Array[UInt8, 9](fill=48)  # pre-fill '0'
-        for d in range(9):
-            digits9[8 - d] = UInt8(val % 10) + 48
+        var val = chunks[ci]
+        var padded = Array[UInt8, _DECIMAL_CHUNK_DIGITS](fill=48)  # '0'
+        for d in range(_DECIMAL_CHUNK_DIGITS):
+            padded[_DECIMAL_CHUNK_DIGITS - 1 - d] = UInt8(val % 10) + 48
             val //= 10
-        for d in range(9):
-            buf.append(digits9[d])
+        for d in range(_DECIMAL_CHUNK_DIGITS):
+            buf.append(padded[d])
 
     return String(unsafe_from_utf8=buf^)
 
 
-def _magnitude_to_base_1e9_simple(
+def _magnitude_to_chunks_simple(
     words: Magnitude, eff_words: Int
-) -> List[UInt32]:
-    """Converts a magnitude from base 2^32 to base 10^9 by repeated division.
+) -> List[UInt64]:
+    """Converts a magnitude from base 2^64 to base 10^18 by repeated division.
 
     Complexity is O(n^2); this is the base case of the divide-and-conquer
     conversion and the whole of the conversion for small inputs. The result is
@@ -2535,15 +2495,15 @@ def _magnitude_to_base_1e9_simple(
     repeating the division loop.
 
     Args:
-        words: The magnitude in little-endian UInt32 words.
+        words: The magnitude in little-endian UInt64 words.
         eff_words: Effective number of words (excluding trailing zeros).
 
     Returns:
-        The magnitude in little-endian base-10^9 words, with no trailing zero
+        The magnitude in little-endian base-10^18 words, with no trailing zero
         word except for the value zero itself.
     """
     if eff_words <= 0 or (eff_words == 1 and words[0] == 0):
-        return [UInt32(0)]
+        return [UInt64(0)]
 
     # Allocate dividend buffer and get raw pointer for fast inner loop.
     var dividend = Magnitude(capacity=eff_words)
@@ -2551,38 +2511,62 @@ def _magnitude_to_base_1e9_simple(
         dividend.append(words[i])
     var dp = dividend.unsafe_ptr()
 
-    # Estimate number of 9-digit chunks: ceil(bits * log10(2) / 9) + 1.
-    var est_chunks = (eff_words * 32 * 9 + 268) // 269 + 1
+    # Estimate the chunk count: ceil(bits * log10(2) / 18) + 1, with 78/259
+    # just over log10(2).
+    var est_chunks = (eff_words * 64 * 78 + 4661) // 4662 + 1
 
-    var chunks = List[UInt32](capacity=est_chunks)
+    var chunks = List[UInt64](capacity=est_chunks)
     var div_len = eff_words
 
+    # There is no hardware 128-by-64 divide, so the digit comes from a
+    # precomputed reciprocal instead, which wants a normalized divisor.
+    # `10^18` is four bits short of one, and scaling it means scaling the
+    # dividend by the same four bits -- which this loop cannot do once and
+    # keep, because it divides the dividend in place and the next pass needs
+    # it unscaled. So the scaled words are formed as the walk goes, from the
+    # two words straddling each boundary. The quotient is unaffected by the
+    # scaling and the remainder comes back out of it at the end.
+    comptime SHIFT = Int(count_leading_zeros(_DECIMAL_CHUNK_BASE))
+    comptime CARRY_SHIFT = UInt64(64 - SHIFT)
+    comptime DIVISOR = _DECIMAL_CHUNK_BASE << UInt64(SHIFT)
+    var reciprocal = bigint_arithmetics._reciprocal_word(DIVISOR)
+
     while div_len > 0:
-        var remainder: UInt64 = 0
+        # The top word of the scaled dividend is what the top word shifts
+        # out, which is below `2^SHIFT` and so below the divisor.
+        var remainder = dp[unsafe_offset=div_len - 1] >> CARRY_SHIFT
         for i in range(div_len - 1, -1, -1):
-            var temp = (remainder << 32) + UInt64(dp[unsafe_offset=i])
-            dp[unsafe_offset=i] = UInt32(temp // _DECIMAL_CHUNK_BASE)
-            remainder = temp % _DECIMAL_CHUNK_BASE
+            var below = dp[
+                unsafe_offset=i - 1
+            ] >> CARRY_SHIFT if i > 0 else UInt64(0)
+            var step = bigint_arithmetics._divide_two_by_one(
+                remainder,
+                (dp[unsafe_offset=i] << UInt64(SHIFT)) | below,
+                DIVISOR,
+                reciprocal,
+            )
+            dp[unsafe_offset=i] = step[0]
+            remainder = step[1]
 
         while div_len > 0 and dp[unsafe_offset=div_len - 1] == 0:
             div_len -= 1
 
-        chunks.append(UInt32(remainder))
+        chunks.append(remainder >> UInt64(SHIFT))
 
     if len(chunks) == 0:
-        chunks.append(UInt32(0))
+        chunks.append(UInt64(0))
 
     return chunks^
 
 
-def _magnitude_to_base_1e9_dc(
+def _magnitude_to_chunks_dc(
     words: Magnitude, eff_words: Int
-) raises -> List[UInt32]:
-    """Converts a magnitude from base 2^32 to base 10^9, divide and conquer.
+) raises -> List[UInt64]:
+    """Converts a magnitude from base 2^64 to base 10^18, divide and conquer.
 
     Same recursion as `_magnitude_to_decimal_dc()`, but splitting on powers of
-    `10^9` instead of powers of `10`, so that each half lands on a base-10^9
-    word boundary and the digits can be written straight into the output
+    `10^18` instead of powers of `10`, so that each half lands on a chunk
+    boundary and the digits can be written straight into the output
     buffer. Nothing here builds a decimal string: the caller wants words, and
     going out through a string and back costs a full formatting pass plus a
     full parse over the whole number.
@@ -2590,11 +2574,11 @@ def _magnitude_to_base_1e9_dc(
     Complexity: O(M(n) . log n), where M(n) is the multiplication cost.
 
     Args:
-        words: The magnitude in little-endian UInt32 words.
+        words: The magnitude in little-endian UInt64 words.
         eff_words: Effective number of words (excluding trailing zeros).
 
     Returns:
-        The magnitude in little-endian base-10^9 words, with no trailing zero
+        The magnitude in little-endian base-10^18 words, with no trailing zero
         word except for the value zero itself.
 
     Raises:
@@ -2602,16 +2586,14 @@ def _magnitude_to_base_1e9_dc(
     """
     # Estimate the output length from the bit length, rounding up throughout.
     var top_word = words[eff_words - 1]
-    var bits_in_top = 32
-    var probe: UInt32 = 1 << 31
-    while probe != 0 and (top_word & probe) == 0:
-        bits_in_top -= 1
-        probe >>= 1
-    var total_bits = (eff_words - 1) * 32 + bits_in_top
+    var bits_in_top = 64 - bigint_arithmetics._count_leading_zeros(top_word)
+    var total_bits = (eff_words - 1) * 64 + bits_in_top
 
     # digits <= floor(bits * log10(2)) + 1, with 78/259 just over log10(2).
     var est_digits = (total_bits * 78 + 258) // 259 + 1
-    var est_words = (est_digits + 8) // 9
+    var est_words = (
+        est_digits + _DECIMAL_CHUNK_DIGITS - 1
+    ) // _DECIMAL_CHUNK_DIGITS
 
     # Smallest `max_level` with `2^max_level >= est_words`; the split is then
     # always at a level strictly below it.
@@ -2621,11 +2603,12 @@ def _magnitude_to_base_1e9_dc(
         tmp >>= 1
         max_level += 1
 
-    # Power table: power_table[k] = (10^9)^(2^k), whose remainder therefore
-    # occupies exactly 2^k base-10^9 words.
+    # Power table: power_table[k] = (10^18)^(2^k), whose remainder therefore
+    # occupies exactly 2^k chunks. The base itself is past `Int.MAX`, so it
+    # goes in as the single word it is rather than through an `Int`.
     var num_powers = max_level
     var power_table = List[BigInt](capacity=num_powers)
-    power_table.append(BigInt(Int(_DECIMAL_CHUNK_BASE)))
+    power_table.append(BigInt(raw_words=[_DECIMAL_CHUNK_BASE], sign=False))
     for k in range(1, num_powers):
         var sq = power_table[k - 1] * power_table[k - 1]
         power_table.append(sq^)
@@ -2638,11 +2621,11 @@ def _magnitude_to_base_1e9_dc(
     # `2^max_level` words is an upper bound on the output length, so every
     # write below is in range and the buffer needs zeroing only once.
     var capacity = 1 << max_level
-    var out = List[UInt32](capacity=capacity)
+    var out = List[UInt64](capacity=capacity)
     out.resize(unsafe_uninit_length=capacity)
     unsafe_memset_zero(ptr=out.unsafe_ptr(), count=capacity)
 
-    _dc_to_base_1e9_recursive(n, power_table, num_powers - 1, out, 0)
+    _dc_to_chunks_recursive(n, power_table, num_powers - 1, out, 0)
 
     var length = capacity
     while length > 1 and out[length - 1] == 0:
@@ -2651,23 +2634,23 @@ def _magnitude_to_base_1e9_dc(
     return out^
 
 
-def _dc_to_base_1e9_recursive(
+def _dc_to_chunks_recursive(
     n: BigInt,
     power_table: List[BigInt],
     max_level: Int,
-    mut out: List[UInt32],
+    mut out: List[UInt64],
     offset: Int,
 ) raises:
-    """Writes the base-10^9 words of `n` into `out` starting at `offset`.
+    """Writes the base-10^18 words of `n` into `out` starting at `offset`.
 
     The caller guarantees that `out` is zero-filled and long enough, so a
     short value simply leaves the high words of its slot alone.
 
     Args:
         n: The non-negative value to convert.
-        power_table: Table with `power_table[k] = (10^9)^(2^k)`.
+        power_table: Table with `power_table[k] = (10^18)^(2^k)`.
         max_level: Highest level of `power_table` usable for this subproblem.
-        out: The destination buffer, in little-endian base-10^9 words.
+        out: The destination buffer, in little-endian base-10^18 words.
         offset: Index in `out` at which this subproblem's words begin.
 
     Raises:
@@ -2678,7 +2661,7 @@ def _dc_to_base_1e9_recursive(
         eff -= 1
 
     if eff <= _DC_TO_STR_BASE_THRESHOLD:
-        var chunks = _magnitude_to_base_1e9_simple(n.words, eff)
+        var chunks = _magnitude_to_chunks_simple(n.words, eff)
         for i in range(len(chunks)):
             out[offset + i] = chunks[i]
         return
@@ -2692,17 +2675,17 @@ def _dc_to_base_1e9_recursive(
             break
 
     if level < 0:
-        var chunks = _magnitude_to_base_1e9_simple(n.words, eff)
+        var chunks = _magnitude_to_chunks_simple(n.words, eff)
         for i in range(len(chunks)):
             out[offset + i] = chunks[i]
         return
 
     var qr = bigint_arithmetics.floor_divmod(n, power_table[level])
 
-    # The low part occupies exactly 2^level base-10^9 words, so the high part
+    # The low part occupies exactly 2^level base-10^18 words, so the high part
     # starts that far along.
-    _dc_to_base_1e9_recursive(qr[1], power_table, level - 1, out, offset)
-    _dc_to_base_1e9_recursive(
+    _dc_to_chunks_recursive(qr[1], power_table, level - 1, out, offset)
+    _dc_to_chunks_recursive(
         qr[0], power_table, level - 1, out, offset + (1 << level)
     )
 
@@ -2720,21 +2703,17 @@ def _magnitude_to_decimal_dc(words: Magnitude, eff_words: Int) raises -> String:
     5. Recursively convert high and low halves.
 
     Args:
-        words: The magnitude in little-endian UInt32 words.
+        words: The magnitude in little-endian UInt64 words.
         eff_words: Effective number of words (excluding trailing zeros).
 
     Returns:
         The unsigned decimal string (no sign prefix).
     """
     # Estimate decimal digits from bit length
-    # bit_length = (eff_words - 1) * 32 + bits_in_top_word
+    # bit_length = (eff_words - 1) * 64 + bits_in_top_word
     var top_word = words[eff_words - 1]
-    var bits_in_top = 32
-    var probe: UInt32 = 1 << 31
-    while probe != 0 and (top_word & probe) == 0:
-        bits_in_top -= 1
-        probe >>= 1
-    var total_bits = (eff_words - 1) * 32 + bits_in_top
+    var bits_in_top = 64 - bigint_arithmetics._count_leading_zeros(top_word)
+    var total_bits = (eff_words - 1) * 64 + bits_in_top
 
     # Conservative overestimate: digits <= floor(bits * log10(2)) + 1
     # log10(2) ≈ 0.30103 ≈ 78/259 (slightly over)

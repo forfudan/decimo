@@ -1,4 +1,20 @@
-"""Number-theoretic transform multiplication for base-2^32 magnitudes.
+# ===----------------------------------------------------------------------=== #
+# Copyright 2025-2026 Yuhao Zhu
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ===----------------------------------------------------------------------=== #
+
+"""Number-theoretic transform multiplication for base-2^64 magnitudes.
 
 Multiplying two `n`-word magnitudes is a convolution of their digit sequences,
 and a convolution is a pointwise product under a discrete Fourier transform.
@@ -26,8 +42,8 @@ Reduction rests on `2^64 = 2^32 - 1 (mod P)`. Writing a 128-bit product as
 and each of the three terms is already a single word, so `mod_mul()` finishes
 with one subtract and one add. See `mod_mul()` for why no term can overflow.
 
-The operands are re-cut before the transform. A base-2^32 magnitude is a bit
-string, and nothing forces the transform to see it in 32-bit pieces: cutting it
+The operands are re-cut before the transform. A base-2^64 magnitude is a bit
+string, and nothing forces the transform to see it in word-sized pieces: cutting it
 into `chunk_bits`-bit pieces instead trades the number of coefficients against
 how large each convolution coefficient can grow. That freedom is what
 `_plan()` spends, and it is worth up to a factor of two - see there.
@@ -399,31 +415,35 @@ def _pack[
     o: Origin[mut=True]
 ](
     destination: Pointer[UInt64, o],
-    words: ImmSpan[UInt32, _],
+    words: ImmSpan[UInt64, _],
     count: Int,
     chunk_bits: Int,
 ):
     """Cuts `words` into `count` chunks of `chunk_bits` bits each, LSB first.
 
     A chunk starts at an arbitrary bit offset, so the read takes the two words
-    straddling it as one 64-bit value and shifts. That needs
-    `chunk_bits + 31 <= 64`, which holds because `_plan()` never returns a
-    width above 32.
+    straddling it and shifts. `_plan()` never returns a width above 32, so a
+    chunk never spans more than two words however the offset falls.
     """
     var word_count = len(words)
     var source = words.unsafe_ptr()
     var mask = (UInt64(1) << UInt64(chunk_bits)) - 1
     for i in range(count):
         var bit = i * chunk_bits
-        var index = bit >> 5
-        var shift = UInt64(bit & 31)
-        var low = UInt64(
-            source[unsafe_offset=index]
-        ) if index < word_count else UInt64(0)
-        var high = UInt64(
-            source[unsafe_offset=index + 1]
-        ) if index + 1 < word_count else UInt64(0)
-        destination[unsafe_offset=i] = ((low | (high << 32)) >> shift) & mask
+        var index = bit >> 6
+        var shift = bit & 63
+        var low = source[unsafe_offset=index] if index < word_count else UInt64(
+            0
+        )
+        var high = source[
+            unsafe_offset=index + 1
+        ] if index + 1 < word_count else UInt64(0)
+        # A shift of a whole word is undefined, and at offset zero there is
+        # nothing above to pull down anyway.
+        var value = low >> UInt64(shift)
+        if shift != 0:
+            value |= high << UInt64(64 - shift)
+        destination[unsafe_offset=i] = value & mask
 
 
 def _unpack(
@@ -434,38 +454,47 @@ def _unpack(
 ) -> Magnitude:
     """Reassembles `sum(coefficients[k] * 2^(k * chunk_bits))` into words.
 
-    The coefficients overlap once `chunk_bits` is not a multiple of 32, and
-    each is far wider than its own chunk - it is a sum of products, not a
-    chunk - so this is a carry propagation rather than a concatenation. A
-    128-bit accumulator holds the words still being written into: the
-    coefficients landing in one output word number about `32 / chunk_bits`,
-    each below `2^62` and shifted by at most 31, which leaves the accumulator
-    far short of overflowing.
+    The coefficients overlap once `chunk_bits` is not a multiple of the step,
+    and each is far wider than its own chunk - it is a sum of products, not a
+    chunk - so this is a carry propagation rather than a concatenation.
+
+    The walk steps 32 bits at a time even though the words are 64, which is
+    what keeps the accumulator inside 128 bits: the coefficients landing on
+    one step number about `32 / chunk_bits`, each below `2^62` and shifted by
+    at most 31. Stepping a whole word instead would shift by up to 63 and
+    take twice as many of them, and the accumulator would no longer fit.
     """
     var result = Magnitude(capacity=word_count)
     result.resize(unsafe_uninit_length=word_count)
     var destination = result.unsafe_ptr()
+    var half_count = word_count << 1
 
     var accumulator = UInt128(0)
-    var next_word = 0
+    var next_half = 0
     for k in range(count):
         var bit = k * chunk_bits
         var index = bit >> 5
         var shift = bit & 31
-        while next_word < index and next_word < word_count:
-            destination[unsafe_offset=next_word] = UInt32(
-                accumulator & 0xFFFF_FFFF
-            )
+        while next_half < index and next_half < half_count:
+            var piece = UInt64(accumulator & 0xFFFF_FFFF)
+            if next_half & 1 == 0:
+                destination[unsafe_offset=next_half >> 1] = piece
+            else:
+                destination[unsafe_offset=next_half >> 1] |= piece << 32
             accumulator >>= 32
-            next_word += 1
-        if next_word >= word_count:
+            next_half += 1
+        if next_half >= half_count:
             break
         accumulator += UInt128(coefficients[unsafe_offset=k]) << UInt128(shift)
 
-    while next_word < word_count:
-        destination[unsafe_offset=next_word] = UInt32(accumulator & 0xFFFF_FFFF)
+    while next_half < half_count:
+        var piece = UInt64(accumulator & 0xFFFF_FFFF)
+        if next_half & 1 == 0:
+            destination[unsafe_offset=next_half >> 1] = piece
+        else:
+            destination[unsafe_offset=next_half >> 1] |= piece << 32
         accumulator >>= 32
-        next_word += 1
+        next_half += 1
 
     var length = word_count
     while length > 1 and result[length - 1] == 0:
@@ -480,14 +509,14 @@ def _unpack(
 # ===----------------------------------------------------------------------=== #
 
 
-def _bit_length(words: ImmSpan[UInt32, _]) -> Int:
+def _bit_length(words: ImmSpan[UInt64, _]) -> Int:
     """Returns the bit length of a magnitude, or zero for a zero magnitude."""
     var top = len(words)
     while top > 0 and words[top - 1] == 0:
         top -= 1
     if top == 0:
         return 0
-    return top * 32 - Int(count_leading_zeros(words[top - 1]))
+    return top * 64 - Int(count_leading_zeros(words[top - 1]))
 
 
 comptime CUTOFF_NTT: Int = 1024
@@ -499,16 +528,32 @@ only keeps the planning arithmetic off the path of the small multiplications
 that dominate the recursion of every other algorithm.
 """
 
-comptime _NTT_RELATIVE_COST: Float64 = 1.10
+comptime _NTT_RELATIVE_COST: Float64 = 0.34
 """Cost of one `L * log2(L)` transform step against one `n^1.465` Toom-3 step.
 
-Both algorithms were fitted over 512 to 104 200 words on Apple Silicon arm64.
-The transform came out at 2.3-2.5e-3 microseconds per `L * log2(L)` and Toom-3
-at 1.8-2.4e-3 per `n^1.465`, so their ratio sits between 1.0 and 1.25 with no
-trend in size - which is what makes a single constant the right shape for this.
-The value is the upper end of that band rather than the middle, so that a tie
-goes to Toom-3, which allocates far less. Adjust if benchmarking on another
-target shows a better value.
+It was 1.10 while a word was 32 bits. Both terms are written over word counts,
+and only one of them still means the same thing at 64: the transform's `L`
+comes from the *bit* length, which a wider word leaves alone, while Toom-3's
+`n^1.465` is over words, and the same value now has half as many. So the
+constant had to be re-fitted rather than reasoned about, and the crossover
+moved from about 8 000 words to about 2 300.
+
+Measured against Toom-3 on the same operands, Apple Silicon arm64, best of
+three (microseconds):
+
+    words     2048   2304   2560   3072   3584    4096    8192   16384
+    Toom-3     545    645    681    955   1234    1562    3845   11353
+    transform  581    589    596    595   1220    1221    2610    5780
+
+The transform is flat inside a transform length and steps when `L` doubles,
+which is why the winner alternates rather than crossing once -- and why the
+answer has to come from comparing the two models rather than from a word
+count. Every size above wants `_NTT_RELATIVE_COST` below its own
+`toom3_cost / (L * log2 L)`: 0.309 at 2048 (where Toom-3 wins, so the constant
+must be at least that) and 0.368 at 2304 (where the transform does). 0.34 sits
+between them, which gets every measured size right except 3584, where it picks
+Toom-3 and gives up 1.1%. A tie going to Toom-3 is the right way round, since
+it allocates far less. Adjust if benchmarking on another target shows better.
 """
 
 
@@ -517,9 +562,10 @@ def should_multiply_ntt(len_a: Int, len_b: Int) -> Bool:
 
     A flat word count cannot answer this. The transform length has to be a
     power of two, so its cost climbs in steps while Toom-3's climbs smoothly,
-    and the winner alternates: at a quarter of the transform slots filled the
-    transform loses at 4 096 words, ties at 8 192 and wins from 16 384 up. What
-    settles it is comparing the two cost models directly.
+    and the winner alternates: the transform loses at 2 048 words, wins from
+    2 304 to 3 072, loses again at 3 584 where `L` has just doubled, and wins
+    everywhere above. What settles it is comparing the two cost models
+    directly.
 
     Toom-3's `n^1.465` is written over the operand area so that it still means
     something when the operands differ in size - `(len_a * len_b)^0.7325` is
@@ -535,7 +581,7 @@ def should_multiply_ntt(len_a: Int, len_b: Int) -> Bool:
     if len_a < CUTOFF_NTT or len_b < CUTOFF_NTT:
         return False
 
-    var plan = _plan(len_a * 32, len_b * 32)
+    var plan = _plan(len_a * 64, len_b * 64)
     if plan.log_length > MAX_TRANSFORM_LOG:
         return False
 
@@ -547,7 +593,7 @@ def should_multiply_ntt(len_a: Int, len_b: Int) -> Bool:
 
 
 def multiply_magnitudes_ntt(
-    a: ImmSpan[UInt32, _], b: ImmSpan[UInt32, _]
+    a: ImmSpan[UInt64, _], b: ImmSpan[UInt64, _]
 ) -> Magnitude:
     """Multiplies two magnitudes through a number-theoretic transform.
 
@@ -558,8 +604,8 @@ def multiply_magnitudes_ntt(
     only cost does.
 
     Args:
-        a: First magnitude (little-endian UInt32 words).
-        b: Second magnitude (little-endian UInt32 words).
+        a: First magnitude (little-endian UInt64 words).
+        b: Second magnitude (little-endian UInt64 words).
 
     Returns:
         The product magnitude as a new word list.

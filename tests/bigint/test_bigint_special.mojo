@@ -75,18 +75,18 @@ def test_permutation_negative_k_raises() raises:
 
 def test_permutation_large_n() raises:
     """Tests permutation with a large n that still fits in one word."""
-    # n = 70000 (< 2^32), k = 2 -> 70000 * 69999.
+    # n = 70000, k = 2 -> 70000 * 69999.
     testing.assert_equal(String(BigInt(70000).permutation(2)), "4899930000")
 
 
 def test_permutation_n_too_large_raises() raises:
-    """Tests that an n above 2^32 - 1 raises."""
+    """Tests that an n too large to be an `Int` raises."""
     var raised = False
     try:
-        _ = BigInt(4_294_967_296).permutation(2)  # 2^32, above WORD_MAX
+        _ = BigInt("9223372036854775808").permutation(2)  # 2^63
     except:
         raised = True
-    testing.assert_true(raised, "permutation with n > 2^32 - 1 should raise")
+    testing.assert_true(raised, "permutation with n > 2^63 - 1 should raise")
 
 
 def test_multiply_by_word_inplace_zero_and_one() raises:
@@ -112,10 +112,10 @@ def test_product_range_out_of_bounds_raises() raises:
     """Tests that product_range rejects out-of-range bounds."""
     var raised = False
     try:
-        _ = product_range(1, 4_294_967_296)  # high = 2^32 > WORD_MAX
+        _ = product_range(1, 4_294_967_296)  # far more than 10^6 factors
     except:
         raised = True
-    testing.assert_true(raised, "product_range high > 2^32-1 should raise")
+    testing.assert_true(raised, "product_range over 10^6 factors should raise")
     raised = False
     try:
         _ = product_range(-1, 5)

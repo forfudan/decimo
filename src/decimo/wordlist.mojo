@@ -39,7 +39,7 @@ reused one, so two thirds of it is `malloc` and `free`. An immutable value
 type cannot use the reuse idiom, which makes inline storage the one place
 where we can be ahead of GMP rather than behind it.
 
-The API is the part of `List[UInt32]` that the number types use, spelled the
+The API is the part of `List` that the number types use, spelled the
 same way, so the eight hundred-odd `.words` sites did not have to change.
 """
 
@@ -73,15 +73,18 @@ ten is within noise of a plain `List` everywhere.
 """
 
 
-struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
-    """A list of 32-bit words that keeps small ones inside itself.
+struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
+    Copyable, Movable, Sized
+):
+    """A list of unsigned words that keeps small ones inside itself.
 
     What the words mean is the number type's business: `BigUInt` reads them as
-    base-billion digits and `BigInt` as a base-2^32 magnitude. The container
-    only knows how many there are and where they live.
+    base-billion digits in `uint32` and `BigInt` as a base-2^64 magnitude in
+    `uint64`. The container only knows how wide a word is, how many there are,
+    and where they live.
 
-    Only the `List[UInt32]` surface that the number types actually use is
-    provided: `len()`, indexing, iteration, `unsafe_ptr()`, `append`, `resize`,
+    Only the `List` surface that the number types actually use is provided:
+    `len()`, indexing, iteration, `unsafe_ptr()`, `append`, `resize`,
     `shrink`, `clear`, `reserve`, `copy` and `capacity`.
 
     Invariant: `_capacity >= INLINE` always, and the words live in `_inline`
@@ -89,18 +92,21 @@ struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
     data", and it is on a field already in cache.
 
     Parameters:
+        dtype: The word type. `BigUInt` uses `uint32` because a base-billion
+            digit fits one, `BigInt` `uint64` because that is the widest
+            product the hardware gives in one instruction.
         INLINE: How many words fit inside the struct before the heap is
             involved. The two number types have different sweet spots, so
             each picks its own; see `INLINE_WORDS` for how to choose.
     """
 
-    comptime _PointerType = Pointer[UInt32, MutUntrackedOrigin]
+    comptime _PointerType = Pointer[Scalar[Self.dtype], MutUntrackedOrigin]
 
     var _heap: Self._PointerType
     """Allocated storage. Only meaningful when `_capacity > INLINE`."""
     var _len: Int
     var _capacity: Int
-    var _inline: InlineArray[UInt32, Self.INLINE]
+    var _inline: InlineArray[Scalar[Self.dtype], Self.INLINE]
 
     # ===------------------------------------------------------------------=== #
     # Life cycle
@@ -112,7 +118,9 @@ struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
         self._heap = Self._PointerType.unsafe_dangling()
         self._len = 0
         self._capacity = Self.INLINE
-        self._inline = InlineArray[UInt32, Self.INLINE](uninitialized=True)
+        self._inline = InlineArray[Scalar[Self.dtype], Self.INLINE](
+            uninitialized=True
+        )
 
     @always_inline
     def __init__(out self, *, capacity: Int):
@@ -122,10 +130,14 @@ struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
             capacity: How many words to make room for.
         """
         self._len = 0
-        self._inline = InlineArray[UInt32, Self.INLINE](uninitialized=True)
+        self._inline = InlineArray[Scalar[Self.dtype], Self.INLINE](
+            uninitialized=True
+        )
         if capacity > Self.INLINE:
             self._capacity = capacity
-            self._heap = alloc(Layout[UInt32](count=capacity)).unsafe_leak()
+            self._heap = alloc(
+                Layout[Scalar[Self.dtype]](count=capacity)
+            ).unsafe_leak()
         else:
             self._capacity = Self.INLINE
             self._heap = Self._PointerType.unsafe_dangling()
@@ -140,8 +152,10 @@ struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
         self = Self(capacity=unsafe_uninit_length)
         self._len = unsafe_uninit_length
 
-    def __init__(out self, var *values: UInt32, __list_literal__: NoneType):
-        """Build from a list literal, so `[UInt32(0)]` still works.
+    def __init__(
+        out self, var *values: Scalar[Self.dtype], __list_literal__: NoneType
+    ):
+        """Build from a list literal, so `[Scalar[Self.dtype](0)]` still works.
 
         Args:
             values: The words.
@@ -151,7 +165,9 @@ struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
         for value in values:
             self.append(value)
 
-    def as_span[origin: Origin, //](ref[origin] self) -> Span[UInt32, origin]:
+    def as_span[
+        origin: Origin, //
+    ](ref[origin] self) -> Span[Scalar[Self.dtype], origin]:
         """A view over the words.
 
         Parameters:
@@ -160,12 +176,12 @@ struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
         Returns:
             A span covering every word.
         """
-        return Span[UInt32, origin](
+        return Span[Scalar[Self.dtype], origin](
             unsafe_ptr=self.unsafe_ptr(), length=self._len
         )
 
-    def __init__(out self, var other: List[UInt32]):
-        """Copy the contents of a `List[UInt32]`.
+    def __init__(out self, var other: List[Scalar[Self.dtype]]):
+        """Copy the contents of a `List[Scalar[Self.dtype]]`.
 
         The words are copied, not adopted: a `List` owns a heap buffer and a
         `WordList` may keep its words inline, so there is nothing to hand over.
@@ -211,7 +227,9 @@ struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
         self._heap = move._heap
         self._len = move._len
         self._capacity = move._capacity
-        self._inline = InlineArray[UInt32, Self.INLINE](uninitialized=True)
+        self._inline = InlineArray[Scalar[Self.dtype], Self.INLINE](
+            uninitialized=True
+        )
         # Only the inline case has anything worth carrying over, and it is a
         # fixed number of words, so it goes as one vector load and store.
         # Spelling this as a scalar `for` loop instead cost 60% of an addition
@@ -222,8 +240,12 @@ struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
             # vector moves, while a variable one becomes a call to `memcpy`,
             # which cost 60% of an addition.
             unsafe_memcpy(
-                dest=Pointer(to=self._inline).unsafe_bitcast[UInt32](),
-                src=Pointer(to=move._inline).unsafe_bitcast[UInt32](),
+                dest=Pointer(to=self._inline).unsafe_bitcast[
+                    Scalar[Self.dtype]
+                ](),
+                src=Pointer(to=move._inline).unsafe_bitcast[
+                    Scalar[Self.dtype]
+                ](),
                 count=Self.INLINE,
             )
 
@@ -232,7 +254,7 @@ struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
         if self._capacity > Self.INLINE:
             dealloc(
                 ThinAllocation(unsafe_owned_ptr=self._heap).unsafe_with_layout(
-                    Layout[UInt32](count=self._capacity)
+                    Layout[Scalar[Self.dtype]](count=self._capacity)
                 )
             )
 
@@ -243,7 +265,7 @@ struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
     @always_inline
     def unsafe_ptr[
         origin: Origin, //
-    ](ref[origin] self) -> Pointer[UInt32, origin]:
+    ](ref[origin] self) -> Pointer[Scalar[Self.dtype], origin]:
         """A pointer to the words, wherever they live.
 
         The branch is the price of not allocating. It predicts perfectly in any
@@ -259,7 +281,7 @@ struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
         if self._capacity == Self.INLINE:
             return (
                 Pointer(to=self._inline)
-                .unsafe_bitcast[UInt32]()
+                .unsafe_bitcast[Scalar[Self.dtype]]()
                 .unsafe_mut_cast[origin.mut]()
                 .unsafe_origin_cast[origin]()
             )
@@ -286,7 +308,7 @@ struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
         return self._capacity
 
     @always_inline
-    def __getitem__(ref self, index: Int) -> ref[self] UInt32:
+    def __getitem__(ref self, index: Int) -> ref[self] Scalar[Self.dtype]:
         """The word at `index`.
 
         Args:
@@ -298,7 +320,7 @@ struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
         return self.unsafe_ptr().unsafe_offset(index)[]
 
     @always_inline
-    def unsafe_set(mut self, idx: Int, var value: UInt32):
+    def unsafe_set(mut self, idx: Int, var value: Scalar[Self.dtype]):
         """Write a word without checking the index.
 
         Args:
@@ -308,7 +330,7 @@ struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
         self.unsafe_ptr().unsafe_offset(idx).unsafe_store(value)
 
     @always_inline
-    def unsafe_get(self, idx: Int) -> UInt32:
+    def unsafe_get(self, idx: Int) -> Scalar[Self.dtype]:
         """Read a word without checking the index.
 
         Args:
@@ -321,7 +343,7 @@ struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
 
     def __iter__[
         origin: Origin, //
-    ](ref[origin] self) -> _WordListIterator[origin]:
+    ](ref[origin] self) -> _WordListIterator[Self.dtype, origin]:
         """Iterate over the words, by reference.
 
         Parameters:
@@ -330,7 +352,9 @@ struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
         Returns:
             An iterator over the words.
         """
-        return _WordListIterator[origin](0, self.unsafe_ptr(), self._len)
+        return _WordListIterator[Self.dtype, origin](
+            0, self.unsafe_ptr(), self._len
+        )
 
     def copy(self) -> Self:
         """A copy that owns its own storage.
@@ -347,13 +371,15 @@ struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
     def _grow(mut self, capacity: Int):
         """Move the words to a heap block of at least `capacity` words."""
         var wanted = max(capacity, self._capacity * 2)
-        var block = alloc(Layout[UInt32](count=wanted)).unsafe_leak()
+        var block = alloc(
+            Layout[Scalar[Self.dtype]](count=wanted)
+        ).unsafe_leak()
         if self._len > 0:
             unsafe_memcpy(dest=block, src=self.unsafe_ptr(), count=self._len)
         if self._capacity > Self.INLINE:
             dealloc(
                 ThinAllocation(unsafe_owned_ptr=self._heap).unsafe_with_layout(
-                    Layout[UInt32](count=self._capacity)
+                    Layout[Scalar[Self.dtype]](count=self._capacity)
                 )
             )
         self._heap = block
@@ -370,7 +396,7 @@ struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
             self._grow(capacity)
 
     @always_inline
-    def append(mut self, var value: UInt32):
+    def append(mut self, var value: Scalar[Self.dtype]):
         """Add a word to the end.
 
         Args:
@@ -395,7 +421,7 @@ struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
         self._len = new_length
 
     @always_inline
-    def resize(mut self, length: Int, fill: UInt32):
+    def resize(mut self, length: Int, fill: Scalar[Self.dtype]):
         """Set the length, filling any new words with `fill`.
 
         Args:
@@ -429,7 +455,7 @@ struct WordList[INLINE: Int = INLINE_WORDS](Copyable, Movable, Sized):
 
 
 @fieldwise_init
-struct _WordListIterator[mut: Bool, //, origin: Origin[mut=mut]](
+struct _WordListIterator[mut: Bool, //, dtype: DType, origin: Origin[mut=mut]](
     ImplicitlyCopyable, Iterable, Iterator
 ):
     """Walks a `WordList` word by word, yielding references.
@@ -439,17 +465,18 @@ struct _WordListIterator[mut: Bool, //, origin: Origin[mut=mut]](
 
     Parameters:
         mut: Whether the words can be written through.
+        dtype: The word type.
         origin: The origin of the list being walked.
     """
 
-    comptime Element = UInt32
+    comptime Element = Scalar[Self.dtype]
 
     comptime IteratorType[
         iterable_mut: Bool, //, iterable_origin: Origin[mut=iterable_mut]
     ]: Iterator = Self
 
     var _index: Int
-    var _data: Pointer[UInt32, Self.origin]
+    var _data: Pointer[Scalar[Self.dtype], Self.origin]
     var _length: Int
 
     @always_inline

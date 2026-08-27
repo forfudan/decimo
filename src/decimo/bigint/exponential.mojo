@@ -18,7 +18,7 @@
 
 This module provides integer square root using CPython's precision-doubling
 algorithm with a UInt64 fast path for early iterations, leveraging BigInt's
-base-2^32 representation for efficient bit-level operations.
+base-2^64 representation for efficient bit-level operations.
 """
 
 from std import math
@@ -38,34 +38,30 @@ def _extract_uint64_from_words(words: Magnitude, bit_shift: Int) -> UInt64:
     """Extracts up to 64 bits from a magnitude at a given bit offset.
 
     Computes floor(value(words) >> bit_shift) mod 2^64, reading only the
-    2-3 words that overlap with the 64-bit window. O(1) with no allocation.
+    one or two words that overlap with the window. O(1) with no allocation.
 
     Args:
-        words: The magnitude as little-endian UInt32 words.
+        words: The magnitude as little-endian UInt64 words.
         bit_shift: The number of bits to shift right before extracting.
 
     Returns:
         The extracted 64-bit value.
     """
-    var wi = bit_shift // 32
-    var bi = bit_shift % 32
+    var wi = bit_shift // 64
+    var bi = bit_shift % 64
     var n = len(words)
 
     if wi >= n:
         return 0
 
+    # A 64-bit window aligned to a word is exactly that word; unaligned it
+    # straddles two, and never more.
     if bi == 0:
-        var result = UInt64(words[wi])
-        if wi + 1 < n:
-            result |= UInt64(words[wi + 1]) << 32
-        return result
+        return words[wi]
 
-    # bi > 0: need up to 3 consecutive words to cover 64 bits at alignment
-    var result = UInt64(words[wi]) >> UInt64(bi)
+    var result = words[wi] >> UInt64(bi)
     if wi + 1 < n:
-        result |= UInt64(words[wi + 1]) << UInt64(32 - bi)
-    if wi + 2 < n:
-        result |= UInt64(words[wi + 2]) << UInt64(64 - bi)
+        result |= words[wi + 1] << UInt64(64 - bi)
     return result
 
 
@@ -78,19 +74,7 @@ def _uint64_to_words(val: UInt64) -> Magnitude:
     Returns:
         A Magnitude representing the magnitude in little-endian order.
     """
-    if val == 0:
-        var result: Magnitude = [UInt32(0)]
-        return result^
-
-    var lo = UInt32(val & 0xFFFF_FFFF)
-    var hi = UInt32(val >> 32)
-    if hi == 0:
-        var result: Magnitude = [lo]
-        return result^
-
-    var result = Magnitude(capacity=2)
-    result.append(lo)
-    result.append(hi)
+    var result: Magnitude = [val]
     return result^
 
 
@@ -98,40 +82,35 @@ def _extract_uint128_from_words(words: Magnitude, bit_shift: Int) -> UInt128:
     """Extracts up to 128 bits from a magnitude at a given bit offset.
 
     Similar to _extract_uint64_from_words but returns UInt128.
-    Reads only the 4-5 words that overlap with the 128-bit window.
+    Reads only the two or three words that overlap with the window.
 
     Args:
-        words: The magnitude as little-endian UInt32 words.
+        words: The magnitude as little-endian UInt64 words.
         bit_shift: The number of bits to shift right before extracting.
 
     Returns:
         The extracted 128-bit value.
     """
-    var wi = bit_shift // 32
-    var bi = bit_shift % 32
+    var wi = bit_shift // 64
+    var bi = bit_shift % 64
     var n = len(words)
 
     if wi >= n:
         return UInt128(0)
 
     if bi == 0:
-        # Aligned: read exactly 4 words
-        var result = UInt128(0)
-        for k in range(min(4, n - wi)):
-            result |= UInt128(words[wi + k]) << UInt128(k * 32)
+        # Aligned: exactly two words
+        var result = UInt128(words[wi])
+        if wi + 1 < n:
+            result |= UInt128(words[wi + 1]) << 64
         return result
 
-    # Unaligned: need bits [bi..bi+127] from words[wi..wi+4]
-    # Build result by placing each word's contribution at the correct position
+    # Unaligned: bits [bi .. bi+127] span three words
     var result = UInt128(words[wi]) >> UInt128(bi)
     if wi + 1 < n:
-        result |= UInt128(words[wi + 1]) << UInt128(32 - bi)
+        result |= UInt128(words[wi + 1]) << UInt128(64 - bi)
     if wi + 2 < n:
-        result |= UInt128(words[wi + 2]) << UInt128(64 - bi)
-    if wi + 3 < n:
-        result |= UInt128(words[wi + 3]) << UInt128(96 - bi)
-    if wi + 4 < n:
-        result |= UInt128(words[wi + 4]) << UInt128(128 - bi)
+        result |= UInt128(words[wi + 2]) << UInt128(128 - bi)
     return result
 
 
@@ -145,14 +124,14 @@ def _uint128_to_words(val: UInt128) -> Magnitude:
         A Magnitude representing the magnitude in little-endian order.
     """
     if val == 0:
-        var result: Magnitude = [UInt32(0)]
+        var result: Magnitude = [UInt64(0)]
         return result^
 
-    var result = Magnitude(capacity=4)
+    var result = Magnitude(capacity=2)
     var remaining = val
     while remaining != 0:
-        result.append(UInt32(remaining & 0xFFFF_FFFF))
-        remaining >>= 32
+        result.append(UInt64(remaining))
+        remaining >>= 64
 
     return result^
 
@@ -163,7 +142,7 @@ def _left_shift_magnitude_bits(a: Magnitude, shift: Int) -> Magnitude:
     Handles both whole-word and sub-word shifts in a single pass.
 
     Args:
-        a: The magnitude to shift (little-endian UInt32 words).
+        a: The magnitude to shift (little-endian UInt64 words).
         shift: The number of bits to shift left (must be >= 0).
 
     Returns:
@@ -175,26 +154,27 @@ def _left_shift_magnitude_bits(a: Magnitude, shift: Int) -> Magnitude:
             copy.append(word)
         return copy^
 
-    var word_shift = shift // 32
-    var bit_shift = shift % 32
+    var word_shift = shift // 64
+    var bit_shift = shift % 64
     var n = len(a)
     var new_len = n + word_shift + (1 if bit_shift > 0 else 0)
     var result = Magnitude(capacity=new_len)
 
     # Prepend zero words for the whole-word shift
     for _ in range(word_shift):
-        result.append(UInt32(0))
+        result.append(UInt64(0))
 
     # Shift the existing words with sub-word carry
     if bit_shift == 0:
         for i in range(n):
             result.append(a[i])
     else:
-        var carry: UInt32 = 0
+        var carry: UInt64 = 0
+        var carry_shift = UInt64(64 - bit_shift)
         for i in range(n):
-            var shifted = UInt64(a[i]) << UInt64(bit_shift)
-            result.append(UInt32(shifted & 0xFFFF_FFFF) | carry)
-            carry = UInt32(shifted >> 32)
+            var word = a[i]
+            result.append((word << UInt64(bit_shift)) | carry)
+            carry = word >> carry_shift
         if carry > 0:
             result.append(carry)
 
@@ -208,18 +188,18 @@ def _right_shift_magnitude_bits(a: Magnitude, shift: Int) -> Magnitude:
     only processing the relevant upper portion.
 
     Args:
-        a: The magnitude to shift (little-endian UInt32 words).
+        a: The magnitude to shift (little-endian UInt64 words).
         shift: The number of bits to shift right (must be >= 0).
 
     Returns:
         The shifted magnitude as a new word list, normalized.
     """
-    var word_shift = shift // 32
-    var bit_shift = shift % 32
+    var word_shift = shift // 64
+    var bit_shift = shift % 64
     var n = len(a)
 
     if word_shift >= n:
-        var zero: Magnitude = [UInt32(0)]
+        var zero: Magnitude = [UInt64(0)]
         return zero^
 
     var new_len = n - word_shift
@@ -230,19 +210,17 @@ def _right_shift_magnitude_bits(a: Magnitude, shift: Int) -> Magnitude:
             result.append(a[i])
     else:
         for i in range(word_shift, n):
-            var lo = UInt64(a[i]) >> UInt64(bit_shift)
+            var lo = a[i] >> UInt64(bit_shift)
             var hi: UInt64 = 0
             if i + 1 < n:
-                hi = (UInt64(a[i + 1]) << UInt64(32 - bit_shift)) & UInt64(
-                    0xFFFF_FFFF
-                )
-            result.append(UInt32(lo | hi))
+                hi = a[i + 1] << UInt64(64 - bit_shift)
+            result.append(lo | hi)
 
     # Strip leading zeros
     while len(result) > 1 and result[len(result) - 1] == 0:
         result.shrink(len(result) - 1)
     if len(result) == 0:
-        result.append(UInt32(0))
+        result.append(UInt64(0))
 
     return result^
 
@@ -290,15 +268,12 @@ def sqrt(x: BigInt) raises -> BigInt:
     if x.is_zero():
         return BigInt()
 
-    # One or two words: the value fits a UInt64 and hardware can answer it.
+    # One word: the value fits a UInt64 and hardware can answer it. Two used
+    # to as well, back when a word was half as wide.
     if len(x.words) == 1:
         if x.words[0] <= 1:
             return x.copy()
-        return BigInt.from_integral_scalar(isqrt_uint64(UInt64(x.words[0])))
-    if len(x.words) == 2:
-        return BigInt.from_integral_scalar(
-            isqrt_uint64(UInt64(x.words[0]) + (UInt64(x.words[1]) << 32))
-        )
+        return BigInt.from_integral_scalar(isqrt_uint64(x.words[0]))
 
     # Past the crossover, Zimmermann's recursion: its division is half the
     # width of the one precision-doubling finishes on, and it carries its
@@ -459,11 +434,11 @@ def _sqrt_precision_doubling_fast(x: BigInt) raises -> BigInt:
         for i in range(len(a_words)):
             var val = UInt64(a_words[i])
             if val >= borrow:
-                a_words[i] = UInt32(val - borrow)
+                a_words[i] = UInt64(val - borrow)
                 _ = borrow
                 break
             else:
-                a_words[i] = UInt32(0xFFFF_FFFF)
+                a_words[i] = ~UInt64(0)
                 borrow = 1
         # Strip leading zeros
         while len(a_words) > 1 and a_words[len(a_words) - 1] == 0:
@@ -511,7 +486,9 @@ def reciprocal_sqrt_fixed_point(
     the root through one and returns the root.
 
     It exists because a `BigDecimal` holds its coefficient in base 10^9, where
-    the same multiplication costs about 2.8x what it does in base 2^32.
+    the same multiplication costs about 2.8x what it did in the base-2^32
+    `BigInt` that figure was measured against. `BigInt` is base 2^64 now and
+    multiplies 1.0x to 1.4x faster again, so the gap only widened.
 
     The iteration is Newton's for the reciprocal square root, written around
     the residual so that no step ever multiplies at the full target width:
@@ -623,46 +600,47 @@ That is not the choice, though, because the shipped recursion stops at
 `CUTOFF_SQRT_BASE` and finishes in the older path. Sweeping this constant
 with that in place, `-D ASSERT=none` (us):
 
-    digits           200    300    500    700   1000   1500   5000
-    cutoff  32      0.50   0.86   1.81   1.93   3.09   3.84  13.57
-    cutoff  64      0.49   0.84   1.47   1.91   3.04   3.73  13.18
-    cutoff 128      0.49   0.81   1.54   2.05   3.04   3.69  13.73
+    digits           200    300    500    700   1000   1500   5000   10000
+    cutoff 16       0.42   0.60   1.44   1.85   2.27   2.96  10.24   27.82
+    cutoff 32       0.41   0.60   1.08   1.85   2.11   2.76   9.94   27.88
+    cutoff 64       0.43   0.60   1.08   1.59   2.17   2.97   9.34   27.31
 
 It reads better than the two-way table because one level of recursion halves
 the division and then hands the tail to the path that is best at that width.
-The three columns that separate them are 500, 700 and 5000, and 64 takes all
-three; 32 loses at 500 because a 52-word operand recurses when it should not.
-Re-measured after Knuth D went to 64-bit limbs, which did not move it.
+Re-measured twice since: after Knuth D went to 64-bit limbs, and again after
+the magnitude did. Neither moved it, which is not a coincidence -- the two
+paths it chooses between both scale with the value, not the word count.
 """
 
-comptime CUTOFF_SQRT_BASE: Int = 16
+comptime CUTOFF_SQRT_BASE: Int = 32
 """Words below which `_sqrtrem()` stops recursing and doubles precision.
 
 The recursion needs a remainder and the older path does not produce one, so
 the base case pays for a squaring to recover it. That is cheap at these sizes
 and buys back the register-resident early iterations.
 
-It was 32 while it sat in the middle of a flat range. Knuth D going to 64-bit
-limbs made the recursion's division about twice as cheap and tilted that
-range, so recursing one level further now pays; best of three alternating
-builds, best of five within each (us):
+It went 32 -> 16 when Knuth D's multiply-subtract moved to 64-bit limbs, and
+back to 32 when the magnitude itself did -- the same number of words is twice
+the value now, so the base case is back where it was in bits. Two passes, best
+of five within each (us):
 
-    digits           500    700   1000   1500   2000   5000   10000
-    cutoff 16       1.51   1.89   3.06   3.74   5.41  13.73   35.93
-    cutoff 32       1.54   2.40   3.14   4.40   5.66  14.68   37.22
+    digits           200    300    500    700   1000   1500   5000   10000
+    cutoff  8       0.43   0.60   1.07   1.64   2.02   2.70   9.81   26.21
+    cutoff 16       0.43   0.57   1.07   1.67   2.18   2.97   9.35   27.65
+    cutoff 32       0.42   0.53   1.01   1.55   1.98   2.74   9.08   25.57
 
-The width that moves most is 700, where 16 is the difference between two
-levels of recursion and three. 8 measures the same as 16.
+48 ties with 32 and 8 and 16 are behind it at most widths, so this is the
+bottom of a shallow basin rather than a peak.
 """
 
 
 def _sqrtrem_two_words(
-    n: ImmSpan[UInt32, _], mut remainder: Magnitude
+    n: ImmSpan[UInt64, _], mut remainder: Magnitude
 ) -> Magnitude:
     """Square root of a one- or two-word magnitude, with its remainder.
 
-    The value fits a `UInt64`, so the root fits a `UInt32` and the hardware
-    can be asked directly.
+    Two words is 128 bits now, so the hardware cannot be asked directly any
+    more; the root still fits one word, and `_isqrt_uint128()` finds it.
 
     Args:
         n: The magnitude, one or two words.
@@ -671,21 +649,50 @@ def _sqrtrem_two_words(
     Returns:
         The integer square root, one word.
     """
-    var value = UInt64(n[0])
+    var value = UInt128(n[0])
     if len(n) > 1:
-        value += UInt64(n[1]) << 32
-    var root = isqrt_uint64(value)
-    var left = value - root * root
-    remainder = [UInt32(left & 0xFFFF_FFFF)]
-    var high = UInt32(left >> 32)
+        value |= UInt128(n[1]) << 64
+    var root = _isqrt_uint128(value)
+    var left = value - UInt128(root) * UInt128(root)
+    # The remainder is at most `2 * root`, so it can need a second word.
+    remainder = [UInt64(left)]
+    var high = UInt64(left >> 64)
     if high != 0:
         remainder.append(high)
-    var out: Magnitude = [UInt32(root & 0xFFFF_FFFF)]
+    var out: Magnitude = [root]
     return out^
 
 
+def _isqrt_uint128(value: UInt128) -> UInt64:
+    """The integer square root of a 128-bit value.
+
+    Newton descending from an over-estimate, which is what makes the stopping
+    test exact: the sequence is strictly decreasing until it reaches
+    `floor(sqrt(value))` and then stops falling. The seed is
+    `(isqrt(high) + 1) * 2^32`, which is at or above the answer because
+    `value < (high + 1) * 2^64`.
+
+    Args:
+        value: The value to take the root of.
+
+    Returns:
+        The integer square root, which always fits a word.
+    """
+    if (value >> 64) == 0:
+        return isqrt_uint64(UInt64(value))
+
+    var high = UInt64(value >> 64)
+    var seed = (UInt128(isqrt_uint64(high)) + 1) << 32
+    var guess = UInt64(seed) if seed <= UInt128(~UInt64(0)) else ~UInt64(0)
+    while True:
+        var step = (UInt128(guess) + value // UInt128(guess)) >> 1
+        if step >= UInt128(guess):
+            return guess
+        guess = UInt64(step)
+
+
 def _sqrtrem_small(
-    n: ImmSpan[UInt32, _], mut remainder: Magnitude
+    n: ImmSpan[UInt64, _], mut remainder: Magnitude
 ) raises -> Magnitude:
     """The recursion's base case: precision-doubling, then one squaring.
 
@@ -717,7 +724,7 @@ def _sqrtrem_small(
 
 
 def _sqrtrem(
-    n: ImmSpan[UInt32, _], mut remainder: Magnitude
+    n: ImmSpan[UInt64, _], mut remainder: Magnitude
 ) raises -> Magnitude:
     """Karatsuba square root: returns `s`, and sets `remainder` to `n - s*s`.
 
@@ -740,7 +747,7 @@ def _sqrtrem(
     largest single cost here after the division itself.
 
     The caller must normalize: `len(n)` even, and the top word at least
-    `2^30`, which is Zimmermann's `a3 >= b/4`. Both survive the recursion --
+    `2^62`, which is Zimmermann's `a3 >= b/4`. Both survive the recursion --
     the top slice keeps `n`'s own top word, and its length is even by
     construction -- so this is checked once, in `sqrt()`.
 
@@ -787,7 +794,7 @@ def _sqrtrem(
     if len(q) > l:
         q = Magnitude(capacity=l)
         for _ in range(l):
-            q.append(UInt32(0xFFFF_FFFF))
+            q.append(~UInt64(0))
         u = bigint_arithmetics._subtract_magnitudes(
             dividend, bigint_arithmetics._multiply_magnitudes(q, divisor)
         )
@@ -819,14 +826,14 @@ def _sqrtrem(
 def _sqrt_karatsuba(x: BigInt) raises -> BigInt:
     """Integer square root through `_sqrtrem()`, with the normalization.
 
-    `_sqrtrem()` wants an even word count and a top word of at least `2^30`.
+    `_sqrtrem()` wants an even word count and a top word of at least `2^62`.
     Both are bought with a left shift, and a shift by an even number of bits
     scales the root by a known power of two, which the final shift undoes:
     `floor(sqrt(x * 2^2k)) >> k` is `floor(sqrt(x))` exactly.
 
-    Padding an odd word count costs a whole word, which is 32 bits and so
+    Padding an odd word count costs a whole word, which is 64 bits and so
     even, and leaves the top word alone. The two shifts together never exceed
-    62 bits, so undoing them is a single sub-word shift.
+    126 bits, so undoing them is a single sub-word shift.
 
     Args:
         x: A positive value.
@@ -845,7 +852,7 @@ def _sqrt_karatsuba(x: BigInt) raises -> BigInt:
     var total = shift
     if (len(value) & 1) == 1:
         bigint_arithmetics._shift_left_words_inplace(value, 1)
-        total += 32
+        total += 64
 
     var remainder = Magnitude()
     var root = _sqrtrem(value.as_span(), remainder)
