@@ -24,7 +24,7 @@ base-2^32 representation for efficient bit-level operations.
 from std import math
 
 import decimo.bigint.arithmetics as bigint_arithmetics
-from decimo.bigint.bigint import BigInt
+from decimo.bigint.bigint import BigInt, Magnitude
 from decimo.errors import ValueError
 
 
@@ -33,7 +33,7 @@ from decimo.errors import ValueError
 # ===----------------------------------------------------------------------=== #
 
 
-def _extract_uint64_from_words(words: List[UInt32], bit_shift: Int) -> UInt64:
+def _extract_uint64_from_words(words: Magnitude, bit_shift: Int) -> UInt64:
     """Extracts up to 64 bits from a magnitude at a given bit offset.
 
     Computes floor(value(words) >> bit_shift) mod 2^64, reading only the
@@ -68,32 +68,32 @@ def _extract_uint64_from_words(words: List[UInt32], bit_shift: Int) -> UInt64:
     return result
 
 
-def _uint64_to_words(val: UInt64) -> List[UInt32]:
+def _uint64_to_words(val: UInt64) -> Magnitude:
     """Converts a UInt64 value to a magnitude word list.
 
     Args:
         val: The UInt64 value to convert.
 
     Returns:
-        A List[UInt32] representing the magnitude in little-endian order.
+        A Magnitude representing the magnitude in little-endian order.
     """
     if val == 0:
-        var result: List[UInt32] = [UInt32(0)]
+        var result: Magnitude = [UInt32(0)]
         return result^
 
     var lo = UInt32(val & 0xFFFF_FFFF)
     var hi = UInt32(val >> 32)
     if hi == 0:
-        var result: List[UInt32] = [lo]
+        var result: Magnitude = [lo]
         return result^
 
-    var result = List[UInt32](capacity=2)
+    var result = Magnitude(capacity=2)
     result.append(lo)
     result.append(hi)
     return result^
 
 
-def _extract_uint128_from_words(words: List[UInt32], bit_shift: Int) -> UInt128:
+def _extract_uint128_from_words(words: Magnitude, bit_shift: Int) -> UInt128:
     """Extracts up to 128 bits from a magnitude at a given bit offset.
 
     Similar to _extract_uint64_from_words but returns UInt128.
@@ -134,20 +134,20 @@ def _extract_uint128_from_words(words: List[UInt32], bit_shift: Int) -> UInt128:
     return result
 
 
-def _uint128_to_words(val: UInt128) -> List[UInt32]:
+def _uint128_to_words(val: UInt128) -> Magnitude:
     """Converts a UInt128 value to a magnitude word list.
 
     Args:
         val: The UInt128 value to convert.
 
     Returns:
-        A List[UInt32] representing the magnitude in little-endian order.
+        A Magnitude representing the magnitude in little-endian order.
     """
     if val == 0:
-        var result: List[UInt32] = [UInt32(0)]
+        var result: Magnitude = [UInt32(0)]
         return result^
 
-    var result = List[UInt32](capacity=4)
+    var result = Magnitude(capacity=4)
     var remaining = val
     while remaining != 0:
         result.append(UInt32(remaining & 0xFFFF_FFFF))
@@ -156,7 +156,7 @@ def _uint128_to_words(val: UInt128) -> List[UInt32]:
     return result^
 
 
-def _left_shift_magnitude_bits(a: List[UInt32], shift: Int) -> List[UInt32]:
+def _left_shift_magnitude_bits(a: Magnitude, shift: Int) -> Magnitude:
     """Shifts a magnitude left by an arbitrary number of bits.
 
     Handles both whole-word and sub-word shifts in a single pass.
@@ -169,7 +169,7 @@ def _left_shift_magnitude_bits(a: List[UInt32], shift: Int) -> List[UInt32]:
         The shifted magnitude as a new word list.
     """
     if shift == 0 or (len(a) == 1 and a[0] == 0):
-        var copy = List[UInt32](capacity=len(a))
+        var copy = Magnitude(capacity=len(a))
         for word in a:
             copy.append(word)
         return copy^
@@ -178,7 +178,7 @@ def _left_shift_magnitude_bits(a: List[UInt32], shift: Int) -> List[UInt32]:
     var bit_shift = shift % 32
     var n = len(a)
     var new_len = n + word_shift + (1 if bit_shift > 0 else 0)
-    var result = List[UInt32](capacity=new_len)
+    var result = Magnitude(capacity=new_len)
 
     # Prepend zero words for the whole-word shift
     for _ in range(word_shift):
@@ -200,7 +200,7 @@ def _left_shift_magnitude_bits(a: List[UInt32], shift: Int) -> List[UInt32]:
     return result^
 
 
-def _right_shift_magnitude_bits(a: List[UInt32], shift: Int) -> List[UInt32]:
+def _right_shift_magnitude_bits(a: Magnitude, shift: Int) -> Magnitude:
     """Shifts a magnitude right by an arbitrary number of bits.
 
     Efficiently skips lower words that would be entirely shifted out,
@@ -218,11 +218,11 @@ def _right_shift_magnitude_bits(a: List[UInt32], shift: Int) -> List[UInt32]:
     var n = len(a)
 
     if word_shift >= n:
-        var zero: List[UInt32] = [UInt32(0)]
+        var zero: Magnitude = [UInt32(0)]
         return zero^
 
     var new_len = n - word_shift
-    var result = List[UInt32](capacity=new_len)
+    var result = Magnitude(capacity=new_len)
 
     if bit_shift == 0:
         for i in range(word_shift, n):
@@ -340,7 +340,7 @@ def _sqrt_precision_doubling_fast(x: BigInt) raises -> BigInt:
 
     Phase 2 (word-lists):
     For the final 1-3 iterations where values exceed 64 bits,
-    operates directly on List[UInt32] word lists, bypassing BigInt
+    operates directly on Magnitude word lists, bypassing BigInt
     wrapper overhead (no sign handling, no error checking, no
     BigInt object allocation/deallocation).
     """
@@ -449,7 +449,7 @@ def _sqrt_precision_doubling_fast(x: BigInt) raises -> BigInt:
 
         # Divide n_shifted by current a (before shifting). Only the quotient
         # is wanted here; the remainder goes into a value that is dropped.
-        var discarded_remainder = List[UInt32]()
+        var discarded_remainder = Magnitude()
         var quotient = bigint_arithmetics._divmod_magnitudes(
             n_shifted, a_words, discarded_remainder
         )

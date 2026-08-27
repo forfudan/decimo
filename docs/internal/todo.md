@@ -62,6 +62,45 @@ See `docs/benchmarks.md`.
 
 Division is the one left outside the bar, and it is item 1 below.
 
+## Goal, round three: `BigInt` against GMP (20260827)
+
+`BigInt` had only ever been measured against CPython's `int`, which is not an
+opponent: it is reached through the interpreter, so it loses on call overhead
+before the arithmetic starts. Against GMP, timed in C, GMP wins nearly every
+row. Ratios, decimo against GMP, bold where decimo is ahead:
+
+| digits | add       | multiply  | floor divide | sqrt      |
+| ------ | --------- | --------- | ------------ | --------- |
+| 10     | **2.45x** | **1.94x** | 1.60x        | **1.50x** |
+| 100    | **1.33x** | 3.14x     | 4.36x        | 2.76x     |
+| 1 000  | 2.13x     | 1.91x     | 6.98x        | 11.49x    |
+| 10^6   | 2.04x     | 3.98x     | 7.56x        | 12.28x    |
+
+The small end is ours only since inline storage: an `mpz_t` always goes to the
+heap, and 10 of GMP's 14.6 ns at a hundred digits is `malloc` and `free`. An
+immutable value type cannot use GMP's reuse idiom, so this is the one place
+where the shape of the API works for us.
+
+Everything else is an algorithm we do not have, not assembly we cannot write.
+Ordered by the size of the gap:
+
+1. **Karatsuba square root.** 11x to 12x from a thousand digits up, and the
+   largest single gap in the library. At 10^6 digits GMP's `mpz_sqrt` is
+   faster than our multiplication. Zimmermann's recursive algorithm; ours is
+   Newton over full-width operands.
+2. **Newton or Barrett division above a threshold.** 7x at 10^6. Burnikel-
+   Ziegler bottoms out at Knuth D and GMP does not. Already item 5 of `Now`
+   for `BigDecimal`, and the same work serves both.
+3. **Base 2^64 magnitude.** 2x on `add` at every size, and it is nothing but
+   the word width: we hold twice as many limbs as GMP for the same value.
+   Multiplication inherits it. Unlike base 10^18 for `BigUInt` (item 9 of
+   `Now`) there is no division by a base here -- 64x64 into 128 is a single
+   instruction, and the accumulator use of 128-bit is the safe one.
+4. **Multiplication thresholds.** Comba, schoolbook, Karatsuba, Toom-3 and an
+   NTT are all present, so 2x to 4x is crossover points and constants rather
+   than a missing tier. Measure the crossovers again once item 3 lands, since
+   halving the word count moves all of them.
+
 ## Now
 
 Ordered by value. Three things are still behind CPython's `decimal`, and

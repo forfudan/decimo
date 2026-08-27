@@ -22,6 +22,23 @@ fixed.
 
 ### ⭐️ New in Unreleased
 
+1. **`BigInt` keeps small values inside the struct.** `WordList`, written for
+   `BigUInt`, gains an inline-capacity parameter and moves to
+   `decimo.wordlist`; `BigInt` uses `WordList[12]` under the name `Magnitude`.
+   Twelve words because a hundred digits is eleven and their sum is twelve --
+   at eight the cliff was plain, 5.4 ns at forty digits against 47 ns at a
+   hundred. Addition at a hundred digits goes from 40.3 ns to 11.2 ns and
+   division from 406 ns to 296 ns. Above a thousand digits nothing moves.
+
+1. **`BigInt` is now measured against GMP.** `docs/benchmarks.md` times GMP in
+   C alongside libmpdec, which is the comparison a big-integer library should
+   be held to; CPython's `int` can only be reached through the interpreter and
+   loses on call overhead before the arithmetic starts. GMP wins most rows.
+   The exception is small values, where an `mpz_t` still goes to the heap and
+   decimo no longer does: at ten digits decimo is 2.45x faster at addition and
+   1.94x at multiplication. What is left is written down in
+   `docs/internal/todo.md`.
+
 1. **`BigUInt` multiplication gains a number-theoretic transform.** Toom-3 was
    the largest algorithm available for base-billion operands, so `BigDecimal`
    multiplication was stuck at O(n^1.465) while libmpdec switches to a

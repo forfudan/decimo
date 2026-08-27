@@ -19,7 +19,7 @@
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.errors import ValueError
-from decimo.bigint.bigint import BigInt
+from decimo.bigint.bigint import BigInt, Magnitude
 from decimo.biguint.biguint import BigUInt
 from decimo.rounding_mode import RoundingMode
 import decimo.bigint.arithmetics as bigint_arithmetics
@@ -420,7 +420,7 @@ def _bigint_from_uint128(value: UInt128, sign: Bool) -> BigInt:
     Returns:
         The corresponding `BigInt`.
     """
-    var words = List[UInt32](capacity=4)
+    var words = Magnitude(capacity=4)
     var remaining = value
     while remaining != 0:
         words.append(UInt32(remaining & UInt128(0xFFFF_FFFF)))

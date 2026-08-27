@@ -42,6 +42,7 @@ from decimo.traits import Numeric, Parsable, Rootable
 import decimo.numerals.chinese as decimo_chinese
 from decimo.numerals.chinese import ChineseNumeralStyle
 from decimo.biguint.biguint import BigUInt
+from decimo.wordlist import WordList
 from decimo.utility import unsigned_counterpart
 from decimo.errors import (
     ConversionError,
@@ -49,6 +50,37 @@ from decimo.errors import (
     ValueError,
     ZeroDivisionError,
 )
+
+comptime INLINE_WORDS = 12
+"""How many words a `BigInt` keeps inside itself before it allocates.
+
+It has to cover *results*, not operands. Twelve words is 384 bits, and what
+sets it is the hundred-digit case: a hundred digits is eleven words and their
+sum is twelve, so at eight this allocated on every addition and the cliff was
+plain to see -- 5.4 ns at forty digits, 47 ns at a hundred. Best of seven,
+two passes alternating between builds, `-D ASSERT=none` (ns):
+
+    inline words        8      12      16      20
+    add    40 digits   5.4     7.0    14.8     8.1
+    add   100 digits  47.6     8.9    13.8     9.9
+    mul    40 digits  56.0    20.6    21.8    22.2
+    div   100 digits   460     300     311     297
+    add  1000 digits  60.7    58.0    58.9    60.9
+
+Twelve is the first that covers a hundred digits and the cheapest that does.
+Beyond it the struct only gets bigger: sixteen and twenty pay for the extra
+words at forty digits and buy nothing back. At 1000 and 100 000 digits every
+setting is within noise of the plain `List` this replaced.
+
+GMP has no inline buffer at all, and pays for it. Adding two 100-digit
+`mpz_t` takes 14.6 ns into a fresh result and 4.6 ns into a reused one, so two
+thirds of it is `malloc` and `free`. An immutable value type cannot reuse a
+destination, so this is where we come out ahead rather than behind: 11.2 ns
+against GMP's 14.9, and 7.0 against 17.1 at ten digits.
+"""
+
+comptime Magnitude = WordList[INLINE_WORDS]
+"""The word storage for a `BigInt` magnitude, little-endian, base 2^32."""
 
 # Type aliases
 comptime BInt = BigInt
@@ -75,7 +107,7 @@ struct BigInt(
 
     Uses base-2^32 representation for the integer magnitude.
     BigInt uses a dynamic structure in memory, which contains:
-    - A List[UInt32] of words for the magnitude stored in little-endian order.
+    - A `Magnitude` of words for the magnitude, little-endian ordered.
       Each UInt32 word uses the full 32-bit range [0, 2^32 - 1].
     - A Bool for the sign (True = negative, False = non-negative).
 
@@ -110,7 +142,7 @@ struct BigInt(
     so it costs nothing in a normal build and fires in the test suite.
     """
 
-    var words: List[UInt32]
+    var words: Magnitude
     """A list of UInt32 words representing the magnitude in little-endian order.
     Each word uses the full [0, 2^32 - 1] range."""
 
@@ -181,10 +213,10 @@ struct BigInt(
         Args:
             uninitialized_capacity: The initial capacity for the words list.
         """
-        self.words = List[UInt32](capacity=uninitialized_capacity)
+        self.words = Magnitude(capacity=uninitialized_capacity)
         self.sign = False
 
-    def __init__(out self, *, var raw_words: List[UInt32], sign: Bool):
+    def __init__(out self, *, var raw_words: Magnitude, sign: Bool):
         """Initializes a BigInt from a list of raw words without
         validation. The caller must ensure words are in valid little-endian
         form with no unnecessary leading zeros.
@@ -300,7 +332,7 @@ struct BigInt(
         comptime number_of_words = (
             value_bits + Self.BITS_PER_WORD - 1
         ) // Self.BITS_PER_WORD  # Trick to round up division
-        var words = List[UInt32](capacity=number_of_words)
+        var words = Magnitude(capacity=number_of_words)
 
         comptime for i in range(number_of_words):
             words.append(
@@ -314,7 +346,7 @@ struct BigInt(
 
         # Trim the leading zero words, but keep at least one.
         while len(words) > 1 and words[len(words) - 1] == 0:
-            _ = words.pop()
+            words.shrink(len(words) - 1)
 
         return Self(raw_words=words^, sign=sign)
 
@@ -430,7 +462,7 @@ struct BigInt(
             return Self()
 
         # Convert from base 10^9 to base 2^32 using repeated division
-        var div_words = List[UInt32](capacity=len(magnitude.words))
+        var div_words = Magnitude(capacity=len(magnitude.words))
         for word in magnitude.words:
             div_words.append(word)
         var result = Self(uninitialized_capacity=len(magnitude.words))
@@ -1949,7 +1981,7 @@ struct BigInt(
         Returns:
             A new `BigInt` with the same value.
         """
-        var new_words = List[UInt32](capacity=len(self.words))
+        var new_words = Magnitude(capacity=len(self.words))
         for word in self.words:
             new_words.append(word)
         return Self(raw_words=new_words^, sign=self.sign)
@@ -2213,7 +2245,7 @@ def _from_decimal_digits_simple(
     var max_words = (digit_count * 107 + 1023) // 1024 + 2
 
     var result = BigInt()
-    result.words = List[UInt32](capacity=max_words)
+    result.words = Magnitude(capacity=max_words)
     result.words.resize(unsafe_uninit_length=max_words)
     var wp = result.words.unsafe_ptr()  # stable pointer: no reallocation occurs
 
@@ -2405,7 +2437,7 @@ comptime _DC_TO_STR_BASE_THRESHOLD = 64
 comptime _DECIMAL_CHUNK_BASE: UInt64 = 1_000_000_000
 
 
-def _magnitude_to_decimal_simple(words: List[UInt32], eff_words: Int) -> String:
+def _magnitude_to_decimal_simple(words: Magnitude, eff_words: Int) -> String:
     """Converts a magnitude (unsigned word list) to a decimal string using
     the simple O(n²) method of repeated division by 10^9.
 
@@ -2473,7 +2505,7 @@ def _magnitude_to_decimal_simple(words: List[UInt32], eff_words: Int) -> String:
 
 
 def _magnitude_to_base_1e9_simple(
-    words: List[UInt32], eff_words: Int
+    words: Magnitude, eff_words: Int
 ) -> List[UInt32]:
     """Converts a magnitude from base 2^32 to base 10^9 by repeated division.
 
@@ -2495,7 +2527,7 @@ def _magnitude_to_base_1e9_simple(
         return [UInt32(0)]
 
     # Allocate dividend buffer and get raw pointer for fast inner loop.
-    var dividend = List[UInt32](capacity=eff_words)
+    var dividend = Magnitude(capacity=eff_words)
     for i in range(eff_words):
         dividend.append(words[i])
     var dp = dividend.unsafe_ptr()
@@ -2525,7 +2557,7 @@ def _magnitude_to_base_1e9_simple(
 
 
 def _magnitude_to_base_1e9_dc(
-    words: List[UInt32], eff_words: Int
+    words: Magnitude, eff_words: Int
 ) raises -> List[UInt32]:
     """Converts a magnitude from base 2^32 to base 10^9, divide and conquer.
 
@@ -2579,7 +2611,7 @@ def _magnitude_to_base_1e9_dc(
         var sq = power_table[k - 1] * power_table[k - 1]
         power_table.append(sq^)
 
-    var trimmed = List[UInt32](capacity=eff_words)
+    var trimmed = Magnitude(capacity=eff_words)
     for i in range(eff_words):
         trimmed.append(words[i])
     var n = BigInt(raw_words=trimmed^, sign=False)
@@ -2656,9 +2688,7 @@ def _dc_to_base_1e9_recursive(
     )
 
 
-def _magnitude_to_decimal_dc(
-    words: List[UInt32], eff_words: Int
-) raises -> String:
+def _magnitude_to_decimal_dc(words: Magnitude, eff_words: Int) raises -> String:
     """Converts a magnitude to a decimal string using divide-and-conquer
     base conversion. Complexity: O(M(n) · log n) where M(n) is the
     multiplication cost.
@@ -2713,7 +2743,7 @@ def _magnitude_to_decimal_dc(
         power_table.append(sq^)
 
     # Create unsigned BigInt from the magnitude words
-    var trimmed = List[UInt32](capacity=eff_words)
+    var trimmed = Magnitude(capacity=eff_words)
     for i in range(eff_words):
         trimmed.append(words[i])
     var n = BigInt(raw_words=trimmed^, sign=False)

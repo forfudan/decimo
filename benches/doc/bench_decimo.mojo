@@ -249,10 +249,10 @@ def main() raises -> None:
         )
     print("  },")
 
-    # --- BigInt against CPython's int ---
-    var integer_widths = [100, 1000, 10000, 100000, 1000000]
-    var integer_iterations = [20000, 5000, 200, 20, 2]
-    var integer_rounds = [ROUNDS, ROUNDS, 5, 3, 3]
+    # --- BigInt against GMP and CPython's int ---
+    var integer_widths = [10, 100, 1000, 10000, 100000, 1000000]
+    var integer_iterations = [200000, 20000, 5000, 200, 20, 2]
+    var integer_rounds = [ROUNDS, ROUNDS, ROUNDS, 5, 3, 3]
 
     print('  "bigint": {')
     for k in range(len(integer_widths)):

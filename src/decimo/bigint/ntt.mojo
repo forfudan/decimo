@@ -36,6 +36,8 @@ how large each convolution coefficient can grow. That freedom is what
 from std.bit import count_leading_zeros
 from std.memory import unsafe_memset_zero
 
+from decimo.bigint.bigint import Magnitude
+
 # ===----------------------------------------------------------------------=== #
 # Field arithmetic modulo the Goldilocks prime
 # ===----------------------------------------------------------------------=== #
@@ -429,7 +431,7 @@ def _unpack(
     count: Int,
     chunk_bits: Int,
     word_count: Int,
-) -> List[UInt32]:
+) -> Magnitude:
     """Reassembles `sum(coefficients[k] * 2^(k * chunk_bits))` into words.
 
     The coefficients overlap once `chunk_bits` is not a multiple of 32, and
@@ -440,7 +442,7 @@ def _unpack(
     each below `2^62` and shifted by at most 31, which leaves the accumulator
     far short of overflowing.
     """
-    var result = List[UInt32](capacity=word_count)
+    var result = Magnitude(capacity=word_count)
     result.resize(unsafe_uninit_length=word_count)
     var destination = result.unsafe_ptr()
 
@@ -546,7 +548,7 @@ def should_multiply_ntt(len_a: Int, len_b: Int) -> Bool:
 
 def multiply_magnitudes_ntt(
     a: ImmSpan[UInt32, _], b: ImmSpan[UInt32, _]
-) -> List[UInt32]:
+) -> Magnitude:
     """Multiplies two magnitudes through a number-theoretic transform.
 
     The caller guarantees both operands are non-empty and non-zero.

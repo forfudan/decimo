@@ -4,7 +4,7 @@ transform round trip, and agreement with the Toom-3 path it replaces.
 """
 
 from std import testing
-from decimo.bigint.bigint import BigInt
+from decimo.bigint.bigint import BigInt, Magnitude
 import decimo.bigint.arithmetics as bigint_arithmetics
 import decimo.bigint.ntt as bigint_ntt
 
@@ -14,14 +14,14 @@ import decimo.bigint.ntt as bigint_ntt
 # ===----------------------------------------------------------------------=== #
 
 
-def _pseudo_random_words(count: Int, seed: UInt64) -> List[UInt32]:
+def _pseudo_random_words(count: Int, seed: UInt64) -> Magnitude:
     """Builds `count` words from a linear congruential generator.
 
     The top word is forced non-zero so that the operand really is `count`
     words long, which is what the size-dependent dispatch keys on.
     """
     var state = seed | 1
-    var words = List[UInt32](capacity=count)
+    var words = Magnitude(capacity=count)
     for _ in range(count):
         state = state * 6364136223846793005 + 1442695040888963407
         words.append(UInt32(state >> 32))
@@ -60,10 +60,10 @@ def _assert_matches_reference(
         words_a[len_a - 1] = UInt32(1) << UInt32(top_bits - 1)
 
     var expected = bigint_arithmetics._multiply_magnitudes_schoolbook(
-        ImmSpan[UInt32](words_a), ImmSpan[UInt32](words_b)
+        words_a.as_span(), words_b.as_span()
     )
     var actual = bigint_ntt.multiply_magnitudes_ntt(
-        ImmSpan[UInt32](words_a), ImmSpan[UInt32](words_b)
+        words_a.as_span(), words_b.as_span()
     )
 
     var expected_length = len(expected)
@@ -301,8 +301,8 @@ def test_ntt_matches_reference_on_extreme_words() raises:
     of it, which is where a chunk width one bit too wide would wrap.
     """
 
-    def _all_ones(count: Int) -> List[UInt32]:
-        var words = List[UInt32](capacity=count)
+    def _all_ones(count: Int) -> Magnitude:
+        var words = Magnitude(capacity=count)
         for _ in range(count):
             words.append(UInt32(0xFFFF_FFFF))
         return words^
@@ -312,10 +312,10 @@ def test_ntt_matches_reference_on_extreme_words() raises:
         var count = word_counts[i]
         var ones = _all_ones(count)
         var expected = bigint_arithmetics._multiply_magnitudes_schoolbook(
-            ImmSpan[UInt32](ones), ImmSpan[UInt32](ones)
+            ones.as_span(), ones.as_span()
         )
         var actual = bigint_ntt.multiply_magnitudes_ntt(
-            ImmSpan[UInt32](ones), ImmSpan[UInt32](ones)
+            ones.as_span(), ones.as_span()
         )
         var expected_length = len(expected)
         while expected_length > 1 and expected[expected_length - 1] == 0:
