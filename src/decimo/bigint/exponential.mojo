@@ -612,16 +612,26 @@ comptime CUTOFF_SQRT_RECURSIVE: Int = 64
 Below it the precision-doubling path wins because it spends its early
 iterations in `UInt64` and `UInt128` registers, where the recursion is
 already allocating word lists; above it the recursion wins because its
-division is half the width. Measured, best of seven (us):
+division is half the width. The two on their own, neither one used as the
+other's base case, best of seven (us):
 
     digits            500    1000    2000    3000    5000    8000
     precision-doubling 1.78   3.83   10.00   16.51   36.08   67.78
     Zimmermann         2.27   3.90    8.16   11.89   21.59   38.93
 
-The crossover itself is flat: 32, 64 and 128 words all measure within the
-noise band from 500 to 3000 digits. 64 is chosen because it is never worse
-and is about 5% better at 1000 digits, where it is the setting that changes
-what runs. 32 is clearly worse at 500 digits, so the flat region has a floor.
+That is not the choice, though, because the shipped recursion stops at
+`CUTOFF_SQRT_BASE` and finishes in the older path. Sweeping this constant
+with that in place, best of seven, `-D ASSERT=none` (us):
+
+    digits            500    700    1000    1500    2000
+    cutoff  32       1.89   2.60    3.43    5.26    6.97
+    cutoff  64       1.75   2.41    3.22    4.76    6.72
+    cutoff 128       1.78   2.64    3.85    4.96    7.24
+
+64 wins at every width, by 16% at 1000 digits where it is the setting that
+decides what runs. It reads better than the two-way table because one level
+of recursion halves the division and then hands a 52-word tail to the path
+that is best at 52 words.
 """
 
 comptime CUTOFF_SQRT_BASE: Int = 32

@@ -1480,10 +1480,10 @@ def _divmod_magnitudes(
 
         # Step D4: multiply and subtract, u[j..j+n] -= q_hat * v[0..n-1].
         #
-        # The borrow is branchless. Biasing the difference by 2^32 keeps it
-        # non-negative, so bit 32 of the result is the complement of the
-        # borrow, and folding that borrow into the product carry is exactly
-        # what the branchy form did one word later.
+        # The borrow is a branch on purpose, for the reason spelled out in
+        # `_divmod_knuth_d_from_slices()`: the branchless form puts the loaded
+        # word into the loop-carried carry chain, so every iteration waits on
+        # a load.
         var carry: UInt64 = 0
         for i in range(n):
             var product = q_hat * UInt64(v_ptr[unsafe_offset=i]) + carry

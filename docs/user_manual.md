@@ -175,7 +175,11 @@ must ensure the data is valid.
 | Constructor                               | Description                               |
 | ----------------------------------------- | ----------------------------------------- |
 | `BInt(uninitialized_capacity=n)`          | Empty words list with reserved capacity   |
-| `BInt(raw_words=List[UInt32], sign=Bool)` | From raw words, no leading-zero stripping |
+| `BInt(raw_words=Magnitude, sign=Bool)`    | From raw words, no leading-zero stripping |
+
+`Magnitude` is `BInt`'s word storage, exported from `decimo`. It took a
+`List[UInt32]` before v0.14.0; a list literal still works, and an existing
+`List` goes in as `BInt(raw_words=Magnitude(words^), sign=False)`.
 
 ### Arithmetic Operations
 

@@ -100,98 +100,111 @@ def git_context() -> dict:
     }
 
 
-def libmpdec_flags() -> list[str]:
-    """Include and library flags for libmpdec, however it is installed.
+def pkg_config(package: str) -> tuple[list[str], list[str]] | None:
+    """Compile and link flags from pkg-config, asked for separately.
+
+    They have to stay apart. GNU ld resolves in command-line order and
+    defaults to `--as-needed`, so a `-l` that comes before the source file
+    sees no undefined symbols yet and is dropped, and the link fails. The
+    Apple linker does not care, which is exactly why this would only show up
+    on Linux.
+    """
+    if not shutil.which("pkg-config"):
+        return None
+    flags = []
+    for what in ("--cflags", "--libs"):
+        probe = subprocess.run(
+            ["pkg-config", what, package], capture_output=True, text=True
+        )
+        if probe.returncode != 0:
+            return None
+        flags.append(probe.stdout.split())
+    if not flags[1]:
+        return None
+    return flags[0], flags[1]
+
+
+def library_prefixes(brew_package: str) -> list[str]:
+    """Where to look for a library, Homebrew first if it is installed."""
+    prefixes = []
+    if shutil.which("brew"):
+        found = subprocess.run(
+            ["brew", "--prefix", brew_package], capture_output=True, text=True
+        ).stdout.strip()
+        if found:
+            prefixes.append(found)
+    return prefixes + ["/opt/homebrew", "/usr/local", "/usr"]
+
+
+def libmpdec_flags() -> tuple[list[str], list[str]]:
+    """Compile and link flags for libmpdec, however it is installed.
 
     `platforms` covers Linux as well as macOS, so this cannot assume Homebrew.
     Tries pkg-config, then Homebrew, then the usual prefixes.
     """
-    if shutil.which("pkg-config"):
-        probe = subprocess.run(
-            ["pkg-config", "--cflags", "--libs", "libmpdec"],
-            capture_output=True,
-            text=True,
-        )
-        if probe.returncode == 0 and probe.stdout.strip():
-            return probe.stdout.split()
-    candidates = []
-    if shutil.which("brew"):
-        found = subprocess.run(
-            ["brew", "--prefix", "mpdecimal"], capture_output=True, text=True
-        ).stdout.strip()
-        if found:
-            candidates.append(found)
-    candidates += ["/opt/homebrew", "/usr/local", "/usr"]
-    for prefix in candidates:
+    from_pkg_config = pkg_config("libmpdec")
+    if from_pkg_config:
+        return from_pkg_config
+    for prefix in library_prefixes("mpdecimal"):
         if (Path(prefix) / "include" / "mpdecimal.h").exists():
-            return [f"-I{prefix}/include", f"-L{prefix}/lib", "-lmpdec"]
+            return [f"-I{prefix}/include"], [f"-L{prefix}/lib", "-lmpdec"]
     raise SystemExit(
         "libmpdec headers not found. Install mpdecimal (macOS: "
         "`brew install mpdecimal`; Debian/Ubuntu: `apt install libmpdec-dev`)."
     )
 
 
-def libgmp_flags() -> list[str]:
-    """Include and library flags for GMP, however it is installed.
+def libgmp_flags() -> tuple[list[str], list[str]]:
+    """Compile and link flags for GMP, however it is installed.
 
     Same shape as `libmpdec_flags()`, and the same reason: `platforms` covers
     Linux as well as macOS.
     """
-    if shutil.which("pkg-config"):
-        probe = subprocess.run(
-            ["pkg-config", "--cflags", "--libs", "gmp"],
-            capture_output=True,
-            text=True,
-        )
-        if probe.returncode == 0 and probe.stdout.strip():
-            return probe.stdout.split()
-    candidates = []
-    if shutil.which("brew"):
-        found = subprocess.run(
-            ["brew", "--prefix", "gmp"], capture_output=True, text=True
-        ).stdout.strip()
-        if found:
-            candidates.append(found)
-    candidates += ["/opt/homebrew", "/usr/local", "/usr"]
-    for prefix in candidates:
+    from_pkg_config = pkg_config("gmp")
+    if from_pkg_config:
+        return from_pkg_config
+    for prefix in library_prefixes("gmp"):
         if (Path(prefix) / "include" / "gmp.h").exists():
-            return [f"-I{prefix}/include", f"-L{prefix}/lib", "-lgmp"]
+            return [f"-I{prefix}/include"], [f"-L{prefix}/lib", "-lgmp"]
     raise SystemExit(
         "GMP headers not found. Install it (macOS: `brew install gmp`; "
         "Debian/Ubuntu: `apt install libgmp-dev`)."
     )
 
 
-def build_libgmp() -> Path:
-    binary = Path(os.environ.get("TMPDIR", "/tmp")) / "decimo_bench_libgmp"
+def build_c_benchmark(
+    source: str, binary_name: str, flags: tuple[list[str], list[str]]
+) -> Path:
+    """Compile one of the C benchmarks.
+
+    The source comes before the link flags, which is not cosmetic -- see
+    `pkg_config()`.
+    """
+    binary = Path(os.environ.get("TMPDIR", "/tmp")) / binary_name
+    cflags, ldflags = flags
     subprocess.run(
         [
             "cc",
             "-O2",
-            *libgmp_flags(),
-            str(HERE / "bench_libgmp.c"),
+            *cflags,
+            str(HERE / source),
             "-o",
             str(binary),
+            *ldflags,
         ],
         check=True,
     )
     return binary
+
+
+def build_libgmp() -> Path:
+    return build_c_benchmark("bench_libgmp.c", "decimo_bench_libgmp", libgmp_flags())
 
 
 def build_libmpdec() -> Path:
-    binary = Path(os.environ.get("TMPDIR", "/tmp")) / "decimo_bench_libmpdec"
-    subprocess.run(
-        [
-            "cc",
-            "-O2",
-            *libmpdec_flags(),
-            str(HERE / "bench_libmpdec.c"),
-            "-o",
-            str(binary),
-        ],
-        check=True,
+    return build_c_benchmark(
+        "bench_libmpdec.c", "decimo_bench_libmpdec", libmpdec_flags()
     )
-    return binary
 
 
 def pi_cold(library: str, precision: int) -> float | None:

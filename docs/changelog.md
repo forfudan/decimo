@@ -19,7 +19,7 @@ Burnikel-Ziegler division loses a padding choice that cost it its own
 asymptotics on some sizes, which speeds up every division in the library. A
 Newton iteration that silently returned short of its requested precision is
 fixed. `BigInt` now keeps small values inside the struct, takes its square
-root by Zimmermann's recursion above a thousand digits, and is measured
+root by Zimmermann's recursion above about six hundred digits, and is measured
 against GMP rather than against CPython's `int`. A `sqrt()` that hung for
 values at the top of a word is fixed.
 
@@ -480,6 +480,13 @@ values at the top of a word is fixed.
 
 ### 💥 Breaking in Unreleased
 
+1. **`BInt(raw_words=..., sign=...)` takes a `Magnitude`, not a
+   `List[UInt32]`.** That is the inline word storage `BigInt` moved to, and
+   the constructor moves into it rather than copying. A list literal still
+   works unchanged; an existing `List` goes in as
+   `BInt(raw_words=Magnitude(words^), sign=False)`. `Magnitude` is exported
+   from `decimo`. `BigUInt`'s own `raw_words=` still takes a `List[UInt32]`
+   and is unaffected.
 1. **The `Integer` alias for `BigInt` is removed.** `BInt` remains, and matches
    `BDec` and `Dec128` in shape. `Integer` named a general concept rather than
    one concrete type, and collided with the ordinary English word used
