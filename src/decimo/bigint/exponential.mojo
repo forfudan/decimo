@@ -251,6 +251,36 @@ def _right_shift_magnitude_bits(a: Magnitude, shift: Int) -> Magnitude:
 # ===----------------------------------------------------------------------=== #
 
 
+@always_inline
+def _isqrt_uint64(value: UInt64) -> UInt64:
+    """The integer square root of a value that fits a `UInt64`.
+
+    `math.sqrt` goes through `Float64`, which carries 53 bits, so the estimate
+    is out by one either way near the top of the range -- and for a value just
+    under `2^64` it rounds *up*, to `2^64`, whose root is `2^32` and does not
+    fit the answer. Clamping to `2^32 - 1` first keeps every square below
+    inside a `UInt64`, the largest being `(2^32 - 1)^2 = 2^64 - 2^33 + 1`.
+
+    Without the clamp those squares wrap to small values, both tests read the
+    wrong way round, and the second walk runs `2^32` times. That was a hang,
+    not a slow answer: `sqrt(2^32 - 1)` never returned.
+
+    Args:
+        value: The value to take the root of.
+
+    Returns:
+        The largest `root` with `root * root <= value`.
+    """
+    var root = UInt64(math.sqrt(Float64(value)))
+    if root > 0xFFFF_FFFF:
+        root = 0xFFFF_FFFF
+    while root > 0 and root * root > value:
+        root -= 1
+    while root < 0xFFFF_FFFF and (root + 1) * (root + 1) <= value:
+        root += 1
+    return root
+
+
 def sqrt(x: BigInt) raises -> BigInt:
     """Calculates the integer square root of a BigInt.
 
@@ -289,29 +319,21 @@ def sqrt(x: BigInt) raises -> BigInt:
     if x.is_zero():
         return BigInt()
 
-    # Special case: single word — use hardware sqrt
+    # One or two words: the value fits a UInt64 and hardware can answer it.
     if len(x.words) == 1:
         if x.words[0] <= 1:
             return x.copy()
-        var val = x.words[0]
-        var guess = UInt32(math.sqrt(val))
-        # Refine: ensure guess^2 <= val < (guess+1)^2
-        while guess * guess > val:
-            guess -= 1
-        while (guess + 1) * (guess + 1) <= val:
-            guess += 1
-        return BigInt.from_integral_scalar(Int(guess))
-
-    # Special case: two words — compute via UInt64 sqrt
+        return BigInt.from_integral_scalar(_isqrt_uint64(UInt64(x.words[0])))
     if len(x.words) == 2:
-        var val = UInt64(x.words[0]) + (UInt64(x.words[1]) << 32)
-        var guess = UInt64(math.sqrt(val))
-        # Refine: ensure guess^2 <= val < (guess+1)^2
-        while guess * guess > val:
-            guess -= 1
-        while (guess + 1) * (guess + 1) <= val:
-            guess += 1
-        return BigInt.from_integral_scalar(guess)
+        return BigInt.from_integral_scalar(
+            _isqrt_uint64(UInt64(x.words[0]) + (UInt64(x.words[1]) << 32))
+        )
+
+    # Past the crossover, Zimmermann's recursion: its division is half the
+    # width of the one precision-doubling finishes on, and it carries its
+    # remainder rather than recovering it with a full-width squaring.
+    if len(x.words) > CUTOFF_SQRT_RECURSIVE:
+        return _sqrt_karatsuba(x)
 
     # For all larger inputs: optimized precision-doubling with UInt64 fast path
     return _sqrt_precision_doubling_fast(x)
@@ -607,3 +629,234 @@ def reciprocal_sqrt_fixed_point(
         current = target
 
     return r^
+
+
+# ===----------------------------------------------------------------------=== #
+# Karatsuba square root
+# ===----------------------------------------------------------------------=== #
+
+comptime CUTOFF_SQRT_RECURSIVE: Int = 128
+"""Words above which `sqrt()` uses Zimmermann's recursion.
+
+128 words is about 1230 decimal digits, and it is where the two curves cross.
+Below it the precision-doubling path wins because it spends its early
+iterations in `UInt64` and `UInt128` registers, where the recursion is
+already allocating word lists; above it the recursion wins because its
+division is half the width. Measured, best of seven (us):
+
+    digits            500    1000    2000    3000    5000    8000
+    precision-doubling 1.78   3.83   10.00   16.51   36.08   67.78
+    Zimmermann         2.27   3.90    8.16   11.89   21.59   38.93
+
+"""
+
+comptime CUTOFF_SQRT_BASE: Int = 32
+"""Words below which `_sqrtrem()` stops recursing and doubles precision.
+
+The recursion needs a remainder and the older path does not produce one, so
+the base case pays for a squaring to recover it. That is cheap at these sizes
+and buys back the register-resident early iterations. Anywhere from 16 to 64
+measures the same -- 48.4 us against 49.2 at 10 000 digits -- so this is the
+middle of a flat range rather than a peak.
+"""
+
+
+def _sqrtrem_two_words(n: Magnitude, mut remainder: Magnitude) -> Magnitude:
+    """Square root of a one- or two-word magnitude, with its remainder.
+
+    The value fits a `UInt64`, so the root fits a `UInt32` and the hardware
+    can be asked directly. `math.sqrt` on a `Float64` is exact only up to 53
+    bits, so the answer is corrected either way rather than trusted.
+
+    Args:
+        n: The magnitude, one or two words.
+        remainder: Set to `n - s * s` on return.
+
+    Returns:
+        The integer square root, one word.
+    """
+    var value = UInt64(n[0])
+    if len(n) > 1:
+        value += UInt64(n[1]) << 32
+    var root = _isqrt_uint64(value)
+    remainder = [UInt32((value - root * root) & 0xFFFF_FFFF)]
+    var high = UInt32((value - root * root) >> 32)
+    if high != 0:
+        remainder.append(high)
+    var out: Magnitude = [UInt32(root & 0xFFFF_FFFF)]
+    return out^
+
+
+def _sqrtrem_small(n: Magnitude, mut remainder: Magnitude) raises -> Magnitude:
+    """The recursion's base case: precision-doubling, then one squaring.
+
+    Below the crossover the older algorithm is simply better -- it spends its
+    early iterations in `UInt64` and `UInt128` registers where this one is
+    already allocating word lists. It does not produce a remainder, so one is
+    recovered with a squaring, which is cheap at these sizes and is what the
+    recursion above needs.
+
+    Args:
+        n: The magnitude, at least three words.
+        remainder: Set to `n - s * s` on return.
+
+    Returns:
+        The integer square root.
+
+    Raises:
+        Error: Propagated from the precision-doubling path.
+    """
+    var root = _sqrt_precision_doubling_fast(
+        BigInt(raw_words=n.copy(), sign=False)
+    )
+    var root_words = root.words.copy()
+    remainder = bigint_arithmetics._subtract_magnitudes(
+        n, bigint_arithmetics._multiply_magnitudes(root_words, root_words)
+    )
+    return root_words^
+
+
+def _sqrtrem(n: Magnitude, mut remainder: Magnitude) raises -> Magnitude:
+    """Karatsuba square root: returns `s`, and sets `remainder` to `n - s*s`.
+
+    Zimmermann's recursion (INRIA RR-3805). Writing `n` as
+    `a3*b^3 + a2*b^2 + a1*b + a0` with `b = B^l`, the root of the top half
+    gives most of the answer and one division supplies the rest:
+
+        (s', r') = sqrt(a3*b + a2)
+        (q,  u ) = divmod(r'*b + a1, 2*s')
+        s = s'*b + q
+        r = u*b + a0 - q^2        and if r < 0, r += 2s - 1 and s -= 1
+
+    The division here is half the width of the one CPython's
+    precision-doubling ends on, which is where the time goes, and the
+    remainder comes out of the recursion rather than being recovered with a
+    full-width squaring afterwards.
+
+    The caller must normalize: `len(n)` even, and the top word at least
+    `2^30`, which is Zimmermann's `a3 >= b/4`. Both survive the recursion --
+    the top slice keeps `n`'s own top word, and its length is even by
+    construction -- so this is checked once, in `sqrt()`.
+
+    Args:
+        n: The magnitude, normalized as described.
+        remainder: Set to `n - s * s` on return.
+
+    Returns:
+        The integer square root.
+
+    Raises:
+        Error: Never, in practice; the inner division cannot divide by zero
+            because the top word is normalized, so `s'` is non-zero.
+    """
+    var m = len(n)
+    if m <= 2:
+        return _sqrtrem_two_words(n, remainder)
+    if m <= CUTOFF_SQRT_BASE:
+        return _sqrtrem_small(n, remainder)
+
+    var half = m >> 1
+    var l = half >> 1
+    var span = n.as_span()
+
+    # The top 2*(half - l) words. Its top word is `n`'s, so it is normalized
+    # already and `_normalized_copy()` strips nothing.
+    var r_hi = Magnitude()
+    var s_hi = _sqrtrem(
+        bigint_arithmetics._normalized_copy(
+            bigint_arithmetics._subspan(span, 2 * l, m)
+        ),
+        r_hi,
+    )
+
+    var divisor = s_hi.copy()
+    bigint_arithmetics._double_inplace(divisor)
+
+    var dividend = r_hi^
+    bigint_arithmetics._shift_left_words_inplace(dividend, l)
+    bigint_arithmetics._add_magnitudes_inplace(
+        dividend,
+        bigint_arithmetics._normalized_copy(
+            bigint_arithmetics._subspan(span, l, 2 * l)
+        ),
+    )
+
+    var u = Magnitude()
+    var q = bigint_arithmetics._divmod_magnitudes(dividend, divisor, u)
+
+    # `q` is at most `B^l`, and the equality case would not fit the `l` words
+    # the next step gives it. Clamp and recover the remainder by hand; this
+    # costs one multiplication and happens almost never.
+    if len(q) > l:
+        q = Magnitude(capacity=l)
+        for _ in range(l):
+            q.append(UInt32(0xFFFF_FFFF))
+        u = bigint_arithmetics._subtract_magnitudes(
+            dividend, bigint_arithmetics._multiply_magnitudes(q, divisor)
+        )
+
+    var s = s_hi^
+    bigint_arithmetics._shift_left_words_inplace(s, l)
+    bigint_arithmetics._add_magnitudes_inplace(s, q)
+
+    var t = u^
+    bigint_arithmetics._shift_left_words_inplace(t, l)
+    bigint_arithmetics._add_magnitudes_inplace(
+        t,
+        bigint_arithmetics._normalized_copy(
+            bigint_arithmetics._subspan(span, 0, l)
+        ),
+    )
+
+    var q_squared = bigint_arithmetics._multiply_magnitudes(q, q)
+    if bigint_arithmetics._compare_word_lists(t, q_squared) < 0:
+        # One correction is always enough, which is what `a3 >= b/4` buys.
+        var correction = s.copy()
+        bigint_arithmetics._double_inplace(correction)
+        bigint_arithmetics._decrement_inplace(correction)
+        bigint_arithmetics._add_magnitudes_inplace(t, correction)
+        bigint_arithmetics._decrement_inplace(s)
+        bigint_arithmetics._strip_leading_zeros_inplace(s)
+
+    remainder = bigint_arithmetics._subtract_magnitudes(t, q_squared)
+    return s^
+
+
+def _sqrt_karatsuba(x: BigInt) raises -> BigInt:
+    """Integer square root through `_sqrtrem()`, with the normalization.
+
+    `_sqrtrem()` wants an even word count and a top word of at least `2^30`.
+    Both are bought with a left shift, and a shift by an even number of bits
+    scales the root by a known power of two, which the final shift undoes:
+    `floor(sqrt(x * 2^2k)) >> k` is `floor(sqrt(x))` exactly.
+
+    Padding an odd word count costs a whole word, which is 32 bits and so
+    even, and leaves the top word alone. The two shifts together never exceed
+    62 bits, so undoing them is a single sub-word shift.
+
+    Args:
+        x: A positive value.
+
+    Returns:
+        The integer square root.
+
+    Raises:
+        Error: Propagated from the division inside the recursion.
+    """
+    var leading = bigint_arithmetics._count_leading_zeros(
+        x.words[len(x.words) - 1]
+    )
+    var shift = leading if (leading & 1) == 0 else leading - 1
+    var value = bigint_arithmetics._shift_left_words(x.words, shift)
+    var total = shift
+    if (len(value) & 1) == 1:
+        bigint_arithmetics._shift_left_words_inplace(value, 1)
+        total += 32
+
+    var remainder = Magnitude()
+    var root = _sqrtrem(value, remainder)
+
+    var back = total >> 1
+    if back > 0:
+        root = bigint_arithmetics._shift_right_words(root, back, len(root))
+    return BigInt(raw_words=root^, sign=False)

@@ -250,6 +250,11 @@ def main() raises -> None:
     print("  },")
 
     # --- BigInt against GMP and CPython's int ---
+    #
+    # The sink reads a word of the result, not its sign. Every operand here is
+    # non-negative, so the sign is a constant the optimizer can see through,
+    # and once `sqrt`'s correcting walks were provably terminating it deleted
+    # the whole call: the two-word case read 1.75 ns instead of 9.5.
     var integer_widths = [10, 100, 1000, 10000, 100000, 1000000]
     var integer_iterations = [200000, 20000, 5000, 200, 20, 2]
     var integer_rounds = [ROUNDS, ROUNDS, ROUNDS, 5, 3, 3]
@@ -272,13 +277,13 @@ def main() raises -> None:
         for _ in range(rounds):
             var t0 = perf_counter_ns()
             for _ in range(iters):
-                sink += Int((x + y).sign)
+                sink += Int((x + y).words[0])
             var t1 = perf_counter_ns()
             best_add = min(best_add, Float64(Int(t1 - t0)) / Float64(iters))
 
             t0 = perf_counter_ns()
             for _ in range(iters):
-                sink += Int((x * y).sign)
+                sink += Int((x * y).words[0])
             t1 = perf_counter_ns()
             best_multiply = min(
                 best_multiply, Float64(Int(t1 - t0)) / Float64(iters)
@@ -286,7 +291,7 @@ def main() raises -> None:
 
             t0 = perf_counter_ns()
             for _ in range(iters):
-                sink += Int((wide // y).sign)
+                sink += Int((wide // y).words[0])
             t1 = perf_counter_ns()
             best_divide = min(
                 best_divide, Float64(Int(t1 - t0)) / Float64(iters)
@@ -294,7 +299,7 @@ def main() raises -> None:
 
             t0 = perf_counter_ns()
             for _ in range(iters):
-                sink += Int(bigint_exponential.sqrt(x).sign)
+                sink += Int(bigint_exponential.sqrt(x).words[0])
             t1 = perf_counter_ns()
             best_sqrt = min(best_sqrt, Float64(Int(t1 - t0)) / Float64(iters))
 
