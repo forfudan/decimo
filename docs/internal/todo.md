@@ -253,6 +253,13 @@ Three things measured the wrong way round here, so they are not retried:
   each way: 27 ns against 35 at 10 digits, 3.4 us against 3.7 at 1000.
   arm64's `UDIV` is cheaper than what it takes to avoid it.
 
+  **This holds only while the limb is 32 bits**, and the reason is the whole
+  of it: 64-by-32 is one hardware instruction. A 64-bit limb needs 128-by-64,
+  which no arm64 or x86-64 instruction does, so the compiler emits a software
+  helper -- and there the reciprocal stops being an optimization and becomes
+  the only way to estimate a quotient digit. Do not read this entry as an
+  argument against it in that setting.
+
 ## Now
 
 Ordered by value. Three things are still behind CPython's `decimal`, and
