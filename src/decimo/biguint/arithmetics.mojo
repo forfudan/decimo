@@ -3487,8 +3487,13 @@ def floor_divide_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
         # Forward shift is safe: dst index < src index, dst[i] is
         # written before src[i+1] is read.
         var keep = len(x.words) - word_shift
+        # The pointer is taken once. Indexing `x.words[i]` inside the loop
+        # would ask `WordList` where its storage lives on every access, and
+        # the answer is a branch the compiler will not always hoist out from
+        # under a store.
+        var pointer = x.words.unsafe_ptr()
         for i in range(keep):
-            x.words[i] = x.words[i + word_shift]
+            pointer[unsafe_offset=i] = pointer[unsafe_offset=i + word_shift]
         x.words.shrink(keep)
 
     _shift_right_by_decimal_digits_inplace(x, digit_shift)
@@ -3526,10 +3531,12 @@ def _shift_right_by_decimal_digits_inplace(mut x: BigUInt, digit_shift: Int):
         divisor = UInt32(100000000)
     var power_of_carry = BigUInt.BASE // divisor
     var carry = UInt32(0)
+    var pointer = x.words.unsafe_ptr()
     for i in range(len(x.words) - 1, -1, -1):
-        var quot = x.words[i] // divisor
-        var rem = x.words[i] % divisor
-        x.words[i] = quot + carry * power_of_carry
+        var word = pointer[unsafe_offset=i]
+        var quot = word // divisor
+        var rem = word % divisor
+        pointer[unsafe_offset=i] = quot + carry * power_of_carry
         carry = rem
     x.remove_leading_empty_words()
 
