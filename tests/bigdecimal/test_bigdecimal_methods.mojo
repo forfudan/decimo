@@ -176,6 +176,35 @@ def test_to_eng_string_basic() raises:
     testing.assert_equal(BigDecimal("1234.5E+2").to_eng_string(), "123.45E+3")
 
 
+def test_to_string_force_exponent() raises:
+    """`force_exponent` shows one where `to_eng_string()` would not.
+
+    Two different questions. `to_eng_string()` answers the one the decimal
+    spec asks -- "identical to the scientific form, except that any exponent
+    is a multiple of three" -- so where `str()` prints plainly, so does it.
+    A caller who asks a formatter for engineering notation, such as the
+    calculator's `--engineering` flag, is asking the other one.
+    """
+    var value = BigDecimal("12345.678")
+    testing.assert_equal(value.to_eng_string(), "12345.678")
+    testing.assert_equal(
+        value.to_string(engineering=True, force_exponent=True), "12.345678E+3"
+    )
+
+    var negative = BigDecimal("-12345.678")
+    testing.assert_equal(
+        negative.to_string(engineering=True, force_exponent=True),
+        "-12.345678E+3",
+    )
+
+    # Where an exponent was going to be shown anyway, the two agree.
+    var scaled = BigDecimal("1.23E+5")
+    testing.assert_equal(scaled.to_eng_string(), "123E+3")
+    testing.assert_equal(
+        scaled.to_string(engineering=True, force_exponent=True), "123E+3"
+    )
+
+
 def test_to_eng_string_keeps_trailing_zeros() raises:
     """Trailing zeros stay, because they carry the exponent.
 

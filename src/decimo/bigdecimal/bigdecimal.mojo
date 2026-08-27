@@ -685,6 +685,7 @@ struct BigDecimal(
         scientific: Bool = False,
         engineering: Bool = False,
         force_plain: Bool = False,
+        force_exponent: Bool = False,
         delimiter: String = "",
         line_width: Int = 0,
     ) -> String:
@@ -698,6 +699,10 @@ struct BigDecimal(
           an exponent is shown at all is decided by the same rules as below,
           so `123456` still prints plainly. Trailing zeros are kept. This
           matches CPython's `Decimal.to_eng_string()`.
+        - `force_exponent=True` shows one regardless. That is what someone
+          asking a formatter for engineering notation means -- the calculator's
+          `--engineering` flag, say -- as opposed to `to_eng_string()`, which
+          has to answer the way CPython does.
         - Scientific notation is used when:
           1. `scientific` parameter is True, OR
           2. The internal exponent > 0 (i.e., scale < 0), OR
@@ -715,6 +720,9 @@ struct BigDecimal(
             engineering: If True, any exponent shown is a multiple of 3, with
                 one to three digits before the point. Trailing zeros are
                 kept.
+            force_exponent: If True, always show an exponent, even where the
+                rules below would print the number plainly. Only meaningful
+                together with `engineering` or `scientific`.
             force_plain: If True, suppress the CPython-compatible
                 auto-detection of scientific notation (the `scale < 0` and
                 `leftdigits <= -6` rules are not applied).  Useful when a
@@ -761,7 +769,7 @@ struct BigDecimal(
             not force_plain and (self.scale < 0 or leftdigits <= -6)
         )
 
-        if engineering and use_scientific:
+        if engineering and (use_scientific or force_exponent):
             # Engineering notation differs from scientific in one way only:
             # the exponent is rounded down to a multiple of 3, so one to three
             # digits stand before the point. Whether an exponent is shown at
@@ -769,6 +777,10 @@ struct BigDecimal(
             # why this branch is guarded by `use_scientific` -- CPython's
             # `to_eng_string()` prints 123456 and 0.00012 plainly, exactly as
             # `str()` does.
+            #
+            # `force_exponent` is the other reading: a caller who has asked a
+            # formatter for engineering notation wants to see one. The two are
+            # different questions and used to share an answer.
             #
             # Trailing zeros stay. They are not noise: `1.2300` and `1.23` are
             # equal numbers with different exponents, and the string is what
