@@ -852,5 +852,5 @@ def _sqrt_karatsuba(x: BigInt) raises -> BigInt:
 
     var back = total >> 1
     if back > 0:
-        root = bigint_arithmetics._shift_right_words(root, back, len(root))
+        bigint_arithmetics._shift_right_words_inplace(root, back, len(root))
     return BigInt(raw_words=root^, sign=False)
