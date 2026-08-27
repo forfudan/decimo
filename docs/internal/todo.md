@@ -188,7 +188,12 @@ correcting walks were provably bounded that is exactly what happened -- small
 `BigUInt.sqrt()` read 0.225 ns, which is nothing at all. Vary the operand,
 and sink something value-dependent rather than a sign that is always false.
 
-Two things measured the wrong way round here, so they are not retried:
+Three things measured the wrong way round here, so they are not retried:
+
+- **Dropping the `UInt128` phase of `_sqrt_precision_doubling_fast()`.** A
+  128-bit divide is a software helper, and item 8 of `Now` says to hunt those
+  down -- but here it still beats the word-list path it would fall back to.
+  100-digit `sqrt` goes from 155 ns to 204 without it.
 
 - **A branchless borrow in Knuth D.** Biasing by 2^32 and reading the borrow
   out of bit 32 puts the loaded word in the loop-carried carry chain. The
