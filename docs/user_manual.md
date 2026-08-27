@@ -107,8 +107,8 @@ functions.
 | ----------------- | ---------------------------- |
 | Full name         | `BigInt`                     |
 | Alias             | `BInt`                       |
-| Internal base     | 2^32 (binary representation) |
-| Word type         | `UInt32` (little-endian)     |
+| Internal base     | 2^64 (binary representation) |
+| Word type         | `UInt64` (little-endian)     |
 | Python equivalent | `int`                        |
 
 ### Construction
@@ -177,9 +177,10 @@ must ensure the data is valid.
 | `BInt(uninitialized_capacity=n)`          | Empty words list with reserved capacity   |
 | `BInt(raw_words=Magnitude, sign=Bool)`    | From raw words, no leading-zero stripping |
 
-`Magnitude` is `BInt`'s word storage, exported from `decimo`. It took a
-`List[UInt32]` before v0.14.0; a list literal still works, and an existing
-`List` goes in as `BInt(raw_words=Magnitude(words^), sign=False)`.
+`Magnitude` is `BInt`'s word storage, exported from `decimo`. Its words are
+`UInt64` and its base is 2^64; before v0.14.0 this was a `List[UInt32]` in
+base 2^32, so a literal is now `[UInt64(1)]`, and an existing `List` goes in
+as `BInt(raw_words=Magnitude(words^), sign=False)`.
 
 ### Arithmetic Operations
 
@@ -434,7 +435,7 @@ print(BInt("123456789").to_chinese()) # 一亿二千三百四十五万六千七�
 | `x.is_one()`           | `Bool` | `True` if value is 1                  |
 | `x.bit_length()`       | `Int`  | Number of bits in the magnitude       |
 | `x.bit_count()`        | `Int`  | Population count (number of set bits) |
-| `x.number_of_words()`  | `Int`  | Number of `UInt32` words              |
+| `x.number_of_words()`  | `Int`  | Number of `UInt64` words              |
 | `x.number_of_digits()` | `Int`  | Number of decimal digits              |
 
 ```mojo
