@@ -1160,28 +1160,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         var n_words = len(self.words)
 
         var result: String
-        # Short numbers use the naive per-word concatenation: the buffer
-        # path's fixed cost (a `List[UInt8]` allocation plus a UTF-8 `String`
-        # construction) outweighs its per-word savings until ~5 words. The
-        # crossover is from benchmarks (50-digit improves; 25-digit does not).
-        comptime _BUFFER_PATH_MIN_WORDS = 5
         if n_words == 1:
             # Single word: the digits are exactly `String(word)`, no padding
             # or concatenation needed.
             result = String(self.words[0])
-        elif n_words < _BUFFER_PATH_MIN_WORDS:
-            # Reserve the exact upper-bound capacity -- one word of digits
-            # each -- so the `+=` concatenations never reallocate.
-            result = String(capacity=Self.DIGITS_PER_WORD * n_words)
-            for i in range(n_words - 1, -1, -1):
-                if i == n_words - 1:
-                    result += String(self.words[i])
-                else:
-                    result += decimo_str.rjust(
-                        String(self.words[i]),
-                        width=Self.DIGITS_PER_WORD,
-                        fillchar="0",
-                    )
         else:
             # Count the digits of the most-significant word (no zero-padding).
             # It is non-zero because the number is not zero and there are no
@@ -1194,20 +1176,25 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 t //= 10
 
             # The exact output length is known up-front: every word below the
-            # most significant contributes exactly 9 digits. Allocate a buffer
-            # of that exact size and write digits straight into it via the
-            # pointer (no per-byte `append`, no reallocation, no
-            # over-allocation), then move the buffer into the result `String`.
-            # The tight `//10` loop beats a per-word `String(Self.Word)` + memcpy
-            # (benchmarked ~2x slower at 23 words due to per-word allocation
-            # and call overhead).
+            # most significant contributes exactly `DIGITS_PER_WORD` digits.
+            # Allocate a buffer of that size and write digits straight into it
+            # through the pointer -- no per-byte `append`, no reallocation, no
+            # over-allocation -- then move the buffer into the result.
+            #
+            # There used to be a third path for two to four words that built
+            # the string with `+=` and `rjust`, on the measurement that the
+            # buffer's fixed cost did not pay off below about fifty digits.
+            # Re-measured at eighteen digits a word it does not pay off below
+            # *two words*, and two words is the smallest case that reaches
+            # here: 1.20x at three words and 1.38x at four, with two a wash.
+            # So the path had no inputs left and is gone.
             var total_len = (n_words - 1) * Self.DIGITS_PER_WORD + msb_len
             var buf = List[UInt8](unsafe_uninit_length=total_len)
             var p = buf.unsafe_ptr()
             var pos = total_len
 
-            # Least-significant words first: each emits exactly 9 digits,
-            # written right-to-left.
+            # Least-significant words first: each emits exactly
+            # `DIGITS_PER_WORD` digits, written right-to-left.
             for ci in range(n_words - 1):
                 var val = self.words[ci]
                 for _ in range(Self.DIGITS_PER_WORD):
