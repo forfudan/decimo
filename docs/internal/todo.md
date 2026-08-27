@@ -150,7 +150,9 @@ Ordered by what actually moves:
    allocations, `_shift_left_words_inplace`, `_add_at_offset_inplace` and a
    fresh result out of `_multiply_magnitudes_slices` every call. The cutoff
    itself is flat from 32 to 96 and there is nothing to win by moving it.
-3. **The NTT butterfly.** 4x on multiplication at 10^6, with no limb-width
+3. **The NTT butterfly**, where the honest answer is that we are close to
+   the floor for the transform we chose, and GMP is winning by choosing a
+   different one. 4x on multiplication at 10^6, with no limb-width
    excuse -- a transform packs bits, not limbs -- and division and `sqrt`
    inherit all of it. But the butterfly is already 5 cycles, and 94% of the
    multiplication is the three transforms (14.0 ms forward, 7.6 ms inverse,
@@ -161,6 +163,26 @@ Ordered by what actually moves:
    1.7x to 2x together -- not 4x. GMP is ahead here because Schonhage-Strassen
    multiplies by a root of unity with a bit shift, where we do a modular
    multiply. See item 7 of `Now`, which wants the same thing for `pi()`.
+
+   Measured facts about the butterfly, so the next attempt starts from them:
+
+   - It costs about 4.7 cycles for roughly 21 operations, which is an IPC of
+     4.5 on an 8-wide core. There is no stall to remove.
+   - It is *not* memory-bound. 2^15 costs 1.29 ns a butterfly and 2^19 costs
+     1.40, a 9% spread over 16x the working set, so radix-4's halving of the
+     passes buys little. What it does buy is a quarter of the multiplies,
+     because for this prime `2^96 = -1`, so the fourth root of unity is
+     `2^48` and multiplying by it is a shift. Worth perhaps 1.2x to 1.3x.
+   - **Shoup twiddles do not work here and must not be tried again.** The
+     factor itself is cheap despite needing `floor(w * 2^64 / P)`: since
+     `2^64 = P + (2^32 - 1)` the quotient folds into 64-bit steps, verified
+     exact over 200 010 values. But Shoup's remainder lives in `[0, 2P)`, and
+     with `P` this close to `2^64` that overflows a `UInt64` in 25% of cases,
+     measured. The trick needs `P < 2^63`.
+
+   Which leaves lazy reduction -- keeping residues in `[0, 2^64)` and
+   canonicalizing rarely -- as the only cheap idea left, worth maybe 1.15x,
+   and Schonhage-Strassen as the only one that would actually close the gap.
 4. **Break the carry chain in add and subtract.** We are latency-bound on it,
    not throughput-bound: 1038 words at 10 000 digits is 519 limbs and 271 ns,
    which is 1.8 cycles a limb, where GMP's `ADCS` chain runs at 1.0. Widen the
