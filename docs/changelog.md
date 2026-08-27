@@ -117,6 +117,24 @@ at the top of a word is fixed.
    mostly the 32-bit limb itself, which costs schoolbook division a factor of
    two that no kernel can win back -- see `docs/internal/todo.md`.
 
+1. **`String(BigInt)` is 1.3x to 1.9x faster above about 600 digits.** The
+   divide-and-conquer conversion had its two thresholds derived rather than
+   measured, and the derivation was wrong: it held that D&C only wins once its
+   internal divisions are large enough for Burnikel-Ziegler, and so put the
+   entry point at `2 * 64 = 128` words. What D&C actually buys is the balanced
+   split -- it replaces a quadratic walk of `x % 10^9` with two half-sized
+   problems -- and that pays long before any division inside it is that large.
+   Measured, the entry threshold belongs at 64 words and the recursion's base
+   case at 48.
+
+       digits            700     900    1233    1500    3000   10000
+       before          10.65   18.23   36.37   31.24   87.93   492.9 us
+       after            8.35   11.83   18.80   24.90   66.28   376.0 us
+
+   The pair was already losing 1.4x at 1233 digits before anything else in
+   this release; the faster division widened it, since D&C divides and the
+   simple path only ever divides by a single word.
+
 1. **Small operations are about twice as fast.** At these sizes the library
    spends ~4 ns doing arithmetic and ~33 ns per allocation, so an operation's
    speed is very nearly its allocation count -- and several were allocating
