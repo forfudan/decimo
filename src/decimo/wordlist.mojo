@@ -34,10 +34,10 @@ words inline, so at the default precision of 28 digits libmpdec never calls
 the allocator at all.
 
 GMP pays this too, and has no inline buffer: an `mpz_t` addition of two
-100-digit numbers takes 14.6 ns into a fresh result and 4.6 ns into a reused
-one, so two thirds of it is `malloc` and `free`. An immutable value type
-cannot use the reuse idiom, which makes inline storage the one place where we
-can be ahead of GMP rather than behind it.
+100-digit numbers takes about 15 ns into a fresh result and about 5 ns into a
+reused one, so two thirds of it is `malloc` and `free`. An immutable value
+type cannot use the reuse idiom, which makes inline storage the one place
+where we can be ahead of GMP rather than behind it.
 
 The API is the part of `List[UInt32]` that the number types use, spelled the
 same way, so the eight hundred-odd `.words` sites did not have to change.

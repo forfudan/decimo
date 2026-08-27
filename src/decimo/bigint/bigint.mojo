@@ -73,10 +73,11 @@ words at forty digits and buy nothing back. At 1000 and 100 000 digits every
 setting is within noise of the plain `List` this replaced.
 
 GMP has no inline buffer at all, and pays for it. Adding two 100-digit
-`mpz_t` takes 14.6 ns into a fresh result and 4.6 ns into a reused one, so two
-thirds of it is `malloc` and `free`. An immutable value type cannot reuse a
-destination, so this is where we come out ahead rather than behind: 11.2 ns
-against GMP's 14.9, and 7.0 against 17.1 at ten digits.
+`mpz_t` takes about 15 ns into a fresh result and about 5 ns into a reused
+one, so two thirds of it is `malloc` and `free`. An immutable value type
+cannot reuse a destination, so this is where we come out ahead rather than
+behind -- 1.4x at a hundred digits and 2.7x at ten. `docs/benchmarks.md`
+carries the current figures.
 """
 
 comptime Magnitude = WordList[INLINE_WORDS]
