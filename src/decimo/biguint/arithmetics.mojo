@@ -4174,8 +4174,8 @@ def floor_divide_slices_two_by_one(
     debug_assert[assert_mode="none"](
         b.words[len(b.words) - 1] >= BigUInt.BASE_HALF,
         (
-            "floor_divide_slices_two_by_one(): b[-1] must be at least half"
-            " the\n base"
+            "floor_divide_slices_two_by_one(): b[-1] must be at least"
+            " half the base"
         ),
     )
 

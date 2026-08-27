@@ -103,6 +103,15 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     - `ntt.mojo`'s packing, which cuts *two* words into three six-digit
       coefficients because two words are 18 digits.
     - `MAX_UINT64` and `MAX_UINT128` here, which spell their words out.
+    - Every place that packs a *pair* of words into one machine integer, and
+      so is bound to the width rather than to the base: the SIMD lane vectors
+      in `to_uint64()`, `to_uint128()` and `to_int128()` here, the same shape
+      in `biguint.exponential.sqrt()`, `to_uint64_with_2_words()` and
+      `to_uint128_with_2_words()` in `arithmetics.mojo`, and
+      `floor_divide_three_by_two_uint32()` and its four-by-two sibling. These
+      keep their literals on purpose: a word of 18 digits does not fit a
+      `UInt64` at all, so a named constant here would let the code compile and
+      silently overflow where a literal makes someone look.
 
     A guard-digit count is not a word width. `BUFFER_DIGITS`, `GUARD_DIGITS`
     and the like happen to be 9 and stay 9: they say how many extra digits to
@@ -413,7 +422,8 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                     message=(
                         "Word value "
                         + String(word)
-                        + " exceeds maximum value of 999_999_999"
+                        + " exceeds maximum value of "
+                        + String(Self.BASE_MAX)
                     ),
                     function="BigUInt.from_list()",
                 )
@@ -477,7 +487,8 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                     message=(
                         "Word value "
                         + String(word)
-                        + " exceeds maximum value of 999_999_999"
+                        + " exceeds maximum value of "
+                        + String(Self.BASE_MAX)
                     ),
                     function="BigUInt.from_words()",
                 )
@@ -994,7 +1005,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
         var value: Int128 = 0
         for i in range(len(self.words)):
-            value += Int128(self.words[i]) * Int128(1_000_000_000) ** i
+            value += Int128(self.words[i]) * Int128(Self.BASE) ** i
 
         if value > Int128(Int.MAX):
             raise OverflowError(

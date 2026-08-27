@@ -260,7 +260,10 @@ struct BigInt10(
         for word in words:
             if word > UInt32(BigUInt.BASE_MAX):
                 raise ValueError(
-                    message="Word value exceeds maximum value of 999_999_999",
+                    message=(
+                        "Word value exceeds maximum value of "
+                        + String(BigUInt.BASE_MAX)
+                    ),
                     function="BigInt10.__init__()",
                 )
             else:
@@ -465,9 +468,7 @@ struct BigInt10(
 
         var value: Int128 = 0
         for i in range(len(self.magnitude.words)):
-            value += (
-                Int128(self.magnitude.words[i]) * Int128(1_000_000_000) ** i
-            )
+            value += Int128(self.magnitude.words[i]) * Int128(BigUInt.BASE) ** i
 
         value = -value if self.sign else value
 
