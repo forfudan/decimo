@@ -6,7 +6,7 @@ enhancement plans in `docs/plans/` carry the detail and the reasoning, and
 ranking. There were four such lists in August 2026 and they had already
 drifted apart, so there is now one.
 
-Last reviewed 2026-08-27 (fourth pass).
+Last reviewed 2026-08-28 (fifth pass).
 
 ## Goal, round one: met (20260826)
 
@@ -72,50 +72,55 @@ Knuth D work):
 
 | digits | add       | multiply  | floor divide | sqrt      |
 | ------ | --------- | --------- | ------------ | --------- |
-| 10     | **3.83x** | **2.74x** | parity       | **7.68x** |
-| 100    | **1.61x** | 2.66x     | 3.01x        | 2.22x     |
-| 1 000  | 2.13x     | 1.97x     | 2.87x        | 8.14x     |
-| 10 000 | 2.10x     | 2.87x     | 2.34x        | 4.28x     |
-| 10^6   | 2.00x     | 3.90x     | 7.00x        | 6.35x     |
+| 10     | **3.98x** | **2.41x** | **1.82x**    | **5.65x** |
+| 100    | **2.39x** | 2.35x     | 2.46x        | 2.04x     |
+| 1 000  | 1.86x     | 1.75x     | 1.52x        | 5.96x     |
+| 10 000 | 2.27x     | 2.63x     | 2.00x        | 3.33x     |
+| 10^6   | 2.08x     | 4.25x     | 6.77x        | 5.77x     |
 
 The small end is ours only since inline storage: an `mpz_t` always goes to the
 heap, and 10 of GMP's 14.6 ns at a hundred digits is `malloc` and `free`. An
 immutable value type cannot use GMP's reuse idiom, so this is the one place
 where the shape of the API works for us.
 
-### How much of this is the 32-bit limb?
+### How much of this was the 32-bit limb? (answered 20260828)
 
-Less than it looks. A 64-bit limb halves the limb count, but a 64x64 product
-costs *two* instructions on arm64 (`MUL` plus `UMULH`) where a 32x32 product
-costs one, so the widening pays back half of what the count costs. For work
-that grows as `L^e` in the limb count:
+The model said a 64-bit limb halves the limb count but pays two instructions
+per product (`MUL` plus `UMULH`) where a 32-bit one pays one, so for work
+growing as `L^e` the penalty is `2^e * (1/2) = 2^(e-1)`: 2.0x for schoolbook
+and Knuth D, 1.50x for Karatsuba, 1.38x for Toom-3, ~1.0x for the transform.
+Addition was excluded, because the kernels already read two words as one
+base-2^64 limb.
 
-    penalty = 2^e * (cost per 32-bit op / cost per 64-bit op) = 2^(e-1)
+Measured, after moving the magnitude to base 2^64:
 
-| algorithm                    | e     | penalty |
-| ---------------------------- | ----- | ------- |
-| schoolbook, Knuth D          | 2     | 2.0x    |
-| Karatsuba                    | 1.585 | 1.50x   |
-| Toom-3                       | 1.465 | 1.38x   |
-| NTT                          | ~1    | ~1.0x   |
+| operation      | predicted | measured |
+| -------------- | --------- | -------- |
+| add            | 1.0x      | 1.0-1.1x |
+| multiply, 1000 | 1.5x      | 1.18x    |
+| divide, 1000   | 2.0x      | 1.86x    |
+| divide, 10     | 2.0x      | 1.99x    |
+| multiply, 10^6 | ~1.0x     | 1.04x    |
 
-Addition is not on that list, because `_add_word_pairs()` already reads two
-words as one base-2^64 limb -- the array *is* a base-2^64 magnitude on a
-little-endian target. So its penalty is 1.0x, and everything above the floor
-is ours:
+The prediction held at the ends and was optimistic in the middle, where the
+cutoffs moved: Karatsuba and Toom-3 both start sooner in *digits* than they
+did, so a thousand-digit multiply is no longer the same algorithm it was.
+Division is the row that got what was promised, and it is also the row that
+had the most to gain. What is left:
 
-| operation      | against GMP | floor | ours to fix |
-| -------------- | ----------- | ----- | ----------- |
-| add, 10^6      | 2.00x       | 1.0x  | 2.0x        |
-| multiply, 100  | 2.66x       | 2.0x  | 1.3x        |
-| multiply, 10^6 | 3.90x       | ~1.0x | 3.9x        |
-| divide, 100    | 3.01x       | 2.0x  | 1.5x        |
-| divide, 1000   | 2.87x       | 2.0x  | 1.4x        |
-| divide, 10^6   | 7.00x       | ~1.0x | 7.0x        |
-| sqrt, 1000     | 8.14x       | ~1.5x | 5.4x        |
+| operation      | against GMP | was   |
+| -------------- | ----------- | ----- |
+| add, 10^6      | 2.08x       | 2.00x |
+| multiply, 100  | 2.35x       | 2.66x |
+| multiply, 10^6 | 4.25x       | 3.90x |
+| divide, 100    | 2.46x       | 3.01x |
+| divide, 1000   | 1.52x       | 2.87x |
+| divide, 10^6   | 6.77x       | 7.00x |
+| sqrt, 1000     | 5.96x       | 8.14x |
 
-The NTT rows have no limb width to hide behind: a transform packs bits into
-coefficients and barely cares what the limbs were.
+There is no limb-width excuse left in any of these. The 10^6 rows never had
+one -- a transform packs bits into coefficients and barely cares what the
+limbs were -- and the smaller ones have spent theirs.
 
 ### Division and sqrt are not separate problems
 
@@ -170,10 +175,11 @@ Ordered by what actually moves:
 
    It is now 2.9 of its own multiplications at 1000 digits against GMP's 2.0,
    and the Knuth D loop is within about 1.4x of what a 32-bit limb allows.
-   What is left there is the limb width itself: a 64-bit limb would halve the
-   quotient word count, and with it the `UDIV` and the loop entry that every
-   quotient word pays. That is the same question item 9 of `Now` asks for
-   `BigUInt`, and it is the last big one division has.
+   The limb width was the rest of it, and that is done too (20260828): the
+   magnitude is base 2^64 now, which halved the quotient word count and with
+   it the estimate and the loop entry every quotient word pays. Division at a
+   thousand digits went 2.87x of GMP to 1.52x, and at ten digits it is 1.82x
+   *faster* than GMP. `sqrt` followed to 5.96x, still the worst row.
 2. **The NTT butterfly**, where the honest answer is that we are close to
    the floor for the transform we chose, and GMP is winning by choosing a
    different one. 4x on multiplication at 10^6, with no limb-width
@@ -305,14 +311,26 @@ they are the first three.
    fine, because a 64x64 multiply is one instruction; 128-bit or 256-bit as
    the *left side of a divide* is a call to a software helper, 20-40 ns.
    Known remaining: `decimal128/`, `rational/`, `bigint/exponential.mojo`.
-9. **Base 10^18.** The honest answer to "why is division still behind": for a
-   28-digit value libmpdec holds two words and decimo holds four, so every
-   loop runs twice as long. Nothing above closes that. It is a change to the
-   whole library and it is not obviously worth it -- multiplication and
-   division would halve their word counts, but every partial product would
-   need 128-bit accumulation, and `% BASE` on a `UInt128` is the thing that
-   was slow everywhere else today. Worth measuring on a prototype before
-   believing either way.
+9. **Base 10^18 for `BigUInt`.** The honest answer to "why is division still
+   behind": for a 28-digit value libmpdec holds two words and decimo holds
+   four, so every loop runs twice as long. Nothing above closes that.
+
+   `BigInt` answered the same question for itself on 20260828 by moving to
+   base 2^64, and what that cost is now known rather than guessed. The
+   arithmetic was the easy half; the traps were all in code the type checker
+   was happy with. In order of how long each took to find: a decimal chunk
+   base that had to stay a power of `10^9` because `to_biguint()` reads the
+   chunks as `BigUInt` words; `String(Int(word))` printing every value at or
+   above `2^63` as negative; a borrow taken from the sign bit of a widened
+   subtraction, which a word of exactly `2^63` sets with no borrow at all; a
+   `>>= 64` that is a no-op on arm64 and so an infinite allocating loop; and
+   Toom-3's exact division by three carrying `(2^32 - 1) / 3`.
+
+   `BigUInt` is a smaller job -- base 10^18 is still a decimal base, so the
+   conversion paths do not move -- but every partial product needs 128-bit
+   accumulation, and `% BASE` on a `UInt128` is the thing that was slow
+   everywhere else. Worth measuring on a prototype before believing either
+   way. The payoff is the four rows still behind CPython's `decimal`.
 10. ~~**`floor_divide()` 2n-by-n scaling** in `BigUInt`~~ -- answered below.
 
 ## Blocked on the language

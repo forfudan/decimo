@@ -20,10 +20,10 @@ asymptotics on some sizes, which speeds up every division in the library. A
 Newton iteration that silently returned short of its requested precision is
 fixed. `BigInt` now keeps small values inside the struct, takes its square
 root by Zimmermann's recursion above about six hundred digits, and is measured
-against GMP rather than against CPython's `int`. Knuth D's multiply-subtract
-moves to 64-bit limbs, which makes division 1.2x to 2x faster from ten digits
-to ten thousand and carries `sqrt()` with it. A `sqrt()` that hung for values
-at the top of a word is fixed.
+against GMP rather than against CPython's `int`. Its magnitude moves from base
+2^32 to base 2^64, which with the Knuth D work before it makes division 2 to
+3.3x faster and brings it from 4.98x of GMP at a thousand digits to 1.52x. A
+`sqrt()` that hung for values at the top of a word is fixed.
 
 ### ⭐️ New in Unreleased
 
@@ -87,6 +87,39 @@ at the top of a word is fixed.
    `BigInt10.from_bigint()` and `BigInt10.to_bigint()` (PR #269).
 
 ### 🦋 Changed in Unreleased
+
+1. **`BigInt`'s magnitude moves to base 2^64.** It held its words in base
+   2^32 while doing all its arithmetic in 64-bit registers, so schoolbook
+   multiplication and Knuth D both made twice the passes they needed to. The
+   words are the limbs now. `WordList` grows a word-type parameter for this;
+   `BigUInt` stays on `uint32`, which is what a base-billion digit wants.
+
+       digits            10     100    1000    10000   100000
+       add             1.40x   1.00x   1.05x    1.11x    1.08x
+       multiply        1.10x   1.38x   1.18x    1.14x    1.04x
+       floor divide    1.99x   1.32x   1.86x    1.22x    1.10x
+       sqrt            1.76x   1.26x   1.41x    1.28x    1.15x
+
+   Addition is flat by construction: it already read two 32-bit words as one
+   64-bit limb, so there was nothing left there. The transform rows barely
+   move for the same reason -- it packs bits, not words.
+
+   Knuth D's quotient estimate takes Moller and Granlund's reciprocal after
+   all. At a 32-bit limb it was pure loss, measured twice, because 64-by-32 is
+   a single `UDIV`; at 64 bits neither arm64 nor x86-64 divides 128 by 64, so
+   the alternative is a software helper and the reciprocal is not optional.
+
+   Decimal conversion goes to `10^18` chunks. Nineteen digits would fit a
+   word, but eighteen is exactly twice what `10^9` carried in a half-as-wide
+   word, so the density per byte is unchanged and the nine-digit grouping
+   survives -- which `to_biguint()` needs, since it hands the chunks to
+   `BigUInt` and only whole nine-digit groups split cleanly.
+
+   Every size cutoff was re-measured, since a cutoff counted in words means
+   twice the value it used to. `CUTOFF_KARATSUBA` 256 -> 64, `CUTOFF_TOOM3`
+   768 -> 256, the NTT's cost constant 1.10 -> 0.34 (its crossover moved from
+   about 8 000 words to about 2 300), and the inline word count 12 -> 7, which
+   is again the sum of two hundred-digit values.
 
 1. **Division is 1.2x to 2x faster.** Knuth D was spending six of its own
    multiplications on work a multiplication does in one -- at 500 digits, where
@@ -529,6 +562,15 @@ at the top of a word is fixed.
 
 ### 💥 Breaking in Unreleased
 
+1. **`BigInt`'s words are `UInt64`, and its base is 2^64.** `BigInt.words`,
+   `Magnitude` and `BInt(raw_words=..., sign=...)` all follow. Code that reads
+   or builds the magnitude directly has to change: a list literal becomes
+   `[UInt64(1)]` rather than `[UInt32(1)]`, and anything that assumed 32 bits
+   to a word -- a shift of 32, a mask of `0xFFFF_FFFF`, a word count from a
+   bit length -- has to be rewritten for 64. Values, strings and every
+   arithmetic result are unchanged; only the representation is. `BigUInt` is
+   untouched: base 10^9 in `uint32`.
+
 1. **`BInt(raw_words=..., sign=...)` takes a `Magnitude`, not a
    `List[UInt32]`.** That is the inline word storage `BigInt` moved to, and
    the constructor moves into it rather than copying. A list literal still
@@ -536,6 +578,12 @@ at the top of a word is fixed.
    `BInt(raw_words=Magnitude(words^), sign=False)`. `Magnitude` is exported
    from `decimo`. `BigUInt`'s own `raw_words=` still takes a `List[UInt32]`
    and is unaffected.
+
+1. **`product_range()` caps the number of factors, not the size of the
+   bounds.** Its old bound, `high <= 2^32 - 1`, was there because each factor
+   is cast to a word; every non-negative `Int` fits a word now. The cap is
+   `FACTORIAL_MAX_INPUT`, the same one `factorial()` and `permutation()`
+   already answer to.
 1. **The `Integer` alias for `BigInt` is removed.** `BInt` remains, and matches
    `BDec` and `Dec128` in shape. `Integer` named a general concept rather than
    one concrete type, and collided with the ordinary English word used
