@@ -173,6 +173,21 @@ Ordered by what actually moves:
    schoolbook at 104 words is only 1.91x of GMP's Karatsuba, so this is worth
    measuring rather than assuming.
 
+`math.sqrt` on an integer is a trap. It resolves to a software integer
+square root, not the hardware instruction: 21.3 ns against 0.45 ns for
+`math.sqrt(Float64(...))`, measured with a varying operand. Five places asked
+for it that way. `decimo.utility.isqrt_uint64()` is now the one place that
+answers the question -- it takes the float root and corrects it -- and small
+`BigUInt.sqrt()` went from 10.8 ns to 2.2 at one word and 26.4 to 2.1 at two.
+Correcting is not optional: `Float64` carries 53 bits, and for a value just
+under `2^64` it rounds up to `2^64`, whose root does not fit the answer.
+
+Benchmarks that reuse one operand cannot see any of this. A pure function of
+a loop-invariant value gets hoisted out of the timing loop, and once the
+correcting walks were provably bounded that is exactly what happened -- small
+`BigUInt.sqrt()` read 0.225 ns, which is nothing at all. Vary the operand,
+and sink something value-dependent rather than a sign that is always false.
+
 Two things measured the wrong way round here, so they are not retried:
 
 - **A branchless borrow in Knuth D.** Biasing by 2^32 and reading the borrow

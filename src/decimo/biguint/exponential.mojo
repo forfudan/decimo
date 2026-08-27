@@ -20,6 +20,7 @@ from std import math
 from std.memory import unsafe_memset_zero
 
 from decimo.biguint.biguint import BigUInt
+from decimo.utility import isqrt_uint64
 import decimo.biguint.arithmetics as biguint_arithmetics
 
 # ===----------------------------------------------------------------------=== #
@@ -51,11 +52,13 @@ def sqrt(x: BigUInt) -> BigUInt:
         elif x.words[0] == 1:
             return BigUInt.one()
         else:
-            return BigUInt.from_uint32_unsafe(math.sqrt(x.words[0]))
+            return BigUInt.from_uint32_unsafe(
+                UInt32(isqrt_uint64(UInt64(x.words[0])))
+            )
 
     elif len(x.words) == 2:
         var res = UInt32(
-            math.sqrt(
+            isqrt_uint64(
                 (
                     x.words.unsafe_ptr()
                     .unsafe_load[width=2]()
@@ -170,7 +173,7 @@ def sqrt_initial_guess(x: BigUInt) -> BigUInt:
     if len(x.words) & 1 == 0:  # If even, we use the most significant 2 words
         nsw = x.words[len(x.words) - 3]
         msw_sqrt = UInt32(
-            math.sqrt(
+            isqrt_uint64(
                 (
                     x.words.unsafe_ptr()
                     .unsafe_load[width=2](len(x.words) - 2)
@@ -181,7 +184,7 @@ def sqrt_initial_guess(x: BigUInt) -> BigUInt:
         )
     else:  # If odd, we use the most significant word
         nsw = x.words[len(x.words) - 2]
-        msw_sqrt = math.sqrt(x.words[len(x.words) - 1])
+        msw_sqrt = UInt32(isqrt_uint64(UInt64(x.words[len(x.words) - 1])))
 
     # Some additional adjustments based on the next significant word
     nsw //= 2 * msw_sqrt  # The next word contributes to the guess

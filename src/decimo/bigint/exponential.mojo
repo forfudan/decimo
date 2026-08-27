@@ -26,6 +26,7 @@ from std import math
 import decimo.bigint.arithmetics as bigint_arithmetics
 from decimo.bigint.bigint import BigInt, Magnitude
 from decimo.errors import ValueError
+from decimo.utility import isqrt_uint64
 
 
 # ===----------------------------------------------------------------------=== #
@@ -251,36 +252,6 @@ def _right_shift_magnitude_bits(a: Magnitude, shift: Int) -> Magnitude:
 # ===----------------------------------------------------------------------=== #
 
 
-@always_inline
-def _isqrt_uint64(value: UInt64) -> UInt64:
-    """The integer square root of a value that fits a `UInt64`.
-
-    `math.sqrt` goes through `Float64`, which carries 53 bits, so the estimate
-    is out by one either way near the top of the range -- and for a value just
-    under `2^64` it rounds *up*, to `2^64`, whose root is `2^32` and does not
-    fit the answer. Clamping to `2^32 - 1` first keeps every square below
-    inside a `UInt64`, the largest being `(2^32 - 1)^2 = 2^64 - 2^33 + 1`.
-
-    Without the clamp those squares wrap to small values, both tests read the
-    wrong way round, and the second walk runs `2^32` times. That was a hang,
-    not a slow answer: `sqrt(2^32 - 1)` never returned.
-
-    Args:
-        value: The value to take the root of.
-
-    Returns:
-        The largest `root` with `root * root <= value`.
-    """
-    var root = UInt64(math.sqrt(Float64(value)))
-    if root > 0xFFFF_FFFF:
-        root = 0xFFFF_FFFF
-    while root > 0 and root * root > value:
-        root -= 1
-    while root < 0xFFFF_FFFF and (root + 1) * (root + 1) <= value:
-        root += 1
-    return root
-
-
 def sqrt(x: BigInt) raises -> BigInt:
     """Calculates the integer square root of a BigInt.
 
@@ -323,10 +294,10 @@ def sqrt(x: BigInt) raises -> BigInt:
     if len(x.words) == 1:
         if x.words[0] <= 1:
             return x.copy()
-        return BigInt.from_integral_scalar(_isqrt_uint64(UInt64(x.words[0])))
+        return BigInt.from_integral_scalar(isqrt_uint64(UInt64(x.words[0])))
     if len(x.words) == 2:
         return BigInt.from_integral_scalar(
-            _isqrt_uint64(UInt64(x.words[0]) + (UInt64(x.words[1]) << 32))
+            isqrt_uint64(UInt64(x.words[0]) + (UInt64(x.words[1]) << 32))
         )
 
     # Past the crossover, Zimmermann's recursion: its division is half the
@@ -678,7 +649,7 @@ def _sqrtrem_two_words(n: Magnitude, mut remainder: Magnitude) -> Magnitude:
     var value = UInt64(n[0])
     if len(n) > 1:
         value += UInt64(n[1]) << 32
-    var root = _isqrt_uint64(value)
+    var root = isqrt_uint64(value)
     remainder = [UInt32((value - root * root) & 0xFFFF_FFFF)]
     var high = UInt32((value - root * root) >> 32)
     if high != 0:
