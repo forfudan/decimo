@@ -114,28 +114,54 @@ is ours:
 The NTT rows have no limb width to hide behind: a transform packs bits into
 coefficients and barely cares what the limbs were.
 
-Ordered by the size of the gap:
+### Division and sqrt are not separate problems
 
-1. **Karatsuba square root.** 11x to 12x from a thousand digits up, and the
-   largest single gap in the library. At 10^6 digits GMP's `mpz_sqrt` is
-   faster than our multiplication. Ours is CPython's precision-doubling, whose
-   last step is a full n-by-n/2 division; Zimmermann's recursion halves that
-   division and returns the remainder, which also deletes the verifying
-   squaring at the end.
-2. **Newton or Barrett division above a threshold.** 7.6x at 10^6. Burnikel-
-   Ziegler bottoms out at Knuth D and GMP does not. Already item 5 of `Now`
-   for `BigDecimal`, and the same work serves both.
-3. **The NTT itself**, which is 4x at 10^6 on multiplication with no limb-width
-   excuse. See item 7 of `Now` for the butterfly.
+Both decompose into multiplication. Measure each library's division against
+*its own* multiplication and the gap splits cleanly in two:
+
+|            | our mul | GMP mul | ratio | our div/mul | GMP div/mul | div gap |
+| ---------- | ------- | ------- | ----- | ----------- | ----------- | ------- |
+| 1 000      | 1.16 us | 605 ns  | 1.91x | 5.2x        | 2.0x        | 5.0x    |
+| 10^6       | 24.1 ms | 6.06 ms | 3.98x | 4.9x        | 2.6x        | 7.6x    |
+
+`1.91 * 2.6 = 5.0` and `3.98 * 1.9 = 7.6`, which is the whole of it. So the
+division gap is our multiplication being slow, times our division not being
+multiplication-bound. Neither factor needs a new division algorithm at 10^6:
+Barrett would cost about `4 * M(n)`, which is what we already pay.
+
+`sqrt` sits on top of the same stack -- profiled at 1000 and 10 000 digits it
+is 60% to 67% the one division at its last precision-doubling step, 10% to 20%
+the verifying squaring, and the rest driver. Even with the division and the
+squaring free it would still be 7.6x. Zimmermann's recursion is worth having,
+but it cannot get ahead of the division underneath it, so it comes after.
+
+Ordered by what actually moves:
+
+1. **The NTT butterfly.** 4x on multiplication at 10^6, with no limb-width
+   excuse -- a transform packs bits, not limbs -- and division and `sqrt`
+   inherit all of it. Precomputed (Shoup) twiddles and radix-4; see item 7 of
+   `Now`, which wants the same thing for `pi()`.
+2. **Burnikel-Ziegler's per-level cost.** Our division costs 5.2 of its own
+   multiplications where GMP's costs 2.0. The recursion is not too shallow:
+   cutoffs of 8, 16 and 24 words are all *worse* than 64 (10.1 us, 7.2 us and
+   7.6 us against 6.0 at 1000 digits), so each level is paying too much --
+   allocations, `_shift_left_words_inplace`, `_add_at_offset_inplace` and a
+   fresh result out of `_multiply_magnitudes_slices` every call. The cutoff
+   itself is flat from 32 to 96 and there is nothing to win by moving it.
+3. **Karatsuba square root**, once 1 and 2 have landed. Zimmermann's recursion
+   halves the division at the last step and returns the remainder, which also
+   deletes the verifying squaring.
 4. **Break the carry chain in add and subtract.** We are latency-bound on it,
    not throughput-bound: 1038 words at 10 000 digits is 519 limbs and 271 ns,
-   which is 1.8 cycles a limb, where GMP's `ADCS` chain runs at 1.0. Two
-   passes would break the dependency -- sum every limb ignoring carry, then
-   propagate, which cascades only when a sum is all ones and so essentially
-   never -- and the first pass vectorizes.
-5. **Multiplication thresholds.** Comba, schoolbook, Karatsuba, Toom-3 and an
-   NTT are all present, so the small and middle sizes are crossover points and
-   constants rather than a missing tier.
+   which is 1.8 cycles a limb, where GMP's `ADCS` chain runs at 1.0. Widen the
+   words into 64-bit SIMD lanes to manufacture the slack that base 10^9 gives
+   `BigUInt` for free, sum ignoring carry, then propagate. A lane only
+   propagates when its digit is all ones, so the second pass can be a mask
+   test that almost never fires rather than `BigUInt`'s serial walk.
+5. **Multiplication thresholds.** `CUTOFF_KARATSUBA` is 256 words, which is
+   2466 decimal digits; GMP switches around 500. Our Comba is good enough that
+   schoolbook at 104 words is only 1.91x of GMP's Karatsuba, so this is worth
+   measuring rather than assuming.
 
 Two things measured the wrong way round here, so they are not retried:
 
