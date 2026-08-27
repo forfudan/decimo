@@ -73,7 +73,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
     Internal Representation:
 
-    Use base-10^9 (base-billion) representation for the unsigned integer.
+    Use base-10^18 representation for the unsigned integer.
     BigUInt uses a dynamic structure in memory, which contains:
     An pointer to an array of Self.Word words for the coefficient on the heap,
     which can be of arbitrary length stored in little-endian order.
@@ -83,12 +83,12 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
     x = x[0] * 10^0 + x[1] * 10^9 + x[2] * 10^18 + ... x[n] * 10^(9n)
 
-    You can think of the BigUInt as a list base-billion digits, where each
+    You can think of the BigUInt as a list of base-10^18 digits, where each
     digit is ranging from 0 to 999_999_999. Depending on the context, the
     following terms are used interchangeably:
     (1) words,
     (2) limbs,
-    (3) base-billion digits.
+    (3) base-10^18 digits.
 
     Representation invariant:
 
@@ -100,7 +100,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     2. There are no leading zero words: `words[len(words) - 1] != 0`, unless
        `len(words) == 1`. Zero is therefore exactly `[0]` and has no other
        spelling, which is what lets `is_zero()` and comparison stay cheap.
-    3. Every word is a valid base-billion digit: `words[i] < BASE`.
+    3. Every word is a valid base-10^18 digit: `words[i] < BASE`.
 
     Call `assert_invariant()` to check the first two. It is a `debug_assert`,
     so it costs nothing in a normal build and fires in the test suite.
@@ -143,7 +143,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     var words: Coefficient
     """A list of Self.Word words representing the coefficient.
 
-    Little-endian: `words[0]` is the least significant base-billion digit.
+    Little-endian: `words[0]` is the least significant base-10^18 digit.
     Subject to the representation invariant documented on the struct.
     """
 
@@ -717,7 +717,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             entry point usable from non-raising code, such as the single-word
             fast paths in `decimo.biguint.arithmetics`.
 
-            Scalars narrower than a base-10^9 word always fit in one word and
+            Scalars narrower than a word always fit in one word and
             are converted directly. A 32-bit scalar needs one word or two,
             decided by a comparison. Wider scalars are peeled one word at a
             time by repeated division by 10^9; the number of words this can
@@ -821,7 +821,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             # `List[Self.Word]` and handing that to `raw_words=` cost 36 ns for
             # the integer 2 -- an allocation for the list, another for the
             # copy into place, to carry a single word. A 64-bit value needs
-            # three base-billion words, which is inside `WordList`'s inline
+            # two words, which is inside `WordList`'s inline
             # capacity, so the common case now allocates nothing at all.
             var result = Self(uninitialized_capacity=3)
             var remainder: Scalar[dtype] = value

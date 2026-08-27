@@ -38,7 +38,7 @@ comptime CUTOFF_KARATSUBA = 128
 """The cutoff number of words for using Karatsuba multiplication.
 
 Raised from 64 when the schoolbook base case became product-scanning. A Comba
-column reduces base-10^9 once per result word instead of once per partial
+column reduces the base once per result word instead of once per partial
 product, which makes the quadratic kernel fast enough that Karatsuba's extra
 `BigUInt` allocations and additions do not pay until much later.
 """
@@ -158,8 +158,8 @@ the 112-word row, is the one being tuned for.
 # ===----------------------------------------------------------------------=== #
 # Word-level addition and subtraction kernels
 #
-# A base-10^9 word does not carry by overflowing, so the carry out of a word
-# cannot be read off the hardware flags the way a base-2^32 one can: it is a
+# A decimal word does not carry by overflowing, so the carry out of a word
+# cannot be read off the hardware flags the way a base-2^64 one can: it is a
 # comparison against `BASE`, and the comparison depends on the carry coming in.
 # Written directly, that puts a compare on the loop-carried dependency chain.
 #
@@ -170,8 +170,9 @@ the 112-word row, is the one being tuned for.
 # than the three or four an add-compare-branch chain costs.
 #
 # From one vector's worth of words up, a two-pass shape wins instead: add the
-# words in vectors with no carries at all, then walk the carries. Two words of
-# base-10^9 sum to less than 2^32, so the vector pass cannot overflow, and the
+# words in vectors with no carries at all, then walk the carries. Two words
+# sum to less than `2 * BASE`, which is well inside the word type, so the
+# vector pass cannot overflow, and the
 # reduction is a comparison and a masked subtract. The walk that follows stays
 # a single pass, because a word that generated a carry came out at `BASE - 2`
 # or below and cannot generate a second one when it takes the carry beneath it.
@@ -191,8 +192,8 @@ the 112-word row, is the one being tuned for.
 # chew through between carry walks. Both halved with the word count when the
 # base moved, to keep the same number of *bytes* per vector and per block.
 # Provisional: they want re-sweeping, like every other cutoff here.
-comptime WORDS_PER_VECTOR = 4
-comptime WORDS_PER_CARRY_BLOCK = 32
+comptime WORDS_PER_VECTOR = 8
+comptime WORDS_PER_CARRY_BLOCK = 64
 
 comptime WORDS_PER_SHORT_DIVISOR = 4
 """Below this many divisor words, Knuth D's multiply-subtract stays in one
@@ -211,7 +212,7 @@ def _add_words[
     n_words: Int,
     carry_in: BigUInt.Word,
 ) -> BigUInt.Word:
-    """Adds `n_words` base-10^9 words: `r = a + b`, least significant first.
+    """Adds `n_words` words: `r = a + b`, least significant first.
 
     `r` may alias `a` or `b` word-for-word.
 
@@ -354,7 +355,7 @@ def _subtract_words[
     n_words: Int,
     borrow_in: BigUInt.Word,
 ) -> BigUInt.Word:
-    """Subtracts `n_words` base-10^9 words: `r = a - b`, least significant first.
+    """Subtracts `n_words` words: `r = a - b`, least significant first.
 
     The borrow counterpart of `_add_words()`, with the same aliasing freedom
     and the same two shapes. The wrapped `a - b` is deliberate: it is the right
@@ -2501,7 +2502,7 @@ def exact_divide_by_2_inplace(mut x: BigUInt):
     """Divides a BigUInt by 2 exactly, in-place.
 
     The caller must ensure that x is even (divisible by 2).
-    Uses base-10^9 long division from MSB to LSB.
+    Uses long division over the words, from MSB to LSB.
 
     Args:
         x: The `BigUInt` value to divide, modified in place.
@@ -2520,7 +2521,7 @@ def exact_divide_by_3_inplace(mut x: BigUInt):
     """Divides a BigUInt by 3 exactly, in-place.
 
     The caller must ensure that x is divisible by 3.
-    Uses base-10^9 long division from MSB to LSB.
+    Uses long division over the words, from MSB to LSB.
 
     Notes:
 
@@ -2664,8 +2665,9 @@ def floor_divide(x: BigUInt, y: BigUInt) raises -> BigUInt:
     # arm64 has no 128-bit divide, let alone a 256-bit one, so every step of
     # that routine called a software division helper -- and the routine is
     # written in `UInt256`, so it called the 256-bit one, twice per group of
-    # four dividend words. Knuth D over base-10^9 words does the same job with
-    # 64-bit divisions the hardware actually has.
+    # four dividend words. Knuth D did the same job with the divisions the
+    # hardware actually has -- 64-bit then, 128-by-64 now that a word is
+    # eighteen digits, and still not a call.
     #
     # Measured, best of nine, this file at 6e63828 (ns):
     #
