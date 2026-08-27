@@ -861,10 +861,10 @@ from a spec keeps `__add__` in its dictionary and CPython fills `nb_add`
 with `slot_nb_add`, which looks the name up and calls it as a Python method.
 The tell was that the operator cost *more* than the method:
 
-| | `a + b` | `D.__add__(a, b)` |
-| --- | --- | --- |
-| decimo, before | 69.7 ns | 64.8 ns |
-| decimal | 41.5 ns | 59.6 ns |
+|                | `a + b` | `D.__add__(a, b)` |
+| -------------- | ------- | ----------------- |
+| decimo, before | 69.7 ns | 64.8 ns           |
+| decimal        | 41.5 ns | 59.6 ns           |
 
 CPython's is 18 ns *cheaper* through the operator because its `nb_add` is a
 plain function pointer. Ours are now too.
@@ -925,12 +925,12 @@ allocated twice: once for the list, once to copy it into the inline storage.
 Four of those were on hot paths, and each was worth more than any tuning
 around it:
 
-| where                              | cost before | after   |
-| ---------------------------------- | ----------- | ------- |
-| `from_unsigned_integral_scalar`    | one-word add 43.1 ns | 9.0 ns |
-| `from_absolute_integral_scalar`    | `Decimal + int` 340 ns | 57 ns |
-| `from_string`                      | parse 9 digits 95.2 ns | 52.3 ns |
-| Knuth D's running remainder        | 28-digit divide 112.5 ns | 108.7 ns |
+| where                           | cost before              | after    |
+| ------------------------------- | ------------------------ | -------- |
+| `from_unsigned_integral_scalar` | one-word add 43.1 ns     | 9.0 ns   |
+| `from_absolute_integral_scalar` | `Decimal + int` 340 ns   | 57 ns    |
+| `from_string`                   | parse 9 digits 95.2 ns   | 52.3 ns  |
+| Knuth D's running remainder     | 28-digit divide 112.5 ns | 108.7 ns |
 
 The first one is the one worth remembering. `add` sends one-word operands to
 `from_unsigned_integral_scalar(x + y)`, so addition of *small* values was five
@@ -970,15 +970,11 @@ four base-10^9 words here and two base-10^19 words in libmpdec.
 
 ## Traps worth remembering
 
-
-
 ### A constant-size copy is not the same as a small one (20260827)
 
 `WordList`'s move copies the whole inline array, and copying only the words
 in use is slower -- 60% of an addition slower. A constant count inlines to a
 couple of vector moves; a variable one becomes a call to `memcpy`.
-
-
 
 ### Editing a Mach-O file gets the process killed, silently (20260827)
 

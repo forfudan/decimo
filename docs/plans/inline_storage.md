@@ -37,11 +37,11 @@ operation.
 That is the whole gap at small sizes. From Python at 28 digits, after the
 binding work of 2026-08-27:
 
-| | decimo | decimal |
-| --- | --- | --- |
-| `a + b` | 120 ns | 43 ns |
-| `a * b` | 128 ns | 49 ns |
-| `a < b` | 39 ns | 18 ns |
+|         | decimo | decimal |
+| ------- | ------ | ------- |
+| `a + b` | 120 ns | 43 ns   |
+| `a * b` | 128 ns | 49 ns   |
+| `a < b` | 39 ns  | 18 ns   |
 
 `a < b` allocates nothing and is the closest of the three. Take 38 ns of
 allocation out of `a + b` and it lands near 82 ns, which is about twice
@@ -122,7 +122,6 @@ skips that but wants one of a few reserved indices, and squatting on one in a
 published package would collide later), and roughly 20 ns to allocate the
 result `PyObject`. The last of those needs the value embedded in the
 `PyObject` rather than allocated beside it, which the bindings cannot do yet.
-
 
 ## What shipped
 

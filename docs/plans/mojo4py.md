@@ -488,13 +488,13 @@ operation.
 
 Where that 110 ns actually was, measured per call in nanoseconds:
 
-| layer                          | add |
-| ------------------------------ | --- |
-| Python wrapper class           | 74  |
-| call into Mojo and back        | 25  |
-| two `downcast_value_ptr`       | 44  |
-| the `BigDecimal` addition       | 47  |
-| wrapping the result            | 28  |
+| layer                     | add |
+| ------------------------- | --- |
+| Python wrapper class      | 74  |
+| call into Mojo and back   | 25  |
+| two `downcast_value_ptr`  | 44  |
+| the `BigDecimal` addition | 47  |
+| wrapping the result       | 28  |
 
 **The prediction above this table was wrong, and worth recording why.** It
 expected ~18 ns from exposing `__mul__` instead of `.mul()`, on the strength of
@@ -553,16 +553,16 @@ the binding growing a thick compatibility layer on top.
 
 **Still missing**, roughly in the order a real program would hit them:
 
-| Gap | Note |
-| --- | ---- |
-| `__int__`, `__float__`, `__round__`, `__trunc__`, `__floor__`, `__ceil__` | conversions; all have a `BigDecimal` equivalent already |
-| `__mod__`, `__floordiv__`, `__divmod__`, `__pow__` and reflected forms | `BigDecimal` has the arithmetic; only the binding is missing |
-| `__hash__` | currently unhashable. A real one has to agree with `int` and `float` the way `decimal.Decimal` does, which is CPython's modular-inverse construction, not a digest of the digits |
-| `__format__` | `format(d, ".2f")` and the rest of the mini-language |
-| `__copy__`, `__deepcopy__`, `__reduce__` | copy and pickle |
-| NaN and Infinity | decimo has no non-finite values, so `Decimal("NaN")` raises where the standard library returns one |
-| Context and precision | no `getcontext()`, no per-operation precision from Python |
-| `sqrt`, `exp`, `ln`, `log10`, `quantize`, `normalize`, `as_tuple`, `is_nan`, ... | ~55 methods, nearly all already on `BigDecimal` |
+| Gap                                                                              | Note                                                                                                                                                                             |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `__int__`, `__float__`, `__round__`, `__trunc__`, `__floor__`, `__ceil__`        | conversions; all have a `BigDecimal` equivalent already                                                                                                                          |
+| `__mod__`, `__floordiv__`, `__divmod__`, `__pow__` and reflected forms           | `BigDecimal` has the arithmetic; only the binding is missing                                                                                                                     |
+| `__hash__`                                                                       | currently unhashable. A real one has to agree with `int` and `float` the way `decimal.Decimal` does, which is CPython's modular-inverse construction, not a digest of the digits |
+| `__format__`                                                                     | `format(d, ".2f")` and the rest of the mini-language                                                                                                                             |
+| `__copy__`, `__deepcopy__`, `__reduce__`                                         | copy and pickle                                                                                                                                                                  |
+| NaN and Infinity                                                                 | decimo has no non-finite values, so `Decimal("NaN")` raises where the standard library returns one                                                                               |
+| Context and precision                                                            | no `getcontext()`, no per-operation precision from Python                                                                                                                        |
+| `sqrt`, `exp`, `ln`, `log10`, `quantize`, `normalize`, `as_tuple`, `is_nan`, ... | ~55 methods, nearly all already on `BigDecimal`                                                                                                                                  |
 
 ### Phase 1 — BigDecimal Full Binding
 
