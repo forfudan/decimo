@@ -137,7 +137,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         Returns:
             A `BigUInt` with value 1.
         """
-        return Self(raw_words=[UInt32(1)])
+        return Self.from_uint32_unsafe(UInt32(1))
 
     @staticmethod
     @always_inline
@@ -542,7 +542,13 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         Returns:
             A single-word `BigUInt` containing the given value.
         """
-        return Self(raw_words=[unsafe_value])
+        # Built straight into the result's own storage. `raw_words=[value]`
+        # allocates a `List` for the literal and then allocates again to copy
+        # it into the `WordList` -- two calls to the allocator to carry one
+        # word, on the path that every single-word addition takes.
+        var result = Self(uninitialized_capacity=1)
+        result.words.append(unsafe_value)
+        return result^
 
     @staticmethod
     def from_integral_scalar[
@@ -646,21 +652,23 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         # 8- and 16-bit scalars are at most 65_535 < 10^9, so one word always
         # suffices and no division is needed.
         comptime if value_bits <= 16:
-            return Self(raw_words=[UInt32(value)])
+            return Self.from_uint32_unsafe(UInt32(value))
 
         # A 32-bit scalar needs one word or two, decided by a comparison that
         # is cheaper than the general division loop. This is a hot path: the
         # single-word `add` fast paths land here.
         elif value_bits == 32:
             if value <= Self.BASE_MAX:
-                return Self(raw_words=[UInt32(value)])
+                return Self.from_uint32_unsafe(UInt32(value))
             else:
-                return Self(
-                    raw_words=[
-                        UInt32(value) % UInt32(Self.BASE),
-                        UInt32(value) // UInt32(Self.BASE),
-                    ]
-                )
+                # Built straight into the result. A list literal here meant an
+                # allocation for the list and a second one to copy it into
+                # place -- 30 ns to carry two words, on the path every
+                # single-word addition takes.
+                var result = Self(uninitialized_capacity=2)
+                result.words.append(UInt32(value) % UInt32(Self.BASE))
+                result.words.append(UInt32(value) // UInt32(Self.BASE))
+                return result^
 
         else:
             if value == 0:
@@ -676,16 +684,16 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 decimal_digits + 8
             ) // 9  # Trick to round up division by the 9 digits per word
 
-            var words = List[UInt32](capacity=number_of_words)
+            var result = Self(uninitialized_capacity=number_of_words)
             var remainder: Scalar[dtype] = value
             var quotient: Scalar[dtype]
 
             while remainder != 0:
                 quotient = remainder // Self.BASE
-                words.append(UInt32(remainder % Self.BASE))
+                result.words.append(UInt32(remainder % Self.BASE))
                 remainder = quotient
 
-            return Self(raw_words=words^)
+            return result^
 
     @staticmethod
     def from_absolute_integral_scalar[
@@ -711,7 +719,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         comptime if (dtype == DType.uint8) or (dtype == DType.uint16):
             # For types that are smaller than word size
             # We can directly convert them to UInt32
-            return Self(raw_words=[UInt32(value)])
+            return Self.from_uint32_unsafe(UInt32(value))
 
         elif (dtype == DType.int8) or (dtype == DType.int16):
             # For signed types that are smaller than 1_000_000_000,
@@ -720,9 +728,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 # Because -Int16.MIN == Int16.MAX + 1,
                 # we need to handle the case by converting it to Int32
                 # before taking the absolute value.
-                return Self(raw_words=[UInt32(-Int32(value))])
+                return Self.from_uint32_unsafe(UInt32(-Int32(value)))
             else:
-                return Self(raw_words=[UInt32(value)])
+                return Self.from_uint32_unsafe(UInt32(value))
 
         else:
             if value == 0:
@@ -1970,7 +1978,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             )
 
         if exponent == 0:
-            return Self(raw_words=[1])
+            return Self.from_uint32_unsafe(1)
 
         if exponent >= 1_000_000_000:
             raise ValueError(
@@ -1983,7 +1991,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 ),
             )
 
-        var result = Self(raw_words=[1])
+        var result = Self.from_uint32_unsafe(1)
         var base = self.copy()
         var exp = exponent
         while exp > 0:
