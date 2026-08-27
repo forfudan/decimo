@@ -632,12 +632,13 @@ middle of a flat range rather than a peak.
 """
 
 
-def _sqrtrem_two_words(n: Magnitude, mut remainder: Magnitude) -> Magnitude:
+def _sqrtrem_two_words(
+    n: ImmSpan[UInt32, _], mut remainder: Magnitude
+) -> Magnitude:
     """Square root of a one- or two-word magnitude, with its remainder.
 
     The value fits a `UInt64`, so the root fits a `UInt32` and the hardware
-    can be asked directly. `math.sqrt` on a `Float64` is exact only up to 53
-    bits, so the answer is corrected either way rather than trusted.
+    can be asked directly.
 
     Args:
         n: The magnitude, one or two words.
@@ -650,15 +651,18 @@ def _sqrtrem_two_words(n: Magnitude, mut remainder: Magnitude) -> Magnitude:
     if len(n) > 1:
         value += UInt64(n[1]) << 32
     var root = isqrt_uint64(value)
-    remainder = [UInt32((value - root * root) & 0xFFFF_FFFF)]
-    var high = UInt32((value - root * root) >> 32)
+    var left = value - root * root
+    remainder = [UInt32(left & 0xFFFF_FFFF)]
+    var high = UInt32(left >> 32)
     if high != 0:
         remainder.append(high)
     var out: Magnitude = [UInt32(root & 0xFFFF_FFFF)]
     return out^
 
 
-def _sqrtrem_small(n: Magnitude, mut remainder: Magnitude) raises -> Magnitude:
+def _sqrtrem_small(
+    n: ImmSpan[UInt32, _], mut remainder: Magnitude
+) raises -> Magnitude:
     """The recursion's base case: precision-doubling, then one squaring.
 
     Below the crossover the older algorithm is simply better -- it spends its
@@ -677,17 +681,20 @@ def _sqrtrem_small(n: Magnitude, mut remainder: Magnitude) raises -> Magnitude:
     Raises:
         Error: Propagated from the precision-doubling path.
     """
+    var value = bigint_arithmetics._normalized_copy(n)
     var root = _sqrt_precision_doubling_fast(
-        BigInt(raw_words=n.copy(), sign=False)
+        BigInt(raw_words=value.copy(), sign=False)
     )
     var root_words = root.words.copy()
     remainder = bigint_arithmetics._subtract_magnitudes(
-        n, bigint_arithmetics._multiply_magnitudes(root_words, root_words)
+        value, bigint_arithmetics._multiply_magnitudes(root_words, root_words)
     )
     return root_words^
 
 
-def _sqrtrem(n: Magnitude, mut remainder: Magnitude) raises -> Magnitude:
+def _sqrtrem(
+    n: ImmSpan[UInt32, _], mut remainder: Magnitude
+) raises -> Magnitude:
     """Karatsuba square root: returns `s`, and sets `remainder` to `n - s*s`.
 
     Zimmermann's recursion (INRIA RR-3805). Writing `n` as
@@ -704,6 +711,10 @@ def _sqrtrem(n: Magnitude, mut remainder: Magnitude) raises -> Magnitude:
     remainder comes out of the recursion rather than being recovered with a
     full-width squaring afterwards.
 
+    `n` is a slice rather than a list so that the recursion does not copy the
+    top half of its input at every level, which was O(n) a level and the
+    largest single cost here after the division itself.
+
     The caller must normalize: `len(n)` even, and the top word at least
     `2^30`, which is Zimmermann's `a3 >= b/4`. Both survive the recursion --
     the top slice keeps `n`'s own top word, and its length is even by
@@ -717,8 +728,8 @@ def _sqrtrem(n: Magnitude, mut remainder: Magnitude) raises -> Magnitude:
         The integer square root.
 
     Raises:
-        Error: Never, in practice; the inner division cannot divide by zero
-            because the top word is normalized, so `s'` is non-zero.
+        Error: Propagated from the inner division, which cannot divide by
+            zero because the top word is normalized and so `s'` is non-zero.
     """
     var m = len(n)
     if m <= 2:
@@ -728,28 +739,19 @@ def _sqrtrem(n: Magnitude, mut remainder: Magnitude) raises -> Magnitude:
 
     var half = m >> 1
     var l = half >> 1
-    var span = n.as_span()
 
     # The top 2*(half - l) words. Its top word is `n`'s, so it is normalized
-    # already and `_normalized_copy()` strips nothing.
+    # already.
     var r_hi = Magnitude()
-    var s_hi = _sqrtrem(
-        bigint_arithmetics._normalized_copy(
-            bigint_arithmetics._subspan(span, 2 * l, m)
-        ),
-        r_hi,
-    )
+    var s_hi = _sqrtrem(bigint_arithmetics._subspan(n, 2 * l, m), r_hi)
 
     var divisor = s_hi.copy()
     bigint_arithmetics._double_inplace(divisor)
 
     var dividend = r_hi^
     bigint_arithmetics._shift_left_words_inplace(dividend, l)
-    bigint_arithmetics._add_magnitudes_inplace(
-        dividend,
-        bigint_arithmetics._normalized_copy(
-            bigint_arithmetics._subspan(span, l, 2 * l)
-        ),
+    bigint_arithmetics._add_from_slice_inplace(
+        dividend, bigint_arithmetics._subspan(n, l, 2 * l)
     )
 
     var u = Magnitude()
@@ -772,11 +774,8 @@ def _sqrtrem(n: Magnitude, mut remainder: Magnitude) raises -> Magnitude:
 
     var t = u^
     bigint_arithmetics._shift_left_words_inplace(t, l)
-    bigint_arithmetics._add_magnitudes_inplace(
-        t,
-        bigint_arithmetics._normalized_copy(
-            bigint_arithmetics._subspan(span, 0, l)
-        ),
+    bigint_arithmetics._add_from_slice_inplace(
+        t, bigint_arithmetics._subspan(n, 0, l)
     )
 
     var q_squared = bigint_arithmetics._multiply_magnitudes(q, q)
@@ -825,7 +824,7 @@ def _sqrt_karatsuba(x: BigInt) raises -> BigInt:
         total += 32
 
     var remainder = Magnitude()
-    var root = _sqrtrem(value, remainder)
+    var root = _sqrtrem(value.as_span(), remainder)
 
     var back = total >> 1
     if back > 0:
