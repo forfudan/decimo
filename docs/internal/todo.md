@@ -89,8 +89,19 @@ Ordered by value, judged against the two goals in `internal_notes.md`.
    left is the result `PyObject` allocation, roughly 9 ns, which CPython's
    `_decimal` avoids with a freelist. Installing our own `tp_dealloc` slot
    would let us do the same.
-8. ~~**`floor_divide()` 2n-by-n scaling** in `BigUInt`~~ -- answered, see the
-   note below.
+8. **`round` at 100 000 digits and above, 15-20% slower than it was.**
+   `benchdoc` at ca2ab3c against the run at 06bafb7: 4.75 -> 5.40 us at
+   100 000 digits, 47.0 -> 57.5 us at 10^6. Everything else at those sizes
+   held or improved, so this looks like the inline array making a large value
+   more expensive to move rather than anything about rounding. Not chased yet.
+9. **`add` reads 46.5 ns at 9 digits where `subtract` reads 13.4**, in the
+   same `benchdoc` run, from kernels that time the same in isolation. `add`
+   is the first measurement the harness takes, so this is probably a cold
+   start being charged to it -- which would mean the harness has been
+   flattering `subtract` and libmpdec's `parse` for a while. Worth one look
+   at `benches/doc/generate.py` before believing either number.
+10. ~~**`floor_divide()` 2n-by-n scaling** in `BigUInt`~~ -- answered, see the
+    note below.
 
 ## Blocked on the language
 
