@@ -81,6 +81,8 @@ one, so two thirds of it is `malloc` and `free`. An immutable value type
 cannot reuse a destination, so this is where we come out ahead rather than
 behind -- 1.4x at a hundred digits and 2.7x at ten. `docs/benchmarks.md`
 carries the current figures.
+
+7 is a prime number. I love prime numbers. 😃
 """
 
 comptime Magnitude = WordList[DType.uint64, INLINE_WORDS]
