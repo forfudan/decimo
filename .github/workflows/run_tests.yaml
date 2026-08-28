@@ -18,7 +18,7 @@ defaults:
 # `decimo.mojoc` build all run once. The package is uploaded as an
 # artifact so downstream test jobs can download it instead of rebuilding
 # (saves ~30s of `mojo precompile` per job × 10 jobs). The pixi environment
-# is cached by `prefix-dev/setup-pixi@v0.9.5`, so test jobs no longer
+# is cached by `prefix-dev/setup-pixi@v0.10.2`, so test jobs no longer
 # `curl | sh` and `pixi install` from scratch.
 
 jobs:
@@ -28,8 +28,8 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: prefix-dev/setup-pixi@v0.9.5
+      - uses: actions/checkout@v7
+      - uses: prefix-dev/setup-pixi@v0.10.2
         with:
           cache: true
           activate-environment: true
@@ -37,7 +37,7 @@ jobs:
       # restored after `setup-pixi`. This job compiles the package itself, so
       # it wants its own entry rather than a test job's.
       - name: Restore the Mojo compilation cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .pixi/envs/default/share/max/cache/.mojo_cache
           key: mojo-cache-${{ runner.os }}-${{ hashFiles('pixi.lock') }}-build-${{ github.sha }}
@@ -98,7 +98,7 @@ jobs:
       - name: Verify decimo.mojoc was produced
         run: test -f decimo.mojoc
       - name: Upload decimo.mojoc artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: decimo-mojoc
           path: decimo.mojoc
@@ -112,7 +112,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-decimo
       - name: Run tests (with retry for Mojo compiler intermittent crashes)
         run: |
@@ -137,7 +137,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-decimo
       - name: Run tests (with retry for Mojo compiler intermittent crashes)
         run: |
@@ -162,7 +162,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-decimo
       - name: Run tests (with retry for Mojo compiler intermittent crashes)
         run: |
@@ -187,7 +187,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-decimo
       - name: Run tests (with retry for Mojo compiler intermittent crashes)
         run: |
@@ -212,7 +212,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-decimo
       - name: Run tests (with retry for Mojo compiler intermittent crashes)
         run: |
@@ -237,7 +237,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-decimo
       - name: Run tests (with retry for Mojo compiler intermittent crashes)
         run: |
@@ -262,7 +262,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-decimo
       - name: Run tests (with retry for Mojo compiler intermittent crashes)
         run: |
@@ -287,7 +287,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-decimo
       - name: Run tests (with retry for Mojo compiler intermittent crashes)
         run: |
@@ -315,7 +315,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-decimo
       - name: Run tests (with retry for Mojo compiler intermittent crashes)
         run: |
@@ -340,7 +340,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-decimo
       - name: Install MPFR
         run: brew install mpfr
@@ -367,7 +367,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-decimo
       - name: Run tests (with retry for Mojo compiler intermittent crashes)
         run: |
@@ -395,8 +395,8 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: prefix-dev/setup-pixi@v0.9.5
+      - uses: actions/checkout@v7
+      - uses: prefix-dev/setup-pixi@v0.10.2
         with:
           cache: true
           activate-environment: true
@@ -445,8 +445,8 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: prefix-dev/setup-pixi@v0.9.5
+      - uses: actions/checkout@v7
+      - uses: prefix-dev/setup-pixi@v0.10.2
         with:
           cache: true
           activate-environment: true
