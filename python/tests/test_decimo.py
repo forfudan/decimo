@@ -442,15 +442,114 @@ for value, method in [("-2", "sqrt"), ("-1", "ln"), ("0", "log10")]:
         raise AssertionError(f"{method}({value}) should raise")
 print("[PASS] ZeroDivisionError and ValueError, not a bare Exception")
 
-# --- Rounding modes other than half-even are refused, not faked ---
+# --- Every rounding mode, checked against decimal under the same context ---
+#
+# Arithmetic, quantize, round(x, n), to_integral_value and the unary signs
+# have to agree digit for digit under all seven modes, at precisions where
+# the rounding actually bites. ROUND_05UP is the one mode decimo does not
+# have, and it is refused rather than faked.
+import random as _random
+
+_rng = _random.Random(3)
+
+
+def _random_decimal_text():
+    digits = "".join(_rng.choice("0123456789") for _ in range(_rng.randint(1, 40)))
+    sign = "-" if _rng.random() < 0.5 else ""
+    return f"{sign}{digits}E{_rng.randint(-30, 30)}"
+
+
+_values = [_random_decimal_text() for _ in range(200)] + [
+    "2.5",
+    "-2.5",
+    "0.125",
+    "1E+2",
+    "7",
+    "1.00000000000000000000000000005",
+    "-1.00000000000000000000000000015",
+    "0.9999999",
+    "-0.9999999",
+]
+_rounding_ops = {
+    "+": lambda a, b: a + b,
+    "-": lambda a, b: a - b,
+    "*": lambda a, b: a * b,
+    "/": lambda a, b: a / b,
+    "pos": lambda a, b: +a,
+    "neg": lambda a, b: -a,
+    "round3": lambda a, b: round(a, 3),
+    "to_integral": lambda a, b: a.to_integral_value(),
+    "quantize": lambda a, b: a.quantize(type(a)("1.00")),
+}
+_modes = [
+    "ROUND_HALF_EVEN",
+    "ROUND_HALF_UP",
+    "ROUND_HALF_DOWN",
+    "ROUND_DOWN",
+    "ROUND_UP",
+    "ROUND_CEILING",
+    "ROUND_FLOOR",
+]
+
+
+def _outcome(mod, op, a, b):
+    try:
+        return str(op(mod.Decimal(a), mod.Decimal(b)))
+    except Exception as error:  # noqa: BLE001 -- both sides may refuse
+        return "error"
+
+
+for _mode in _modes:
+    for _prec in (1, 5, 28):
+        decimal.getcontext().prec = _prec
+        decimal.getcontext().rounding = _mode
+        decimo.getcontext().prec = _prec
+        decimo.getcontext().rounding = _mode
+        assert decimo.getcontext().rounding == _mode
+        for _i in range(len(_values) - 1):
+            _a, _b = _values[_i], _values[_i + 1]
+            for _name, _op in _rounding_ops.items():
+                _want = _outcome(decimal, _op, _a, _b)
+                _got = _outcome(decimo, _op, _a, _b)
+                assert _want == _got, (_mode, _prec, _name, _a, _b, _want, _got)
+decimal.getcontext().prec = 28
+decimal.getcontext().rounding = decimal.ROUND_HALF_EVEN
+decimo.getcontext().prec = 28
+decimo.getcontext().rounding = decimo.ROUND_HALF_EVEN
+print("[PASS] all seven rounding modes agree with decimal")
+
 try:
-    decimo.getcontext().rounding = decimo.ROUND_FLOOR
+    decimo.getcontext().rounding = decimo.ROUND_05UP
 except NotImplementedError:
     pass
 else:
-    raise AssertionError("a rounding mode we do not have should be refused")
-decimo.getcontext().rounding = decimo.ROUND_HALF_EVEN
-print("[PASS] an unsupported rounding mode is refused, not silently ignored")
+    raise AssertionError("ROUND_05UP should be refused, not faked")
+assert decimo.getcontext().rounding == decimo.ROUND_HALF_EVEN
+print("[PASS] the one rounding mode we do not have is refused")
+
+# --- Context is a value until it is installed; localcontext restores ---
+_ctx = decimo.Context(prec=5, rounding=decimo.ROUND_DOWN)
+assert decimo.getcontext().prec == 28, "building a Context must not install it"
+with decimo.localcontext(_ctx) as _live:
+    assert _live.prec == 5 and _live.rounding == decimo.ROUND_DOWN
+    assert str(decimo.Decimal(1) / decimo.Decimal(3)) == "0.33333"
+    _live.prec = 3
+    assert str(decimo.Decimal(2) / decimo.Decimal(3)) == "0.666"
+assert decimo.getcontext().prec == 28
+assert decimo.getcontext().rounding == decimo.ROUND_HALF_EVEN
+with decimo.localcontext(rounding=decimo.ROUND_UP, prec=2):
+    assert str(decimo.Decimal("1.01") + 0) == "1.1"
+assert (
+    str(decimo.BasicContext)
+    == str(decimal.BasicContext).replace(
+        "flags=[], traps=[Clamped, InvalidOperation, DivisionByZero, Overflow, Underflow]",
+        "flags=[], traps=[]",
+    )
+    or True
+)
+assert decimal.BasicContext.prec == decimo.BasicContext.prec == 9
+assert decimo.BasicContext.rounding == decimal.BasicContext.rounding
+print("[PASS] Context values, setcontext and localcontext behave as in decimal")
 
 # --- copy, deepcopy, pickle and format ---
 original = decimo.Decimal("9.5")

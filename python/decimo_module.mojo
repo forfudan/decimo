@@ -88,6 +88,8 @@ struct _State(Defaultable, Movable):
     """
 
     var precision: Int
+    var rounding: RoundingMode
+    """The context rounding mode, applied wherever an operation rounds."""
     var decimal_type: PyTypeObjectPtr
     var free_list: InlineArray[PyObjectPtr, FREE_LIST_SIZE]
     """Decimal objects that have been released and can be filled in again."""
@@ -95,6 +97,7 @@ struct _State(Defaultable, Movable):
 
     def __init__(out self):
         self.precision = 28
+        self.rounding = RoundingMode.ROUND_HALF_EVEN
         self.decimal_type = PyTypeObjectPtr()
         self.free_list = InlineArray[PyObjectPtr, FREE_LIST_SIZE](
             uninitialized=True
@@ -202,6 +205,79 @@ def set_precision(value: PythonObject) raises -> PythonObject:
     return PythonObject(None)
 
 
+def get_rounding() raises -> PythonObject:
+    """Read the context rounding mode as `decimal`'s string. Called by
+    `Context.rounding`."""
+    return PythonObject(rounding_name(_STATE.get_or_create_ptr()[].rounding))
+
+
+def set_rounding(value: PythonObject) raises -> PythonObject:
+    """Set the context rounding mode from `decimal`'s string. Called by
+    `Context.rounding`."""
+    _STATE.get_or_create_ptr()[].rounding = rounding_from(value)
+    return PythonObject(None)
+
+
+def rounding_name(mode: RoundingMode) -> String:
+    """The `decimal` constant name of a rounding mode."""
+    if mode == RoundingMode.ROUND_HALF_EVEN:
+        return "ROUND_HALF_EVEN"
+    if mode == RoundingMode.ROUND_HALF_UP:
+        return "ROUND_HALF_UP"
+    if mode == RoundingMode.ROUND_HALF_DOWN:
+        return "ROUND_HALF_DOWN"
+    if mode == RoundingMode.ROUND_DOWN:
+        return "ROUND_DOWN"
+    if mode == RoundingMode.ROUND_UP:
+        return "ROUND_UP"
+    if mode == RoundingMode.ROUND_CEILING:
+        return "ROUND_CEILING"
+    return "ROUND_FLOOR"
+
+
+@always_inline
+def round_to_context(var value: BigDecimal) raises -> BigDecimal:
+    """Round a value to the context precision with the context rounding.
+
+    What `+x` does, and what every operation does to its result.
+    """
+    ref cell = state()[]
+    value.round_to_precision_inplace(
+        precision=cell.precision,
+        rounding_mode=cell.rounding,
+        remove_extra_digit_due_to_rounding=True,
+        fill_zeros_to_precision=False,
+    )
+    return value^
+
+
+comptime DIRECTED_GUARD_DIGITS = 9
+"""Extra digits for `sqrt`, `exp`, `ln`, `log10` and `power` under a
+rounding mode other than HALF_EVEN.
+
+The Mojo functions return the correctly rounded HALF_EVEN value at the
+requested precision. For another mode the value is computed nine digits wider
+and rounded once more with that mode; the answer is wrong only when the true
+value lies within `10^-9` relative of a rounding boundary, which a `decimal`
+program that changes the mode for a transcendental is unlikely to notice but
+should know about. Arithmetic (`+ - * /`, `quantize`, `//`, `%`) does not go
+through this: it rounds exactly under every mode.
+"""
+
+
+@always_inline
+def to_precision_with_mode[
+    operation: def(BigDecimal, Int) thin raises -> BigDecimal
+](value: BigDecimal) raises -> BigDecimal:
+    """Apply a HALF_EVEN-rounding operation and deliver the context's mode."""
+    ref cell = state()[]
+    if cell.rounding == RoundingMode.ROUND_HALF_EVEN:
+        return operation(value, cell.precision)
+    return round_to_context(
+        operation(value, cell.precision + DIRECTED_GUARD_DIGITS)
+    )
+
+
 # ===----------------------------------------------------------------------=== #
 # PyInit entry point
 #
@@ -220,6 +296,8 @@ def PyInit__decimo() abi("C") -> PythonObject:
 
         m.def_function[get_precision]("get_precision")
         m.def_function[set_precision]("set_precision")
+        m.def_function[get_rounding]("get_rounding")
+        m.def_function[set_rounding]("set_rounding")
 
         ref decimal_builder = m.add_type[BigDecimal]("Decimal")
 
@@ -464,11 +542,10 @@ def as_decimal(
 def rounding_from(py_mode: PythonObject) raises -> RoundingMode:
     """Turn `decimal`'s rounding-mode string into a `RoundingMode`.
 
-    `None` means "use the context default", which for us is always
-    ROUND_HALF_EVEN -- the same default `decimal` starts with.
+    `None` means the context's current mode, as in `decimal`.
     """
     if py_mode is PythonObject(None):
-        return RoundingMode.ROUND_HALF_EVEN
+        return state()[].rounding
     var name = String(py_mode)
     if name == "ROUND_HALF_EVEN":
         return RoundingMode.ROUND_HALF_EVEN
@@ -902,7 +979,7 @@ def bigdecimal_pow(
             converted = convert_operand(other)
         except:
             return not_implemented()
-    var result = self_ptr[].power(converted, precision())
+    var result = _power_to_context(self_ptr[], converted)
     return new_decimal(state()[], result^)
 
 
@@ -916,8 +993,23 @@ def bigdecimal_rpow(
         converted = convert_operand(other)
     except:
         return not_implemented()
-    var result = converted.power(self_ptr[], precision())
+    var result = _power_to_context(converted, self_ptr[])
     return new_decimal(state()[], result^)
+
+
+def _power_to_context(
+    base: BigDecimal, exponent: BigDecimal
+) raises -> BigDecimal:
+    """`base ** exponent` at the context precision and rounding.
+
+    See `DIRECTED_GUARD_DIGITS` for how a mode other than HALF_EVEN is met.
+    """
+    ref cell = state()[]
+    if cell.rounding == RoundingMode.ROUND_HALF_EVEN:
+        return base.power(exponent, cell.precision)
+    return round_to_context(
+        base.power(exponent, cell.precision + DIRECTED_GUARD_DIGITS)
+    )
 
 
 def bigdecimal_neg(py_self: PythonObject) raises -> PythonObject:
@@ -926,7 +1018,7 @@ def bigdecimal_neg(py_self: PythonObject) raises -> PythonObject:
     Unary minus is an operation like any other in `decimal`, so it rounds.
     """
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
-    var result = (-(self_ptr[])).round_to_precision(precision())
+    var result = round_to_context(-(self_ptr[]))
     return new_decimal(state()[], result^)
 
 
@@ -938,7 +1030,7 @@ def bigdecimal_pos(py_self: PythonObject) raises -> PythonObject:
     context asks for. `decimal` behaves the same way.
     """
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
-    var result = self_ptr[].round_to_precision(precision())
+    var result = round_to_context(self_ptr[].copy())
     return new_decimal(state()[], result^)
 
 
@@ -1435,7 +1527,9 @@ def _not_implemented_ptr() raises -> PyObjectPtr:
 
 
 def _binary_slot[
-    operation: def(BigDecimal, BigDecimal, Int) thin raises -> BigDecimal,
+    operation: def(
+        BigDecimal, BigDecimal, Int, RoundingMode
+    ) thin raises -> BigDecimal,
     is_division: Bool = False,
 ](left: PyObjectPtr, right: PyObjectPtr) abi("C") -> PyObjectPtr:
     """The shared body of every arithmetic slot.
@@ -1460,7 +1554,10 @@ def _binary_slot[
         if left_is_ours and right_is_ours:
             # The common case: no reference counting, no conversion.
             result = operation(
-                _value_of(left)[], _value_of(right)[], cell.precision
+                _value_of(left)[],
+                _value_of(right)[],
+                cell.precision,
+                cell.rounding,
             )
         elif left_is_ours:
             var converted: BigDecimal
@@ -1468,14 +1565,18 @@ def _binary_slot[
                 converted = convert_operand(PythonObject(from_borrowed=right))
             except:
                 return _not_implemented_ptr()
-            result = operation(_value_of(left)[], converted, cell.precision)
+            result = operation(
+                _value_of(left)[], converted, cell.precision, cell.rounding
+            )
         elif right_is_ours:
             var converted: BigDecimal
             try:
                 converted = convert_operand(PythonObject(from_borrowed=left))
             except:
                 return _not_implemented_ptr()
-            result = operation(converted, _value_of(right)[], cell.precision)
+            result = operation(
+                converted, _value_of(right)[], cell.precision, cell.rounding
+            )
         else:
             return _not_implemented_ptr()
 
@@ -1489,24 +1590,28 @@ def _binary_slot[
         return raise_python_exception(e)
 
 
-def _do_add(x: BigDecimal, y: BigDecimal, digits: Int) raises -> BigDecimal:
-    return x.add(y, digits)
+def _do_add(
+    x: BigDecimal, y: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return x.add(y, digits, mode)
 
 
 def _do_subtract(
-    x: BigDecimal, y: BigDecimal, digits: Int
+    x: BigDecimal, y: BigDecimal, digits: Int, mode: RoundingMode
 ) raises -> BigDecimal:
-    return x.subtract(y, digits)
+    return x.subtract(y, digits, mode)
 
 
 def _do_multiply(
-    x: BigDecimal, y: BigDecimal, digits: Int
+    x: BigDecimal, y: BigDecimal, digits: Int, mode: RoundingMode
 ) raises -> BigDecimal:
-    return x.multiply(y, digits)
+    return x.multiply(y, digits, mode)
 
 
-def _do_divide(x: BigDecimal, y: BigDecimal, digits: Int) raises -> BigDecimal:
-    return x.true_divide(y, digits)
+def _do_divide(
+    x: BigDecimal, y: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return x.true_divide(y, digits, mode)
 
 
 def slot_add(left: PyObjectPtr, right: PyObjectPtr) abi("C") -> PyObjectPtr:
@@ -1661,13 +1766,19 @@ def fastcall_quantize(
         else:
             template = convert_operand(PythonObject(from_borrowed=given))
 
-        var mode = RoundingMode.ROUND_HALF_EVEN
+        var mode = cell.rounding
         if Int(nargs) > 1:
             mode = rounding_from(
                 PythonObject(from_borrowed=args[unsafe_offset=1])
             )
 
         var result = _value_of(py_self)[].quantize(template, mode)
+        # `decimal` refuses a quantize whose result needs more digits than
+        # the context allows: InvalidOperation, which is ValueError here.
+        if result.coefficient.number_of_digits() > cell.precision:
+            return _raise_value_error(
+                "quantize result has too many digits for current context"
+            )
         return new_decimal(cell, result^).steal_data()
     except e:
         return raise_python_exception(e)
@@ -1691,7 +1802,7 @@ def _fastcall_to_precision[
         ref cell = state()[]
         var result: BigDecimal
         try:
-            result = operation(_value_of(py_self)[], cell.precision)
+            result = to_precision_with_mode[operation](_value_of(py_self)[])
         except:
             return _raise_value_error(message)
         return new_decimal(cell, result^).steal_data()
@@ -1771,14 +1882,21 @@ def fastcall_to_integral(
     args: Pointer[PyObjectPtr, MutUntrackedOrigin],
     nargs: Py_ssize_t,
 ) abi("C") -> PyObjectPtr:
-    """`to_integral_value(rounding=None)`."""
+    """`to_integral_value(rounding=None)`. `None` is the context mode."""
     try:
-        var mode = RoundingMode.ROUND_HALF_EVEN
+        var mode = state()[].rounding
         if Int(nargs) > 0:
             mode = rounding_from(
                 PythonObject(from_borrowed=args[unsafe_offset=0])
             )
-        var result = _value_of(py_self)[].round(0, mode)
+        # A value with no fractional digits is returned as it is, exponent
+        # and all: `decimal` gives `Decimal("1E+2")` back unchanged.
+        ref value = _value_of(py_self)[]
+        var result: BigDecimal
+        if value.scale <= 0:
+            result = value.copy()
+        else:
+            result = value.round(0, mode)
         return new_decimal(state()[], result^).steal_data()
     except e:
         return raise_python_exception(e)
@@ -1792,7 +1910,9 @@ def fastcall_round(
     """`round(self)` and `round(self, ndigits)`.
 
     With no argument Python expects an `int` back, and with one it expects the
-    same type as the input -- which is what `decimal` does too.
+    same type as the input -- which is what `decimal` does too. `round(x)` is
+    HALF_EVEN whatever the context says; `round(x, n)` is a `quantize` and
+    follows the context rounding, as in `decimal`.
     """
     try:
         var places = _fastcall_argument(args, nargs, 0)
@@ -1804,9 +1924,13 @@ def fastcall_round(
             return builtins.int(
                 PythonObject(value.to_string(force_plain=True))
             ).steal_data()
-        var result = _value_of(py_self)[].round(
-            Int(py=places), RoundingMode.ROUND_HALF_EVEN
-        )
-        return new_decimal(state()[], result^).steal_data()
+        ref cell = state()[]
+        var result = _value_of(py_self)[].round(Int(py=places), cell.rounding)
+        # `round(x, n)` is a quantize, with the same limit.
+        if result.coefficient.number_of_digits() > cell.precision:
+            return _raise_value_error(
+                "quantize result has too many digits for current context"
+            )
+        return new_decimal(cell, result^).steal_data()
     except e:
         return raise_python_exception(e)

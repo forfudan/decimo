@@ -11,8 +11,8 @@ The rule this package follows is that anything it cannot do exactly the way
 `decimal` does it should refuse, not answer differently. Where a feature is
 missing you get an explicit error; you never get a quietly different number.
 
-What is not here yet: NaN and infinity, the signal/trap machinery, and any
-rounding mode other than ROUND_HALF_EVEN.
+What is not here yet: NaN and infinity, the signal/trap machinery, and
+ROUND_05UP.
 """
 
 from ._version import __version__ as __version__
@@ -20,6 +20,8 @@ from ._version import __version__ as __version__
 try:
     from ._decimo import Decimal, get_precision as _get_precision
     from ._decimo import set_precision as _set_precision
+    from ._decimo import get_rounding as _get_rounding
+    from ._decimo import set_rounding as _set_rounding
 except ImportError as _err:
     raise ImportError(
         "decimo requires a compiled Mojo extension (_decimo native module).\n"
@@ -192,9 +194,12 @@ Decimal.imag = property(_imaginary)
 
 # --- Rounding modes --------------------------------------------------------
 #
-# The names exist so that code written against `decimal` imports cleanly. Only
-# ROUND_HALF_EVEN is actually available: setting the context to any of the
-# others raises, rather than silently rounding a different way.
+# All of `decimal`'s modes except ROUND_05UP, which nothing in the Mojo
+# library implements; setting it raises rather than rounding a different way.
+# Arithmetic, `quantize`, `round(x, n)` and `to_integral_value` are exact under
+# every mode. `sqrt`, `exp`, `ln`, `log10` and `**` are computed nine digits
+# wider and rounded once more under a mode other than ROUND_HALF_EVEN; see
+# `DIRECTED_GUARD_DIGITS` in the Mojo module.
 
 ROUND_DOWN = "ROUND_DOWN"
 ROUND_HALF_UP = "ROUND_HALF_UP"
@@ -284,15 +289,56 @@ class FloatOperation(DecimalException, TypeError):
 # real difference from `decimal`, and it is written down rather than hidden.
 
 
+_ROUNDING_MODES = (
+    "ROUND_HALF_EVEN",
+    "ROUND_HALF_UP",
+    "ROUND_HALF_DOWN",
+    "ROUND_DOWN",
+    "ROUND_UP",
+    "ROUND_CEILING",
+    "ROUND_FLOOR",
+)
+
+
+def _checked_prec(value):
+    value = int(value)
+    if value < 1:
+        raise ValueError("prec must be at least 1")
+    return value
+
+
+def _checked_rounding(value):
+    if value not in _ROUNDING_MODES:
+        if value == "ROUND_05UP":
+            raise NotImplementedError("decimo does not implement ROUND_05UP")
+        raise TypeError(f"invalid rounding mode: {value!r}")
+    return value
+
+
 class Context:
     """The working precision and rounding mode, as `decimal.Context` has them.
 
-    Only `prec` is settable. The other attributes are here so that code copied
-    from a `decimal` program still reads, and they refuse any value that would
-    change the answer.
+    `prec` and `rounding` are what an operation consults. The other attributes
+    are here so that code copied from a `decimal` program still reads; `Emin`,
+    `Emax`, `flags` and `traps` are stored and never acted on, since decimo has
+    unbounded exponents and no signals.
+
+    A `Context` you build yourself is a value: it changes nothing until you
+    hand it to `setcontext()` or `localcontext()`. The one `getcontext()`
+    returns is live -- its `prec` and `rounding` are the process-wide state
+    every operation reads.
     """
 
-    __slots__ = ("_Emin", "_Emax", "_capitals", "_clamp", "flags", "traps")
+    __slots__ = (
+        "_prec",
+        "_rounding",
+        "_Emin",
+        "_Emax",
+        "_capitals",
+        "_clamp",
+        "flags",
+        "traps",
+    )
 
     def __init__(
         self,
@@ -305,60 +351,76 @@ class Context:
         flags=None,
         traps=None,
     ):
-        if prec is not None:
-            self.prec = prec
-        if rounding is not None:
-            self.rounding = rounding
+        self._prec = 28 if prec is None else _checked_prec(prec)
+        self._rounding = (
+            ROUND_HALF_EVEN if rounding is None else _checked_rounding(rounding)
+        )
         self._Emin = Emin if Emin is not None else -999999
         self._Emax = Emax if Emax is not None else 999999
         self._capitals = 1 if capitals is None else capitals
         self._clamp = 0 if clamp is None else clamp
-        self.flags = {} if flags is None else flags
-        self.traps = {} if traps is None else traps
+        self.flags = {} if flags is None else dict(flags)
+        self.traps = {} if traps is None else dict(traps)
 
-    # `prec` is the whole point: it reads and writes the value the Mojo side
-    # consults on every operation.
     @property
     def prec(self):
-        return _get_precision()
+        return self._prec
 
     @prec.setter
     def prec(self, value):
-        value = int(value)
-        if value < 1:
-            raise ValueError("prec must be at least 1")
-        _set_precision(value)
+        self._prec = _checked_prec(value)
 
     @property
     def rounding(self):
-        return ROUND_HALF_EVEN
+        return self._rounding
 
     @rounding.setter
     def rounding(self, value):
-        if value != ROUND_HALF_EVEN:
-            raise NotImplementedError(
-                "decimo rounds ROUND_HALF_EVEN only; "
-                f"{value!r} would give different answers"
-            )
+        self._rounding = _checked_rounding(value)
 
     @property
     def Emin(self):
         return self._Emin
 
+    @Emin.setter
+    def Emin(self, value):
+        self._Emin = int(value)
+
     @property
     def Emax(self):
         return self._Emax
+
+    @Emax.setter
+    def Emax(self, value):
+        self._Emax = int(value)
 
     @property
     def capitals(self):
         return self._capitals
 
+    @capitals.setter
+    def capitals(self, value):
+        self._capitals = int(value)
+
     @property
     def clamp(self):
         return self._clamp
 
+    @clamp.setter
+    def clamp(self, value):
+        self._clamp = int(value)
+
     def copy(self):
-        return Context(prec=self.prec)
+        return Context(
+            prec=self.prec,
+            rounding=self.rounding,
+            Emin=self.Emin,
+            Emax=self.Emax,
+            capitals=self.capitals,
+            clamp=self.clamp,
+            flags=self.flags,
+            traps=self.traps,
+        )
 
     __copy__ = copy
 
@@ -370,34 +432,73 @@ class Context:
 
     def create_decimal(self, value="0"):
         """Build a Decimal, then round it to this context's precision."""
-        return +Decimal(value)
+        with localcontext(self):
+            return +Decimal(value)
 
     def create_decimal_from_float(self, value):
-        return +Decimal(float(value))
+        with localcontext(self):
+            return +Decimal(float(value))
+
+    def Etiny(self):
+        return self.Emin - self.prec + 1
+
+    def Etop(self):
+        return self.Emax - self.prec + 1
 
     def __repr__(self):
         return (
             f"Context(prec={self.prec}, rounding={self.rounding}, "
             f"Emin={self.Emin}, Emax={self.Emax}, "
-            f"capitals={self.capitals}, clamp={self.clamp})"
+            f"capitals={self.capitals}, clamp={self.clamp}, "
+            f"flags={sorted(self.flags)}, traps={sorted(self.traps)})"
         )
 
 
-_CONTEXT = Context()
+class _CurrentContext(Context):
+    """What `getcontext()` returns: `prec` and `rounding` live in the Mojo
+    module, where every operation reads them without a Python call."""
+
+    __slots__ = ()
+
+    @property
+    def prec(self):
+        return _get_precision()
+
+    @prec.setter
+    def prec(self, value):
+        _set_precision(_checked_prec(value))
+
+    @property
+    def rounding(self):
+        return _get_rounding()
+
+    @rounding.setter
+    def rounding(self, value):
+        _set_rounding(_checked_rounding(value))
+
+
+_CONTEXT = _CurrentContext()
 
 
 def getcontext():
-    """Return the current context."""
+    """Return the current context. One per process, not per thread."""
     return _CONTEXT
 
 
 def setcontext(context):
-    """Adopt `context`'s precision as the current one."""
+    """Make `context`'s settings the current ones."""
     _CONTEXT.prec = context.prec
+    _CONTEXT.rounding = context.rounding
+    _CONTEXT.Emin = context.Emin
+    _CONTEXT.Emax = context.Emax
+    _CONTEXT.capitals = context.capitals
+    _CONTEXT.clamp = context.clamp
+    _CONTEXT.flags = dict(context.flags)
+    _CONTEXT.traps = dict(context.traps)
 
 
 class _LocalContext:
-    """What `localcontext()` returns: restores the precision on the way out."""
+    """What `localcontext()` returns: restores the settings on the way out."""
 
     __slots__ = ("_context", "_saved")
 
@@ -406,33 +507,49 @@ class _LocalContext:
         self._saved = None
 
     def __enter__(self):
-        self._saved = _CONTEXT.prec
+        self._saved = _CONTEXT.copy()
         if self._context is not None:
-            _CONTEXT.prec = self._context.prec
+            setcontext(self._context)
         return _CONTEXT
 
     def __exit__(self, *exception):
-        _CONTEXT.prec = self._saved
+        setcontext(self._saved)
         return False
 
 
 def localcontext(ctx=None, **kwargs):
-    """Use a different precision inside a `with` block, then put it back.
+    """Use different settings inside a `with` block, then put them back.
 
     with localcontext() as context:
         context.prec = 100
         ...
+
+    with localcontext(rounding=ROUND_DOWN):
+        ...
     """
-    if kwargs:
-        ctx = Context(prec=ctx.prec if ctx is not None else _CONTEXT.prec)
-        for key, value in kwargs.items():
-            setattr(ctx, key, value)
-    return _LocalContext(ctx)
+    base = (ctx if ctx is not None else _CONTEXT).copy()
+    for key, value in kwargs.items():
+        if key not in (
+            "prec",
+            "rounding",
+            "Emin",
+            "Emax",
+            "capitals",
+            "clamp",
+            "flags",
+            "traps",
+        ):
+            raise TypeError(f"'{key}' is an invalid keyword argument for this function")
+        setattr(base, key, value)
+    return _LocalContext(base)
 
 
-# `decimal` exposes these two; a program that prints them should still work.
+# `decimal` exposes these; a program that prints them should still work.
+# Same settings as in `decimal`: BasicContext and ExtendedContext are nine
+# digits, and BasicContext rounds half up.
 DefaultContext = Context()
-BasicContext = Context()
+BasicContext = Context(prec=9, rounding=ROUND_HALF_UP)
+ExtendedContext = Context(prec=9, rounding=ROUND_HALF_EVEN)
 
 MAX_PREC = 999999999999999999
 MAX_EMAX = 999999999999999999
@@ -454,6 +571,7 @@ __all__ = [
     "localcontext",
     "DefaultContext",
     "BasicContext",
+    "ExtendedContext",
     "ROUND_DOWN",
     "ROUND_HALF_UP",
     "ROUND_HALF_EVEN",

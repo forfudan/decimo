@@ -1679,7 +1679,12 @@ struct BigDecimal(
     # ===------------------------------------------------------------------=== #
 
     @always_inline
-    def add(self, other: Self, precision: Int = 0) raises -> Self:
+    def add(
+        self,
+        other: Self,
+        precision: Int = 0,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
         """Adds two values with explicit precision.
 
         Args:
@@ -1690,6 +1695,8 @@ struct BigDecimal(
                 HALF_EVEN to `precision` significant digits.
                 Note: this differs from the `+` operator which always
                 rounds to `PRECISION` (matching Python `decimal.Decimal`).
+            rounding_mode: How to round when `precision > 0`. HALF_EVEN by
+                default.
 
         Returns:
             The sum of the two values.
@@ -1697,10 +1704,17 @@ struct BigDecimal(
         Raises:
             Error: If the underlying addition or rounding fails.
         """
-        return bigdecimal_arithmetics.add(self, other, precision=precision)
+        return bigdecimal_arithmetics.add(
+            self, other, precision=precision, rounding_mode=rounding_mode
+        )
 
     @always_inline
-    def subtract(self, other: Self, precision: Int = 0) raises -> Self:
+    def subtract(
+        self,
+        other: Self,
+        precision: Int = 0,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
         """Subtracts two values with explicit precision.
 
         Args:
@@ -1712,6 +1726,8 @@ struct BigDecimal(
                 digits.
                 Note: this differs from the `-` operator which always
                 rounds to `PRECISION` (matching Python `decimal.Decimal`).
+            rounding_mode: How to round when `precision > 0`. HALF_EVEN by
+                default.
 
         Returns:
             The difference of the two values.
@@ -1719,10 +1735,17 @@ struct BigDecimal(
         Raises:
             Error: If the underlying subtraction or rounding fails.
         """
-        return bigdecimal_arithmetics.subtract(self, other, precision=precision)
+        return bigdecimal_arithmetics.subtract(
+            self, other, precision=precision, rounding_mode=rounding_mode
+        )
 
     @always_inline
-    def multiply(self, other: Self, precision: Int = 0) raises -> Self:
+    def multiply(
+        self,
+        other: Self,
+        precision: Int = 0,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
         """Multiplies two values with explicit precision.
 
         Args:
@@ -1733,6 +1756,8 @@ struct BigDecimal(
                 then rounded HALF_EVEN to `precision` significant digits.
                 Note: this differs from the `*` operator which always
                 rounds to `PRECISION` (matching Python `decimal.Decimal`).
+            rounding_mode: How to round when `precision > 0`. HALF_EVEN by
+                default.
 
         Returns:
             The product of the two values.
@@ -1740,17 +1765,23 @@ struct BigDecimal(
         Raises:
             Error: If the underlying multiplication or rounding fails.
         """
-        return bigdecimal_arithmetics.multiply(self, other, precision=precision)
+        return bigdecimal_arithmetics.multiply(
+            self, other, precision=precision, rounding_mode=rounding_mode
+        )
 
     @always_inline
     def true_divide(
-        self, other: Self, precision: Int = PRECISION
+        self,
+        other: Self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
         """Divides two values using true division with explicit precision.
 
         Args:
             other: The right-hand side operand.
             precision: The precision to use for the operation.
+            rounding_mode: How to round the quotient. HALF_EVEN by default.
 
         Returns:
             The quotient of the two values.
@@ -1759,7 +1790,7 @@ struct BigDecimal(
             ZeroDivisionError: If the divisor is zero.
         """
         return bigdecimal_arithmetics.true_divide(
-            self, other, precision=precision
+            self, other, precision=precision, rounding_mode=rounding_mode
         )
 
     @always_inline
