@@ -4,7 +4,7 @@ description: Install pixi (cached), activate the Mojo environment, restore the M
 runs:
   using: composite
   steps:
-    - uses: prefix-dev/setup-pixi@v0.9.5
+    - uses: prefix-dev/setup-pixi@v0.10.2
       with:
         activate-environment: true
 
@@ -21,7 +21,7 @@ runs:
     # Keyed per job. Each test job compiles a different set of test files,
     # and a shared key would have every job racing to save the same entry.
     - name: Restore the Mojo compilation cache
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: .pixi/envs/default/share/max/cache/.mojo_cache
         key: mojo-cache-${{ runner.os }}-${{ hashFiles('pixi.lock') }}-${{ github.job }}-${{ github.sha }}
@@ -57,7 +57,7 @@ runs:
         echo "we cache        : $PWD/.pixi/envs/default/share/max/cache/.mojo_cache"
 
     - name: Download decimo.mojoc artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: decimo-mojoc
         path: .
