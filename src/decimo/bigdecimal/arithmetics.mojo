@@ -913,8 +913,15 @@ def _true_divide_inexact_truncated(
 ) raises -> BigDecimal:
     """Internal: inexact division with truncated oversized operands."""
     var total_y_remove = len(x2.coefficient.words) - needed_divisor_words
+
+    # The dividend keeps as many words as the divisor, for the reason spelled
+    # out in `_true_divide_general_truncated()`: a leading word can hold a
+    # single digit, so capping at `len(words) - 1` left the division one
+    # significant digit to work from. Same defect, same shape, sibling
+    # function -- and this one feeds `root()`, where a short answer is silent.
     var common_remove = min(
-        total_y_remove, max(len(x1.coefficient.words) - 1, 0)
+        total_y_remove,
+        max(len(x1.coefficient.words) - needed_divisor_words, 0),
     )
     var y_only_remove = total_y_remove - common_remove
 

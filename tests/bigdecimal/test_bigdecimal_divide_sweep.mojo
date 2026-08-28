@@ -159,5 +159,61 @@ def test_the_regression_cases_from_the_truncated_dividend() raises:
     testing.assert_equal(String(e.true_divide(f, 18)), "604076679858534.387")
 
 
+def assert_inexact_quotient_is_truncated(
+    x: BDec, y: BDec, digits: Int, context: String
+) raises:
+    """`true_divide_inexact` truncates, so `0 <= |x| - |q||y| < ulp(q)|y|`."""
+    var q = x.true_divide_inexact(y, digits)
+    var residual = subtract(abs(x), multiply(abs(q), abs(y)))
+    var ulp = BDec(
+        coefficient=BigUInt.from_word_unsafe(BigUInt.Word(1)),
+        scale=q.scale,
+        sign=False,
+    )
+    var bound = multiply(ulp, abs(y))
+
+    assert_true(
+        residual >= BDec("0"),
+        context
+        + ": quotient overshot. x = "
+        + String(x)
+        + ", y = "
+        + String(y),
+    )
+    assert_true(
+        residual < bound,
+        context
+        + ": quotient is short of the digits asked for. x = "
+        + String(x)
+        + ", y = "
+        + String(y)
+        + ", digits = "
+        + String(digits)
+        + ", q = "
+        + String(q),
+    )
+
+
+def test_inexact_division_keeps_the_digits_it_promises() raises:
+    """The same truncation defect lived in the inexact sibling.
+
+    `true_divide_inexact` is public and it is what `root()` divides with, so a
+    dividend cut down to one word costs significant digits with nothing to say
+    so -- it does not claim correct rounding, only a digit count.
+    """
+    var state = UInt64(31337)
+    for digits in [1, 5, 18, 19, 28, 50]:
+        for dividend_digits in [1, 5, 18, 19, 37]:
+            for divisor_digits in [100, 145, 200]:
+                var a = BDec(digits_string(0, dividend_digits, state) + ".5")
+                var b = BDec(digits_string(0, divisor_digits, state))
+                assert_inexact_quotient_is_truncated(
+                    a, b, digits, "small over huge"
+                )
+                assert_inexact_quotient_is_truncated(
+                    b, a, digits, "huge over small"
+                )
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()
