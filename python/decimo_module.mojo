@@ -365,8 +365,8 @@ def PyInit__decimo() abi("C") -> PythonObject:
             # Methods with an optional argument. `def_py_method` would put
             # them on `METH_VARARGS`, which packs a tuple for every call --
             # measured at 44 ns, most of what `quantize` costs.
-            .def_py_c_method[static_method=False](method_pow, "__pow__")
-            .def_py_c_method[static_method=False](method_rpow, "__rpow__")
+            .def_py_c_method[static_method=False](fastcall_pow, "__pow__")
+            .def_py_c_method[static_method=False](fastcall_rpow, "__rpow__")
             .def_py_c_method[static_method=False](method_quantize, "quantize")
             .def_py_c_method[static_method=False](method_sqrt, "sqrt")
             .def_py_c_method[static_method=False](method_exp, "exp")
@@ -695,16 +695,6 @@ def bigdecimal_py_init(
             return
         cpython.PyErr_Clear()
 
-    # `as_tuple()`'s own form, so that the round trip closes: sign, the
-    # digits one by one, and the exponent. Checked here rather than left to
-    # the parser, which sees a tuple and can only say "not a number".
-    var builtins = Python.import_module("builtins")
-    if builtins.isinstance(argument, builtins.tuple) or builtins.isinstance(
-        argument, builtins.list
-    ):
-        self = _from_components(argument)
-        return
-
     if cpython.PyFloat_CheckExact(argument._obj_ptr):
         self = BigDecimal.from_float_scalar(
             Float64(cpython.PyFloat_AsDouble(argument._obj_ptr))
@@ -720,6 +710,17 @@ def bigdecimal_py_init(
     try:
         self = BigDecimal(String(argument))
     except:
+        # `as_tuple()`'s own form, so that the round trip closes: sign, the
+        # digits one by one, and the exponent. Asked here, where the parse
+        # has already given up, rather than before it: `Decimal("10000.00")`
+        # is the hottest constructor there is and must not pay for a check
+        # that a tuple argument can pay for itself.
+        var builtins = Python.import_module("builtins")
+        if builtins.isinstance(
+            argument, Python.tuple(builtins.tuple, builtins.list)
+        ):
+            self = _from_components(argument)
+            return
         raise Error(String("could not parse as a decimal: ", argument))
 
 
@@ -1058,29 +1059,27 @@ def bigdecimal_rdivmod(
     )
 
 
-def method_pow(
-    py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
+def fastcall_pow(
+    py_self: PyObjectPtr,
+    args: Pointer[PyObjectPtr, MutUntrackedOrigin],
+    nargs: Py_ssize_t,
 ) abi("C") -> PyObjectPtr:
     """`self ** other`, or `pow(self, other, modulus)` with three arguments.
 
     Python passes the modulus to `__pow__` itself, so the method has to take
-    one argument or two; a fixed arity cannot say that.
+    one argument or two; a fixed arity cannot say that. It never passes a
+    keyword, so this stays on the fast path.
     """
     try:
-        var args = PythonObject(from_borrowed=py_args)
-        var modulus: PythonObject
-        try:
-            var taken = 0
-            (modulus, taken) = _keyword_argument(
-                args, py_kwargs, 1, "modulo", taken
+        if Int(nargs) < 1:
+            return _raise_type_error(
+                Error("__pow__() takes at least 1 argument (0 given)")
             )
-            _no_other_keywords(py_kwargs, taken)
-            if Int(len(args)) < 1:
-                raise Error("__pow__() takes at least 1 argument (0 given)")
-        except e:
-            return _raise_type_error(e)
         return _power(
-            PythonObject(from_borrowed=py_self), args[0], modulus, False
+            PythonObject(from_borrowed=py_self),
+            PythonObject(from_borrowed=args[unsafe_offset=0]),
+            _fastcall_argument(args, nargs, 1),
+            False,
         ).steal_data()
     except e:
         # A modulus that is not a whole number, or a negative exponent:
@@ -1088,25 +1087,22 @@ def method_pow(
         return raise_python_exception(e, ExceptionType("PyExc_ValueError"))
 
 
-def method_rpow(
-    py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
+def fastcall_rpow(
+    py_self: PyObjectPtr,
+    args: Pointer[PyObjectPtr, MutUntrackedOrigin],
+    nargs: Py_ssize_t,
 ) abi("C") -> PyObjectPtr:
     """`other ** self`, reached when the left operand is not a decimal."""
     try:
-        var args = PythonObject(from_borrowed=py_args)
-        var modulus: PythonObject
-        try:
-            var taken = 0
-            (modulus, taken) = _keyword_argument(
-                args, py_kwargs, 1, "modulo", taken
+        if Int(nargs) < 1:
+            return _raise_type_error(
+                Error("__rpow__() takes at least 1 argument (0 given)")
             )
-            _no_other_keywords(py_kwargs, taken)
-            if Int(len(args)) < 1:
-                raise Error("__rpow__() takes at least 1 argument (0 given)")
-        except e:
-            return _raise_type_error(e)
         return _power(
-            PythonObject(from_borrowed=py_self), args[0], modulus, True
+            PythonObject(from_borrowed=py_self),
+            PythonObject(from_borrowed=args[unsafe_offset=0]),
+            _fastcall_argument(args, nargs, 1),
+            True,
         ).steal_data()
     except e:
         # A modulus that is not a whole number, or a negative exponent:
@@ -1974,10 +1970,31 @@ def _compare_answer(order: Int8, operation: c_int) raises -> PyObjectPtr:
 # The ones a program actually writes with a keyword -- `quantize(exp,
 # rounding=ROUND_HALF_UP)` above all, which is how money code spells itself --
 # cannot use fastcall at all, since the binding offers keywords only on the
-# tuple-packing path. They pay the 44 ns for the tuple, as CPython's own
-# `decimal` does for the same methods, and accept the keyword. `__round__`
-# stays on fastcall: Python never passes it one.
+# tuple-packing path. Reading the tuple with `PyTuple_GetItem` instead of
+# through `PythonObject`, which boxes the index, keeps that to 10 ns:
+# `quantize` measures 62 ns against 52 on fastcall and 65 for CPython's own,
+# which buys the keyword at a price still under the library we replace.
+# `__round__` and `__pow__` stay on fastcall: Python never passes them one.
 # ===----------------------------------------------------------------------=== #
+
+
+@always_inline
+def _positional(
+    args: PythonObject, count: Int, index: Int
+) raises -> PythonObject:
+    """The argument at `index`, or `None` when it was not given.
+
+    Args:
+        args: The positional arguments.
+        count: How many there are, read once by the caller.
+        index: Which one is wanted.
+
+    Returns:
+        The argument, or `None`.
+    """
+    if count > index:
+        return args[index]
+    return PythonObject(None)
 
 
 @always_inline
@@ -2052,43 +2069,61 @@ def _fastcall_argument(
 def method_quantize(
     py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
 ) abi("C") -> PyObjectPtr:
-    """`quantize(exp, rounding=None, context=None)`."""
+    """`quantize(exp, rounding=None, context=None)`.
+
+    The arguments are read off the tuple with `PyTuple_GetItem` rather than
+    through `PythonObject`, which would box the index and hold a reference:
+    this is the one method on this path that a loop calls a hundred times.
+    """
     try:
-        var args = PythonObject(from_borrowed=py_args)
-        var rounding: PythonObject
-        try:
-            if Int(len(args)) < 1:
-                raise Error("quantize() takes at least 1 argument (0 given)")
-            var taken = 0
-            (rounding, taken) = _keyword_argument(
-                args, py_kwargs, 1, "rounding", taken
-            )
-            # The context argument is accepted and ignored; see above.
-            (_, taken) = _keyword_argument(args, py_kwargs, 2, "context", taken)
-            _no_other_keywords(py_kwargs, taken)
-        except e:
-            return _raise_type_error(e)
         ref cell = state()[]
         ref cpython = Python().cpython()
-        var given = args[0]
+        var rounding = PyObjectPtr()
+        try:
+            var count = Int(cpython.PyObject_Length(py_args))
+            if count < 1:
+                raise Error("quantize() takes at least 1 argument (0 given)")
+            if not py_kwargs:
+                # The common call, and the one worth keeping cheap.
+                if count > 1:
+                    rounding = cpython.PyTuple_GetItem(py_args, 1)
+            else:
+                var args = PythonObject(from_borrowed=py_args)
+                var taken = 0
+                var named: PythonObject
+                (named, taken) = _keyword_argument(
+                    args, py_kwargs, 1, "rounding", taken
+                )
+                # The context argument is accepted and ignored; see above.
+                (_, taken) = _keyword_argument(
+                    args, py_kwargs, 2, "context", taken
+                )
+                _no_other_keywords(py_kwargs, taken)
+                if named is not PythonObject(None):
+                    rounding = named._obj_ptr
+        except e:
+            return _raise_type_error(e)
+        var given = cpython.PyTuple_GetItem(py_args, 0)
 
         # The template is nearly always another decimal, and reading it in
         # place keeps its reference count out of it.
         var template: BigDecimal
-        if cpython.Py_TYPE(given._obj_ptr) == decimal_type_ptr(cell):
-            template = _value_of(given._obj_ptr)[].copy()
+        if cpython.Py_TYPE(given) == decimal_type_ptr(cell):
+            template = _value_of(given)[].copy()
         else:
-            template = convert_operand(given)
+            template = convert_operand(PythonObject(from_borrowed=given))
 
         var mode = cell.rounding
-        if rounding is not PythonObject(None):
-            try:
-                _ = _mode_or_none(rounding)
-            except:
-                return _raise_not_implemented(
-                    "decimo does not implement ROUND_05UP"
-                )
-            mode = rounding_from(rounding)
+        if rounding:
+            var named = PythonObject(from_borrowed=rounding)
+            if named is not PythonObject(None):
+                try:
+                    _ = _mode_or_none(named)
+                except:
+                    return _raise_not_implemented(
+                        "decimo does not implement ROUND_05UP"
+                    )
+                mode = rounding_from(named)
 
         var result = _value_of(py_self)[].quantize(template, mode)
         # `decimal` refuses a quantize whose result needs more digits than
@@ -2118,18 +2153,19 @@ def _method_to_precision[
     `decimal` does with these four. See `DIRECTED_GUARD_DIGITS`.
     """
     try:
-        try:
-            var taken = 0
-            (_, taken) = _keyword_argument(
-                PythonObject(from_borrowed=py_args),
-                py_kwargs,
-                0,
-                "context",
-                taken,
-            )
-            _no_other_keywords(py_kwargs, taken)
-        except e:
-            return _raise_type_error(e)
+        if py_kwargs:
+            try:
+                var taken = 0
+                (_, taken) = _keyword_argument(
+                    PythonObject(from_borrowed=py_args),
+                    py_kwargs,
+                    0,
+                    "context",
+                    taken,
+                )
+                _no_other_keywords(py_kwargs, taken)
+            except e:
+                return _raise_type_error(e)
         ref cell = state()[]
         var result: BigDecimal
         try:
@@ -2237,26 +2273,39 @@ def method_to_integral(
     `None` is the context mode.
     """
     try:
-        var rounding: PythonObject
+        ref cpython = Python().cpython()
+        var rounding = PyObjectPtr()
         try:
-            var args = PythonObject(from_borrowed=py_args)
-            var taken = 0
-            (rounding, taken) = _keyword_argument(
-                args, py_kwargs, 0, "rounding", taken
-            )
-            (_, taken) = _keyword_argument(args, py_kwargs, 1, "context", taken)
-            _no_other_keywords(py_kwargs, taken)
+            if not py_kwargs:
+                if Int(cpython.PyObject_Length(py_args)) > 0:
+                    rounding = cpython.PyTuple_GetItem(py_args, 0)
+            else:
+                var args = PythonObject(from_borrowed=py_args)
+                var taken = 0
+                var named: PythonObject
+                (named, taken) = _keyword_argument(
+                    args, py_kwargs, 0, "rounding", taken
+                )
+                (_, taken) = _keyword_argument(
+                    args, py_kwargs, 1, "context", taken
+                )
+                _no_other_keywords(py_kwargs, taken)
+                if named is not PythonObject(None):
+                    rounding = named._obj_ptr
         except e:
             return _raise_type_error(e)
         var mode = state()[].rounding
-        if rounding is not PythonObject(None):
+        var given = PythonObject(
+            from_borrowed=rounding
+        ) if rounding else PythonObject(None)
+        if given is not PythonObject(None):
             try:
-                _ = _mode_or_none(rounding)
+                _ = _mode_or_none(given)
             except:
                 return _raise_not_implemented(
                     "decimo does not implement ROUND_05UP"
                 )
-            mode = rounding_from(rounding)
+            mode = rounding_from(given)
         # A value with no fractional digits is returned as it is, exponent
         # and all: `decimal` gives `Decimal("1E+2")` back unchanged.
         ref value = _value_of(py_self)[]
