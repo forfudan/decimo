@@ -2510,10 +2510,16 @@ def compute_ln2(working_precision: Int) raises -> BigDecimal:
 
     Notes:
 
-    The last few digits of result are not accurate as there is no buffer for
-    precision. You need to use a larger precision to get the last few digits
-    accurate. The precision is only used to determine the number of terms in
-    the series expansion, not for the final result.
+    Up to `TABLE_DIGITS` the value is read from `LN2_1100`, exact. Above it
+    the series `2 * atanh(1/3)` runs at `working_precision` digits, and the
+    result is below `4.5` units in the last place of the true value: each
+    term is rounded down (below `1.125` units over the series, since the
+    terms fall by 9x and the recurrence divides by an exact integer rather
+    than multiplying by a truncated square), the initial `1/3` enters through
+    the first term only (one unit), the stopping rule leaves a tail below
+    `1.2` units, and the final round-down is one more. So at most the last
+    digit is off, at every precision; `MathCache` adds nine guard digits and
+    that is enough. Pinned by `test_bigdecimal_ln_constants_bound.mojo`.
     """
     # Directly using Taylor series expansion for ln(2) is not efficient
     # Instead, we can use the identity:
@@ -2600,9 +2606,10 @@ def compute_ln1d25(precision: Int) raises -> BigDecimal:
 
     Notes:
 
-    The last few digits of result are not accurate as there is no buffer for
-    precision. You need to use a larger precision to get the last few digits
-    accurate.
+    Up to `TABLE_DIGITS` the value is read from `LN1D25_1100`, exact. Above
+    it the series `2 * atanh(1/9)` runs, with the same error bound as
+    `compute_ln2()`: below `4.5` units in the last place, so at most the last
+    digit is off, at every precision.
     """
     # ln(1.25) = 2*atanh(1/9), since (1 + 1/9)/(1 - 1/9) = (10/9)/(8/9) = 1.25.
     # So ln(1.25) = 2*(1/9 + (1/9)³/3 + (1/9)⁵/5 + ...).
