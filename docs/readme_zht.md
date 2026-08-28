@@ -32,8 +32,8 @@ Python，`decimo.Decimal` 之於 Mojo 就如同 `decimal.Decimal` 之於 Python�
 
 | 類型      | 別名                 | 信息                               | 內部表示     |
 | --------- | -------------------- | ---------------------------------- | ------------ |
-| `BInt`    | `BigInt`             | 等價於 Python 的 `int`             | Base-2^32    |
-| `Decimal` | `BigDecimal`, `BDec` | 等價於 Python 的 `decimal.Decimal` | Base-10^9    |
+| `BInt`    | `BigInt`             | 等價於 Python 的 `int`             | Base-2^64    |
+| `Decimal` | `BigDecimal`, `BDec` | 等價於 Python 的 `decimal.Decimal` | Base-10^18   |
 | `Dec128`  | `Decimal128`         | 128 位定點精度小數類型             | 三個 32 位字 |
 
 輔助類型包括基於 10 進制的任意精度有符號整數類型 (`BigInt10`)
@@ -376,11 +376,11 @@ Python 遷移到 Mojo 時，我需要一個可靠的、能够正確捨入的、�
     位）。Decimo 的 `Decimal128` 類型類似於
     `System.Decimal`（C#/.NET）、Rust 中的 `rust_decimal`、SQL Server 中的
     `DECIMAL/NUMERIC` 等。
-[^bigint]: `BigInt` 使用 base-2^32 表示，採用小端格式，最低有效字存儲在索引
+[^bigint]: `BigInt` 使用 base-2^64 表示，採用小端格式，最低有效字存儲在索引
     0。每個字是一個
-    `UInt32`，允許對大整數進行高效存儲和算術運算。這種設計優化了二進制計算的性能，同時支持任意精度。
+    `UInt64`，允許對大整數進行高效存儲和算術運算。這種設計優化了二進制計算的性能，同時支持任意精度。
 [^bigint10]: BigInt10 使用基於 10 的表示（保持十進制語義），而內部使用優化的基於
-    10^9
+    10^18
     的存儲系統進行高效計算。這種方法在人類可讀的十進制操作與高性能計算之間取得平衡。它提供向下整除（向負無窮舍入）和截斷除法（向零舍入）語義，無論操作數符號如何，都能確保除法操作具有正確的數學行爲。
 [^arbitrary]: 建立在已完成的 BigInt10 實現之上，Decimal
     支持整數和小數部分的任意精度，類似於 Python 中的 `decimal` 和

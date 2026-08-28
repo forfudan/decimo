@@ -16,8 +16,8 @@ powered by [ArgMojo](https://github.com/forfudan/argmojo). Install it with
 
 | Type         | Alias             | Information                              | Layout       |
 | ------------ | ----------------- | ---------------------------------------- | ------------ |
-| `BigInt`     | `BInt`            | Equivalent to Python's `int`             | Base-2^32    |
-| `BigDecimal` | `BDec`, `Decimal` | Equivalent to Python's `decimal.Decimal` | Base-10^9    |
+| `BigInt`     | `BInt`            | Equivalent to Python's `int`             | Base-2^64    |
+| `BigDecimal` | `BDec`, `Decimal` | Equivalent to Python's `decimal.Decimal` | Base-10^18   |
 | `Decimal128` | `Dec128`          | 128-bit fixed-precision decimal type     | 32-bit words |
 | `BigFloat`   | `Float`           | Arbitrary-precision floating-point type  | MPFR/GMP     |
 
@@ -127,6 +127,11 @@ Then, you can install Decimo using any of these methods:
    [this GitHub repository](https://github.com/forfudan/decimo) and build the
    package locally using the command `pixi run package`.
 
+---
+
+<details>
+<summary><b>Package versions and Mojo compatibility</b></summary>
+
 The following table summarizes the package versions and their corresponding Mojo
 versions:
 
@@ -146,6 +151,10 @@ versions:
 | `decimo`   | v0.11.0 | ==1.0.0b2       | pixi            |
 | `decimo`   | v0.12.0 | >=1.0.0, <1.1.0 | pixi            |
 | `decimo`   | v0.13.0 | >=1.0.0, <1.1.0 | pixi            |
+
+</details>
+
+---
 
 ### Install CLI calculator
 
@@ -608,9 +617,9 @@ for details.
     eights total with 27 after the decimal point). Decimo's `Dec128` type
     is similar to `System.Decimal` (C#/.NET), `rust_decimal` in Rust,
     `DECIMAL/NUMERIC` in SQL Server, etc.
-[^bigint]: The `BigInt` implementation uses a base-2^32 representation with a
+[^bigint]: The `BigInt` implementation uses a base-2^64 representation with a
     little-endian format, where the least significant word is stored at
-    index 0. Each word is a `UInt32`, allowing for efficient storage and
+    index 0. Each word is a `UInt64`, allowing for efficient storage and
     arithmetic operations on large integers. This design choice optimizes
     performance for binary computations while still supporting arbitrary
     precision.
@@ -621,7 +630,7 @@ for details.
     representation for `BigInt10` and `Decimal`.
 [^bigint10]: The BigInt10 implementation uses a base-10 representation for users
     (maintaining decimal semantics), while internally using an
-    optimized base-10^9 storage system for efficient calculations. This
+    optimized base-10^18 storage system for efficient calculations. This
     approach balances human-readable decimal operations with
     high-performance computing. It provides both floor division (round
     toward negative infinity) and truncate division (round toward zero)
