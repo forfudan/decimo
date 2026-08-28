@@ -17,19 +17,30 @@ def build_digits(count: Int, seed: Int) -> String:
     return out^
 
 
-def assert_matches_schoolbook(digits_x: Int, digits_y: Int) raises:
-    """Checks one product of the transform against schoolbook multiplication.
+def assert_matches_toom3(digits_x: Int, digits_y: Int) raises:
+    """Checks one product of the transform against Toom-3.
 
-    The reference is `multiply_slices_schoolbook()` and not the `multiply()`
+    The reference is `multiply_slices_toom3()` and not the `multiply()`
     dispatcher, because `multiply()` routes large operands to the transform.
     Comparing against it would compare the transform with itself.
+
+    It used to be `multiply_slices_schoolbook()`, which is wrong for this job:
+    the schoolbook kernel sums a column of partial products in a `UInt128`,
+    which holds `SCHOOLBOOK_MAX_COLUMN` of them -- 340 at eighteen digits a
+    word -- and a column is as long as the shorter operand. At 4072 words the
+    digit pattern below happened to keep the column under the limit; at 9000
+    it did not, and the reference was wrong while the transform was right.
+    The unequal-operand cases only passed because their short side was 9 or
+    100 words. The kernel asserts its limit now, which is how this surfaced.
+    Toom-3 is the algorithm the dispatcher uses just below the transform, so
+    it is the right thing to hold the transform against.
     """
     var x = BigUInt(build_digits(digits_x, 7))
     var y = BigUInt(build_digits(digits_y, 5))
     var bounds_x = (0, len(x.words))
     var bounds_y = (0, len(y.words))
 
-    var expected = biguint_arithmetics.multiply_slices_schoolbook(
+    var expected = biguint_arithmetics.multiply_slices_toom3(
         x, y, bounds_x, bounds_y
     )
     var got = biguint_ntt.multiply_slices_ntt(x, y, bounds_x, bounds_y)
@@ -37,7 +48,7 @@ def assert_matches_schoolbook(digits_x: Int, digits_y: Int) raises:
     testing.assert_equal(
         String(got),
         String(expected),
-        "transform disagrees with schoolbook for "
+        "transform disagrees with Toom-3 for "
         + String(digits_x)
         + " by "
         + String(digits_y)
@@ -45,15 +56,15 @@ def assert_matches_schoolbook(digits_x: Int, digits_y: Int) raises:
     )
 
 
-def test_ntt_matches_schoolbook_on_small_operands() raises:
+def test_ntt_matches_toom3_on_small_operands() raises:
     """The transform must be correct at every size, not only large ones."""
     var sizes = [1, 2, 3, 8, 9, 10, 17, 18, 19, 100]
     for i in range(len(sizes)):
         for j in range(len(sizes)):
-            assert_matches_schoolbook(sizes[i], sizes[j])
+            assert_matches_toom3(sizes[i], sizes[j])
 
 
-def test_ntt_matches_schoolbook_on_odd_word_counts() raises:
+def test_ntt_matches_toom3_on_odd_word_counts() raises:
     """A word pair packs into three coefficients, a lone word into two.
 
     Odd word counts take the second path, so they are worth their own case.
@@ -61,28 +72,27 @@ def test_ntt_matches_schoolbook_on_odd_word_counts() raises:
     var word_counts = [1, 3, 5, 7, 33, 101]
     for i in range(len(word_counts)):
         for j in range(len(word_counts)):
-            assert_matches_schoolbook(
+            assert_matches_toom3(
                 word_counts[i] * BigUInt.DIGITS_PER_WORD,
                 word_counts[j] * BigUInt.DIGITS_PER_WORD,
             )
 
 
-def test_ntt_matches_schoolbook_on_unequal_operands() raises:
+def test_ntt_matches_toom3_on_unequal_operands() raises:
     """Very unequal operand lengths exercise the shorter packing loop."""
-    assert_matches_schoolbook(9, 9000)
-    assert_matches_schoolbook(9000, 9)
-    assert_matches_schoolbook(100, 20000)
-    assert_matches_schoolbook(20000, 100)
+    assert_matches_toom3(9, 9000)
+    assert_matches_toom3(9000, 9)
+    assert_matches_toom3(100, 20000)
+    assert_matches_toom3(20000, 100)
 
 
-def test_ntt_matches_schoolbook_above_the_dispatch_cutoff() raises:
+def test_ntt_matches_toom3_above_the_dispatch_cutoff() raises:
     """Checks the sizes that `multiply()` actually routes to the transform.
 
     If the dispatcher stops choosing the transform at these sizes, this test
     would silently cover nothing, so the routing is asserted first.
     """
-    # Above the measured crossover, and no larger than the schoolbook
-    # reference can afford to check.
+    # Above the measured crossover.
     var word_counts = [4072, 5000]
     for i in range(len(word_counts)):
         var count = word_counts[i]
@@ -94,7 +104,7 @@ def test_ntt_matches_schoolbook_above_the_dispatch_cutoff() raises:
                 + " words through the transform, so this test covers nothing"
             ),
         )
-        assert_matches_schoolbook(
+        assert_matches_toom3(
             count * BigUInt.DIGITS_PER_WORD, count * BigUInt.DIGITS_PER_WORD
         )
 
@@ -170,7 +180,7 @@ def test_multiply_routes_large_operands_through_the_transform() raises:
     """End to end: `multiply()` must stay correct once it starts using it."""
     var x = BigUInt(build_digits(2100 * BigUInt.DIGITS_PER_WORD, 7))
     var y = BigUInt(build_digits(2100 * BigUInt.DIGITS_PER_WORD, 5))
-    var expected = biguint_arithmetics.multiply_slices_schoolbook(
+    var expected = biguint_arithmetics.multiply_slices_toom3(
         x, y, (0, len(x.words)), (0, len(y.words))
     )
     testing.assert_equal(
