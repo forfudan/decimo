@@ -21,7 +21,7 @@ the division. It is also blind to how the quotient was reached, which is what
 the truncation path needed.
 
 The shapes are chosen around the truncation threshold, which is
-`ceildiv(precision, DIGITS_PER_WORD) + 6` words of divisor: small over huge is
+`ceildiv(precision, DIGITS_PER_WORD) + 3` words of divisor: small over huge is
 the case that was broken, and huge over small exercises the other direction.
 """
 

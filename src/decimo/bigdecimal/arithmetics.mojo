@@ -576,11 +576,23 @@ def true_divide_general(
     # When the divisor is much larger than needed for the requested precision,
     # truncate both operands to avoid expensive division on huge numbers.
     # Example: 262144w / 262144w at precision=50 only needs ~14-word operands.
-    # Correctness: x/y ≈ (x/10^k) / (y/10^k); the low-order digits cancel,
-    # with relative error < 10^(-DIGITS_PER_WORD * remaining_words), well
-    # below precision + guard.
-    # Early-return to avoid extra copies on the common (small-operand) path.
-    comptime TRUNCATION_GUARD = 4
+    #
+    # The error bound, in words of `DIGITS_PER_WORD = 18` digits. With `G`
+    # guard words the divisor keeps `ceildiv(p, 18) + 2 + G` words, and its
+    # leading word can hold a single digit, so it keeps at least
+    # `18 * (ceildiv(p, 18) + 1 + G) + 1 >= p + 19 + 18 G` significant digits.
+    # Flooring it to those digits is a relative error below
+    # `10^-(p + 18 + 18 G)`; the dividend keeps at least as many words, same
+    # bound; the quotient of the truncated operands is therefore within a
+    # relative `2 * 10^-(p + 18 + 18 G)` of the true one. With `G = 1` that is
+    # `p + 36` correct digits for a `p`-digit answer.
+    #
+    # Which is plenty for rounding, except at a tie: the true quotient can be
+    # as close to `...5000...` as it likes, so no guard size decides it. The
+    # truncated path looks for that case and falls back to the standard path
+    # (see `_true_divide_general_truncated()`). The guard used to be 4, which
+    # only made the tie improbable.
+    comptime TRUNCATION_GUARD = 1
     var needed_divisor_words = (
         math.ceildiv(precision, BigUInt.DIGITS_PER_WORD) + 2 + TRUNCATION_GUARD
     )
@@ -590,7 +602,13 @@ def true_divide_general(
             x, y, precision, needed_divisor_words
         )
 
-    # --- Standard path (no truncation, no extra copies) ---
+    return _true_divide_general_standard(x, y, precision)
+
+
+def _true_divide_general_standard(
+    x: BigDecimal, y: BigDecimal, precision: Int
+) raises -> BigDecimal:
+    """Internal: division on the full operands, no truncation."""
     #
     # How far to pad the dividend. Dividing a `dx`-digit number by a
     # `dy`-digit one gives a quotient of `dx - dy` or `dx - dy + 1` digits, so
@@ -760,6 +778,40 @@ def _true_divide_general_truncated(
 
     var coef = coef_x // y_coef_tr
 
+    # The truncated quotient is not the true one. Its digits are right to
+    # significant position `p + 36` (the bound in `true_divide_general()`),
+    # plus one unit of flooring at its last digit, position `D`. So the digits
+    # from `p + 1` up to `T = min(D, p + 36) - 1` are trusted to within a few
+    # units in the last of them. Rounding half-even at `p` is decided by those
+    # digits alone, unless they read `5000...0` or `4999...9`: then the true
+    # quotient may be on either side of the tie, or on it, and only the full
+    # operands can say. That case is rare (about `2 * 10^-(T - p)`), so we
+    # simply redo it without truncation.
+    #
+    # A tail of `0000...` or `9999...` is not a problem here: both round to
+    # the same `p` digits, and the exactness check below uses the original
+    # operands.
+    #
+    # Before this check the truncated path rounded as if the quotient were
+    # exact. `(2.5 * y + 1e-100) / y` with a 200-digit `y` gave 2 at one digit,
+    # and `(1.5 * y - 1e-100) / y` gave 2 as well; the answers are 3 and 1.
+    var quotient_digits = coef.number_of_digits()
+    var trusted = min(quotient_digits, precision + 36) - 1
+    if trusted > precision:
+        var tail_digits = trusted - precision
+        var tail = biguint_arithmetics.floor_modulo_by_power_of_ten(
+            biguint_arithmetics.floor_divide_by_power_of_ten(
+                coef, quotient_digits - trusted
+            ),
+            tail_digits,
+        )
+        # `5` followed by `tail_digits - 1` zeros, and one below it.
+        var half = biguint_arithmetics.multiply_by_power_of_ten(
+            BigUInt.from_word_unsafe(5), tail_digits - 1
+        )
+        if tail == half or tail == half - BigUInt.from_word_unsafe(1):
+            return _true_divide_general_standard(x, y, precision)
+
     # Truncation discards low-order digits, so we cannot detect exact division
     # by checking coef * y_coef_tr == coef_x (the truncated values).
     # Instead, after rounding, we verify exactness by multiplying the stripped
@@ -825,6 +877,11 @@ def true_divide_inexact(
     has enough digits to produce a result with the desired precision. Then
     use rounding to get the result with the desired precision.
 
+    With oversized operands the division runs on truncated copies, and the
+    last digit can then be one below the true truncated quotient when the
+    true one is within `10^-(p + 36)` of a digit boundary. Use `true_divide()`
+    when the last digit must be exact.
+
     Args:
         x1: The first operand (dividend).
         x2: The second operand (divisor).
@@ -854,7 +911,13 @@ def true_divide_inexact(
         )
 
     # --- Truncation optimization for oversized operands ---
-    comptime TRUNCATION_GUARD = 4
+    # Same bound as in `true_divide_general()`: with `G = 1` the truncated
+    # quotient is right to `p + 36` digits. This function truncates the result
+    # (it does not round), and a truncated quotient just above an integer
+    # number of units can floor to one below the true answer, so near such a
+    # boundary the last digit can be off by one. That is within what this
+    # function promises; callers that need the last digit use `true_divide()`.
+    comptime TRUNCATION_GUARD = 1
     var needed_divisor_words = (
         math.ceildiv(number_of_significant_digits, BigUInt.DIGITS_PER_WORD)
         + 2
