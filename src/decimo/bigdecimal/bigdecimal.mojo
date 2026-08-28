@@ -2293,11 +2293,17 @@ struct BigDecimal(
 
     # === Trigonometric operations === #
     @always_inline
-    def sin(self, precision: Int = PRECISION) raises -> Self:
+    def sin(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
         """Returns the sine of the BigDecimal number.
 
         Args:
             precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Decided rather than
+                approximated; see `_round_by_deciding()`.
 
         Returns:
             The sine of this value.
@@ -2305,14 +2311,22 @@ struct BigDecimal(
         Raises:
             Error: If the underlying computation fails.
         """
-        return bigdecimal_trigonometric.sin(self, precision)
+        return bigdecimal_trigonometric.sin_rounded(
+            self, precision, rounding_mode
+        )
 
     @always_inline
-    def cos(self, precision: Int = PRECISION) raises -> Self:
+    def cos(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
         """Returns the cosine of the BigDecimal number.
 
         Args:
             precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Decided rather than
+                approximated; see `_round_by_deciding()`.
 
         Returns:
             The cosine of this value.
@@ -2320,14 +2334,22 @@ struct BigDecimal(
         Raises:
             Error: If the underlying computation fails.
         """
-        return bigdecimal_trigonometric.cos(self, precision)
+        return bigdecimal_trigonometric.cos_rounded(
+            self, precision, rounding_mode
+        )
 
     @always_inline
-    def tan(self, precision: Int = PRECISION) raises -> Self:
+    def tan(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
         """Returns the tangent of the BigDecimal number.
 
         Args:
             precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Decided rather than
+                approximated; see `_round_by_deciding()`.
 
         Returns:
             The tangent of this value.
@@ -2336,7 +2358,9 @@ struct BigDecimal(
             ZeroDivisionError: At the singularities x = π/2 + nπ where
                 cos(x) is zero and tan(x) is undefined.
         """
-        return bigdecimal_trigonometric.tan(self, precision)
+        return bigdecimal_trigonometric.tan_rounded(
+            self, precision, rounding_mode
+        )
 
     @always_inline
     def cot(self, precision: Int = PRECISION) raises -> Self:
