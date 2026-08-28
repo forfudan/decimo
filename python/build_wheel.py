@@ -150,10 +150,16 @@ def repair_linux_wheel(wheel, distribution):
         env=environment,
     )
     wheel.unlink()
+    # Hand back the wheel this call produced. Picking the newest name out of
+    # `dist` instead would return another interpreter's wheel, since one per
+    # interpreter is kept there on purpose.
+    moved = None
     for path in repaired.glob("*.whl"):
-        shutil.move(str(path), distribution / path.name)
+        moved = Path(shutil.move(str(path), distribution / path.name))
     shutil.rmtree(repaired)
-    return sorted(distribution.glob("*.whl"))[-1]
+    if moved is None:
+        raise SystemExit("auditwheel produced no wheel")
+    return moved
 
 
 VERSION_FILE = PACKAGE / "_version.py"

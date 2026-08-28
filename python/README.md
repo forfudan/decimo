@@ -7,8 +7,8 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/forfudan/decimo/blob/main/LICENSE)
 
 > ⚠️ **Development release.** The API is settled enough to use, but the
-> version numbers are timestamps. Wheels: Linux x86_64 and macOS arm64
-> (14 and later), CPython 3.13 and 3.14.
+> version numbers are timestamps. Wheels: macOS arm64 (14 and later),
+> CPython 3.13 and 3.14. Everywhere else, build from source.
 
 Change one import and your program keeps working:
 
@@ -60,7 +60,8 @@ Everything a `decimal` program normally touches:
   `localcontext()` (with keyword overrides), `Context` objects
 - all the rounding modes: `ROUND_HALF_EVEN`, `ROUND_HALF_UP`,
   `ROUND_HALF_DOWN`, `ROUND_DOWN`, `ROUND_UP`, `ROUND_CEILING`,
-  `ROUND_FLOOR`, exact under every operation
+  `ROUND_FLOOR`, exact for arithmetic, `quantize`, `round()` and
+  `to_integral_value()`
 - `int()`, `float()`, `round()`, `math.floor/ceil/trunc`, `hash()`, `format()`
 - `quantize`, `normalize`, `as_tuple`, `as_integer_ratio`, `compare`, `fma`,
   `sqrt`, `exp`, `ln`, `log10`, `scaleb`, `adjusted`, `copy_abs`,
@@ -80,10 +81,16 @@ decimo refuses these rather than answering differently:
 - **`ROUND_05UP`.** Nothing implements it; setting it raises
   `NotImplementedError`.
 - **`sqrt`, `exp`, `ln`, `log10` and `**` under a rounding mode other than
-  `ROUND_HALF_EVEN`** are computed nine digits wider and rounded once more.
-  The last digit can differ from `decimal` when the true value lies within
-  `10^-9` relative of a rounding boundary. Arithmetic, `quantize` and
-  `round()` are exact under every mode.
+  `ROUND_HALF_EVEN`.** `decimal` ignores the context mode for these and
+  always rounds half to even. decimo applies the mode, computing nine digits
+  wider and rounding once more, so the last digit differs from `decimal` on
+  purpose -- and can be wrong when the true value lies within `10^-9`
+  relative of a rounding boundary. Arithmetic, `quantize` and `round()` are
+  exact under every mode.
+- **`//`, `%` and `divmod()` with a long quotient.** `decimal` raises
+  `InvalidOperation` when the integer quotient has more digits than the
+  precision; decimo returns the exact quotient. The remainder is rounded to
+  the context, as in `decimal`.
 - **Signals and traps.** `Context.flags` and `Context.traps` exist and stay
   empty. `Inexact`, `Rounded` and the rest are importable but never raised.
 - **`Emin` / `Emax`.** Exponents are unbounded, so nothing ever underflows to
@@ -101,9 +108,9 @@ written against `decimal` still catch.
 pip install decimo
 ```
 
-Wheels are built for Linux x86_64 and macOS arm64 (macOS 14 and later), for
-CPython 3.13 and 3.14. On anything else, build from source with
-[pixi](https://pixi.sh):
+Wheels are built for macOS arm64 (macOS 14 and later), for CPython 3.13 and
+3.14. On anything else -- Linux included, until its build is verified --
+build from source with [pixi](https://pixi.sh):
 
 ```bash
 git clone https://github.com/forfudan/decimo && cd decimo

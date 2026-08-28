@@ -34,14 +34,21 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
    follow it exactly, checked against `decimal` digit for digit. `Context`
    is a value until installed, as in `decimal`; `localcontext()` takes
    keyword overrides; `BasicContext` and `ExtendedContext` exist. On the
-   Mojo side `add`, `subtract`, `multiply` and `true_divide` take a
-   `rounding_mode`. `ROUND_05UP` is refused.
-1. **Wheels for Linux x86_64 and macOS arm64, CPython 3.13 and 3.14.**
+   Mojo side `add`, `subtract`, `multiply`, `true_divide` and the three
+   in-place forms take a `rounding_mode`. `ROUND_05UP` is refused.
+1. **Every operation applies the context, as in `decimal`.** `abs()`, `max`,
+   `min`, `normalize`, `scaleb`, `fma` and the remainder from `%` and
+   `divmod` were returning an exact value where `decimal` returns a rounded
+   one. `fma` is also exact now where it went through `*` and `+`, which
+   round at each step; `x ** n` and `exp` no longer come back one digit wide
+   when the rounding carries.
+1. **Wheels for macOS arm64, CPython 3.13 and 3.14.**
    `pixi run -e py313 release` (or `py314`) builds one; the new
-   `release_python.yaml` workflow builds all four and uploads them to PyPI
-   through trusted publishing. Linux wheels go through `auditwheel` and are
-   tagged `manylinux_2_35`; macOS wheels are linked for macOS 14 and tagged
-   so, instead of for the build machine's version.
+   `release_python.yaml` workflow builds both and uploads them to PyPI
+   through trusted publishing. The extension is linked for macOS 14 and the
+   wheel is tagged so, instead of for the build machine's version. The Linux
+   path (`auditwheel`, `manylinux_2_35`) is written in `build_wheel.py` but
+   not yet verified, so it is not in the matrix.
 
 1. **`BigInt` keeps small values inside the struct.** `WordList`, written for
    `BigUInt`, gains an inline-capacity parameter and moves to

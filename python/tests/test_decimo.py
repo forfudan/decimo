@@ -480,6 +480,12 @@ _rounding_ops = {
     "round3": lambda a, b: round(a, 3),
     "to_integral": lambda a, b: a.to_integral_value(),
     "quantize": lambda a, b: a.quantize(type(a)("1.00")),
+    "fma": lambda a, b: a.fma(b, type(a)("0.5")),
+    "abs": lambda a, b: abs(a),
+    "max": lambda a, b: a.max(b),
+    "min": lambda a, b: a.min(b),
+    "normalize": lambda a, b: a.normalize(),
+    "scaleb": lambda a, b: a.scaleb(type(a)(2)),
 }
 _modes = [
     "ROUND_HALF_EVEN",
@@ -512,6 +518,36 @@ for _mode in _modes:
                 _want = _outcome(decimal, _op, _a, _b)
                 _got = _outcome(decimo, _op, _a, _b)
                 assert _want == _got, (_mode, _prec, _name, _a, _b, _want, _got)
+
+# The division above never reaches the truncated fast path: that one starts
+# only when the divisor is wider than the requested precision needs, which
+# for these operands it never is. Build divisors of two hundred digits and
+# put the quotient exactly on a boundary -- exact, one below, one above, and
+# a half -- since the fast path has to hand those back to the slow one under
+# a mode that can see the difference.
+_big_divisor = int("7" + "3141592653589793238462643383279502884197" * 5)
+_big_cases = []
+for _q in (int("9" * 30), 10**29, int("123456789" * 3)):
+    _exact = _big_divisor * _q
+    _big_cases += [
+        (str(_exact), str(_big_divisor)),
+        (str(_exact - 1), str(_big_divisor)),
+        (str(_exact + 1), str(_big_divisor)),
+        # `q + 1/2` exactly, by halving the divisor instead of the dividend.
+        (str(_big_divisor * (2 * _q + 1)), str(2 * _big_divisor)),
+    ]
+
+for _mode in _modes:
+    for _prec in (1, 5, 28, 30):
+        decimal.getcontext().prec = _prec
+        decimal.getcontext().rounding = _mode
+        decimo.getcontext().prec = _prec
+        decimo.getcontext().rounding = _mode
+        for _a, _b in _big_cases:
+            _want = _outcome(decimal, _rounding_ops["/"], _a, _b)
+            _got = _outcome(decimo, _rounding_ops["/"], _a, _b)
+            assert _want == _got, (_mode, _prec, "/", _a[:20], _b[:20], _want, _got)
+
 decimal.getcontext().prec = 28
 decimal.getcontext().rounding = decimal.ROUND_HALF_EVEN
 decimo.getcontext().prec = 28
@@ -539,14 +575,9 @@ assert decimo.getcontext().prec == 28
 assert decimo.getcontext().rounding == decimo.ROUND_HALF_EVEN
 with decimo.localcontext(rounding=decimo.ROUND_UP, prec=2):
     assert str(decimo.Decimal("1.01") + 0) == "1.1"
-assert (
-    str(decimo.BasicContext)
-    == str(decimal.BasicContext).replace(
-        "flags=[], traps=[Clamped, InvalidOperation, DivisionByZero, Overflow, Underflow]",
-        "flags=[], traps=[]",
-    )
-    or True
-)
+# `repr` matches decimal's shape; the traps differ because decimo has no
+# signals, so compare the settings rather than the text.
+assert repr(decimo.BasicContext).startswith("Context(prec=9, rounding=ROUND_HALF_UP,")
 assert decimal.BasicContext.prec == decimo.BasicContext.prec == 9
 assert decimo.BasicContext.rounding == decimal.BasicContext.rounding
 print("[PASS] Context values, setcontext and localcontext behave as in decimal")

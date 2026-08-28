@@ -509,7 +509,7 @@ def subtract_inplace(
         scale=x2.scale,
         sign=not x2.sign,
     )
-    add_inplace(x1, neg_x2, precision)
+    add_inplace(x1, neg_x2, precision, rounding_mode)
 
 
 def true_divide(
@@ -835,9 +835,8 @@ def _true_divide_general_truncated(
     # A tail of `0000...` or `9999...` is not a problem for a half-way mode:
     # both round to the same `p` digits, and the exactness check below uses
     # the original operands. For the directional modes (DOWN, UP, CEILING,
-    # FLOOR) that tail is exactly the boundary -- whether anything at all
-    # lies below digit `p` decides the answer -- so those modes fall back on
-    # it too.
+    # FLOOR) that tail is the boundary itself -- whether anything at all lies
+    # below digit `p` decides the answer -- so those modes fall back on it.
     #
     # Before this check the truncated path rounded as if the quotient were
     # exact. `(2.5 * y + 1e-100) / y` with a 200-digit `y` gave 2 at one digit,
@@ -852,27 +851,32 @@ def _true_divide_general_truncated(
             ),
             tail_digits,
         )
-        var boundary: BigUInt
-        if (
+        var is_half_mode = (
             rounding_mode == RoundingMode.ROUND_HALF_EVEN
             or rounding_mode == RoundingMode.ROUND_HALF_UP
             or rounding_mode == RoundingMode.ROUND_HALF_DOWN
-        ):
+        )
+        var boundary: BigUInt
+        if is_half_mode:
             # `5` followed by `tail_digits - 1` zeros, and one below it.
             boundary = biguint_arithmetics.multiply_by_power_of_ten(
                 BigUInt.from_word_unsafe(5), tail_digits - 1
             )
         else:
             # `1` followed by `tail_digits` zeros: `tail` is all nines one
-            # below it, and all zeros is `tail == 0`.
+            # below it.
             boundary = biguint_arithmetics.multiply_by_power_of_ten(
                 BigUInt.from_word_unsafe(1), tail_digits
             )
-        if (
-            tail == boundary
-            or tail == boundary - BigUInt.from_word_unsafe(1)
-            or tail.is_zero()
-        ):
+        if tail == boundary or tail == boundary - BigUInt.from_word_unsafe(1):
+            return _true_divide_general_standard(x, y, precision, rounding_mode)
+        # An all-zero tail is the other side of the same boundary, and only
+        # for a directional mode: whether anything at all lies below digit
+        # `p` decides the answer there, while a half mode rounds `X000...`
+        # and `X` minus a hair to the same `p` digits. Keeping the half
+        # modes out of this leaves the fast path in place for a quotient
+        # that comes out exact, such as a large `x / x`.
+        if not is_half_mode and tail.is_zero():
             return _true_divide_general_standard(x, y, precision, rounding_mode)
 
     # Truncation discards low-order digits, so we cannot detect exact division

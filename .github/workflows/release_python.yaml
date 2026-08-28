@@ -14,11 +14,13 @@ name: Build Python wheels
 # See https://docs.pypi.org/trusted-publishers/.
 
 on:
-  # A pull request that touches the package builds the wheels (no upload),
-  # so the Linux and macOS builds are checked before anything reaches main.
+  # A pull request that touches the package, or the library it is compiled
+  # against, builds the wheels (no upload), so a broken build is caught
+  # before it reaches main.
   pull_request:
     paths:
       - "python/**"
+      - "src/decimo/**"
       - "pixi.toml"
       - "pixi.lock"
       - ".github/workflows/release_python.yaml"

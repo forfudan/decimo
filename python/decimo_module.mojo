@@ -684,8 +684,11 @@ def bigdecimal_components(py_self: PythonObject) raises -> PythonObject:
 # `other` only when it is the same type. The reflected forms are only ever
 # reached when the left operand is not a decimal, so they always convert.
 #
-# `+`, `-`, `*`, `/` and `**` round to the context precision, which is what
-# `decimal` does. `//`, `%` and `divmod` do not: they are exact by definition.
+# `+`, `-`, `*`, `/`, `**`, `%` and the remainder from `divmod` round to the
+# context precision, which is what `decimal` does. `//` and the quotient from
+# `divmod` do not: they are exact by definition, and where `decimal` raises
+# InvalidOperation because that exact quotient has more digits than the
+# context allows, decimo returns it.
 # ===----------------------------------------------------------------------=== #
 
 
@@ -897,7 +900,7 @@ def bigdecimal_mod(
             return not_implemented()
     var result: BigDecimal
     try:
-        result = self_ptr[] % converted
+        result = round_to_context(self_ptr[] % converted)
     except:
         return raise_as["PyExc_ZeroDivisionError"]("division by zero")
     return new_decimal(state()[], result^)
@@ -915,7 +918,7 @@ def bigdecimal_rmod(
         return not_implemented()
     var result: BigDecimal
     try:
-        result = converted % self_ptr[]
+        result = round_to_context(converted % self_ptr[])
     except:
         return raise_as["PyExc_ZeroDivisionError"]("division by zero")
     return new_decimal(state()[], result^)
@@ -941,7 +944,8 @@ def bigdecimal_divmod(
         return raise_as["PyExc_ZeroDivisionError"]("division by zero")
     ref cell = state()[]
     return Python.tuple(
-        new_decimal(cell, pair[0].copy()), new_decimal(cell, pair[1].copy())
+        new_decimal(cell, pair[0].copy()),
+        new_decimal(cell, round_to_context(pair[1].copy())),
     )
 
 
@@ -962,7 +966,8 @@ def bigdecimal_rdivmod(
         return raise_as["PyExc_ZeroDivisionError"]("division by zero")
     ref cell = state()[]
     return Python.tuple(
-        new_decimal(cell, pair[0].copy()), new_decimal(cell, pair[1].copy())
+        new_decimal(cell, pair[0].copy()),
+        new_decimal(cell, round_to_context(pair[1].copy())),
     )
 
 
@@ -1035,9 +1040,12 @@ def bigdecimal_pos(py_self: PythonObject) raises -> PythonObject:
 
 
 def bigdecimal_abs(py_self: PythonObject) raises -> PythonObject:
-    """Return abs(self)."""
+    """Return abs(self), rounded to the context like `decimal`.
+
+    `copy_abs()` is the one that does not round.
+    """
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
-    var result = abs(self_ptr[])
+    var result = round_to_context(abs(self_ptr[]))
     return new_decimal(state()[], result^)
 
 
@@ -1245,18 +1253,18 @@ def bigdecimal_compare(
 def bigdecimal_max(
     py_self: PythonObject, other: PythonObject
 ) raises -> PythonObject:
-    """Return the larger of self and other."""
+    """Return the larger of self and other, rounded to the context."""
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
-    var result = self_ptr[].max(as_decimal(py_self, other))
+    var result = round_to_context(self_ptr[].max(as_decimal(py_self, other)))
     return new_decimal(state()[], result^)
 
 
 def bigdecimal_min(
     py_self: PythonObject, other: PythonObject
 ) raises -> PythonObject:
-    """Return the smaller of self and other."""
+    """Return the smaller of self and other, rounded to the context."""
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
-    var result = self_ptr[].min(as_decimal(py_self, other))
+    var result = round_to_context(self_ptr[].min(as_decimal(py_self, other)))
     return new_decimal(state()[], result^)
 
 
@@ -1347,18 +1355,26 @@ def bigdecimal_to_integral(
 def bigdecimal_fma(
     py_self: PythonObject, other: PythonObject, third: PythonObject
 ) raises -> PythonObject:
-    """Return self * other + third, with no rounding in between."""
+    """Return self * other + third, rounded once at the end.
+
+    `decimal` rounds an `fma` to the context, and only there -- the product
+    is exact -- so the result goes through `round_to_context()`.
+    """
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
-    var result = self_ptr[].fma(
-        as_decimal(py_self, other), as_decimal(py_self, third)
+    var result = round_to_context(
+        self_ptr[].fma(as_decimal(py_self, other), as_decimal(py_self, third))
     )
     return new_decimal(state()[], result^)
 
 
 def bigdecimal_normalize(py_self: PythonObject) raises -> PythonObject:
-    """Return self with trailing zeros of the coefficient removed."""
+    """Return self rounded to the context, then stripped of trailing zeros.
+
+    That order is `decimal`'s: at precision 3 `Decimal("9.99999")` rounds to
+    `10.0` and reduces to `1E+1`.
+    """
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
-    var result = self_ptr[].normalize()
+    var result = round_to_context(self_ptr[].copy()).normalize()
     return new_decimal(state()[], result^)
 
 
@@ -1371,10 +1387,15 @@ def bigdecimal_adjusted(py_self: PythonObject) raises -> PythonObject:
 def bigdecimal_scaleb(
     py_self: PythonObject, other: PythonObject
 ) raises -> PythonObject:
-    """Return self * 10 ** other, by moving the exponent."""
+    """Return self * 10 ** other, by moving the exponent.
+
+    Rounded to the context afterwards, as in `decimal`.
+    """
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
     var builtins = Python.import_module("builtins")
-    var result = self_ptr[].scaleb(Int(py=builtins.int(other)))
+    var result = round_to_context(
+        self_ptr[].scaleb(Int(py=builtins.int(other)))
+    )
     return new_decimal(state()[], result^)
 
 

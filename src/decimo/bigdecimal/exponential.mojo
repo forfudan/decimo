@@ -37,6 +37,61 @@ below halve down to this value so that the doubling actually reaches the top of
 the schedule.
 """
 
+
+def _reciprocal_sqrt_seed_f64(c: Float64) raises -> Float64:
+    """Returns a `Float64` seed for `1 / sqrt(c)` worth `_F64_SEED_DIGITS`.
+
+    Args:
+        c: The value whose reciprocal square root is wanted, normalized by
+            the caller into `[1, 100)`.
+
+    Returns:
+        A seed whose residual `1 - c r^2` is below `1e-12`, which is the
+        accuracy the doubling schedules credit it with.
+
+    Raises:
+        Error: If no such seed can be built, which means the caller handed
+            in something that is not a normalized positive number.
+
+    Notes:
+
+    `1 / sqrt(c)` rather than `c ** -0.5`: the power operator goes through
+    `exp`/`log` and is accurate to only about ten digits for some inputs,
+    which the doubling schedule would then carry all the way to the top.
+
+    The seed is checked, not assumed. The condition that matters is not a
+    band on `r` -- a seed of `0.5` lies in `(0.1, 1]` and still diverges for
+    every `c` above 12 -- but the residual, which bounds both the distance
+    from the root and the convergence basin `c r^2 < 3` of the iteration
+    `r <- r (3 - c r^2) / 2`.
+
+    When the direct value fails the check, the seed is rebuilt by running
+    that same iteration in `Float64` from `0.1`, which is inside the basin
+    for every `c` below 300. Growth is about 1.5 per step until the residual
+    is small and quadratic after that, so the loop is over long before its
+    cap. Rebuilding rather than clamping is what keeps the schedules honest:
+    a clamped `0.1` is not worth twelve digits, nor even one, and the top of
+    the schedule would come back short.
+    """
+    var r = Float64(1.0) / math.sqrt(c)
+    if r > 0.0 and abs(1.0 - c * r * r) < 1e-12:
+        return r
+
+    r = 0.1
+    for _ in range(60):
+        var residual = 1.0 - c * r * r
+        if abs(residual) < 1e-14:
+            break
+        r = r * (1.0 + 0.5 * residual)
+    if r > 0.0 and abs(1.0 - c * r * r) < 1e-12:
+        return r
+    raise Error(
+        "cannot build a reciprocal square root seed for ",
+        c,
+        "; the value was expected to be normalized into [1, 100)",
+    )
+
+
 # ===----------------------------------------------------------------------=== #
 # List of functions in this module:
 # - MathCache (struct): Cache for ln(2) and ln(1.25) constants
@@ -451,7 +506,7 @@ def integer_power(
     result.round_to_precision_inplace(
         precision,
         rounding_mode=RoundingMode.half_even(),
-        remove_extra_digit_due_to_rounding=False,
+        remove_extra_digit_due_to_rounding=True,
         fill_zeros_to_precision=False,
     )
     return result^
@@ -1213,13 +1268,10 @@ def isqrt_via_reciprocal_seed(
     var mantissa = Float64(top) / Float64(10.0) ** Float64(digits_in_top - 1)
     var c_norm_exp = c_norm.adjusted()
     var c_norm_f64 = mantissa * Float64(10.0) ** Float64(c_norm_exp)
-    # `1 / sqrt(v)` rather than `v ** -0.5`: the latter goes through `exp`/`log`
-    # and is accurate to only about ten digits for some inputs, while `sqrt()`
-    # is correctly rounded and the division costs one more rounding.
-    #
-    # What that accuracy buys is speed, not digits. The exact integer Newton
-    # refinement at the end of this function corrects whatever the float part
-    # leaves behind, so the answer is right regardless: truncating this seed to
+    # What the seed's accuracy buys here is speed, not digits. The exact
+    # integer Newton refinement at the end of this function corrects whatever
+    # the float part leaves behind, so the answer is right regardless:
+    # truncating this seed to
     # a single digit still returns `sqrt(2)` correct to 400 digits. It returns
     # it more slowly, because the refinement then pays for full-size divisions
     # the schedule was supposed to have avoided. Measured on `sqrt(2)`:
@@ -1231,40 +1283,23 @@ def isqrt_via_reciprocal_seed(
     # |  2 000 |   54.2 us |                    109.7 us |
     #
     # What the seed does have to guarantee is landing inside the convergence
-    # basin -- `r < sqrt(3 / c_norm)`, since the iteration is
-    # `r <- r (3 - c r^2) / 2`. A seed three times too large is outside it and
-    # diverges, which `test_sqrt_via_reciprocal_iteration_matches_sqrt_exact`
-    # catches. Accuracy beyond that is a performance parameter.
-    var r_f64 = Float64(1.0) / math.sqrt(c_norm_f64)
-    # Check the basin condition itself, `c_norm r^2 < 3`, rather than a band
-    # on `r`: the two are not the same test, and a seed of `0.5` sits inside
-    # `(0.1, 1]` while being outside the basin for every `c_norm` above 12.
-    # Requiring the residual near 1 leaves a margin, so a merely poor seed is
-    # replaced as well; a NaN fails every comparison and is replaced too.
-    #
-    # The replacement is a clamp, not a raise. `c_norm` is below 100, so
-    # `0.1` gives `c_norm r^2 <= 1` and is inside the basin, and the schedule
-    # below is told the seed is worth one digit instead of `_F64_SEED_DIGITS`
-    # so that the extra doublings are actually run. The result stays exact;
-    # only the speed drops.
-    var seed_residual = c_norm_f64 * r_f64 * r_f64
-    var seed_digits = _F64_SEED_DIGITS
-    if not (r_f64 > 0.0 and seed_residual > 0.5 and seed_residual < 1.5):
-        r_f64 = 0.1
-        seed_digits = 1
+    # basin, which `_reciprocal_sqrt_seed_f64()` checks; a seed outside it
+    # diverges, and `test_sqrt_via_reciprocal_iteration_matches_sqrt_exact`
+    # catches that.
+    var r_f64 = _reciprocal_sqrt_seed_f64(c_norm_f64)
 
     var r = BigDecimal(String(r_f64))
 
     # --- Precision doubling schedule ---
     # Halve down to what the seed is worth. A Newton step doubles the correct
-    # digits, so `n` steps reach `seed_digits * 2^n`; stopping the halving
+    # digits, so `n` steps reach `_F64_SEED_DIGITS * 2^n`; stopping the halving
     # higher than the seed leaves the top of the schedule short of its nominal
     # precision and forces the integer refinement below to pay for extra
     # full-size divisions. That is a cost, not a correctness question -- see
     # the note on the seed above.
     var prec_schedule = List[Int]()
     var p = working_digits
-    while p > seed_digits:
+    while p > _F64_SEED_DIGITS:
         prec_schedule.append(p)
         p = (p + 1) // 2
 
@@ -1612,35 +1647,23 @@ def sqrt_via_reciprocal_iteration(
     var mantissa = Float64(top) / Float64(10.0) ** Float64(digits_in_top - 1)
     var x_norm_exp = x_norm.adjusted()
     var x_norm_f64 = mantissa * Float64(10.0) ** Float64(x_norm_exp)
-    # `1 / sqrt(v)`, not `v ** -0.5`. See the note in `isqrt_via_reciprocal_seed()`: the power
-    # operator is accurate to only about ten digits for some inputs, which the
-    # doubling schedule then carries all the way to the top.
-    var r_f64 = Float64(1.0) / math.sqrt(x_norm_f64)  # 1/sqrt(x_norm)
-    # Same guard as in `isqrt_via_reciprocal_seed()`: the seed has to satisfy
-    # the basin condition `x_norm r^2 < 3`, and a residual near 1 leaves a
-    # margin. A clamped seed is worth one digit, and the schedule below is
-    # told so, which is what keeps the result correct rather than merely
-    # convergent.
-    var seed_residual = x_norm_f64 * r_f64 * r_f64
-    var seed_digits = _F64_SEED_DIGITS
-    if not (r_f64 > 0.0 and seed_residual > 0.5 and seed_residual < 1.5):
-        r_f64 = 0.1
-        seed_digits = 1
+    var r_f64 = _reciprocal_sqrt_seed_f64(x_norm_f64)
 
     var r = BigDecimal(String(r_f64))
 
     # --- Precision doubling schedule ---
     # Build the list from `working_precision` down to what the seed is worth,
     # then iterate in reverse. Halving `n` times from `working_precision` lands
-    # at or below `seed_digits`, so `working_precision <= seed_digits * 2^n`
-    # and the `n` doublings below reach the top. A higher stopping point
+    # at or below `_F64_SEED_DIGITS`, so `working_precision <=
+    # _F64_SEED_DIGITS * 2^n` and the `n` doublings below reach the top. A
+    # higher stopping point
     # silently returns fewer correct digits than asked for: with the halving
     # stopped at 20 the seed was credited with 20 digits it does not have, and
     # `sqrt_via_reciprocal_iteration(10005, 5009)` came back correct to only
     # 4244 digits.
     var prec_schedule = List[Int]()
     var p = working_precision
-    while p > seed_digits:
+    while p > _F64_SEED_DIGITS:
         prec_schedule.append(p)
         p = (p + 1) // 2
 
@@ -1964,7 +1987,7 @@ def exp(x: BigDecimal, precision: Int) raises -> BigDecimal:
         result.round_to_precision_inplace(
             precision=precision,
             rounding_mode=RoundingMode.half_even(),
-            remove_extra_digit_due_to_rounding=False,
+            remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
 
