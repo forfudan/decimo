@@ -36,6 +36,20 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
    keyword overrides; `BasicContext` and `ExtendedContext` exist. On the
    Mojo side `add`, `subtract`, `multiply`, `true_divide` and the three
    in-place forms take a `rounding_mode`. `ROUND_05UP` is refused.
+1. **A plain decimal string is parsed straight into the words.** `"1.5"`,
+   `"1234.5678"` and the like -- a sign, some digits, at most one point -- no
+   longer go through a `List[UInt8]` of one digit per byte: 59 ns to 10, 64 to
+   19, and forty digits 114 to 74. Anything with an exponent or a separator
+   still takes the general parser. `from_string` and the `Parsable` trait take
+   a `StringSlice` now, so a substring or a foreign buffer costs no
+   allocation, which is what lets the Python binding read CPython's own
+   string: `Decimal("1.5")` 182 ns to 104, and a forty digit literal 367 to
+   163, where `decimal` is.
+1. **Four Python conversions no longer go through a string.** `hash()` is a
+   `tp_hash` slot reducing the coefficient over its own words (493 ns to 33),
+   `Decimal(x)` copies the struct when `x` is already one (348 to 89), `int()`
+   uses `PyLong_FromSsize_t` for anything that fits a machine word (295 to
+   77), and `float()` no longer imports `builtins` on every call (342 to 179).
 1. **`decimo.pi()` and `decimo.e()`.** To the context precision, or to the
    digits asked for: `decimo.pi(1000)`. `decimal` has neither.
 1. **The gaps a `decimal` program falls into.** `quantize(exp,
