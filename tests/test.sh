@@ -35,6 +35,15 @@
 #                        the number of logical CPUs locally, and to 1 when CI
 #                        is set. Output is buffered per file and replayed in
 #                        the original order either way.
+#
+# On where the time goes: almost none of it is the tests. The five suites that
+# compare against Python report the largest numbers in the harness output, but
+# those numbers are milliseconds -- the rounding suite runs 106 cases in 58 ms,
+# and one Mojo-to-Python round trip through `decimal` costs 0.675 us. What the
+# wall clock measures is Mojo compiling each test file: 5.4 s cold and 1.4 s
+# warm, against 58 ms of running. That is why this file precompiles the package
+# to `decimo.mojoc`, runs the files concurrently, and asks for the cheaper
+# debug level below.
 
 set -eo pipefail
 
@@ -118,7 +127,12 @@ run_one_mojo_file() {
         # false, `$?` is the `if` statement's own status, which is 0. The
         # `return $rc` below would then hand back success for a suite that
         # failed to compile, and the whole run would exit green.
-        pixi run mojo run -I tests -D ASSERT=all --debug-level=full "$f" \
+        # `line-tables` rather than `full`. On a warm cache the whole suite
+        # takes 13.0 s with `full` and 8.0 s with this, two runs each, and the
+        # two produce identical output on a failing assertion -- the file and
+        # line in an assert message come from the assert, not from the debug
+        # info. See the note above `DECIMO_TEST_JOBS`.
+        pixi run mojo run -I tests -D ASSERT=all --debug-level=line-tables "$f" \
             && break
         local rc=$?
         if (( attempt < max_attempts )); then
@@ -220,7 +234,7 @@ run_bigfloat() {
     for f in tests/bigfloat/*.mojo; do
         echo "=== $f ==="
         TMPBIN=$(mktemp /tmp/decimo_test_bigfloat_XXXXXX)
-        pixi run mojo build -I tests --debug-level=full \
+        pixi run mojo build -I tests --debug-level=line-tables \
             -Xlinker -L./"$WRAPPER_DIR" -Xlinker -ldecimo_gmp_wrapper \
             -o "$TMPBIN" "$f"
         DYLD_LIBRARY_PATH="./$WRAPPER_DIR" LD_LIBRARY_PATH="./$WRAPPER_DIR" "$TMPBIN"
@@ -232,7 +246,7 @@ run_cli() {
     # CLI tests need the extra -I src/cli include path
     ensure_decimo_package
     for f in tests/cli/*.mojo; do
-        pixi run mojo run -I tests -I src/cli -D ASSERT=all --debug-level=full "$f"
+        pixi run mojo run -I tests -I src/cli -D ASSERT=all --debug-level=line-tables "$f"
     done
 
     # Integration tests (exercise the compiled binary)
