@@ -55,12 +55,13 @@ from collections import namedtuple as _namedtuple
 # Once Mojo's `PythonModuleBuilder` grows a way to declare slots directly, this
 # loop can go away and nothing else here needs to change.
 
-# The comparisons and `+`, `-`, `*`, `/` are not in this list. They are registered as real
-# CPython number slots by the Mojo module, so the operator calls a C function
-# directly instead of looking `__add__` up in the type dictionary on every
-# operation. Assigning them here would undo that: `type.__setattr__` puts
-# `slot_nb_add` back in the slot, which is exactly the indirection being
-# avoided.
+# The comparisons and `+`, `-`, `*`, `/`, `**` are not in this list. They are
+# registered as real CPython number slots by the Mojo module, so the operator
+# calls a C function directly instead of looking `__add__` up in the type
+# dictionary on every operation. Assigning them here would undo that:
+# `type.__setattr__` puts `slot_nb_add` back in the slot, which is exactly the
+# indirection being avoided -- and for `**` it would also lose
+# `pow(3, x, 7)`, which that dispatcher refuses before Python 3.14.
 for _name in (
     "__str__",
     "__floordiv__",
@@ -69,8 +70,6 @@ for _name in (
     "__rmod__",
     "__divmod__",
     "__rdivmod__",
-    "__pow__",
-    "__rpow__",
     "__neg__",
     "__pos__",
     "__abs__",

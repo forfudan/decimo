@@ -316,6 +316,9 @@ def PyInit__decimo() abi("C") -> PythonObject:
             PyType_Slot(c_int(Py_nb_add), _fn_ptr_as_opaque(slot_add))
         )
         decimal_builder._insert_slot(
+            PyType_Slot(c_int(Py_nb_power), _fn_ptr_as_opaque(slot_power))
+        )
+        decimal_builder._insert_slot(
             PyType_Slot(c_int(Py_nb_subtract), _fn_ptr_as_opaque(slot_subtract))
         )
         decimal_builder._insert_slot(
@@ -365,8 +368,6 @@ def PyInit__decimo() abi("C") -> PythonObject:
             # Methods with an optional argument. `def_py_method` would put
             # them on `METH_VARARGS`, which packs a tuple for every call --
             # measured at 44 ns, most of what `quantize` costs.
-            .def_py_c_method[static_method=False](fastcall_pow, "__pow__")
-            .def_py_c_method[static_method=False](fastcall_rpow, "__rpow__")
             .def_py_c_method[static_method=False](method_quantize, "quantize")
             .def_py_c_method[static_method=False](method_sqrt, "sqrt")
             .def_py_c_method[static_method=False](method_exp, "exp")
@@ -1059,57 +1060,6 @@ def bigdecimal_rdivmod(
     )
 
 
-def fastcall_pow(
-    py_self: PyObjectPtr,
-    args: Pointer[PyObjectPtr, MutUntrackedOrigin],
-    nargs: Py_ssize_t,
-) abi("C") -> PyObjectPtr:
-    """`self ** other`, or `pow(self, other, modulus)` with three arguments.
-
-    Python passes the modulus to `__pow__` itself, so the method has to take
-    one argument or two; a fixed arity cannot say that. It never passes a
-    keyword, so this stays on the fast path.
-    """
-    try:
-        if Int(nargs) < 1:
-            return _raise_type_error(
-                Error("__pow__() takes at least 1 argument (0 given)")
-            )
-        return _power(
-            PythonObject(from_borrowed=py_self),
-            PythonObject(from_borrowed=args[unsafe_offset=0]),
-            _fastcall_argument(args, nargs, 1),
-            False,
-        ).steal_data()
-    except e:
-        # A modulus that is not a whole number, or a negative exponent:
-        # `decimal` calls that InvalidOperation, which is ValueError here.
-        return raise_python_exception(e, ExceptionType("PyExc_ValueError"))
-
-
-def fastcall_rpow(
-    py_self: PyObjectPtr,
-    args: Pointer[PyObjectPtr, MutUntrackedOrigin],
-    nargs: Py_ssize_t,
-) abi("C") -> PyObjectPtr:
-    """`other ** self`, reached when the left operand is not a decimal."""
-    try:
-        if Int(nargs) < 1:
-            return _raise_type_error(
-                Error("__rpow__() takes at least 1 argument (0 given)")
-            )
-        return _power(
-            PythonObject(from_borrowed=py_self),
-            PythonObject(from_borrowed=args[unsafe_offset=0]),
-            _fastcall_argument(args, nargs, 1),
-            True,
-        ).steal_data()
-    except e:
-        # A modulus that is not a whole number, or a negative exponent:
-        # `decimal` calls that InvalidOperation, which is ValueError here.
-        return raise_python_exception(e, ExceptionType("PyExc_ValueError"))
-
-
 def _power(
     py_self: PythonObject,
     other: PythonObject,
@@ -1695,16 +1645,26 @@ def bigdecimal_radix(py_self: PythonObject) raises -> PythonObject:
 # `nb_add(v, w)` with the decimal on either side, which is why each of these
 # begins by working out which operand is ours. That is also what makes
 # `__radd__` unnecessary -- the reflected case is the same function.
+#
+# `nb_power` has to be a slot rather than a `__pow__` in the dictionary, and
+# only a slot: a dunder there makes CPython put its own dispatcher in the
+# slot, and before 3.14 that dispatcher refuses `pow(3, x, 7)` outright,
+# since it will not look at the second operand's `__rpow__` for the
+# three-argument form.
 # ===----------------------------------------------------------------------=== #
 
 comptime Py_nb_add = 7
 comptime Py_nb_multiply = 29
+comptime Py_nb_power = 33
 comptime Py_nb_subtract = 36
 comptime Py_nb_true_divide = 37
 comptime Py_tp_dealloc = 52
 comptime Py_tp_richcompare = 67
 
 comptime binaryfunc = def(PyObjectPtr, PyObjectPtr) thin abi("C") -> PyObjectPtr
+comptime ternaryfunc = def(PyObjectPtr, PyObjectPtr, PyObjectPtr) thin abi(
+    "C"
+) -> PyObjectPtr
 comptime richcmpfunc = def(PyObjectPtr, PyObjectPtr, c_int) thin abi(
     "C"
 ) -> PyObjectPtr
@@ -1848,6 +1808,42 @@ def _do_divide(
     x: BigDecimal, y: BigDecimal, digits: Int, mode: RoundingMode
 ) raises -> BigDecimal:
     return x.true_divide(y, digits, mode)
+
+
+def slot_power(
+    left: PyObjectPtr, right: PyObjectPtr, modulus: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`nb_power`, where `**` and the three-argument `pow()` both arrive.
+
+    A method in the dictionary is not enough for `pow(3, x, 7)`: CPython does
+    not consult `__rpow__` for the three-argument form -- its own comment in
+    `slot_nb_power` says so -- and before 3.14 it does not reach `__pow__`
+    either unless the type carries the real slot. `decimal` has one for the
+    same reason.
+    """
+    try:
+        ref cell = state()[]
+        ref cpython = Python().cpython()
+        var wrapped_modulus = PythonObject(from_borrowed=modulus)
+        if cpython.Py_TYPE(left) == decimal_type_ptr(cell):
+            return _power(
+                PythonObject(from_borrowed=left),
+                PythonObject(from_borrowed=right),
+                wrapped_modulus,
+                False,
+            ).steal_data()
+        if cpython.Py_TYPE(right) == decimal_type_ptr(cell):
+            return _power(
+                PythonObject(from_borrowed=right),
+                PythonObject(from_borrowed=left),
+                wrapped_modulus,
+                True,
+            ).steal_data()
+        return not_implemented().steal_data()
+    except e:
+        # A modulus that is not a whole number, or a negative exponent:
+        # `decimal` calls that InvalidOperation, which is ValueError here.
+        return raise_python_exception(e, ExceptionType("PyExc_ValueError"))
 
 
 def slot_add(left: PyObjectPtr, right: PyObjectPtr) abi("C") -> PyObjectPtr:
