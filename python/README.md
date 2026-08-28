@@ -64,6 +64,14 @@ Everything a `decimal` program normally touches:
   `ROUND_FLOOR`, exact for arithmetic, `quantize`, `round()` and
   `to_integral_value()`
 - `int()`, `float()`, `round()`, `math.floor/ceil/trunc`, `hash()`, `format()`
+- `Context` you can compute with: `ctx.divide(x, y)`, `ctx.sqrt(x)`,
+  `ctx.quantize(x, y)` and the rest, none of them touching the current
+  context
+- keyword arguments where `decimal` takes them: `quantize(exp,
+  rounding=ROUND_HALF_UP)`, `to_integral_value(rounding=...)`,
+  `sqrt(context=...)`
+- `Decimal((sign, digits, exponent))`, so `as_tuple()` round-trips
+- `pow(x, y, modulus)`, by modular exponentiation
 - `quantize`, `normalize`, `as_tuple`, `as_integer_ratio`, `compare`, `fma`,
   `sqrt`, `exp`, `ln`, `log10`, `scaleb`, `adjusted`, `copy_abs`,
   `copy_negate`, `copy_sign`, `same_quantum`, `to_eng_string`, `max`, `min`
@@ -78,6 +86,16 @@ Everything a `decimal` program normally touches:
 - `copy`, `deepcopy` and `pickle`
 - `ZeroDivisionError` where you expect it, and hashes that agree with `int`,
   `float` and `decimal.Decimal`
+
+### Two things `decimal` does not have
+
+```python
+decimo.pi(1000)   # 1000 digits of pi, by Chudnovsky with binary splitting
+decimo.e(50)      # 50 digits of e
+```
+
+Without an argument they use the context precision. `decimal` has neither;
+its documentation gives a recipe to write your own.
 
 ## What does not
 

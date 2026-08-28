@@ -711,6 +711,129 @@ with decimo.localcontext(prec=3, Emin=-10):
 print("[PASS] Emin decides the neighbour of zero and what is subnormal")
 
 
+# --- Keyword arguments, tuple construction, three-argument pow, pi and e ---
+#
+# `quantize(exp, rounding=...)` is how money code spells itself, and the four
+# below are what a `decimal` program reaches for that decimo used to refuse.
+_cents = decimo.Decimal("0.01")
+assert (
+    str(decimo.Decimal("2.675").quantize(_cents, rounding=decimo.ROUND_HALF_UP))
+    == "2.68"
+)
+assert str(decimo.Decimal("2.675").quantize(_cents, decimo.ROUND_HALF_UP)) == "2.68"
+assert (
+    str(
+        decimo.Decimal("2.675").quantize(
+            _cents, rounding=decimo.ROUND_FLOOR, context=None
+        )
+    )
+    == "2.67"
+)
+assert str(decimo.Decimal("2.7").to_integral_value(rounding=decimo.ROUND_FLOOR)) == "2"
+assert str(decimo.Decimal(2).sqrt(context=None))[:6] == "1.4142"
+for _bad in ({"rouding": decimo.ROUND_UP}, {"nonsense": 1}):
+    try:
+        decimo.Decimal("1").quantize(_cents, **_bad)
+    except TypeError:
+        pass
+    else:
+        raise AssertionError(f"quantize should refuse {_bad}")
+try:
+    decimo.Decimal("1").quantize(_cents, decimo.ROUND_UP, rounding=decimo.ROUND_UP)
+except TypeError:
+    pass
+else:
+    raise AssertionError("quantize should refuse an argument given twice")
+try:
+    decimo.Decimal("1.25").quantize(_cents, rounding=decimo.ROUND_05UP)
+except NotImplementedError:
+    pass
+else:
+    raise AssertionError("ROUND_05UP should be refused here too")
+
+# `as_tuple()` round-trips: the constructor takes what it gives.
+for _text in ("12.34", "-5", "0", "1E+5", "0.000123"):
+    _tuple = decimo.Decimal(_text).as_tuple()
+    assert str(decimo.Decimal(_tuple)) == str(decimal.Decimal(tuple(_tuple))), _text
+assert str(decimo.Decimal((1, (5,), 0))) == "-5"
+assert str(decimo.Decimal([0, (1, 5), -1])) == "1.5"
+for _bad_tuple in ((0, (), "F"), (0, (1, 2)), (0, (1, 10), 0)):
+    try:
+        decimo.Decimal(_bad_tuple)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError(f"{_bad_tuple} should be refused")
+
+# `pow(x, y, m)`, which needs whole numbers and goes through modular
+# exponentiation rather than raising the base first.
+assert str(pow(decimo.Decimal(3), decimo.Decimal(20), decimo.Decimal(7))) == str(
+    pow(decimal.Decimal(3), decimal.Decimal(20), decimal.Decimal(7))
+)
+assert str(
+    pow(decimo.Decimal(2), decimo.Decimal(1000), decimo.Decimal(10**9 + 7))
+) == str(pow(decimal.Decimal(2), decimal.Decimal(1000), decimal.Decimal(10**9 + 7)))
+assert str(pow(3, decimo.Decimal(20), 7)) == "2"
+assert str(decimo.Decimal("1.5") ** 2) == "2.25"
+assert str(2 ** decimo.Decimal(3)) == "8"
+for _args in (("1.5", 2, 7), (3, -2, 7), (3, 2, 0)):
+    try:
+        pow(*[decimo.Decimal(str(_x)) for _x in _args])
+    except decimo.InvalidOperation:
+        pass
+    else:
+        raise AssertionError(f"pow{_args} should be refused")
+print("[PASS] keyword arguments, tuple construction and three-argument pow")
+
+# --- Context is something you can compute with, as in decimal ---
+_free = decimo.Context(prec=4, rounding=decimo.ROUND_DOWN)
+_theirs = decimal.Context(prec=4, rounding=decimal.ROUND_DOWN)
+for _name, _operands in [
+    ("divide", ("1", "3")),
+    ("add", ("10000", "1")),
+    ("subtract", ("1", "3")),
+    ("multiply", ("1.5", "3")),
+    ("divide_int", ("7", "2")),
+    ("remainder", ("7", "2")),
+    ("sqrt", ("2",)),
+    ("exp", ("1",)),
+    ("ln", ("10",)),
+    ("log10", ("1000",)),
+    ("power", ("2", "10")),
+    ("quantize", ("1.23456", "0.01")),
+    ("plus", ("1.23456",)),
+    ("minus", ("1.23456",)),
+    ("abs", ("-1.23456",)),
+    ("to_integral_value", ("2.7",)),
+    ("compare", ("1", "2")),
+    ("max", ("1", "2")),
+    ("normalize", ("1.2300",)),
+    ("scaleb", ("1.5", "2")),
+    ("number_class", ("1",)),
+    ("to_eng_string", ("1.23E+5",)),
+]:
+    _got = getattr(_free, _name)(*[decimo.Decimal(o) for o in _operands])
+    _want = getattr(_theirs, _name)(*[decimal.Decimal(o) for o in _operands])
+    assert str(_got) == str(_want), (_name, str(_got), str(_want))
+assert str(_free.power(decimo.Decimal(3), decimo.Decimal(20), decimo.Decimal(7))) == "2"
+assert str(_free.divmod(decimo.Decimal(7), decimo.Decimal(2))) == str(
+    _theirs.divmod(decimal.Decimal(7), decimal.Decimal(2))
+)
+# A context you built is still a value: computing with it changes nothing.
+assert decimo.getcontext().prec == 28
+assert decimo.getcontext().rounding == decimo.ROUND_HALF_EVEN
+print("[PASS] Context computes without disturbing the current one")
+
+# --- pi and e, which decimal does not have ---
+assert str(decimo.pi(30)) == "3.14159265358979323846264338328"
+assert str(decimo.e(30)) == "2.71828182845904523536028747135"
+with decimo.localcontext(prec=50):
+    assert str(decimo.pi())[:20] == "3.141592653589793238"
+    assert len(str(decimo.e()).replace(".", "")) == 50
+assert decimo.getcontext().prec == 28
+print("[PASS] pi and e at any precision")
+
+
 # --- The one program that has to work: the same source, both libraries ---
 def average(mod, values):
     total = mod.Decimal(0)

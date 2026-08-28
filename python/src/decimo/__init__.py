@@ -20,6 +20,8 @@ from ._version import __version__ as __version__
 try:
     from ._decimo import Decimal, get_precision as _get_precision
     from ._decimo import set_precision as _set_precision
+    from ._decimo import pi as _pi
+    from ._decimo import e as _e
     from ._decimo import get_rounding as _get_rounding
     from ._decimo import set_rounding as _set_rounding
 except ImportError as _err:
@@ -53,12 +55,13 @@ from collections import namedtuple as _namedtuple
 # Once Mojo's `PythonModuleBuilder` grows a way to declare slots directly, this
 # loop can go away and nothing else here needs to change.
 
-# The comparisons and `+`, `-`, `*`, `/` are not in this list. They are registered as real
-# CPython number slots by the Mojo module, so the operator calls a C function
-# directly instead of looking `__add__` up in the type dictionary on every
-# operation. Assigning them here would undo that: `type.__setattr__` puts
-# `slot_nb_add` back in the slot, which is exactly the indirection being
-# avoided.
+# The comparisons and `+`, `-`, `*`, `/`, `**` are not in this list. They are
+# registered as real CPython number slots by the Mojo module, so the operator
+# calls a C function directly instead of looking `__add__` up in the type
+# dictionary on every operation. Assigning them here would undo that:
+# `type.__setattr__` puts `slot_nb_add` back in the slot, which is exactly the
+# indirection being avoided -- and for `**` it would also lose
+# `pow(3, x, 7)`, which that dispatcher refuses before Python 3.14.
 for _name in (
     "__str__",
     "__floordiv__",
@@ -67,8 +70,6 @@ for _name in (
     "__rmod__",
     "__divmod__",
     "__rdivmod__",
-    "__pow__",
-    "__rpow__",
     "__neg__",
     "__pos__",
     "__abs__",
@@ -647,8 +648,121 @@ HAVE_CONTEXTVAR = False
 # Also expose as BigDecimal for users who prefer the full name.
 BigDecimal = Decimal
 
+
+def pi(prec=None):
+    """Return pi, to `prec` digits or to the context precision.
+
+    `decimal` has no pi; its documentation gives a recipe to write one. This
+    is computed in Mojo by Chudnovsky with binary splitting, so a thousand
+    digits is a fraction of a millisecond.
+
+    >>> import decimo
+    >>> decimo.pi(30)
+    Decimal('3.14159265358979323846264338328')
+    """
+    if prec is None:
+        return _pi()
+    with localcontext(prec=prec):
+        return _pi()
+
+
+def e(prec=None):
+    """Return e, to `prec` digits or to the context precision."""
+    if prec is None:
+        return _e()
+    with localcontext(prec=prec):
+        return _e()
+
+
+# --- Context as `decimal` has it: an object you can compute with ------------
+#
+# `ctx.divide(x, y)` is `x / y` under `ctx`, without disturbing the current
+# context. Every one of these is that same sentence, so they are built from
+# one table rather than written out sixty times: the operator ones by the
+# operator, the rest by the method of the same name on `Decimal`.
+
+_CONTEXT_OPERATORS = {
+    "add": lambda x, y: x + y,
+    "subtract": lambda x, y: x - y,
+    "multiply": lambda x, y: x * y,
+    "divide": lambda x, y: x / y,
+    "divide_int": lambda x, y: x // y,
+    "remainder": lambda x, y: x % y,
+    "divmod": divmod,
+    "minus": lambda x: -x,
+    "plus": lambda x: +x,
+    "abs": abs,
+    "copy_decimal": lambda x: x.copy(),
+    "to_sci_string": str,
+    "radix": lambda: Decimal(10),
+}
+
+_CONTEXT_METHODS = (
+    "compare compare_signal compare_total compare_total_mag copy_abs"
+    " copy_negate copy_sign exp fma is_canonical is_finite is_infinite is_nan"
+    " is_normal is_qnan is_signed is_snan is_subnormal is_zero ln log10 logb"
+    " logical_and logical_invert logical_or logical_xor max max_mag min"
+    " min_mag next_minus next_plus next_toward normalize number_class"
+    " quantize remainder_near rotate same_quantum scaleb shift sqrt"
+    " to_eng_string to_integral to_integral_exact to_integral_value canonical"
+).split()
+
+
+def _as_operand(value):
+    """What a context method accepts: a decimal, or anything that becomes one."""
+    return value if isinstance(value, Decimal) else Decimal(value)
+
+
+def _install_context_methods():
+    def make_operator(operation):
+        def method(self, *operands):
+            with localcontext(self):
+                return operation(*(_as_operand(x) for x in operands))
+
+        return method
+
+    def make_method(name):
+        def method(self, value, *rest):
+            with localcontext(self):
+                return getattr(_as_operand(value), name)(
+                    *(_as_operand(x) for x in rest)
+                )
+
+        return method
+
+    for name, operation in _CONTEXT_OPERATORS.items():
+        function = make_operator(operation)
+        function.__name__ = name
+        function.__doc__ = (
+            f"`{name}` under this context, leaving the current one alone."
+        )
+        setattr(Context, name, function)
+
+    for name in _CONTEXT_METHODS:
+        function = make_method(name)
+        function.__name__ = name
+        function.__doc__ = (
+            f"`Decimal.{name}` under this context, leaving the current one alone."
+        )
+        setattr(Context, name, function)
+
+    def power(self, a, b, modulo=None):
+        """`a ** b` under this context, or `pow(a, b, modulo)` with three."""
+        with localcontext(self):
+            if modulo is None:
+                return _as_operand(a) ** _as_operand(b)
+            return pow(_as_operand(a), _as_operand(b), _as_operand(modulo))
+
+    Context.power = power
+
+
+_install_context_methods()
+
+
 __all__ = [
     "Decimal",
+    "pi",
+    "e",
     "BigDecimal",
     "DecimalTuple",
     "Context",
