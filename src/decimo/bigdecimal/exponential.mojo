@@ -111,6 +111,19 @@ struct MathCache:
     var _ln10_precision: Int
     """Precision (in significant digits) at which _ln10 was computed."""
 
+    comptime GUARD_DIGITS = 9
+    """Digits computed beyond what is asked for, and then dropped.
+
+    `compute_ln2()` and `compute_ln1d25()` both say in their own docstrings
+    that their last few digits are not accurate, because neither carries a
+    buffer. These getters promise a value good to the precision asked for, so
+    the buffer belongs here. `get_ln10()` has always added it; the other two
+    passed the requested precision straight through and returned a value whose
+    last digit was short by one: `get_ln1d25(5)` gave 0.22313 where ln(1.25)
+    truncates to 0.22314, and above the 90-digit table in `compute_ln2()` the
+    same happened to `get_ln2()` at about half the precisions tried.
+    """
+
     def __init__(out self):
         """Initializes an empty MathCache with no cached values."""
         self._ln2 = BigDecimal(BigUInt.zero(), 0, False)
@@ -145,9 +158,17 @@ struct MathCache:
                 fill_zeros_to_precision=False,
             )
             return result^
-        self._ln2 = compute_ln2(precision)
+        self._ln2 = compute_ln2(precision + Self.GUARD_DIGITS)
+        # Only `precision` digits are guaranteed, whatever was computed.
         self._ln2_precision = precision
-        return self._ln2.copy()
+        var computed = self._ln2.copy()
+        computed.round_to_precision_inplace(
+            precision=precision,
+            rounding_mode=RoundingMode.down(),
+            remove_extra_digit_due_to_rounding=False,
+            fill_zeros_to_precision=False,
+        )
+        return computed^
 
     def get_ln1d25(mut self, precision: Int) raises -> BigDecimal:
         """Returns ln(1.25) computed to at least the specified precision.
@@ -174,9 +195,17 @@ struct MathCache:
                 fill_zeros_to_precision=False,
             )
             return result^
-        self._ln1d25 = compute_ln1d25(precision)
+        self._ln1d25 = compute_ln1d25(precision + Self.GUARD_DIGITS)
+        # Only `precision` digits are guaranteed, whatever was computed.
         self._ln1d25_precision = precision
-        return self._ln1d25.copy()
+        var computed = self._ln1d25.copy()
+        computed.round_to_precision_inplace(
+            precision=precision,
+            rounding_mode=RoundingMode.down(),
+            remove_extra_digit_due_to_rounding=False,
+            fill_zeros_to_precision=False,
+        )
+        return computed^
 
     def get_ln10(mut self, precision: Int) raises -> BigDecimal:
         """Returns ln(10) computed to at least the specified precision.
@@ -209,7 +238,7 @@ struct MathCache:
         # ln(10) = ln(2 * 5) = ln(2) + ln(5)
         #        = ln(2) + ln(4 * 1.25) = ln(2) + 2*ln(2) + ln(1.25)
         #        = 3*ln(2) + ln(1.25)
-        var extra = precision + 9
+        var extra = precision + Self.GUARD_DIGITS
         var ln2 = self.get_ln2(extra)
         var ln1d25 = self.get_ln1d25(extra)
         self._ln10 = ln2.multiply(BigDecimal(3)).add(ln1d25)
