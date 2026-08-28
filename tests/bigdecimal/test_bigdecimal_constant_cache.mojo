@@ -10,9 +10,10 @@ straight through, and returned a value short by one in the last digit:
 
     get_ln1d25(5)  ->  0.22313     where ln(1.25) truncates to 0.22314
 
-For `ln(2)` it only showed above 90 digits, because `compute_ln2()` answers
+For `ln(2)` it only showed above 90 digits, because `compute_ln2()` answered
 from a 90-digit table below that. At 91 to 130 digits about half the
-precisions came back short.
+precisions came back short. Both tables now hold 1100 digits, so the series
+only runs above that; the last test here goes past the table on purpose.
 
 Two things are checked here, and the second is what found it: the value has to
 agree with a reference computed far wider, and a cold cache has to give the
@@ -24,7 +25,7 @@ from std import testing
 from std.testing import assert_true, assert_equal
 
 from decimo.bigdecimal.bigdecimal import BDec
-from decimo.bigdecimal.exponential import MathCache
+from decimo.bigdecimal.exponential import MathCache, ln, log10
 from decimo.rounding_mode import RoundingMode
 
 comptime REFERENCE_PRECISION = 200
@@ -109,6 +110,35 @@ def test_the_cache_upgrades_rather_than_reusing_a_short_value() raises:
         cache.get_ln2(120) == truncated(ln2, 120),
         "the cache reused a ten-digit value for a request of 120",
     )
+
+
+def test_the_shared_cache_agrees_with_a_fresh_one() raises:
+    """The two-argument `ln()` and `log10()` use one process-wide cache.
+
+    Past the 1100-digit tables the cache holds computed values, and a later
+    call at a lower precision truncates what is stored rather than computing
+    afresh. Both must agree with a cache nobody has touched, in either order:
+    high then low, and low after the cache has been grown.
+    """
+    var x = BDec("3.7")
+    for precision in [1200, 300, 1150]:
+        var fresh = MathCache()
+        assert_equal(
+            String(ln(x, precision)),
+            String(ln(x, precision, fresh)),
+            "ln at " + String(precision) + " through the shared cache",
+        )
+        # A second call answers from the cache.
+        assert_equal(
+            String(ln(x, precision)),
+            String(ln(x, precision, fresh)),
+            "ln at " + String(precision) + " on a warm shared cache",
+        )
+
+    # log10 is the ln(10) user; it reads the same cache after ln() grew it.
+    var fresh = MathCache()
+    var expected = ln(x, 1200, fresh).true_divide(fresh.get_ln10(1200), 1150)
+    assert_equal(String(log10(x, 1150)), String(expected), "log10 shared")
 
 
 def main() raises:

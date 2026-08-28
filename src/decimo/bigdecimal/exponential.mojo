@@ -17,6 +17,7 @@
 """Implements exponential functions for the BigDecimal type."""
 
 from std import math
+from std.ffi import _Global
 
 from decimo.biguint.biguint import BigUInt
 import decimo.biguint.arithmetics as biguint_arithmetics
@@ -75,6 +76,10 @@ struct MathCache:
     Since Mojo does not support module-level mutable variables, this struct
     provides a way to cache computed values of ln(2) and ln(1.25) across
     multiple function calls, avoiding redundant computation.
+
+    The two-argument `ln()`, `log()` and `log10()` share one process-wide
+    instance, held in `std.ffi._Global` (see `_SHARED_MATH_CACHE`). Pass
+    your own cache to the three-argument `ln()` to keep separate state.
 
     The cache automatically handles precision upgrades: if a cached value was
     computed at precision P1 and a new call requests precision P2 > P1, the
@@ -250,6 +255,25 @@ struct MathCache:
         )
         self._ln10_precision = precision
         return self._ln10.copy()
+
+
+def _make_math_cache() -> MathCache:
+    return MathCache()
+
+
+comptime _SHARED_MATH_CACHE = _Global["decimo_math_cache", _make_math_cache]
+"""One `MathCache` for the whole process.
+
+Mojo 1.0 rejects module-level `var`; `std.ffi._Global` is the supported way
+to hold process-wide state, if a private one (creation is locked, use is
+not). Nothing here runs on more than one thread, and the Python binding runs
+under the GIL, so the cache is not guarded. Each constant is stored at the
+highest precision asked for so far and only ever grows.
+
+Below about 1000 digits the constants come from the literal tables and the
+cache saves nothing; above that it halves the cost of every `ln()` after the
+first at a given precision.
+"""
 
 
 # ===----------------------------------------------------------------------=== #
@@ -2011,8 +2035,9 @@ def exp_taylor_series(
 def ln(x: BigDecimal, precision: Int) raises -> BigDecimal:
     """Calculate the natural logarithm of x to the specified precision.
 
-    This is the non-cached version. For repeated calls, use the overload that
-    accepts a `MathCache` parameter to avoid recomputing ln(2) and ln(1.25).
+    Uses the process-wide `MathCache`, so repeated calls at the same or a
+    lower precision reuse ln(2) and ln(1.25). Pass your own cache to the
+    three-argument overload to keep separate state.
 
     Args:
         x: The input value.
@@ -2024,8 +2049,7 @@ def ln(x: BigDecimal, precision: Int) raises -> BigDecimal:
     Raises:
         ValueError: If x is negative or zero.
     """
-    var cache = MathCache()
-    return ln(x, precision, cache)
+    return ln(x, precision, _SHARED_MATH_CACHE.get_or_create_ptr()[])
 
 
 def ln(
@@ -2195,10 +2219,11 @@ def log(x: BigDecimal, base: BigDecimal, precision: Int) raises -> BigDecimal:
         return log10(x, precision)
 
     # Use the identity: log_base(x) = ln(x) / ln(base)
-    # Use a shared cache so that both ln() calls reuse cached ln(2)/ln(1.25)
-    var cache = MathCache()
-    var ln_x = ln(x, working_precision, cache)
-    var ln_base = ln(base, working_precision, cache)
+    # The process-wide cache serves both ln() calls with the same ln(2) and
+    # ln(1.25), and keeps them for the next call.
+    var cache = _SHARED_MATH_CACHE.get_or_create_ptr()
+    var ln_x = ln(x, working_precision, cache[])
+    var ln_base = ln(base, working_precision, cache[])
 
     var result = ln_x.true_divide(ln_base, precision)
     return result^
@@ -2245,10 +2270,10 @@ def log10(x: BigDecimal, precision: Int) raises -> BigDecimal:
         return BigDecimal(BigUInt.zero(), 0, False)  # log10(1) = 0
 
     # Use the identity: log10(x) = ln(x) / ln(10)
-    # Use a shared cache so that ln(10) is retrieved from cache
-    var cache = MathCache()
-    var ln_result = ln(x, working_precision, cache)
-    var ln10 = cache.get_ln10(working_precision)
+    # The process-wide cache holds ln(10) as well.
+    var cache = _SHARED_MATH_CACHE.get_or_create_ptr()
+    var ln_result = ln(x, working_precision, cache[])
+    var ln10 = cache[].get_ln10(working_precision)
     var result = ln_result.true_divide(ln10, precision)
 
     return result^
