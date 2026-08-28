@@ -36,6 +36,16 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
    keyword overrides; `BasicContext` and `ExtendedContext` exist. On the
    Mojo side `add`, `subtract`, `multiply`, `true_divide` and the three
    in-place forms take a `rounding_mode`. `ROUND_05UP` is refused.
+1. **`decimo.pi()` and `decimo.e()`.** To the context precision, or to the
+   digits asked for: `decimo.pi(1000)`. `decimal` has neither.
+1. **The gaps a `decimal` program falls into.** `quantize(exp,
+   rounding=ROUND_HALF_UP)` and the other keyword arguments are accepted --
+   the methods that take an optional argument move from fastcall to the
+   tuple-packing path to get them, as CPython's own `decimal` does.
+   `Context` gained the sixty methods that compute under it without
+   disturbing the current one, `Decimal((sign, digits, exponent))` closes the
+   `as_tuple()` round trip, and `pow(x, y, modulus)` works by modular
+   exponentiation.
 1. **The rest of `decimal`'s method surface.** `remainder_near`,
    `next_plus`, `next_minus`, `next_toward`, `shift`, `rotate`,
    `logical_and`, `logical_or`, `logical_xor`, `logical_invert`, `logb`,
