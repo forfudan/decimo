@@ -1996,11 +1996,17 @@ struct BigDecimal(
     # === Exponentional operations === #
 
     @always_inline
-    def exp(self, precision: Int = PRECISION) raises -> Self:
+    def exp(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
         """Returns the exponential of the BigDecimal number.
 
         Args:
             precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Every mode is decided
+                rather than approximated; see `_round_by_deciding()`.
 
         Returns:
             The value of e raised to the power of self.
@@ -2008,7 +2014,9 @@ struct BigDecimal(
         Raises:
             OverflowError: If the result is too large to represent.
         """
-        return bigdecimal_exponential.exp(self, precision)
+        return bigdecimal_exponential.exp_rounded(
+            self, precision, rounding_mode
+        )
 
     def factorial(self, precision: Int = 0) raises -> Self:
         """Returns the factorial of this value (`self!`).
@@ -2049,11 +2057,17 @@ struct BigDecimal(
         return bigdecimal_special.permutation(self, k, precision)
 
     @always_inline
-    def ln(self, precision: Int = PRECISION) raises -> Self:
+    def ln(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
         """Returns the natural logarithm of the BigDecimal number.
 
         Args:
             precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Every mode is decided
+                rather than approximated; see `_round_by_deciding()`.
 
         Returns:
             The natural logarithm (base e) of this value.
@@ -2061,7 +2075,7 @@ struct BigDecimal(
         Raises:
             ValueError: If the value is zero or negative.
         """
-        return bigdecimal_exponential.ln(self, precision)
+        return bigdecimal_exponential.ln_rounded(self, precision, rounding_mode)
 
     @always_inline
     def ln(
@@ -2101,11 +2115,17 @@ struct BigDecimal(
         return bigdecimal_exponential.log(self, base, precision)
 
     @always_inline
-    def log10(self, precision: Int = PRECISION) raises -> Self:
+    def log10(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
         """Returns the base-10 logarithm of the BigDecimal number.
 
         Args:
             precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Every mode is decided
+                rather than approximated; see `_round_by_deciding()`.
 
         Returns:
             The base-10 logarithm of this value.
@@ -2113,7 +2133,9 @@ struct BigDecimal(
         Raises:
             ValueError: If the value is zero or negative.
         """
-        return bigdecimal_exponential.log10(self, precision)
+        return bigdecimal_exponential.log10_rounded(
+            self, precision, rounding_mode
+        )
 
     @always_inline
     def root(self, n: Int) raises -> Self:
@@ -2205,11 +2227,19 @@ struct BigDecimal(
         return bigdecimal_exponential.sqrt(self, precision=PRECISION)
 
     @always_inline
-    def sqrt(self, precision: Int) raises -> Self:
+    def sqrt(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
         """Returns the square root of the BigDecimal number.
 
         Args:
             precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Exact under every mode,
+                unlike the other transcendentals: a root is algebraic, so
+                squaring the candidate back settles which side of a boundary
+                the true value falls on.
 
         Returns:
             The square root of this value.
@@ -2217,7 +2247,7 @@ struct BigDecimal(
         Raises:
             ValueError: If the value is negative.
         """
-        return bigdecimal_exponential.sqrt(self, precision)
+        return bigdecimal_exponential.sqrt(self, precision, rounding_mode)
 
     @always_inline
     def cbrt(self, precision: Int = PRECISION) raises -> Self:
@@ -2235,13 +2265,20 @@ struct BigDecimal(
         return bigdecimal_exponential.cbrt(self, precision)
 
     @always_inline
-    def power(self, exponent: Self, precision: Int = PRECISION) raises -> Self:
+    def power(
+        self,
+        exponent: Self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
         """Returns the result of exponentiation with the given precision.
         See `exponential.power()` for more information.
 
         Args:
             exponent: The power to raise this value to.
             precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Decided rather than
+                approximated; see `power_rounded()`.
 
         Returns:
             This value raised to the given exponent.
@@ -2250,7 +2287,9 @@ struct BigDecimal(
             ValueError: If the operation is mathematically undefined.
             OverflowError: If the result is too large to represent.
         """
-        return bigdecimal_exponential.power(self, exponent, precision)
+        return bigdecimal_exponential.power_rounded(
+            self, exponent, precision, rounding_mode
+        )
 
     # === Trigonometric operations === #
     @always_inline

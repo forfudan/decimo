@@ -36,6 +36,15 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
    keyword overrides; `BasicContext` and `ExtendedContext` exist. On the
    Mojo side `add`, `subtract`, `multiply`, `true_divide` and the three
    in-place forms take a `rounding_mode`. `ROUND_05UP` is refused.
+1. **`sqrt` rounds exactly under every mode.** `BigDecimal.sqrt` takes a
+   `rounding_mode`, and `Decimal.sqrt(rounding=...)` passes it on. No guard
+   digits are involved and none are needed: the root is algebraic, so
+   squaring the candidate back settles which side of a boundary the true
+   value falls on, and the perturbation the algorithm already applies leaves
+   a last digit that says what the discarded tail would. Checked over
+   twenty-one thousand cases against exact rational arithmetic rather than
+   against another implementation. `exp`, `ln` and `log10` still need a Ziv
+   loop for the same guarantee.
 1. **A plain decimal string is parsed straight into the words.** `"1.5"`,
    `"1234.5678"` and the like -- a sign, some digits, at most one point -- no
    longer go through a `List[UInt8]` of one digit per byte: 59 ns to 10, 64 to

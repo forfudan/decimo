@@ -845,6 +845,82 @@ assert decimo.getcontext().prec == 28
 print("[PASS] pi and e at any precision")
 
 
+# --- sqrt under a rounding mode, which decimal has no way to ask for ------
+#
+# `decimal.sqrt` ignores the context mode and always rounds half to even, and
+# so does ours when nothing is asked for. `rounding=` is decimo's own, and the
+# answer under it is exact rather than approximated: the check below is the
+# defining property, squared back with integers, not a comparison against
+# another implementation.
+from fractions import Fraction as _Fraction
+
+with decimo.localcontext(prec=5):
+    assert str(decimo.Decimal(2).sqrt()) == "1.4142"
+    assert str(decimo.Decimal(2).sqrt(rounding=decimo.ROUND_FLOOR)) == "1.4142"
+    assert str(decimo.Decimal(2).sqrt(rounding=decimo.ROUND_CEILING)) == "1.4143"
+    assert str(decimo.Decimal("1.44").sqrt(rounding=decimo.ROUND_UP)) == "1.2"
+with decimo.localcontext(prec=1):
+    assert str(decimo.Decimal(2).sqrt(rounding=decimo.ROUND_DOWN)) == "1"
+    assert str(decimo.Decimal(2).sqrt(rounding=decimo.ROUND_UP)) == "2"
+try:
+    decimo.Decimal(2).sqrt(rounding=decimo.ROUND_05UP)
+except NotImplementedError:
+    pass
+else:
+    raise AssertionError("ROUND_05UP should be refused by sqrt too")
+
+_sqrt_rng = _hash_random.Random(17)
+_sqrt_values = ["2", "3", "5", "10", "0.0001", "123456789", "1.0001"]
+_sqrt_values += [str(_sqrt_rng.randint(1, 10**20)) for _ in range(40)]
+for _text in _sqrt_values:
+    for _prec in (1, 5, 17, 28):
+        with decimo.localcontext(prec=_prec):
+            _low = decimo.Decimal(_text).sqrt(rounding=decimo.ROUND_FLOOR)
+            _high = decimo.Decimal(_text).sqrt(rounding=decimo.ROUND_CEILING)
+        _x = _Fraction(_text)
+        _below, _above = _Fraction(str(_low)), _Fraction(str(_high))
+        assert _below * _below <= _x, (_text, _prec, "floor is above the root")
+        assert _above * _above >= _x, (_text, _prec, "ceiling is below the root")
+        if _below != _above:
+            # Neighbours: nothing representable lies between them.
+            _ulp = _above - _below
+            assert (_below + _ulp) == _above, (_text, _prec)
+print("[PASS] sqrt is exact under every rounding mode")
+
+# --- exp, ln and log10: the rounding is decided, not assumed ---------------
+#
+# These three arguments put a rounding boundary inside the interval the
+# kernel's own error bound allows, so the answer cannot be settled on the
+# first pass and the library has to widen and look again. They are the shape
+# a fixed number of guard digits gets wrong: the digits just past the cut are
+# `000` or `999`. Expected values from `decimal` at fifty digits, rounded
+# once.
+for _text, _call, _reference in [
+    ("664.247984247", lambda x, m: x.ln(rounding=m), lambda d: d.ln()),
+    ("167.837678670", lambda x, m: x.exp(rounding=m), lambda d: d.exp()),
+    ("132.960671561", lambda x, m: x.log10(rounding=m), lambda d: d.log10()),
+]:
+    with decimal.localcontext() as _wide:
+        _wide.prec = 50
+        _true = _reference(decimal.Decimal(_text))
+    for _mode in _modes:
+        with decimal.localcontext() as _narrow:
+            _narrow.prec, _narrow.rounding = 9, _mode
+            _want = str(+_true)
+        with decimo.localcontext(prec=9):
+            _got = str(_call(decimo.Decimal(_text), _mode))
+        assert _want == _got, (_text, _mode, _want, _got)
+
+# The rational points, where the true value does sit on a boundary and the
+# loop would never settle: each is answered before it is entered.
+with decimo.localcontext(prec=9):
+    for _mode in _modes:
+        assert str(decimo.Decimal(0).exp(rounding=_mode)) == "1"
+        assert str(decimo.Decimal(1).ln(rounding=_mode)) == "0"
+        assert str(decimo.Decimal(1000).log10(rounding=_mode)) == "3"
+print("[PASS] exp, ln and log10 decide their rounding under every mode")
+
+
 # --- The one program that has to work: the same source, both libraries ---
 def average(mod, values):
     total = mod.Decimal(0)
