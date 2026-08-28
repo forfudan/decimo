@@ -311,7 +311,7 @@ struct BigInt10(
         )
 
     @staticmethod
-    def from_string(value: String) raises -> Self:
+    def from_string(value: StringSlice) raises -> Self:
         """Initializes a BigInt10 from a string representation.
         The string is normalized with `decimo_str.parse_numeric_string()`.
 

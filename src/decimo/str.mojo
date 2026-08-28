@@ -72,7 +72,7 @@ def ljust(s: String, width: Int, fillchar: String = " ") -> String:
 
 
 @no_inline
-def _raise_invalid_char(c: UInt8, value: String) raises -> None:
+def _raise_invalid_char(c: UInt8, value: StringSlice) raises -> None:
     # Non-ASCII bytes (>127) are typically a stray UTF-8 lead/continuation
     # byte; surfacing them via `chr()` produces garbled output that is not
     # actionable. Include the raw byte value (hex) AND the original input so
@@ -93,7 +93,7 @@ def _raise_invalid_char(c: UInt8, value: String) raises -> None:
 
 
 def parse_numeric_string(
-    value: String,
+    value: StringSlice,
 ) raises -> Tuple[List[UInt8], Int, Bool]:
     """Parse the string of a number into normalized parts.
 
@@ -163,7 +163,7 @@ def parse_numeric_string(
     #     # - Space ' ' may appear anywhere in the string and is ignored.
     #     # - Comma ',' and underscore '_' may appear anywhere between digits and are ignored.
 
-    var value_bytes = StringSlice(value).as_bytes()
+    var value_bytes = value.as_bytes()
     var n = len(value_bytes)
 
     if n == 0:

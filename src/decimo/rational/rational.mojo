@@ -257,7 +257,7 @@ struct Rational(
         return Self(BigInt.from_integral_scalar(value))
 
     @staticmethod
-    def from_string(value: String) raises -> Self:
+    def from_string(value: StringSlice) raises -> Self:
         """Creates a Rational from a string representation.
 
         Two forms are accepted:
@@ -284,7 +284,9 @@ struct Rational(
         var separator = value.find("/")
 
         if separator < 0:
-            return Self._from_decimal_literal(value, literal=value)
+            # The whole string is the literal, and passing the same slice
+            # twice is an alias the compiler will not allow, so say so once.
+            return Self._from_decimal_literal(value)
 
         if value.find("/", separator + 1) >= 0:
             raise ConversionError(
@@ -315,14 +317,17 @@ struct Rational(
         return numerator / denominator
 
     @staticmethod
-    def _from_decimal_literal(value: String, *, literal: String) raises -> Self:
+    def _from_decimal_literal(
+        value: StringSlice, *, literal: StringSlice = ""
+    ) raises -> Self:
         """Reads one decimal literal exactly, as a Rational.
 
         Args:
             value: The decimal literal, i.e. one side of a "p/q" string, or
                 the whole string when there is no "/".
             literal: The full string the caller was given, quoted in the
-                error message so that it names what the user wrote.
+                error message so that it names what the user wrote. Empty
+                when `value` is that whole string, which is the same thing.
 
         Returns:
             The exact value of the literal.
@@ -337,7 +342,7 @@ struct Rational(
                 function="Rational.from_string(value: String)",
                 message=(
                     'The input value "'
-                    + literal
+                    + (literal if literal else value)
                     + '" cannot be parsed as a rational.'
                 ),
                 previous_error=e^,

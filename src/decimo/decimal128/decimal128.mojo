@@ -603,7 +603,7 @@ struct Decimal128(
     @staticmethod
     @no_inline
     def _raise_from_string_invalid_char(
-        code: UInt8, value: String
+        code: UInt8, value: StringSlice
     ) raises -> None:
         # Non-ASCII bytes (>127) carry the raw byte hex + original input so
         # users can diagnose UTF-8 encoding issues. ASCII fall-through uses
@@ -657,7 +657,7 @@ struct Decimal128(
         return result
 
     @staticmethod
-    def from_string(value: String) raises -> Self:
+    def from_string(value: StringSlice) raises -> Self:
         """Initializes a Decimal128 from a string representation.
 
         Args:

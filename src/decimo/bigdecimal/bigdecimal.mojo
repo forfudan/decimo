@@ -232,7 +232,7 @@ struct BigDecimal(
         self.scale = 0
         self.sign = value.sign
 
-    def __init__(out self, value: String) raises:
+    def __init__(out self, value: StringSlice) raises:
         """Constructs a BigDecimal from a string representation.
 
         Args:
@@ -467,7 +467,7 @@ struct BigDecimal(
         return Self(coefficient=coefficient^, scale=-exponent, sign=negative)
 
     @staticmethod
-    def from_string(value: String) raises -> Self:
+    def from_string(value: StringSlice) raises -> Self:
         """Initializes a BigDecimal from a string representation.
         The string is normalized with `decimo.str.parse_numeric_string()`.
 
@@ -480,6 +480,15 @@ struct BigDecimal(
         Raises:
             ValueError: If the string does not represent a valid number.
         """
+        # Nearly every string a program parses is a sign, some digits and at
+        # most one point: no exponent, no separators, nothing to normalize.
+        # That shape can go straight into the words, where the general parser
+        # first writes a `List[UInt8]` of one digit per byte and then reads it
+        # back. Anything else falls through to it.
+        var packed = _from_plain_string(value)
+        if packed:
+            return packed.take()
+
         var _tuple = decimo_str.parse_numeric_string(value)
         ref coef: List[UInt8] = _tuple[0]
         var scale: Int = _tuple[1]
@@ -3312,3 +3321,71 @@ def _multiply_by_power_of_two(mut x: BigUInt, n: Int):
         biguint_arithmetics.multiply_by_word_inplace(
             x, BigUInt.Word(1) << BigUInt.Word(remaining)
         )
+
+
+def _from_plain_string(value: StringSlice) raises -> Optional[BigDecimal]:
+    """Reads `[-+]?digits[.digits]` into words without an intermediate list.
+
+    Args:
+        value: The text to read.
+
+    Returns:
+        The value, or nothing when the text is not of that shape -- an
+        exponent, a separator, a second point, no digits at all -- in which
+        case the caller falls back to `parse_numeric_string()`.
+
+    Raises:
+        Error: If building the coefficient fails.
+
+    Notes:
+
+    Leading zeros need no attention: packing `000123` into a word gives the
+    same number as packing `123`, and `remove_leading_empty_words()` drops
+    what is left over.
+    """
+    var bytes = value.as_bytes()
+    var length = len(bytes)
+    var start = 0
+    var sign = False
+    if length > 0 and (bytes[0] == 0x2D or bytes[0] == 0x2B):
+        sign = bytes[0] == 0x2D
+        start = 1
+
+    var point = -1
+    var digits = 0
+    for index in range(start, length):
+        var character = bytes[index]
+        if character >= 0x30 and character <= 0x39:
+            digits += 1
+        elif character == 0x2E and point < 0:
+            point = index
+        else:
+            return None
+    if digits == 0:
+        return None
+
+    var scale = 0 if point < 0 else length - point - 1
+    var coefficient = BigUInt(
+        uninitialized_capacity=math.ceildiv(digits, BigUInt.DIGITS_PER_WORD)
+    )
+
+    # Right to left, since a word holds the *lowest* eighteen digits; the
+    # point is stepped over wherever it falls.
+    var index = length - 1
+    var remaining = digits
+    while remaining > 0:
+        var word: BigUInt.Word = 0
+        var place: BigUInt.Word = 1
+        var taken = 0
+        while taken < BigUInt.DIGITS_PER_WORD and remaining > 0:
+            var character = bytes[index]
+            if character != 0x2E:
+                word += BigUInt.Word(character - 0x30) * place
+                place *= 10
+                taken += 1
+                remaining -= 1
+            index -= 1
+        coefficient.words.append(word)
+
+    coefficient.remove_leading_empty_words()
+    return BigDecimal(coefficient=coefficient^, scale=scale, sign=sign)
