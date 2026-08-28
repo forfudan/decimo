@@ -2177,20 +2177,16 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         for i in range(len(x.words) - 1):
             if x.words[i] != 0:
                 return False
+        # Divide the tens out and see whether 1 is what is left. This used to
+        # enumerate `10^0` through `10^8` -- the nine values a nine-digit word
+        # can hold -- so at eighteen digits it answered `False` for `10^9`
+        # through `10^17`, which is a word's whole upper half.
         var word = x.words[len(x.words) - 1]
-        if (
-            (word == Self.Word(1))
-            or (word == Self.Word(10))
-            or (word == Self.Word(100))
-            or (word == Self.Word(1000))
-            or (word == Self.Word(10_000))
-            or (word == Self.Word(100_000))
-            or (word == Self.Word(1_000_000))
-            or (word == Self.Word(10_000_000))
-            or (word == Self.Word(100_000_000))
-        ):
-            return True
-        return False
+        if word == 0:
+            return False
+        while word % 10 == 0:
+            word //= 10
+        return word == 1
 
     @always_inline
     def is_unitialized(self) -> Bool:
