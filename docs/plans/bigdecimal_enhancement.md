@@ -54,7 +54,7 @@ Dated by report file under `benches/bigdecimal/reports/`. Append-only.
 | Date     | Item                                                                                  |
 | -------- | ------------------------------------------------------------------------------------- |
 | 20260222 | `MathCache` struct: caches `ln(2)`, `ln(1.25)`, `ln(10)` with precision-upgrade logic |
-| 20260222 | `true_divide_inexact_by_uint32()` — single-word division wraps `BigUInt.fdiv_uint32`  |
+| 20260222 | `true_divide_inexact_by_word()` — single-word division wraps `BigUInt.fdiv_uint32`  |
 | 20260223 | BigDecimal `multiply_inplace`, `add_inplace`, `subtract_inplace`                      |
 | 20260223 | `__iadd__` / `__isub__` / `__imul__` route through inplace versions                   |
 | 20260224 | Toom-3 helpers: `_exact_divide_by_{2,3,6}_inplace` (carry-based, no BigUInt division) |
@@ -360,10 +360,10 @@ because the lesson generalises to the variable-length case unchanged.
     reloads removed per iteration.** A T-U1 sweep (20260618) confirmed this:
     hoisting helps in O(n²) inner loops (`multiply_slices_deferred_carry`,
     ~8%) and in single-pass loops that touch **two or more** buffers per
-    element (`floor_divide_by_uint32` reads `x` and writes `result` →
+    element (`floor_divide_by_word` reads `x` and writes `result` →
     +4-8% at ≥256 words). It does **not** clear the ≥3% bar for
-    single-buffer single-pass O(n) loops (`multiply_by_uint32_inplace`,
-    `floor_divide_by_uint32_inplace`, `multiply_by_power_of_ten_inplace`):
+    single-buffer single-pass O(n) loops (`multiply_by_word_inplace`,
+    `floor_divide_by_word_inplace`, `multiply_by_power_of_ten_inplace`):
     those are arithmetic-bound (the base-10⁹ `% / //` dominates), the one
     saved address reload is hidden, and the variants even regressed small
     operands — so they were reverted.
@@ -578,7 +578,7 @@ P2 — Multiply small-precision (2.3× py → target ≤1.5×)
   (`local/bench_tu1.mojo`) and in-situ on the real struct-field functions
   (`local/bench_tu1_insitu.mojo`), best-of-7 at 4-1024 words under
   `-O3 -g0 -D ASSERT=none`.
-  **Kept:** `floor_divide_by_uint32` — its inner loop reads `x.words[i]` *and*
+  **Kept:** `floor_divide_by_word` — its inner loop reads `x.words[i]` *and*
   writes `result.words[i]` every iteration, so the indexed form reloads **two**
   `List._data` fields per element; hoisting both pointers is a stable **+4-8%**
   at >=256 words across 3 runs with no small-input regression (the small-n path
@@ -589,12 +589,12 @@ P2 — Multiply small-precision (2.3× py → target ≤1.5×)
   function at 256/1024/8192/65536 words: the two forms are within 1.6% and the
   indexed form is marginally ahead at the largest sizes. The loop runs at
   ~3.35 ns/word either way -- that is the two 64-bit divides, and addressing
-  never surfaces behind them. `floor_divide_by_uint32` is back on the indexed
+  never surfaces behind them. `floor_divide_by_word` is back on the indexed
   form, which is also bounds-checked under `-D ASSERT=all`.
 
   **Reverted (no stable win / small-input regressions):**
-  `multiply_by_uint32_inplace` (mixed; -3..-8% at 16-64w),
-  `floor_divide_by_uint32_inplace` (single buffer; +3% only at large n,
+  `multiply_by_word_inplace` (mixed; -3..-8% at 16-64w),
+  `floor_divide_by_word_inplace` (single buffer; +3% only at large n,
   -5..-10% at 4-8w),
   `multiply_by_power_of_ten_inplace` (clear -5..-11% at 8-16w, the common
   BigDecimal scale-align size). These are all **single-buffer single-pass**
@@ -611,13 +611,13 @@ P3 — Divide all precisions (5× py → target ≤2×)
 - **T-D1: Short-divisor fast path (H#16).** **DONE — already covered by
   the BigUInt dispatch (20260611).** `BigUInt.floor_divide` (invoked by
   `//` inside `true_divide_general`) already routes single-word divisors
-  to `floor_divide_by_uint32`, two-word to `_by_uint64`, and ≤4-word to
+  to `floor_divide_by_word`, two-word to `_by_uint64`, and ≤4-word to
   `_by_uint128`; Burnikel-Ziegler is entered only for divisors > 4 words
   (> 36 digits). So the short-divisor primitive (the actual algorithmic
   win) is active end-to-end; the §5.1 "full Burnikel-Ziegler even for
   short divisor" premise is outdated. A dedicated **BigDecimal**-level
   branch was prototyped (digit-granular buffer + direct
-  `floor_divide_by_uint32` + matching exact/HALF_EVEN handling) and
+  `floor_divide_by_word` + matching exact/HALF_EVEN handling) and
   **DISPROVEN — reverted.** A focused micro-bench (M4 Pro, 2M iters) was
   mixed and net-negative on the common case: 100/4 @p50 dedicated 317 vs
   general 358 ns (+41), 355/113 @p50 +13, but **1/7 @p100 dedicated 376

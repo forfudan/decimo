@@ -432,6 +432,69 @@ Nothing to do here until Mojo grows the feature.
       `CUTOFF_BURNIKEL_ZIEGLER`, the separate question of whether the
       recursion runs at all, went 32 to 48.
 
+- [x] (20260828) **Why the test suite is slow.** The suspicion was the Python
+      interpreter, since several cross-check tests build a `PythonObject` and
+      compare against CPython's `int`. It is not that, and the numbers that
+      suggested it were misread: what the harness prints per test is
+      **milliseconds, not seconds**.
+
+      The whole suite *executes* in 1.5 s. Everything else is Mojo compiling
+      test files, one compilation unit per file, cold in CI:
+
+      | job                 | executing | wall  |
+      | ------------------- | --------- | ----- |
+      | whole suite, local  | 1.5 s     | 11 s  |
+      | Test Decimal128, CI | 0.11 s    | 470 s |
+      | Test BigDecimal, CI | 0.35 s    | 365 s |
+      | Test BigInt, CI     | 0.61 s    | 203 s |
+
+      Python interop costs about a microsecond per cross-check -- `py.int(str)`
+      219 ns, a 100-digit `pa * pb` 95 ns against decimo's 81, `str()` of the
+      product 1.00 us against 0.47. Replacing it with a directly linked
+      libmpdec, or the GMP wrapper already in the tree, would save well under
+      a second across the whole suite. Worth doing if a second *oracle* is
+      wanted, since CPython `int` and libmpdec are the same code decimo is
+      measured against. Not worth doing for speed.
+
+- [ ] (20260828) **Cache the Mojo compilation cache in CI.** Mojo keeps a
+      content-addressed cache at `$MODULAR_HOME/cache/.mojo_cache`, which
+      under pixi lives inside `.pixi/envs/`. `setup-pixi` caches the
+      environment's *packages*; nothing caches this, so every CI job compiles
+      from cold. Measured on one test file, dependencies already warm:
+
+      | state                        | wall   |
+      | ---------------------------- | ------ |
+      | file not in cache            | 24.6 s |
+      | file in cache                | 2.7 s  |
+
+      Decimal128 is nine files and 470 s of CI, about 52 s a file on a macOS
+      runner, so a hit rate near one should take that job to well under two
+      minutes.
+
+      Three things that make it practical. One test file adds two entries and
+      47 MB, so a whole run's working set is a couple of GB -- inside GitHub's
+      10 GB per repository. Entries are flat, content-addressed files with no
+      absolute path in them, so they should restore onto a fresh runner. And
+      the toolchain hash is already in the directory name
+      (`1.0.<hash>-production`), which is the cache key.
+
+      Not yet proven: that a restored cache actually *hits* on another
+      machine. Verify with a spike before building anything on it.
+
+      **The cache never evicts**, and there is no size cap: `mojo`'s only
+      controls are `--print-cache-location` and `--clear-cache`, which is all
+      or nothing. 9,234 entries and 81 GB accumulated in eight days locally,
+      34.5 GB of it on one busy day. That is ordinary use rather than a leak
+      -- any change to `src/decimo` invalidates the package, so a full suite
+      run recompiles every test file, one to three GB a time, and a day of
+      library work is a dozen of those. A trivial edit recompiled five times
+      adds two entries and 1 MB, so it is not per-edit.
+
+      A CI cache therefore needs a pruning step or a rolling key, or it will
+      pass 10 GB the same way. Locally `mojo --clear-cache -f` empties it
+      without touching the environment, which `pixi clean` would also remove
+      but only by deleting `.pixi/` entirely.
+
 ## Done
 
 Kept as a record; the detail is in the plans.

@@ -61,7 +61,10 @@ def test_ntt_matches_schoolbook_on_odd_word_counts() raises:
     var word_counts = [1, 3, 5, 7, 33, 101]
     for i in range(len(word_counts)):
         for j in range(len(word_counts)):
-            assert_matches_schoolbook(word_counts[i] * 9, word_counts[j] * 9)
+            assert_matches_schoolbook(
+                word_counts[i] * BigUInt.DIGITS_PER_WORD,
+                word_counts[j] * BigUInt.DIGITS_PER_WORD,
+            )
 
 
 def test_ntt_matches_schoolbook_on_unequal_operands() raises:
@@ -78,7 +81,9 @@ def test_ntt_matches_schoolbook_above_the_dispatch_cutoff() raises:
     If the dispatcher stops choosing the transform at these sizes, this test
     would silently cover nothing, so the routing is asserted first.
     """
-    var word_counts = [2048, 4096, 5000]
+    # Above the measured crossover, and no larger than the schoolbook
+    # reference can afford to check.
+    var word_counts = [4072, 5000]
     for i in range(len(word_counts)):
         var count = word_counts[i]
         testing.assert_true(
@@ -89,17 +94,29 @@ def test_ntt_matches_schoolbook_above_the_dispatch_cutoff() raises:
                 + " words through the transform, so this test covers nothing"
             ),
         )
-        assert_matches_schoolbook(count * 9, count * 9)
+        assert_matches_schoolbook(
+            count * BigUInt.DIGITS_PER_WORD, count * BigUInt.DIGITS_PER_WORD
+        )
 
 
 def test_coefficients_for_words() raises:
-    """Two words give three coefficients, a lone word gives two."""
-    testing.assert_equal(biguint_ntt.coefficients_for_words(0), 0)
-    testing.assert_equal(biguint_ntt.coefficients_for_words(1), 2)
-    testing.assert_equal(biguint_ntt.coefficients_for_words(2), 3)
-    testing.assert_equal(biguint_ntt.coefficients_for_words(3), 5)
-    testing.assert_equal(biguint_ntt.coefficients_for_words(4), 6)
-    testing.assert_equal(biguint_ntt.coefficients_for_words(101), 152)
+    """A word cuts into a whole number of coefficients.
+
+    Derived rather than written out: at nine digits a word this was a pair
+    that gave three coefficients with one straddling the boundary, and at
+    eighteen it is one word giving three. Both are
+    `DIGITS_PER_WORD // DIGITS_PER_COEFFICIENT` once nothing straddles.
+    """
+    comptime PER_WORD = biguint_ntt.COEFFICIENTS_PER_WORD
+    testing.assert_equal(
+        BigUInt.DIGITS_PER_WORD,
+        PER_WORD * biguint_ntt.DIGITS_PER_COEFFICIENT,
+        "a word must cut into a whole number of coefficients",
+    )
+    for words in [0, 1, 2, 3, 4, 101]:
+        testing.assert_equal(
+            biguint_ntt.coefficients_for_words(words), words * PER_WORD
+        )
 
 
 def test_transform_length_is_a_power_of_two_and_long_enough() raises:
@@ -119,16 +136,40 @@ def test_transform_length_is_a_power_of_two_and_long_enough() raises:
 
 
 def test_dispatcher_prefers_toom3_below_the_crossover() raises:
-    """The measured crossover sits between 1024 and 2048 words."""
-    testing.assert_false(biguint_ntt.should_multiply_ntt(512, 512))
-    testing.assert_false(biguint_ntt.should_multiply_ntt(1024, 1024))
-    testing.assert_true(biguint_ntt.should_multiply_ntt(2048, 2048))
+    """The floor and the crossover are two different things.
+
+    `CUTOFF_NTT` is a floor below which the transform is never considered.
+    The crossover is where the cost model starts preferring it, and it sits
+    well above the floor. The sizes below are the ones actually timed for
+    `NTT_RELATIVE_COST`, so this fails if a re-tune changes the answer for a
+    size somebody measured.
+    """
+    testing.assert_false(
+        biguint_ntt.should_multiply_ntt(
+            biguint_ntt.CUTOFF_NTT - 1, biguint_ntt.CUTOFF_NTT - 1
+        ),
+        "below the floor the transform is not even considered",
+    )
+    testing.assert_false(
+        biguint_ntt.should_multiply_ntt(2036, 2036), "Toom-3 measured faster"
+    )
+    testing.assert_false(
+        biguint_ntt.should_multiply_ntt(3973, 1989), "Toom-3 measured faster"
+    )
+    testing.assert_true(
+        biguint_ntt.should_multiply_ntt(4072, 4072),
+        "the transform measured faster",
+    )
+    testing.assert_true(
+        biguint_ntt.should_multiply_ntt(4970, 2486),
+        "the transform measured faster",
+    )
 
 
 def test_multiply_routes_large_operands_through_the_transform() raises:
     """End to end: `multiply()` must stay correct once it starts using it."""
-    var x = BigUInt(build_digits(2100 * 9, 7))
-    var y = BigUInt(build_digits(2100 * 9, 5))
+    var x = BigUInt(build_digits(2100 * BigUInt.DIGITS_PER_WORD, 7))
+    var y = BigUInt(build_digits(2100 * BigUInt.DIGITS_PER_WORD, 5))
     var expected = biguint_arithmetics.multiply_slices_schoolbook(
         x, y, (0, len(x.words)), (0, len(y.words))
     )

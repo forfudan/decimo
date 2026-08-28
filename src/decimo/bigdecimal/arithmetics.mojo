@@ -525,7 +525,7 @@ def true_divide(
     # For other cases, we use `true_divide_general()` to handle the division
     # Note that this function already considers extra buffer digits.
     # Single-word / two-word / ≤4-word divisors are already routed by
-    # `BigUInt.floor_divide` (called via `//`) to `floor_divide_by_uint32`
+    # `BigUInt.floor_divide` (called via `//`) to `floor_divide_by_word`
     # / `_by_uint64` / `_by_uint128`, so the short-divisor fast path
     # is active end-to-end here without a dedicated BigDecimal branch.
     return true_divide_general(x, y, precision)
@@ -1094,8 +1094,8 @@ def _true_divide_inexact_truncated(
     )
 
 
-def true_divide_inexact_by_uint32(
-    x1: BigDecimal, y: UInt32, number_of_significant_digits: Int
+def true_divide_inexact_by_word(
+    x1: BigDecimal, y: BigUInt.Word, number_of_significant_digits: Int
 ) raises -> BigDecimal:
     """Returns the quotient of a BigDecimal divided by a small UInt32 integer.
 
@@ -1119,7 +1119,7 @@ def true_divide_inexact_by_uint32(
     debug_assert[assert_mode="none"](
         y != 0,
         (
-            "bigdecimal.arithmetics.true_divide_inexact_by_uint32(): Division"
+            "bigdecimal.arithmetics.true_divide_inexact_by_word(): Division"
             " by zero"
         ),
     )
@@ -1150,7 +1150,7 @@ def true_divide_inexact_by_uint32(
         scaled_x1.multiply_by_power_of_ten_inplace(buffer_digits)
 
     # O(n) division by single word — the key speedup
-    var quotient = biguint_arithmetics.floor_divide_by_uint32(scaled_x1, y)
+    var quotient = biguint_arithmetics.floor_divide_by_word(scaled_x1, y)
     var result_scale = buffer_digits + x1.scale
 
     var result_digits = quotient.number_of_digits()

@@ -538,7 +538,7 @@ Two things were not obvious. The exactness multiply was worth 1-2%, not the
 that is already superlinear. And handing the remainder back cost *more* than
 the multiply saved until the buffer stopped being reallocated: the argument
 arrives holding a buffer, and assigning a fresh `BigUInt` to it frees that one
-and allocates another. `overwrite_with_uint32()` and
+and allocates another. `overwrite_with_word()` and
 `BigUInt.zero_with_capacity()` turn that into a store, which is where the
 short-divisor gain actually came from (9-digit divide 168 ns -> 131 ns).
 

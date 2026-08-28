@@ -371,21 +371,21 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
 
         # 4. Pack ASCII bytes directly into the coefficient's words
         var number_of_words = math.ceildiv(num_digits, BigUInt.DIGITS_PER_WORD)
-        var words = List[UInt32](capacity=number_of_words)
+        var words = List[BigUInt.Word](capacity=number_of_words)
         var end = num_digits
         while end >= BigUInt.DIGITS_PER_WORD:
             var start = end - BigUInt.DIGITS_PER_WORD
-            var word: UInt32 = 0
+            var word: BigUInt.Word = 0
             for j in range(start, end):
-                word = word * 10 + UInt32(
+                word = word * 10 + BigUInt.Word(
                     ptr[unsafe_offset=digit_start + j] - ASCII_ZERO
                 )
             words.append(word)
             end = start
         if end > 0:
-            var word: UInt32 = 0
+            var word: BigUInt.Word = 0
             for j in range(0, end):
-                word = word * 10 + UInt32(
+                word = word * 10 + BigUInt.Word(
                     ptr[unsafe_offset=digit_start + j] - ASCII_ZERO
                 )
             words.append(word)

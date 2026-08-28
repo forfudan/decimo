@@ -67,14 +67,20 @@ def sin(x: BigDecimal, precision: Int) raises -> BigDecimal:
     if x.is_zero():
         return BigDecimal(BigUInt.zero())
 
-    var bdec_2 = BigDecimal.from_raw_components(UInt32(2), scale=0, sign=False)
-    var bdec_4 = BigDecimal.from_raw_components(UInt32(4), scale=0, sign=False)
-    var bdec_6 = BigDecimal.from_raw_components(UInt32(6), scale=0, sign=False)
+    var bdec_2 = BigDecimal.from_raw_components(
+        BigUInt.Word(2), scale=0, sign=False
+    )
+    var bdec_4 = BigDecimal.from_raw_components(
+        BigUInt.Word(4), scale=0, sign=False
+    )
+    var bdec_6 = BigDecimal.from_raw_components(
+        BigUInt.Word(6), scale=0, sign=False
+    )
     var bdec_pi = bigdecimal_constants.pi(precision=working_precision)
     var bdec_2pi = bdec_2.multiply(bdec_pi)
     var bdec_pi_div_2 = bdec_pi.true_divide(bdec_2, precision=working_precision)
     var bdec_1d6 = BigDecimal.from_raw_components(
-        UInt32(16), scale=1, sign=False
+        BigUInt.Word(16), scale=1, sign=False
     )
     var bdec_pi_div_4 = bdec_pi.true_divide(bdec_4, precision=working_precision)
 
@@ -199,10 +205,10 @@ def sin_taylor_series(
         n += 2
         # Use inplace multiply to avoid BigDecimal allocation
         term.multiply_inplace(x_squared)
-        # Use O(n) uint32 division instead of full BigDecimal divide
+        # Use O(n) single-word division instead of full BigDecimal divide
         # n*(n-1) fits in UInt32 for any practical Taylor series iteration count
-        term = term.true_divide_inexact_by_uint32(
-            UInt32(n * (n - 1)), working_precision
+        term = term.true_divide_inexact_by_word(
+            BigUInt.Word(n * (n - 1)), working_precision
         )
         if sign == 1:
             result.add_inplace(term)
@@ -278,10 +284,12 @@ def cos_taylor_series(
 
     if x.is_zero():
         return BigDecimal.from_raw_components(
-            UInt32(1), scale=minimum_precision, sign=x.sign
+            BigUInt.Word(1), scale=minimum_precision, sign=x.sign
         )
 
-    var bdec_1 = BigDecimal.from_raw_components(UInt32(1), scale=0, sign=False)
+    var bdec_1 = BigDecimal.from_raw_components(
+        BigUInt.Word(1), scale=0, sign=False
+    )
     var term = bdec_1.copy()  # Current term: x^n / n!
     var result = bdec_1.copy()  # Start with 1
     var x_squared = x.multiply(x)
@@ -294,9 +302,9 @@ def cos_taylor_series(
         n += 2  # Next even power: 2, 4, 6, 8, ...
         # Use inplace multiply to avoid BigDecimal allocation
         term.multiply_inplace(x_squared)
-        # Use O(n) uint32 division instead of full BigDecimal divide
-        term = term.true_divide_inexact_by_uint32(
-            UInt32(n * (n - 1)), working_precision
+        # Use O(n) single-word division instead of full BigDecimal divide
+        term = term.true_divide_inexact_by_word(
+            BigUInt.Word(n * (n - 1)), working_precision
         )
 
         if sign == 1:
@@ -398,7 +406,9 @@ def tan_cot(x: BigDecimal, precision: Int, is_tan: Bool) raises -> BigDecimal:
             )
 
     var pi = bigdecimal_constants.pi(precision=working_precision_pi)
-    var bdec_2 = BigDecimal.from_raw_components(UInt32(2), scale=0, sign=False)
+    var bdec_2 = BigDecimal.from_raw_components(
+        BigUInt.Word(2), scale=0, sign=False
+    )
     var two_pi = bdec_2.multiply(pi)
     var pi_div_2 = pi.true_divide(bdec_2, precision=working_precision_pi)
 
@@ -526,10 +536,14 @@ def arctan(x: BigDecimal, precision: Int) raises -> BigDecimal:
     comptime BUFFER_DIGITS = 9  # word-length, easy to append and trim
     var working_precision = precision + BUFFER_DIGITS
 
-    var bdec_1 = BigDecimal.from_raw_components(UInt32(1), scale=0, sign=False)
-    var bdec_2 = BigDecimal.from_raw_components(UInt32(2), scale=0, sign=False)
+    var bdec_1 = BigDecimal.from_raw_components(
+        BigUInt.Word(1), scale=0, sign=False
+    )
+    var bdec_2 = BigDecimal.from_raw_components(
+        BigUInt.Word(2), scale=0, sign=False
+    )
     var bdec_0d5 = BigDecimal.from_raw_components(
-        UInt32(5), scale=1, sign=False
+        BigUInt.Word(5), scale=1, sign=False
     )
 
     var result: BigDecimal
@@ -613,7 +627,7 @@ def arctan_taylor_series(
 
     if x.is_zero():
         return BigDecimal.from_raw_components(
-            UInt32(0), scale=minimum_precision, sign=x.sign
+            BigUInt.Word(0), scale=minimum_precision, sign=x.sign
         )
 
     var term = x.copy()  # x^n
@@ -630,9 +644,9 @@ def arctan_taylor_series(
         n += 2
         # Use inplace multiply to avoid BigDecimal allocation
         term.multiply_inplace(x_squared)  # x^n = x^(n-2) * x^2
-        # Use O(n) uint32 division instead of full BigDecimal divide
-        term_divided = term.true_divide_inexact_by_uint32(
-            UInt32(n), working_precision
+        # Use O(n) single-word division instead of full BigDecimal divide
+        term_divided = term.true_divide_inexact_by_word(
+            BigUInt.Word(n), working_precision
         )  # x^n / n
         if sign == 1:
             result.add_inplace(term_divided)

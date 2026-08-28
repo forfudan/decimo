@@ -33,6 +33,27 @@ jobs:
         with:
           cache: true
           activate-environment: true
+      # See `.github/actions/setup-decimo` for why this exists and why it is
+      # restored after `setup-pixi`. This job compiles the package itself, so
+      # it wants its own entry rather than a test job's.
+      - name: Restore the Mojo compilation cache
+        uses: actions/cache@v4
+        with:
+          path: .pixi/envs/default/share/max/cache/.mojo_cache
+          key: mojo-cache-${{ runner.os }}-${{ hashFiles('pixi.lock') }}-build-${{ github.sha }}
+          restore-keys: |
+            mojo-cache-${{ runner.os }}-${{ hashFiles('pixi.lock') }}-build-
+      - name: Trim cache entries older than a week
+        run: |
+          cache_dir=.pixi/envs/default/share/max/cache/.mojo_cache
+          if [[ -d $cache_dir ]]; then
+            before=$(du -sm "$cache_dir" | cut -f1)
+            find "$cache_dir" -type f -mtime +7 -delete 2>/dev/null || true
+            find "$cache_dir" -type d -empty -delete 2>/dev/null || true
+            echo "Mojo cache restored: ${before} MB, $(du -sm "$cache_dir" | cut -f1) MB after trimming"
+          else
+            echo "Mojo cache: cold, nothing restored"
+          fi
       - name: Install pre-commit
         run: pip install pre-commit
       - name: Format check

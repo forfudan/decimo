@@ -290,7 +290,7 @@ struct BigDecimal(
 
     @staticmethod
     def from_raw_components(
-        var words: List[UInt32], scale: Int = 0, sign: Bool = False
+        var words: List[BigUInt.Word], scale: Int = 0, sign: Bool = False
     ) -> Self:
         """**UNSAFE** Creates a BigDecimal from its raw components.
         The raw components are words, scale, and sign.
@@ -314,7 +314,7 @@ struct BigDecimal(
 
     @staticmethod
     def from_raw_components(
-        word: UInt32, scale: Int = 0, sign: Bool = False
+        word: BigUInt.Word, scale: Int = 0, sign: Bool = False
     ) -> Self:
         """**UNSAFE** Creates a BigDecimal from its raw components.
         The raw components are a single word, scale, and sign.
@@ -490,7 +490,7 @@ struct BigDecimal(
             number_of_digits, BigUInt.DIGITS_PER_WORD
         )
 
-        # Packed straight into the coefficient. Filling a `List[UInt32]` and
+        # Packed straight into the coefficient. Filling a `List[BigUInt.Word]` and
         # handing it to `raw_words=` allocated once for the list and again to
         # copy it into place.
         var coefficient = BigUInt(uninitialized_capacity=number_of_words)
@@ -499,15 +499,15 @@ struct BigDecimal(
         var start: Int
         while end >= BigUInt.DIGITS_PER_WORD:
             start = end - BigUInt.DIGITS_PER_WORD
-            var word: UInt32 = 0
+            var word: BigUInt.Word = 0
             for i in range(start, end):
-                word = word * 10 + UInt32(coef[i])
+                word = word * 10 + BigUInt.Word(coef[i])
             coefficient.words.append(word)
             end = start
         if end > 0:
-            var word: UInt32 = 0
+            var word: BigUInt.Word = 0
             for i in range(end):
-                word = word * 10 + UInt32(coef[i])
+                word = word * 10 + BigUInt.Word(coef[i])
             coefficient.words.append(word)
 
         coefficient.remove_leading_empty_words()
@@ -610,26 +610,26 @@ struct BigDecimal(
                 num_digits, BigUInt.DIGITS_PER_WORD
             )
 
-            var coefficient_words = List[UInt32](capacity=number_of_words)
+            var coefficient_words = List[BigUInt.Word](capacity=number_of_words)
 
             # Process digits from right to left, one word of digits at a time
             var end = num_digits
             var start: Int
             while end >= BigUInt.DIGITS_PER_WORD:
                 start = end - BigUInt.DIGITS_PER_WORD
-                var word: UInt32 = 0
+                var word: BigUInt.Word = 0
                 for i in range(start, end):
                     var digit = Int(py=digits_tuple[i])
-                    word = word * 10 + UInt32(digit)
+                    word = word * 10 + BigUInt.Word(digit)
                 coefficient_words.append(word)
                 end = start
 
             # Handle remaining digits
             if end > 0:
-                var word: UInt32 = 0
+                var word: BigUInt.Word = 0
                 for i in range(0, end):
                     var digit = Int(py=digits_tuple[i])
-                    word = word * 10 + UInt32(digit)
+                    word = word * 10 + BigUInt.Word(digit)
                 coefficient_words.append(word)
 
             var coefficient = BigUInt(raw_words=coefficient_words^)
@@ -2318,11 +2318,11 @@ struct BigDecimal(
         )
 
     @always_inline
-    def true_divide_inexact_by_uint32(
-        self, y: UInt32, number_of_significant_digits: Int
+    def true_divide_inexact_by_word(
+        self, y: BigUInt.Word, number_of_significant_digits: Int
     ) raises -> Self:
         """Returns the result of division by a small UInt32 integer.
-        See `arithmetics.true_divide_inexact_by_uint32()` for more information.
+        See `arithmetics.true_divide_inexact_by_word()` for more information.
 
         Args:
             y: The small unsigned integer divisor.
@@ -2334,7 +2334,7 @@ struct BigDecimal(
         Raises:
             ZeroDivisionError: If `y` is zero.
         """
-        return bigdecimal_arithmetics.true_divide_inexact_by_uint32(
+        return bigdecimal_arithmetics.true_divide_inexact_by_word(
             self, y, number_of_significant_digits
         )
 
@@ -2901,7 +2901,7 @@ struct BigDecimal(
         print(
             (
                 "BigDecimal(\n    coefficient=BigUInt(\n       "
-                " words=List[UInt32](\n            "
+                " words=List[BigUInt.Word](\n            "
             ),
             end="",
         )
@@ -3032,33 +3032,23 @@ struct BigDecimal(
         )
 
         var kept = len(self.coefficient.words) - number_of_words_to_remove
-        var words = List[UInt32](capacity=kept)
+        var words = List[BigUInt.Word](capacity=kept)
         for index in range(
             number_of_words_to_remove, len(self.coefficient.words)
         ):
             words.append(self.coefficient.words[index])
         var coefficient = BigUInt(raw_words=words^)
 
-        if number_of_remaining_digits_to_remove == 0:
-            pass
-        elif number_of_remaining_digits_to_remove == 1:
-            coefficient = coefficient // BigUInt(raw_words=[UInt32(10)])
-        elif number_of_remaining_digits_to_remove == 2:
-            coefficient = coefficient // BigUInt(raw_words=[UInt32(100)])
-        elif number_of_remaining_digits_to_remove == 3:
-            coefficient = coefficient // BigUInt(raw_words=[UInt32(1_000)])
-        elif number_of_remaining_digits_to_remove == 4:
-            coefficient = coefficient // BigUInt(raw_words=[UInt32(10_000)])
-        elif number_of_remaining_digits_to_remove == 5:
-            coefficient = coefficient // BigUInt(raw_words=[UInt32(100_000)])
-        elif number_of_remaining_digits_to_remove == 6:
-            coefficient = coefficient // BigUInt(raw_words=[UInt32(1_000_000)])
-        elif number_of_remaining_digits_to_remove == 7:
-            coefficient = coefficient // BigUInt(raw_words=[UInt32(10_000_000)])
-        else:  # number_of_remaining_digits_to_remove == 8
-            coefficient = coefficient // BigUInt(
-                raw_words=[UInt32(100_000_000)]
-            )
+        # `number_of_remaining_digits_to_remove` runs from 0 to
+        # `DIGITS_PER_WORD - 1`. This used to be an `if` chain stopping at 8,
+        # which was every case a nine-digit word could produce; a wider word
+        # folded all the larger shifts into the last branch and divided by the
+        # wrong power of ten.
+        if number_of_remaining_digits_to_remove > 0:
+            var divisor = BigUInt.Word(1)
+            for _ in range(number_of_remaining_digits_to_remove):
+                divisor *= 10
+            coefficient = coefficient // BigUInt(raw_words=[divisor])
 
         return Self(
             coefficient^,
@@ -3077,14 +3067,14 @@ struct BigDecimal(
 
         # Count trailing zero words
         var number_of_zero_words = 0
-        while self.coefficient.words[number_of_zero_words] == UInt32(0):
+        while self.coefficient.words[number_of_zero_words] == BigUInt.Word(0):
             number_of_zero_words += 1
 
         # Count trailing zeros in the last non-zero word
         var number_of_trailing_zeros = 0
         var last_non_zero_word = self.coefficient.words[number_of_zero_words]
-        while (last_non_zero_word % UInt32(10)) == 0:
-            last_non_zero_word = last_non_zero_word // UInt32(10)
+        while (last_non_zero_word % BigUInt.Word(10)) == 0:
+            last_non_zero_word = last_non_zero_word // BigUInt.Word(10)
             number_of_trailing_zeros += 1
 
         return (
@@ -3206,36 +3196,58 @@ def _insert_digit_separators(s: String, delimiter: String) -> String:
 # ===----------------------------------------------------------------------=== #
 # Helpers for exact float conversion
 #
-# `multiply_by_uint32_inplace()` needs its multiplier below BASE, or the carry
+# `multiply_by_word_inplace()` needs its multiplier below BASE, or the carry
 # out of a word no longer fits in one. So both of these step by the largest
 # power that stays under 10^9 and finish with the remainder.
 # ===----------------------------------------------------------------------=== #
 
 
+def _largest_power_below_base[base: Int]() -> BigUInt.Word:
+    """The largest power of `base` that a word holds, as the word itself."""
+    comptime FACTOR = BigUInt.Word(base)
+    var value = BigUInt.Word(1)
+    while value <= BigUInt.Word(BigUInt.BASE_MAX) // FACTOR:
+        value *= FACTOR
+    return value
+
+
+def _steps_below_base[base: Int]() -> Int:
+    """How many times `base` multiplies into one word."""
+    comptime FACTOR = BigUInt.Word(base)
+    var value = BigUInt.Word(1)
+    var steps = 0
+    while value <= BigUInt.Word(BigUInt.BASE_MAX) // FACTOR:
+        value *= FACTOR
+        steps += 1
+    return steps
+
+
 def _multiply_by_power_of_five(mut x: BigUInt, n: Int):
     """Multiplies `x` by `5^n` in place."""
-    comptime STEP = 12  # 5^12 = 244140625, and 5^13 is over BASE
-    comptime STEP_FACTOR = UInt32(244_140_625)
+    # Derived rather than written out: a nine-digit word took 5^12 and an
+    # eighteen-digit one takes 5^25, and neither number should be a literal.
+    comptime STEP = _steps_below_base[5]()
+    comptime STEP_FACTOR = _largest_power_below_base[5]()
     var remaining = n
     while remaining >= STEP:
-        biguint_arithmetics.multiply_by_uint32_inplace(x, STEP_FACTOR)
+        biguint_arithmetics.multiply_by_word_inplace(x, STEP_FACTOR)
         remaining -= STEP
     if remaining > 0:
-        var factor = UInt32(1)
+        var factor = BigUInt.Word(1)
         for _ in range(remaining):
             factor *= 5
-        biguint_arithmetics.multiply_by_uint32_inplace(x, factor)
+        biguint_arithmetics.multiply_by_word_inplace(x, factor)
 
 
 def _multiply_by_power_of_two(mut x: BigUInt, n: Int):
     """Multiplies `x` by `2^n` in place."""
-    comptime STEP = 29  # 2^29 = 536870912, and 2^30 is over BASE
-    comptime STEP_FACTOR = UInt32(536_870_912)
+    comptime STEP = _steps_below_base[2]()
+    comptime STEP_FACTOR = _largest_power_below_base[2]()
     var remaining = n
     while remaining >= STEP:
-        biguint_arithmetics.multiply_by_uint32_inplace(x, STEP_FACTOR)
+        biguint_arithmetics.multiply_by_word_inplace(x, STEP_FACTOR)
         remaining -= STEP
     if remaining > 0:
-        biguint_arithmetics.multiply_by_uint32_inplace(
-            x, UInt32(1) << UInt32(remaining)
+        biguint_arithmetics.multiply_by_word_inplace(
+            x, BigUInt.Word(1) << BigUInt.Word(remaining)
         )

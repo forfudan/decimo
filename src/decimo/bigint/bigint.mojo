@@ -629,11 +629,10 @@ struct BigInt(
         # A chunk is `10^18`, which is `(10^9)^2`, so each one splits into
         # exactly two of `BigUInt`'s words. That is the whole reason the chunk
         # is eighteen digits rather than the nineteen a word would hold.
-        var words = List[UInt32](capacity=2 * len(chunks))
+        # A decimal chunk is 10^18, which is exactly one `BigUInt` word.
+        var words = List[BigUInt.Word](capacity=len(chunks))
         for i in range(len(chunks)):
-            var chunk = chunks[i]
-            words.append(UInt32(chunk % 1_000_000_000))
-            words.append(UInt32(chunk // 1_000_000_000))
+            words.append(BigUInt.Word(chunks[i]))
         while len(words) > 1 and words[len(words) - 1] == 0:
             words.shrink(len(words) - 1)
         return BigUInt(raw_words=words^)
