@@ -184,15 +184,21 @@ python = "3.14.*"
 
 # The tasks call `mojo` and `python` directly rather than through `pixi run`,
 # which would step back into the default environment and its interpreter.
-# `MACOSX_DEPLOYMENT_TARGET` makes the extension load on macOS 14 and later
-# rather than only on the version of the machine that built it; the wheel is
-# tagged to match (see `hatch_build.py`). Linux ignores it.
+# `MACOSX_DEPLOYMENT_TARGET` decides the oldest macOS the wheel says it runs
+# on, and the wheel is tagged to match (see `hatch_build.py`); without it the
+# tag is the build machine's own version and the wheel is refused everywhere
+# older. Eleven, because that is what the three Mojo runtime libraries the
+# wheel carries are built for (`otool -l` says `minos 11.0`), because the
+# extension itself calls nothing newer than `dlopen` and `stat`, and because
+# macOS 11 is where Apple silicon starts. A higher floor is not free: pixi
+# resolves PyPI wheels against macOS 13 by default, so a wheel tagged 14
+# cannot be installed by a pixi project at all. Linux ignores this.
 [feature.publish.tasks.release]
 cmd = """mojo precompile src/decimo -o tests/decimo.mojoc \
 && mojo build python/decimo_module.mojo --emit shared-lib -I tests -o python/src/decimo/_decimo.so \
 && python python/tests/test_decimo.py \
 && python python/build_wheel.py"""
-env = { MACOSX_DEPLOYMENT_TARGET = "14.0" }
+env = { MACOSX_DEPLOYMENT_TARGET = "11.0" }
 
 [environments]
 benchdoc = ["benchdoc"]

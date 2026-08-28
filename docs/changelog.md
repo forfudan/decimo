@@ -64,8 +64,10 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
    `main` publishes `<version>.devYYYYMMDDHHMMSS`, the second only once the
    repository variable `PUBLISH_DEV` is set. The wheel takes its version
    from the library's, so `pip show decimo` and the CLI's `--version` say
-   the same thing, and a tag that disagrees with `pixi.toml` stops the run. The extension is linked for macOS 14 and the
-   wheel is tagged so, instead of for the build machine's version. The Linux
+   the same thing, and a tag that disagrees with `pixi.toml` stops the run. The extension is linked for macOS 11 -- what the Mojo
+   runtime libraries in the wheel are built for -- and the wheel is tagged so,
+   instead of for the build machine's version, which no other machine accepts
+   and which pixi, resolving against macOS 13, refuses outright. The Linux
    path (`auditwheel`, `manylinux_2_35`) is written in `build_wheel.py` but
    not yet verified, so it is not in the matrix.
 
