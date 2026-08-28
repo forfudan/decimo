@@ -9,7 +9,7 @@
 > ⚠️ **Development release.** The API is settled enough to use, but the
 > versions carry a timestamp: `0.14.0.devYYYYMMDDHHMMSS`, where `0.14.0` is
 > the version of the Mojo library the wheel packages. Wheels: macOS arm64
-> (14 and later), CPython 3.13 and 3.14. Everywhere else, build from source.
+> (11 and later), CPython 3.13 and 3.14. Everywhere else, build from source.
 
 Change one import and your program keeps working:
 
@@ -118,7 +118,7 @@ written against `decimal` still catch.
 pip install decimo
 ```
 
-Wheels are built for macOS arm64 (macOS 14 and later), for CPython 3.13 and
+Wheels are built for macOS arm64 (macOS 11 and later), for CPython 3.13 and
 3.14. On anything else -- Linux included, until its build is verified --
 build from source with [pixi](https://pixi.sh):
 

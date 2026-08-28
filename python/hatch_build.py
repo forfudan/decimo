@@ -8,7 +8,7 @@ happily install a macOS arm64 binary on a Linux box.
 The platform part is spelled out rather than inferred. Inferred, it is the
 version of macOS the build ran on -- `macosx_26_0` on a current machine --
 and pip then refuses the wheel on anything older. The extension is linked
-for `MACOSX_DEPLOYMENT_TARGET` (14.0, set by the `release` task), so that is
+for `MACOSX_DEPLOYMENT_TARGET` (11.0, set by the `release` task), so that is
 what the tag says. On Linux the tag is `linux_x86_64` here and `auditwheel`
 replaces it with the `manylinux` one after the build.
 """
