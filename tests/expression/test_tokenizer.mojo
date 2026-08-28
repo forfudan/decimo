@@ -220,9 +220,17 @@ def test_double_star_as_power() raises:
 
 
 def test_caret_precedence() raises:
-    """Verify the caret token has precedence 3."""
+    """The caret binds tightest, above a unary minus."""
     var toks = tokenize("^")
-    testing.assert_equal(toks[0].precedence(), 3, "^ precedence")
+    testing.assert_equal(toks[0].precedence(), 4, "^ precedence")
+    var neg = tokenize("-")
+    testing.assert_equal(neg[0].precedence(), 3, "unary minus precedence")
+    testing.assert_true(
+        neg[0].precedence() < toks[0].precedence(), "sign below ^"
+    )
+    testing.assert_true(
+        neg[0].precedence() > tokenize("*")[0].precedence(), "sign above *"
+    )
 
 
 def test_caret_right_associative() raises:

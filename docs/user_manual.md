@@ -934,7 +934,24 @@ print(x.to_string(force_plain=True))              # Suppress auto-scientific not
 ```
 
 Default output follows CPython's `Decimal.__str__()` rules: plain notation when
-feasible, scientific notation when there would be more than 6 leading zeros.
+feasible, scientific notation when there would be more than 6 leading zeros
+or the exponent is positive.
+
+`Dec128` does not switch: it is bounded to 28 digits and a scale of 0 to 28,
+so plain notation is never longer than 30 characters, and it always prints
+plain (the .NET `System.Decimal` rule). The two types therefore print the
+same value differently below `1E-6` and at a positive exponent:
+
+```mojo
+print(Decimal("1E-7"))                  # 1E-7
+print(Dec128("1E-7"))                   # 0.0000001
+print(Decimal("1E+28"))                 # 1E+28
+print(Dec128("1E+28"))                  # 10000000000000000000000000000
+print(Decimal("1E-6"), Dec128("1E-6"))  # 0.000001 0.000001
+```
+
+To get the other form: `Decimal.to_string(force_plain=True)` and
+`Dec128.to_string(scientific=True)`.
 
 Convenience aliases:
 
@@ -1174,8 +1191,9 @@ print(eval("1/3", precision=5, rounding_mode=ROUND_CEILING))
 
 #### What you can write <!-- omit from toc -->
 
-The operators are `+`, `-`, `*`, `/`, `^` (power), a unary minus, and
-parentheses. The constants are `pi` and `e`. The functions are `sqrt`, `cbrt`,
+The operators are `+`, `-`, `*`, `/`, `^` (power), a unary minus or plus,
+and parentheses. A unary minus binds looser than `^`, as in Python: `-2^2` is
+`-4`. The constants are `pi` and `e`. The functions are `sqrt`, `cbrt`,
 `root(x, n)`, `ln`, `log(x, base)`, `log10`, `exp`, `sin`, `cos`, `tan`, `cot`,
 `csc`, and `abs`.
 

@@ -272,25 +272,30 @@ def test_negative_precision_is_refused() raises:
     both types.
     """
     print("test_negative_precision_is_refused ... ", end="")
-    var raised = 0
+    # Each call must raise the validation error itself, not fail for some
+    # other reason (MPFR missing, handle pool empty) that a broad catch would
+    # count as a pass.
+    var messages = List[String]()
     try:
         _ = BigFloat("2", precision=-1)
+        messages.append(String("no error"))
     except e:
-        raised += 1
+        messages.append(String(e))
     try:
         _ = BigFloat(2, precision=-1)
+        messages.append(String("no error"))
     except e:
-        raised += 1
+        messages.append(String(e))
     try:
         _ = BigFloat.pi(-1)
+        messages.append(String("no error"))
     except e:
-        raised += 1
-    if raised != 3:
-        raise Error(
-            "FAIL test_negative_precision_is_refused: only "
-            + String(raised)
-            + " of 3 raised"
-        )
+        messages.append(String(e))
+    for message in messages:
+        if "Precision must be non-negative" not in message:
+            raise Error(
+                "FAIL test_negative_precision_is_refused: got '" + message + "'"
+            )
     _ = BigFloat("2", precision=0)
     print("OK")
 

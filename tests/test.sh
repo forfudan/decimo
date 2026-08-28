@@ -35,6 +35,9 @@
 #                        the number of logical CPUs locally, and to 1 when CI
 #                        is set. Output is buffered per file and replayed in
 #                        the original order either way.
+#   DECIMO_TEST_NO_CACHE=1
+#                        Do not keep the built test binaries in `temp/tests`
+#                        (see the binary cache below).
 #
 # On where the time goes: almost none of it is the tests. The five suites that
 # compare against Python report the largest numbers in the harness output, but
@@ -52,10 +55,10 @@ SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$REPO_ROOT"
 
 # ── Parallelism ──────────────────────────────────────────────────────────────
-# Every Mojo test file is its own `mojo run` process, and on a warm compile
-# cache that process spends far more time starting up than running tests: the
+# Every Mojo test file is its own compile-and-run, and on a warm compile
+# cache that process spends far more time compiling than running tests: the
 # whole core suite is ~0.8 s of test bodies inside ~71 s of wall clock, i.e.
-# ~99% fixed per-file overhead. The files are independent, so they can run
+# ~99% fixed per-file overhead (the binary cache below removes it on re-runs). The files are independent, so they can run
 # concurrently, and doing so is the only lever that matters: 67 s sequentially
 # against 11 s on 14 cores.
 #
@@ -117,8 +120,35 @@ ensure_decimo_package() {
 
 # ── Suite definitions ────────────────────────────────────────────────────────
 
+# ── Binary cache ─────────────────────────────────────────────────────────────
+# What a test file costs is compiling it, not running it: a warm `mojo run` is
+# about 1.1 s per file and the tests inside take milliseconds. Each file is
+# therefore built once to `temp/tests/<name>` and the binary is reused until
+# the file or `decimo.mojoc` is newer than it. A re-run with nothing changed
+# drops from about 8 s to about 1 s. It does nothing for the first run after an
+# edit (a warm `mojo build` costs the same as `mojo run`), and nothing after a
+# `src` change, which rebuilds the package and so every binary.
+# `DECIMO_TEST_NO_CACHE=1` builds and runs without keeping anything.
+TEST_BIN_DIR="temp/tests"
+
+test_binary_path() {
+    printf '%s/%s' "$TEST_BIN_DIR" "$(printf '%s' "${1%.mojo}" | tr '/' '_')"
+}
+
+test_binary_is_fresh() {
+    local bin="$1" f="$2"
+    [[ -x "$bin" && "$bin" -nt "$f" && "$bin" -nt tests/decimo.mojoc ]]
+}
+
 run_one_mojo_file() {
     local f="$1"
+    local bin
+    bin=$(test_binary_path "$f")
+    if [[ -z "${DECIMO_TEST_NO_CACHE:-}" ]] && test_binary_is_fresh "$bin" "$f"; then
+        "$bin"
+        return $?
+    fi
+    mkdir -p "$TEST_BIN_DIR"
     # Retry once on transient Python init crash (libpython sporadic load failure).
     local attempt=1
     local max_attempts=2
@@ -132,7 +162,9 @@ run_one_mojo_file() {
         # two produce identical output on a failing assertion -- the file and
         # line in an assert message come from the assert, not from the debug
         # info. See the note above `DECIMO_TEST_JOBS`.
-        pixi run mojo run -I tests -D ASSERT=all --debug-level=line-tables "$f" \
+        pixi run mojo build -I tests -D ASSERT=all --debug-level=line-tables \
+            -o "$bin" "$f" \
+            && "$bin" \
             && break
         local rc=$?
         if (( attempt < max_attempts )); then

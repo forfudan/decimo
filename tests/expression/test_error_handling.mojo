@@ -225,9 +225,13 @@ def test_leading_slash() raises:
 # ===----------------------------------------------------------------------=== #
 
 
-def test_double_plus() raises:
-    """1 ++ should fail: the second + has no left operand."""
-    assert_error_contains("1 ++ 2", "missing operand")
+def test_double_plus_is_a_unary_plus() raises:
+    """`1 ++ 2` is `1 + (+2)`: the second `+` is a sign and does nothing.
+
+    It used to be rejected with "missing operand". A trailing `+` still is.
+    """
+    testing.assert_equal(String(evaluate("1 ++ 2")), "3")
+    assert_error_contains("1 +", "missing operand")
 
 
 def test_double_star() raises:

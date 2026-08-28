@@ -917,6 +917,28 @@ Four separate measurements this day were wrong before they were right:
 The reliable shapes: make the sink depend on a value the callee computed, and
 compare two builds alternated in one session.
 
+### `INLINE_WORDS_BIGUINT` stays at 5 (20260828)
+
+Sweep of 5, 6 and 8 inline words on the Python binding (`compare.py`, two
+runs, best of five inside each) and a list of 100 000 `Decimal`s sorted and
+summed:
+
+| workload                       | 5       | 6       | 8       |
+| ------------------------------ | ------- | ------- | ------- |
+| add/sub/mul/div, 28 digits     | 70 ns   | 72 ns   | 75 ns   |
+| add/sub/mul/div, 200 digits    | 308 ns  | 306 ns  | 305 ns  |
+| e series, 500 digits           | 201 us  | 203 us  | 208 us  |
+| sqrt Newton, 1000 digits       | 146 us  | 148 us  | 147 us  |
+| sort 100 000 x 28 digits       | 28.4 ms | 27.5 ms | 27.8 ms |
+| sum 100 000 x 100 digits       | 12.3 ms | 11.6 ms | 7.6 ms  |
+
+Everything but the last row is inside the run-to-run noise (the 28-digit
+micro moved from 105 ns to 70 ns between two runs of the same build). The one
+real effect is at 8 words: a 100-digit sum stops allocating its results and
+gains 40%. That is one synthetic workload against a struct 24 bytes fatter
+for every 28-digit value, which is the stated goal, so 5 stays. Revisit only
+with a real workload that holds 100-digit values in bulk.
+
 ### Two allocations to carry one word, in four places (20260827)
 
 `WordList` made a pattern expensive that had been merely wasteful. Anything
@@ -1155,7 +1177,13 @@ process start, compile-cache validation, `decimo.mojoc` load and libpython
 init. A bare `mojo run` on a two-line hello-world is already 0.27 s; a decimo
 test file that asserts nothing measurable still costs ~0.6 s.
 
-Nothing inside the tests is worth optimising at this ratio. The lever is to
+Nothing inside the tests is worth optimising at this ratio. The cost is the
+test file compiling, not the process: a warm `mojo run` is ~1.1 s per file
+and a cold one 6-12 s, of which the flags are at most a quarter. Merging
+files does not help cold (it goes with body size, not file count). So
+`tests/test.sh` keeps each built test binary in `temp/tests/` and reuses it
+until the file or `decimo.mojoc` changes: a re-run with nothing changed is
+2.5 s for the whole suite. The other lever is to
 stop paying that cost 50 times in series. The files are independent, so
 `tests/test.sh` runs `DECIMO_TEST_JOBS` of them concurrently, buffering each
 file's output and replaying it whole, in the original order, so the transcript

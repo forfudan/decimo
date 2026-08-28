@@ -17,6 +17,7 @@
 """Implements exponential functions for the BigDecimal type."""
 
 from std import math
+from std.ffi import _Global
 
 from decimo.biguint.biguint import BigUInt
 import decimo.biguint.arithmetics as biguint_arithmetics
@@ -75,6 +76,10 @@ struct MathCache:
     Since Mojo does not support module-level mutable variables, this struct
     provides a way to cache computed values of ln(2) and ln(1.25) across
     multiple function calls, avoiding redundant computation.
+
+    The two-argument `ln()`, `log()` and `log10()` share one process-wide
+    instance, held in `std.ffi._Global` (see `_SHARED_MATH_CACHE`). Pass
+    your own cache to the three-argument `ln()` to keep separate state.
 
     The cache automatically handles precision upgrades: if a cached value was
     computed at precision P1 and a new call requests precision P2 > P1, the
@@ -250,6 +255,25 @@ struct MathCache:
         )
         self._ln10_precision = precision
         return self._ln10.copy()
+
+
+def _make_math_cache() -> MathCache:
+    return MathCache()
+
+
+comptime _SHARED_MATH_CACHE = _Global["decimo_math_cache", _make_math_cache]
+"""One `MathCache` for the whole process.
+
+Mojo 1.0 rejects module-level `var`; `std.ffi._Global` is the supported way
+to hold process-wide state, if a private one (creation is locked, use is
+not). Nothing here runs on more than one thread, and the Python binding runs
+under the GIL, so the cache is not guarded. Each constant is stored at the
+highest precision asked for so far and only ever grows.
+
+Below about 1000 digits the constants come from the literal tables and the
+cache saves nothing; above that it halves the cost of every `ln()` after the
+first at a given precision.
+"""
 
 
 # ===----------------------------------------------------------------------=== #
@@ -1208,8 +1232,14 @@ def isqrt_via_reciprocal_seed(
     # diverges, which `test_sqrt_via_reciprocal_iteration_matches_sqrt_exact`
     # catches. Accuracy beyond that is a performance parameter.
     var r_f64 = Float64(1.0) / math.sqrt(c_norm_f64)
-    if r_f64 != r_f64 or r_f64 <= 0.0:
-        r_f64 = 1.0
+    # `c_norm` is in `[1, 100)`, so a correctly formed seed is in `(0.1, 1]`
+    # and the basin is at least `0.173`. Anything else means the seed code
+    # is wrong, and the right answer is a clamp, not a raise: `0.1` is inside
+    # the basin for every `c_norm` below 300, and the integer refinement then
+    # delivers the exact result, only more slowly. The old guard caught NaN
+    # and non-positive values but let a seed three times too large through.
+    if not (r_f64 >= 0.09 and r_f64 <= 1.1):
+        r_f64 = 0.1
 
     var r = BigDecimal(String(r_f64))
 
@@ -1523,7 +1553,7 @@ def sqrt_via_reciprocal_iteration(
     var working_precision = precision + BUFFER_DIGITS
 
     # --- Normalization ---
-    # Shift x by an even power of 10 to bring it into [0.1, 100) for a
+    # Shift x by an even power of 10 to bring it into [1, 100) for a
     # stable Float64 initial guess. Then sqrt(x) = sqrt(x_norm) * 10^(shift/2).
     var x_norm = x.copy()
     var x_exp = x_norm.adjusted()  # floor(log10(x))
@@ -1574,8 +1604,11 @@ def sqrt_via_reciprocal_iteration(
     # operator is accurate to only about ten digits for some inputs, which the
     # doubling schedule then carries all the way to the top.
     var r_f64 = Float64(1.0) / math.sqrt(x_norm_f64)  # 1/sqrt(x_norm)
-    if r_f64 != r_f64 or r_f64 <= 0.0:  # NaN or degenerate
-        r_f64 = 1.0
+    # Same clamp as in `isqrt_via_reciprocal_seed()`: `x_norm` is in
+    # `[1, 100)`, a good seed is in `(0.1, 1]`, and `0.1` is inside the basin
+    # for every `x_norm` here.
+    if not (r_f64 >= 0.09 and r_f64 <= 1.1):
+        r_f64 = 0.1
 
     var r = BigDecimal(String(r_f64))
 
@@ -2011,8 +2044,9 @@ def exp_taylor_series(
 def ln(x: BigDecimal, precision: Int) raises -> BigDecimal:
     """Calculate the natural logarithm of x to the specified precision.
 
-    This is the non-cached version. For repeated calls, use the overload that
-    accepts a `MathCache` parameter to avoid recomputing ln(2) and ln(1.25).
+    Uses the process-wide `MathCache`, so repeated calls at the same or a
+    lower precision reuse ln(2) and ln(1.25). Pass your own cache to the
+    three-argument overload to keep separate state.
 
     Args:
         x: The input value.
@@ -2024,8 +2058,7 @@ def ln(x: BigDecimal, precision: Int) raises -> BigDecimal:
     Raises:
         ValueError: If x is negative or zero.
     """
-    var cache = MathCache()
-    return ln(x, precision, cache)
+    return ln(x, precision, _SHARED_MATH_CACHE.get_or_create_ptr()[])
 
 
 def ln(
@@ -2195,10 +2228,11 @@ def log(x: BigDecimal, base: BigDecimal, precision: Int) raises -> BigDecimal:
         return log10(x, precision)
 
     # Use the identity: log_base(x) = ln(x) / ln(base)
-    # Use a shared cache so that both ln() calls reuse cached ln(2)/ln(1.25)
-    var cache = MathCache()
-    var ln_x = ln(x, working_precision, cache)
-    var ln_base = ln(base, working_precision, cache)
+    # The process-wide cache serves both ln() calls with the same ln(2) and
+    # ln(1.25), and keeps them for the next call.
+    var cache = _SHARED_MATH_CACHE.get_or_create_ptr()
+    var ln_x = ln(x, working_precision, cache[])
+    var ln_base = ln(base, working_precision, cache[])
 
     var result = ln_x.true_divide(ln_base, precision)
     return result^
@@ -2245,10 +2279,10 @@ def log10(x: BigDecimal, precision: Int) raises -> BigDecimal:
         return BigDecimal(BigUInt.zero(), 0, False)  # log10(1) = 0
 
     # Use the identity: log10(x) = ln(x) / ln(10)
-    # Use a shared cache so that ln(10) is retrieved from cache
-    var cache = MathCache()
-    var ln_result = ln(x, working_precision, cache)
-    var ln10 = cache.get_ln10(working_precision)
+    # The process-wide cache holds ln(10) as well.
+    var cache = _SHARED_MATH_CACHE.get_or_create_ptr()
+    var ln_result = ln(x, working_precision, cache[])
+    var ln10 = cache[].get_ln10(working_precision)
     var result = ln_result.true_divide(ln10, precision)
 
     return result^
@@ -2408,6 +2442,60 @@ def ln_series_expansion(
     return result^
 
 
+comptime LN2_1100 = (
+    "0.6931471805599453094172321214581765680755001343602552541206800094"
+    "933936219696947156058633269964186875420014810205706857336855202357"
+    "581305570326707516350759619307275708283714351903070386238916734711"
+    "233501153644979552391204751726815749320651555247341395258829504530"
+    "070953263666426541042391578149520437404303855008019441706416715186"
+    "447128399681717845469570262716310645461502572074024816377733896385"
+    "506952606683411372738737229289564935470257626520988596932019650585"
+    "547647033067936544325476327449512504060694381471046899465062201677"
+    "204245245296126879465461931651746813926725041038025462596568691441"
+    "928716082938031727143677826548775664850856740776484514644399404614"
+    "226031930967354025744460703080960850474866385231381816767514386674"
+    "766478908814371419854942315199735488037516586127535291661000710535"
+    "582498794147295092931138971559982056543928717000721808576102523688"
+    "921324497138932037843935308877482597017155910708823683627589842589"
+    "185353024363421436706118923678919237231467232172053401649256872747"
+    "782344535347648114941864238677677440606956265737960086707625719918"
+    "4734022651462837904883062033061144630073719489"
+)
+"""The value of ln(2), truncated to 1100 digits.
+
+Generated with CPython: `getcontext().prec = 1300; str(Decimal(2).ln())[:1102]`.
+Parsing this costs about 1 us; computing it costs about 1600 us."""
+
+
+comptime LN1D25_1100 = (
+    "0.2231435513142097557662950903098345033746010855480072136712878724"
+    "873917437682683334184072241003422357159633409805741914323529647578"
+    "084150855682751141935538036907244958404403752728787789545581781150"
+    "234549628718838669114847378481775629020244201723412488967553919153"
+    "438690698343869770787621459595440908838105576723945362964762501521"
+    "344182544171074818811404016514783722736865734525782498550261927635"
+    "580948625020413882061290997048051744176084056110454879785077477467"
+    "911464659721914575264885713340479246758173631898216220896846771555"
+    "528924494217322451238186280485130405689765045155206420691478214989"
+    "062376699830776746378642791629448402475098383623043172740985271861"
+    "744411405062942637717668382971894016212339507282834071808175104525"
+    "435335935982595169757755852903379045672715624825000851334162177899"
+    "247591425081825054307780942867385371790022276541698166049809483243"
+    "063508893628851905563804372659376527186057625583279488682418169742"
+    "818911815601915895070982736201781493450232500749127082017340244328"
+    "145165243935804528945752970176134736677209483383631678421572940025"
+    "8912623639078110392535483131827325953610760662"
+)
+"""The value of ln(1.25), truncated to 1100 digits.
+
+Generated with CPython: `getcontext().prec = 1300;
+str(Decimal("1.25").ln())[:1102]`."""
+
+
+comptime TABLE_DIGITS = 1100
+"""Digits held by `LN2_1100` and `LN1D25_1100`."""
+
+
 def compute_ln2(working_precision: Int) raises -> BigDecimal:
     """Compute ln(2) to the specified working precision.
 
@@ -2422,10 +2510,16 @@ def compute_ln2(working_precision: Int) raises -> BigDecimal:
 
     Notes:
 
-    The last few digits of result are not accurate as there is no buffer for
-    precision. You need to use a larger precision to get the last few digits
-    accurate. The precision is only used to determine the number of terms in
-    the series expansion, not for the final result.
+    Up to `TABLE_DIGITS` the value is read from `LN2_1100`, exact. Above it
+    the series `2 * atanh(1/3)` runs at `working_precision` digits, and the
+    result is below `4.5` units in the last place of the true value: each
+    term is rounded down (below `1.125` units over the series, since the
+    terms fall by 9x and the recurrence divides by an exact integer rather
+    than multiplying by a truncated square), the initial `1/3` enters through
+    the first term only (one unit), the stopping rule leaves a tail below
+    `1.2` units, and the final round-down is one more. So at most the last
+    digit is off, at every precision; `MathCache` adds nine guard digits and
+    that is enough. Pinned by `test_bigdecimal_ln_constants_bound.mojo`.
     """
     # Directly using Taylor series expansion for ln(2) is not efficient
     # Instead, we can use the identity:
@@ -2433,21 +2527,12 @@ def compute_ln2(working_precision: Int) raises -> BigDecimal:
     # For x = 1/3:
     # ln(2) = 2*(1/3 + (1/3)³/3 + (1/3)⁵/5 + ...)
 
-    if working_precision <= 90:
-        # Use precomputed value for ln(2) for lower precision
-        var result = BigDecimal(
-            BigUInt(
-                raw_words=[
-                    BigUInt.Word(969_694_715_605_863_326),
-                    BigUInt.Word(120_680_009_493_393_621),
-                    BigUInt.Word(75_500_134_360_255_254),
-                    BigUInt.Word(417_232_121_458_176_568),
-                    BigUInt.Word(693_147_180_559_945_309),
-                ]
-            ),
-            90,
-            False,
-        )
+    if working_precision <= TABLE_DIGITS:
+        # The table used to hold 90 digits as five words. Up to 1100 the
+        # series is never needed: parsing the literal is about a microsecond
+        # against milliseconds for the series, and the constants were most of
+        # what `ln()` paid for at every call.
+        var result = BigDecimal(LN2_1100)
         result.round_to_precision_inplace(
             precision=working_precision,
             rounding_mode=RoundingMode.down(),
@@ -2521,9 +2606,10 @@ def compute_ln1d25(precision: Int) raises -> BigDecimal:
 
     Notes:
 
-    The last few digits of result are not accurate as there is no buffer for
-    precision. You need to use a larger precision to get the last few digits
-    accurate.
+    Up to `TABLE_DIGITS` the value is read from `LN1D25_1100`, exact. Above
+    it the series `2 * atanh(1/9)` runs, with the same error bound as
+    `compute_ln2()`: below `4.5` units in the last place, so at most the last
+    digit is off, at every precision.
     """
     # ln(1.25) = 2*atanh(1/9), since (1 + 1/9)/(1 - 1/9) = (10/9)/(8/9) = 1.25.
     # So ln(1.25) = 2*(1/9 + (1/9)³/3 + (1/9)⁵/5 + ...).
@@ -2533,6 +2619,16 @@ def compute_ln1d25(precision: Int) raises -> BigDecimal:
     # precision) instead of an O(M(n)) BigDecimal multiply. We fold the 1/81 and
     # the 1/(2k+1) factors into one divide by 81*(k+2) and apply the *k factor
     # at the coefficient level, so each iteration is O(n).
+    if precision <= TABLE_DIGITS:
+        var result = BigDecimal(LN1D25_1100)
+        result.round_to_precision_inplace(
+            precision=precision,
+            rounding_mode=RoundingMode.down(),
+            remove_extra_digit_due_to_rounding=False,
+            fill_zeros_to_precision=False,
+        )
+        return result^
+
     var working_precision = precision
     var max_terms = Int(Float64(working_precision) * 1.2) + 10
 

@@ -126,8 +126,15 @@ struct Token(Copyable, ImplicitlyCopyable, Movable):
         |:----------:|-----------|:-------------:|
         |  1 (low)   | +, -      | Left          |
         |     2      | *, /      | Left          |
-        |     3      | ^         | Right         |
-        |  4 (high)  | unary -   | Right         |
+        |     3      | unary -   | Right         |
+        |  4 (high)  | ^         | Right         |
+
+        A unary minus sits between `*` and `^`, so `-2^2` is `-(2^2) = -4`
+        and `-3*2` is `(-3)*2`. That is how Python, Julia, Mathematica and
+        most calculators read it; spreadsheets rank the sign above `^` and
+        give 4, and so did this table until it was changed to match Python.
+        `2^-2` is unaffected: a sign inside an exponent is parsed as part of
+        the exponent (see `parse_to_rpn()`).
 
         Returns:
             The integer precedence level, or 0 for non-operators.
@@ -136,9 +143,9 @@ struct Token(Copyable, ImplicitlyCopyable, Movable):
             return 1
         if self.kind == TOKEN_STAR or self.kind == TOKEN_SLASH:
             return 2
-        if self.kind == TOKEN_CARET:
-            return 3
         if self.kind == TOKEN_UNARY_MINUS:
+            return 3
+        if self.kind == TOKEN_CARET:
             return 4
         return 0
 
@@ -231,6 +238,27 @@ def is_alnum_or_underscore(c: UInt8) -> Bool:
     return is_alpha_or_underscore(c) or (c >= 48 and c <= 57)
 
 
+def _in_sign_position(tokens: List[Token]) -> Bool:
+    """Whether a `+` or `-` read next would be a sign rather than an operator.
+
+    True at the start of the expression, after another operator or sign,
+    after `(` and after `,`.
+    """
+    if len(tokens) == 0:
+        return True
+    var last_kind = tokens[len(tokens) - 1].kind
+    return (
+        last_kind == TOKEN_PLUS
+        or last_kind == TOKEN_MINUS
+        or last_kind == TOKEN_STAR
+        or last_kind == TOKEN_SLASH
+        or last_kind == TOKEN_CARET
+        or last_kind == TOKEN_LPAREN
+        or last_kind == TOKEN_UNARY_MINUS
+        or last_kind == TOKEN_COMMA
+    )
+
+
 def tokenize(
     expr: String,
     known_variables: Dict[String, Decimal] = Dict[String, Decimal](),
@@ -239,8 +267,9 @@ def tokenize(
 
     Handles: numbers (integer and decimal), operators (+, -, *, /, ^),
     parentheses, commas, function calls (sqrt, ln, …), built-in
-    constants (pi, e), user-defined variables, and distinguishes unary
-    minus from binary minus.
+    constants (pi, e), user-defined variables, and distinguishes a sign
+    from a binary operator: a leading `-` becomes a unary-minus token and a
+    leading `+` is dropped.
 
     Each token records its 0-based column position in the source
     expression so that downstream stages can emit user-friendly
@@ -337,28 +366,17 @@ def tokenize(
 
         # --- Operators and parentheses ---
         if c == 43:  # '+'
-            tokens.append(Token(TOKEN_PLUS, "+", position=i))
+            # A '+' in sign position (`+3`, `2*+3`, `(+3)`) is a unary plus.
+            # It does nothing, so no token is emitted; the '+' is simply
+            # skipped. It used to be rejected with "missing operand for '+'".
+            if not _in_sign_position(tokens):
+                tokens.append(Token(TOKEN_PLUS, "+", position=i))
             i += 1
             continue
 
         if c == 45:  # '-'
-            # Determine if this minus is unary or binary.
-            # Unary if: at the start, or after an operator, or after '(' or ','
             var pos = i
-            var is_unary = len(tokens) == 0
-            if not is_unary:
-                var last_kind = tokens[len(tokens) - 1].kind
-                is_unary = (
-                    last_kind == TOKEN_PLUS
-                    or last_kind == TOKEN_MINUS
-                    or last_kind == TOKEN_STAR
-                    or last_kind == TOKEN_SLASH
-                    or last_kind == TOKEN_CARET
-                    or last_kind == TOKEN_LPAREN
-                    or last_kind == TOKEN_UNARY_MINUS
-                    or last_kind == TOKEN_COMMA
-                )
-            if is_unary:
+            if _in_sign_position(tokens):
                 tokens.append(Token(TOKEN_UNARY_MINUS, "neg", position=pos))
             else:
                 tokens.append(Token(TOKEN_MINUS, "-", position=pos))
