@@ -2605,14 +2605,31 @@ def multiply_by_word_inplace(mut x: BigInt, word: UInt64):
 
 
 def left_shift_inplace(mut x: BigInt, shift: Int):
-    """Performs x <<= shift by mutating x.words directly.
+    """Performs x <<= shift by writing straight into x.words.
 
-    Avoids allocating a new BigInt. Shifts left by `shift` bits
-    (equivalent to multiplying by 2^shift).
+    Shifts left by `shift` bits, which is a multiplication by 2^shift.
 
     Args:
         x: The value to shift (modified in-place).
         shift: The number of bits to shift left.
+
+    Notes:
+
+    This is `left_shift()` written a second time, and it is deliberate. A left
+    shift lengthens the value, so both forms allocate a fresh `Magnitude` and
+    the delegating version looks free -- but `Magnitude` keeps small values
+    inside the struct, so assigning the returned `BigInt` copies that inline
+    buffer rather than moving a pointer. Measured, ns per `<<=` and `>>` pair,
+    two runs each:
+
+    | words | delegating  | this   |
+    | ----- | ----------- | ------ |
+    |     2 | 28.4, 31.1  | 18.6, 22.7 |
+    |     8 | 154.8, 140.2| 145.6, 150.6 |
+    |    32 | 210.5, 187.7| 197.8, 204.2 |
+
+    Small values pay about 1.4x for the delegation, and everything above that
+    is noise. Small values are the common case here, so the copy stays.
     """
     if x.is_zero() or shift == 0:
         return
@@ -2716,12 +2733,8 @@ def right_shift_inplace(mut x: BigInt, shift: Int):
     if len(x.words) > new_len:
         x.words.shrink(new_len)
 
-    # Strip leading zeros
-    while len(x.words) > 1 and x.words[len(x.words) - 1] == 0:
-        x.words.shrink(len(x.words) - 1)
-
-    if len(x.words) == 0:
-        x.words.append(UInt64(0))
+    # Leading zero words are left for the `_normalize()` below. Adding one to
+    # the magnitude carries from the bottom word, so it does not care.
 
     # For negative numbers with lost bits, round toward negative infinity
     if x.sign and any_bits_lost:
@@ -3196,21 +3209,16 @@ def right_shift(x: BigInt, shift: Int) -> BigInt:
                 hi = x.words[i + 1] << UInt64(64 - bit_shift)
             result.append(lo | hi)
 
-    # Strip leading zeros
-    while len(result) > 1 and result[len(result) - 1] == 0:
-        result.shrink(len(result) - 1)
-
-    if len(result) == 0:
-        result.append(UInt64(0))
-
+    # Leading zero words are left for the `_normalize()` below.
     var shifted = BigInt(raw_words=result^, sign=x.sign)
 
     # For negative numbers, if any shifted-out bits were set, round toward
     # negative infinity (subtract 1 from the result)
     if x.sign:
         var any_bits_lost = False
-        # Check sub-word bits of the first skipped word
-        if word_shift < n and bit_shift > 0:
+        # Check sub-word bits of the first skipped word. `word_shift < n`
+        # here, or the early return above would have taken it.
+        if bit_shift > 0:
             var mask = UInt64((1 << bit_shift) - 1)
             if (x.words[word_shift] & mask) != 0:
                 any_bits_lost = True
