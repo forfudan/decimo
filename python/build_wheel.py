@@ -5,11 +5,12 @@ Run it through pixi, which puts the build tools on the path:
     pixi run release                  # build the wheel, stop there
     pixi run release --testpypi       # ... and upload to TestPyPI
     pixi run release --pypi           # ... and upload to PyPI
-    pixi run release --version 0.2.0  # a real version instead of a dev stamp
+    pixi run release --version 0.14.0 # a release instead of a dev stamp
 
-The version defaults to `0.1.0.devYYYYMMDDHHMMSS` in UTC. PyPI refuses to
-accept the same version twice, so a timestamp means every build during
-development has somewhere to go.
+The version defaults to the library's own, from `pixi.toml`, with a UTC
+timestamp after it: `0.14.0.devYYYYMMDDHHMMSS`. The wheel is the Mojo library
+packaged for Python, so the two carry the same number, and PyPI, which
+refuses the same version twice, still takes every development build.
 
 The interesting part is the vendoring. `_decimo.so` does not stand alone: it
 loads three Mojo runtime libraries through an `@rpath` that points at the pixi
@@ -162,6 +163,29 @@ def repair_linux_wheel(wheel, distribution):
     return moved
 
 
+PROJECT_FILE = HERE.parent / "pixi.toml"
+LIBRARY_FILE = HERE.parent / "src" / "decimo" / "__init__.mojo"
+
+
+def library_version():
+    """The version of the Mojo library, which the wheel takes as its own."""
+    match = re.search(r'^version = "([^"]+)"', PROJECT_FILE.read_text(), re.MULTILINE)
+    if match is None:
+        raise SystemExit(f"no version in {PROJECT_FILE}")
+    version = match.group(1)
+
+    # `DECIMO_VERSION` is what the CLI prints, and it is supposed to say the
+    # same thing. A release with the two disagreeing would ship a package
+    # whose own `--version` contradicts it.
+    declared = re.search(r'DECIMO_VERSION = "([^"]+)"', LIBRARY_FILE.read_text())
+    if declared is not None and declared.group(1) != version:
+        print(
+            f"  warning: {LIBRARY_FILE.name} says {declared.group(1)} where"
+            f" pixi.toml says {version}"
+        )
+    return version
+
+
 VERSION_FILE = PACKAGE / "_version.py"
 
 
@@ -185,7 +209,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--version",
-        help="version to stamp (default: 0.1.0.devYYYYMMDDHHMMSS, UTC)",
+        help=(
+            "version to stamp (default: the library version from pixi.toml"
+            " with a .devYYYYMMDDHHMMSS stamp, UTC)"
+        ),
     )
     parser.add_argument(
         "--pypi", action="store_true", help="upload to PyPI when the build works"
@@ -198,8 +225,8 @@ def main():
     if arguments.pypi and arguments.testpypi:
         sys.exit("choose one of --pypi and --testpypi, not both")
 
-    version = arguments.version or datetime.now(timezone.utc).strftime(
-        "0.1.0.dev%Y%m%d%H%M%S"
+    version = arguments.version or (
+        library_version() + datetime.now(timezone.utc).strftime(".dev%Y%m%d%H%M%S")
     )
 
     print("Preparing the package")

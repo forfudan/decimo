@@ -60,7 +60,11 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
 1. **Wheels for macOS arm64, CPython 3.13 and 3.14.**
    `pixi run -e py313 release` (or `py314`) builds one; the new
    `release_python.yaml` workflow builds both and uploads them to PyPI
-   through trusted publishing. The extension is linked for macOS 14 and the
+   through trusted publishing. A tag publishes a release and a commit on
+   `main` publishes `<version>.devYYYYMMDDHHMMSS`, the second only once the
+   repository variable `PUBLISH_DEV` is set. The wheel takes its version
+   from the library's, so `pip show decimo` and the CLI's `--version` say
+   the same thing, and a tag that disagrees with `pixi.toml` stops the run. The extension is linked for macOS 14 and the
    wheel is tagged so, instead of for the build machine's version. The Linux
    path (`auditwheel`, `manylinux_2_35`) is written in `build_wheel.py` but
    not yet verified, so it is not in the matrix.

@@ -124,9 +124,10 @@ tpy = "clear && pixi run testpy"
 #   pixi run -e py314 release              build only, wheel in python/dist/
 #   pixi run -e py314 release --testpypi   upload to TestPyPI
 #   pixi run -e py314 release --pypi       upload to PyPI
-#   pixi run -e py314 release --version 0.2.0
-# Without --version the wheel is stamped 0.1.0.devYYYYMMDDHHMMSS in UTC, so
-# every development build has a version PyPI has not seen before.
+#   pixi run -e py314 release --version 0.14.0
+# Without --version the wheel takes the library version from this file and
+# adds .devYYYYMMDDHHMMSS in UTC, so every development build has a version
+# PyPI has not seen before, and a release carries the library's own number.
 # `release` itself is defined on the `publish` feature, so it runs inside
 # an environment that has the build tools: `pixi run -e py314 release`.
 # The old name, kept because muscle memory is a real thing.
@@ -172,8 +173,8 @@ patchelf = ">=0.17"
 
 # One environment per CPython the wheels are built for. The extension is
 # tagged for the interpreter that built it, so each version is its own build:
-#   pixi run -e py313 release --version 0.2.0
-#   pixi run -e py314 release --version 0.2.0
+#   pixi run -e py313 release --version 0.14.0
+#   pixi run -e py314 release --version 0.14.0
 # `release_python.yaml` runs exactly that on Linux x86_64 and macOS arm64.
 [feature.py313.dependencies]
 python = "3.13.*"

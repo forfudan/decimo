@@ -1,12 +1,22 @@
 name: Build Python wheels
 
 # Builds the `decimo` wheel for every supported interpreter on macOS arm64,
-# and uploads the set to PyPI (or TestPyPI) when asked.
+# and uploads the set to PyPI (or TestPyPI).
 #
-# Trigger from the Actions tab -> "Build Python wheels" -> Run workflow.
-# Leave the version empty for a dev build (0.1.0.devYYYYMMDDHHMMSS), which
-# PyPI accepts as a new version every time. Choose "none" as the target to
-# only build and keep the wheels as artifacts.
+# Three ways in:
+#
+#   * push a tag -- `git tag v0.14.0 && git push origin v0.14.0` -- and the
+#     version is the tag without its `v`. This is how a real release goes out.
+#     The tag has to match the library version in `pixi.toml`, or the run
+#     stops: the wheel is the Mojo library packaged for Python, so the two
+#     always carry the same number.
+#   * push to `main`, which publishes `<library version>.devYYYYMMDDHHMMSS`
+#     so that `pip install --pre decimo` always has the latest. Off until the
+#     repository variable `PUBLISH_DEV` is set to `true`, so that nothing is
+#     uploaded before the publisher below exists.
+#   * by hand from the Actions tab -> "Build Python wheels" -> Run workflow,
+#     where the version may be given and the target chosen. `none` builds the
+#     wheels and keeps them as artifacts without uploading.
 #
 # Uploading uses PyPI trusted publishing: the project on PyPI has to list
 # this repository and this workflow file as a publisher, under the
@@ -24,6 +34,13 @@ on:
       - "pixi.toml"
       - "pixi.lock"
       - ".github/workflows/release_python.yaml"
+  # A tag is a release; a commit on `main` is a dev build. Neither is
+  # filtered by path: a tag has to build whatever it points at, and the
+  # extension is compiled from `src/decimo`, so few commits on `main` leave
+  # the wheel alone.
+  push:
+    branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       version:
@@ -53,13 +70,27 @@ jobs:
     outputs:
       version: ${{ steps.pick.outputs.version }}
     steps:
+      - uses: actions/checkout@v4
       - id: pick
         run: |
-          if [[ -n "${{ inputs.version || '' }}" ]]; then
-            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=0.1.0.dev$(date -u +%Y%m%d%H%M%S)" >> "$GITHUB_OUTPUT"
+          library=$(sed -n 's/^version = "\(.*\)"/\1/p' pixi.toml | head -1)
+          if [[ -z "$library" ]]; then
+            echo "no version in pixi.toml" >&2
+            exit 1
           fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            if [[ "$version" != "$library" ]]; then
+              echo "tag $GITHUB_REF_NAME and pixi.toml $library disagree" >&2
+              exit 1
+            fi
+          elif [[ -n "${{ inputs.version || '' }}" ]]; then
+            version="${{ inputs.version }}"
+          else
+            version="$library.dev$(date -u +%Y%m%d%H%M%S)"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "building $version"
 
   build:
     name: ${{ matrix.environment }} on ${{ matrix.os }}
@@ -117,12 +148,19 @@ jobs:
           path: python/dist/*.whl
           if-no-files-found: error
 
+  # A tag always publishes. A commit on `main` publishes once someone has
+  # set `PUBLISH_DEV`, which is what keeps a repository without a trusted
+  # publisher from failing here on every merge. A manual run does what it was
+  # asked to do.
   publish:
-    name: Upload to ${{ inputs.target }}
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.target != 'none' }}
+    name: Upload
+    if: >-
+      ${{ startsWith(github.ref, 'refs/tags/v')
+          || (github.event_name == 'push' && vars.PUBLISH_DEV == 'true')
+          || (github.event_name == 'workflow_dispatch' && inputs.target != 'none') }}
     needs: build
     runs-on: ubuntu-latest
-    environment: ${{ inputs.target }}
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'pypi' }}
     permissions:
       id-token: write
     steps:
@@ -133,10 +171,10 @@ jobs:
           merge-multiple: true
       - run: ls -l dist
       - name: Upload to TestPyPI
-        if: ${{ inputs.target == 'testpypi' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi' }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
       - name: Upload to PyPI
-        if: ${{ inputs.target == 'pypi' }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi') }}
         uses: pypa/gh-action-pypi-publish@release/v1

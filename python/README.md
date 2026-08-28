@@ -7,8 +7,9 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/forfudan/decimo/blob/main/LICENSE)
 
 > ⚠️ **Development release.** The API is settled enough to use, but the
-> version numbers are timestamps. Wheels: macOS arm64 (14 and later),
-> CPython 3.13 and 3.14. Everywhere else, build from source.
+> versions carry a timestamp: `0.14.0.devYYYYMMDDHHMMSS`, where `0.14.0` is
+> the version of the Mojo library the wheel packages. Wheels: macOS arm64
+> (14 and later), CPython 3.13 and 3.14. Everywhere else, build from source.
 
 Change one import and your program keeps working:
 
