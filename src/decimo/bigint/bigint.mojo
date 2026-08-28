@@ -805,8 +805,14 @@ struct BigInt(
                     result += hex(word)[byte=2:]
                     first_word = False
             else:
+                # Four bits to a hex digit. The literal here used to be 8,
+                # which is a 32-bit word's worth; a 64-bit word needs 16, and
+                # every value whose lower words did not happen to fill all
+                # sixteen came out short. `to_binary_string()` below was
+                # written against `BITS_PER_WORD` and never had the problem.
+                comptime HEX_DIGITS_PER_WORD = BigInt.BITS_PER_WORD // 4
                 var h = hex(word)[byte=2:]
-                for _ in range(8 - h.byte_length()):
+                for _ in range(HEX_DIGITS_PER_WORD - h.byte_length()):
                     result += "0"
                 result += h
 
