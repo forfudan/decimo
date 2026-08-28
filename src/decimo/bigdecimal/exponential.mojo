@@ -1232,8 +1232,14 @@ def isqrt_via_reciprocal_seed(
     # diverges, which `test_sqrt_via_reciprocal_iteration_matches_sqrt_exact`
     # catches. Accuracy beyond that is a performance parameter.
     var r_f64 = Float64(1.0) / math.sqrt(c_norm_f64)
-    if r_f64 != r_f64 or r_f64 <= 0.0:
-        r_f64 = 1.0
+    # `c_norm` is in `[1, 100)`, so a correctly formed seed is in `(0.1, 1]`
+    # and the basin is at least `0.173`. Anything else means the seed code
+    # is wrong, and the right answer is a clamp, not a raise: `0.1` is inside
+    # the basin for every `c_norm` below 300, and the integer refinement then
+    # delivers the exact result, only more slowly. The old guard caught NaN
+    # and non-positive values but let a seed three times too large through.
+    if not (r_f64 >= 0.09 and r_f64 <= 1.1):
+        r_f64 = 0.1
 
     var r = BigDecimal(String(r_f64))
 
@@ -1547,7 +1553,7 @@ def sqrt_via_reciprocal_iteration(
     var working_precision = precision + BUFFER_DIGITS
 
     # --- Normalization ---
-    # Shift x by an even power of 10 to bring it into [0.1, 100) for a
+    # Shift x by an even power of 10 to bring it into [1, 100) for a
     # stable Float64 initial guess. Then sqrt(x) = sqrt(x_norm) * 10^(shift/2).
     var x_norm = x.copy()
     var x_exp = x_norm.adjusted()  # floor(log10(x))
@@ -1598,8 +1604,11 @@ def sqrt_via_reciprocal_iteration(
     # operator is accurate to only about ten digits for some inputs, which the
     # doubling schedule then carries all the way to the top.
     var r_f64 = Float64(1.0) / math.sqrt(x_norm_f64)  # 1/sqrt(x_norm)
-    if r_f64 != r_f64 or r_f64 <= 0.0:  # NaN or degenerate
-        r_f64 = 1.0
+    # Same clamp as in `isqrt_via_reciprocal_seed()`: `x_norm` is in
+    # `[1, 100)`, a good seed is in `(0.1, 1]`, and `0.1` is inside the basin
+    # for every `x_norm` here.
+    if not (r_f64 >= 0.09 and r_f64 <= 1.1):
+        r_f64 = 0.1
 
     var r = BigDecimal(String(r_f64))
 
