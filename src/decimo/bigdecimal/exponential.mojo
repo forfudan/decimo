@@ -1158,9 +1158,26 @@ def isqrt_via_reciprocal_seed(
     var c_norm_f64 = mantissa * Float64(10.0) ** Float64(c_norm_exp)
     # `1 / sqrt(v)` rather than `v ** -0.5`: the latter goes through `exp`/`log`
     # and is accurate to only about ten digits for some inputs, while `sqrt()`
-    # is correctly rounded and the division costs one more rounding. The
-    # schedule below assumes the seed is worth `_F64_SEED_DIGITS`, so the
-    # difference decides how many digits the whole function returns.
+    # is correctly rounded and the division costs one more rounding.
+    #
+    # What that accuracy buys is speed, not digits. The exact integer Newton
+    # refinement at the end of this function corrects whatever the float part
+    # leaves behind, so the answer is right regardless: truncating this seed to
+    # a single digit still returns `sqrt(2)` correct to 400 digits. It returns
+    # it more slowly, because the refinement then pays for full-size divisions
+    # the schedule was supposed to have avoided. Measured on `sqrt(2)`:
+    #
+    # | digits | full seed | seed truncated to one digit |
+    # | ------ | --------- | --------------------------- |
+    # |    400 |   16.2 us |                     15.5 us |
+    # |  1 000 |   26.6 us |                     47.3 us |
+    # |  2 000 |   54.2 us |                    109.7 us |
+    #
+    # What the seed does have to guarantee is landing inside the convergence
+    # basin -- `r < sqrt(3 / c_norm)`, since the iteration is
+    # `r <- r (3 - c r^2) / 2`. A seed three times too large is outside it and
+    # diverges, which `test_sqrt_via_reciprocal_iteration_matches_sqrt_exact`
+    # catches. Accuracy beyond that is a performance parameter.
     var r_f64 = Float64(1.0) / math.sqrt(c_norm_f64)
     if r_f64 != r_f64 or r_f64 <= 0.0:
         r_f64 = 1.0
@@ -1168,11 +1185,12 @@ def isqrt_via_reciprocal_seed(
     var r = BigDecimal(String(r_f64))
 
     # --- Precision doubling schedule ---
-    # Halve down to what the seed is actually worth. A Newton step only
-    # doubles the correct digits, so `n` steps reach `_F64_SEED_DIGITS * 2^n`;
-    # stopping the halving higher than the seed leaves the top of the schedule
-    # short of its nominal precision and forces the integer refinement below to
-    # pay for extra full-size divisions.
+    # Halve down to what the seed is worth. A Newton step doubles the correct
+    # digits, so `n` steps reach `_F64_SEED_DIGITS * 2^n`; stopping the halving
+    # higher than the seed leaves the top of the schedule short of its nominal
+    # precision and forces the integer refinement below to pay for extra
+    # full-size divisions. That is a cost, not a correctness question -- see
+    # the note on the seed above.
     var prec_schedule = List[Int]()
     var p = working_digits
     while p > _F64_SEED_DIGITS:
