@@ -53,6 +53,8 @@ from std.python.python_object import (
 from std.os import abort
 
 from decimo import BigDecimal, RoundingMode
+import decimo.bigdecimal.spec as bigdecimal_spec
+import decimo.bigdecimal.comparison as bigdecimal_comparison
 
 
 # ===----------------------------------------------------------------------=== #
@@ -88,6 +90,8 @@ struct _State(Defaultable, Movable):
     """
 
     var precision: Int
+    var rounding: RoundingMode
+    """The context rounding mode, applied wherever an operation rounds."""
     var decimal_type: PyTypeObjectPtr
     var free_list: InlineArray[PyObjectPtr, FREE_LIST_SIZE]
     """Decimal objects that have been released and can be filled in again."""
@@ -95,6 +99,7 @@ struct _State(Defaultable, Movable):
 
     def __init__(out self):
         self.precision = 28
+        self.rounding = RoundingMode.ROUND_HALF_EVEN
         self.decimal_type = PyTypeObjectPtr()
         self.free_list = InlineArray[PyObjectPtr, FREE_LIST_SIZE](
             uninitialized=True
@@ -202,6 +207,65 @@ def set_precision(value: PythonObject) raises -> PythonObject:
     return PythonObject(None)
 
 
+def get_rounding() raises -> PythonObject:
+    """Read the context rounding mode as `decimal`'s string. Called by
+    `Context.rounding`."""
+    return PythonObject(rounding_name(_STATE.get_or_create_ptr()[].rounding))
+
+
+def set_rounding(value: PythonObject) raises -> PythonObject:
+    """Set the context rounding mode from `decimal`'s string. Called by
+    `Context.rounding`."""
+    _STATE.get_or_create_ptr()[].rounding = rounding_from(value)
+    return PythonObject(None)
+
+
+def rounding_name(mode: RoundingMode) -> String:
+    """The `decimal` constant name of a rounding mode."""
+    if mode == RoundingMode.ROUND_HALF_EVEN:
+        return "ROUND_HALF_EVEN"
+    if mode == RoundingMode.ROUND_HALF_UP:
+        return "ROUND_HALF_UP"
+    if mode == RoundingMode.ROUND_HALF_DOWN:
+        return "ROUND_HALF_DOWN"
+    if mode == RoundingMode.ROUND_DOWN:
+        return "ROUND_DOWN"
+    if mode == RoundingMode.ROUND_UP:
+        return "ROUND_UP"
+    if mode == RoundingMode.ROUND_CEILING:
+        return "ROUND_CEILING"
+    return "ROUND_FLOOR"
+
+
+@always_inline
+def round_to_context(var value: BigDecimal) raises -> BigDecimal:
+    """Round a value to the context precision with the context rounding.
+
+    What `+x` does, and what every operation does to its result.
+    """
+    ref cell = state()[]
+    value.round_to_precision_inplace(
+        precision=cell.precision,
+        rounding_mode=cell.rounding,
+        remove_extra_digit_due_to_rounding=True,
+        fill_zeros_to_precision=False,
+    )
+    return value^
+
+
+comptime DIRECTED_GUARD_DIGITS = 9
+"""Extra digits carried by `**` under a rounding mode other than HALF_EVEN.
+
+`decimal` applies the context mode to `**` and ignores it for `sqrt`, `exp`,
+`ln` and `log10`, which are always half to even; decimo follows it in both.
+Those four therefore ask the library for exactly what it delivers, and only
+`**` needs this: the value is computed nine digits wider and rounded once
+more with the mode. That last digit is wrong when the true value lies within
+`10^-9` relative of a rounding boundary. Arithmetic (`+ - * /`, `quantize`,
+`%`) does not go through this -- it rounds exactly under every mode.
+"""
+
+
 # ===----------------------------------------------------------------------=== #
 # PyInit entry point
 #
@@ -220,6 +284,8 @@ def PyInit__decimo() abi("C") -> PythonObject:
 
         m.def_function[get_precision]("get_precision")
         m.def_function[set_precision]("set_precision")
+        m.def_function[get_rounding]("get_rounding")
+        m.def_function[set_rounding]("set_rounding")
 
         ref decimal_builder = m.add_type[BigDecimal]("Decimal")
 
@@ -315,6 +381,29 @@ def PyInit__decimo() abi("C") -> PythonObject:
             .def_method[bigdecimal_conjugate]("conjugate")
             .def_method[bigdecimal_radix]("radix")
             .def_method[bigdecimal_copy]("copy")
+            # --- digits, neighbours and the total order -----------------
+            .def_method[bigdecimal_remainder_near]("remainder_near")
+            .def_method[bigdecimal_next_plus]("next_plus")
+            .def_method[bigdecimal_next_minus]("next_minus")
+            .def_method[bigdecimal_next_toward]("next_toward")
+            .def_method[bigdecimal_shift]("shift")
+            .def_method[bigdecimal_rotate]("rotate")
+            .def_method[bigdecimal_logical_and]("logical_and")
+            .def_method[bigdecimal_logical_or]("logical_or")
+            .def_method[bigdecimal_logical_xor]("logical_xor")
+            .def_method[bigdecimal_logical_invert]("logical_invert")
+            .def_method[bigdecimal_logb]("logb")
+            .def_method[bigdecimal_compare_total]("compare_total")
+            .def_method[bigdecimal_compare_total_mag]("compare_total_mag")
+            .def_method[bigdecimal_compare]("compare_signal")
+            .def_method[bigdecimal_max_mag]("max_mag")
+            .def_method[bigdecimal_min_mag]("min_mag")
+            .def_method[bigdecimal_number_class]("number_class")
+            .def_method[bigdecimal_is_qnan]("is_qnan")
+            .def_method[bigdecimal_is_snan]("is_snan")
+            .def_py_c_method[static_method=False](
+                fastcall_to_integral, "to_integral_exact"
+            )
         )
         return m.finalize()
     except e:
@@ -464,11 +553,10 @@ def as_decimal(
 def rounding_from(py_mode: PythonObject) raises -> RoundingMode:
     """Turn `decimal`'s rounding-mode string into a `RoundingMode`.
 
-    `None` means "use the context default", which for us is always
-    ROUND_HALF_EVEN -- the same default `decimal` starts with.
+    `None` means the context's current mode, as in `decimal`.
     """
     if py_mode is PythonObject(None):
-        return RoundingMode.ROUND_HALF_EVEN
+        return state()[].rounding
     var name = String(py_mode)
     if name == "ROUND_HALF_EVEN":
         return RoundingMode.ROUND_HALF_EVEN
@@ -607,8 +695,11 @@ def bigdecimal_components(py_self: PythonObject) raises -> PythonObject:
 # `other` only when it is the same type. The reflected forms are only ever
 # reached when the left operand is not a decimal, so they always convert.
 #
-# `+`, `-`, `*`, `/` and `**` round to the context precision, which is what
-# `decimal` does. `//`, `%` and `divmod` do not: they are exact by definition.
+# `+`, `-`, `*`, `/`, `**`, `%` and the remainder from `divmod` round to the
+# context precision, which is what `decimal` does. `//` and the quotient from
+# `divmod` do not: they are exact by definition, and where `decimal` raises
+# InvalidOperation because that exact quotient has more digits than the
+# context allows, decimo returns it.
 # ===----------------------------------------------------------------------=== #
 
 
@@ -820,7 +911,7 @@ def bigdecimal_mod(
             return not_implemented()
     var result: BigDecimal
     try:
-        result = self_ptr[] % converted
+        result = round_to_context(self_ptr[] % converted)
     except:
         return raise_as["PyExc_ZeroDivisionError"]("division by zero")
     return new_decimal(state()[], result^)
@@ -838,7 +929,7 @@ def bigdecimal_rmod(
         return not_implemented()
     var result: BigDecimal
     try:
-        result = converted % self_ptr[]
+        result = round_to_context(converted % self_ptr[])
     except:
         return raise_as["PyExc_ZeroDivisionError"]("division by zero")
     return new_decimal(state()[], result^)
@@ -864,7 +955,8 @@ def bigdecimal_divmod(
         return raise_as["PyExc_ZeroDivisionError"]("division by zero")
     ref cell = state()[]
     return Python.tuple(
-        new_decimal(cell, pair[0].copy()), new_decimal(cell, pair[1].copy())
+        new_decimal(cell, pair[0].copy()),
+        new_decimal(cell, round_to_context(pair[1].copy())),
     )
 
 
@@ -885,7 +977,8 @@ def bigdecimal_rdivmod(
         return raise_as["PyExc_ZeroDivisionError"]("division by zero")
     ref cell = state()[]
     return Python.tuple(
-        new_decimal(cell, pair[0].copy()), new_decimal(cell, pair[1].copy())
+        new_decimal(cell, pair[0].copy()),
+        new_decimal(cell, round_to_context(pair[1].copy())),
     )
 
 
@@ -902,7 +995,7 @@ def bigdecimal_pow(
             converted = convert_operand(other)
         except:
             return not_implemented()
-    var result = self_ptr[].power(converted, precision())
+    var result = _power_to_context(self_ptr[], converted)
     return new_decimal(state()[], result^)
 
 
@@ -916,8 +1009,23 @@ def bigdecimal_rpow(
         converted = convert_operand(other)
     except:
         return not_implemented()
-    var result = converted.power(self_ptr[], precision())
+    var result = _power_to_context(converted, self_ptr[])
     return new_decimal(state()[], result^)
+
+
+def _power_to_context(
+    base: BigDecimal, exponent: BigDecimal
+) raises -> BigDecimal:
+    """`base ** exponent` at the context precision and rounding.
+
+    See `DIRECTED_GUARD_DIGITS` for how a mode other than HALF_EVEN is met.
+    """
+    ref cell = state()[]
+    if cell.rounding == RoundingMode.ROUND_HALF_EVEN:
+        return base.power(exponent, cell.precision)
+    return round_to_context(
+        base.power(exponent, cell.precision + DIRECTED_GUARD_DIGITS)
+    )
 
 
 def bigdecimal_neg(py_self: PythonObject) raises -> PythonObject:
@@ -926,7 +1034,7 @@ def bigdecimal_neg(py_self: PythonObject) raises -> PythonObject:
     Unary minus is an operation like any other in `decimal`, so it rounds.
     """
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
-    var result = (-(self_ptr[])).round_to_precision(precision())
+    var result = round_to_context(-(self_ptr[]))
     return new_decimal(state()[], result^)
 
 
@@ -938,14 +1046,17 @@ def bigdecimal_pos(py_self: PythonObject) raises -> PythonObject:
     context asks for. `decimal` behaves the same way.
     """
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
-    var result = self_ptr[].round_to_precision(precision())
+    var result = round_to_context(self_ptr[].copy())
     return new_decimal(state()[], result^)
 
 
 def bigdecimal_abs(py_self: PythonObject) raises -> PythonObject:
-    """Return abs(self)."""
+    """Return abs(self), rounded to the context like `decimal`.
+
+    `copy_abs()` is the one that does not round.
+    """
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
-    var result = abs(self_ptr[])
+    var result = round_to_context(abs(self_ptr[]))
     return new_decimal(state()[], result^)
 
 
@@ -1153,18 +1264,18 @@ def bigdecimal_compare(
 def bigdecimal_max(
     py_self: PythonObject, other: PythonObject
 ) raises -> PythonObject:
-    """Return the larger of self and other."""
+    """Return the larger of self and other, rounded to the context."""
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
-    var result = self_ptr[].max(as_decimal(py_self, other))
+    var result = round_to_context(self_ptr[].max(as_decimal(py_self, other)))
     return new_decimal(state()[], result^)
 
 
 def bigdecimal_min(
     py_self: PythonObject, other: PythonObject
 ) raises -> PythonObject:
-    """Return the smaller of self and other."""
+    """Return the smaller of self and other, rounded to the context."""
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
-    var result = self_ptr[].min(as_decimal(py_self, other))
+    var result = round_to_context(self_ptr[].min(as_decimal(py_self, other)))
     return new_decimal(state()[], result^)
 
 
@@ -1255,18 +1366,26 @@ def bigdecimal_to_integral(
 def bigdecimal_fma(
     py_self: PythonObject, other: PythonObject, third: PythonObject
 ) raises -> PythonObject:
-    """Return self * other + third, with no rounding in between."""
+    """Return self * other + third, rounded once at the end.
+
+    `decimal` rounds an `fma` to the context, and only there -- the product
+    is exact -- so the result goes through `round_to_context()`.
+    """
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
-    var result = self_ptr[].fma(
-        as_decimal(py_self, other), as_decimal(py_self, third)
+    var result = round_to_context(
+        self_ptr[].fma(as_decimal(py_self, other), as_decimal(py_self, third))
     )
     return new_decimal(state()[], result^)
 
 
 def bigdecimal_normalize(py_self: PythonObject) raises -> PythonObject:
-    """Return self with trailing zeros of the coefficient removed."""
+    """Return self rounded to the context, then stripped of trailing zeros.
+
+    That order is `decimal`'s: at precision 3 `Decimal("9.99999")` rounds to
+    `10.0` and reduces to `1E+1`.
+    """
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
-    var result = self_ptr[].normalize()
+    var result = round_to_context(self_ptr[].copy()).normalize()
     return new_decimal(state()[], result^)
 
 
@@ -1279,10 +1398,15 @@ def bigdecimal_adjusted(py_self: PythonObject) raises -> PythonObject:
 def bigdecimal_scaleb(
     py_self: PythonObject, other: PythonObject
 ) raises -> PythonObject:
-    """Return self * 10 ** other, by moving the exponent."""
+    """Return self * 10 ** other, by moving the exponent.
+
+    Rounded to the context afterwards, as in `decimal`.
+    """
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
     var builtins = Python.import_module("builtins")
-    var result = self_ptr[].scaleb(Int(py=builtins.int(other)))
+    var result = round_to_context(
+        self_ptr[].scaleb(Int(py=builtins.int(other)))
+    )
     return new_decimal(state()[], result^)
 
 
@@ -1435,7 +1559,9 @@ def _not_implemented_ptr() raises -> PyObjectPtr:
 
 
 def _binary_slot[
-    operation: def(BigDecimal, BigDecimal, Int) thin raises -> BigDecimal,
+    operation: def(
+        BigDecimal, BigDecimal, Int, RoundingMode
+    ) thin raises -> BigDecimal,
     is_division: Bool = False,
 ](left: PyObjectPtr, right: PyObjectPtr) abi("C") -> PyObjectPtr:
     """The shared body of every arithmetic slot.
@@ -1460,7 +1586,10 @@ def _binary_slot[
         if left_is_ours and right_is_ours:
             # The common case: no reference counting, no conversion.
             result = operation(
-                _value_of(left)[], _value_of(right)[], cell.precision
+                _value_of(left)[],
+                _value_of(right)[],
+                cell.precision,
+                cell.rounding,
             )
         elif left_is_ours:
             var converted: BigDecimal
@@ -1468,14 +1597,18 @@ def _binary_slot[
                 converted = convert_operand(PythonObject(from_borrowed=right))
             except:
                 return _not_implemented_ptr()
-            result = operation(_value_of(left)[], converted, cell.precision)
+            result = operation(
+                _value_of(left)[], converted, cell.precision, cell.rounding
+            )
         elif right_is_ours:
             var converted: BigDecimal
             try:
                 converted = convert_operand(PythonObject(from_borrowed=left))
             except:
                 return _not_implemented_ptr()
-            result = operation(converted, _value_of(right)[], cell.precision)
+            result = operation(
+                converted, _value_of(right)[], cell.precision, cell.rounding
+            )
         else:
             return _not_implemented_ptr()
 
@@ -1489,24 +1622,49 @@ def _binary_slot[
         return raise_python_exception(e)
 
 
-def _do_add(x: BigDecimal, y: BigDecimal, digits: Int) raises -> BigDecimal:
-    return x.add(y, digits)
+def _sign_of_zero_sum(sign1: Bool, sign2: Bool, mode: RoundingMode) -> Bool:
+    """The sign `decimal` gives a sum that came out zero.
+
+    Two negative operands give -0. Operands of opposite sign that cancel give
+    +0, except under ROUND_FLOOR where they give -0. This is the decimal
+    specification's rule and it is only here so that a program printing
+    `-0.0` under `decimal` prints it here too; the Mojo library returns +0
+    for a cancellation and is not made to carry the quirk.
+    """
+    if sign1 and sign2:
+        return True
+    return sign1 != sign2 and mode == RoundingMode.ROUND_FLOOR
+
+
+def _do_add(
+    x: BigDecimal, y: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    var result = x.add(y, digits, mode)
+    if result.coefficient.is_zero():
+        result.sign = _sign_of_zero_sum(x.sign, y.sign, mode)
+    return result^
 
 
 def _do_subtract(
-    x: BigDecimal, y: BigDecimal, digits: Int
+    x: BigDecimal, y: BigDecimal, digits: Int, mode: RoundingMode
 ) raises -> BigDecimal:
-    return x.subtract(y, digits)
+    var result = x.subtract(y, digits, mode)
+    if result.coefficient.is_zero():
+        # x - y is x + (-y).
+        result.sign = _sign_of_zero_sum(x.sign, not y.sign, mode)
+    return result^
 
 
 def _do_multiply(
-    x: BigDecimal, y: BigDecimal, digits: Int
+    x: BigDecimal, y: BigDecimal, digits: Int, mode: RoundingMode
 ) raises -> BigDecimal:
-    return x.multiply(y, digits)
+    return x.multiply(y, digits, mode)
 
 
-def _do_divide(x: BigDecimal, y: BigDecimal, digits: Int) raises -> BigDecimal:
-    return x.true_divide(y, digits)
+def _do_divide(
+    x: BigDecimal, y: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return x.true_divide(y, digits, mode)
 
 
 def slot_add(left: PyObjectPtr, right: PyObjectPtr) abi("C") -> PyObjectPtr:
@@ -1661,13 +1819,19 @@ def fastcall_quantize(
         else:
             template = convert_operand(PythonObject(from_borrowed=given))
 
-        var mode = RoundingMode.ROUND_HALF_EVEN
+        var mode = cell.rounding
         if Int(nargs) > 1:
             mode = rounding_from(
                 PythonObject(from_borrowed=args[unsafe_offset=1])
             )
 
         var result = _value_of(py_self)[].quantize(template, mode)
+        # `decimal` refuses a quantize whose result needs more digits than
+        # the context allows: InvalidOperation, which is ValueError here.
+        if result.coefficient.number_of_digits() > cell.precision:
+            return _raise_value_error(
+                "quantize result has too many digits for current context"
+            )
         return new_decimal(cell, result^).steal_data()
     except e:
         return raise_python_exception(e)
@@ -1686,6 +1850,9 @@ def _fastcall_to_precision[
     Each takes an optional context that we ignore, and each can be handed a
     value outside its domain, which is a `ValueError` rather than a bare
     `Exception`.
+
+    Always half to even, whatever the context rounding says, which is what
+    `decimal` does with these four. See `DIRECTED_GUARD_DIGITS`.
     """
     try:
         ref cell = state()[]
@@ -1771,14 +1938,21 @@ def fastcall_to_integral(
     args: Pointer[PyObjectPtr, MutUntrackedOrigin],
     nargs: Py_ssize_t,
 ) abi("C") -> PyObjectPtr:
-    """`to_integral_value(rounding=None)`."""
+    """`to_integral_value(rounding=None)`. `None` is the context mode."""
     try:
-        var mode = RoundingMode.ROUND_HALF_EVEN
+        var mode = state()[].rounding
         if Int(nargs) > 0:
             mode = rounding_from(
                 PythonObject(from_borrowed=args[unsafe_offset=0])
             )
-        var result = _value_of(py_self)[].round(0, mode)
+        # A value with no fractional digits is returned as it is, exponent
+        # and all: `decimal` gives `Decimal("1E+2")` back unchanged.
+        ref value = _value_of(py_self)[]
+        var result: BigDecimal
+        if value.scale <= 0:
+            result = value.copy()
+        else:
+            result = value.round(0, mode)
         return new_decimal(state()[], result^).steal_data()
     except e:
         return raise_python_exception(e)
@@ -1792,7 +1966,9 @@ def fastcall_round(
     """`round(self)` and `round(self, ndigits)`.
 
     With no argument Python expects an `int` back, and with one it expects the
-    same type as the input -- which is what `decimal` does too.
+    same type as the input -- which is what `decimal` does too. `round(x)` is
+    HALF_EVEN whatever the context says; `round(x, n)` is a `quantize` and
+    follows the context rounding, as in `decimal`.
     """
     try:
         var places = _fastcall_argument(args, nargs, 0)
@@ -1804,9 +1980,271 @@ def fastcall_round(
             return builtins.int(
                 PythonObject(value.to_string(force_plain=True))
             ).steal_data()
-        var result = _value_of(py_self)[].round(
-            Int(py=places), RoundingMode.ROUND_HALF_EVEN
-        )
-        return new_decimal(state()[], result^).steal_data()
+        ref cell = state()[]
+        var result = _value_of(py_self)[].round(Int(py=places), cell.rounding)
+        # `round(x, n)` is a quantize, with the same limit.
+        if result.coefficient.number_of_digits() > cell.precision:
+            return _raise_value_error(
+                "quantize result has too many digits for current context"
+            )
+        return new_decimal(cell, result^).steal_data()
     except e:
         return raise_python_exception(e)
+
+
+# ===----------------------------------------------------------------------=== #
+# The rest of the specification's method surface
+#
+# Digit-wise logic, neighbours and `remainder_near` live in
+# `decimo.bigdecimal.spec`, the total order in `decimo.bigdecimal.comparison`.
+# The two things they need that decimo does not have -- `Emin`, and therefore
+# `Etiny` and the word "subnormal" -- are added in the Python layer, where the
+# rest of `decimal`'s context lives.
+#
+# Each of these catches what the library raises and sets the Python exception
+# a `decimal` program expects: `InvalidOperation`, which decimo maps to
+# `ValueError`, or `DivisionByZero`, which it maps to `ZeroDivisionError`.
+# ===----------------------------------------------------------------------=== #
+
+
+def bigdecimal_remainder_near(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """Return self - other * n, with n the integer nearest self / other."""
+    var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
+    var divisor = as_decimal(py_self, other)
+    if divisor.is_zero():
+        # `decimal` calls this InvalidOperation rather than DivisionByZero:
+        # the nearest multiple of zero is undefined, not infinite.
+        return raise_as["PyExc_ValueError"](
+            "remainder_near has no answer when the divisor is zero"
+        )
+    var result = round_to_context(
+        bigdecimal_spec.remainder_near(self_ptr[], divisor)
+    )
+    return new_decimal(state()[], result^)
+
+
+def bigdecimal_next_plus(py_self: PythonObject) raises -> PythonObject:
+    """Return the smallest value larger than self at this precision.
+
+    Zero is the Python layer's business: it has the `Emin` that says how
+    small a step may be.
+    """
+    ref cell = state()[]
+    var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
+    if self_ptr[].is_zero():
+        return raise_as["PyExc_ValueError"]("no value is next to zero")
+    var result = bigdecimal_spec.next_plus(self_ptr[], cell.precision)
+    return new_decimal(cell, result^)
+
+
+def bigdecimal_next_minus(py_self: PythonObject) raises -> PythonObject:
+    """Return the largest value smaller than self at this precision."""
+    ref cell = state()[]
+    var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
+    if self_ptr[].is_zero():
+        return raise_as["PyExc_ValueError"]("no value is next to zero")
+    var result = bigdecimal_spec.next_minus(self_ptr[], cell.precision)
+    return new_decimal(cell, result^)
+
+
+def bigdecimal_next_toward(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """Return the value next to self in the direction of other."""
+    ref cell = state()[]
+    var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
+    var target = as_decimal(py_self, other)
+    if self_ptr[].is_zero() and not (self_ptr[] == target):
+        return raise_as["PyExc_ValueError"]("no value is next to zero")
+    var result = bigdecimal_spec.next_toward(self_ptr[], target, cell.precision)
+    return new_decimal(cell, result^)
+
+
+def bigdecimal_shift(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """Return self with its coefficient shifted, zeros filling in."""
+    try:
+        ref cell = state()[]
+        var builtins = Python.import_module("builtins")
+        var result = bigdecimal_spec.shift(
+            py_self.unchecked_downcast_value_ptr[BigDecimal]()[],
+            Int(py=builtins.int(other)),
+            cell.precision,
+        )
+        return new_decimal(cell, result^)
+    except:
+        return raise_as["PyExc_ValueError"](
+            "the shift must be an integer no larger than the precision"
+        )
+
+
+def bigdecimal_rotate(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """Return self with its coefficient rotated."""
+    try:
+        ref cell = state()[]
+        var builtins = Python.import_module("builtins")
+        var result = bigdecimal_spec.rotate(
+            py_self.unchecked_downcast_value_ptr[BigDecimal]()[],
+            Int(py=builtins.int(other)),
+            cell.precision,
+        )
+        return new_decimal(cell, result^)
+    except:
+        return raise_as["PyExc_ValueError"](
+            "the rotation must be an integer no larger than the precision"
+        )
+
+
+comptime _NOT_LOGICAL: StaticString = (
+    "a logical operand must be a non-negative integer written with the"
+    " digits 0 and 1 and an exponent of zero"
+)
+
+
+def bigdecimal_logical_and(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """Return the digit-wise `and` of self and other."""
+    try:
+        ref cell = state()[]
+        var result = bigdecimal_spec.logical_and(
+            py_self.unchecked_downcast_value_ptr[BigDecimal]()[],
+            as_decimal(py_self, other),
+            cell.precision,
+        )
+        return new_decimal(cell, result^)
+    except:
+        return raise_as["PyExc_ValueError"](_NOT_LOGICAL)
+
+
+def bigdecimal_logical_or(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """Return the digit-wise `or` of self and other."""
+    try:
+        ref cell = state()[]
+        var result = bigdecimal_spec.logical_or(
+            py_self.unchecked_downcast_value_ptr[BigDecimal]()[],
+            as_decimal(py_self, other),
+            cell.precision,
+        )
+        return new_decimal(cell, result^)
+    except:
+        return raise_as["PyExc_ValueError"](_NOT_LOGICAL)
+
+
+def bigdecimal_logical_xor(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """Return the digit-wise `xor` of self and other."""
+    try:
+        ref cell = state()[]
+        var result = bigdecimal_spec.logical_xor(
+            py_self.unchecked_downcast_value_ptr[BigDecimal]()[],
+            as_decimal(py_self, other),
+            cell.precision,
+        )
+        return new_decimal(cell, result^)
+    except:
+        return raise_as["PyExc_ValueError"](_NOT_LOGICAL)
+
+
+def bigdecimal_logical_invert(py_self: PythonObject) raises -> PythonObject:
+    """Return the digit-wise inverse of self, in `prec` digits."""
+    try:
+        ref cell = state()[]
+        var result = bigdecimal_spec.logical_invert(
+            py_self.unchecked_downcast_value_ptr[BigDecimal]()[],
+            cell.precision,
+        )
+        return new_decimal(cell, result^)
+    except:
+        return raise_as["PyExc_ValueError"](_NOT_LOGICAL)
+
+
+def bigdecimal_logb(py_self: PythonObject) raises -> PythonObject:
+    """Return the exponent of the leading digit, as a Decimal."""
+    var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
+    if self_ptr[].is_zero():
+        # `decimal` answers `-Infinity` and raises DivisionByZero with it.
+        return raise_as["PyExc_ZeroDivisionError"](
+            "logb(0) has no answer without an infinity to give"
+        )
+    var result = round_to_context(bigdecimal_spec.logb(self_ptr[]))
+    return new_decimal(state()[], result^)
+
+
+def bigdecimal_compare_total(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """Compare self and other in the specification's total order."""
+    var order = bigdecimal_comparison.compare_total(
+        py_self.unchecked_downcast_value_ptr[BigDecimal]()[],
+        as_decimal(py_self, other),
+    )
+    return new_decimal(state()[], BigDecimal(Int(order)))
+
+
+def bigdecimal_compare_total_mag(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """Compare the magnitudes of self and other in the total order."""
+    var order = bigdecimal_comparison.compare_total_absolute(
+        py_self.unchecked_downcast_value_ptr[BigDecimal]()[],
+        as_decimal(py_self, other),
+    )
+    return new_decimal(state()[], BigDecimal(Int(order)))
+
+
+def bigdecimal_max_mag(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """Return the operand with the larger magnitude."""
+    var result = round_to_context(
+        bigdecimal_spec.max_absolute(
+            py_self.unchecked_downcast_value_ptr[BigDecimal]()[],
+            as_decimal(py_self, other),
+        )
+    )
+    return new_decimal(state()[], result^)
+
+
+def bigdecimal_min_mag(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """Return the operand with the smaller magnitude."""
+    var result = round_to_context(
+        bigdecimal_spec.min_absolute(
+            py_self.unchecked_downcast_value_ptr[BigDecimal]()[],
+            as_decimal(py_self, other),
+        )
+    )
+    return new_decimal(state()[], result^)
+
+
+def bigdecimal_number_class(py_self: PythonObject) raises -> PythonObject:
+    """Return what kind of number self is, as `decimal` names it.
+
+    Never "Subnormal" here: that word needs an `Emin`, which the Python
+    layer applies on top of this answer.
+    """
+    return PythonObject(
+        bigdecimal_spec.number_class(
+            py_self.unchecked_downcast_value_ptr[BigDecimal]()[]
+        )
+    )
+
+
+def bigdecimal_is_qnan(py_self: PythonObject) raises -> PythonObject:
+    """Always False: decimo has no NaNs."""
+    return PythonObject(False)
+
+
+def bigdecimal_is_snan(py_self: PythonObject) raises -> PythonObject:
+    """Always False: decimo has no NaNs."""
+    return PythonObject(False)

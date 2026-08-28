@@ -27,6 +27,48 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
 
 ### ⭐️ New in Unreleased
 
+1. **The Python package rounds in every mode.** `getcontext().rounding`
+   accepts `ROUND_HALF_EVEN`, `ROUND_HALF_UP`, `ROUND_HALF_DOWN`,
+   `ROUND_DOWN`, `ROUND_UP`, `ROUND_CEILING` and `ROUND_FLOOR`, and every
+   arithmetic operation, `quantize`, `round(x, n)` and `to_integral_value`
+   follow it exactly, checked against `decimal` digit for digit. `Context`
+   is a value until installed, as in `decimal`; `localcontext()` takes
+   keyword overrides; `BasicContext` and `ExtendedContext` exist. On the
+   Mojo side `add`, `subtract`, `multiply`, `true_divide` and the three
+   in-place forms take a `rounding_mode`. `ROUND_05UP` is refused.
+1. **The rest of `decimal`'s method surface.** `remainder_near`,
+   `next_plus`, `next_minus`, `next_toward`, `shift`, `rotate`,
+   `logical_and`, `logical_or`, `logical_xor`, `logical_invert`, `logb`,
+   `compare_total`, `compare_total_mag`, `compare_signal`, `max_mag`,
+   `min_mag`, `number_class`, `to_integral_exact`, `is_normal`,
+   `is_subnormal`, `is_qnan`, `is_snan` and `from_number`, all checked
+   against `decimal`. The arithmetic lives in Mojo, in the new
+   `decimo.bigdecimal.spec` and in `comparison.compare_total`; the four
+   answers that need an `Emin` are finished in the Python layer, since
+   decimo's own exponents are unbounded. `max` and `min` now break a tie
+   between numerically equal operands by the total order, as the
+   specification says: `max(12.0, 12)` is `12`.
+1. **`sqrt`, `exp`, `ln` and `log10` in Python are always half to even**,
+   which is what `decimal` does with them. `**` still follows the context
+   mode, also as `decimal` does.
+1. **Every operation applies the context, as in `decimal`.** `abs()`, `max`,
+   `min`, `normalize`, `scaleb`, `fma` and the remainder from `%` and
+   `divmod` were returning an exact value where `decimal` returns a rounded
+   one. `fma` is also exact now where it went through `*` and `+`, which
+   round at each step; `x ** n` and `exp` no longer come back one digit wide
+   when the rounding carries.
+1. **Wheels for macOS arm64, CPython 3.13 and 3.14.**
+   `pixi run -e py313 release` (or `py314`) builds one; the new
+   `release_python.yaml` workflow builds both and uploads them to PyPI
+   through trusted publishing. A tag publishes a release and a commit on
+   `main` publishes `<version>.devYYYYMMDDHHMMSS`, the second only once the
+   repository variable `PUBLISH_DEV` is set. The wheel takes its version
+   from the library's, so `pip show decimo` and the CLI's `--version` say
+   the same thing, and a tag that disagrees with `pixi.toml` stops the run. The extension is linked for macOS 14 and the
+   wheel is tagged so, instead of for the build machine's version. The Linux
+   path (`auditwheel`, `manylinux_2_35`) is written in `build_wheel.py` but
+   not yet verified, so it is not in the matrix.
+
 1. **`BigInt` keeps small values inside the struct.** `WordList`, written for
    `BigUInt`, gains an inline-capacity parameter and moves to
    `decimo.wordlist`; `BigInt` uses `WordList[12]` under the name `Magnitude`.

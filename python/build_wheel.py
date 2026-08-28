@@ -5,11 +5,12 @@ Run it through pixi, which puts the build tools on the path:
     pixi run release                  # build the wheel, stop there
     pixi run release --testpypi       # ... and upload to TestPyPI
     pixi run release --pypi           # ... and upload to PyPI
-    pixi run release --version 0.2.0  # a real version instead of a dev stamp
+    pixi run release --version 0.14.0 # a release instead of a dev stamp
 
-The version defaults to `0.1.0.devYYYYMMDDHHMMSS` in UTC. PyPI refuses to
-accept the same version twice, so a timestamp means every build during
-development has somewhere to go.
+The version defaults to the library's own, from `pixi.toml`, with a UTC
+timestamp after it: `0.14.0.devYYYYMMDDHHMMSS`. The wheel is the Mojo library
+packaged for Python, so the two carry the same number, and PyPI, which
+refuses the same version twice, still takes every development build.
 
 The interesting part is the vendoring. `_decimo.so` does not stand alone: it
 loads three Mojo runtime libraries through an `@rpath` that points at the pixi
@@ -17,6 +18,15 @@ environment on the machine that built it. A wheel with that path in it works
 only here. So the libraries are copied in next to the extension and every
 `@rpath` is rewritten to `@loader_path`, which means "the directory I am in".
 Together they come to about 1.6 MB.
+
+On Linux that job belongs to `auditwheel repair`: it copies the libraries
+in, rewrites the rpath with patchelf, and retags the wheel `manylinux` so
+PyPI accepts it. The environment's `lib` directory is put on
+`LD_LIBRARY_PATH` so auditwheel can find them.
+
+Run it in one of the per-interpreter environments (`pixi run -e py313
+release`, `pixi run -e py314 release`): the extension is tagged for the
+interpreter that built it.
 """
 
 import argparse
@@ -31,7 +41,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 PACKAGE = HERE / "src" / "decimo"
 REPOSITORY = HERE.parent
-ENVIRONMENT_LIBRARY = REPOSITORY / ".pixi" / "envs" / "default" / "lib"
+# The environment this script runs in, which is where `mojo` put the runtime.
+ENVIRONMENT_LIBRARY = Path(sys.prefix) / "lib"
 
 
 def run(command, **kwargs):
@@ -90,11 +101,11 @@ def vendor_runtime():
             "(the `release` task normally does that for you)."
         )
     if sys.platform != "darwin":
-        sys.exit(
-            "Vendoring is written for macOS (otool / install_name_tool).\n"
-            "On Linux the same job is done by `auditwheel repair`, which "
-            "this script does not call yet."
-        )
+        # Linux: nothing to do before the build; `repair_linux_wheel()`
+        # runs auditwheel on the result.
+        for stale in PACKAGE.glob("*.so.*"):
+            stale.unlink()
+        return []
 
     # Start from a clean package directory. Leaving last run's libraries in
     # place would skip them here and, worse, leave them unsigned after the
@@ -126,6 +137,55 @@ def vendor_runtime():
     return copied
 
 
+def repair_linux_wheel(wheel, distribution):
+    """Make a Linux wheel self-contained and manylinux-tagged."""
+    environment = dict(os.environ)
+    environment["LD_LIBRARY_PATH"] = ":".join(
+        part
+        for part in [str(ENVIRONMENT_LIBRARY), environment.get("LD_LIBRARY_PATH")]
+        if part
+    )
+    repaired = distribution / "repaired"
+    run(
+        ["auditwheel", "repair", "--wheel-dir", str(repaired), str(wheel)],
+        env=environment,
+    )
+    wheel.unlink()
+    # Hand back the wheel this call produced. Picking the newest name out of
+    # `dist` instead would return another interpreter's wheel, since one per
+    # interpreter is kept there on purpose.
+    moved = None
+    for path in repaired.glob("*.whl"):
+        moved = Path(shutil.move(str(path), distribution / path.name))
+    shutil.rmtree(repaired)
+    if moved is None:
+        raise SystemExit("auditwheel produced no wheel")
+    return moved
+
+
+PROJECT_FILE = HERE.parent / "pixi.toml"
+LIBRARY_FILE = HERE.parent / "src" / "decimo" / "__init__.mojo"
+
+
+def library_version():
+    """The version of the Mojo library, which the wheel takes as its own."""
+    match = re.search(r'^version = "([^"]+)"', PROJECT_FILE.read_text(), re.MULTILINE)
+    if match is None:
+        raise SystemExit(f"no version in {PROJECT_FILE}")
+    version = match.group(1)
+
+    # `DECIMO_VERSION` is what the CLI prints, and it is supposed to say the
+    # same thing. A release with the two disagreeing would ship a package
+    # whose own `--version` contradicts it.
+    declared = re.search(r'DECIMO_VERSION = "([^"]+)"', LIBRARY_FILE.read_text())
+    if declared is not None and declared.group(1) != version:
+        print(
+            f"  warning: {LIBRARY_FILE.name} says {declared.group(1)} where"
+            f" pixi.toml says {version}"
+        )
+    return version
+
+
 VERSION_FILE = PACKAGE / "_version.py"
 
 
@@ -149,7 +209,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--version",
-        help="version to stamp (default: 0.1.0.devYYYYMMDDHHMMSS, UTC)",
+        help=(
+            "version to stamp (default: the library version from pixi.toml"
+            " with a .devYYYYMMDDHHMMSS stamp, UTC)"
+        ),
     )
     parser.add_argument(
         "--pypi", action="store_true", help="upload to PyPI when the build works"
@@ -162,17 +225,21 @@ def main():
     if arguments.pypi and arguments.testpypi:
         sys.exit("choose one of --pypi and --testpypi, not both")
 
-    version = arguments.version or datetime.now(timezone.utc).strftime(
-        "0.1.0.dev%Y%m%d%H%M%S"
+    version = arguments.version or (
+        library_version() + datetime.now(timezone.utc).strftime(".dev%Y%m%d%H%M%S")
     )
 
     print("Preparing the package")
     previous_version_file = write_version(version)
     vendor_runtime()
 
+    # Only this interpreter's previous wheels are cleared, so building py313
+    # and then py314 leaves both in `dist/` for one upload.
     distribution = HERE / "dist"
-    if distribution.exists():
-        shutil.rmtree(distribution)
+    distribution.mkdir(exist_ok=True)
+    interpreter = f"cp{sys.version_info.major}{sys.version_info.minor}"
+    for stale in distribution.glob(f"*-{interpreter}-*.whl"):
+        stale.unlink()
 
     print("Building the wheel")
     run(
@@ -183,10 +250,13 @@ def main():
     if previous_version_file is not None:
         VERSION_FILE.write_text(previous_version_file)
 
-    wheels = sorted(distribution.glob("*.whl"))
+    wheels = sorted(distribution.glob(f"*-{interpreter}-*.whl"))
     if not wheels:
         sys.exit("no wheel was produced")
     wheel = wheels[-1]
+    if sys.platform != "darwin":
+        print("Repairing the wheel for manylinux")
+        wheel = repair_linux_wheel(wheel, distribution)
     print(f"\n  {wheel}  ({wheel.stat().st_size / 1e6:.2f} MB)")
 
     print("\nChecking the metadata")

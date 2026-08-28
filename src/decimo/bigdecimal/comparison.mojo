@@ -196,9 +196,17 @@ def max(x1: BigDecimal, x2: BigDecimal) -> BigDecimal:
         x2: The second operand.
 
     Returns:
-        The larger of the two values.
+        The larger of the two values. When the two are numerically equal but
+        written differently, the one that comes later in `compare_total()`
+        is returned, which is the specification's rule: `max(12.0, 12)` is
+        `12` and `max(-12.0, -12)` is `-12.0`.
     """
-    if compare(x1, x2) >= 0:
+    var order = compare(x1, x2)
+    if order > 0:
+        return x1.copy()
+    if order < 0:
+        return x2.copy()
+    if compare_total(x1, x2) >= 0:
         return x1.copy()
     return x2.copy()
 
@@ -211,8 +219,57 @@ def min(x1: BigDecimal, x2: BigDecimal) -> BigDecimal:
         x2: The second operand.
 
     Returns:
-        The smaller of the two values.
+        The smaller of the two values. When the two are numerically equal but
+        written differently, the one that comes first in `compare_total()` is
+        returned: `min(12.0, 12)` is `12.0` and `min(-12.0, -12)` is `-12`.
     """
-    if compare(x1, x2) <= 0:
+    var order = compare(x1, x2)
+    if order < 0:
+        return x1.copy()
+    if order > 0:
+        return x2.copy()
+    if compare_total(x1, x2) <= 0:
         return x1.copy()
     return x2.copy()
+
+
+def compare_total(x1: BigDecimal, x2: BigDecimal) -> Int8:
+    """Compares two values in the specification's total order.
+
+    Args:
+        x1: The first operand.
+        x2: The second operand.
+
+    Returns:
+        `-1`, `0` or `1`. Unlike `compare()` this separates values that are
+        numerically equal but written differently: `1.0` comes before `1`,
+        because the longer form has the smaller exponent, and the order flips
+        for negative values. Only two values written identically compare
+        equal, which is what makes it a total order.
+    """
+    if x1.sign != x2.sign:
+        return -1 if x1.sign else 1
+    var order = compare(x1, x2)
+    if order != 0:
+        return order
+    if x1.scale == x2.scale:
+        return 0
+    # A larger scale is a smaller exponent, which comes first among positive
+    # values and last among negative ones.
+    var left_first = x1.scale > x2.scale
+    if x1.sign:
+        return 1 if left_first else -1
+    return -1 if left_first else 1
+
+
+def compare_total_absolute(x1: BigDecimal, x2: BigDecimal) -> Int8:
+    """Compares the magnitudes of two values in the total order.
+
+    Args:
+        x1: The first operand.
+        x2: The second operand.
+
+    Returns:
+        `compare_total()` of the two absolute values.
+    """
+    return compare_total(abs(x1), abs(x2))

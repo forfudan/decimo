@@ -38,7 +38,10 @@ from decimo.rounding_mode import RoundingMode
 
 
 def add(
-    x1: BigDecimal, x2: BigDecimal, precision: Int = 0
+    x1: BigDecimal,
+    x2: BigDecimal,
+    precision: Int = 0,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
 ) raises -> BigDecimal:
     """Returns the sum of two numbers.
 
@@ -48,7 +51,9 @@ def add(
         precision: Optional target significant-digit precision for the
             result. When `0` (default) the function returns the exact
             sum. When `>0` the exact sum is computed and then rounded
-            to `precision` significant digits via HALF_EVEN.
+            to `precision` significant digits with `rounding_mode`.
+        rounding_mode: How to round when `precision > 0`. HALF_EVEN by
+            default.
 
     Returns:
         The sum of x1 and x2 (exact when `precision == 0`, otherwise
@@ -69,7 +74,7 @@ def add(
         round_to_precision_inplace(
             result,
             precision,
-            RoundingMode.ROUND_HALF_EVEN,
+            rounding_mode,
             remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
@@ -172,7 +177,10 @@ def _combine_scaled_coefficients(
 
 
 def subtract(
-    x1: BigDecimal, x2: BigDecimal, precision: Int = 0
+    x1: BigDecimal,
+    x2: BigDecimal,
+    precision: Int = 0,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
 ) raises -> BigDecimal:
     """Returns the difference of two numbers.
 
@@ -182,8 +190,10 @@ def subtract(
         precision: Optional target significant-digit precision for the
             result. When `0` (default) the function returns the exact
             difference. When `>0` the exact difference is computed
-            and then rounded to `precision` significant digits via
-            HALF_EVEN.
+            and then rounded to `precision` significant digits with
+            `rounding_mode`.
+        rounding_mode: How to round when `precision > 0`. HALF_EVEN by
+            default.
 
     Returns:
         The difference of x1 and x2 (x1 - x2). Exact when
@@ -203,7 +213,7 @@ def subtract(
         round_to_precision_inplace(
             result,
             precision,
-            RoundingMode.ROUND_HALF_EVEN,
+            rounding_mode,
             remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
@@ -284,7 +294,10 @@ def subtract(
 
 
 def multiply(
-    x1: BigDecimal, x2: BigDecimal, precision: Int = 0
+    x1: BigDecimal,
+    x2: BigDecimal,
+    precision: Int = 0,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
 ) raises -> BigDecimal:
     """Returns the product of two numbers.
 
@@ -294,7 +307,9 @@ def multiply(
         precision: Optional target significant-digit precision for the
             result. When `0` (default) the function returns the exact
             product. When `>0` the exact product is computed and then
-            rounded to `precision` significant digits via HALF_EVEN.
+            rounded to `precision` significant digits with `rounding_mode`.
+        rounding_mode: How to round when `precision > 0`. HALF_EVEN by
+            default.
 
     Returns:
         The product of x1 and x2. Exact when `precision == 0`,
@@ -322,7 +337,7 @@ def multiply(
         round_to_precision_inplace(
             result,
             precision,
-            RoundingMode.ROUND_HALF_EVEN,
+            rounding_mode,
             remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
@@ -331,7 +346,10 @@ def multiply(
 
 
 def multiply_inplace(
-    mut x1: BigDecimal, x2: BigDecimal, precision: Int = 0
+    mut x1: BigDecimal,
+    x2: BigDecimal,
+    precision: Int = 0,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
 ) raises:
     """Multiplies x1 by x2 in place, avoiding full BigDecimal construction.
 
@@ -344,7 +362,9 @@ def multiply_inplace(
         precision: Optional target significant-digit precision for the
             result. When `0` (default) the in-place product is exact.
             When `>0` the exact product is computed and then rounded
-            in place to `precision` significant digits via HALF_EVEN.
+            in place to `precision` significant digits with `rounding_mode`.
+        rounding_mode: How to round when `precision > 0`. HALF_EVEN by
+            default.
 
     Raises:
         Error: If an arithmetic error occurs during computation.
@@ -363,13 +383,18 @@ def multiply_inplace(
         round_to_precision_inplace(
             x1,
             precision,
-            RoundingMode.ROUND_HALF_EVEN,
+            rounding_mode,
             remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
 
 
-def add_inplace(mut x1: BigDecimal, x2: BigDecimal, precision: Int = 0) raises:
+def add_inplace(
+    mut x1: BigDecimal,
+    x2: BigDecimal,
+    precision: Int = 0,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) raises:
     """Adds x2 to x1 in place.
 
     This avoids constructing a new BigDecimal for the result.
@@ -381,7 +406,9 @@ def add_inplace(mut x1: BigDecimal, x2: BigDecimal, precision: Int = 0) raises:
         precision: Optional target significant-digit precision for the
             result. When `0` (default) the in-place sum is exact.
             When `>0` the exact sum is computed and then rounded in
-            place to `precision` significant digits via HALF_EVEN.
+            place to `precision` significant digits with `rounding_mode`.
+        rounding_mode: How to round when `precision > 0`. HALF_EVEN by
+            default.
 
     Raises:
         Error: If an arithmetic error occurs during computation.
@@ -446,14 +473,17 @@ def add_inplace(mut x1: BigDecimal, x2: BigDecimal, precision: Int = 0) raises:
         round_to_precision_inplace(
             x1,
             precision,
-            RoundingMode.ROUND_HALF_EVEN,
+            rounding_mode,
             remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
 
 
 def subtract_inplace(
-    mut x1: BigDecimal, x2: BigDecimal, precision: Int = 0
+    mut x1: BigDecimal,
+    x2: BigDecimal,
+    precision: Int = 0,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
 ) raises:
     """Subtracts x2 from x1 in place.
 
@@ -466,7 +496,9 @@ def subtract_inplace(
             result. When `0` (default) the in-place difference is
             exact. When `>0` the exact difference is computed and
             then rounded in place to `precision` significant digits
-            via HALF_EVEN.
+            with `rounding_mode`.
+        rounding_mode: How to round when `precision > 0`. HALF_EVEN by
+            default.
 
     Raises:
         Error: If an arithmetic error occurs during computation.
@@ -477,11 +509,14 @@ def subtract_inplace(
         scale=x2.scale,
         sign=not x2.sign,
     )
-    add_inplace(x1, neg_x2, precision)
+    add_inplace(x1, neg_x2, precision, rounding_mode)
 
 
 def true_divide(
-    x: BigDecimal, y: BigDecimal, precision: Int
+    x: BigDecimal,
+    y: BigDecimal,
+    precision: Int,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
 ) raises -> BigDecimal:
     """Returns the quotient of two numbers with specified precision.
 
@@ -489,6 +524,10 @@ def true_divide(
         x: The first operand (dividend).
         y: The second operand (divisor).
         precision: The number of significant digits in the result.
+        rounding_mode: How to round the quotient to `precision` digits.
+            HALF_EVEN by default. Every mode is decided exactly: the
+            division keeps a sticky digit for the standard path and falls
+            back to it from the truncated path near any rounding boundary.
 
     Returns:
         The quotient of x and y, with precision up to `precision`
@@ -527,11 +566,14 @@ def true_divide(
     # Short divisors are already routed by `BigUInt.floor_divide` to
     # `floor_divide_by_word`, so the fast path is active end-to-end here
     # without a dedicated `BigDecimal` branch.
-    return true_divide_general(x, y, precision)
+    return true_divide_general(x, y, precision, rounding_mode)
 
 
 def true_divide_general(
-    x: BigDecimal, y: BigDecimal, precision: Int
+    x: BigDecimal,
+    y: BigDecimal,
+    precision: Int,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
 ) raises -> BigDecimal:
     """Returns the quotient of two numbers with the specified precision.
 
@@ -540,6 +582,7 @@ def true_divide_general(
         y: The second operand (divisor).
         precision: The minimum number of significant digits in the
             result. Should be greater than 0.
+        rounding_mode: How to round the quotient to `precision` digits.
 
     Returns:
         The quotient of x and y with the specified precision.
@@ -599,14 +642,14 @@ def true_divide_general(
 
     if len(y.coefficient.words) > needed_divisor_words:
         return _true_divide_general_truncated(
-            x, y, precision, needed_divisor_words
+            x, y, precision, needed_divisor_words, rounding_mode
         )
 
-    return _true_divide_general_standard(x, y, precision)
+    return _true_divide_general_standard(x, y, precision, rounding_mode)
 
 
 def _true_divide_general_standard(
-    x: BigDecimal, y: BigDecimal, precision: Int
+    x: BigDecimal, y: BigDecimal, precision: Int, rounding_mode: RoundingMode
 ) raises -> BigDecimal:
     """Internal: division on the full operands, no truncation."""
     #
@@ -710,7 +753,7 @@ def _true_divide_general_standard(
     )
     result.round_to_precision_inplace(
         precision,
-        RoundingMode.half_even(),
+        rounding_mode,
         remove_extra_digit_due_to_rounding=True,
         fill_zeros_to_precision=False,
     )
@@ -722,6 +765,7 @@ def _true_divide_general_truncated(
     y: BigDecimal,
     precision: Int,
     needed_divisor_words: Int,
+    rounding_mode: RoundingMode,
 ) raises -> BigDecimal:
     """Internal: division with truncated oversized operands."""
     var total_y_remove = len(y.coefficient.words) - needed_divisor_words
@@ -788,9 +832,11 @@ def _true_divide_general_truncated(
     # operands can say. That case is rare (about `2 * 10^-(T - p)`), so we
     # simply redo it without truncation.
     #
-    # A tail of `0000...` or `9999...` is not a problem here: both round to
-    # the same `p` digits, and the exactness check below uses the original
-    # operands.
+    # A tail of `0000...` or `9999...` is not a problem for a half-way mode:
+    # both round to the same `p` digits, and the exactness check below uses
+    # the original operands. For the directional modes (DOWN, UP, CEILING,
+    # FLOOR) that tail is the boundary itself -- whether anything at all lies
+    # below digit `p` decides the answer -- so those modes fall back on it.
     #
     # Before this check the truncated path rounded as if the quotient were
     # exact. `(2.5 * y + 1e-100) / y` with a 200-digit `y` gave 2 at one digit,
@@ -805,12 +851,33 @@ def _true_divide_general_truncated(
             ),
             tail_digits,
         )
-        # `5` followed by `tail_digits - 1` zeros, and one below it.
-        var half = biguint_arithmetics.multiply_by_power_of_ten(
-            BigUInt.from_word_unsafe(5), tail_digits - 1
+        var is_half_mode = (
+            rounding_mode == RoundingMode.ROUND_HALF_EVEN
+            or rounding_mode == RoundingMode.ROUND_HALF_UP
+            or rounding_mode == RoundingMode.ROUND_HALF_DOWN
         )
-        if tail == half or tail == half - BigUInt.from_word_unsafe(1):
-            return _true_divide_general_standard(x, y, precision)
+        var boundary: BigUInt
+        if is_half_mode:
+            # `5` followed by `tail_digits - 1` zeros, and one below it.
+            boundary = biguint_arithmetics.multiply_by_power_of_ten(
+                BigUInt.from_word_unsafe(5), tail_digits - 1
+            )
+        else:
+            # `1` followed by `tail_digits` zeros: `tail` is all nines one
+            # below it.
+            boundary = biguint_arithmetics.multiply_by_power_of_ten(
+                BigUInt.from_word_unsafe(1), tail_digits
+            )
+        if tail == boundary or tail == boundary - BigUInt.from_word_unsafe(1):
+            return _true_divide_general_standard(x, y, precision, rounding_mode)
+        # An all-zero tail is the other side of the same boundary, and only
+        # for a directional mode: whether anything at all lies below digit
+        # `p` decides the answer there, while a half mode rounds `X000...`
+        # and `X` minus a hair to the same `p` digits. Keeping the half
+        # modes out of this leaves the fast path in place for a quotient
+        # that comes out exact, such as a large `x / x`.
+        if not is_half_mode and tail.is_zero():
+            return _true_divide_general_standard(x, y, precision, rounding_mode)
 
     # Truncation discards low-order digits, so we cannot detect exact division
     # by checking coef * y_coef_tr == coef_x (the truncated values).
@@ -826,7 +893,7 @@ def _true_divide_general_truncated(
     )
     result.round_to_precision_inplace(
         precision,
-        RoundingMode.half_even(),
+        rounding_mode,
         remove_extra_digit_due_to_rounding=True,
         fill_zeros_to_precision=False,
     )

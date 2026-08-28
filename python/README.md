@@ -7,7 +7,9 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/forfudan/decimo/blob/main/LICENSE)
 
 > ⚠️ **Development release.** The API is settled enough to use, but the
-> version numbers are timestamps and the wheels are macOS arm64 only for now.
+> versions carry a timestamp: `0.14.0.devYYYYMMDDHHMMSS`, where `0.14.0` is
+> the version of the Mojo library the wheel packages. Wheels: macOS arm64
+> (14 and later), CPython 3.13 and 3.14. Everywhere else, build from source.
 
 Change one import and your program keeps working:
 
@@ -29,49 +31,25 @@ not a claim.
 
 The same benchmark file run against both libraries -- `python/benchmarks/compare.py`
 in the repository, which imports one or the other and runs identical code.
+Best of five, on an Apple M-series laptop:
 
-| Program                       |   decimo |  decimal |                  |
-| ----------------------------- | -------: | -------: | ---------------- |
-| compound interest, 150 years  | 13.0 µs  | 14.5 µs  | **1.12× faster** |
-| sqrt by Newton, 1000 digits   | 233.8 µs | 232.1 µs | about the same   |
-| e from its series, 500 digits | 199.1 µs | 170.3 µs | 1.17× slower     |
-| pi by Machin, 500 digits      | 719.2 µs | 554.3 µs | 1.30× slower     |
-| parse and print, 1000 digits  | 3.34 µs  | 2.71 µs  | 1.23× slower     |
-| arithmetic at 1000 digits     | 3.67 µs  | 5.83 µs  | **1.59× faster** |
+| Program                         |    decimo |   decimal |                  |
+| ------------------------------- | --------: | --------: | ---------------- |
+| add/sub/mul/div, 28 digits      |   90.6 ns |   73.0 ns | 1.24× slower     |
+| add/sub/mul/div, 200 digits     |  331.8 ns |  409.0 ns | **1.23× faster** |
+| add/sub/mul/div, 1000 digits    |   2.02 µs |   5.89 µs | **2.91× faster** |
+| compound interest, 150 years    |  12.71 µs |  13.08 µs | about the same   |
+| e from its series, 500 digits   | 197.92 µs | 162.75 µs | 1.22× slower     |
+| sqrt by Newton, 1000 digits     | 143.29 µs | 232.29 µs | **1.62× faster** |
+| pi by Machin, 500 digits        | 620.12 µs | 520.17 µs | 1.19× slower     |
+| parse and print, 1000 digits    |   3.28 µs |   2.60 µs | 1.26× slower     |
 
-Operation by operation, in nanoseconds. At 9 digits:
-
-| | decimo | decimal | |
-| --- | ---: | ---: | --- |
-| `a + b` | 36.8 | 34.7 | 1.06× slower |
-| `a - b` | 41.4 | 35.5 | 1.17× slower |
-| `a * b` | 36.3 | 33.4 | 1.09× slower |
-| `a / b` | 71.0 | 57.1 | 1.24× slower |
-
-and at the default precision of 28:
-
-| | decimo | decimal | |
-| --- | ---: | ---: | --- |
-| `a + b`    |  45.8 |  42.7 | 1.07× slower |
-| `a * b`    |  52.8 |  47.3 | 1.12× slower |
-| `a / b`    | 138.8 | 100.3 | 1.38× slower |
-| `a < b`    |  21.9 |  18.8 | 1.16× slower |
-| `a + 2`    |  57.2 |  65.6 | **1.15× faster** |
-| `quantize` |  42.6 |  61.8 | **1.45× faster** |
-
-So: within about 10% on addition and multiplication, ahead on
-`Decimal + int` and `quantize`, and behind on division by roughly a third.
-
-**decimo is faster once the numbers are large, and close on small ones.**
-Two things are structural. CPython's `decimal` keeps a 28-digit coefficient
-inside the object and never calls the allocator for it. And it works in base
-10^19 where decimo works in base 10^9, so decimo handles twice as many words
-for the same value -- which is most of what is left in division.
-
-The Mojo library underneath is further ahead, because it does not pay for the
-Python call. Measured against libmpdec directly, decimo is faster at **every**
-operation at 1000 digits, and at 9 digits it is 3.4× faster at addition, 3.5×
-at multiplication and 4× at rounding. See
+**decimo is faster once the numbers are large, and 20-25% behind on small
+ones.** The small-number gap is not the arithmetic: measured against
+libmpdec directly, without an interpreter in the way, decimo is 2-4× faster
+at 9 digits and faster at every operation at 1000 digits. What is left is the
+cost of the Python call itself -- building the result object and converting
+the operands -- which CPython's `decimal` has had thirty years to shave. See
 [the benchmarks](https://github.com/forfudan/decimo/blob/main/docs/benchmarks.md).
 
 ## What works
@@ -79,11 +57,22 @@ at multiplication and 4× at rounding. See
 Everything a `decimal` program normally touches:
 
 - all the operators, including `//`, `%`, `divmod()` and `**`
-- `getcontext().prec`, `setcontext()` and `localcontext()`
+- `getcontext().prec` and `getcontext().rounding`, `setcontext()`,
+  `localcontext()` (with keyword overrides), `Context` objects
+- all the rounding modes: `ROUND_HALF_EVEN`, `ROUND_HALF_UP`,
+  `ROUND_HALF_DOWN`, `ROUND_DOWN`, `ROUND_UP`, `ROUND_CEILING`,
+  `ROUND_FLOOR`, exact for arithmetic, `quantize`, `round()` and
+  `to_integral_value()`
 - `int()`, `float()`, `round()`, `math.floor/ceil/trunc`, `hash()`, `format()`
 - `quantize`, `normalize`, `as_tuple`, `as_integer_ratio`, `compare`, `fma`,
   `sqrt`, `exp`, `ln`, `log10`, `scaleb`, `adjusted`, `copy_abs`,
   `copy_negate`, `copy_sign`, `same_quantum`, `to_eng_string`, `max`, `min`
+- the rest of the specification's surface: `remainder_near`, `next_plus`,
+  `next_minus`, `next_toward`, `shift`, `rotate`, `logical_and`,
+  `logical_or`, `logical_xor`, `logical_invert`, `logb`, `compare_total`,
+  `compare_total_mag`, `compare_signal`, `max_mag`, `min_mag`,
+  `number_class`, `to_integral_exact`, `is_normal`, `is_subnormal`,
+  `from_number`
 - the same coercion rules: `int` converts in arithmetic, `float` does not, and
   both convert in a comparison
 - `copy`, `deepcopy` and `pickle`
@@ -96,8 +85,22 @@ decimo refuses these rather than answering differently:
 
 - **NaN and infinity.** decimo has no non-finite values. `is_nan()` and
   `is_infinite()` are always `False`.
-- **Rounding modes other than `ROUND_HALF_EVEN`.** Setting
-  `getcontext().rounding` to anything else raises `NotImplementedError`.
+- **`ROUND_05UP`.** Nothing implements it; setting it raises
+  `NotImplementedError`.
+- **`**` under a rounding mode other than `ROUND_HALF_EVEN`** is computed
+  nine digits wider and rounded once more, so the last digit can differ from
+  `decimal` when the true value lies within `10^-9` relative of a rounding
+  boundary. `sqrt`, `exp`, `ln` and `log10` are always half to even, as they
+  are in `decimal`, whatever the context says. Arithmetic, `quantize` and
+  `round()` are exact under every mode.
+- **`//`, `%`, `divmod()` and `remainder_near` with a long quotient.**
+  `decimal` raises `InvalidOperation` when the integer quotient has more
+  digits than the precision; decimo answers. The remainder is rounded to the
+  context, as in `decimal`.
+- **`Emin` only reaches four methods.** Exponents are unbounded, so `Emin`
+  changes nothing except what `next_plus(0)`, `next_minus(0)`,
+  `is_subnormal()` and `number_class()` say, where `decimal`'s answers need
+  a smallest exponent.
 - **Signals and traps.** `Context.flags` and `Context.traps` exist and stay
   empty. `Inexact`, `Rounded` and the rest are importable but never raised.
 - **`Emin` / `Emax`.** Exponents are unbounded, so nothing ever underflows to
@@ -115,13 +118,14 @@ written against `decimal` still catch.
 pip install decimo
 ```
 
-Wheels are built for macOS arm64. On anything else, build from source with
-[pixi](https://pixi.sh):
+Wheels are built for macOS arm64 (macOS 14 and later), for CPython 3.13 and
+3.14. On anything else -- Linux included, until its build is verified --
+build from source with [pixi](https://pixi.sh):
 
 ```bash
 git clone https://github.com/forfudan/decimo && cd decimo
-pixi run buildpy
-pip install -e python/
+pixi run -e py314 release        # or py313; the wheel lands in python/dist/
+pip install python/dist/*.whl
 ```
 
 ## Links

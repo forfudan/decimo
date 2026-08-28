@@ -1,0 +1,190 @@
+name: Build Python wheels
+
+# Builds the `decimo` wheel for every supported interpreter on macOS arm64,
+# and uploads the set to PyPI (or TestPyPI).
+#
+# Three ways in:
+#
+#   * push a tag -- `git tag v0.14.0 && git push origin v0.14.0` -- and the
+#     version is the tag without its `v`. This is how a real release goes out.
+#     The tag has to match the library version in `pixi.toml`, or the run
+#     stops: the wheel is the Mojo library packaged for Python, so the two
+#     always carry the same number.
+#   * push to `main`, which publishes `<library version>.devYYYYMMDDHHMMSS`
+#     so that `pip install --pre decimo` always has the latest. Off until the
+#     repository variable `PUBLISH_DEV` is set to `true`, so that nothing is
+#     uploaded before the publisher below exists.
+#   * by hand from the Actions tab -> "Build Python wheels" -> Run workflow,
+#     where the version may be given and the target chosen. `none` builds the
+#     wheels and keeps them as artifacts without uploading.
+#
+# Uploading uses PyPI trusted publishing: the project on PyPI has to list
+# this repository and this workflow file as a publisher, under the
+# environment name `pypi` (or `testpypi`). No token is stored anywhere.
+# See https://docs.pypi.org/trusted-publishers/.
+
+on:
+  # A pull request that touches the package, or the library it is compiled
+  # against, builds the wheels (no upload), so a broken build is caught
+  # before it reaches main.
+  pull_request:
+    paths:
+      - "python/**"
+      - "src/decimo/**"
+      - "pixi.toml"
+      - "pixi.lock"
+      - ".github/workflows/release_python.yaml"
+  # A tag is a release; a commit on `main` is a dev build. Neither is
+  # filtered by path: a tag has to build whatever it points at, and the
+  # extension is compiled from `src/decimo`, so few commits on `main` leave
+  # the wheel alone.
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to stamp, e.g. 0.2.0 (empty: dev timestamp)"
+        required: false
+        default: ""
+      target:
+        description: "Where to upload"
+        required: true
+        default: "none"
+        type: choice
+        options: [none, testpypi, pypi]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # One version for the whole run. Each build job stamping its own timestamp
+  # would give PyPI two different dev versions from one click.
+  version:
+    name: Pick the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.pick.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: pick
+        run: |
+          library=$(sed -n 's/^version = "\(.*\)"/\1/p' pixi.toml | head -1)
+          if [[ -z "$library" ]]; then
+            echo "no version in pixi.toml" >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            if [[ "$version" != "$library" ]]; then
+              echo "tag $GITHUB_REF_NAME and pixi.toml $library disagree" >&2
+              exit 1
+            fi
+          elif [[ -n "${{ inputs.version || '' }}" ]]; then
+            version="${{ inputs.version }}"
+          else
+            version="$library.dev$(date -u +%Y%m%d%H%M%S)"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "building $version"
+
+  build:
+    name: ${{ matrix.environment }} on ${{ matrix.os }}
+    needs: version
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [py313, py314]
+        # macos-14 is the oldest arm64 runner, matching the 14.0 target.
+        # Linux (ubuntu-22.04, glibc 2.35, manylinux_2_35 via auditwheel) is
+        # written in build_wheel.py but not yet verified; add it here when
+        # it is.
+        os: [macos-14]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: prefix-dev/setup-pixi@v0.9.5
+        with:
+          cache: true
+          environments: ${{ matrix.environment }}
+
+      # The extension is built, the Python test suite is run against it, and
+      # the wheel is assembled, in the environment whose interpreter it is
+      # tagged for. Mojo occasionally crashes at build time; the build step
+      # is retried rather than the whole job.
+      - name: Build, test and package
+        run: |
+          for attempt in 1 2 3; do
+            if pixi run -e ${{ matrix.environment }} release --version ${{ needs.version.outputs.version }}; then
+              break
+            fi
+            if [[ $attempt -eq 3 ]]; then exit 1; fi
+            echo "build failed, retrying in 5s"
+            sleep 5
+          done
+
+      # From outside the repository, so the wheel is what is being tested and
+      # not the source tree next to it.
+      - name: Install the wheel into a clean interpreter and use it
+        run: |
+          pixi run -e ${{ matrix.environment }} python -m venv /tmp/probe
+          /tmp/probe/bin/pip install --quiet python/dist/*.whl
+          cd /tmp && /tmp/probe/bin/python -c "
+          import decimo
+          from decimo import Decimal, getcontext, ROUND_DOWN
+          getcontext().prec = 50
+          print(Decimal(1) / Decimal(7))
+          getcontext().rounding = ROUND_DOWN
+          assert str(Decimal('2.5').quantize(Decimal('1'))) == '2'
+          getcontext().prec = 3
+          assert str(Decimal('1').next_minus()) == '0.999'
+          assert str(Decimal('1100').logical_and(Decimal('1010'))) == '0'
+          assert str(Decimal('2.5').shift(1)) == '25.0'
+          assert str(Decimal('12.0').max(Decimal('12'))) == '12'
+          assert Decimal('1E-5').number_class() == '+Normal'
+          assert decimo.__version__ == '${{ needs.version.outputs.version }}'
+          print('decimo', decimo.__version__)
+          "
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.environment }}-${{ matrix.os }}
+          path: python/dist/*.whl
+          if-no-files-found: error
+
+  # A tag always publishes. A commit on `main` publishes once someone has
+  # set `PUBLISH_DEV`, which is what keeps a repository without a trusted
+  # publisher from failing here on every merge. A manual run does what it was
+  # asked to do.
+  publish:
+    name: Upload
+    if: >-
+      ${{ startsWith(github.ref, 'refs/tags/v')
+          || (github.event_name == 'push' && vars.PUBLISH_DEV == 'true')
+          || (github.event_name == 'workflow_dispatch' && inputs.target != 'none') }}
+    needs: build
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'pypi' }}
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-*
+          path: dist
+          merge-multiple: true
+      - run: ls -l dist
+      - name: Upload to TestPyPI
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi' }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+      - name: Upload to PyPI
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi') }}
+        uses: pypa/gh-action-pypi-publish@release/v1

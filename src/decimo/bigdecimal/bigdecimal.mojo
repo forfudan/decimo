@@ -1679,17 +1679,24 @@ struct BigDecimal(
     # ===------------------------------------------------------------------=== #
 
     @always_inline
-    def add(self, other: Self, precision: Int = 0) raises -> Self:
+    def add(
+        self,
+        other: Self,
+        precision: Int = 0,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
         """Adds two values with explicit precision.
 
         Args:
             other: The right-hand side operand.
             precision: Target significant-digit precision for the result.
                 When `0` (default) the exact, unrounded sum is returned.
-                When `> 0` the exact sum is computed and then rounded
-                HALF_EVEN to `precision` significant digits.
+                When `> 0` the exact sum is computed and then rounded to
+                `precision` significant digits with `rounding_mode`.
                 Note: this differs from the `+` operator which always
                 rounds to `PRECISION` (matching Python `decimal.Decimal`).
+            rounding_mode: How to round when `precision > 0`. HALF_EVEN by
+                default.
 
         Returns:
             The sum of the two values.
@@ -1697,10 +1704,17 @@ struct BigDecimal(
         Raises:
             Error: If the underlying addition or rounding fails.
         """
-        return bigdecimal_arithmetics.add(self, other, precision=precision)
+        return bigdecimal_arithmetics.add(
+            self, other, precision=precision, rounding_mode=rounding_mode
+        )
 
     @always_inline
-    def subtract(self, other: Self, precision: Int = 0) raises -> Self:
+    def subtract(
+        self,
+        other: Self,
+        precision: Int = 0,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
         """Subtracts two values with explicit precision.
 
         Args:
@@ -1708,10 +1722,12 @@ struct BigDecimal(
             precision: Target significant-digit precision for the result.
                 When `0` (default) the exact, unrounded difference is
                 returned. When `> 0` the exact difference is computed
-                and then rounded HALF_EVEN to `precision` significant
-                digits.
+                and then rounded to `precision` significant digits with
+                `rounding_mode`.
                 Note: this differs from the `-` operator which always
                 rounds to `PRECISION` (matching Python `decimal.Decimal`).
+            rounding_mode: How to round when `precision > 0`. HALF_EVEN by
+                default.
 
         Returns:
             The difference of the two values.
@@ -1719,10 +1735,17 @@ struct BigDecimal(
         Raises:
             Error: If the underlying subtraction or rounding fails.
         """
-        return bigdecimal_arithmetics.subtract(self, other, precision=precision)
+        return bigdecimal_arithmetics.subtract(
+            self, other, precision=precision, rounding_mode=rounding_mode
+        )
 
     @always_inline
-    def multiply(self, other: Self, precision: Int = 0) raises -> Self:
+    def multiply(
+        self,
+        other: Self,
+        precision: Int = 0,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
         """Multiplies two values with explicit precision.
 
         Args:
@@ -1730,9 +1753,12 @@ struct BigDecimal(
             precision: Target significant-digit precision for the result.
                 When `0` (default) the exact, unrounded product is
                 returned. When `> 0` the exact product is computed and
-                then rounded HALF_EVEN to `precision` significant digits.
+                then rounded to `precision` significant digits with
+                `rounding_mode`.
                 Note: this differs from the `*` operator which always
                 rounds to `PRECISION` (matching Python `decimal.Decimal`).
+            rounding_mode: How to round when `precision > 0`. HALF_EVEN by
+                default.
 
         Returns:
             The product of the two values.
@@ -1740,17 +1766,23 @@ struct BigDecimal(
         Raises:
             Error: If the underlying multiplication or rounding fails.
         """
-        return bigdecimal_arithmetics.multiply(self, other, precision=precision)
+        return bigdecimal_arithmetics.multiply(
+            self, other, precision=precision, rounding_mode=rounding_mode
+        )
 
     @always_inline
     def true_divide(
-        self, other: Self, precision: Int = PRECISION
+        self,
+        other: Self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
         """Divides two values using true division with explicit precision.
 
         Args:
             other: The right-hand side operand.
             precision: The precision to use for the operation.
+            rounding_mode: How to round the quotient. HALF_EVEN by default.
 
         Returns:
             The quotient of the two values.
@@ -1759,11 +1791,16 @@ struct BigDecimal(
             ZeroDivisionError: If the divisor is zero.
         """
         return bigdecimal_arithmetics.true_divide(
-            self, other, precision=precision
+            self, other, precision=precision, rounding_mode=rounding_mode
         )
 
     @always_inline
-    def add_inplace(mut self, other: Self, precision: Int = 0) raises:
+    def add_inplace(
+        mut self,
+        other: Self,
+        precision: Int = 0,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises:
         """Adds `other` to `self` in place with explicit precision.
 
         Args:
@@ -1771,17 +1808,27 @@ struct BigDecimal(
             precision: Target significant-digit precision for the result.
                 When `0` (default) the exact, unrounded sum is stored in
                 `self`. When `> 0` the exact sum is computed and then
-                rounded HALF_EVEN to `precision` significant digits.
+                rounded to `precision` significant digits with
+                `rounding_mode`.
                 Note: this differs from the `+=` operator which always
                 rounds to `PRECISION` (matching Python `decimal.Decimal`).
+            rounding_mode: How to round when `precision > 0`. HALF_EVEN
+                by default.
 
         Raises:
             Error: If the underlying addition or rounding fails.
         """
-        bigdecimal_arithmetics.add_inplace(self, other, precision)
+        bigdecimal_arithmetics.add_inplace(
+            self, other, precision, rounding_mode
+        )
 
     @always_inline
-    def subtract_inplace(mut self, other: Self, precision: Int = 0) raises:
+    def subtract_inplace(
+        mut self,
+        other: Self,
+        precision: Int = 0,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises:
         """Subtracts `other` from `self` in place with explicit precision.
 
         Args:
@@ -1789,18 +1836,27 @@ struct BigDecimal(
             precision: Target significant-digit precision for the result.
                 When `0` (default) the exact, unrounded difference is
                 stored in `self`. When `> 0` the exact difference is
-                computed and then rounded HALF_EVEN to `precision`
-                significant digits.
+                computed and then rounded to `precision` significant
+                digits with `rounding_mode`.
                 Note: this differs from the `-=` operator which always
                 rounds to `PRECISION` (matching Python `decimal.Decimal`).
+            rounding_mode: How to round when `precision > 0`. HALF_EVEN
+                by default.
 
         Raises:
             Error: If the underlying subtraction or rounding fails.
         """
-        bigdecimal_arithmetics.subtract_inplace(self, other, precision)
+        bigdecimal_arithmetics.subtract_inplace(
+            self, other, precision, rounding_mode
+        )
 
     @always_inline
-    def multiply_inplace(mut self, other: Self, precision: Int = 0) raises:
+    def multiply_inplace(
+        mut self,
+        other: Self,
+        precision: Int = 0,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises:
         """Multiplies `self` by `other` in place with explicit precision.
 
         Args:
@@ -1808,14 +1864,19 @@ struct BigDecimal(
             precision: Target significant-digit precision for the result.
                 When `0` (default) the exact, unrounded product is stored
                 in `self`. When `> 0` the exact product is computed and
-                then rounded HALF_EVEN to `precision` significant digits.
+                then rounded to `precision` significant digits with
+                `rounding_mode`.
                 Note: this differs from the `*=` operator which always
                 rounds to `PRECISION` (matching Python `decimal.Decimal`).
+            rounding_mode: How to round when `precision > 0`. HALF_EVEN
+                by default.
 
         Raises:
             Error: If the underlying multiplication or rounding fails.
         """
-        bigdecimal_arithmetics.multiply_inplace(self, other, precision)
+        bigdecimal_arithmetics.multiply_inplace(
+            self, other, precision, rounding_mode
+        )
 
     # ===------------------------------------------------------------------=== #
     # Mathematical methods that do not implement a trait (not a dunder)
@@ -2522,11 +2583,11 @@ struct BigDecimal(
 
         Matches Python's `decimal.Decimal.fma(other, third)`.
 
-        Because BigDecimal multiplication and addition are both exact
-        (no precision loss), this method is semantically equivalent to
-        `self * a + b`.  It is provided for IEEE 754 / Python `Decimal`
-        API compatibility and to express intent clearly in numerical
-        algorithms.
+        `self * a + b` is not the same thing: the operators round to
+        `PRECISION` at each step, so a product that needs more digits than
+        that is rounded once before the addition and once after. Here both
+        steps are exact and the caller rounds what comes back, which is what
+        `decimal` does and what makes the name honest.
 
         Args:
             a: The value to multiply by.
@@ -2545,7 +2606,7 @@ struct BigDecimal(
         BigDecimal("1.5").fma(BigDecimal("2"), BigDecimal("0.1"))  # 3.1
         ```
         """
-        return self * a + b
+        return self.multiply(a, precision=0).add(b, precision=0)
 
     def truncate(self) raises -> Self:
         """Returns self truncated toward zero (removes the fractional part).

@@ -442,15 +442,145 @@ for value, method in [("-2", "sqrt"), ("-1", "ln"), ("0", "log10")]:
         raise AssertionError(f"{method}({value}) should raise")
 print("[PASS] ZeroDivisionError and ValueError, not a bare Exception")
 
-# --- Rounding modes other than half-even are refused, not faked ---
+# --- Every rounding mode, checked against decimal under the same context ---
+#
+# Arithmetic, quantize, round(x, n), to_integral_value and the unary signs
+# have to agree digit for digit under all seven modes, at precisions where
+# the rounding actually bites. ROUND_05UP is the one mode decimo does not
+# have, and it is refused rather than faked.
+import random as _random
+
+_rng = _random.Random(3)
+
+
+def _random_decimal_text():
+    digits = "".join(_rng.choice("0123456789") for _ in range(_rng.randint(1, 40)))
+    sign = "-" if _rng.random() < 0.5 else ""
+    return f"{sign}{digits}E{_rng.randint(-30, 30)}"
+
+
+_values = [_random_decimal_text() for _ in range(200)] + [
+    "2.5",
+    "-2.5",
+    "0.125",
+    "1E+2",
+    "7",
+    "1.00000000000000000000000000005",
+    "-1.00000000000000000000000000015",
+    "0.9999999",
+    "-0.9999999",
+]
+_rounding_ops = {
+    "+": lambda a, b: a + b,
+    "-": lambda a, b: a - b,
+    "*": lambda a, b: a * b,
+    "/": lambda a, b: a / b,
+    "pos": lambda a, b: +a,
+    "neg": lambda a, b: -a,
+    "round3": lambda a, b: round(a, 3),
+    "to_integral": lambda a, b: a.to_integral_value(),
+    "quantize": lambda a, b: a.quantize(type(a)("1.00")),
+    "fma": lambda a, b: a.fma(b, type(a)("0.5")),
+    "abs": lambda a, b: abs(a),
+    "max": lambda a, b: a.max(b),
+    "min": lambda a, b: a.min(b),
+    "normalize": lambda a, b: a.normalize(),
+    "scaleb": lambda a, b: a.scaleb(type(a)(2)),
+}
+_modes = [
+    "ROUND_HALF_EVEN",
+    "ROUND_HALF_UP",
+    "ROUND_HALF_DOWN",
+    "ROUND_DOWN",
+    "ROUND_UP",
+    "ROUND_CEILING",
+    "ROUND_FLOOR",
+]
+
+
+def _outcome(mod, op, a, b):
+    try:
+        return str(op(mod.Decimal(a), mod.Decimal(b)))
+    except Exception as error:  # noqa: BLE001 -- both sides may refuse
+        return "error"
+
+
+for _mode in _modes:
+    for _prec in (1, 5, 28):
+        decimal.getcontext().prec = _prec
+        decimal.getcontext().rounding = _mode
+        decimo.getcontext().prec = _prec
+        decimo.getcontext().rounding = _mode
+        assert decimo.getcontext().rounding == _mode
+        for _i in range(len(_values) - 1):
+            _a, _b = _values[_i], _values[_i + 1]
+            for _name, _op in _rounding_ops.items():
+                _want = _outcome(decimal, _op, _a, _b)
+                _got = _outcome(decimo, _op, _a, _b)
+                assert _want == _got, (_mode, _prec, _name, _a, _b, _want, _got)
+
+# The division above never reaches the truncated fast path: that one starts
+# only when the divisor is wider than the requested precision needs, which
+# for these operands it never is. Build divisors of two hundred digits and
+# put the quotient exactly on a boundary -- exact, one below, one above, and
+# a half -- since the fast path has to hand those back to the slow one under
+# a mode that can see the difference.
+_big_divisor = int("7" + "3141592653589793238462643383279502884197" * 5)
+_big_cases = []
+for _q in (int("9" * 30), 10**29, int("123456789" * 3)):
+    _exact = _big_divisor * _q
+    _big_cases += [
+        (str(_exact), str(_big_divisor)),
+        (str(_exact - 1), str(_big_divisor)),
+        (str(_exact + 1), str(_big_divisor)),
+        # `q + 1/2` exactly, by halving the divisor instead of the dividend.
+        (str(_big_divisor * (2 * _q + 1)), str(2 * _big_divisor)),
+    ]
+
+for _mode in _modes:
+    for _prec in (1, 5, 28, 30):
+        decimal.getcontext().prec = _prec
+        decimal.getcontext().rounding = _mode
+        decimo.getcontext().prec = _prec
+        decimo.getcontext().rounding = _mode
+        for _a, _b in _big_cases:
+            _want = _outcome(decimal, _rounding_ops["/"], _a, _b)
+            _got = _outcome(decimo, _rounding_ops["/"], _a, _b)
+            assert _want == _got, (_mode, _prec, "/", _a[:20], _b[:20], _want, _got)
+
+decimal.getcontext().prec = 28
+decimal.getcontext().rounding = decimal.ROUND_HALF_EVEN
+decimo.getcontext().prec = 28
+decimo.getcontext().rounding = decimo.ROUND_HALF_EVEN
+print("[PASS] all seven rounding modes agree with decimal")
+
 try:
-    decimo.getcontext().rounding = decimo.ROUND_FLOOR
+    decimo.getcontext().rounding = decimo.ROUND_05UP
 except NotImplementedError:
     pass
 else:
-    raise AssertionError("a rounding mode we do not have should be refused")
-decimo.getcontext().rounding = decimo.ROUND_HALF_EVEN
-print("[PASS] an unsupported rounding mode is refused, not silently ignored")
+    raise AssertionError("ROUND_05UP should be refused, not faked")
+assert decimo.getcontext().rounding == decimo.ROUND_HALF_EVEN
+print("[PASS] the one rounding mode we do not have is refused")
+
+# --- Context is a value until it is installed; localcontext restores ---
+_ctx = decimo.Context(prec=5, rounding=decimo.ROUND_DOWN)
+assert decimo.getcontext().prec == 28, "building a Context must not install it"
+with decimo.localcontext(_ctx) as _live:
+    assert _live.prec == 5 and _live.rounding == decimo.ROUND_DOWN
+    assert str(decimo.Decimal(1) / decimo.Decimal(3)) == "0.33333"
+    _live.prec = 3
+    assert str(decimo.Decimal(2) / decimo.Decimal(3)) == "0.666"
+assert decimo.getcontext().prec == 28
+assert decimo.getcontext().rounding == decimo.ROUND_HALF_EVEN
+with decimo.localcontext(rounding=decimo.ROUND_UP, prec=2):
+    assert str(decimo.Decimal("1.01") + 0) == "1.1"
+# `repr` matches decimal's shape; the traps differ because decimo has no
+# signals, so compare the settings rather than the text.
+assert repr(decimo.BasicContext).startswith("Context(prec=9, rounding=ROUND_HALF_UP,")
+assert decimal.BasicContext.prec == decimo.BasicContext.prec == 9
+assert decimo.BasicContext.rounding == decimal.BasicContext.rounding
+print("[PASS] Context values, setcontext and localcontext behave as in decimal")
 
 # --- copy, deepcopy, pickle and format ---
 original = decimo.Decimal("9.5")
@@ -470,6 +600,115 @@ for v, spec in [
     )
 assert f"{decimo.Decimal('1.5')}" == "1.5"
 print("[PASS] copy, deepcopy, pickle and format")
+
+
+# --- The rest of the specification's method surface, against decimal ---
+#
+# Digit-wise logic, the neighbours, the total order, remainder_near and logb,
+# compared with decimal over the same operands under three precisions. The two
+# places decimo answers where decimal refuses are listed below.
+_spec_values = [
+    "0",
+    "1",
+    "-1",
+    "1100",
+    "1010",
+    "0.001",
+    "12.0",
+    "12",
+    "-12.0",
+    "-12",
+    "2.5",
+    "-2.5",
+    "9.99999",
+    "1.23456789",
+    "0.000123456789",
+    "-7.7777",
+    "1E+5",
+    "1E-5",
+    "111",
+    "1000",
+    "-0",
+    "0.0",
+    "100",
+    "1.000",
+]
+_spec_others = ["1010", "3", "1", "0", "12", "-12", "2", "1E+2", "111"]
+_spec_calls = {
+    "remainder_near": lambda x, y: x.remainder_near(y),
+    "next_plus": lambda x, y: x.next_plus(),
+    "next_minus": lambda x, y: x.next_minus(),
+    "next_toward": lambda x, y: x.next_toward(y),
+    "shift(1)": lambda x, y: x.shift(1),
+    "shift(-2)": lambda x, y: x.shift(-2),
+    "rotate(1)": lambda x, y: x.rotate(1),
+    "rotate(-2)": lambda x, y: x.rotate(-2),
+    "logical_and": lambda x, y: x.logical_and(y),
+    "logical_or": lambda x, y: x.logical_or(y),
+    "logical_xor": lambda x, y: x.logical_xor(y),
+    "logical_invert": lambda x, y: x.logical_invert(),
+    "logb": lambda x, y: x.logb(),
+    "compare_total": lambda x, y: x.compare_total(y),
+    "compare_total_mag": lambda x, y: x.compare_total_mag(y),
+    "compare_signal": lambda x, y: x.compare_signal(y),
+    "max_mag": lambda x, y: x.max_mag(y),
+    "min_mag": lambda x, y: x.min_mag(y),
+    "max": lambda x, y: x.max(y),
+    "min": lambda x, y: x.min(y),
+    "number_class": lambda x, y: x.number_class(),
+    "to_integral_exact": lambda x, y: x.to_integral_exact(),
+    "is_normal": lambda x, y: x.is_normal(),
+    "is_subnormal": lambda x, y: x.is_subnormal(),
+    "is_qnan": lambda x, y: x.is_qnan(),
+    "is_snan": lambda x, y: x.is_snan(),
+}
+# decimal signals where decimo raises the builtin it maps them to.
+_signal_names = {
+    "InvalidOperation": "ValueError",
+    "DivisionByZero": "ZeroDivisionError",
+}
+
+
+def _spec_outcome(call, mod, a, b):
+    try:
+        return str(call(mod.Decimal(a), mod.Decimal(b)))
+    except Exception as error:  # noqa: BLE001 -- either side may refuse
+        name = type(error).__name__
+        return "error:" + _signal_names.get(name, name)
+
+
+for _prec in (3, 9, 28):
+    decimal.getcontext().prec = _prec
+    decimo.getcontext().prec = _prec
+    for _name, _call in _spec_calls.items():
+        for _a in _spec_values:
+            for _b in _spec_others:
+                _want = _spec_outcome(_call, decimal, _a, _b)
+                _got = _spec_outcome(_call, decimo, _a, _b)
+                if _want == _got:
+                    continue
+                # decimal refuses an integer quotient longer than the
+                # precision; decimo answers it, as it does for `//`.
+                if _name == "remainder_near" and _want == "error:ValueError":
+                    continue
+                raise AssertionError((_prec, _name, _a, _b, _want, _got))
+decimal.getcontext().prec = 28
+decimo.getcontext().prec = 28
+print("[PASS] logic, neighbours, the total order and friends agree with decimal")
+
+# The neighbour of zero is the one place an Emin is needed, and it comes from
+# the context rather than from the library.
+with decimo.localcontext(prec=3):
+    assert str(decimo.Decimal(0).next_plus()) == "1E-1000001"
+    assert str(decimo.Decimal(0).next_minus()) == "-1E-1000001"
+    assert str(decimo.Decimal("1").next_minus()) == "0.999"
+    assert str(decimo.Decimal("-1").next_plus()) == "-0.999"
+with decimo.localcontext(prec=3, Emin=-10):
+    assert str(decimo.Decimal(0).next_plus()) == "1E-12"
+    assert decimo.Decimal("1E-11").is_subnormal()
+    assert decimo.Decimal("1E-11").number_class() == "+Subnormal"
+    assert not decimo.Decimal("1E-9").is_subnormal()
+print("[PASS] Emin decides the neighbour of zero and what is subnormal")
 
 
 # --- The one program that has to work: the same source, both libraries ---
