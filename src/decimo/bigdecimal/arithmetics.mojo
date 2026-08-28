@@ -524,10 +524,9 @@ def true_divide(
 
     # For other cases, we use `true_divide_general()` to handle the division
     # Note that this function already considers extra buffer digits.
-    # Single-word / two-word / ≤4-word divisors are already routed by
-    # `BigUInt.floor_divide` (called via `//`) to `floor_divide_by_word`
-    # / `_by_uint64` / `_by_uint128`, so the short-divisor fast path
-    # is active end-to-end here without a dedicated BigDecimal branch.
+    # Short divisors are already routed by `BigUInt.floor_divide` to
+    # `floor_divide_by_word`, so the fast path is active end-to-end here
+    # without a dedicated `BigDecimal` branch.
     return true_divide_general(x, y, precision)
 
 
@@ -563,7 +562,7 @@ def true_divide_general(
     # We need to ensure that a * 10^s // b has more significant digits than p.
     # A quicker way is to add whole empty words to the dividend.
     # Let n_diff = len(a.words) - len(b.words).
-    # We compute extra_words = ceil(precision / 9) + 2 - n_diff.
+    # We compute extra_words = ceil(precision / DIGITS_PER_WORD) + 2 - n_diff.
     # When n_diff > 0 (dividend larger): fewer extra words needed (may be negative,
     #   meaning we truncate the dividend to avoid computing excess quotient digits).
     # When n_diff < 0 (dividend smaller): more extra words needed to pad up.
@@ -578,7 +577,8 @@ def true_divide_general(
     # truncate both operands to avoid expensive division on huge numbers.
     # Example: 262144w / 262144w at precision=50 only needs ~14-word operands.
     # Correctness: x/y ≈ (x/10^k) / (y/10^k); the low-order digits cancel,
-    # with relative error < 10^(-9*remaining_words), well below precision+guard.
+    # with relative error < 10^(-DIGITS_PER_WORD * remaining_words), well
+    # below precision + guard.
     # Early-return to avoid extra copies on the common (small-operand) path.
     comptime TRUNCATION_GUARD = 4
     var needed_divisor_words = (
@@ -598,12 +598,12 @@ def true_divide_general(
     # `precision` significant digits plus a couple to round on.
     #
     # This used to be counted in whole words -- `ceildiv(precision,
-    # DIGITS_PER_WORD) + 2`
-    # words, ignoring how many digits the operands actually had. At the default
-    # precision of 28 that padded a four-word dividend out to ten words and
-    # produced a 54-digit quotient to keep 28 of, roughly twice the necessary
-    # work, and pushed every intermediate past the point where `BigUInt` keeps
-    # its words inline.
+    # DIGITS_PER_WORD) + 2` words, ignoring how many digits the operands
+    # actually had. At nine digits a word, where it was measured, the default
+    # precision of 28 padded a four-word dividend out to ten words and produced
+    # a 54-digit quotient to keep 28 of, roughly twice the necessary work, and
+    # pushed every intermediate past the point where `BigUInt` keeps its words
+    # inline. Counting in digits still wins at eighteen.
     comptime GUARD_DIGITS = 2
     var digits_x = x.coefficient.number_of_digits()
     var digits_y = y.coefficient.number_of_digits()
@@ -707,8 +707,21 @@ def _true_divide_general_truncated(
 ) raises -> BigDecimal:
     """Internal: division with truncated oversized operands."""
     var total_y_remove = len(y.coefficient.words) - needed_divisor_words
+
+    # The dividend has to keep as many words as the divisor does. What bounds
+    # the error of the truncation is how many significant digits each operand
+    # keeps, not how many words came off, and this used to cap the dividend at
+    # `len(words) - 1` -- one word, whose leading word can hold as little as a
+    # single digit. `368.3881690356602195` divided by a two-hundred-digit
+    # number kept the `3` and nothing else, and the quotient was right to one
+    # digit out of nineteen.
+    #
+    # Removing less from the dividend only moves the work to `y_only_remove`,
+    # which the scale adjustment below already compensates for, so the bound
+    # on the operand sizes is unchanged.
     var common_remove = min(
-        total_y_remove, max(len(x.coefficient.words) - 1, 0)
+        total_y_remove,
+        max(len(x.coefficient.words) - needed_divisor_words, 0),
     )
     var y_only_remove = total_y_remove - common_remove
 
