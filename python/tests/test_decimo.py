@@ -602,6 +602,115 @@ assert f"{decimo.Decimal('1.5')}" == "1.5"
 print("[PASS] copy, deepcopy, pickle and format")
 
 
+# --- The rest of the specification's method surface, against decimal ---
+#
+# Digit-wise logic, the neighbours, the total order, remainder_near and logb,
+# compared with decimal over the same operands under three precisions. The two
+# places decimo answers where decimal refuses are listed below.
+_spec_values = [
+    "0",
+    "1",
+    "-1",
+    "1100",
+    "1010",
+    "0.001",
+    "12.0",
+    "12",
+    "-12.0",
+    "-12",
+    "2.5",
+    "-2.5",
+    "9.99999",
+    "1.23456789",
+    "0.000123456789",
+    "-7.7777",
+    "1E+5",
+    "1E-5",
+    "111",
+    "1000",
+    "-0",
+    "0.0",
+    "100",
+    "1.000",
+]
+_spec_others = ["1010", "3", "1", "0", "12", "-12", "2", "1E+2", "111"]
+_spec_calls = {
+    "remainder_near": lambda x, y: x.remainder_near(y),
+    "next_plus": lambda x, y: x.next_plus(),
+    "next_minus": lambda x, y: x.next_minus(),
+    "next_toward": lambda x, y: x.next_toward(y),
+    "shift(1)": lambda x, y: x.shift(1),
+    "shift(-2)": lambda x, y: x.shift(-2),
+    "rotate(1)": lambda x, y: x.rotate(1),
+    "rotate(-2)": lambda x, y: x.rotate(-2),
+    "logical_and": lambda x, y: x.logical_and(y),
+    "logical_or": lambda x, y: x.logical_or(y),
+    "logical_xor": lambda x, y: x.logical_xor(y),
+    "logical_invert": lambda x, y: x.logical_invert(),
+    "logb": lambda x, y: x.logb(),
+    "compare_total": lambda x, y: x.compare_total(y),
+    "compare_total_mag": lambda x, y: x.compare_total_mag(y),
+    "compare_signal": lambda x, y: x.compare_signal(y),
+    "max_mag": lambda x, y: x.max_mag(y),
+    "min_mag": lambda x, y: x.min_mag(y),
+    "max": lambda x, y: x.max(y),
+    "min": lambda x, y: x.min(y),
+    "number_class": lambda x, y: x.number_class(),
+    "to_integral_exact": lambda x, y: x.to_integral_exact(),
+    "is_normal": lambda x, y: x.is_normal(),
+    "is_subnormal": lambda x, y: x.is_subnormal(),
+    "is_qnan": lambda x, y: x.is_qnan(),
+    "is_snan": lambda x, y: x.is_snan(),
+}
+# decimal signals where decimo raises the builtin it maps them to.
+_signal_names = {
+    "InvalidOperation": "ValueError",
+    "DivisionByZero": "ZeroDivisionError",
+}
+
+
+def _spec_outcome(call, mod, a, b):
+    try:
+        return str(call(mod.Decimal(a), mod.Decimal(b)))
+    except Exception as error:  # noqa: BLE001 -- either side may refuse
+        name = type(error).__name__
+        return "error:" + _signal_names.get(name, name)
+
+
+for _prec in (3, 9, 28):
+    decimal.getcontext().prec = _prec
+    decimo.getcontext().prec = _prec
+    for _name, _call in _spec_calls.items():
+        for _a in _spec_values:
+            for _b in _spec_others:
+                _want = _spec_outcome(_call, decimal, _a, _b)
+                _got = _spec_outcome(_call, decimo, _a, _b)
+                if _want == _got:
+                    continue
+                # decimal refuses an integer quotient longer than the
+                # precision; decimo answers it, as it does for `//`.
+                if _name == "remainder_near" and _want == "error:ValueError":
+                    continue
+                raise AssertionError((_prec, _name, _a, _b, _want, _got))
+decimal.getcontext().prec = 28
+decimo.getcontext().prec = 28
+print("[PASS] logic, neighbours, the total order and friends agree with decimal")
+
+# The neighbour of zero is the one place an Emin is needed, and it comes from
+# the context rather than from the library.
+with decimo.localcontext(prec=3):
+    assert str(decimo.Decimal(0).next_plus()) == "1E-1000001"
+    assert str(decimo.Decimal(0).next_minus()) == "-1E-1000001"
+    assert str(decimo.Decimal("1").next_minus()) == "0.999"
+    assert str(decimo.Decimal("-1").next_plus()) == "-0.999"
+with decimo.localcontext(prec=3, Emin=-10):
+    assert str(decimo.Decimal(0).next_plus()) == "1E-12"
+    assert decimo.Decimal("1E-11").is_subnormal()
+    assert decimo.Decimal("1E-11").number_class() == "+Subnormal"
+    assert not decimo.Decimal("1E-9").is_subnormal()
+print("[PASS] Emin decides the neighbour of zero and what is subnormal")
+
+
 # --- The one program that has to work: the same source, both libraries ---
 def average(mod, values):
     total = mod.Decimal(0)

@@ -66,6 +66,12 @@ Everything a `decimal` program normally touches:
 - `quantize`, `normalize`, `as_tuple`, `as_integer_ratio`, `compare`, `fma`,
   `sqrt`, `exp`, `ln`, `log10`, `scaleb`, `adjusted`, `copy_abs`,
   `copy_negate`, `copy_sign`, `same_quantum`, `to_eng_string`, `max`, `min`
+- the rest of the specification's surface: `remainder_near`, `next_plus`,
+  `next_minus`, `next_toward`, `shift`, `rotate`, `logical_and`,
+  `logical_or`, `logical_xor`, `logical_invert`, `logb`, `compare_total`,
+  `compare_total_mag`, `compare_signal`, `max_mag`, `min_mag`,
+  `number_class`, `to_integral_exact`, `is_normal`, `is_subnormal`,
+  `from_number`
 - the same coercion rules: `int` converts in arithmetic, `float` does not, and
   both convert in a comparison
 - `copy`, `deepcopy` and `pickle`
@@ -80,17 +86,20 @@ decimo refuses these rather than answering differently:
   `is_infinite()` are always `False`.
 - **`ROUND_05UP`.** Nothing implements it; setting it raises
   `NotImplementedError`.
-- **`sqrt`, `exp`, `ln`, `log10` and `**` under a rounding mode other than
-  `ROUND_HALF_EVEN`.** `decimal` ignores the context mode for these and
-  always rounds half to even. decimo applies the mode, computing nine digits
-  wider and rounding once more, so the last digit differs from `decimal` on
-  purpose -- and can be wrong when the true value lies within `10^-9`
-  relative of a rounding boundary. Arithmetic, `quantize` and `round()` are
-  exact under every mode.
-- **`//`, `%` and `divmod()` with a long quotient.** `decimal` raises
-  `InvalidOperation` when the integer quotient has more digits than the
-  precision; decimo returns the exact quotient. The remainder is rounded to
-  the context, as in `decimal`.
+- **`**` under a rounding mode other than `ROUND_HALF_EVEN`** is computed
+  nine digits wider and rounded once more, so the last digit can differ from
+  `decimal` when the true value lies within `10^-9` relative of a rounding
+  boundary. `sqrt`, `exp`, `ln` and `log10` are always half to even, as they
+  are in `decimal`, whatever the context says. Arithmetic, `quantize` and
+  `round()` are exact under every mode.
+- **`//`, `%`, `divmod()` and `remainder_near` with a long quotient.**
+  `decimal` raises `InvalidOperation` when the integer quotient has more
+  digits than the precision; decimo answers. The remainder is rounded to the
+  context, as in `decimal`.
+- **`Emin` only reaches four methods.** Exponents are unbounded, so `Emin`
+  changes nothing except what `next_plus(0)`, `next_minus(0)`,
+  `is_subnormal()` and `number_class()` say, where `decimal`'s answers need
+  a smallest exponent.
 - **Signals and traps.** `Context.flags` and `Context.traps` exist and stay
   empty. `Inexact`, `Rounded` and the rest are importable but never raised.
 - **`Emin` / `Emax`.** Exponents are unbounded, so nothing ever underflows to

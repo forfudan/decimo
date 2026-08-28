@@ -36,6 +36,21 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
    keyword overrides; `BasicContext` and `ExtendedContext` exist. On the
    Mojo side `add`, `subtract`, `multiply`, `true_divide` and the three
    in-place forms take a `rounding_mode`. `ROUND_05UP` is refused.
+1. **The rest of `decimal`'s method surface.** `remainder_near`,
+   `next_plus`, `next_minus`, `next_toward`, `shift`, `rotate`,
+   `logical_and`, `logical_or`, `logical_xor`, `logical_invert`, `logb`,
+   `compare_total`, `compare_total_mag`, `compare_signal`, `max_mag`,
+   `min_mag`, `number_class`, `to_integral_exact`, `is_normal`,
+   `is_subnormal`, `is_qnan`, `is_snan` and `from_number`, all checked
+   against `decimal`. The arithmetic lives in Mojo, in the new
+   `decimo.bigdecimal.spec` and in `comparison.compare_total`; the four
+   answers that need an `Emin` are finished in the Python layer, since
+   decimo's own exponents are unbounded. `max` and `min` now break a tie
+   between numerically equal operands by the total order, as the
+   specification says: `max(12.0, 12)` is `12`.
+1. **`sqrt`, `exp`, `ln` and `log10` in Python are always half to even**,
+   which is what `decimal` does with them. `**` still follows the context
+   mode, also as `decimal` does.
 1. **Every operation applies the context, as in `decimal`.** `abs()`, `max`,
    `min`, `normalize`, `scaleb`, `fma` and the remainder from `%` and
    `divmod` were returning an exact value where `decimal` returns a rounded

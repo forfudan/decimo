@@ -181,15 +181,101 @@ def _imaginary(self):
     return Decimal(0)
 
 
+def _from_number(cls, value):
+    """Build a Decimal from an int, float or Decimal, as in Python 3.14."""
+    if isinstance(value, (int, float, Decimal)):
+        return cls(value)
+    raise TypeError(
+        f"conversion from {type(value).__name__} to Decimal is not supported"
+    )
+
+
+def _complex(self):
+    return complex(float(self))
+
+
+# --- What needs an Emin ----------------------------------------------------
+#
+# decimo has unbounded exponents, so the Mojo library has no smallest value to
+# step to and no idea what "subnormal" would mean. `decimal` answers these
+# from `Emin`, which lives on the context here, so the four methods that need
+# it are finished off in Python. Everything else in this file's surface is the
+# native method as it comes.
+
+_next_plus = Decimal.next_plus
+_next_minus = Decimal.next_minus
+_next_toward = Decimal.next_toward
+_number_class = Decimal.number_class
+
+
+def _etiny():
+    context = getcontext()
+    return context.Emin - context.prec + 1
+
+
+def _wrapped_next_plus(self):
+    """The smallest value larger than self, `decimal`'s Etiny above zero."""
+    if self.is_zero():
+        return Decimal(f"1E{_etiny()}")
+    return _next_plus(self)
+
+
+def _wrapped_next_minus(self):
+    """The largest value smaller than self, `decimal`'s -Etiny below zero."""
+    if self.is_zero():
+        return Decimal(f"-1E{_etiny()}")
+    return _next_minus(self)
+
+
+def _wrapped_next_toward(self, other):
+    """The value next to self towards other."""
+    if self.is_zero() and self != other:
+        sign = "-" if other < 0 else ""
+        return Decimal(f"{sign}1E{_etiny()}")
+    return _next_toward(self, other)
+
+
+def _is_normal(self):
+    """Whether self is non-zero and no smaller than the context allows."""
+    return not self.is_zero() and self.adjusted() >= getcontext().Emin
+
+
+def _is_subnormal(self):
+    """Whether self is non-zero and below the context's smallest exponent."""
+    return not self.is_zero() and self.adjusted() < getcontext().Emin
+
+
+def _wrapped_number_class(self):
+    """The kind of number self is; `Emin` is what makes one subnormal."""
+    name = _number_class(self)
+    if name.endswith("Normal") and self.adjusted() < getcontext().Emin:
+        return name[0] + "Subnormal"
+    return name
+
+
 Decimal.as_tuple = _as_tuple
 Decimal.as_integer_ratio = _as_integer_ratio
 Decimal.__format__ = _format
 Decimal.__reduce__ = _reduce
 Decimal.__copy__ = _copy
 Decimal.__deepcopy__ = _deepcopy
+Decimal.__complex__ = _complex
 Decimal.from_float = classmethod(_from_float)
+Decimal.from_number = classmethod(_from_number)
 Decimal.real = property(_real)
 Decimal.imag = property(_imaginary)
+Decimal.next_plus = _wrapped_next_plus
+Decimal.next_minus = _wrapped_next_minus
+Decimal.next_toward = _wrapped_next_toward
+Decimal.number_class = _wrapped_number_class
+Decimal.is_normal = _is_normal
+Decimal.is_subnormal = _is_subnormal
+try:
+    # `decimal.Decimal.__module__` is "decimal"; without this the type says
+    # it lives in the extension module, which is an implementation detail.
+    Decimal.__module__ = "decimo"
+except (AttributeError, TypeError):  # pragma: no cover -- older bindings
+    pass
 
 
 # --- Rounding modes --------------------------------------------------------

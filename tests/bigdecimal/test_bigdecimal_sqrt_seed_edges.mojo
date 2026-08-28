@@ -2,10 +2,10 @@
 `sqrt()` at the edges of the seed's range.
 
 The reciprocal-sqrt iteration normalises its input into `[1, 100)` and seeds
-from a `Float64`, so a correct seed lies in `(0.1, 1]`. The seed code clamps
-anything outside to `0.1`, which is inside the convergence basin for every
-normalised input; the exact integer refinement then still delivers the
-answer. These inputs put the seed exactly on the edges of that range --
+from a `Float64`, so a correct seed lies in `(0.1, 1]`. The seed is checked
+against its residual and rebuilt when it fails, so what the schedule is told
+about it stays true. These inputs put the seed exactly on the edges of that
+range --
 `1.0` for `1`, `100`, `1E-400`, and just above `0.1` for `99.99...` -- where
 a float rounding could push it over the line, and check the result against
 `sqrt_exact()`, which reproduces CPython.
