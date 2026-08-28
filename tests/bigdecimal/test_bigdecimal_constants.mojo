@@ -9,6 +9,9 @@
 # systematic error in one cannot hide in the other.
 
 from std import testing
+
+import decimo.bigdecimal.constants as decimo_constants
+from decimo.rounding_mode import RoundingMode
 from decimo.bigdecimal.bigdecimal import BigDecimal
 
 
@@ -121,6 +124,55 @@ def test_pi_negative_precision_raises() raises:
     except:
         raised = True
     testing.assert_true(raised, "pi(-1) should raise")
+
+
+def test_the_two_pi_algorithms_agree_with_each_other() raises:
+    """Chudnovsky against Machin, which is what Machin is kept for.
+
+    `pi()` always takes Chudnovsky with binary splitting; `pi_machin()` has
+    no caller in the library. It stays because it is an independent
+    derivation -- a different series, a different convergence argument -- and
+    two algorithms that agree to a thousand digits check each other in a way
+    no table can. Chudnovsky is 250 to 2500 times faster over this range
+    (0.05 ms against 133 ms at 1000 digits), which is why it is the path and
+    Machin is the check. Machin is 7.5 s at 2000 digits, so this stops at
+    1000.
+    """
+    for precision in [1, 2, 7, 28, 100, 500, 1000]:
+        var chudnovsky = decimo_constants.pi_chudnovsky_binary_split(precision)
+        var machin = decimo_constants.pi_machin(precision)
+        testing.assert_true(
+            chudnovsky == machin,
+            "Chudnovsky and Machin disagree at "
+            + String(precision)
+            + " digits",
+        )
+
+
+def test_the_1024_digit_table_matches_the_algorithm() raises:
+    """`PI_1024` is a literal; a wrong digit in it would be wrong forever.
+
+    The table was checked once against an independent 1100-digit Machin
+    computation in Python's `decimal` and matched to its full length. This
+    pins the cheaper half of that: at every precision up to its own, rounding
+    the table gives exactly what `pi()` computes, so the table is a valid
+    cache should it ever be switched back on.
+    """
+    var table = materialize[decimo_constants.PI_1024]()
+    for precision in [1, 5, 28, 100, 500, 1000, 1023, 1024]:
+        var rounded = table.copy()
+        rounded.round_to_precision_inplace(
+            precision,
+            RoundingMode.half_even(),
+            remove_extra_digit_due_to_rounding=True,
+            fill_zeros_to_precision=False,
+        )
+        testing.assert_true(
+            rounded == BigDecimal.pi(precision),
+            "the table rounded to "
+            + String(precision)
+            + " digits differs from pi()",
+        )
 
 
 def main() raises:
