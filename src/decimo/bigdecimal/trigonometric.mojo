@@ -46,6 +46,76 @@ follows the reduction rounds a few more times.
 """
 
 
+def reduction_budget(x: BigDecimal, precision: Int) raises -> Int:
+    """Returns the working precision this argument's reduction really needs.
+
+    Args:
+        x: The argument about to be reduced.
+        precision: The number of significant digits wanted in the result.
+
+    Returns:
+        A width at which the reduced argument still has `precision` correct
+        digits.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    `reduction_digits()` counts what the argument's own magnitude will eat.
+    It cannot count the other half: an argument lying very close to a
+    multiple of `pi/2` cancels there as well, by as much as it is close. `sin`
+    of pi taken to 250 digits is about `1.5E-250`, and computing it at the
+    127 digits the magnitude rule asks for returned `3.9E-127` -- a number
+    with no digit of the answer in it.
+
+    Closeness cannot be predicted, so it is measured: the distance from the
+    argument to the nearest multiple of `pi/2` says how many digits the
+    subtraction will eat. The measurement starts narrow, because it is paid
+    for on every call and almost every argument is nowhere near a multiple.
+    A distance that comes back at the width's own noise floor is not a
+    measurement -- it is the floor -- so the width grows and the measurement
+    is repeated. Each pass sees further, and the loop settles: a finite
+    decimal is never exactly a multiple of `pi/2`, `pi` being irrational.
+    """
+    if x.is_zero():
+        return reduction_digits(x, precision)
+
+    comptime PROBE_MARGIN = 40
+    var probe = precision + PROBE_MARGIN
+    var two = BigDecimal.from_raw_components(
+        BigUInt.Word(2), scale=0, sign=False
+    )
+
+    for _ in range(4):
+        var half_pi = bigdecimal_constants.pi(precision=probe).true_divide(
+            two, precision=probe
+        )
+        var remainder = abs(x) % half_pi
+        if remainder.is_zero():
+            return reduction_digits(x, precision)
+        var complement = half_pi.subtract(remainder)
+        var distance = (
+            complement.adjusted() if complement.compare_absolute(remainder)
+            < 0 else remainder.adjusted()
+        )
+
+        # Below this the measurement is the probe's own error rather than the
+        # distance, and says nothing except "look again, wider".
+        var noise = x.adjusted() - probe
+        var cancellation = x.adjusted() - distance
+        var needed = (
+            precision
+            + RESERVE_DIGITS
+            + (cancellation if cancellation > 0 else 0)
+        )
+        if distance > noise + PROBE_MARGIN // 2:
+            return needed
+        probe = needed
+
+    return probe
+
+
 def reduction_digits(x: BigDecimal, precision: Int) -> Int:
     """Returns the working precision a reduction by pi needs for this argument.
 
@@ -171,7 +241,7 @@ def sin(x: BigDecimal, precision: Int) raises -> BigDecimal:
     # reduction accurately.
     # Otherwise, the result will be inaccurate when x is close to π-related
     # values, e.g., π/2, π, 3π/2, 2π, etc.
-    var working_precision = reduction_digits(x, precision)
+    var working_precision = reduction_budget(x, precision)
 
     var result: BigDecimal
 
@@ -355,7 +425,7 @@ def cos(x: BigDecimal, precision: Int) raises -> BigDecimal:
     This function adopts range reduction for optimal convergence.
     """
 
-    var working_precision = reduction_digits(x, precision)
+    var working_precision = reduction_budget(x, precision)
 
     if x.is_zero():
         return BigDecimal(BigUInt.one())
@@ -501,7 +571,7 @@ def tan_cot(x: BigDecimal, precision: Int, is_tan: Bool) raises -> BigDecimal:
 
     # `tan` cancels twice: once reducing by pi, and again near a pole, where
     # `sin / cos` divides by something small. So pi carries the reserve twice.
-    var working_precision = reduction_digits(x, precision)
+    var working_precision = reduction_budget(x, precision)
     var working_precision_pi = working_precision + RESERVE_DIGITS
 
     if x.is_zero():
