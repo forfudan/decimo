@@ -1170,7 +1170,11 @@ def _rational_root_decomposition(
 # When global config for pad_zeros_to_precision is implemented,
 # Pass the config to sqrt() and use it to control whether to
 # call `sqrt_exact()` (pad zeros) or `sqrt_via_reciprocal_iteration()` (no padding)
-def sqrt(x: BigDecimal, precision: Int) raises -> BigDecimal:
+def sqrt(
+    x: BigDecimal,
+    precision: Int,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) raises -> BigDecimal:
     """Calculate the square root of a BigDecimal number.
 
     This is the public API for square root. It delegates to `sqrt_exact()`,
@@ -1185,6 +1189,9 @@ def sqrt(x: BigDecimal, precision: Int) raises -> BigDecimal:
         x: The number to calculate the square root of.
         precision: The desired precision (number of significant digits) of the
             result.
+        rounding_mode: How to round the result. Every mode is exact here, not
+            approximated with guard digits: see the note where `sqrt_exact()`
+            rounds.
 
     Returns:
         The square root of x with the specified precision.
@@ -1192,7 +1199,7 @@ def sqrt(x: BigDecimal, precision: Int) raises -> BigDecimal:
     Raises:
         ValueError: If x is negative.
     """
-    return sqrt_exact(x, precision)
+    return sqrt_exact(x, precision, rounding_mode)
 
 
 def isqrt_via_reciprocal_seed(
@@ -1408,7 +1415,11 @@ def isqrt_via_reciprocal_seed(
     return n^
 
 
-def sqrt_exact(x: BigDecimal, precision: Int) raises -> BigDecimal:
+def sqrt_exact(
+    x: BigDecimal,
+    precision: Int,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) raises -> BigDecimal:
     """Calculate the square root of a BigDecimal number using CPython's
     exact integer algorithm.
 
@@ -1431,6 +1442,8 @@ def sqrt_exact(x: BigDecimal, precision: Int) raises -> BigDecimal:
         x: The number to calculate the square root of.
         precision: The desired precision (number of significant digits) of the
             result.
+        rounding_mode: How to round the result. Exact under every mode, see
+            the note where the rounding happens.
 
     Returns:
         The square root of x with the specified precision.
@@ -1530,14 +1543,24 @@ def sqrt_exact(x: BigDecimal, precision: Int) raises -> BigDecimal:
     # Construct result: coefficient=n, scale=-e (since exponent=e means *10^e)
     var result = BigDecimal(n^, -e, False)
 
-    # Round to the requested precision using ROUND_HALF_EVEN (like CPython).
-    # Applied unconditionally: for exact results that already fit within
-    # `precision` digits this is a no-op, but when the natural digit count
-    # exceeds `precision` (e.g. sqrt(10000) at precision=1) it correctly
-    # truncates — matching CPython's `_fix(context)` behavior.
+    # Round to the requested precision. Applied unconditionally: for exact
+    # results that already fit within `precision` digits this is a no-op, but
+    # when the natural digit count exceeds `precision` (e.g. sqrt(10000) at
+    # precision=1) it correctly truncates -- matching CPython's
+    # `_fix(context)` behavior.
+    #
+    # Every mode is exact here, which is what the perturbation above buys.
+    # `n` is `isqrt` of the scaled coefficient, so when the result is inexact
+    # the true root lies strictly between `n` and `n + 1`; and `n` never ends
+    # in `0` or `5`, since those were nudged. So the last digit of `n` says
+    # everything the discarded tail would: a directional mode reads it as a
+    # non-zero remainder and steps away from zero, a half mode is never
+    # handed a false tie, and neither can be wrong by a digit. That is why
+    # `sqrt` needs no guard digits under ROUND_FLOOR where `exp` and `ln`
+    # still do.
     result.round_to_precision_inplace(
         precision=precision,
-        rounding_mode=RoundingMode.half_even(),
+        rounding_mode=rounding_mode,
         remove_extra_digit_due_to_rounding=True,
         fill_zeros_to_precision=False,
     )

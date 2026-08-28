@@ -2353,10 +2353,56 @@ def _do_log10(value: BigDecimal, digits: Int) raises -> BigDecimal:
 def method_sqrt(
     py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
 ) abi("C") -> PyObjectPtr:
-    """`sqrt(context=None)`, to the context precision."""
-    return _method_to_precision[_do_sqrt, "square root of a negative value"](
-        py_self, py_args, py_kwargs
-    )
+    """`sqrt(context=None, rounding=None)`, to the context precision.
+
+    `rounding` is decimo's own: `decimal.sqrt` takes no such argument and
+    always rounds half to even, which is what this does when none is given.
+    Under any other mode the answer is still exact -- a root is algebraic, so
+    squaring the candidate back settles which side of the boundary the true
+    value falls on -- where `exp`, `ln` and `log10` would have to approximate.
+    """
+    try:
+        var rounding = PyObjectPtr()
+        try:
+            if py_kwargs:
+                var args = PythonObject(from_borrowed=py_args)
+                var taken = 0
+                var named: PythonObject
+                (_, taken) = _keyword_argument(
+                    args, py_kwargs, 0, "context", taken
+                )
+                (named, taken) = _keyword_argument(
+                    args, py_kwargs, 1, "rounding", taken
+                )
+                _no_other_keywords(py_kwargs, taken)
+                if named is not PythonObject(None):
+                    rounding = named._obj_ptr
+        except e:
+            return _raise_type_error(e)
+
+        if not rounding:
+            return _method_to_precision[
+                _do_sqrt, "square root of a negative value"
+            ](py_self, py_args, py_kwargs)
+
+        ref cell = state()[]
+        var named = PythonObject(from_borrowed=rounding)
+        try:
+            _ = _mode_or_none(named)
+        except:
+            return _raise_not_implemented(
+                "decimo does not implement ROUND_05UP"
+            )
+        var result: BigDecimal
+        try:
+            result = _value_of(py_self)[].sqrt(
+                cell.precision, rounding_from(named)
+            )
+        except:
+            return _raise_value_error("square root of a negative value")
+        return new_decimal(cell, result^).steal_data()
+    except e:
+        return raise_python_exception(e)
 
 
 def method_exp(

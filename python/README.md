@@ -87,15 +87,22 @@ Everything a `decimal` program normally touches:
 - `ZeroDivisionError` where you expect it, and hashes that agree with `int`,
   `float` and `decimal.Decimal`
 
-### Two things `decimal` does not have
+### Three things `decimal` does not have
 
 ```python
 decimo.pi(1000)   # 1000 digits of pi, by Chudnovsky with binary splitting
 decimo.e(50)      # 50 digits of e
+Decimal(2).sqrt(rounding=ROUND_FLOOR)   # exact, not approximated
 ```
 
-Without an argument they use the context precision. `decimal` has neither;
-its documentation gives a recipe to write your own.
+`pi()` and `e()` use the context precision when given no argument; `decimal`
+has neither, and its documentation gives a recipe to write your own.
+
+`sqrt(rounding=...)` is exact under every mode, where `decimal.sqrt` ignores
+the mode and always rounds half to even. A root is algebraic, so squaring the
+candidate back settles which side of a boundary the true value falls on --
+which is what you want when the answer has to stay under the true root.
+`exp`, `ln`, `log10` and `**` cannot do this yet; see below.
 
 ## What does not
 
@@ -108,8 +115,9 @@ decimo refuses these rather than answering differently:
 - **`**` under a rounding mode other than `ROUND_HALF_EVEN`** is computed
   nine digits wider and rounded once more, so the last digit can differ from
   `decimal` when the true value lies within `10^-9` relative of a rounding
-  boundary. `sqrt`, `exp`, `ln` and `log10` are always half to even, as they
-  are in `decimal`, whatever the context says. Arithmetic, `quantize` and
+  boundary. `exp`, `ln` and `log10` are always half to even, as they are in
+  `decimal`, whatever the context says; `sqrt` is too unless you ask it for a
+  mode, and then it is exact. Arithmetic, `quantize` and
   `round()` are exact under every mode.
 - **`//`, `%`, `divmod()` and `remainder_near` with a long quotient.**
   `decimal` raises `InvalidOperation` when the integer quotient has more

@@ -2205,11 +2205,19 @@ struct BigDecimal(
         return bigdecimal_exponential.sqrt(self, precision=PRECISION)
 
     @always_inline
-    def sqrt(self, precision: Int) raises -> Self:
+    def sqrt(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
         """Returns the square root of the BigDecimal number.
 
         Args:
             precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Exact under every mode,
+                unlike the other transcendentals: a root is algebraic, so
+                squaring the candidate back settles which side of a boundary
+                the true value falls on.
 
         Returns:
             The square root of this value.
@@ -2217,7 +2225,7 @@ struct BigDecimal(
         Raises:
             ValueError: If the value is negative.
         """
-        return bigdecimal_exponential.sqrt(self, precision)
+        return bigdecimal_exponential.sqrt(self, precision, rounding_mode)
 
     @always_inline
     def cbrt(self, precision: Int = PRECISION) raises -> Self:
