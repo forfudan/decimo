@@ -721,15 +721,15 @@ struct BigDecimal(
             engineering: If True, any exponent shown is a multiple of 3, with
                 one to three digits before the point. Trailing zeros are
                 kept.
-            force_exponent: If True, always show an exponent, even where the
-                rules below would print the number plainly. Only meaningful
-                together with `engineering` or `scientific`.
             force_plain: If True, suppress the CPython-compatible
                 auto-detection of scientific notation (the `scale < 0` and
                 `leftdigits <= -6` rules are not applied).  Useful when a
                 guaranteed fixed-point string is needed regardless of
                 magnitude.  Has no effect when `scientific` or
                 `engineering` is True.
+            force_exponent: If True, always show an exponent, even where the
+                rules above would print the number plainly. Only meaningful
+                together with `engineering` or `scientific`.
             delimiter: A string inserted every 3 digits in both the integer
                 and fractional parts (e.g. `"_"` gives `1_234.567_89`).
                 An empty string (default) disables grouping.

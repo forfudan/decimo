@@ -213,6 +213,68 @@ def test_bigdecimal_compare() raises:
     )
 
 
+def test_the_comparison_operators_agree_with_each_other() raises:
+    """Every pair satisfies trichotomy, and the derived operators follow.
+
+    The cases above check each operator against Python one at a time, from a
+    table. What they cannot see is the operators disagreeing among themselves
+    -- `a < b` and `a == b` both true, or `a <= b` not matching `a < b or
+    a == b`. The values below are chosen so that equal numbers arrive with
+    different scales, which is where an ordering built on the coefficient
+    rather than the value comes apart.
+    """
+    var values: List[String] = [
+        "0",
+        "-0",
+        "0.0",
+        "-0.00",
+        "0E+5",
+        "0E-5",
+        "1",
+        "1.0",
+        "1.00",
+        "1E+0",
+        "-1",
+        "0.1",
+        "0.10",
+        "1E-1",
+        "10",
+        "1E+1",
+        "1.5",
+        "-1.5",
+        "999999999999999999",
+        "1000000000000000000",
+        "1000000000000000001",
+        "-1000000000000000000",
+        "1E+300",
+        "1E-300",
+        "-1E+300",
+        "123456789012345678901234567890",
+        "123456789012345678901234567891",
+    ]
+
+    for left_text in values:
+        for right_text in values:
+            var a = BDec(left_text)
+            var b = BDec(right_text)
+            var context = left_text + " against " + right_text
+
+            var holds = Int(a < b) + Int(a == b) + Int(a > b)
+            testing.assert_equal(holds, 1, "trichotomy failed for " + context)
+            testing.assert_equal(
+                a <= b, a < b or a == b, "<= disagrees for " + context
+            )
+            testing.assert_equal(
+                a >= b, a > b or a == b, ">= disagrees for " + context
+            )
+            testing.assert_equal(
+                a != b, not (a == b), "!= disagrees for " + context
+            )
+            testing.assert_equal(
+                a < b, b > a, "the reversed operator disagrees for " + context
+            )
+
+
 def main() raises:
     # print("Running BigDecimal comparison tests")
 
