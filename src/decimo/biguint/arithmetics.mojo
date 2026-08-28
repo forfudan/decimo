@@ -2195,10 +2195,10 @@ def multiply_by_word_inplace(mut x: BigUInt, y: BigUInt.Word):
         y: The single word to multiply by.
     """
     # Short circuit cases when y is between 0 and 4
-    # See `multiply_by_word_le_4_inplace()` for details
+    # See `multiply_by_word_le_2_inplace()` for details
     # The performance is the best when `y <= 2`
     if y <= 2:
-        multiply_by_word_le_4_inplace(x, y)
+        multiply_by_word_le_2_inplace(x, y)
         return
 
     comptime BASE_WIDE = UInt128(BigUInt.BASE)
@@ -2215,7 +2215,7 @@ def multiply_by_word_inplace(mut x: BigUInt, y: BigUInt.Word):
         x.words.append(BigUInt.Word(carry))
 
 
-def multiply_by_word_le_4_inplace(mut x: BigUInt, y: BigUInt.Word):
+def multiply_by_word_le_2_inplace(mut x: BigUInt, y: BigUInt.Word):
     """Multiplies in-place a BigUInt by a UInt32 value which is between 0 and 4.
 
     Args:
@@ -2224,20 +2224,26 @@ def multiply_by_word_le_4_inplace(mut x: BigUInt, y: BigUInt.Word):
 
     Notes:
 
-    This function will be used in the `multiply_by_word_inplace()` function.
-    It is optimized for the case where y is between 0 and 4.
+    The short-circuit path of `multiply_by_word_inplace()`, for `y` of 0, 1
+    or 2.
 
-    When a valid word times 2, 3, or 4, the result is no larger than 4*10^9,
-    which is less than 2^32-1. This means that we do not need to use UInt64 to
-    store the product but use UInt32 directly. We can first use SIMD to do
-    word-by-word multiplication, and then handle the carries.
+    A valid word doubled is below `2 * BASE`, which the word type holds with
+    room to spare, so the vector pass can multiply without carrying and leave
+    the carries to a single walk afterwards.
 
-    This function works the best when y is 0, 1, or 2. For y = 3 or 4, the
-    normalization of carries is more expensive and may not compensate for the
-    extra loop overhead.
+    It used to handle 3 and 4 as well, on the same idea -- `4 * BASE` also
+    fits -- but the caller has always gated at `y <= 2`, because normalising
+    carries that can reach four bases costs more than it saves. Those branches
+    were therefore unreachable, and are gone, along with the four-base carry
+    walk that only they called.
     """
+    debug_assert[assert_mode="none"](
+        y <= 2,
+        "biguint.arithmetics.multiply_by_word_le_2_inplace(): y must be 0, 1",
+        " or 2.",
+    )
 
-    # y is 0, x becomes 1
+    # y is 0, x becomes 0
     if y == 0:
         x.words = Coefficient(BigUInt.Word(0), __list_literal__=None)
         return
@@ -2253,34 +2259,8 @@ def multiply_by_word_le_4_inplace(mut x: BigUInt, y: BigUInt.Word):
             i, x.words.unsafe_ptr().unsafe_load[width=simd_width](i) << 1
         )
 
-    if y == 2:
-        vectorize[BigUInt.VECTOR_WIDTH](len(x.words), vector_multiply_by_2)
-        normalize_carries_lt_2_bases(x)
-        return
-
-    # y is 3, we can just multiply the digits of each word by 3
-    def vector_multiply_by_3[simd_width: Int](i: Int) {mut x}:
-        """Multiplies the digits of each word by 3."""
-        x.words.unsafe_ptr().unsafe_store[width=simd_width](
-            i, x.words.unsafe_ptr().unsafe_load[width=simd_width](i) * 3
-        )
-
-    if y == 3:
-        vectorize[BigUInt.VECTOR_WIDTH](len(x.words), vector_multiply_by_3)
-        normalize_carries_lt_4_bases(x)
-        return
-
-    # y is 4, we can just shift the digits of each word to the left by 2
-    def vector_multiply_by_4[simd_width: Int](i: Int) {mut x}:
-        """Shifts the digits of each word to the left by 2."""
-        x.words.unsafe_ptr().unsafe_store[width=simd_width](
-            i, x.words.unsafe_ptr().unsafe_load[width=simd_width](i) << 2
-        )
-
-    if y == 4:
-        vectorize[BigUInt.VECTOR_WIDTH](len(x.words), vector_multiply_by_4)
-        normalize_carries_lt_4_bases(x)
-        return
+    vectorize[BigUInt.VECTOR_WIDTH](len(x.words), vector_multiply_by_2)
+    normalize_carries_lt_2_bases(x)
 
 
 def multiply_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
@@ -4586,87 +4566,6 @@ def normalize_carries_lt_2_bases(mut x: BigUInt):
     if carry > 0:
         # If there is still a carry, we need to add a new word
         x.words.append(BigUInt.Word(1))
-    return
-
-
-def normalize_carries_lt_4_bases(mut x: BigUInt):
-    """Normalizes the values of words into valid range by carrying over.
-    The initial values of the words should be in the range [0, BASE * 4 - 4].
-
-    Notes:
-
-    If we multiply a BigUInt numbers word-by-word by 3 or 4, we may end up with
-    a situation where some words are ge than BASE but le BASE * 4 - 4.
-    This function normalizes the carries, ensuring that all words are within the
-    valid range. It modifies the input BigUInt in-place.
-
-    Args:
-        x: The `BigUInt` to normalize, modified in place.
-    """
-
-    # Yuhao ZHU:
-    # By construction, the words of x are in the range [0, BASE*4).
-    # Thus, the carry can only be 0, 1, 2, or 3.
-    #
-    # Every bound below is `k * BASE - carry`, written that way so a change of
-    # base moves the whole table at once.
-    comptime BASE = BigUInt.Word(BigUInt.BASE)
-    var carry: BigUInt.Word = 0
-    for ref word in x.words:
-        if carry == 0:
-            if word <= (BASE - 1):
-                pass  # carry = 0
-            elif word <= (2 * BASE - 1):
-                word -= BASE
-                carry = 1
-            elif word <= (3 * BASE - 1):
-                word -= 2 * BASE
-                carry = 2
-            else:  # 3 * BASE <= word <= 4 * BASE - 4
-                word -= 3 * BASE
-                carry = 3
-        elif carry == 1:
-            if word <= (BASE - 2):
-                word += 1
-                carry = 0
-            elif word <= (2 * BASE - 2):
-                word = word + 1 - (BASE)
-                carry = 1
-            elif word <= (3 * BASE - 2):
-                word = word + 1 - (2 * BASE)
-                carry = 2
-            else:  # 3 * BASE - 1 <= word <= 4 * BASE - 4
-                word = word + 1 - (3 * BASE)
-                carry = 3
-        elif carry == 2:
-            if word <= (BASE - 3):
-                word += 2
-                carry = 0
-            elif word <= (2 * BASE - 3):
-                word = word + 2 - (BASE)
-                carry = 1
-            elif word <= (3 * BASE - 3):
-                word = word + 2 - (2 * BASE)
-                carry = 2
-            else:  # 3 * BASE - 2 <= word <= 4 * BASE - 4
-                word = word + 2 - (3 * BASE)
-                carry = 3
-        else:  # carry == 3
-            if word <= (BASE - 4):
-                word += 3
-                carry = 0
-            elif word <= (2 * BASE - 4):
-                word = word + 3 - (BASE)
-                carry = 1
-            elif word <= (3 * BASE - 4):
-                word = word + 3 - (2 * BASE)
-                carry = 2
-            else:  # 3 * BASE - 3 <= word <= 4 * BASE - 4
-                word = word + 3 - (3 * BASE)
-                carry = 3
-    if carry > 0:
-        # If there is still a carry, we need to add a new word
-        x.words.append(BigUInt.Word(carry))
     return
 
 
