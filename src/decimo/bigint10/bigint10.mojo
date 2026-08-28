@@ -70,7 +70,7 @@ struct BigInt10(
     # __init__(out self)
     # __init__(out self, empty: Bool)
     # __init__(out self, empty: Bool, capacity: Int)
-    # __init__(out self, *words: UInt32, sign: Bool) raises
+    # __init__(out self, *words: BigUInt.Word, sign: Bool) raises
     # __init__(out self, value: Int) raises
     # __init__(out self, value: String) raises
     # ===------------------------------------------------------------------=== #
@@ -101,20 +101,20 @@ struct BigInt10(
         self.sign = sign
 
     def __init__(out self, var words: List[BigUInt.Word], sign: Bool) raises:
-        """Initializes a BigInt10 from a list of UInt32 words and a sign.
+        """Initializes a BigInt10 from a list of words and a sign.
         The BigInt10 constructed in this way is guaranteed to be valid.
         If the list is empty, the BigInt10 is initialized with value 0.
         If there are leading zero words, they are removed.
-        If there are words greater than `999_999_999`, there is an error.
+        If there are words greater than `BigUInt.BASE_MAX`, there is an error.
 
         Args:
-            words: A list of UInt32 words representing the coefficient.
-                Each UInt32 word represents digits ranging from 0 to 10^9 - 1.
+            words: A list of words representing the coefficient.
+                Each word represents digits ranging from 0 to `BigUInt.BASE_MAX`.
                 The words are stored in little-endian order.
             sign: The sign of the BigInt10.
 
         Raises:
-            ConversionError: If any word exceeds 999_999_999.
+            ConversionError: If any word exceeds `BigUInt.BASE_MAX`.
 
         Notes:
             This is equal to `BigInt10.from_list()`.
@@ -135,7 +135,7 @@ struct BigInt10(
         """Initializes a BigInt10 from a list of raw words.
 
         Args:
-            raw_words: A list of UInt32 words representing the coefficient.
+            raw_words: A list of words representing the coefficient.
                 The words are stored in little-endian order.
             sign: The sign of the BigInt10.
 
@@ -144,7 +144,7 @@ struct BigInt10(
         **UNSAFE**
 
         This way of initialization does not check whether the words are smaller
-        than `999_999_999`, nor does it remove leading empty words.
+        than `BigUInt.BASE`, nor does it remove leading empty words.
 
         However, it always initializes a BigInt10 and makes sure that the words
         list is not empty.
@@ -199,29 +199,29 @@ struct BigInt10(
     # ===------------------------------------------------------------------=== #
     # Constructing methods that are not dunders
     #
-    # from_words(*words: UInt32, sign: Bool) -> Self
+    # from_words(*words: BigUInt.Word, sign: Bool) -> Self
     # from_integral_scalar[dtype: DType](value: Scalar[dtype]) -> Self
     # from_string(value: String) -> Self
     # ===------------------------------------------------------------------=== #
 
     @staticmethod
     def from_list(var words: List[BigUInt.Word], sign: Bool) raises -> Self:
-        """Initializes a BigInt10 from a list of UInt32 words safely.
+        """Initializes a BigInt10 from a list of words safely.
         If the list is empty, the BigInt10 is initialized with value 0.
         If there are leading zero words, they are removed.
-        The words are validated to ensure they are smaller than `999_999_999`.
+        The words are validated to ensure they are below `BigUInt.BASE`.
 
         Args:
-            words: A list of UInt32 words representing the coefficient.
-                Each UInt32 word represents digits ranging from 0 to 10^9 - 1.
+            words: A list of words representing the coefficient.
+                Each word represents digits ranging from 0 to `BigUInt.BASE_MAX`.
                 The words are stored in little-endian order.
             sign: The sign of the BigInt10.
 
         Raises:
-            ConversionError: If any word exceeds 999_999_999.
+            ConversionError: If any word exceeds `BigUInt.BASE_MAX`.
 
         Returns:
-            The BigInt10 representation of the list of UInt32 words.
+            The BigInt10 representation of the list of words.
         """
         try:
             return Self(BigUInt.from_list(words^), sign)
@@ -240,20 +240,21 @@ struct BigInt10(
         """Initializes a BigInt10 from raw words.
 
         Args:
-            words: The UInt32 words representing the coefficient.
-                Each UInt32 word represents digits ranging from 0 to 10^9 - 1.
+            words: The words representing the coefficient.
+                Each word represents digits ranging from 0 to `BigUInt.BASE_MAX`.
                 The words are stored in little-endian order.
             sign: The sign of the BigInt10.
 
         Notes:
 
-        This method validates whether the words are smaller than `999_999_999`.
+        This method validates whether the words are below `BigUInt.BASE`, and
+        removes leading zero words, as `from_list()` does.
 
         Returns:
             A new `BigInt10` from the given words.
 
         Raises:
-            ValueError: If any word exceeds 999_999_999.
+            ValueError: If any word exceeds `BigUInt.BASE_MAX`.
         """
 
         var list_of_words = List[BigUInt.Word](capacity=len(words))
@@ -271,7 +272,15 @@ struct BigInt10(
             else:
                 list_of_words.append(word)
 
-        return Self(BigUInt(raw_words=list_of_words^), sign)
+        # `raw_words=` keeps the list as given, leading zero words included, so
+        # the normalisation `from_list()` gets from `BigUInt.from_list()` has
+        # to be done here. Without it `from_words(5, 0)` printed as
+        # "000000000000000005", `from_words(0, 0)` compared unequal to zero,
+        # and `from_words(0, 0, sign=True)` printed as a negative zero, which
+        # every other constructor in this type normalises away.
+        var magnitude = BigUInt(raw_words=list_of_words^)
+        magnitude.remove_leading_empty_words()
+        return Self(magnitude^, sign)
 
     @staticmethod
     def from_integral_scalar[
@@ -428,24 +437,24 @@ struct BigInt10(
 
     @staticmethod
     def from_bigint(value: BigInt) -> Self:
-        """Converts a base-2^32 BigInt to a base-10^9 BigInt10.
+        """Converts a base-2^64 BigInt to a base-10^18 BigInt10.
 
         This bridge lives here, rather than on `BigInt`, so that nothing
         outside this legacy module has to know that `BigInt10` exists.
 
         Args:
-            value: The BigInt (base-2^32) to convert.
+            value: The BigInt (base-2^64) to convert.
 
         Returns:
-            The BigInt10 (base-10^9) representation with the same value.
+            The BigInt10 (base-10^18) representation with the same value.
         """
         return Self(value.to_biguint(), value.sign)
 
     def to_bigint(self) -> BigInt:
-        """Converts the BigInt10 to a base-2^32 BigInt.
+        """Converts the BigInt10 to a base-2^64 BigInt.
 
         Returns:
-            The BigInt (base-2^32) representation with the same value.
+            The BigInt (base-2^64) representation with the same value.
         """
         return BigInt.from_biguint(self.magnitude, self.sign)
 

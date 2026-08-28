@@ -6,6 +6,7 @@ Tests conversion from Python integers to Mojo BigInt10.
 from std import testing
 from std.python import Python
 from decimo.bigint10.bigint10 import BigInt10
+from decimo.biguint.biguint import BigUInt
 
 
 def test_from_python_int_basic() raises:
@@ -183,6 +184,48 @@ def test_from_python_int_roundtrip() raises:
         original_str,
         "Roundtrip conversion preserves value",
     )
+
+
+def test_from_words_normalises_leading_zero_words() raises:
+    """`from_words` validated the word range and then skipped normalising.
+
+    Its sibling `from_list()` goes through `BigUInt.from_list()`, which strips
+    leading zero words; `from_words` built the magnitude with `raw_words=`,
+    which by contract does not. So `from_words(5, 0)` printed as
+    "000000000000000005", `from_words(0, 0)` compared unequal to zero, and
+    `from_words(0, 0, sign=True)` printed as a negative zero -- which every
+    other constructor in this type normalises away, because the sign is only
+    dropped when the magnitude reads as zero.
+
+    This is the same defect, in the same shape, as the one fixed in
+    `BigUInt.from_words()`.
+    """
+    var with_a_zero_on_top = BigInt10.from_words(
+        BigUInt.Word(5), BigUInt.Word(0), sign=False
+    )
+    testing.assert_equal(String(with_a_zero_on_top), "5")
+    testing.assert_equal(len(with_a_zero_on_top.magnitude.words), 1)
+
+    for sign in [False, True]:
+        var zeros = BigInt10.from_words(
+            BigUInt.Word(0), BigUInt.Word(0), sign=sign
+        )
+        testing.assert_equal(String(zeros), "0")
+        testing.assert_equal(len(zeros.magnitude.words), 1)
+        testing.assert_true(zeros == BigInt10())
+
+    # Negative values keep their sign, and the two constructors agree.
+    var negative = BigInt10.from_words(
+        BigUInt.Word(7), BigUInt.Word(0), sign=True
+    )
+    testing.assert_equal(String(negative), "-7")
+    testing.assert_true(
+        negative == BigInt10.from_list([BigUInt.Word(7)], sign=True)
+    )
+
+    # A word at the base is still rejected.
+    with testing.assert_raises():
+        _ = BigInt10.from_words(BigUInt.Word(BigUInt.BASE_MAX) + 1, sign=False)
 
 
 def main() raises:

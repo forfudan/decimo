@@ -14,7 +14,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-"""Sub-package for base-10^9 big integer type."""
+"""Sub-package for the base-10^18 signed big integer type."""
 
 # About the module name `bigint10`:
 # According to PEP-8, Modules should have short, all-lowercase names.
