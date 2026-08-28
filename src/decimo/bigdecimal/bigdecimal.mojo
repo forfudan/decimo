@@ -2363,11 +2363,17 @@ struct BigDecimal(
         )
 
     @always_inline
-    def cot(self, precision: Int = PRECISION) raises -> Self:
+    def cot(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
         """Returns the cotangent of the BigDecimal number.
 
         Args:
             precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Decided rather than
+                approximated; see `_round_by_deciding()`.
 
         Returns:
             The cotangent of this value.
@@ -2377,14 +2383,22 @@ struct BigDecimal(
             ZeroDivisionError: At other singularities x = nπ (n != 0) where
                 sin(x) is zero.
         """
-        return bigdecimal_trigonometric.cot(self, precision)
+        return bigdecimal_trigonometric.cot_rounded(
+            self, precision, rounding_mode
+        )
 
     @always_inline
-    def csc(self, precision: Int = PRECISION) raises -> Self:
+    def csc(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
         """Returns the cosecant of the BigDecimal number.
 
         Args:
             precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Decided rather than
+                approximated; see `_round_by_deciding()`.
 
         Returns:
             The cosecant of this value.
@@ -2394,14 +2408,22 @@ struct BigDecimal(
             ZeroDivisionError: At other singularities x = nπ (n != 0) where
                 sin(x) is zero.
         """
-        return bigdecimal_trigonometric.csc(self, precision)
+        return bigdecimal_trigonometric.csc_rounded(
+            self, precision, rounding_mode
+        )
 
     @always_inline
-    def sec(self, precision: Int = PRECISION) raises -> Self:
+    def sec(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
         """Returns the secant of the BigDecimal number.
 
         Args:
             precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Decided rather than
+                approximated; see `_round_by_deciding()`.
 
         Returns:
             The secant of this value.
@@ -2410,14 +2432,22 @@ struct BigDecimal(
             ZeroDivisionError: At the singularities x = π/2 + nπ where
                 cos(x) is zero and sec(x) is undefined.
         """
-        return bigdecimal_trigonometric.sec(self, precision)
+        return bigdecimal_trigonometric.sec_rounded(
+            self, precision, rounding_mode
+        )
 
     @always_inline
-    def arctan(self, precision: Int = PRECISION) raises -> Self:
+    def arctan(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
         """Returns the arctangent of the BigDecimal number.
 
         Args:
             precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Decided rather than
+                approximated; see `_round_by_deciding()`.
 
         Returns:
             The arctangent of this value in radians.
@@ -2425,7 +2455,9 @@ struct BigDecimal(
         Raises:
             Error: If the underlying computation fails.
         """
-        return bigdecimal_trigonometric.arctan(self, precision)
+        return bigdecimal_trigonometric.arctan_rounded(
+            self, precision, rounding_mode
+        )
 
     # === Arithmetic operations === #
 
