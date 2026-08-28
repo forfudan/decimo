@@ -261,6 +261,40 @@ def test_rootable_conformance() raises:
     print("OK  sqrt(2) through Rootable =", result, " sqrt(-4) = nan")
 
 
+def test_negative_precision_is_refused() raises:
+    """A negative precision is an error here as it is on `BigDecimal`.
+
+    It used to be accepted and stored: `BigFloat("2", precision=-1)` gave a
+    value that printed and computed as if the precision were 1, because the
+    bit conversion floors at MPFR's minimum and `mpfr_get_str` treats a
+    non-positive digit count as "choose for me". No wrong result came of it,
+    but `BigDecimal.sqrt(-1)` raises and this did not. Zero stays accepted on
+    both types.
+    """
+    print("test_negative_precision_is_refused ... ", end="")
+    var raised = 0
+    try:
+        _ = BigFloat("2", precision=-1)
+    except e:
+        raised += 1
+    try:
+        _ = BigFloat(2, precision=-1)
+    except e:
+        raised += 1
+    try:
+        _ = BigFloat.pi(-1)
+    except e:
+        raised += 1
+    if raised != 3:
+        raise Error(
+            "FAIL test_negative_precision_is_refused: only "
+            + String(raised)
+            + " of 3 raised"
+        )
+    _ = BigFloat("2", precision=0)
+    print("OK")
+
+
 def main() raises:
     test_mpfr_available()
     test_construct_from_string()
@@ -277,4 +311,5 @@ def main() raises:
     test_neg_and_abs()
     test_high_precision_sqrt()
     test_rootable_conformance()
+    test_negative_precision_is_refused()
     print("\nAll BigFloat smoke tests completed.")

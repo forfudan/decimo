@@ -151,6 +151,11 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
             RuntimeError: If MPFR is not available or handle pool is exhausted.
             ConversionError: If the string is not a valid number.
         """
+        if precision < 0:
+            raise ValueError(
+                message="Precision must be non-negative",
+                function="BigFloat.__init__()",
+            )
         if not mpfrw_available():
             raise RuntimeError(
                 message=(
@@ -810,6 +815,11 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         Raises:
             RuntimeError: If MPFR is not available or handle allocation fails.
         """
+        if precision < 0:
+            raise ValueError(
+                message="Precision must be non-negative",
+                function="BigFloat.pi()",
+            )
         if not mpfrw_available():
             raise RuntimeError(
                 message=(
