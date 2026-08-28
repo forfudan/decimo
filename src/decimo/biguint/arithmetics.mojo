@@ -382,8 +382,9 @@ def _subtract_words[
     """Subtracts `n_words` words: `r = a - b`, least significant first.
 
     The borrow counterpart of `_add_words()`, with the same aliasing freedom
-    and the same two shapes. The wrapped `a - b` is deliberate: it is the right
-    answer modulo 2^32 once `BASE` is added back.
+    and the same two shapes. The wrapped `a - b` is deliberate: a borrow leaves
+    the difference short by exactly one word width, which is what adding `BASE`
+    back repairs.
 
     Args:
         rp: Destination, at least `n_words` words.
@@ -2188,15 +2189,14 @@ def multiply_slices_toom3(
 
 
 def multiply_by_word_inplace(mut x: BigUInt, y: BigUInt.Word):
-    """Multiplies in-place a BigUInt by a UInt32 value.
+    """Multiplies a BigUInt in place by a single word.
 
     Args:
         x: The BigUInt value to multiply.
-        y: The single word to multiply by.
+        y: The single word to multiply by, anywhere in `0` to `BASE_MAX`.
     """
-    # Short circuit cases when y is between 0 and 4
-    # See `multiply_by_word_le_2_inplace()` for details
-    # The performance is the best when `y <= 2`
+    # Short circuit for y of 0, 1 or 2, which multiply without carrying.
+    # See `multiply_by_word_le_2_inplace()` for why the gate is at 2.
     if y <= 2:
         multiply_by_word_le_2_inplace(x, y)
         return
@@ -2216,11 +2216,11 @@ def multiply_by_word_inplace(mut x: BigUInt, y: BigUInt.Word):
 
 
 def multiply_by_word_le_2_inplace(mut x: BigUInt, y: BigUInt.Word):
-    """Multiplies in-place a BigUInt by a UInt32 value which is between 0 and 4.
+    """Multiplies a BigUInt in place by a word of 0, 1 or 2.
 
     Args:
         x: The BigUInt value to multiply.
-        y: The single word to multiply by. It must be between 0 and 4.
+        y: The single word to multiply by. It must be 0, 1 or 2.
 
     Notes:
 

@@ -723,12 +723,13 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             entry point usable from non-raising code, such as the single-word
             fast paths in `decimo.biguint.arithmetics`.
 
-            Scalars narrower than a word always fit in one word and
-            are converted directly. A 32-bit scalar needs one word or two,
-            decided by a comparison. Wider scalars are peeled one word at a
-            time by repeated division by 10^9; the number of words this can
-            produce is known at compile time from the scalar width, so the word
-            list is allocated exactly once and never grows.
+            A scalar no wider than `BITS_ALWAYS_IN_ONE_WORD` cannot fill a
+            word, so it converts with no division at all: `UInt8`, `UInt16`
+            and, at eighteen digits a word, `UInt32` as well. Anything wider is
+            peeled one word at a time by repeated division by `BASE`. The
+            number of words that can produce is known at compile time from the
+            scalar width, so the word list is allocated exactly once and never
+            grows.
 
         Parameters:
             dtype: The scalar data type, must be integral and unsigned.
