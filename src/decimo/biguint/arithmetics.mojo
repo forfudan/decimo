@@ -41,11 +41,29 @@ Raised from 64 when the schoolbook base case became product-scanning. A Comba
 column reduces the base once per result word instead of once per partial
 product, which makes the quadratic kernel fast enough that Karatsuba's extra
 `BigUInt` allocations and additions do not pay until much later.
+
+Re-swept after the move to eighteen digits a word (20260828) and left where
+the base change put it: 128 is best or tied against 64 and 256 at every size
+from 32 to 1024 words.
 """
-comptime CUTOFF_TOOM3 = 384
+comptime CUTOFF_TOOM3 = 512
 """The cutoff number of words for using Toom-3 multiplication.
 
 NOTE: Karatsuba is used for `CUTOFF_KARATSUBA < max_words <= CUTOFF_TOOM3`.
+
+Swept at eighteen digits a word (20260828), three runs each, ns:
+
+| words | 384 | 512 |
+| ----- | --- | --- |
+|   512 | 47.0 k | 45.8 k |
+|  1 024 | 140.1 k | 139.6 k |
+|  1 536 | 291.4 k | 269.1 k |
+|  2 048 | 469.6 k | 446.0 k |
+
+Neutral to a thousand words and 1.05-1.08x above it. Worth noting that 512 is
+neither the base-10^9 value (768) nor half of it (384, where the base change
+put it): unlike the vector widths, this one really did move, and not by the
+factor anyone would have guessed. Sweep, do not scale.
 """
 comptime CUTOFF_BURNIKEL_ZIEGLER = 24
 """The cutoff number of words for using Burnikel-Ziegler division.
@@ -66,6 +84,12 @@ longer. Measured on the 2n-by-n shape the condition selects, best of nine:
 | 64            | 6515 ns    | 6480 ns               |
 
 64 is where they meet, so the crossover sits just below it.
+
+Re-swept at eighteen digits a word (20260828) over 16, 24, 32, 48 and 64,
+with dividends from 16 to 1024 words and a divisor half that. No value beats
+another by more than about 2.5%, and the direction is not consistent across
+sizes: an apparent advantage for 48 at 512 and 1024 words did not survive a
+second run. Left alone. Recorded so the next person does not repeat it.
 """
 comptime BURNIKEL_ZIEGLER_BLOCK_WORDS = 16
 """The block size the Burnikel-Ziegler recursion bottoms out at.
