@@ -14,7 +14,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-"""Multiplies base-billion magnitudes with a number-theoretic transform.
+"""Multiplies decimal magnitudes with a number-theoretic transform.
 
 Toom-3 was the largest algorithm available for `BigUInt`. Its complexity is
 O(n^1.465), so a transform of complexity O(n log n) is faster for long enough
@@ -26,7 +26,7 @@ transforms. Those work on residues and do not depend on the base. Only the
 packing is different.
 
 A base-2^32 magnitude is a bit string, so `bigint` may cut it at any bit
-position. A base-billion magnitude is not. Its value is
+position. A decimal magnitude is not. Its value is
 `w[0] + w[1] * 10^9 + ...`, and only cuts at a power of ten are cheap.
 
 The question is therefore how many decimal digits one coefficient should hold.
@@ -42,7 +42,7 @@ With `d` digits per coefficient, each product is below `10^(2d)`, and at most
   or 10^8 decimal digits.
 
 Six digits are slightly less than 20 bits, while `bigint` usually packs 25
-bits. A base-billion transform is therefore about 25% longer for the same
+bits. A decimal transform is therefore about 25% longer for the same
 number. Converting the base to avoid this would cost more.
 """
 

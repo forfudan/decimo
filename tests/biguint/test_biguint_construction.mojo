@@ -153,5 +153,90 @@ def test_zero_with_capacity() raises:
         assert_true(value.is_zero())
 
 
+def test_to_int_at_and_beyond_its_range() raises:
+    """`to_int()` returns the value or raises; it never returns a wrong one.
+
+    The version before this one built the whole value in an `Int128` and
+    compared once at the end, guarded by a word count that allowed one word
+    more than `Int.MAX` needs. The multiply overflowed before the comparison
+    ran, so `10^21` came back as 6873995514006732800.
+    """
+    assert_equal(BigUInt("0").to_int(), 0)
+    assert_equal(BigUInt("1").to_int(), 1)
+    assert_equal(BigUInt(String(Int.MAX)).to_int(), Int.MAX)
+
+    # One past the top, and far enough past it to need an extra word.
+    for over in [
+        "9223372036854775808",
+        "9999999999999999999",
+        "1000000000000000000000",
+        "1" + "0" * 60,
+    ]:
+        with assert_raises():
+            _ = BigUInt(over).to_int()
+
+
+def test_to_uint64_across_the_word_boundary() raises:
+    """Every word count that fits a `UInt64` round-trips.
+
+    The value that caught this was `10^18`: exactly one word plus one at
+    eighteen digits a word, and the old SIMD reassembly scaled the second word
+    by `10^9`, so it came back as `10^9`.
+    """
+    for text in [
+        "0",
+        "1",
+        "999999999999999999",
+        "1000000000000000000",
+        "1000000000000000001",
+        "9223372036854775807",
+        "18446744073709551614",
+        "18446744073709551615",
+    ]:
+        assert_equal(String(BigUInt(text).to_uint64()), text)
+
+    for over in ["18446744073709551616", "1" + "0" * 30]:
+        with assert_raises():
+            _ = BigUInt(over).to_uint64()
+
+
+def test_to_uint128_across_the_word_boundary() raises:
+    """Same for `UInt128`, up to and including its maximum.
+
+    `to_uint128()` does not raise -- see its docstring -- so only values the
+    caller is allowed to hand it are checked here.
+    """
+    for text in [
+        "0",
+        "999999999999999999",
+        "1000000000000000000",
+        "18446744073709551616",
+        "170141183460469231731687303715884105727",
+        "340282366920938463463374607431768211455",
+    ]:
+        assert_equal(String(BigUInt(text).to_uint128()), text)
+
+
+def test_overflow_predicates_at_their_boundaries() raises:
+    """`is_uint64_overflow()` and `is_uint128_overflow()` on both sides.
+
+    The `UInt128` one used to read one past the end of a four-word value and
+    let five-word values -- the only length that can overflow -- fall through
+    to `False`.
+    """
+    assert_true(not BigUInt(String(UInt64.MAX)).is_uint64_overflow())
+    assert_true(BigUInt("18446744073709551616").is_uint64_overflow())
+
+    assert_true(
+        not BigUInt(
+            "340282366920938463463374607431768211455"
+        ).is_uint128_overflow()
+    )
+    assert_true(
+        BigUInt("340282366920938463463374607431768211456").is_uint128_overflow()
+    )
+    assert_true(BigUInt("9" * 45).is_uint128_overflow())
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()

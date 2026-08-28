@@ -805,8 +805,14 @@ struct BigInt(
                     result += hex(word)[byte=2:]
                     first_word = False
             else:
+                # Four bits to a hex digit. The literal here used to be 8,
+                # which is a 32-bit word's worth; a 64-bit word needs 16, and
+                # every value whose lower words did not happen to fill all
+                # sixteen came out short. `to_binary_string()` below was
+                # written against `BITS_PER_WORD` and never had the problem.
+                comptime HEX_DIGITS_PER_WORD = BigInt.BITS_PER_WORD // 4
                 var h = hex(word)[byte=2:]
-                for _ in range(8 - h.byte_length()):
+                for _ in range(HEX_DIGITS_PER_WORD - h.byte_length()):
                     result += "0"
                 result += h
 
@@ -2089,43 +2095,6 @@ struct BigInt(
 # Module-level private helpers for from_string
 # These operate on the magnitude words only (sign is handled by caller).
 # ===----------------------------------------------------------------------=== #
-
-
-def _multiply_add_inplace(mut x: BigInt, mul: UInt64, add: UInt64):
-    """Computes x = x * mul + add in a single pass over the word array.
-
-    Fuses the multiply-by-scalar and add-scalar operations into one O(n) pass
-    instead of two separate O(n) passes, halving memory traffic. This is the
-    inner loop of the simple base-conversion path, a chunk at a time.
-
-    Correctness: at each word position i,
-        product = x.words[i] * mul + carry
-    where carry starts at `add` and propagates upward. This correctly computes
-    x * mul + add because the carry chain handles both the multiplication
-    carry and the initial addend.
-
-    Overflow safety: product <= (2^64-1)*(2^64-1) + carry, which is what the
-    128-bit accumulator is for; the carry out is below `mul` and so fits a
-    word again.
-
-    Args:
-        x: The BigInt to modify in-place.
-        mul: The UInt64 multiplier (e.g. 10^18).
-        add: The UInt64 addend (e.g. a chunk value).
-    """
-    if mul == 0:
-        x.words = [UInt64(add)]
-        x.sign = False
-        return
-
-    var carry: UInt64 = add
-    for i in range(len(x.words)):
-        var product = UInt128(x.words[i]) * UInt128(mul) + UInt128(carry)
-        x.words[i] = UInt64(product)
-        carry = UInt64(product >> 64)
-
-    if carry > 0:
-        x.words.append(UInt64(carry))
 
 
 # ===----------------------------------------------------------------------=== #

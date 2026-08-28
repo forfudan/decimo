@@ -38,14 +38,32 @@ comptime CUTOFF_KARATSUBA = 128
 """The cutoff number of words for using Karatsuba multiplication.
 
 Raised from 64 when the schoolbook base case became product-scanning. A Comba
-column reduces base-10^9 once per result word instead of once per partial
+column reduces the base once per result word instead of once per partial
 product, which makes the quadratic kernel fast enough that Karatsuba's extra
 `BigUInt` allocations and additions do not pay until much later.
+
+Re-swept after the move to eighteen digits a word (20260828) and left where
+the base change put it: 128 is best or tied against 64 and 256 at every size
+from 32 to 1024 words.
 """
-comptime CUTOFF_TOOM3 = 384
+comptime CUTOFF_TOOM3 = 512
 """The cutoff number of words for using Toom-3 multiplication.
 
 NOTE: Karatsuba is used for `CUTOFF_KARATSUBA < max_words <= CUTOFF_TOOM3`.
+
+Swept at eighteen digits a word (20260828), three runs each, ns:
+
+| words | 384 | 512 |
+| ----- | --- | --- |
+|   512 | 47.0 k | 45.8 k |
+|  1 024 | 140.1 k | 139.6 k |
+|  1 536 | 291.4 k | 269.1 k |
+|  2 048 | 469.6 k | 446.0 k |
+
+Neutral to a thousand words and 1.05-1.08x above it. Worth noting that 512 is
+neither the base-10^9 value (768) nor half of it (384, where the base change
+put it): unlike the vector widths, this one really did move, and not by the
+factor anyone would have guessed. Sweep, do not scale.
 """
 comptime CUTOFF_BURNIKEL_ZIEGLER = 24
 """The cutoff number of words for using Burnikel-Ziegler division.
@@ -66,6 +84,12 @@ longer. Measured on the 2n-by-n shape the condition selects, best of nine:
 | 64            | 6515 ns    | 6480 ns               |
 
 64 is where they meet, so the crossover sits just below it.
+
+Re-swept at eighteen digits a word (20260828) over 16, 24, 32, 48 and 64,
+with dividends from 16 to 1024 words and a divisor half that. No value beats
+another by more than about 2.5%, and the direction is not consistent across
+sizes: an apparent advantage for 48 at 512 and 1024 words did not survive a
+second run. Left alone. Recorded so the next person does not repeat it.
 """
 comptime BURNIKEL_ZIEGLER_BLOCK_WORDS = 16
 """The block size the Burnikel-Ziegler recursion bottoms out at.
@@ -143,7 +167,6 @@ the 112-word row, is the one being tuned for.
 # floor_divide_modulo_burnikel_ziegler(a, b, cut_off, mut remainder) -> BigUInt
 # floor_divide_modulo_by_word(x, y: BigUInt.Word, mut remainder: BigUInt.Word) -> BigUInt
 # floor_divide_modulo_by_uint64(x, y: UInt64, mut remainder: UInt64) -> BigUInt
-# floor_divide_modulo_by_uint128(x, y: UInt128, mut remainder: UInt128) -> BigUInt
 #
 # normalize_carries_lt_2_bases(x: BigUInt) -> None
 # normalize_carries_lt4_bases(x: BigUInt) -> None
@@ -159,8 +182,8 @@ the 112-word row, is the one being tuned for.
 # ===----------------------------------------------------------------------=== #
 # Word-level addition and subtraction kernels
 #
-# A base-10^9 word does not carry by overflowing, so the carry out of a word
-# cannot be read off the hardware flags the way a base-2^32 one can: it is a
+# A decimal word does not carry by overflowing, so the carry out of a word
+# cannot be read off the hardware flags the way a base-2^64 one can: it is a
 # comparison against `BASE`, and the comparison depends on the carry coming in.
 # Written directly, that puts a compare on the loop-carried dependency chain.
 #
@@ -171,8 +194,9 @@ the 112-word row, is the one being tuned for.
 # than the three or four an add-compare-branch chain costs.
 #
 # From one vector's worth of words up, a two-pass shape wins instead: add the
-# words in vectors with no carries at all, then walk the carries. Two words of
-# base-10^9 sum to less than 2^32, so the vector pass cannot overflow, and the
+# words in vectors with no carries at all, then walk the carries. Two words
+# sum to less than `2 * BASE`, which is well inside the word type, so the
+# vector pass cannot overflow, and the
 # reduction is a comparison and a masked subtract. The walk that follows stays
 # a single pass, because a word that generated a carry came out at `BASE - 2`
 # or below and cannot generate a second one when it takes the carry beneath it.
@@ -192,8 +216,8 @@ the 112-word row, is the one being tuned for.
 # chew through between carry walks. Both halved with the word count when the
 # base moved, to keep the same number of *bytes* per vector and per block.
 # Provisional: they want re-sweeping, like every other cutoff here.
-comptime WORDS_PER_VECTOR = 4
-comptime WORDS_PER_CARRY_BLOCK = 32
+comptime WORDS_PER_VECTOR = 8
+comptime WORDS_PER_CARRY_BLOCK = 64
 
 comptime WORDS_PER_SHORT_DIVISOR = 4
 """Below this many divisor words, Knuth D's multiply-subtract stays in one
@@ -212,7 +236,7 @@ def _add_words[
     n_words: Int,
     carry_in: BigUInt.Word,
 ) -> BigUInt.Word:
-    """Adds `n_words` base-10^9 words: `r = a + b`, least significant first.
+    """Adds `n_words` words: `r = a + b`, least significant first.
 
     `r` may alias `a` or `b` word-for-word.
 
@@ -355,7 +379,7 @@ def _subtract_words[
     n_words: Int,
     borrow_in: BigUInt.Word,
 ) -> BigUInt.Word:
-    """Subtracts `n_words` base-10^9 words: `r = a - b`, least significant first.
+    """Subtracts `n_words` words: `r = a - b`, least significant first.
 
     The borrow counterpart of `_add_words()`, with the same aliasing freedom
     and the same two shapes. The wrapped `a - b` is deliberate: it is the right
@@ -2171,10 +2195,10 @@ def multiply_by_word_inplace(mut x: BigUInt, y: BigUInt.Word):
         y: The single word to multiply by.
     """
     # Short circuit cases when y is between 0 and 4
-    # See `multiply_by_word_le_4_inplace()` for details
+    # See `multiply_by_word_le_2_inplace()` for details
     # The performance is the best when `y <= 2`
     if y <= 2:
-        multiply_by_word_le_4_inplace(x, y)
+        multiply_by_word_le_2_inplace(x, y)
         return
 
     comptime BASE_WIDE = UInt128(BigUInt.BASE)
@@ -2191,7 +2215,7 @@ def multiply_by_word_inplace(mut x: BigUInt, y: BigUInt.Word):
         x.words.append(BigUInt.Word(carry))
 
 
-def multiply_by_word_le_4_inplace(mut x: BigUInt, y: BigUInt.Word):
+def multiply_by_word_le_2_inplace(mut x: BigUInt, y: BigUInt.Word):
     """Multiplies in-place a BigUInt by a UInt32 value which is between 0 and 4.
 
     Args:
@@ -2200,20 +2224,26 @@ def multiply_by_word_le_4_inplace(mut x: BigUInt, y: BigUInt.Word):
 
     Notes:
 
-    This function will be used in the `multiply_by_word_inplace()` function.
-    It is optimized for the case where y is between 0 and 4.
+    The short-circuit path of `multiply_by_word_inplace()`, for `y` of 0, 1
+    or 2.
 
-    When a valid word times 2, 3, or 4, the result is no larger than 4*10^9,
-    which is less than 2^32-1. This means that we do not need to use UInt64 to
-    store the product but use UInt32 directly. We can first use SIMD to do
-    word-by-word multiplication, and then handle the carries.
+    A valid word doubled is below `2 * BASE`, which the word type holds with
+    room to spare, so the vector pass can multiply without carrying and leave
+    the carries to a single walk afterwards.
 
-    This function works the best when y is 0, 1, or 2. For y = 3 or 4, the
-    normalization of carries is more expensive and may not compensate for the
-    extra loop overhead.
+    It used to handle 3 and 4 as well, on the same idea -- `4 * BASE` also
+    fits -- but the caller has always gated at `y <= 2`, because normalising
+    carries that can reach four bases costs more than it saves. Those branches
+    were therefore unreachable, and are gone, along with the four-base carry
+    walk that only they called.
     """
+    debug_assert[assert_mode="none"](
+        y <= 2,
+        "biguint.arithmetics.multiply_by_word_le_2_inplace(): y must be 0, 1",
+        " or 2.",
+    )
 
-    # y is 0, x becomes 1
+    # y is 0, x becomes 0
     if y == 0:
         x.words = Coefficient(BigUInt.Word(0), __list_literal__=None)
         return
@@ -2229,34 +2259,8 @@ def multiply_by_word_le_4_inplace(mut x: BigUInt, y: BigUInt.Word):
             i, x.words.unsafe_ptr().unsafe_load[width=simd_width](i) << 1
         )
 
-    if y == 2:
-        vectorize[BigUInt.VECTOR_WIDTH](len(x.words), vector_multiply_by_2)
-        normalize_carries_lt_2_bases(x)
-        return
-
-    # y is 3, we can just multiply the digits of each word by 3
-    def vector_multiply_by_3[simd_width: Int](i: Int) {mut x}:
-        """Multiplies the digits of each word by 3."""
-        x.words.unsafe_ptr().unsafe_store[width=simd_width](
-            i, x.words.unsafe_ptr().unsafe_load[width=simd_width](i) * 3
-        )
-
-    if y == 3:
-        vectorize[BigUInt.VECTOR_WIDTH](len(x.words), vector_multiply_by_3)
-        normalize_carries_lt_4_bases(x)
-        return
-
-    # y is 4, we can just shift the digits of each word to the left by 2
-    def vector_multiply_by_4[simd_width: Int](i: Int) {mut x}:
-        """Shifts the digits of each word to the left by 2."""
-        x.words.unsafe_ptr().unsafe_store[width=simd_width](
-            i, x.words.unsafe_ptr().unsafe_load[width=simd_width](i) << 2
-        )
-
-    if y == 4:
-        vectorize[BigUInt.VECTOR_WIDTH](len(x.words), vector_multiply_by_4)
-        normalize_carries_lt_4_bases(x)
-        return
+    vectorize[BigUInt.VECTOR_WIDTH](len(x.words), vector_multiply_by_2)
+    normalize_carries_lt_2_bases(x)
 
 
 def multiply_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
@@ -2502,7 +2506,7 @@ def exact_divide_by_2_inplace(mut x: BigUInt):
     """Divides a BigUInt by 2 exactly, in-place.
 
     The caller must ensure that x is even (divisible by 2).
-    Uses base-10^9 long division from MSB to LSB.
+    Uses long division over the words, from MSB to LSB.
 
     Args:
         x: The `BigUInt` value to divide, modified in place.
@@ -2521,7 +2525,7 @@ def exact_divide_by_3_inplace(mut x: BigUInt):
     """Divides a BigUInt by 3 exactly, in-place.
 
     The caller must ensure that x is divisible by 3.
-    Uses base-10^9 long division from MSB to LSB.
+    Uses long division over the words, from MSB to LSB.
 
     Notes:
 
@@ -2665,8 +2669,9 @@ def floor_divide(x: BigUInt, y: BigUInt) raises -> BigUInt:
     # arm64 has no 128-bit divide, let alone a 256-bit one, so every step of
     # that routine called a software division helper -- and the routine is
     # written in `UInt256`, so it called the 256-bit one, twice per group of
-    # four dividend words. Knuth D over base-10^9 words does the same job with
-    # 64-bit divisions the hardware actually has.
+    # four dividend words. Knuth D did the same job with the divisions the
+    # hardware actually has -- 64-bit then, 128-by-64 now that a word is
+    # eighteen digits, and still not a call.
     #
     # Measured, best of nine, this file at 6e63828 (ns):
     #
@@ -3146,20 +3151,6 @@ def floor_divide_by_word_inplace(mut x: BigUInt, y: BigUInt.Word) -> None:
         carry = dividend % y_wide
 
 
-def floor_divide_by_uint64(x: BigUInt, y: UInt64) -> BigUInt:
-    """Divides a BigUInt by UInt64.
-
-    Args:
-        x: The `BigUInt` dividend.
-        y: The `UInt64` divisor. Must be smaller than 10^18.
-
-    Returns:
-        The quotient of x divided by y.
-    """
-    var remainder = UInt64(0)
-    return floor_divide_modulo_by_uint64(x, y, remainder)
-
-
 def floor_divide_modulo_by_uint64(
     x: BigUInt, y: UInt64, mut remainder: UInt64
 ) -> BigUInt:
@@ -3209,105 +3200,6 @@ def floor_divide_by_uint64_inplace(mut x: BigUInt, y: UInt64) -> None:
         "divisor must be below BASE.",
     )
     floor_divide_by_word_inplace(x, BigUInt.Word(y))
-
-
-def floor_divide_by_uint128(x: BigUInt, y: UInt128) -> BigUInt:
-    """Divides a BigUInt by UInt128.
-
-    Args:
-        x: The `BigUInt` dividend.
-        y: The `UInt128` divisor. Must be smaller than 10^36.
-
-    Returns:
-        The quotient of x divided by y.
-    """
-    var remainder = UInt128(0)
-    return floor_divide_modulo_by_uint128(x, y, remainder)
-
-
-def floor_divide_modulo_by_uint128(
-    x: BigUInt, y: UInt128, mut remainder: UInt128
-) -> BigUInt:
-    """Divides a BigUInt by UInt128, keeping the remainder.
-
-    Args:
-        x: The `BigUInt` dividend.
-        y: The `UInt128` divisor. Must be smaller than 10^36.
-        remainder: Set to `x % y` on return. It is smaller than `y`, so it
-            always fits in a `UInt128`.
-
-    Returns:
-        The quotient of x divided by y.
-    """
-    debug_assert[assert_mode="none"](
-        y != 0,
-        "biguint.arithmetics.floor_divide_modulo_by_uint128(): ",
-        "Division by zero.",
-    )
-
-    comptime BILLION = UInt256(1_000_000_000)
-
-    var y_uint255 = UInt256(y)
-    var n_words = len(x.words)
-    var lead_words = n_words % 4
-    var result = BigUInt(unsafe_uninit_length=n_words)
-    var carry = UInt256(0)
-
-    # The dividend is consumed four words at a time, so a word count that is
-    # not a multiple of four leaves a short leading group.
-    #
-    # That group has a quotient of its own, and the previous version of this
-    # function threw it away: it kept only `lead % y` as the carry and sized
-    # the result at `n - lead_words` words. Two things went wrong. A quotient
-    # that needed the dropped words came back too small - `y` of three words
-    # against `x` of seven silently lost the top word, a factor of 10^9. And
-    # when the dividend *was* the leading group, at three words or fewer, the
-    # result was left with no words at all, which faults the first operation
-    # that reads `words[len(words) - 1]`.
-    if lead_words != 0:
-        var lead = UInt256(0)
-        for k in range(n_words - 1, n_words - lead_words - 1, -1):
-            lead = lead * BILLION + UInt256(x.words[k])
-        var lead_quotient = lead // y_uint255
-        carry = lead % y_uint255
-        for k in range(n_words - lead_words, n_words):
-            result.words[k] = BigUInt.Word(lead_quotient % BILLION)
-            lead_quotient //= BILLION
-
-    for i in range(n_words - lead_words - 1, -1, -4):
-        var dividend = (
-            carry * UInt256(1_000_000_000_000_000_000_000_000_000_000_000_000)
-            + (
-                x.words.unsafe_ptr()
-                .unsafe_load[width=4](i - 3)
-                .cast[DType.uint256]()
-                * SIMD[DType.uint256, 4](
-                    1,
-                    1_000_000_000,
-                    1_000_000_000_000_000_000,
-                    1_000_000_000_000_000_000_000_000_000,
-                )
-            ).reduce_add()
-        )
-        var quotient = dividend // y_uint255
-        result.words[i] = BigUInt.Word(
-            quotient // UInt256(1_000_000_000_000_000_000_000_000_000)
-        )
-        quotient %= UInt256(1_000_000_000_000_000_000_000_000_000)
-        result.words[i - 1] = BigUInt.Word(
-            quotient // UInt256(1_000_000_000_000_000_000)
-        )
-        quotient %= UInt256(1_000_000_000_000_000_000)
-        result.words[i - 2] = BigUInt.Word(quotient // UInt256(1_000_000_000))
-        quotient %= UInt256(1_000_000_000)
-        result.words[i - 3] = BigUInt.Word(quotient)
-        carry = dividend % y_uint255
-
-    # Below `y`, which the caller guarantees is below 10^36, so it fits.
-    remainder = UInt128(carry)
-
-    result.remove_leading_empty_words()
-    return result^
 
 
 def floor_divide_by_2_inplace(mut x: BigUInt) -> None:
@@ -4638,42 +4530,6 @@ def overwrite_with_word(mut x: BigUInt, value: BigUInt.Word):
     x.words[0] = value
 
 
-def overwrite_with_uint64(mut x: BigUInt, value: UInt64):
-    """As `overwrite_with_word()`, for a value of up to two words.
-
-    A remainder from a two-word divisor is below 10^18, so it never needs more.
-    """
-    if value < UInt64(BigUInt.BASE):
-        overwrite_with_word(x, BigUInt.Word(value))
-        return
-    x.words.resize(2, BigUInt.Word(0))
-    x.words[0] = BigUInt.Word(value % UInt64(BigUInt.BASE))
-    x.words[1] = BigUInt.Word(value // UInt64(BigUInt.BASE))
-
-
-def overwrite_with_uint128(mut x: BigUInt, value: UInt128):
-    """As `overwrite_with_word()`, for a value of up to four words.
-
-    A remainder from a four-word divisor is below 10^36, so it never needs
-    more.
-    """
-    if value < UInt128(BigUInt.BASE):
-        overwrite_with_word(x, BigUInt.Word(value))
-        return
-
-    var rest = value
-    var word_count = 0
-    while rest != 0:
-        rest //= UInt128(BigUInt.BASE)
-        word_count += 1
-
-    x.words.resize(word_count, BigUInt.Word(0))
-    rest = value
-    for i in range(word_count):
-        x.words[i] = BigUInt.Word(rest % UInt128(BigUInt.BASE))
-        rest //= UInt128(BigUInt.BASE)
-
-
 def normalize_carries_lt_2_bases(mut x: BigUInt):
     """Normalizes the values of words into valid range by carrying over.
     The initial values of the words should be in the range [0, BASE*2).
@@ -4710,87 +4566,6 @@ def normalize_carries_lt_2_bases(mut x: BigUInt):
     if carry > 0:
         # If there is still a carry, we need to add a new word
         x.words.append(BigUInt.Word(1))
-    return
-
-
-def normalize_carries_lt_4_bases(mut x: BigUInt):
-    """Normalizes the values of words into valid range by carrying over.
-    The initial values of the words should be in the range [0, BASE * 4 - 4].
-
-    Notes:
-
-    If we multiply a BigUInt numbers word-by-word by 3 or 4, we may end up with
-    a situation where some words are ge than BASE but le BASE * 4 - 4.
-    This function normalizes the carries, ensuring that all words are within the
-    valid range. It modifies the input BigUInt in-place.
-
-    Args:
-        x: The `BigUInt` to normalize, modified in place.
-    """
-
-    # Yuhao ZHU:
-    # By construction, the words of x are in the range [0, BASE*4).
-    # Thus, the carry can only be 0, 1, 2, or 3.
-    #
-    # Every bound below is `k * BASE - carry`, written that way so a change of
-    # base moves the whole table at once.
-    comptime BASE = BigUInt.Word(BigUInt.BASE)
-    var carry: BigUInt.Word = 0
-    for ref word in x.words:
-        if carry == 0:
-            if word <= (BASE - 1):
-                pass  # carry = 0
-            elif word <= (2 * BASE - 1):
-                word -= BASE
-                carry = 1
-            elif word <= (3 * BASE - 1):
-                word -= 2 * BASE
-                carry = 2
-            else:  # 3 * BASE <= word <= 4 * BASE - 4
-                word -= 3 * BASE
-                carry = 3
-        elif carry == 1:
-            if word <= (BASE - 2):
-                word += 1
-                carry = 0
-            elif word <= (2 * BASE - 2):
-                word = word + 1 - (BASE)
-                carry = 1
-            elif word <= (3 * BASE - 2):
-                word = word + 1 - (2 * BASE)
-                carry = 2
-            else:  # 3 * BASE - 1 <= word <= 4 * BASE - 4
-                word = word + 1 - (3 * BASE)
-                carry = 3
-        elif carry == 2:
-            if word <= (BASE - 3):
-                word += 2
-                carry = 0
-            elif word <= (2 * BASE - 3):
-                word = word + 2 - (BASE)
-                carry = 1
-            elif word <= (3 * BASE - 3):
-                word = word + 2 - (2 * BASE)
-                carry = 2
-            else:  # 3 * BASE - 2 <= word <= 4 * BASE - 4
-                word = word + 2 - (3 * BASE)
-                carry = 3
-        else:  # carry == 3
-            if word <= (BASE - 4):
-                word += 3
-                carry = 0
-            elif word <= (2 * BASE - 4):
-                word = word + 3 - (BASE)
-                carry = 1
-            elif word <= (3 * BASE - 4):
-                word = word + 3 - (2 * BASE)
-                carry = 2
-            else:  # 3 * BASE - 3 <= word <= 4 * BASE - 4
-                word = word + 3 - (3 * BASE)
-                carry = 3
-    if carry > 0:
-        # If there is still a carry, we need to add a new word
-        x.words.append(BigUInt.Word(carry))
     return
 
 
@@ -4881,102 +4656,3 @@ def calculate_ndigits_for_normalization(msw: BigUInt.Word) -> Int:
         value *= 10
         ndigits += 1
     return ndigits
-
-
-def to_uint64_with_2_words(a: BigUInt, bounds_x: Tuple[Int, Int]) -> UInt64:
-    """Convert two words at given index of the BigUInt to UInt64.
-
-    Args:
-        a: The `BigUInt` containing the words to convert.
-        bounds_x: A tuple of (start, end) indices specifying the word slice.
-
-    Returns:
-        The `UInt64` representation of the specified words.
-    """
-    var n_words = bounds_x[1] - bounds_x[0]
-    if n_words == 1:
-        return (
-            a.words.unsafe_ptr()
-            .unsafe_load[width=1](bounds_x[0])
-            .cast[DType.uint64]()
-        )
-    else:
-        return (
-            a.words.unsafe_ptr()
-            .unsafe_load[width=2](bounds_x[0])
-            .cast[DType.uint64]()
-            * SIMD[DType.uint64, 2](1, 1_000_000_000)
-        ).reduce_add()
-
-
-def to_uint128_with_2_words(a: BigUInt, bounds_x: Tuple[Int, Int]) -> UInt128:
-    """Convert two words at given index of the BigUInt to UInt128.
-
-    Args:
-        a: The `BigUInt` containing the words to convert.
-        bounds_x: A tuple of (start, end) indices specifying the word slice.
-
-    Returns:
-        The `UInt128` representation of the specified words.
-    """
-    var n_words = bounds_x[1] - bounds_x[0]
-    if n_words == 1:
-        return (
-            a.words.unsafe_ptr()
-            .unsafe_load[width=1](bounds_x[0])
-            .cast[DType.uint128]()
-        )
-    else:
-        return (
-            a.words.unsafe_ptr()
-            .unsafe_load[width=2](bounds_x[0])
-            .cast[DType.uint128]()
-            * SIMD[DType.uint128, 2](1, 1_000_000_000)
-        ).reduce_add()
-
-
-def to_uint128_with_4_words(a: BigUInt, bounds_x: Tuple[Int, Int]) -> UInt128:
-    """Convert four words at given index of the BigUInt to UInt128.
-
-    Args:
-        a: The `BigUInt` containing the words to convert.
-        bounds_x: A tuple of (start, end) indices specifying the word slice.
-
-    Returns:
-        The `UInt128` representation of the specified words.
-    """
-    var n_words = bounds_x[1] - bounds_x[0]
-    if n_words == 1:
-        return (
-            a.words.unsafe_ptr()
-            .unsafe_load[width=1](bounds_x[0])
-            .cast[DType.uint128]()
-        )
-    elif n_words == 2:
-        return (
-            a.words.unsafe_ptr()
-            .unsafe_load[width=2](bounds_x[0])
-            .cast[DType.uint128]()
-            * SIMD[DType.uint128, 2](1, 1_000_000_000)
-        ).reduce_add()
-    elif n_words == 3:
-        return (
-            a.words.unsafe_ptr()
-            .unsafe_load[width=4](bounds_x[0])
-            .cast[DType.uint128]()
-            * SIMD[DType.uint128, 4](
-                1, 1_000_000_000, 1_000_000_000_000_000_000, 0
-            )
-        ).reduce_add()
-    else:  # len(self.words) == 4
-        return (
-            a.words.unsafe_ptr()
-            .unsafe_load[width=4](bounds_x[0])
-            .cast[DType.uint128]()
-            * SIMD[DType.uint128, 4](
-                1,
-                1_000_000_000,
-                1_000_000_000_000_000_000,
-                1_000_000_000_000_000_000_000_000_000,
-            )
-        ).reduce_add()

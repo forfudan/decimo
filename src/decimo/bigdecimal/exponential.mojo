@@ -50,7 +50,6 @@ the schedule.
 # - sqrt_exact(x: BigDecimal, precision: Int) -> BigDecimal  [CPython-style]
 # - sqrt_via_reciprocal_iteration(x: BigDecimal, precision: Int) -> BigDecimal
 #       [returns sqrt(x); fast, for internal use]
-# - sqrt_decimal_approach(x: BigDecimal, precision: Int) -> BigDecimal  [legacy]
 # - sqrt_newton(x: BigDecimal, precision: Int) -> BigDecimal  [legacy]
 # - exp(x: BigDecimal, precision: Int) -> BigDecimal
 # - exp_taylor_series(x: BigDecimal, minimum_precision: Int) -> BigDecimal
@@ -964,14 +963,16 @@ def _rational_root_decomposition(
     if n.scale > 18:
         return Tuple(False, 0, 0)
 
-    # Coefficient must be small enough to fit in Int.
-    # BigUInt uses base-10^9 words. With at most 2 words (18 digits), fits Int.
-    if len(n.coefficient.words) > 2:
+    # The coefficient must fit an `Int`. Ask, rather than counting words and
+    # reassembling them: the count was 2 and the multiplier `10^9`, both of
+    # which describe a nine-digit word. At eighteen digits two words are
+    # `10^36` and do not fit an `Int` at all, and the reassembly was scaling
+    # the high word by `10^9` on top of that.
+    var numerator: Int
+    try:
+        numerator = n.coefficient.to_int()
+    except:
         return Tuple(False, 0, 0)
-
-    var numerator: Int = Int(n.coefficient.words[0])
-    if len(n.coefficient.words) == 2:
-        numerator += Int(n.coefficient.words[1]) * 1_000_000_000
 
     var denominator = Int(10) ** n.scale
 
@@ -1031,8 +1032,6 @@ def _rational_root_decomposition(
 # - isqrt_via_reciprocal_seed()
 #       Hybrid isqrt: reciprocal sqrt approximation + exact integer Newton
 #       refinement. Used by sqrt_exact() for large numbers.
-# - sqrt_decimal_approach()
-#       Legacy implementation (v0.3.0).
 # - sqrt_newton()
 #       Legacy implementation (v0.5.0).
 # ===----------------------------------------------------------------------=== #
@@ -1107,26 +1106,37 @@ def isqrt_via_reciprocal_seed(
     c_norm.scale += norm_shift
 
     # --- Float64 initial guess for 1/sqrt(c_norm) ---
-    var top_word = Float64(
-        c_norm.coefficient.words[len(c_norm.coefficient.words) - 1]
-    )
+    #
+    # The seed wants the leading digits and `Float64` holds about sixteen of
+    # them, which is two words at nine digits each and one and a bit at
+    # eighteen. Taking the top two words as one 128-bit integer covers both
+    # without knowing which: the only thing it has to be told is `BASE`.
+    #
+    # The version this replaces added the second word at a hand-written
+    # `10^(digits_in_top + 8)`, where the 8 was `DIGITS_PER_WORD - 1` spelled
+    # out. A wider word left that offset nine decades short, the seed was
+    # worth eight digits where the schedule below credits it with
+    # `_F64_SEED_DIGITS`, and every result came back with about two thirds of
+    # the digits it promised -- silently, because nothing checks the seed.
+    ref c_norm_words = c_norm.coefficient.words
+    var c_norm_n = len(c_norm_words)
+    var top = UInt128(c_norm_words[c_norm_n - 1])
+    if c_norm_n > 1:
+        top = top * UInt128(BigUInt.BASE) + UInt128(c_norm_words[c_norm_n - 2])
+
     var digits_in_top: Int = 0
-    var temp_val = c_norm.coefficient.words[len(c_norm.coefficient.words) - 1]
+    var temp_val = top
     while temp_val > 0:
         temp_val //= 10
         digits_in_top += 1
     if digits_in_top == 0:
         digits_in_top = 1
 
-    var mantissa = top_word / Float64(10.0) ** Float64(digits_in_top - 1)
-    if len(c_norm.coefficient.words) > 1:
-        mantissa += Float64(
-            c_norm.coefficient.words[len(c_norm.coefficient.words) - 2]
-        ) / (
-            Float64(10.0)
-            ** Float64(digits_in_top + BigUInt.DIGITS_PER_WORD - 1)
-        )
-
+    # `top` scaled into `[1, 10)`, then placed by the value's own exponent.
+    # Doing it in two steps keeps `10.0 ** e` away from the range where it
+    # underflows: `e` here is at most a couple, where the value's full
+    # exponent can be thousands.
+    var mantissa = Float64(top) / Float64(10.0) ** Float64(digits_in_top - 1)
     var c_norm_exp = c_norm.adjusted()
     var c_norm_f64 = mantissa * Float64(10.0) ** Float64(c_norm_exp)
     # `1 / sqrt(v)` rather than `v ** -0.5`: the latter goes through `exp`/`log`
@@ -1463,26 +1473,37 @@ def sqrt_via_reciprocal_iteration(
     x_norm.scale += shift  # x_norm = x * 10^(-shift)
 
     # --- Float64 initial guess for 1/sqrt(x_norm) ---
-    var top_word = Float64(
-        x_norm.coefficient.words[len(x_norm.coefficient.words) - 1]
-    )
+    #
+    # The seed wants the leading digits and `Float64` holds about sixteen of
+    # them, which is two words at nine digits each and one and a bit at
+    # eighteen. Taking the top two words as one 128-bit integer covers both
+    # without knowing which: the only thing it has to be told is `BASE`.
+    #
+    # The version this replaces added the second word at a hand-written
+    # `10^(digits_in_top + 8)`, where the 8 was `DIGITS_PER_WORD - 1` spelled
+    # out. A wider word left that offset nine decades short, the seed was
+    # worth eight digits where the schedule below credits it with
+    # `_F64_SEED_DIGITS`, and every result came back with about two thirds of
+    # the digits it promised -- silently, because nothing checks the seed.
+    ref x_norm_words = x_norm.coefficient.words
+    var x_norm_n = len(x_norm_words)
+    var top = UInt128(x_norm_words[x_norm_n - 1])
+    if x_norm_n > 1:
+        top = top * UInt128(BigUInt.BASE) + UInt128(x_norm_words[x_norm_n - 2])
+
     var digits_in_top: Int = 0
-    var temp_val = x_norm.coefficient.words[len(x_norm.coefficient.words) - 1]
+    var temp_val = top
     while temp_val > 0:
         temp_val //= 10
         digits_in_top += 1
     if digits_in_top == 0:
         digits_in_top = 1
 
-    var mantissa = top_word / Float64(10.0) ** Float64(digits_in_top - 1)
-    if len(x_norm.coefficient.words) > 1:
-        mantissa += Float64(
-            x_norm.coefficient.words[len(x_norm.coefficient.words) - 2]
-        ) / (
-            Float64(10.0)
-            ** Float64(digits_in_top + BigUInt.DIGITS_PER_WORD - 1)
-        )
-
+    # `top` scaled into `[1, 10)`, then placed by the value's own exponent.
+    # Doing it in two steps keeps `10.0 ** e` away from the range where it
+    # underflows: `e` here is at most a couple, where the value's full
+    # exponent can be thousands.
+    var mantissa = Float64(top) / Float64(10.0) ** Float64(digits_in_top - 1)
     var x_norm_exp = x_norm.adjusted()
     var x_norm_f64 = mantissa * Float64(10.0) ** Float64(x_norm_exp)
     # `1 / sqrt(v)`, not `v ** -0.5`. See the note in `isqrt_via_reciprocal_seed()`: the power
@@ -1698,168 +1719,6 @@ def sqrt_newton(x: BigDecimal, precision: Int) raises -> BigDecimal:
         fill_zeros_to_precision=False,
     )
     return result^
-
-
-# Legacy implementation
-def sqrt_decimal_approach(x: BigDecimal, precision: Int) raises -> BigDecimal:
-    """Calculate the square root of a BigDecimal number.
-
-    Args:
-        x: The number to calculate the square root of.
-        precision: The desired precision (number of significant digits) of the
-            result.
-
-    Returns:
-        The square root of x with the specified precision.
-
-    Raises:
-        ValueError: If x is negative.
-
-    Notes:
-
-    This function uses Newton's method to iteratively approximate the square
-    root. The intermediate calculations are done with BigDecimal objects.
-    An other approach is to use the BigUInt.sqrt() function to calculate the
-    square root of the coefficient of x, and then adjust the scale based on the
-    input scale.
-    """
-    comptime BUFFER_DIGITS = 9
-
-    # Handle special cases
-    if x.sign:
-        raise ValueError(
-            message="Cannot compute square root of a negative number.",
-            function="sqrt_decimal_approach()",
-        )
-
-    if x.coefficient.is_zero():
-        return BigDecimal(BigUInt.zero(), (x.scale + 1) // 2, False)
-
-    # Initial guess
-    # A decimal has coefficient and scale
-    # Example 1:
-    # 123456789012345678901234567890.12345 (sqrt ~= 351364182882014.4253111222382)
-    # coef = 12345678_901234567_890123456_789012345, scale = 5
-    # first three words = 12345678_901234567_890123456
-    # number of integral digits = 30
-    # Because it is even, no need to scale up by 10
-    # not scale up by 10 => 12345678901234567890123456
-    # sqrt(12345678901234567890123456) = 3513641828820
-    # number of integral digits of the sqrt = (30 + 1) // 2 = 15
-    # coef = 3513641828820, 13 digits, so scale = 13 - 15
-    #
-    # Example 2:
-    # 12345678901.234567890123456789012345 (sqrt ~= 111111.1106111111099361111058)
-    # coef = 12345678_901234567_890123456_789012345, scale = 24
-    # first three words = 12345678_901234567_890123456
-    # remaining number of words = 11
-    # Because it is odd, need to scale up by 10
-    # scale up by 10 => 123456789012345678901234560
-    # sqrt(123456789012345678901234560) = 11111111061111
-    # number of integral digits of the sqrt = (11 + 1) // 2 = 6
-    # coef = 11111111061111, 14 digits, so scale = 14 - 6 => (111111.11061111)
-
-    var guess: BigDecimal
-    var ndigits_coef = x.coefficient.number_of_digits()
-    var ndigits_int_part = x.coefficient.number_of_digits() - x.scale
-    var ndigits_int_part_sqrt = (ndigits_int_part + 1) // 2
-    var odd_ndigits_frac_part = x.scale % 2 == 1
-
-    var value: UInt128
-    if ndigits_coef <= 9:
-        value = UInt128(x.coefficient.words[0]) * UInt128(
-            1_000_000_000_000_000_000
-        )
-    elif ndigits_coef <= 18:
-        value = (
-            UInt128(x.coefficient.words[len(x.coefficient.words) - 1])
-            * UInt128(1_000_000_000_000_000_000)
-        ) + (
-            UInt128(x.coefficient.words[len(x.coefficient.words) - 2])
-            * UInt128(1_000_000_000)
-        )
-    else:  # ndigits_coef > 18
-        value = (
-            (
-                UInt128(x.coefficient.words[len(x.coefficient.words) - 1])
-                * UInt128(1_000_000_000_000_000_000)
-            )
-            + UInt128(x.coefficient.words[len(x.coefficient.words) - 2])
-            * UInt128(1_000_000_000)
-            + UInt128(x.coefficient.words[len(x.coefficient.words) - 3])
-        )
-    if odd_ndigits_frac_part:
-        value = value * UInt128(10)
-    var sqrt_value = decimal128_utility.sqrt(value)
-    var sqrt_value_biguint = BigUInt.from_integral_scalar(sqrt_value)
-    var sqrt_value_ndigits = sqrt_value_biguint.number_of_digits()
-    guess = BigDecimal(
-        sqrt_value_biguint^,
-        sqrt_value_ndigits - ndigits_int_part_sqrt,
-        False,
-    )
-
-    # For Newton's method, we need extra precision during calculations
-    # to ensure the final result has the desired precision
-    var working_precision = precision + BUFFER_DIGITS
-
-    # Newton's method iterations
-    # x_{n+1} = (x_n + N/x_n) / 2
-    var prev_guess = BigDecimal(BigUInt.zero(), 0, False)
-    var iteration_count = 0
-
-    while guess != prev_guess and iteration_count < 100:
-        prev_guess = guess.copy()
-        var quotient = x.true_divide_inexact(guess, working_precision)
-        var sum_val = guess.add(quotient)
-        # Use O(n) single-word division instead of full BigDecimal divide-by-2
-        guess = sum_val.true_divide_inexact_by_word(2, working_precision)
-        iteration_count += 1
-
-    # Round to the desired precision (in-place, no intermediate copy)
-    var guess_ndigits = guess.coefficient.number_of_digits()
-    var ndigits_to_remove = guess_ndigits - precision
-    if ndigits_to_remove > 0:
-        guess.coefficient.remove_trailing_digits_with_rounding_inplace(
-            ndigits_to_remove,
-            rounding_mode=RoundingMode.half_up(),
-            remove_extra_digit_due_to_rounding=True,
-            ndigits_before_removal=guess_ndigits,
-        )
-        guess.scale -= ndigits_to_remove
-
-    # Remove trailing zeros for exact results
-    if guess.coefficient.ith_digit(0) == 0:
-        var guess_coefficient_without_trailing_zeros = (
-            guess.coefficient.remove_trailing_digits_with_rounding(
-                guess.coefficient.number_of_trailing_zeros(),
-                rounding_mode=RoundingMode.down(),
-                remove_extra_digit_due_to_rounding=False,
-            )
-        )
-        var x_coefficient_without_trailing_zeros = (
-            x.coefficient.remove_trailing_digits_with_rounding(
-                x.coefficient.number_of_trailing_zeros(),
-                rounding_mode=RoundingMode.down(),
-                remove_extra_digit_due_to_rounding=False,
-            )
-        )
-        if (
-            guess_coefficient_without_trailing_zeros
-            * guess_coefficient_without_trailing_zeros
-        ) == x_coefficient_without_trailing_zeros:
-            var expected_ndigits_of_result = (
-                x.coefficient.number_of_digits() + 1
-            ) // 2
-            guess.round_to_precision_inplace(
-                precision=expected_ndigits_of_result,
-                rounding_mode=RoundingMode.down(),
-                remove_extra_digit_due_to_rounding=False,
-                fill_zeros_to_precision=False,
-            )
-            guess.scale = (x.scale + 1) // 2
-
-    return guess^
 
 
 def cbrt(x: BigDecimal, precision: Int) raises -> BigDecimal:

@@ -73,7 +73,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
     Internal Representation:
 
-    Use base-10^9 (base-billion) representation for the unsigned integer.
+    Use base-10^18 representation for the unsigned integer.
     BigUInt uses a dynamic structure in memory, which contains:
     An pointer to an array of Self.Word words for the coefficient on the heap,
     which can be of arbitrary length stored in little-endian order.
@@ -83,12 +83,12 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
     x = x[0] * 10^0 + x[1] * 10^9 + x[2] * 10^18 + ... x[n] * 10^(9n)
 
-    You can think of the BigUInt as a list base-billion digits, where each
+    You can think of the BigUInt as a list of base-10^18 digits, where each
     digit is ranging from 0 to 999_999_999. Depending on the context, the
     following terms are used interchangeably:
     (1) words,
     (2) limbs,
-    (3) base-billion digits.
+    (3) base-10^18 digits.
 
     Representation invariant:
 
@@ -100,7 +100,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     2. There are no leading zero words: `words[len(words) - 1] != 0`, unless
        `len(words) == 1`. Zero is therefore exactly `[0]` and has no other
        spelling, which is what lets `is_zero()` and comparison stay cheap.
-    3. Every word is a valid base-billion digit: `words[i] < BASE`.
+    3. Every word is a valid base-10^18 digit: `words[i] < BASE`.
 
     Call `assert_invariant()` to check the first two. It is a `debug_assert`,
     so it costs nothing in a normal build and fires in the test suite.
@@ -108,28 +108,32 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     Changing the base:
 
     `DIGITS_PER_WORD` is the one number that decides the representation, and
-    `BASE`, `BASE_MAX` and `BASE_HALF` are derived from it. Code that converts
-    between a digit position and a word position divides by it rather than by
-    a literal. What is *not* mechanical, and has to be rewritten by hand:
+    `BASE`, `BASE_MAX` and `BASE_HALF` are derived from it. `WORD_DTYPE` is
+    the machine type that has to hold `BASE - 1`, and the two move together.
+    Code that converts between a digit position and a word position divides by
+    the constant rather than by a literal.
 
-    - `WordList`'s word type and `INLINE_WORDS`, and every `Self.Word` in the
-      arithmetic kernels. A word of 18 digits does not fit a `Self.Word`.
-    - The Comba accumulator in `multiply_slices_schoolbook`. Its narrow path
-      sums a column in `UInt64` because a partial product is below `10^18`;
-      a wider word puts the product itself past 64 bits.
-    - Knuth D's quotient estimate, for the same reason.
-    - `ntt.mojo`'s packing, which cuts *two* words into three six-digit
-      coefficients because two words are 18 digits.
-    - `MAX_UINT64` and `MAX_UINT128` here, which spell their words out.
-    - Every place that packs a *pair* of words into one machine integer, and
-      so is bound to the width rather than to the base: the SIMD lane vectors
-      in `to_uint64()`, `to_uint128()` and `to_int128()` here, the same shape
-      in `biguint.exponential.sqrt()`, `to_uint64_with_2_words()` and
-      `to_uint128_with_2_words()` in `arithmetics.mojo`, and
-      `floor_divide_three_by_two_words()` and its four-by-two sibling. These
-      keep their literals on purpose: a word of 18 digits does not fit a
-      `UInt64` at all, so a named constant here would let the code compile and
-      silently overflow where a literal makes someone look.
+    What is *not* mechanical, and has to be rewritten by hand:
+
+    - The Comba accumulator in `multiply_slices_schoolbook`, and Knuth D's
+      quotient estimate. Both size an intermediate against `BASE^2`, so both
+      need a wider type when the base grows, and both type-check either way.
+    - `ntt.mojo`'s packing, which cuts words into six-digit coefficients.
+    - `MAX_UINT64` and `MAX_UINT128` here, and `is_uint64_overflow()` and
+      `is_uint128_overflow()`, which spell those limits out word by word.
+    - Anything that reassembles several words into one machine integer.
+
+    That last one is worth being blunt about, because getting it wrong is what
+    the base-10^18 change actually cost. Those sites were left alone at the
+    time on the reasoning that a wider word would not fit the machine integer
+    anyway, so a literal there "makes someone look". It does not: nobody
+    looked, and `to_uint64()`, `to_uint128()`, `to_int()` and
+    `_rational_root_decomposition()` all returned wrong answers for months of
+    nothing in particular happening.
+
+    A site that cannot be correct in the new base is not future work. Either
+    rewrite it -- these are Horner loops now, with the base named once -- or
+    delete it if nothing calls it, which is what happened to five of them.
 
     A guard-digit count is not a word width. `BUFFER_DIGITS`, `GUARD_DIGITS`
     and the like happen to be 9 and stay 9: they say how many extra digits to
@@ -139,7 +143,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     var words: Coefficient
     """A list of Self.Word words representing the coefficient.
 
-    Little-endian: `words[0]` is the least significant base-billion digit.
+    Little-endian: `words[0]` is the least significant base-10^18 digit.
     Subject to the representation invariant documented on the struct.
     """
 
@@ -713,7 +717,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             entry point usable from non-raising code, such as the single-word
             fast paths in `decimo.biguint.arithmetics`.
 
-            Scalars narrower than a base-10^9 word always fit in one word and
+            Scalars narrower than a word always fit in one word and
             are converted directly. A 32-bit scalar needs one word or two,
             decided by a comparison. Wider scalars are peeled one word at a
             time by repeated division by 10^9; the number of words this can
@@ -817,7 +821,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             # `List[Self.Word]` and handing that to `raw_words=` cost 36 ns for
             # the integer 2 -- an allocation for the list, another for the
             # copy into place, to carry a single word. A 64-bit value needs
-            # three base-billion words, which is inside `WordList`'s inline
+            # two words, which is inside `WordList`'s inline
             # capacity, so the common case now allocates nothing at all.
             var result = Self(uninitialized_capacity=3)
             var remainder: Scalar[dtype] = value
@@ -1021,29 +1025,36 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
         Raises:
             OverflowError: If the number exceeds the size of Int (2^63-1).
-        """
 
-        # 2^63-1 = 9_223_372_036_854_775_807
-        # is larger than 10^18 -1 but smaller than 10^27 - 1
+        Notes:
+
+        Horner from the top word down, testing before each multiply rather
+        than after summing. The form this replaces built the whole value in an
+        `Int128` and compared once at the end, guarded by a word count -- and
+        that count was 3, one word more than `Int.MAX` needs at eighteen
+        digits a word. A three-word value reached `word * BASE^2 = 10^54`,
+        which no `Int128` holds, so it wrapped and the comparison passed:
+        `to_int()` of `10^21` returned 6873995514006732800 instead of raising.
+        Testing first cannot overflow, whatever the base.
+        """
+        comptime LIMIT = UInt128(Int.MAX)
+        comptime LIMIT_BEFORE_SHIFT = LIMIT // UInt128(Self.BASE)
 
         var overflow_msg = (
             "The number exceeds the size of Int (" + String(Int.MAX) + ")"
         )
-        if len(self.words) > 3:
-            raise OverflowError(
-                function="BigUInt.to_int()",
-                message=overflow_msg,
-            )
 
-        var value: Int128 = 0
-        for i in range(len(self.words)):
-            value += Int128(self.words[i]) * Int128(Self.BASE) ** i
-
-        if value > Int128(Int.MAX):
-            raise OverflowError(
-                function="BigUInt.to_int()",
-                message=overflow_msg,
-            )
+        var value = UInt128(0)
+        for i in range(len(self.words) - 1, -1, -1):
+            if value > LIMIT_BEFORE_SHIFT:
+                raise OverflowError(
+                    function="BigUInt.to_int()", message=overflow_msg
+                )
+            value = value * UInt128(Self.BASE) + UInt128(self.words[i])
+            if value > LIMIT:
+                raise OverflowError(
+                    function="BigUInt.to_int()", message=overflow_msg
+                )
 
         return Int(value)
 
@@ -1055,6 +1066,17 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
         Raises:
             OverflowError: If the number exceeds the size of UInt64.
+
+        Notes:
+
+        `is_uint64_overflow()` has already ruled out anything that does not
+        fit, so Horner from the top word down cannot overflow on the way.
+
+        This used to reassemble the words with a SIMD dot product against
+        `(1, 10^9, 10^18, 0)`. Those multipliers are the base spelled out, so
+        once a word held eighteen digits every value of more than one word
+        came back scaled by `10^9` instead of `10^18` -- `to_uint64()` of
+        `10^18` returned `10^9`. The loop below names the base once.
         """
         if self.is_uint64_overflow():
             raise OverflowError(
@@ -1066,31 +1088,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 ),
             )
 
-        if len(self.words) == 1:
-            return (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=1]()
-                .cast[DType.uint64]()
-            )
-        elif len(self.words) == 2:
-            return (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=2]()
-                .cast[DType.uint64]()
-                * SIMD[DType.uint64, 2](1, 1_000_000_000)
-            ).reduce_add()
-        else:
-            return (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=4]()
-                .cast[DType.uint64]()
-                * SIMD[DType.uint64, 4](
-                    1,
-                    1_000_000_000,
-                    1_000_000_000_000_000_000,
-                    0,
-                )
-            ).reduce_add()
+        var result = UInt64(0)
+        for i in range(len(self.words) - 1, -1, -1):
+            result = result * UInt64(Self.BASE) + UInt64(self.words[i])
+        return result
 
     def to_uint128_with_first_2_words(self) -> UInt128:
         """Convert the first two words of the BigUInt to UInt128.
@@ -1112,122 +1113,31 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
     def to_uint128(self) -> UInt128:
         """Returns the number as UInt128.
-        **UNSAFE** You need to ensure that the number of words is less than 5.
+
+        **UNSAFE** The caller must know the value fits. `is_uint128_overflow()`
+        answers that; a value that does not fit wraps silently.
 
         Returns:
             The number as UInt128.
-        """
-
-        # FIXME: Due to an unknown bug in Mojo,
-        # The returned value changed in the caller when we use raises
-        # So I have to comment out the raises part
-        # In the future, we need to fix this bug and add raises back
-        #
-        # if self.is_uint128_overflow():
-        #     raise Error(
-        #         "`BigUInt.to_int()`: The number exceeds the size"
-        #         " of UInt128 (340282366920938463463374607431768211455)"
-        #     )
-
-        var result: UInt128
-
-        if len(self.words) == 1:
-            result = (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=1]()
-                .cast[DType.uint128]()
-            )
-        elif len(self.words) == 2:
-            result = (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=2]()
-                .cast[DType.uint128]()
-                * SIMD[DType.uint128, 2](1, 1_000_000_000)
-            ).reduce_add()
-        elif len(self.words) == 3:
-            result = (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=4]()
-                .cast[DType.uint128]()
-                * SIMD[DType.uint128, 4](
-                    1, 1_000_000_000, 1_000_000_000_000_000_000, 0
-                )
-            ).reduce_add()
-        elif len(self.words) == 4:
-            result = (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=4]()
-                .cast[DType.uint128]()
-                * SIMD[DType.uint128, 4](
-                    1,
-                    1_000_000_000,
-                    1_000_000_000_000_000_000,
-                    1_000_000_000_000_000_000_000_000_000,
-                )
-            ).reduce_add()
-        else:
-            result = (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=8]()
-                .cast[DType.uint128]()
-                * SIMD[DType.uint128, 8](
-                    1,
-                    1_000_000_000,
-                    1_000_000_000_000_000_000,
-                    1_000_000_000_000_000_000_000_000_000,
-                    1_000_000_000_000_000_000_000_000_000_000_000_000,
-                    0,
-                    0,
-                    0,
-                )
-            ).reduce_add()
-
-        return result
-
-    def to_uint128_with_first_4_words(self) -> UInt128:
-        """Convert the first four words of the BigUInt to UInt128.
 
         Notes:
-            This method quickly convert BigUInt with 4 words into UInt128.
 
-        Returns:
-            The `UInt128` representation of the first four words.
+        Horner, with the base named once. The SIMD form this replaces spelled
+        its multipliers out as powers of `10^9`, so every value of more than
+        one word came back wrong the moment a word held eighteen digits.
+
+        It also loaded `width=4` for a three-word value and `width=8` for a
+        five-word one, reading past the end of the allocation in both cases.
+        The extra lanes were multiplied by zero so the answer was unaffected,
+        which is why it never showed up.
         """
-
-        if len(self.words) == 1:
-            return (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=1]()
-                .cast[DType.uint128]()
-            )
-        elif len(self.words) == 2:
-            return (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=2]()
-                .cast[DType.uint128]()
-                * SIMD[DType.uint128, 2](1, 1_000_000_000)
-            ).reduce_add()
-        elif len(self.words) == 3:
-            return (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=4]()
-                .cast[DType.uint128]()
-                * SIMD[DType.uint128, 4](
-                    1, 1_000_000_000, 1_000_000_000_000_000_000, 0
-                )
-            ).reduce_add()
-        else:  # len(self.words) == 4
-            return (
-                self.words.unsafe_ptr()
-                .unsafe_load[width=4]()
-                .cast[DType.uint128]()
-                * SIMD[DType.uint128, 4](
-                    1,
-                    1_000_000_000,
-                    1_000_000_000_000_000_000,
-                    1_000_000_000_000_000_000_000_000_000,
-                )
-            ).reduce_add()
+        # FIXME: Due to an unknown bug in Mojo, the returned value changed in
+        # the caller when this function raised, so the overflow check is left
+        # to the caller. Restore it when that is fixed.
+        var result = UInt128(0)
+        for i in range(len(self.words) - 1, -1, -1):
+            result = result * UInt128(Self.BASE) + UInt128(self.words[i])
+        return result
 
     def to_string(self, line_width: Int = 0) -> String:
         """Returns string representation of the BigUInt.
@@ -1250,28 +1160,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         var n_words = len(self.words)
 
         var result: String
-        # Short numbers use the naive per-word concatenation: the buffer
-        # path's fixed cost (a `List[UInt8]` allocation plus a UTF-8 `String`
-        # construction) outweighs its per-word savings until ~5 words. The
-        # crossover is from benchmarks (50-digit improves; 25-digit does not).
-        comptime _BUFFER_PATH_MIN_WORDS = 5
         if n_words == 1:
             # Single word: the digits are exactly `String(word)`, no padding
             # or concatenation needed.
             result = String(self.words[0])
-        elif n_words < _BUFFER_PATH_MIN_WORDS:
-            # Reserve the exact upper-bound capacity -- one word of digits
-            # each -- so the `+=` concatenations never reallocate.
-            result = String(capacity=Self.DIGITS_PER_WORD * n_words)
-            for i in range(n_words - 1, -1, -1):
-                if i == n_words - 1:
-                    result += String(self.words[i])
-                else:
-                    result += decimo_str.rjust(
-                        String(self.words[i]),
-                        width=Self.DIGITS_PER_WORD,
-                        fillchar="0",
-                    )
         else:
             # Count the digits of the most-significant word (no zero-padding).
             # It is non-zero because the number is not zero and there are no
@@ -1284,20 +1176,25 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 t //= 10
 
             # The exact output length is known up-front: every word below the
-            # most significant contributes exactly 9 digits. Allocate a buffer
-            # of that exact size and write digits straight into it via the
-            # pointer (no per-byte `append`, no reallocation, no
-            # over-allocation), then move the buffer into the result `String`.
-            # The tight `//10` loop beats a per-word `String(Self.Word)` + memcpy
-            # (benchmarked ~2x slower at 23 words due to per-word allocation
-            # and call overhead).
+            # most significant contributes exactly `DIGITS_PER_WORD` digits.
+            # Allocate a buffer of that size and write digits straight into it
+            # through the pointer -- no per-byte `append`, no reallocation, no
+            # over-allocation -- then move the buffer into the result.
+            #
+            # There used to be a third path for two to four words that built
+            # the string with `+=` and `rjust`, on the measurement that the
+            # buffer's fixed cost did not pay off below about fifty digits.
+            # Re-measured at eighteen digits a word it does not pay off below
+            # *two words*, and two words is the smallest case that reaches
+            # here: 1.20x at three words and 1.38x at four, with two a wash.
+            # So the path had no inputs left and is gone.
             var total_len = (n_words - 1) * Self.DIGITS_PER_WORD + msb_len
             var buf = List[UInt8](unsafe_uninit_length=total_len)
             var p = buf.unsafe_ptr()
             var pos = total_len
 
-            # Least-significant words first: each emits exactly 9 digits,
-            # written right-to-left.
+            # Least-significant words first: each emits exactly
+            # `DIGITS_PER_WORD` digits, written right-to-left.
             for ci in range(n_words - 1):
                 var val = self.words[ci]
                 for _ in range(Self.DIGITS_PER_WORD):
@@ -2280,20 +2177,16 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         for i in range(len(x.words) - 1):
             if x.words[i] != 0:
                 return False
+        # Divide the tens out and see whether 1 is what is left. This used to
+        # enumerate `10^0` through `10^8` -- the nine values a nine-digit word
+        # can hold -- so at eighteen digits it answered `False` for `10^9`
+        # through `10^17`, which is a word's whole upper half.
         var word = x.words[len(x.words) - 1]
-        if (
-            (word == Self.Word(1))
-            or (word == Self.Word(10))
-            or (word == Self.Word(100))
-            or (word == Self.Word(1000))
-            or (word == Self.Word(10_000))
-            or (word == Self.Word(100_000))
-            or (word == Self.Word(1_000_000))
-            or (word == Self.Word(10_000_000))
-            or (word == Self.Word(100_000_000))
-        ):
-            return True
-        return False
+        if word == 0:
+            return False
+        while word % 10 == 0:
+            word //= 10
+        return word == 1
 
     @always_inline
     def is_unitialized(self) -> Bool:
