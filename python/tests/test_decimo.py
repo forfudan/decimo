@@ -283,6 +283,17 @@ assert hash(decimo.Decimal("2")) == hash(2) == hash(2.0)
 assert hash(decimo.Decimal("1.5")) == hash(1.5)
 assert hash(decimo.Decimal("1")) == hash(decimo.Decimal("1.0"))
 assert len({decimo.Decimal("1"), decimo.Decimal("1.0"), 1}) == 1
+# The hash is computed in Mojo, over the coefficient's own words and the
+# exponent as a modular power, so it is worth sweeping rather than sampling:
+# every one of these has to land on the same integer `decimal` lands on.
+import random as _hash_random
+
+_hash_rng = _hash_random.Random(11)
+for _ in range(2000):
+    _text = f"{_hash_rng.randint(-(10**24), 10**24)}E{_hash_rng.randint(-40, 40)}"
+    assert hash(decimo.Decimal(_text)) == hash(decimal.Decimal(_text)), _text
+for _text in ("-0", "0.000", "1E-1000000", "1E+1000000", "9" * 40, "-" + "9" * 40):
+    assert hash(decimo.Decimal(_text)) == hash(decimal.Decimal(_text)), _text
 print("[PASS] hash agrees with int, float and stdlib decimal")
 
 # --- Precision comes from the context, as it does in decimal ---
