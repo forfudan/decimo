@@ -29,11 +29,123 @@ from decimo.errors import ValueError
 from decimo.rounding_mode import RoundingMode
 import decimo.bigdecimal.constants as bigdecimal_constants
 import decimo.bigdecimal.exponential as bigdecimal_exponential
+from decimo.bigdecimal.exponential import _round_by_deciding
 
 
 # ===----------------------------------------------------------------------=== #
 # Trigonometric functions
 # ===----------------------------------------------------------------------=== #
+
+
+comptime RESERVE_DIGITS = 99
+"""Digits carried beyond the argument's own, when reducing by pi.
+
+Conservative on purpose: an argument that lands very close to a multiple of
+`pi/2` cancels further than its magnitude alone predicts, and the series that
+follows the reduction rounds a few more times.
+"""
+
+
+def reduction_digits(x: BigDecimal, precision: Int) -> Int:
+    """Returns the working precision a reduction by pi needs for this argument.
+
+    Args:
+        x: The argument about to be reduced.
+        precision: The number of significant digits wanted in the result.
+
+    Returns:
+        The number of digits pi and the reduction must carry.
+
+    Notes:
+
+    `x mod 2pi` subtracts a multiple of `2pi` from `x`, and everything above
+    the remainder cancels. An argument of `10^k` therefore spends `k` digits
+    of pi before the remainder even starts. A budget that does not count `k`
+    is a budget that runs out: at `precision + 99`, which these functions used
+    to carry, `sin` is right up to `10^99`, has lost half its digits by
+    `10^105`, and by `10^150` returns a number with nothing correct in it at
+    all -- silently, since nothing in the computation notices.
+
+    So the budget counts the argument.
+    """
+    var magnitude = x.adjusted()
+    return precision + RESERVE_DIGITS + (magnitude if magnitude > 0 else 0)
+
+
+comptime TRIG_SLACK = 4
+"""Units in the last place a trigonometric kernel may be off at the width it
+was asked for.
+
+The reduction is the delicate part, and `reduction_digits()` already sizes
+itself to the argument, so what is left here is the Taylor series and the few
+roundings around it. Four units is well past that.
+"""
+
+
+def sin_rounded(
+    x: BigDecimal, precision: Int, rounding_mode: RoundingMode
+) raises -> BigDecimal:
+    """Returns `sin(x)` rounded to `precision` digits, decided not assumed.
+
+    Args:
+        x: The angle in radians.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The correctly rounded value.
+
+    Raises:
+        Error: Propagated from `sin()`.
+    """
+    if x.is_zero():
+        # `sin(0)` is exactly zero, and the loop could not settle on it.
+        return sin(x, precision)
+    return _round_by_deciding[sin, TRIG_SLACK](x, precision, rounding_mode)
+
+
+def cos_rounded(
+    x: BigDecimal, precision: Int, rounding_mode: RoundingMode
+) raises -> BigDecimal:
+    """Returns `cos(x)` rounded to `precision` digits, decided not assumed.
+
+    Args:
+        x: The angle in radians.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The correctly rounded value.
+
+    Raises:
+        Error: Propagated from `cos()`.
+    """
+    if x.is_zero():
+        # `cos(0)` is exactly one.
+        return cos(x, precision)
+    return _round_by_deciding[cos, TRIG_SLACK](x, precision, rounding_mode)
+
+
+def tan_rounded(
+    x: BigDecimal, precision: Int, rounding_mode: RoundingMode
+) raises -> BigDecimal:
+    """Returns `tan(x)` rounded to `precision` digits, decided not assumed.
+
+    Args:
+        x: The angle in radians.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The correctly rounded value.
+
+    Raises:
+        Error: Propagated from `tan()`.
+    """
+    if x.is_zero():
+        # `tan(0)` is exactly zero.
+        return tan(x, precision)
+    return _round_by_deciding[tan, TRIG_SLACK](x, precision, rounding_mode)
 
 
 def sin(x: BigDecimal, precision: Int) raises -> BigDecimal:
@@ -59,8 +171,7 @@ def sin(x: BigDecimal, precision: Int) raises -> BigDecimal:
     # reduction accurately.
     # Otherwise, the result will be inaccurate when x is close to π-related
     # values, e.g., π/2, π, 3π/2, 2π, etc.
-    comptime BUFFER_DIGITS = 99
-    var working_precision = precision + BUFFER_DIGITS
+    var working_precision = reduction_digits(x, precision)
 
     var result: BigDecimal
 
@@ -244,8 +355,7 @@ def cos(x: BigDecimal, precision: Int) raises -> BigDecimal:
     This function adopts range reduction for optimal convergence.
     """
 
-    comptime BUFFER_DIGITS = 99
-    var working_precision = precision + BUFFER_DIGITS
+    var working_precision = reduction_digits(x, precision)
 
     if x.is_zero():
         return BigDecimal(BigUInt.one())
@@ -389,9 +499,10 @@ def tan_cot(x: BigDecimal, precision: Int, is_tan: Bool) raises -> BigDecimal:
     cot(x) = sin(x) / cos(x) depending on the is_tan flag.
     """
 
-    comptime BUFFER_DIGITS = 99
-    var working_precision_pi = precision + 2 * BUFFER_DIGITS
-    var working_precision = precision + BUFFER_DIGITS
+    # `tan` cancels twice: once reducing by pi, and again near a pole, where
+    # `sin / cos` divides by something small. So pi carries the reserve twice.
+    var working_precision = reduction_digits(x, precision)
+    var working_precision_pi = working_precision + RESERVE_DIGITS
 
     if x.is_zero():
         if is_tan:

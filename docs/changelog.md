@@ -36,15 +36,34 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
    keyword overrides; `BasicContext` and `ExtendedContext` exist. On the
    Mojo side `add`, `subtract`, `multiply`, `true_divide` and the three
    in-place forms take a `rounding_mode`. `ROUND_05UP` is refused.
-1. **`sqrt` rounds exactly under every mode.** `BigDecimal.sqrt` takes a
-   `rounding_mode`, and `Decimal.sqrt(rounding=...)` passes it on. No guard
-   digits are involved and none are needed: the root is algebraic, so
-   squaring the candidate back settles which side of a boundary the true
-   value falls on, and the perturbation the algorithm already applies leaves
-   a last digit that says what the discarded tail would. Checked over
-   twenty-one thousand cases against exact rational arithmetic rather than
-   against another implementation. `exp`, `ln` and `log10` still need a Ziv
-   loop for the same guarantee.
+1. **`sin`, `cos` and `tan` were wrong for a large argument, silently.** The
+   reduction `x mod 2*pi` cancels everything above the remainder, so an
+   argument of `10^k` spends `k` digits of pi before the remainder starts.
+   The budget was a flat ninety-nine digits: right up to `10^99`, half wrong
+   by `10^105`, and at `10^150` `sin` returned
+   `-0.8939514546180310700365995531` where the true value is
+   `-0.9507438768330459768719272005` -- nothing correct in it, and nothing to
+   say so. `reduction_digits()` now sizes the budget to the argument, and
+   `cot`, `csc` and `sec` inherit it. Pinned against an independent
+   computation (pi by Machin, reduced, then the series) up to `10^300`.
+1. **The rounding of a transcendental is decided, not assumed.** `exp`, `ln`,
+   `log10`, `**`, `sin`, `cos` and `tan` computed a fixed number of digits
+   beyond what was asked and rounded once, which is right whenever the
+   discarded tail happens to miss a boundary and silently wrong when it does
+   not -- for the default half to even as much as for a directional mode,
+   since a tie is just another boundary. They now take the interval their own
+   error bound allows and check that the whole of it rounds to one answer,
+   widening and asking again when a boundary falls inside. Each states its
+   bound (`EXP_SLACK` and its neighbours) instead of each carrying its own
+   guess. `sqrt` needs no loop: a root is algebraic, so `isqrt` of the scaled
+   coefficient, nudged off `0` and `5`, is already correctly rounded under
+   every mode. The Mojo methods take a `rounding_mode`, and in Python
+   `sqrt`, `exp`, `ln` and `log10` take decimo's own `rounding=`, which
+   `decimal` has no equivalent of. About 12% on `exp` at 28 digits, 1% on the
+   trigonometric functions; a second attempt is needed on about eight calls
+   in a thousand. Checked over seventeen thousand cases against `decimal` at
+   forty digits beyond the precision, and twenty-one thousand for `sqrt`
+   against exact rational arithmetic.
 1. **A plain decimal string is parsed straight into the words.** `"1.5"`,
    `"1234.5678"` and the like -- a sign, some digits, at most one point -- no
    longer go through a `List[UInt8]` of one digit per byte: 59 ns to 10, 64 to
