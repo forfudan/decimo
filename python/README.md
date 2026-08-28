@@ -92,17 +92,21 @@ Everything a `decimal` program normally touches:
 ```python
 decimo.pi(1000)   # 1000 digits of pi, by Chudnovsky with binary splitting
 decimo.e(50)      # 50 digits of e
-Decimal(2).sqrt(rounding=ROUND_FLOOR)   # exact, not approximated
+Decimal(2).sqrt(rounding=ROUND_FLOOR)   # and exp, ln, log10 too
 ```
 
 `pi()` and `e()` use the context precision when given no argument; `decimal`
 has neither, and its documentation gives a recipe to write your own.
 
-`sqrt(rounding=...)` is exact under every mode, where `decimal.sqrt` ignores
-the mode and always rounds half to even. A root is algebraic, so squaring the
-candidate back settles which side of a boundary the true value falls on --
-which is what you want when the answer has to stay under the true root.
-`exp`, `ln`, `log10` and `**` cannot do this yet; see below.
+`rounding=` on `sqrt`, `exp`, `ln` and `log10` is decimo's own: `decimal`
+ignores the context mode for these and always rounds half to even. And the
+answer under any mode is **decided rather than approximated**. The library
+computes wider than you asked, takes the interval its own error bound allows,
+and checks that the whole of it rounds to one answer; if a boundary falls
+inside, it widens and looks again. The same check now guards the default half
+to even, where before the last digit was assumed rather than known -- so
+`ROUND_FLOOR` really does stay under the true value, and a tie really is a
+tie.
 
 ## What does not
 
@@ -112,13 +116,11 @@ decimo refuses these rather than answering differently:
   `is_infinite()` are always `False`.
 - **`ROUND_05UP`.** Nothing implements it; setting it raises
   `NotImplementedError`.
-- **`**` under a rounding mode other than `ROUND_HALF_EVEN`** is computed
-  nine digits wider and rounded once more, so the last digit can differ from
-  `decimal` when the true value lies within `10^-9` relative of a rounding
-  boundary. `exp`, `ln` and `log10` are always half to even, as they are in
-  `decimal`, whatever the context says; `sqrt` is too unless you ask it for a
-  mode, and then it is exact. Arithmetic, `quantize` and
-  `round()` are exact under every mode.
+- **`sqrt`, `exp`, `ln` and `log10` ignore the context rounding**, as they do
+  in `decimal`, and round half to even unless you pass `rounding=`. `**`
+  follows the context, also as in `decimal`. All of them are correctly
+  rounded whichever mode applies, as are arithmetic, `quantize` and
+  `round()`.
 - **`//`, `%`, `divmod()` and `remainder_near` with a long quotient.**
   `decimal` raises `InvalidOperation` when the integer quotient has more
   digits than the precision; decimo answers. The remainder is rounded to the

@@ -887,6 +887,39 @@ for _text in _sqrt_values:
             assert (_below + _ulp) == _above, (_text, _prec)
 print("[PASS] sqrt is exact under every rounding mode")
 
+# --- exp, ln and log10: the rounding is decided, not assumed ---------------
+#
+# These three arguments put a rounding boundary inside the interval the
+# kernel's own error bound allows, so the answer cannot be settled on the
+# first pass and the library has to widen and look again. They are the shape
+# a fixed number of guard digits gets wrong: the digits just past the cut are
+# `000` or `999`. Expected values from `decimal` at fifty digits, rounded
+# once.
+for _text, _call, _reference in [
+    ("664.247984247", lambda x, m: x.ln(rounding=m), lambda d: d.ln()),
+    ("167.837678670", lambda x, m: x.exp(rounding=m), lambda d: d.exp()),
+    ("132.960671561", lambda x, m: x.log10(rounding=m), lambda d: d.log10()),
+]:
+    with decimal.localcontext() as _wide:
+        _wide.prec = 50
+        _true = _reference(decimal.Decimal(_text))
+    for _mode in _modes:
+        with decimal.localcontext() as _narrow:
+            _narrow.prec, _narrow.rounding = 9, _mode
+            _want = str(+_true)
+        with decimo.localcontext(prec=9):
+            _got = str(_call(decimo.Decimal(_text), _mode))
+        assert _want == _got, (_text, _mode, _want, _got)
+
+# The rational points, where the true value does sit on a boundary and the
+# loop would never settle: each is answered before it is entered.
+with decimo.localcontext(prec=9):
+    for _mode in _modes:
+        assert str(decimo.Decimal(0).exp(rounding=_mode)) == "1"
+        assert str(decimo.Decimal(1).ln(rounding=_mode)) == "0"
+        assert str(decimo.Decimal(1000).log10(rounding=_mode)) == "3"
+print("[PASS] exp, ln and log10 decide their rounding under every mode")
+
 
 # --- The one program that has to work: the same source, both libraries ---
 def average(mod, values):

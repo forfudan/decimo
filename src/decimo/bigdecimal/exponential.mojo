@@ -1908,6 +1908,320 @@ def cbrt(x: BigDecimal, precision: Int) raises -> BigDecimal:
 # ===----------------------------------------------------------------------=== #
 
 
+# ===----------------------------------------------------------------------=== #
+# Rounding that is decided rather than assumed
+#
+# A kernel computes a value to whatever width it is asked for, and says how
+# far from the truth that may be. A caller who wants `p` digits does not round
+# what came back and hope: it asks for more digits than it needs, takes the
+# interval the kernel's own bound allows, and checks that the whole of that
+# interval rounds to one answer. If it does, the answer is right -- under any
+# mode, the default included. If it does not, the width doubles and the kernel
+# is asked again.
+#
+# What this replaces is a fixed number of guard digits and a single rounding:
+# the same computation without the check, right whenever the interval happens
+# to miss a boundary and silently wrong when it does not. That was as true of
+# HALF_EVEN as of the directional modes -- a tie is just another boundary.
+#
+# The loop ends because a transcendental value never sits exactly on a decimal
+# boundary. The arguments where the value is rational -- `exp(0)`, `ln(1)`,
+# `log10(10^k)`, an integer exponent -- are answered before the loop is
+# entered, and nothing else can be exactly on one.
+#
+# `sqrt` is not here. A root is algebraic, and `sqrt_exact()` decides it by
+# construction: `isqrt` of the scaled coefficient, nudged off `0` and `5`, is
+# already the correctly rounded answer under every mode.
+# ===----------------------------------------------------------------------=== #
+
+comptime EXP_SLACK = 4
+"""Units in the last place `exp()` may be off at the width it was asked for.
+
+It carries `0.35 * m + 9` digits of its own through the squarings and rounds
+once at the end, so one unit is the honest figure. Four is the margin this
+decides with.
+"""
+
+comptime LN_SLACK = 4
+"""Units in the last place `ln()` may be off at the width it was asked for.
+
+Its constants come from tables good to the last digit, or from series whose
+error `test_bigdecimal_ln_constants_bound.mojo` pins, and `MathCache` adds
+nine digits on top.
+"""
+
+comptime LOG10_SLACK = 4
+"""Units in the last place `log10()` may be off.
+
+It is `ln(x) / ln(10)`: the two logarithms and the division between them.
+"""
+
+comptime POWER_SLACK = 8
+"""Units in the last place `power()` may be off.
+
+It is `exp(exponent * ln(base))`, so the bounds of both compound and the
+multiply between them rounds once more.
+"""
+
+comptime _ZIV_START = 3
+"""Digits asked for beyond the caller's precision on the first attempt.
+
+The check fails, and the width grows, only when a rounding boundary lies
+within `slack` units of the last place of that width: about eight calls in a
+thousand at three digits, one in twelve thousand at five, one in a hundred
+million at ten.
+
+Wider is not better. Asking for ten cost 37% on `exp` at 28 digits, five cost
+20%, three costs 12%, while a retry -- which is one more call at six digits
+over, not a doubling of the work -- costs about the same again on eight calls
+in a thousand. Three is where the two curves meet.
+"""
+
+comptime _ZIV_LIMIT = 8
+"""How many times the width may double before giving up.
+
+Eight doublings is 2560 digits beyond the caller's precision, and the loop
+always ends long before that. It is here so that a bug ends in an error
+rather than in a hang.
+"""
+
+
+def _settled_answer(
+    wide: BigDecimal,
+    width: Int,
+    slack: Int,
+    precision: Int,
+    rounding_mode: RoundingMode,
+) raises -> Optional[BigDecimal]:
+    """Returns the answer, if every value the kernel's bound allows rounds to it.
+
+    Args:
+        wide: What the kernel returned.
+        width: The number of significant digits it was asked for.
+        slack: Units in the last place of `width` the kernel may be off by.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round.
+
+    Returns:
+        The rounded value when the whole interval `wide +/- slack` rounds to
+        it, and nothing when the interval straddles a boundary and the answer
+        is therefore not yet decided.
+
+    Raises:
+        Error: If the arithmetic on the interval fails.
+    """
+    if wide.coefficient.is_zero():
+        return wide.copy()
+
+    # One unit in the last place of what the kernel returned is where its own
+    # error lives.
+    var last_place = wide.adjusted() - width + 1
+    var reach = BigDecimal(
+        BigUInt.from_word_unsafe(BigUInt.Word(slack)), -last_place, False
+    )
+    var low = wide.subtract(reach, precision=0)
+    var high = wide.add(reach, precision=0)
+    low.round_to_precision_inplace(
+        precision=precision,
+        rounding_mode=rounding_mode,
+        remove_extra_digit_due_to_rounding=True,
+        fill_zeros_to_precision=False,
+    )
+    high.round_to_precision_inplace(
+        precision=precision,
+        rounding_mode=rounding_mode,
+        remove_extra_digit_due_to_rounding=True,
+        fill_zeros_to_precision=False,
+    )
+    if low == high and low.scale == high.scale:
+        return low^
+    return None
+
+
+def _round_by_deciding[
+    kernel: def(BigDecimal, Int) thin raises -> BigDecimal, slack: Int
+](
+    x: BigDecimal, precision: Int, rounding_mode: RoundingMode
+) raises -> BigDecimal:
+    """Returns `kernel(x)` rounded to `precision` digits, decided not assumed.
+
+    Parameters:
+        kernel: The function to evaluate.
+        slack: Units in the last place the kernel may be off by at the width
+            it is asked for. Each function states its own; see `EXP_SLACK`.
+
+    Args:
+        x: The argument to pass to the kernel.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The correctly rounded value.
+
+    Raises:
+        Error: If the kernel raises, or if the width doubles `_ZIV_LIMIT`
+            times without settling, which would mean the kernel is further
+            off than `slack` allows.
+    """
+    var width = precision + _ZIV_START
+    for _ in range(_ZIV_LIMIT):
+        var settled = _settled_answer(
+            kernel(x, width), width, slack, precision, rounding_mode
+        )
+        if settled:
+            return settled.take()
+        width += width - precision
+    raise Error(
+        "the rounding of this value could not be decided; the kernel is"
+        " further from the true value than its stated bound allows"
+    )
+
+
+def exp_rounded(
+    x: BigDecimal, precision: Int, rounding_mode: RoundingMode
+) raises -> BigDecimal:
+    """Returns `exp(x)` rounded to `precision` digits, decided not assumed.
+
+    Args:
+        x: The exponent.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The correctly rounded value.
+
+    Raises:
+        Error: Propagated from `exp()`.
+    """
+    if x.coefficient.is_zero():
+        # `exp(0)` is exactly one, the only argument where it is rational.
+        return exp(x, precision)
+    return _round_by_deciding[exp, EXP_SLACK](x, precision, rounding_mode)
+
+
+def ln_rounded(
+    x: BigDecimal, precision: Int, rounding_mode: RoundingMode
+) raises -> BigDecimal:
+    """Returns `ln(x)` rounded to `precision` digits, decided not assumed.
+
+    Args:
+        x: The value to take the logarithm of.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The correctly rounded value.
+
+    Raises:
+        Error: Propagated from `ln()`.
+    """
+    if x == BigDecimal.one():
+        # `ln(1)` is exactly zero, the only argument where it is rational.
+        return ln(x, precision)
+    return _round_by_deciding[ln, LN_SLACK](x, precision, rounding_mode)
+
+
+def log10_rounded(
+    x: BigDecimal, precision: Int, rounding_mode: RoundingMode
+) raises -> BigDecimal:
+    """Returns `log10(x)` rounded to `precision` digits, decided not assumed.
+
+    Args:
+        x: The value to take the logarithm of.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The correctly rounded value.
+
+    Raises:
+        Error: Propagated from `log10()`.
+    """
+    if _is_power_of_ten(x):
+        # `log10(10^k)` is exactly `k`, the only argument where it is
+        # rational, and `log10()` answers those exactly already.
+        return log10(x, precision)
+    return _round_by_deciding[log10, LOG10_SLACK](x, precision, rounding_mode)
+
+
+def power_rounded(
+    base: BigDecimal,
+    exponent: BigDecimal,
+    precision: Int,
+    rounding_mode: RoundingMode,
+) raises -> BigDecimal:
+    """Returns `base ** exponent` rounded, decided not assumed.
+
+    Args:
+        base: The base.
+        exponent: The exponent.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The correctly rounded value.
+
+    Raises:
+        Error: Propagated from `power()`, and if the width doubles
+            `_ZIV_LIMIT` times without settling.
+
+    Notes:
+
+    An integer exponent is left to `power()` itself: that path is a chain of
+    exact multiplications with one rounding at the end, so the mode simply
+    applies, and the value can land exactly on a boundary -- `2 ** 10` is
+    `1024` -- which is the one case the loop could not settle.
+    """
+    if exponent.is_integer():
+        var result = power(base, exponent, precision)
+        result.round_to_precision_inplace(
+            precision=precision,
+            rounding_mode=rounding_mode,
+            remove_extra_digit_due_to_rounding=True,
+            fill_zeros_to_precision=False,
+        )
+        return result^
+
+    var width = precision + _ZIV_START
+    for _ in range(_ZIV_LIMIT):
+        var settled = _settled_answer(
+            power(base, exponent, width),
+            width,
+            POWER_SLACK,
+            precision,
+            rounding_mode,
+        )
+        if settled:
+            return settled.take()
+        width += width - precision
+    raise Error(
+        "the rounding of this power could not be decided; the kernel is"
+        " further from the true value than its stated bound allows"
+    )
+
+
+def _is_power_of_ten(x: BigDecimal) -> Bool:
+    """Returns whether `x` is ten to some whole power.
+
+    Args:
+        x: The value to test.
+
+    Returns:
+        True for `1`, `100`, `0.001` and the like, where `log10` is a whole
+        number and the loop would never settle because the true value sits
+        exactly on a boundary.
+    """
+    if x.sign or x.coefficient.is_zero():
+        return False
+    var text = x.coefficient.to_string()
+    if not (text[byte=0] == "1"):
+        return False
+    for index in range(1, text.byte_length()):
+        if not (text[byte=index] == "0"):
+            return False
+    return True
+
+
 def exp(x: BigDecimal, precision: Int) raises -> BigDecimal:
     """Calculate the natural exponential of x (e^x) to the specified precision.
 

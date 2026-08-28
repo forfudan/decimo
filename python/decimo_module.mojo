@@ -277,17 +277,12 @@ def round_to_context(var value: BigDecimal) raises -> BigDecimal:
     return value^
 
 
-comptime DIRECTED_GUARD_DIGITS = 9
-"""Extra digits carried by `**` under a rounding mode other than HALF_EVEN.
-
-`decimal` applies the context mode to `**` and ignores it for `sqrt`, `exp`,
-`ln` and `log10`, which are always half to even; decimo follows it in both.
-Those four therefore ask the library for exactly what it delivers, and only
-`**` needs this: the value is computed nine digits wider and rounded once
-more with the mode. That last digit is wrong when the true value lies within
-`10^-9` relative of a rounding boundary. Arithmetic (`+ - * /`, `quantize`,
-`%`) does not go through this -- it rounds exactly under every mode.
-"""
+# `decimal` applies the context mode to `**` and ignores it for `sqrt`, `exp`,
+# `ln` and `log10`, which are always half to even; decimo follows it in both.
+# Where a mode is applied it is now decided rather than approximated: the
+# library computes wider, checks whether the whole interval its own error
+# allows rounds one way, and widens again if it does not. Nothing here adds a
+# fixed number of guard digits any more.
 
 
 # ===----------------------------------------------------------------------=== #
@@ -1181,14 +1176,11 @@ def _power_to_context(
 ) raises -> BigDecimal:
     """`base ** exponent` at the context precision and rounding.
 
-    See `DIRECTED_GUARD_DIGITS` for how a mode other than HALF_EVEN is met.
+    The context mode is applied by the library, which decides it rather than
+    approximating with guard digits.
     """
     ref cell = state()[]
-    if cell.rounding == RoundingMode.ROUND_HALF_EVEN:
-        return base.power(exponent, cell.precision)
-    return round_to_context(
-        base.power(exponent, cell.precision + DIRECTED_GUARD_DIGITS)
-    )
+    return base.power(exponent, cell.precision, cell.rounding)
 
 
 def bigdecimal_neg(py_self: PythonObject) raises -> PythonObject:
@@ -2259,7 +2251,7 @@ def method_quantize(
 
 
 def _method_to_precision[
-    operation: def(BigDecimal, Int) thin raises -> BigDecimal,
+    operation: def(BigDecimal, Int, RoundingMode) thin raises -> BigDecimal,
     message: StaticString,
 ](py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr) abi(
     "C"
@@ -2270,27 +2262,45 @@ def _method_to_precision[
     value outside its domain, which is a `ValueError` rather than a bare
     `Exception`.
 
-    Always half to even, whatever the context rounding says, which is what
-    `decimal` does with these four. See `DIRECTED_GUARD_DIGITS`.
+    Half to even by default, whatever the context rounding says, which is
+    what `decimal` does with these. `rounding=` is decimo's own way to ask
+    for another one, and the answer under it is decided rather than
+    approximated.
     """
     try:
+        var rounding = PyObjectPtr()
         if py_kwargs:
             try:
+                var args = PythonObject(from_borrowed=py_args)
                 var taken = 0
+                var named: PythonObject
                 (_, taken) = _keyword_argument(
-                    PythonObject(from_borrowed=py_args),
-                    py_kwargs,
-                    0,
-                    "context",
-                    taken,
+                    args, py_kwargs, 0, "context", taken
+                )
+                (named, taken) = _keyword_argument(
+                    args, py_kwargs, 1, "rounding", taken
                 )
                 _no_other_keywords(py_kwargs, taken)
+                if named is not PythonObject(None):
+                    rounding = named._obj_ptr
             except e:
                 return _raise_type_error(e)
+
+        var mode = RoundingMode.ROUND_HALF_EVEN
+        if rounding:
+            var named = PythonObject(from_borrowed=rounding)
+            try:
+                _ = _mode_or_none(named)
+            except:
+                return _raise_not_implemented(
+                    "decimo does not implement ROUND_05UP"
+                )
+            mode = rounding_from(named)
+
         ref cell = state()[]
         var result: BigDecimal
         try:
-            result = operation(_value_of(py_self)[], cell.precision)
+            result = operation(_value_of(py_self)[], cell.precision, mode)
         except:
             return _raise_value_error(message)
         return new_decimal(cell, result^).steal_data()
@@ -2334,20 +2344,28 @@ def _raise_value_error(message: StaticString) raises -> PyObjectPtr:
     )
 
 
-def _do_sqrt(value: BigDecimal, digits: Int) raises -> BigDecimal:
-    return value.sqrt(digits)
+def _do_sqrt(
+    value: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return value.sqrt(digits, mode)
 
 
-def _do_exp(value: BigDecimal, digits: Int) raises -> BigDecimal:
-    return value.exp(digits)
+def _do_exp(
+    value: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return value.exp(digits, mode)
 
 
-def _do_ln(value: BigDecimal, digits: Int) raises -> BigDecimal:
-    return value.ln(digits)
+def _do_ln(
+    value: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return value.ln(digits, mode)
 
 
-def _do_log10(value: BigDecimal, digits: Int) raises -> BigDecimal:
-    return value.log10(digits)
+def _do_log10(
+    value: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return value.log10(digits, mode)
 
 
 def method_sqrt(
@@ -2359,50 +2377,11 @@ def method_sqrt(
     always rounds half to even, which is what this does when none is given.
     Under any other mode the answer is still exact -- a root is algebraic, so
     squaring the candidate back settles which side of the boundary the true
-    value falls on -- where `exp`, `ln` and `log10` would have to approximate.
+    value falls on -- where `exp`, `ln` and `log10` have to widen and check.
     """
-    try:
-        var rounding = PyObjectPtr()
-        try:
-            if py_kwargs:
-                var args = PythonObject(from_borrowed=py_args)
-                var taken = 0
-                var named: PythonObject
-                (_, taken) = _keyword_argument(
-                    args, py_kwargs, 0, "context", taken
-                )
-                (named, taken) = _keyword_argument(
-                    args, py_kwargs, 1, "rounding", taken
-                )
-                _no_other_keywords(py_kwargs, taken)
-                if named is not PythonObject(None):
-                    rounding = named._obj_ptr
-        except e:
-            return _raise_type_error(e)
-
-        if not rounding:
-            return _method_to_precision[
-                _do_sqrt, "square root of a negative value"
-            ](py_self, py_args, py_kwargs)
-
-        ref cell = state()[]
-        var named = PythonObject(from_borrowed=rounding)
-        try:
-            _ = _mode_or_none(named)
-        except:
-            return _raise_not_implemented(
-                "decimo does not implement ROUND_05UP"
-            )
-        var result: BigDecimal
-        try:
-            result = _value_of(py_self)[].sqrt(
-                cell.precision, rounding_from(named)
-            )
-        except:
-            return _raise_value_error("square root of a negative value")
-        return new_decimal(cell, result^).steal_data()
-    except e:
-        return raise_python_exception(e)
+    return _method_to_precision[_do_sqrt, "square root of a negative value"](
+        py_self, py_args, py_kwargs
+    )
 
 
 def method_exp(
