@@ -44,7 +44,16 @@ def parse_to_rpn(tokens: List[Token]) raises -> List[Token]:
 
     Supports binary operators (+, -, *, /, ^), unary minus, function calls
     (sqrt, ln, …), constants (pi, e), and commas for multi-argument functions
-    like root(x, n).
+    like root(x, n). A unary plus never reaches the parser: the tokenizer
+    drops it.
+
+    A unary minus is pushed onto the operator stack without popping anything
+    first. A prefix operator has no left operand, so nothing already on the
+    stack can be waiting to bind to one; popping by precedence would wrongly
+    take `2^-2` as `(2^)` and `-2`. Whether the minus binds tighter than what
+    follows is decided when that operator arrives, from the table in
+    `Token.precedence()`: `-2^2` keeps the `^` above the sign, `-3*2` pops
+    the sign before the `*`.
 
     Args:
         tokens: The list of infix tokens to convert.
@@ -89,6 +98,11 @@ def parse_to_rpn(tokens: List[Token]) raises -> List[Token]:
                     + ": misplaced ',' outside of a function call"
                 )
 
+        # A sign has no left operand, so nothing on the stack is competing
+        # for one: push it and let the next operator decide against it.
+        elif kind == TOKEN_UNARY_MINUS:
+            op_stack.append(tokens[i])
+
         # Operators: shunt by precedence / associativity
         elif (
             kind == TOKEN_PLUS
@@ -96,7 +110,6 @@ def parse_to_rpn(tokens: List[Token]) raises -> List[Token]:
             or kind == TOKEN_STAR
             or kind == TOKEN_SLASH
             or kind == TOKEN_CARET
-            or kind == TOKEN_UNARY_MINUS
         ):
             var tok_prec = tokens[i].precedence()
             var tok_left = tokens[i].is_left_associative()

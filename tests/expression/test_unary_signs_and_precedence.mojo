@@ -4,22 +4,21 @@ Pins the sign handling and the precedence table of the expression evaluator.
 Two things a table of expected results does not catch on its own.
 
 The first is the shape of the sign handling. The tokenizer decides whether a
-`-` is a sign or an operator by looking at what came before it -- the start of
-the expression, an operator, an opening parenthesis, a comma. The `+` branch
-has none of that and emits a binary token unconditionally, so `+3` is an
-error: "missing operand for '+'". That is the documented scope --
-`parse_to_rpn()` lists what it supports as "binary operators (+, -, *, /, ^),
-unary minus" -- and `test_double_plus` in the error suite pins `1 ++ 2` as
-invalid. So it is pinned here from the other side too, positively: every
-position where a `-` is read as a sign, and the same position with a `+`
-rejected. If unary plus is ever added, this file is where the expectation
-lives.
+`-` or `+` is a sign or an operator by looking at what came before it -- the
+start of the expression, an operator, an opening parenthesis, a comma. A `-`
+in sign position becomes a unary-minus token; a `+` in sign position is
+dropped, since it does nothing. Both are pinned here position by position.
+Unary plus used to be an error ("missing operand for '+'"); it was accepted
+because every calculator and Python accept it.
 
 The second is the precedence table itself, which is a set of choices rather
-than a fact. This evaluator binds a unary minus tighter than `^`, so `-2^2` is
-4, the way a spreadsheet reads it. Python binds it looser and gives -4. That is
-documented in `Token.precedence()` and is worth a test, because it is exactly
-the kind of thing a rewrite flips without anyone noticing.
+than a fact. A unary minus binds between `*` and `^`, so `-2^2` is -4, the
+way Python reads it. Spreadsheets rank the sign above `^` and give 4, and so
+did this evaluator once. A sign inside an exponent is part of the exponent,
+so `2^-2` is 0.25 under both readings; that case is what makes the parser
+push a sign without popping. These are documented in `Token.precedence()`
+and `parse_to_rpn()` and are worth a test, because a rewrite flips them
+without anyone noticing.
 """
 
 from std import testing
@@ -42,7 +41,7 @@ def assert_rejected(expression: String) raises:
 
 
 def test_a_minus_is_read_as_a_sign_in_every_leading_position() raises:
-    """The positions the tokenizer calls unary, one at a time."""
+    """The positions the tokenizer calls a sign, one at a time."""
     assert_evaluates_to("-3", "-3")  # at the start
     assert_evaluates_to("(-3)", "-3")  # after '('
     assert_evaluates_to("5+-3", "2")  # after an operator
@@ -52,37 +51,45 @@ def test_a_minus_is_read_as_a_sign_in_every_leading_position() raises:
     assert_evaluates_to("2^-3", "0.125")
     assert_evaluates_to("--3", "3")  # after another sign
     assert_evaluates_to("---3", "-3")
+    assert_evaluates_to("root(-8, 3)", "-2")  # after ','
 
 
-def test_a_plus_is_never_read_as_a_sign() raises:
-    """The documented scope is unary minus only, and this is the other half.
+def test_a_plus_is_read_as_a_sign_in_the_same_positions() raises:
+    """Every expression here is the `+` counterpart of a line above."""
+    assert_evaluates_to("+3", "3")
+    assert_evaluates_to("(+3)", "3")
+    assert_evaluates_to("5++3", "8")
+    assert_evaluates_to("5-+3", "2")
+    assert_evaluates_to("5*+3", "15")
+    assert_evaluates_to("6/+3", "2")
+    assert_evaluates_to("2^+3", "8")
+    assert_evaluates_to("-+3", "-3")
+    assert_evaluates_to("+-3", "-3")
+    assert_evaluates_to("++3", "3")
+    assert_evaluates_to("root(+8, +3)", "2")
 
-    Every expression here is the `+` counterpart of a line above, and every one
-    of them is an error today. The suite already pins `1 ++ 2`; these are the
-    rest of the positions, so that adding unary plus is a deliberate act with
-    a visible diff rather than something that leaks in.
-    """
-    assert_rejected("+3")
-    assert_rejected("(+3)")
-    assert_rejected("5++3")
-    assert_rejected("5-+3")
-    assert_rejected("5*+3")
-    assert_rejected("6/+3")
-    assert_rejected("2^+3")
-    assert_rejected("-+3")
+    # A sign still needs an operand.
+    assert_rejected("+")
+    assert_rejected("3+")
+    assert_rejected("3*+")
 
 
 def test_the_documented_precedence_table() raises:
-    """The table in `Token.precedence()`, one row at a time.
-
-    A unary minus binds tighter than `^` here, which is the spreadsheet
-    reading rather than Python's. `^` is right-associative; everything else is
-    left.
-    """
-    # unary minus above '^'
-    assert_evaluates_to("-2^2", "4")
+    """The table in `Token.precedence()`, one row at a time."""
+    # '^' above unary minus; a sign inside an exponent is the exponent's
+    assert_evaluates_to("-2^2", "-4")
     assert_evaluates_to("(-2)^2", "4")
     assert_evaluates_to("-(2^2)", "-4")
+    assert_evaluates_to("2^-2", "0.25")
+    assert_evaluates_to("-2^-2", "-0.25")
+    assert_evaluates_to("2*-3^2", "-18")
+    assert_evaluates_to("-2^2^2", "-16")
+    assert_evaluates_to("2^-1^2", "0.5")
+
+    # unary minus above '*' and '/'
+    assert_evaluates_to("-3*2", "-6")
+    assert_evaluates_to("-6/2", "-3")
+    assert_evaluates_to("-3*-2", "6")
 
     # '^' above '*' and '/', and right-associative
     assert_evaluates_to("2+3*4^2", "50")

@@ -106,6 +106,7 @@ decimo "2^256"
 - **Negative numbers:** `-3`, `-3.14`, `(-5 + 2)`
 - **Negative expressions:** `-3*pi`, `-3*pi*(sin(1))`
 - **Unary minus:** `2 * -3`, `sqrt(-1 + 2)`
+- **Unary plus:** `+3`, `2 * +3` (accepted, does nothing)
 
 Negative numbers and many expressions starting with `-` can be passed directly
 as the positional argument. See [Negative Expressions](#negative-expressions)
@@ -134,11 +135,15 @@ From lowest to highest:
 | :--------: | ---------- | :-----------: |
 |  1 (low)   | `+`, `-`   |     Left      |
 |     2      | `*`, `/`   |     Left      |
-|     3      | `^` / `**` |     Right     |
-|  4 (high)  | unary `-`  |     Right     |
+|     3      | unary `-`  |     Right     |
+|  4 (high)  | `^` / `**` |     Right     |
 
 Right-associativity of `^` means `2^3^2` = `2^(3^2)` = `2^9` = `512`, not
 `(2^3)^2` = `64`.
+
+A unary minus binds looser than `^`, as in Python: `-2^2` is `-(2^2)` = `-4`.
+Write `(-2)^2` for `4`. A sign inside an exponent is part of the exponent, so
+`2^-2` is `0.25`. A unary plus (`+3`, `2*+3`) is accepted and does nothing.
 
 ### Functions
 
