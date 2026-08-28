@@ -43,8 +43,25 @@ defaults:
     shell: bash
 
 jobs:
+  # One version for the whole run. Each build job stamping its own timestamp
+  # would give PyPI two different dev versions from one click.
+  version:
+    name: Pick the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.pick.outputs.version }}
+    steps:
+      - id: pick
+        run: |
+          if [[ -n "${{ inputs.version || '' }}" ]]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.1.0.dev$(date -u +%Y%m%d%H%M%S)" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: ${{ matrix.environment }} on ${{ matrix.os }}
+    needs: version
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     strategy:
@@ -68,12 +85,8 @@ jobs:
       # is retried rather than the whole job.
       - name: Build, test and package
         run: |
-          version_flag=""
-          if [[ -n "${{ inputs.version || '' }}" ]]; then
-            version_flag="--version ${{ inputs.version }}"
-          fi
           for attempt in 1 2 3; do
-            if pixi run -e ${{ matrix.environment }} release $version_flag; then
+            if pixi run -e ${{ matrix.environment }} release --version ${{ needs.version.outputs.version }}; then
               break
             fi
             if [[ $attempt -eq 3 ]]; then exit 1; fi
