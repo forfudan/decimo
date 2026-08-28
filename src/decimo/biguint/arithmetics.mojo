@@ -45,6 +45,24 @@ product, which makes the quadratic kernel fast enough that Karatsuba's extra
 Re-swept after the move to eighteen digits a word (20260828) and left where
 the base change put it: 128 is best or tied against 64 and 256 at every size
 from 32 to 1024 words.
+
+It has a hard ceiling as well as a measured optimum: the schoolbook kernel it
+hands off to sums a whole column of partial products in a `UInt128`, which
+holds `SCHOOLBOOK_MAX_COLUMN` of them. The kernel asserts it.
+"""
+
+comptime SCHOOLBOOK_MAX_COLUMN = Int(
+    UInt128.MAX // (UInt128(BigUInt.BASE_MAX) * UInt128(BigUInt.BASE_MAX))
+)
+"""The longest column the schoolbook accumulator can sum without overflow.
+
+A partial product is below `BASE^2`, and the product-scanning kernel adds a
+column of them -- one per word of the shorter operand -- into a `UInt128`
+before reducing. That is `2^128 / 10^36`, which is 340 words at eighteen
+digits a word. It was a number in a comment; it is a constant with an assert
+now, because 341 by 341 words of nines through the kernel gives a wrong
+product with no error, and `CUTOFF_KARATSUBA` is the only thing keeping the
+kernel below it. Derived, so it follows the base and the word type.
 """
 comptime CUTOFF_TOOM3 = 512
 """The cutoff number of words for using Toom-3 multiplication.
@@ -1589,6 +1607,20 @@ def multiply_slices_schoolbook(
     var n_words_x_slice = bounds_x[1] - bounds_x[0]
     var n_words_y_slice = bounds_y[1] - bounds_y[0]
 
+    # The column accumulator overflows past `SCHOOLBOOK_MAX_COLUMN` products,
+    # and a column is as long as the shorter operand. The dispatchers keep
+    # this far below the limit through `CUTOFF_KARATSUBA`; the assert is here
+    # so that raising the cutoff past the limit fails loudly rather than
+    # returning a wrong product.
+    debug_assert[assert_mode="none"](
+        min(n_words_x_slice, n_words_y_slice) <= SCHOOLBOOK_MAX_COLUMN,
+        "biguint.arithmetics.multiply_slices_schoolbook(): ",
+        "a column of more than SCHOOLBOOK_MAX_COLUMN partial products ",
+        "overflows the accumulator; the shorter operand has ",
+        min(n_words_x_slice, n_words_y_slice),
+        " words",
+    )
+
     # CASE: One of the operands is zero or one
     if n_words_x_slice == 1:
         var x_word = x.words[bounds_x[0]]
@@ -1629,8 +1661,8 @@ def multiply_slices_schoolbook(
     # result, because `(10^9)^2` fit; writing it that way at eighteen digits a
     # word wraps before the cast ever happens, and every type in the
     # expression is still correct. A column of `k` such products needs
-    # `k < 2^128 / 10^36`, about 340, and Karatsuba takes over long before a
-    # column is that long. The column is unrolled over four independent
+    # `k <= SCHOOLBOOK_MAX_COLUMN`, asserted at the entry above; Karatsuba
+    # takes over long before. The column is unrolled over four independent
     # accumulators because a single one serialises on the 128-bit add.
     comptime BASE = UInt128(BigUInt.BASE)
 
@@ -1647,9 +1679,9 @@ def multiply_slices_schoolbook(
     # of at most sixteen products in a `UInt64`, because a partial product was
     # below `(10^9)^2 < 10^18`. A partial product is now below `(10^18)^2`,
     # which is 120 bits, so every column needs the accumulator below whatever
-    # its length. That accumulator holds `2^128 / 10^36` -- about 340 --
-    # products before it can overflow, and Karatsuba takes over long before a
-    # column is that long.
+    # its length. That accumulator holds `SCHOOLBOOK_MAX_COLUMN` products
+    # before it can overflow, and Karatsuba takes over long before a column is
+    # that long.
 
     # `carry` is the part of the column sum at or above BASE, which belongs to
     # the next column. The last column leaves it holding the top word.
@@ -3970,13 +4002,30 @@ def floor_divide_slices_two_by_one(
         var b_slice = BigUInt.from_slice(b, bounds_b)
         return floor_divide_modulo_schoolbook(a_slice, b_slice, remainder)
 
-    elif (bounds_a[0] + n + n // 2 >= bounds_a[1]) or a.is_zero_in_bounds(
-        bounds=(bounds_a[0] + n + n // 2, bounds_a[1])
-    ):
-        # If a3 is empty or zero
-        # We just need to use three-by-two division once: a2a1a0 // b1b0
-        # Note that the condition must be short-circuited to avoid slicing
-        # an empty BigUInt.
+    elif bounds_a[0] + n + n // 2 > bounds_a[1]:
+        # Fewer than three parts, so `a3` is absent and `a2` is short or
+        # absent too: `a < b * B^(n/2)`, and one three-by-two division at the
+        # half size is the whole job.
+        #
+        # This used to take any dividend of three parts or fewer, and any
+        # dividend whose fourth part was present but zero. Both are wrong for
+        # the same reason. `two_by_one` is a `2n`-by-`n` division whose
+        # quotient can be `n` words; `three_by_two(n/2)` produces `n/2`. A
+        # dividend of exactly three parts, or of four with a zero top, is
+        # still below `b * B^n` but not below `b * B^(n/2)`, so its quotient
+        # needs both halves -- `q1` from `a3a2a1` with `a3 = 0`, which the
+        # general branch handles, and `q0` from the remainder. Sent to a
+        # single `three_by_two` instead, the inner quotient came back a word
+        # too wide, the two-step correction could not bring it down, and
+        # `r -= d` raised.
+        #
+        # Every division of more than one block reaches this: the second
+        # block is the previous remainder, below `b`, shifted up by `n` and
+        # joined to the next block, which is four parts wide with a zero top
+        # more often than not. All nines, 48 words over a 32-word divisor
+        # whose top word is `BASE_HALF`, did it at
+        # `BURNIKEL_ZIEGLER_BLOCK_WORDS = 16`; 33 and 64 over 32 were fine,
+        # which is why nothing had hit it.
         return floor_divide_slices_three_by_two(
             a, b, bounds_a, bounds_b, n // 2, cut_off, remainder
         )

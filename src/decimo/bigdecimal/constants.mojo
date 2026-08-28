@@ -119,19 +119,13 @@ def pi(precision: Int) raises -> BigDecimal:
             message="Precision must be non-negative", function="pi()"
         )
 
-    # TODO: When global variables are supported,
-    # we can check if we have a cached value for the requested precision.
-    # if precision <= 1024:
-    #     var result = PI_1024
-    #     result.round_to_precision_inplace(
-    #         precision,
-    #         RoundingMode.ROUND_HALF_EVEN,
-    #         remove_extra_digit_due_to_rounding=True,
-    #         fill_zeros_to_precision=False,
-    #     )
-    #     return result^
-
-    # Use Chudnovsky with binary splitting for maximum speed
+    # `PI_1024` could answer everything up to 1024 digits by rounding, and
+    # it has been verified to do so exactly: rounding the table to any
+    # precision up to its own gives what Chudnovsky computes, pinned in
+    # `test_the_1024_digit_table_matches_the_algorithm`. It is not used yet
+    # because Chudnovsky is already 0.05 ms at a thousand digits, so the win
+    # is small here; the same table-first idea matters for `ln(2)` and
+    # `ln(1.25)`, whose series are milliseconds, and it belongs in that change.
     return pi_chudnovsky_binary_split(precision)
 
 
@@ -478,7 +472,15 @@ def chudnovsky_split(a: Int, b: Int) raises -> _ChudnovskyPartialSum:
 
 
 def pi_machin(precision: Int) raises -> BigDecimal:
-    """Fallback π calculation using Machin's formula.
+    """π by Machin's formula, kept as an independent check on Chudnovsky.
+
+    Nothing in the library calls this. `pi()` always takes
+    `pi_chudnovsky_binary_split()`, which is 250 to 2500 times faster over
+    the first thousand digits. This is a different series with a different
+    convergence argument, and the two agreeing to a thousand digits checks
+    each other in a way no table can -- see
+    `test_the_two_pi_algorithms_agree_with_each_other`. Dead in the
+    dispatcher, alive in the tests; do not delete it as unused.
 
     Args:
         precision: The number of significant digits to compute.
