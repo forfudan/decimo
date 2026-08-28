@@ -200,9 +200,13 @@ def main():
     previous_version_file = write_version(version)
     vendor_runtime()
 
+    # Only this interpreter's previous wheels are cleared, so building py313
+    # and then py314 leaves both in `dist/` for one upload.
     distribution = HERE / "dist"
-    if distribution.exists():
-        shutil.rmtree(distribution)
+    distribution.mkdir(exist_ok=True)
+    interpreter = f"cp{sys.version_info.major}{sys.version_info.minor}"
+    for stale in distribution.glob(f"*-{interpreter}-*.whl"):
+        stale.unlink()
 
     print("Building the wheel")
     run(
@@ -213,7 +217,7 @@ def main():
     if previous_version_file is not None:
         VERSION_FILE.write_text(previous_version_file)
 
-    wheels = sorted(distribution.glob("*.whl"))
+    wheels = sorted(distribution.glob(f"*-{interpreter}-*.whl"))
     if not wheels:
         sys.exit("no wheel was produced")
     wheel = wheels[-1]
