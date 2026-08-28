@@ -1,4 +1,4 @@
-"""Tests the base-billion number-theoretic transform multiplication."""
+"""Tests the number-theoretic transform multiplication."""
 
 from std import testing
 
@@ -175,6 +175,67 @@ def test_multiply_routes_large_operands_through_the_transform() raises:
     )
     testing.assert_equal(
         String(biguint_arithmetics.multiply(x, y)), String(expected)
+    )
+
+
+def test_the_prime_bound_is_the_one_that_binds() raises:
+    """Two limits guard the transform, and only one of them can ever fire.
+
+    A convolution coefficient sums at most `min(coeffs_a, coeffs_b)` products
+    of two coefficients, so it has to stay below `NTT_PRIME` or it wraps and
+    gives a wrong product rather than an error. That caps an operand at
+    `NTT_PRIME / (COEFFICIENT_BASE - 1)^2` coefficients. Separately,
+    `transform_length_for()` gives up past `MAX_TRANSFORM_LOG`.
+
+    The prime bound is roughly a hundred times tighter, so the transform-length
+    guard is unreachable through the dispatcher. That is worth pinning: a
+    change to the coefficient size or to the prime could invert the
+    relationship, and the guard that stops being first is the one that stops
+    being tested.
+    """
+    var largest_term = (biguint_ntt.COEFFICIENT_BASE - 1) * (
+        biguint_ntt.COEFFICIENT_BASE - 1
+    )
+    var max_coefficients = biguint_ntt.NTT_PRIME // largest_term
+    var max_words = Int(max_coefficients) // biguint_ntt.COEFFICIENTS_PER_WORD
+
+    # Either side of the bound, derived rather than written out.
+    testing.assert_true(
+        biguint_ntt.should_multiply_ntt(max_words, max_words),
+        "the transform should still be allowed at the prime bound",
+    )
+    testing.assert_false(
+        biguint_ntt.should_multiply_ntt(max_words + 1, max_words + 1),
+        "one word past the prime bound the transform must be refused",
+    )
+
+    # The smaller operand is what the bound is about, so a huge operand paired
+    # with a small one is still fine.
+    testing.assert_false(
+        biguint_ntt.should_multiply_ntt(max_words + 1, max_words + 1),
+        "both operands past the bound",
+    )
+
+    # The transform length is still comfortable there, and only gives up far
+    # beyond anything the prime bound would let through.
+    var at_the_bound = biguint_ntt.transform_length_for(max_words, max_words)
+    testing.assert_true(
+        at_the_bound[0] > 0,
+        "the transform length should not be the binding limit",
+    )
+    testing.assert_true(
+        at_the_bound[1] <= biguint_ntt.MAX_TRANSFORM_LOG,
+        "the log should be inside the cap",
+    )
+    testing.assert_true(
+        max_words * 100 < 1_500_000_000,
+        "the prime bound should be far tighter than the length cap",
+    )
+    var far_past = biguint_ntt.transform_length_for(
+        1_500_000_000, 1_500_000_000
+    )
+    testing.assert_equal(
+        far_past[0], 0, "the length cap should refuse at 1.5 billion words"
     )
 
 
