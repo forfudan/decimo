@@ -27,6 +27,22 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
 
 ### ⭐️ New in Unreleased
 
+1. **The Python package rounds in every mode.** `getcontext().rounding`
+   accepts `ROUND_HALF_EVEN`, `ROUND_HALF_UP`, `ROUND_HALF_DOWN`,
+   `ROUND_DOWN`, `ROUND_UP`, `ROUND_CEILING` and `ROUND_FLOOR`, and every
+   arithmetic operation, `quantize`, `round(x, n)` and `to_integral_value`
+   follow it exactly, checked against `decimal` digit for digit. `Context`
+   is a value until installed, as in `decimal`; `localcontext()` takes
+   keyword overrides; `BasicContext` and `ExtendedContext` exist. On the
+   Mojo side `add`, `subtract`, `multiply` and `true_divide` take a
+   `rounding_mode`. `ROUND_05UP` is refused.
+1. **Wheels for Linux x86_64 and macOS arm64, CPython 3.13 and 3.14.**
+   `pixi run -e py313 release` (or `py314`) builds one; the new
+   `release_python.yaml` workflow builds all four and uploads them to PyPI
+   through trusted publishing. Linux wheels go through `auditwheel` and are
+   tagged `manylinux_2_35`; macOS wheels are linked for macOS 14 and tagged
+   so, instead of for the build machine's version.
+
 1. **`BigInt` keeps small values inside the struct.** `WordList`, written for
    `BigUInt`, gains an inline-capacity parameter and moves to
    `decimo.wordlist`; `BigInt` uses `WordList[12]` under the name `Magnitude`.
