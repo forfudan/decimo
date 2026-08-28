@@ -265,10 +265,14 @@ comptime _SHARED_MATH_CACHE = _Global["decimo_math_cache", _make_math_cache]
 """One `MathCache` for the whole process.
 
 Mojo 1.0 rejects module-level `var`; `std.ffi._Global` is the supported way
-to hold process-wide state, if a private one (creation is locked, use is
-not). Nothing here runs on more than one thread, and the Python binding runs
-under the GIL, so the cache is not guarded. Each constant is stored at the
+to hold process-wide state, if a private one. Each constant is stored at the
 highest precision asked for so far and only ever grows.
+
+Not thread-safe. `_Global` locks creation only, and a cache upgrade rewrites
+a list-backed `BigDecimal` in place, so `ln`, `log` and `log10` must not run
+on two threads at once. The Python binding is safe: CPython holds the GIL
+across a call. A native program that wants those functions in parallel has
+to serialize them itself until the Mojo standard library offers a lock.
 
 Below about 1000 digits the constants come from the literal tables and the
 cache saves nothing; above that it halves the cost of every `ln()` after the
@@ -1232,27 +1236,35 @@ def isqrt_via_reciprocal_seed(
     # diverges, which `test_sqrt_via_reciprocal_iteration_matches_sqrt_exact`
     # catches. Accuracy beyond that is a performance parameter.
     var r_f64 = Float64(1.0) / math.sqrt(c_norm_f64)
-    # `c_norm` is in `[1, 100)`, so a correctly formed seed is in `(0.1, 1]`
-    # and the basin is at least `0.173`. Anything else means the seed code
-    # is wrong, and the right answer is a clamp, not a raise: `0.1` is inside
-    # the basin for every `c_norm` below 300, and the integer refinement then
-    # delivers the exact result, only more slowly. The old guard caught NaN
-    # and non-positive values but let a seed three times too large through.
-    if not (r_f64 >= 0.09 and r_f64 <= 1.1):
+    # Check the basin condition itself, `c_norm r^2 < 3`, rather than a band
+    # on `r`: the two are not the same test, and a seed of `0.5` sits inside
+    # `(0.1, 1]` while being outside the basin for every `c_norm` above 12.
+    # Requiring the residual near 1 leaves a margin, so a merely poor seed is
+    # replaced as well; a NaN fails every comparison and is replaced too.
+    #
+    # The replacement is a clamp, not a raise. `c_norm` is below 100, so
+    # `0.1` gives `c_norm r^2 <= 1` and is inside the basin, and the schedule
+    # below is told the seed is worth one digit instead of `_F64_SEED_DIGITS`
+    # so that the extra doublings are actually run. The result stays exact;
+    # only the speed drops.
+    var seed_residual = c_norm_f64 * r_f64 * r_f64
+    var seed_digits = _F64_SEED_DIGITS
+    if not (r_f64 > 0.0 and seed_residual > 0.5 and seed_residual < 1.5):
         r_f64 = 0.1
+        seed_digits = 1
 
     var r = BigDecimal(String(r_f64))
 
     # --- Precision doubling schedule ---
     # Halve down to what the seed is worth. A Newton step doubles the correct
-    # digits, so `n` steps reach `_F64_SEED_DIGITS * 2^n`; stopping the halving
+    # digits, so `n` steps reach `seed_digits * 2^n`; stopping the halving
     # higher than the seed leaves the top of the schedule short of its nominal
     # precision and forces the integer refinement below to pay for extra
     # full-size divisions. That is a cost, not a correctness question -- see
     # the note on the seed above.
     var prec_schedule = List[Int]()
     var p = working_digits
-    while p > _F64_SEED_DIGITS:
+    while p > seed_digits:
         prec_schedule.append(p)
         p = (p + 1) // 2
 
@@ -1604,26 +1616,31 @@ def sqrt_via_reciprocal_iteration(
     # operator is accurate to only about ten digits for some inputs, which the
     # doubling schedule then carries all the way to the top.
     var r_f64 = Float64(1.0) / math.sqrt(x_norm_f64)  # 1/sqrt(x_norm)
-    # Same clamp as in `isqrt_via_reciprocal_seed()`: `x_norm` is in
-    # `[1, 100)`, a good seed is in `(0.1, 1]`, and `0.1` is inside the basin
-    # for every `x_norm` here.
-    if not (r_f64 >= 0.09 and r_f64 <= 1.1):
+    # Same guard as in `isqrt_via_reciprocal_seed()`: the seed has to satisfy
+    # the basin condition `x_norm r^2 < 3`, and a residual near 1 leaves a
+    # margin. A clamped seed is worth one digit, and the schedule below is
+    # told so, which is what keeps the result correct rather than merely
+    # convergent.
+    var seed_residual = x_norm_f64 * r_f64 * r_f64
+    var seed_digits = _F64_SEED_DIGITS
+    if not (r_f64 > 0.0 and seed_residual > 0.5 and seed_residual < 1.5):
         r_f64 = 0.1
+        seed_digits = 1
 
     var r = BigDecimal(String(r_f64))
 
     # --- Precision doubling schedule ---
     # Build the list from `working_precision` down to what the seed is worth,
     # then iterate in reverse. Halving `n` times from `working_precision` lands
-    # at or below `_F64_SEED_DIGITS`, so `working_precision <=
-    # _F64_SEED_DIGITS * 2^n` and the `n` doublings below reach the top. A
-    # higher stopping point silently returns fewer correct digits than asked
-    # for: with the halving stopped at 20 the seed was credited with 20 digits
-    # it does not have, and `sqrt_via_reciprocal_iteration(10005, 5009)` came back correct to
-    # only 4244 digits.
+    # at or below `seed_digits`, so `working_precision <= seed_digits * 2^n`
+    # and the `n` doublings below reach the top. A higher stopping point
+    # silently returns fewer correct digits than asked for: with the halving
+    # stopped at 20 the seed was credited with 20 digits it does not have, and
+    # `sqrt_via_reciprocal_iteration(10005, 5009)` came back correct to only
+    # 4244 digits.
     var prec_schedule = List[Int]()
     var p = working_precision
-    while p > _F64_SEED_DIGITS:
+    while p > seed_digits:
         prec_schedule.append(p)
         p = (p + 1) // 2
 

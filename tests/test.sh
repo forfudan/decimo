@@ -128,7 +128,8 @@ ensure_decimo_package() {
 # drops from about 8 s to about 1 s. It does nothing for the first run after an
 # edit (a warm `mojo build` costs the same as `mojo run`), and nothing after a
 # `src` change, which rebuilds the package and so every binary.
-# `DECIMO_TEST_NO_CACHE=1` builds and runs without keeping anything.
+# `DECIMO_TEST_NO_CACHE=1` builds under a name of its own and removes it
+# again, so the run neither trusts nor leaves a cached binary.
 TEST_BIN_DIR="temp/tests"
 
 test_binary_path() {
@@ -144,10 +145,29 @@ run_one_mojo_file() {
     local f="$1"
     local bin
     bin=$(test_binary_path "$f")
-    if [[ -z "${DECIMO_TEST_NO_CACHE:-}" ]] && test_binary_is_fresh "$bin" "$f"; then
-        "$bin"
+    if [[ -z "${DECIMO_TEST_NO_CACHE:-}" ]]; then
+        if test_binary_is_fresh "$bin" "$f"; then
+            "$bin"
+            return $?
+        fi
+        build_and_run_mojo_file "$f" "$bin"
         return $?
     fi
+    # `DECIMO_TEST_NO_CACHE`: build under a name of its own, so the run
+    # neither trusts nor replaces a cached binary, and take it away again
+    # whether the test passed or failed.
+    bin="$bin.nocache.$$"
+    build_and_run_mojo_file "$f" "$bin"
+    local nocache_rc=$?
+    # `mojo build --debug-level=line-tables` writes a `.dSYM` bundle next to
+    # the binary on macOS; that belongs to the build too.
+    rm -rf "$bin" "$bin.dSYM"
+    return $nocache_rc
+}
+
+build_and_run_mojo_file() {
+    local f="$1"
+    local bin="$2"
     mkdir -p "$TEST_BIN_DIR"
     # Retry once on transient Python init crash (libpython sporadic load failure).
     local attempt=1
