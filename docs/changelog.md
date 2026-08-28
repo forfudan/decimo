@@ -36,6 +36,19 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
    keyword overrides; `BasicContext` and `ExtendedContext` exist. On the
    Mojo side `add`, `subtract`, `multiply`, `true_divide` and the three
    in-place forms take a `rounding_mode`. `ROUND_05UP` is refused.
+1. **The trigonometric reduction budget is measured, not guessed.** An
+   argument close to a multiple of `pi/2` loses digits to the subtraction
+   there, by as much as it is close, and no constant can cover that: `sin` of
+   pi taken to 250 digits is `1.456485669234603486104543266E-250`, and the
+   library returned `3.904494177682746405918715189E-127` -- a number with no
+   digit of the answer in it. `reduction_budget()` now measures the distance
+   to the nearest multiple, at a narrow width first since almost no argument
+   is near one, and widens when the measurement comes back at its own noise
+   floor. The measurement is the reduction the function was going to do
+   anyway -- what it cost is read off the result rather than probed for
+   beforehand -- so an argument that is nowhere near a multiple pays nothing:
+   `sin(1.5)` is 18.7 us, where a separate probe made it 20.1. The same fixes
+   `tan` and `cos` beside a pole.
 1. **`sin`, `cos` and `tan` were wrong for a large argument, silently.** The
    reduction `x mod 2*pi` cancels everything above the remainder, so an
    argument of `10^k` spends `k` digits of pi before the remainder starts.
