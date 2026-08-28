@@ -3970,13 +3970,30 @@ def floor_divide_slices_two_by_one(
         var b_slice = BigUInt.from_slice(b, bounds_b)
         return floor_divide_modulo_schoolbook(a_slice, b_slice, remainder)
 
-    elif (bounds_a[0] + n + n // 2 >= bounds_a[1]) or a.is_zero_in_bounds(
-        bounds=(bounds_a[0] + n + n // 2, bounds_a[1])
-    ):
-        # If a3 is empty or zero
-        # We just need to use three-by-two division once: a2a1a0 // b1b0
-        # Note that the condition must be short-circuited to avoid slicing
-        # an empty BigUInt.
+    elif bounds_a[0] + n + n // 2 > bounds_a[1]:
+        # Fewer than three parts, so `a3` is absent and `a2` is short or
+        # absent too: `a < b * B^(n/2)`, and one three-by-two division at the
+        # half size is the whole job.
+        #
+        # This used to take any dividend of three parts or fewer, and any
+        # dividend whose fourth part was present but zero. Both are wrong for
+        # the same reason. `two_by_one` is a `2n`-by-`n` division whose
+        # quotient can be `n` words; `three_by_two(n/2)` produces `n/2`. A
+        # dividend of exactly three parts, or of four with a zero top, is
+        # still below `b * B^n` but not below `b * B^(n/2)`, so its quotient
+        # needs both halves -- `q1` from `a3a2a1` with `a3 = 0`, which the
+        # general branch handles, and `q0` from the remainder. Sent to a
+        # single `three_by_two` instead, the inner quotient came back a word
+        # too wide, the two-step correction could not bring it down, and
+        # `r -= d` raised.
+        #
+        # Every division of more than one block reaches this: the second
+        # block is the previous remainder, below `b`, shifted up by `n` and
+        # joined to the next block, which is four parts wide with a zero top
+        # more often than not. All nines, 48 words over a 32-word divisor
+        # whose top word is `BASE_HALF`, did it at
+        # `BURNIKEL_ZIEGLER_BLOCK_WORDS = 16`; 33 and 64 over 32 were fine,
+        # which is why nothing had hit it.
         return floor_divide_slices_three_by_two(
             a, b, bounds_a, bounds_b, n // 2, cut_off, remainder
         )

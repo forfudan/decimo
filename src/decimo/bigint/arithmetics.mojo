@@ -2034,7 +2034,14 @@ def _divmod_burnikel_ziegler(
         t = 2
 
     if len_norm_a == t * n:
-        if len_norm_a > 0 and (norm_a[len_norm_a - 1] & 0x80000000) != 0:
+        # The top limb must be below half the base for the first quotient
+        # block to fit in `n` limbs; if it is not, the dividend gets one more
+        # block. The mask was `0x80000000`, bit 31, from the 32-bit limbs this
+        # was written for. At 64 bits that is a bit in the middle of the limb,
+        # so the test passed for values it should have caught -- a top limb of
+        # exactly `2^63` has bit 63 set and bit 31 clear -- and the padding it
+        # guards did not happen.
+        if len_norm_a > 0 and (norm_a[len_norm_a - 1] >> 63) != 0:
             t += 1
 
     # Pad norm_a to exactly t * n words.
@@ -2135,7 +2142,12 @@ def _bz_two_by_one_slices(
 
     # If a3 (top quarter, words n+half..2n) is zero or empty, the dividend
     # fits in 3*half words — use a single 3-by-2 division directly.
-    if len(a) <= n + half or _is_zero_slice(a[n + half :]):
+    # Strictly fewer than three parts only. Three parts, or four with a zero
+    # top, are below `b * B^n` but not below `b * B^half`, and need both
+    # quotient halves from the general path below -- see the same branch in
+    # `BigUInt`'s copy. There the shape raised; here it returned a wrong
+    # quotient.
+    if len(a) < n + half:
         return _bz_three_by_two_slices(a, b, half, cutoff, remainder)
 
     # First 3-by-2: divide a[half:] (= a3a2a1, 3*half words)
