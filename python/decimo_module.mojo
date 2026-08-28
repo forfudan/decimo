@@ -1590,16 +1590,37 @@ def _binary_slot[
         return raise_python_exception(e)
 
 
+def _sign_of_zero_sum(sign1: Bool, sign2: Bool, mode: RoundingMode) -> Bool:
+    """The sign `decimal` gives a sum that came out zero.
+
+    Two negative operands give -0. Operands of opposite sign that cancel give
+    +0, except under ROUND_FLOOR where they give -0. This is the decimal
+    specification's rule and it is only here so that a program printing
+    `-0.0` under `decimal` prints it here too; the Mojo library returns +0
+    for a cancellation and is not made to carry the quirk.
+    """
+    if sign1 and sign2:
+        return True
+    return sign1 != sign2 and mode == RoundingMode.ROUND_FLOOR
+
+
 def _do_add(
     x: BigDecimal, y: BigDecimal, digits: Int, mode: RoundingMode
 ) raises -> BigDecimal:
-    return x.add(y, digits, mode)
+    var result = x.add(y, digits, mode)
+    if result.coefficient.is_zero():
+        result.sign = _sign_of_zero_sum(x.sign, y.sign, mode)
+    return result^
 
 
 def _do_subtract(
     x: BigDecimal, y: BigDecimal, digits: Int, mode: RoundingMode
 ) raises -> BigDecimal:
-    return x.subtract(y, digits, mode)
+    var result = x.subtract(y, digits, mode)
+    if result.coefficient.is_zero():
+        # x - y is x + (-y).
+        result.sign = _sign_of_zero_sum(x.sign, not y.sign, mode)
+    return result^
 
 
 def _do_multiply(

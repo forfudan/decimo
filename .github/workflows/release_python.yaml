@@ -14,6 +14,14 @@ name: Build Python wheels
 # See https://docs.pypi.org/trusted-publishers/.
 
 on:
+  # A pull request that touches the package builds the wheels (no upload),
+  # so the Linux and macOS builds are checked before anything reaches main.
+  pull_request:
+    paths:
+      - "python/**"
+      - "pixi.toml"
+      - "pixi.lock"
+      - ".github/workflows/release_python.yaml"
   workflow_dispatch:
     inputs:
       version:
@@ -61,7 +69,7 @@ jobs:
       - name: Build, test and package
         run: |
           version_flag=""
-          if [[ -n "${{ inputs.version }}" ]]; then
+          if [[ -n "${{ inputs.version || '' }}" ]]; then
             version_flag="--version ${{ inputs.version }}"
           fi
           for attempt in 1 2 3; do
@@ -94,7 +102,7 @@ jobs:
 
   publish:
     name: Upload to ${{ inputs.target }}
-    if: ${{ inputs.target != 'none' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.target != 'none' }}
     needs: build
     runs-on: ubuntu-latest
     environment: ${{ inputs.target }}

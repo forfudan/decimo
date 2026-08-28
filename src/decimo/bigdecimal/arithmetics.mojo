@@ -37,22 +37,6 @@ from decimo.rounding_mode import RoundingMode
 # ===----------------------------------------------------------------------=== #
 
 
-def _sign_of_zero_sum(
-    sign1: Bool, sign2: Bool, rounding_mode: RoundingMode
-) -> Bool:
-    """The sign of a sum that came out zero, by the decimal specification.
-
-    Two negative operands give -0. Operands of opposite sign that cancel give
-    +0, except under ROUND_FLOOR where they give -0. This is what `decimal`
-    does, and a program that prints `-0.0` there prints it here. Only the
-    rounded (`precision > 0`) forms of `add` and `subtract` apply it; the
-    exact forms keep returning +0 for a cancellation.
-    """
-    if sign1 and sign2:
-        return True
-    return sign1 != sign2 and rounding_mode == RoundingMode.ROUND_FLOOR
-
-
 def add(
     x1: BigDecimal,
     x2: BigDecimal,
@@ -94,8 +78,6 @@ def add(
             remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
-        if result.coefficient.is_zero():
-            result.sign = _sign_of_zero_sum(x1.sign, x2.sign, rounding_mode)
         return result^
 
     # Hot path: same scale and same sign → straight coefficient add.
@@ -235,9 +217,6 @@ def subtract(
             remove_extra_digit_due_to_rounding=True,
             fill_zeros_to_precision=False,
         )
-        if result.coefficient.is_zero():
-            # x1 - x2 is x1 + (-x2).
-            result.sign = _sign_of_zero_sum(x1.sign, not x2.sign, rounding_mode)
         return result^
 
     # Hot path: same scale → handle without alignment.
