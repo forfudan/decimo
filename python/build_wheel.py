@@ -17,6 +17,15 @@ environment on the machine that built it. A wheel with that path in it works
 only here. So the libraries are copied in next to the extension and every
 `@rpath` is rewritten to `@loader_path`, which means "the directory I am in".
 Together they come to about 1.6 MB.
+
+On Linux that job belongs to `auditwheel repair`: it copies the libraries
+in, rewrites the rpath with patchelf, and retags the wheel `manylinux` so
+PyPI accepts it. The environment's `lib` directory is put on
+`LD_LIBRARY_PATH` so auditwheel can find them.
+
+Run it in one of the per-interpreter environments (`pixi run -e py313
+release`, `pixi run -e py314 release`): the extension is tagged for the
+interpreter that built it.
 """
 
 import argparse
@@ -31,7 +40,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 PACKAGE = HERE / "src" / "decimo"
 REPOSITORY = HERE.parent
-ENVIRONMENT_LIBRARY = REPOSITORY / ".pixi" / "envs" / "default" / "lib"
+# The environment this script runs in, which is where `mojo` put the runtime.
+ENVIRONMENT_LIBRARY = Path(sys.prefix) / "lib"
 
 
 def run(command, **kwargs):
@@ -90,11 +100,11 @@ def vendor_runtime():
             "(the `release` task normally does that for you)."
         )
     if sys.platform != "darwin":
-        sys.exit(
-            "Vendoring is written for macOS (otool / install_name_tool).\n"
-            "On Linux the same job is done by `auditwheel repair`, which "
-            "this script does not call yet."
-        )
+        # Linux: nothing to do before the build; `repair_linux_wheel()`
+        # runs auditwheel on the result.
+        for stale in PACKAGE.glob("*.so.*"):
+            stale.unlink()
+        return []
 
     # Start from a clean package directory. Leaving last run's libraries in
     # place would skip them here and, worse, leave them unsigned after the
@@ -124,6 +134,26 @@ def vendor_runtime():
     total = sum(path.stat().st_size for path in copied)
     print(f"  vendored {len(copied)} libraries, {total / 1e6:.2f} MB")
     return copied
+
+
+def repair_linux_wheel(wheel, distribution):
+    """Make a Linux wheel self-contained and manylinux-tagged."""
+    environment = dict(os.environ)
+    environment["LD_LIBRARY_PATH"] = ":".join(
+        part
+        for part in [str(ENVIRONMENT_LIBRARY), environment.get("LD_LIBRARY_PATH")]
+        if part
+    )
+    repaired = distribution / "repaired"
+    run(
+        ["auditwheel", "repair", "--wheel-dir", str(repaired), str(wheel)],
+        env=environment,
+    )
+    wheel.unlink()
+    for path in repaired.glob("*.whl"):
+        shutil.move(str(path), distribution / path.name)
+    shutil.rmtree(repaired)
+    return sorted(distribution.glob("*.whl"))[-1]
 
 
 VERSION_FILE = PACKAGE / "_version.py"
@@ -187,6 +217,9 @@ def main():
     if not wheels:
         sys.exit("no wheel was produced")
     wheel = wheels[-1]
+    if sys.platform != "darwin":
+        print("Repairing the wheel for manylinux")
+        wheel = repair_linux_wheel(wheel, distribution)
     print(f"\n  {wheel}  ({wheel.stat().st_size / 1e6:.2f} MB)")
 
     print("\nChecking the metadata")

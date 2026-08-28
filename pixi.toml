@@ -121,16 +121,16 @@ testpy = "pixi run buildpy && pixi run python python/tests/test_decimo.py"
 tpy = "clear && pixi run testpy"
 # Build a self-contained PyPI wheel: compile the extension, copy the Mojo
 # runtime libraries in beside it, stamp a version, build, check.
-#   pixi run release              build only, leaves the wheel in python/dist/
-#   pixi run release --testpypi   upload to TestPyPI
-#   pixi run release --pypi       upload to PyPI
-#   pixi run release --version 0.2.0
+#   pixi run -e py314 release              build only, wheel in python/dist/
+#   pixi run -e py314 release --testpypi   upload to TestPyPI
+#   pixi run -e py314 release --pypi       upload to PyPI
+#   pixi run -e py314 release --version 0.2.0
 # Without --version the wheel is stamped 0.1.0.devYYYYMMDDHHMMSS in UTC, so
 # every development build has a version PyPI has not seen before.
-release = """pixi run buildpy \
-&& pixi run -e publish python python/build_wheel.py"""
+# `release` itself is defined on the `publish` feature, so it runs inside
+# an environment that has the build tools: `pixi run -e py314 release`.
 # The old name, kept because muscle memory is a real thing.
-wheel = "pixi run release"
+wheel = "pixi run -e py314 release"
 
 # All task
 all = """pixi run format \
@@ -163,6 +163,38 @@ gmpy2 = ">=2.2"
 python-build = ">=0.2.0"
 twine = ">=6.2.0"
 
+# On Linux the wheel is made self-contained by `auditwheel repair`, which
+# copies the Mojo runtime libraries in and rewrites the rpath with patchelf;
+# on macOS `build_wheel.py` does the same job with install_name_tool.
+[feature.publish.target.linux-64.dependencies]
+auditwheel = ">=6.0"
+patchelf = ">=0.17"
+
+# One environment per CPython the wheels are built for. The extension is
+# tagged for the interpreter that built it, so each version is its own build:
+#   pixi run -e py313 release --version 0.2.0
+#   pixi run -e py314 release --version 0.2.0
+# `release_python.yaml` runs exactly that on Linux x86_64 and macOS arm64.
+[feature.py313.dependencies]
+python = "3.13.*"
+
+[feature.py314.dependencies]
+python = "3.14.*"
+
+# The tasks call `mojo` and `python` directly rather than through `pixi run`,
+# which would step back into the default environment and its interpreter.
+# `MACOSX_DEPLOYMENT_TARGET` makes the extension load on macOS 14 and later
+# rather than only on the version of the machine that built it; the wheel is
+# tagged to match (see `hatch_build.py`). Linux ignores it.
+[feature.publish.tasks.release]
+cmd = """mojo precompile src/decimo -o tests/decimo.mojoc \
+&& mojo build python/decimo_module.mojo --emit shared-lib -I tests -o python/src/decimo/_decimo.so \
+&& python python/tests/test_decimo.py \
+&& python python/build_wheel.py"""
+env = { MACOSX_DEPLOYMENT_TARGET = "14.0" }
+
 [environments]
 benchdoc = ["benchdoc"]
 publish = ["publish"]
+py313 = ["publish", "py313"]
+py314 = ["publish", "py314"]
