@@ -354,7 +354,7 @@ struct BigInt(
         return Self(raw_words=words^, sign=sign)
 
     @staticmethod
-    def from_string(value: String) raises -> Self:
+    def from_string(value: StringSlice) raises -> Self:
         """Creates a BigInt from a string representation.
         The string is normalized with `decimo.str.parse_numeric_string()`.
 

@@ -723,6 +723,19 @@ def bigdecimal_py_init(
         self = argument.unchecked_downcast_value_ptr[BigDecimal]()[].copy()
         return
 
+    # A `str` is parsed out of CPython's own buffer. `String(argument)` would
+    # allocate a Mojo string and copy the text into it first, which for
+    # `Decimal("10000.00")` was a third of the call.
+    var borrowed = cpython.PyUnicode_AsUTF8AndSize(argument._obj_ptr)
+    if borrowed:
+        try:
+            self = BigDecimal(borrowed.value())
+            return
+        except:
+            raise Error(String("could not parse as a decimal: ", argument))
+    # Not a string. Whatever it is, its `__str__` may still be a number.
+    cpython.PyErr_Clear()
+
     # The Mojo error carries a whole traceback with terminal colours in it,
     # which is not what a Python programmer should see from a constructor.
     try:

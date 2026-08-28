@@ -850,7 +850,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             return result^
 
     @staticmethod
-    def from_string(value: String, ignore_sign: Bool = False) raises -> BigUInt:
+    def from_string(
+        value: StringSlice, ignore_sign: Bool = False
+    ) raises -> BigUInt:
         """Initializes a BigUInt from a string representation.
         The string is normalized with `decimo.str.parse_numeric_string()`.
 

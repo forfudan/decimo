@@ -203,7 +203,7 @@ trait Parsable:
     """
 
     @staticmethod
-    def from_string(value: String) raises -> Self:
+    def from_string(value: StringSlice) raises -> Self:
         """Returns the value the decimal literal `value` denotes.
 
         Args:
