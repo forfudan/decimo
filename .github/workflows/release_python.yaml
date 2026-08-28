@@ -129,17 +129,27 @@ jobs:
             sleep 5
           done
 
-      - name: Install the wheel into a clean interpreter and import it
+      # From outside the repository, so the wheel is what is being tested and
+      # not the source tree next to it.
+      - name: Install the wheel into a clean interpreter and use it
         run: |
           pixi run -e ${{ matrix.environment }} python -m venv /tmp/probe
           /tmp/probe/bin/pip install --quiet python/dist/*.whl
           cd /tmp && /tmp/probe/bin/python -c "
+          import decimo
           from decimo import Decimal, getcontext, ROUND_DOWN
           getcontext().prec = 50
           print(Decimal(1) / Decimal(7))
           getcontext().rounding = ROUND_DOWN
           assert str(Decimal('2.5').quantize(Decimal('1'))) == '2'
-          import decimo; print('decimo', decimo.__version__)
+          getcontext().prec = 3
+          assert str(Decimal('1').next_minus()) == '0.999'
+          assert str(Decimal('1100').logical_and(Decimal('1010'))) == '0'
+          assert str(Decimal('2.5').shift(1)) == '25.0'
+          assert str(Decimal('12.0').max(Decimal('12'))) == '12'
+          assert Decimal('1E-5').number_class() == '+Normal'
+          assert decimo.__version__ == '${{ needs.version.outputs.version }}'
+          print('decimo', decimo.__version__)
           "
 
       - uses: actions/upload-artifact@v4
