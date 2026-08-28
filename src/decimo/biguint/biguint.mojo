@@ -77,14 +77,14 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     BigUInt uses a dynamic structure in memory, which contains:
     An pointer to an array of Self.Word words for the coefficient on the heap,
     which can be of arbitrary length stored in little-endian order.
-    Each Self.Word word represents digits ranging from 0 to 10^9 - 1.
+    Each Self.Word word represents digits ranging from 0 to `Self.BASE_MAX`.
 
     The value of the BigUInt is calculated as follows:
 
-    x = x[0] * 10^0 + x[1] * 10^9 + x[2] * 10^18 + ... x[n] * 10^(9n)
+    x = x[0] * BASE^0 + x[1] * BASE^1 + x[2] * BASE^2 + ... x[n] * BASE^n
 
     You can think of the BigUInt as a list of base-10^18 digits, where each
-    digit is ranging from 0 to 999_999_999. Depending on the context, the
+    digit is ranging from 0 to `Self.BASE_MAX`. Depending on the context, the
     following terms are used interchangeably:
     (1) words,
     (2) limbs,
@@ -262,7 +262,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
         Args:
             uninitialized_capacity: The capacity of the BigUInt.
-                This is the number of UInt32 words that can be stored in the
+                This is the number of words that can be stored in the
                 BigUInt without reallocating memory.
 
         Notes:
@@ -333,19 +333,19 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         self.words.resize(unsafe_uninit_length=unsafe_uninit_length)
 
     def __init__(out self, var words: List[Self.Word]) raises:
-        """Initializes a BigUInt from a list of UInt32 words.
+        """Initializes a BigUInt from a list of words.
         The BigUInt constructed in this way is guaranteed to be valid.
         If the list is empty, the BigUInt is initialized with value 0.
         If there are leading zero words, they are removed.
-        If there are words greater than `999_999_999`, there is an error.
+        If there are words greater than `Self.BASE_MAX`, there is an error.
 
         Args:
-            words: A list of UInt32 words representing the coefficient.
-                Each UInt32 word represents digits ranging from 0 to 10^9 - 1.
+            words: A list of words representing the coefficient.
+                Each word represents digits ranging from 0 to `Self.BASE_MAX`.
                 The words are stored in little-endian order.
 
         Raises:
-            ConversionError: If any word exceeds 999_999_999.
+            ConversionError: If any word exceeds `Self.BASE_MAX`.
 
         Notes:
 
@@ -356,7 +356,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         except e:
             raise ConversionError(
                 message="See the above exception.",
-                function="BigUInt.__init__(var words: List[UInt32])",
+                function="BigUInt.__init__(var words: List[Self.Word])",
                 previous_error=e^,
             )
 
@@ -364,7 +364,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         """Initializes a BigUInt from a list of raw words.
 
         Args:
-            raw_words: A list of UInt32 words representing the coefficient.
+            raw_words: A list of words representing the coefficient.
                 The words are stored in little-endian order.
 
         Notes:
@@ -372,7 +372,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         **UNSAFE**
 
         This way of initialization does not check whether the words are smaller
-        than `999_999_999`, nor does it remove leading empty words.
+        than `Self.BASE`, nor does it remove leading empty words. A value built
+        this way can therefore violate the representation invariant; call
+        `remove_leading_empty_words()` before handing it out.
 
         However, it always initializes a BigUInt and makes sure that the words
         list is not empty. If you want to initialize a BigUInt with an empty
@@ -431,8 +433,8 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     # ===------------------------------------------------------------------=== #
     # Constructing methods that are not dunders
     #
-    # from_list(var words: List[UInt32]) -> Self
-    # from_words(*words: UInt32) -> Self
+    # from_list(var words: List[Self.Word]) -> Self
+    # from_words(*words: Self.Word) -> Self
     # from_integral_scalar[dtype: DType](value: Scalar[dtype]) -> Self
     # from_unsigned_integral_scalar[dtype: DType](value: Scalar[dtype]) -> Self
     # from_absolute_integral_scalar[dtype: DType](value: Scalar[dtype]) -> Self
@@ -441,18 +443,18 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
     @staticmethod
     def from_list(var words: List[Self.Word]) raises -> Self:
-        """Initializes a BigUInt from a list of Self.Word words safely.
+        """Initializes a BigUInt from a list of words safely.
         If the list is empty, the BigUInt is initialized with value 0.
         If there are leading zero words, they are removed.
-        The words are validated to ensure they are smaller than `999_999_999`.
+        The words are validated to ensure they are smaller than `Self.BASE`.
 
         Args:
-            words: A list of Self.Word words representing the coefficient.
-                Each Self.Word word represents digits ranging from 0 to 10^9 - 1.
+            words: A list of words representing the coefficient.
+                Each word represents digits ranging from 0 to `Self.BASE_MAX`.
                 The words are stored in little-endian order.
 
         Raises:
-            OverflowError: If any word exceeds 999_999_999.
+            OverflowError: If any word exceeds `Self.BASE_MAX`.
 
         Returns:
             The BigUInt representation of the list of Self.Word words.
@@ -480,14 +482,14 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
     @staticmethod
     def from_list_unsafe(var words: List[Self.Word]) -> Self:
-        """Initializes a BigUInt from a list of Self.Word words without checks.
+        """Initializes a BigUInt from a list of words without checks.
         If the list is empty, the BigUInt is initialized with value 0.
         If there are leading empty words, they are removed.
-        The words are not validated to ensure they are smaller than a billion.
+        The words are not validated to be smaller than `Self.BASE`.
 
         Args:
-            words: A list of Self.Word words representing the coefficient.
-                Each Self.Word word represents digits ranging from 0 to 10^9 - 1.
+            words: A list of words representing the coefficient.
+                Each word represents digits ranging from 0 to `Self.BASE_MAX`.
                 The words are stored in little-endian order.
 
         Returns:
@@ -502,21 +504,23 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         """Initializes a BigUInt from raw words safely.
 
         Args:
-            words: The Self.Word words representing the coefficient.
-                Each Self.Word word represents digits ranging from 0 to 10^9 - 1.
+            words: The words representing the coefficient.
+                Each word represents digits ranging from 0 to `Self.BASE_MAX`.
                 The words are stored in little-endian order.
 
         Raises:
-            OverflowError: If any word exceeds 999_999_999.
+            OverflowError: If any word exceeds `Self.BASE_MAX`.
 
         Notes:
 
-        This method validates whether the words are smaller than `999_999_999`.
+        This method validates whether the words are smaller than `Self.BASE`,
+        and removes leading zero words, as `from_list()` does.
 
         Example:
 
         ```console
-        BigUInt.from_words(123456789, 987654321) # 987654321_123456789
+        BigUInt.from_words(123456789, 987654321)
+        # 987654321000000000123456789
         ```
         End of examples.
 
@@ -541,7 +545,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             else:
                 list_of_words.append(word)
 
-        return Self(raw_words=list_of_words^)
+        var result = Self(raw_words=list_of_words^)
+        result.remove_leading_empty_words()
+        return result^
 
     @staticmethod
     def from_slice(value: Self, bounds: Tuple[Int, Int]) -> Self:
