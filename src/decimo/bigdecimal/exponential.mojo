@@ -673,32 +673,49 @@ def integer_root(
     # Use exponent to get log10(x), then compute 10^(log10(x)/n)
     var x_exp = abs_x.adjusted()  # floor(log10(x))
 
-    # Extract leading digits for a more precise Float64 approximation
-    var top_word = Float64(
-        abs_x.coefficient.words[len(abs_x.coefficient.words) - 1]
-    )
-    var digits_in_top = 0
-    var temp_val = abs_x.coefficient.words[len(abs_x.coefficient.words) - 1]
+    # The seed wants the leading digits, and `Float64` holds about sixteen of
+    # them. Taking the top two words as one 128-bit integer covers a word of
+    # nine digits and one of eighteen alike, the same shape the square-root
+    # seeds use. This used to add the second word divided by `1e9`, an offset
+    # that only ever described a nine-digit word.
+    ref abs_x_words = abs_x.coefficient.words
+    var abs_x_n = len(abs_x_words)
+    var top = UInt128(abs_x_words[abs_x_n - 1])
+    if abs_x_n > 1:
+        top = top * UInt128(BigUInt.BASE) + UInt128(abs_x_words[abs_x_n - 2])
+
+    var digits_in_top: Int = 0
+    var temp_val = top
     while temp_val > 0:
         temp_val //= 10
         digits_in_top += 1
     if digits_in_top == 0:
         digits_in_top = 1
 
-    # Normalize: get a value in [1, 10) * 10^x_exp
-    var mantissa = top_word / Float64(10.0) ** Float64(digits_in_top - 1)
-    if len(abs_x.coefficient.words) > 1:
-        mantissa += Float64(
-            abs_x.coefficient.words[len(abs_x.coefficient.words) - 2]
-        ) / (Float64(10.0) ** Float64(digits_in_top - 1) * 1e9)
+    # `top` scaled into `[1, 10)`.
+    var mantissa = Float64(top) / Float64(10.0) ** Float64(digits_in_top - 1)
 
-    var x_f64 = mantissa * Float64(10.0) ** Float64(x_exp)
-    var guess_f64 = x_f64 ** (1.0 / Float64(n_int))
+    # `x = mantissa * 10^x_exp`, so `x^(1/n) = mantissa^(1/n) * 10^(x_exp/n)`.
+    # The exponent is split into whole decades and a fraction so that every
+    # `Float64` here stays inside `[1, 10)`. Forming `x` itself first, which
+    # is what this did, overflows to infinity above 308 digits: the seed was
+    # then infinite, Newton cannot walk back from that in the handful of steps
+    # it runs, and the cube root of `10^330` came out as `3.1E+123` where the
+    # answer is `1E+110`. Anything with more than about 310 digits was wrong.
+    var exponent_decades = x_exp // n_int
+    var exponent_fraction = Float64(x_exp - exponent_decades * n_int) / Float64(
+        n_int
+    )
+    var guess_f64 = mantissa ** (1.0 / Float64(n_int)) * Float64(10.0) ** (
+        exponent_fraction
+    )
     # Clamp to avoid degenerate values
     if guess_f64 <= 0.0 or guess_f64 != guess_f64:  # NaN check
         guess_f64 = 1.0
 
     var r = BigDecimal(String(guess_f64))
+    # The whole decades, applied to the exponent rather than through `Float64`.
+    r.scale -= exponent_decades
 
     # BigDecimal constants
     var n_bd = BigDecimal.from_integral_scalar(n_int)

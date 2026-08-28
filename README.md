@@ -175,59 +175,6 @@ brew update && brew upgrade decimo
 
 ## Quick start
 
-### CLI quick start
-
-For an interactive session, just type `decimo`:
-
-```sh
-$ decimo
-Decimo — an arbitrary-precision calculator 🔥
-Type ? for help, : for settings, :q to quit.
-Precision: 50. Rounding: ROUND_HALF_EVEN.
-decimo> x = sqrt(2)
-1.4142135623730950488016887242096980785696718753769
-decimo> x ^ 2
-2
-decimo> ans + 1
-3
-decimo> :100
-decimo> pi
-3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117068
-decimo> sqrt(e) / ln(10) + sin(-1.23) :200 e he delimiter _
--226.458_251_870_114_348_807_514_569_584_297_293_353_150_959_525_480_515_507_901_779_719_167_225_208_528_825_475_488_261_072_148_336_432_171_617_635_953_314_758_797_226_777_458_915_435_649_950_836_584_843_137_886_028_274_720_793_979_517_570_004_978_334_405_953_342_64E-3
-decimo> :q
-```
-
-The REPL keeps the last result in `ans`, lets you define variables
-(`name = expr`), and exposes settings via `:`-prefixed commands (e.g. `:100` for
-precision, `:s` for scientific, `:d` for ROUND_DOWN). Input is case-insensitive.
-Quit with `:q`, `exit`, or Ctrl-D.
-
-As an innovative feature, Decimo supports multiple settings in a single line.
-They can either be global (persist across calculations) or local (apply only to
-the current expression). In the example above, `:200 e he delimiter _` means
-"evaluate the expression with precision 200 (`200`), scientific notation with
-engineering exponent (`e`), round half to even (`he`), and use `_` as the digit
-delimiter in the output (`delimiter _`)". The settings apply only to the current
-expression and do not affect subsequent calculations.
-
-For one-shot evaluation, pass an expression on the command line, pipe it via
-stdin, or read from a file:
-
-```bash
-$ decimo "sqrt(2)" -P 30
-1.41421356237309504880168872421
-
-$ echo "1/3" | decimo -P 50
-0.33333333333333333333333333333333333333333333333333
-
-$ decimo -F expressions.dm -P 80
-```
-
-Useful flags: `-P N` (precision), `-R MODE` (rounding), `-S` / `-E` (scientific
-/ engineering), `--pad`, `--delimiter`, `--completions {bash,zsh,fish}`. Run
-`decimo --help` for the full list.
-
 ### Library quick start
 
 You can start using Decimo by importing the `decimo` module. An easy way to do
@@ -471,6 +418,61 @@ def main() raises:
 ```
 
 </details>
+
+---
+
+### CLI quick start
+
+For an interactive session, just type `decimo`:
+
+```sh
+$ decimo
+Decimo — an arbitrary-precision calculator 🔥
+Type ? for help, : for settings, :q to quit.
+Precision: 50. Rounding: ROUND_HALF_EVEN.
+decimo> x = sqrt(2)
+1.4142135623730950488016887242096980785696718753769
+decimo> x ^ 2
+2
+decimo> ans + 1
+3
+decimo> :100
+decimo> pi
+3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117068
+decimo> sqrt(e) / ln(10) + sin(-1.23) :200 e he delimiter _
+-226.458_251_870_114_348_807_514_569_584_297_293_353_150_959_525_480_515_507_901_779_719_167_225_208_528_825_475_488_261_072_148_336_432_171_617_635_953_314_758_797_226_777_458_915_435_649_950_836_584_843_137_886_028_274_720_793_979_517_570_004_978_334_405_953_342_64E-3
+decimo> :q
+```
+
+The REPL keeps the last result in `ans`, lets you define variables
+(`name = expr`), and exposes settings via `:`-prefixed commands (e.g. `:100` for
+precision, `:s` for scientific, `:d` for ROUND_DOWN). Input is case-insensitive.
+Quit with `:q`, `exit`, or Ctrl-D.
+
+As an innovative feature, Decimo supports multiple settings in a single line.
+They can either be global (persist across calculations) or local (apply only to
+the current expression). In the example above, `:200 e he delimiter _` means
+"evaluate the expression with precision 200 (`200`), scientific notation with
+engineering exponent (`e`), round half to even (`he`), and use `_` as the digit
+delimiter in the output (`delimiter _`)". The settings apply only to the current
+expression and do not affect subsequent calculations.
+
+For one-shot evaluation, pass an expression on the command line, pipe it via
+stdin, or read from a file:
+
+```bash
+$ decimo "sqrt(2)" -P 30
+1.41421356237309504880168872421
+
+$ echo "1/3" | decimo -P 50
+0.33333333333333333333333333333333333333333333333333
+
+$ decimo -F expressions.dm -P 80
+```
+
+Useful flags: `-P N` (precision), `-R MODE` (rounding), `-S` / `-E` (scientific
+/ engineering), `--pad`, `--delimiter`, `--completions {bash,zsh,fish}`. Run
+`decimo --help` for the full list.
 
 ## Objective
 
