@@ -2140,13 +2140,13 @@ def _bz_two_by_one_slices(
 
     var half = n // 2
 
-    # If a3 (top quarter, words n+half..2n) is zero or empty, the dividend
-    # fits in 3*half words — use a single 3-by-2 division directly.
-    # Strictly fewer than three parts only. Three parts, or four with a zero
-    # top, are below `b * B^n` but not below `b * B^half`, and need both
-    # quotient halves from the general path below -- see the same branch in
-    # `BigUInt`'s copy. There the shape raised; here it returned a wrong
-    # quotient.
+    # A dividend of strictly fewer than three `half`-word parts is below
+    # `b * B^half` and takes a single 3-by-2 division. Only that shape: three
+    # parts, or four with a zero top, are below `b * B^n` but not below
+    # `b * B^half`, and need both quotient halves from the general path below
+    # -- see the same branch in `BigUInt`'s copy. There the shape raised; here
+    # it returned a wrong quotient. (This comment used to say a zero top part
+    # should take the single division, which is the bug.)
     if len(a) < n + half:
         return _bz_three_by_two_slices(a, b, half, cutoff, remainder)
 

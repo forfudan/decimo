@@ -148,6 +148,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
             precision: Number of significant decimal digits.
 
         Raises:
+            ValueError: If the precision is negative.
             RuntimeError: If MPFR is not available or handle pool is exhausted.
             ConversionError: If the string is not a valid number.
         """
@@ -813,6 +814,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
             A `BigFloat` containing π at the requested precision.
 
         Raises:
+            ValueError: If the precision is negative.
             RuntimeError: If MPFR is not available or handle allocation fails.
         """
         if precision < 0:
