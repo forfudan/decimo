@@ -95,6 +95,10 @@ struct _State(Defaultable, Movable):
     var rounding: RoundingMode
     """The context rounding mode, applied wherever an operation rounds."""
     var decimal_type: PyTypeObjectPtr
+    var float_function: PythonObject
+    """`builtins.float`, kept because `float(x)` has to hand CPython the text
+    -- Mojo's own parser refuses a long one -- and importing `builtins` for it
+    on every call was most of what the conversion cost."""
     var free_list: InlineArray[PyObjectPtr, FREE_LIST_SIZE]
     """Decimal objects that have been released and can be filled in again."""
     var free_count: Int
@@ -103,6 +107,7 @@ struct _State(Defaultable, Movable):
         self.precision = 28
         self.rounding = RoundingMode.ROUND_HALF_EVEN
         self.decimal_type = PyTypeObjectPtr()
+        self.float_function = PythonObject(None)
         self.free_list = InlineArray[PyObjectPtr, FREE_LIST_SIZE](
             uninitialized=True
         )
@@ -317,6 +322,9 @@ def PyInit__decimo() abi("C") -> PythonObject:
         )
         decimal_builder._insert_slot(
             PyType_Slot(c_int(Py_nb_power), _fn_ptr_as_opaque(slot_power))
+        )
+        decimal_builder._insert_slot(
+            PyType_Slot(c_int(Py_tp_hash), _fn_ptr_as_opaque(slot_hash))
         )
         decimal_builder._insert_slot(
             PyType_Slot(c_int(Py_nb_subtract), _fn_ptr_as_opaque(slot_subtract))
@@ -704,6 +712,15 @@ def bigdecimal_py_init(
 
     if cpython.PyFloat_Check(argument._obj_ptr):
         self = from_python_float(argument)
+        return
+
+    # `Decimal(x)` where `x` is already one. Through the text and back it cost
+    # 348 ns against `decimal`'s 41; the value is right there to copy. The
+    # check sits here rather than at the top so that `Decimal(n)` for an int,
+    # which every series in the benchmarks writes in a loop, does not pay the
+    # global lookup for the type pointer.
+    if cpython.Py_TYPE(argument._obj_ptr) == decimal_type_ptr(state()[]):
+        self = argument.unchecked_downcast_value_ptr[BigDecimal]()[].copy()
         return
 
     # The Mojo error carries a whole traceback with terminal colours in it,
@@ -1211,6 +1228,15 @@ def bigdecimal_copy(py_self: PythonObject) raises -> PythonObject:
 # ===----------------------------------------------------------------------=== #
 
 
+@always_inline
+def float_builtin() raises -> PythonObject:
+    """`builtins.float`, looked up once."""
+    ref cell = state()[]
+    if cell.float_function is PythonObject(None):
+        cell.float_function = Python.import_module("builtins").float
+    return cell.float_function
+
+
 def bigdecimal_int(py_self: PythonObject) raises -> PythonObject:
     """Return int(self), truncating towards zero.
 
@@ -1220,6 +1246,18 @@ def bigdecimal_int(py_self: PythonObject) raises -> PythonObject:
     """
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
     var truncated = self_ptr[].truncate()
+
+    # Eighteen digits fit in a machine word, and nearly every value is that
+    # small: `PyLong_FromSsize_t` then costs nothing, where the text detour
+    # cost 250 ns. A negative scale is left to the slow path rather than
+    # multiplied out here -- `Decimal("1E+3")` is a thousand, not a one.
+    if truncated.scale == 0 and truncated.coefficient.number_of_digits() <= 18:
+        var word = Int(truncated.coefficient.to_string())
+        if truncated.sign:
+            word = -word
+        ref cpython = Python().cpython()
+        return PythonObject(from_owned=cpython.PyLong_FromSsize_t(word))
+
     var builtins = Python.import_module("builtins")
     return builtins.int(PythonObject(truncated.to_string(force_plain=True)))
 
@@ -1232,8 +1270,7 @@ def bigdecimal_float(py_self: PythonObject) raises -> PythonObject:
     does not.
     """
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
-    var builtins = Python.import_module("builtins")
-    return builtins.float(PythonObject(String(self_ptr[])))
+    return float_builtin()(PythonObject(String(self_ptr[])))
 
 
 def bigdecimal_trunc(py_self: PythonObject) raises -> PythonObject:
@@ -1656,6 +1693,7 @@ def bigdecimal_radix(py_self: PythonObject) raises -> PythonObject:
 comptime Py_nb_add = 7
 comptime Py_nb_multiply = 29
 comptime Py_nb_power = 33
+comptime Py_tp_hash = 59
 comptime Py_nb_subtract = 36
 comptime Py_nb_true_divide = 37
 comptime Py_tp_dealloc = 52
@@ -1665,6 +1703,7 @@ comptime binaryfunc = def(PyObjectPtr, PyObjectPtr) thin abi("C") -> PyObjectPtr
 comptime ternaryfunc = def(PyObjectPtr, PyObjectPtr, PyObjectPtr) thin abi(
     "C"
 ) -> PyObjectPtr
+comptime hashfunc = def(PyObjectPtr) thin abi("C") -> Py_ssize_t
 comptime richcmpfunc = def(PyObjectPtr, PyObjectPtr, c_int) thin abi(
     "C"
 ) -> PyObjectPtr
@@ -1808,6 +1847,79 @@ def _do_divide(
     x: BigDecimal, y: BigDecimal, digits: Int, mode: RoundingMode
 ) raises -> BigDecimal:
     return x.true_divide(y, digits, mode)
+
+
+comptime _TEN_INVERSE = UInt64(2075258708292324556)
+"""The inverse of ten modulo `_HASH_MODULUS`, which is `10^(modulus - 2)`
+because the modulus is prime. Written out because working it out costs sixty
+squarings, and `hash()` of any value with a fractional part needs it.
+"""
+
+comptime _HASH_MODULUS = UInt64((1 << 61) - 1)
+"""`sys.hash_info.modulus`: the prime CPython hashes every number against.
+
+A number's hash has to agree with every other numeric type that compares
+equal to it, so `hash(Decimal("2"))`, `hash(2)` and `hash(2.0)` are one
+number. CPython gets that by hashing a rational modulo this prime, and
+`decimal` follows the same recipe. 2^61 - 1 is the value on every 64-bit
+build, which is the only kind decimo is built for.
+"""
+
+
+def _power_modulus(var base: UInt64, var exponent: UInt64) -> UInt64:
+    """Returns `base ** exponent` modulo `_HASH_MODULUS`.
+
+    Args:
+        base: The base.
+        exponent: The exponent, which is a decimal's own and so may be large.
+
+    Returns:
+        The modular power, by repeated squaring. The products are taken in
+        `UInt128`, since two residues below 2^61 do not fit in 64 bits.
+    """
+    var modulus = UInt128(_HASH_MODULUS)
+    var result = UInt64(1)
+    base = UInt64(UInt128(base) % modulus)
+    while exponent > 0:
+        if exponent & 1:
+            result = UInt64(UInt128(result) * UInt128(base) % modulus)
+        base = UInt64(UInt128(base) * UInt128(base) % modulus)
+        exponent >>= 1
+    return result
+
+
+def slot_hash(py_self: PyObjectPtr) abi("C") -> Py_ssize_t:
+    """`tp_hash`, agreeing with `int`, `float` and `decimal.Decimal`.
+
+    Written here rather than in Python -- where it was a `pow()` over the
+    digits as text -- because that cost 493 ns against `decimal`'s 27. The
+    coefficient is reduced by Horner over its own words: one multiplication
+    and one remainder per eighteen digits.
+    """
+    ref value = _value_of(py_self)[]
+    var modulus = UInt128(_HASH_MODULUS)
+    var residue = UInt64(0)
+    ref words = value.coefficient.words
+    for index in range(len(words) - 1, -1, -1):
+        residue = UInt64(
+            (UInt128(residue) * UInt128(BigUInt.BASE) + UInt128(words[index]))
+            % modulus
+        )
+
+    # The value is `coefficient * 10^-scale`, so a positive scale is a
+    # division: multiply by the inverse of ten instead, which is
+    # `10^(modulus - 2)` because the modulus is prime.
+    var factor: UInt64
+    if value.scale <= 0:
+        factor = _power_modulus(UInt64(10), UInt64(-value.scale))
+    else:
+        factor = _power_modulus(_TEN_INVERSE, UInt64(value.scale))
+
+    var result = Int(UInt128(residue) * UInt128(factor) % modulus)
+    if value.sign:
+        result = -result
+    # -1 is reserved by CPython to mean "an error happened".
+    return Py_ssize_t(-2 if result == -1 else result)
 
 
 def slot_power(

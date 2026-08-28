@@ -86,32 +86,11 @@ del _name
 Decimal.__repr__ = Decimal.to_repr
 
 
-# --- Hashing ---------------------------------------------------------------
-#
-# A number's hash has to agree with every other numeric type that compares
-# equal to it: `hash(Decimal("2")) == hash(2) == hash(2.0)`. CPython gets that
-# by hashing every number as a rational modulo a prime, and `decimal` follows
-# the same recipe. So do we, in Python, because `pow(base, exp, modulus)` is
-# already there and this is not on anyone's hot path.
-
-_MODULUS = _sys.hash_info.modulus
-_TEN_INVERSE = pow(10, _MODULUS - 2, _MODULUS)
-
-
-def _decimal_hash(self):
-    negative, digits, exponent = self._components()
-    if exponent >= 0:
-        exponent_hash = pow(10, exponent, _MODULUS)
-    else:
-        exponent_hash = pow(_TEN_INVERSE, -exponent, _MODULUS)
-    value = int(digits) * exponent_hash % _MODULUS
-    if negative:
-        value = -value
-    # -1 is reserved by CPython to mean "an error happened".
-    return -2 if value == -1 else value
-
-
-Decimal.__hash__ = _decimal_hash
+# Hashing is a `tp_hash` slot in the Mojo module: a number's hash has to agree
+# with every other numeric type that compares equal to it, and doing that here
+# -- `pow(10, exponent, modulus)` over the digits as text -- cost 493 ns
+# against `decimal`'s 27. Assigning `__hash__` here would put CPython's own
+# dispatcher back in the slot, so nothing does.
 
 
 # --- The parts of the API that are easier to write in Python ---------------
