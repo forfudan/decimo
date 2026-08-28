@@ -46,74 +46,45 @@ follows the reduction rounds a few more times.
 """
 
 
-def reduction_budget(x: BigDecimal, precision: Int) raises -> Int:
-    """Returns the working precision this argument's reduction really needs.
+comptime SAFETY_DIGITS = 20
+"""Digits the reduction must still have in hand after the cancellation.
+
+Covers the series that follows and the roundings around it. `RESERVE_DIGITS`
+is what a fresh attempt is given; this is what an attempt already made has to
+have kept to be worth finishing.
+"""
+
+
+def budget_for(x: BigDecimal, reduced: BigDecimal, precision: Int) -> Int:
+    """Returns the narrowest width at which this reduction was worth doing.
 
     Args:
-        x: The argument about to be reduced.
+        x: The argument that was reduced.
+        reduced: What the reduction produced, whose smallness is the
+            cancellation.
         precision: The number of significant digits wanted in the result.
 
     Returns:
-        A width at which the reduced argument still has `precision` correct
-        digits.
-
-    Raises:
-        Error: Propagated from the arithmetic.
+        The width below which the reduction cannot have kept `precision`
+        digits. A caller that used less has to compute again, wider.
 
     Notes:
 
-    `reduction_digits()` counts what the argument's own magnitude will eat.
-    It cannot count the other half: an argument lying very close to a
-    multiple of `pi/2` cancels there as well, by as much as it is close. `sin`
-    of pi taken to 250 digits is about `1.5E-250`, and computing it at the
-    127 digits the magnitude rule asks for returned `3.9E-127` -- a number
-    with no digit of the answer in it.
+    The digits between the argument and its reduced form are the ones the
+    subtraction ate. An argument far from zero spends its magnitude; an
+    argument near a multiple of `pi/2` spends its closeness; this counts
+    whichever happened, by looking at the result rather than predicting it.
 
-    Closeness cannot be predicted, so it is measured: the distance from the
-    argument to the nearest multiple of `pi/2` says how many digits the
-    subtraction will eat. The measurement starts narrow, because it is paid
-    for on every call and almost every argument is nowhere near a multiple.
-    A distance that comes back at the width's own noise floor is not a
-    measurement -- it is the floor -- so the width grows and the measurement
-    is repeated. Each pass sees further, and the loop settles: a finite
-    decimal is never exactly a multiple of `pi/2`, `pi` being irrational.
+    What it does not count is the ordinary shrinkage of an identity --
+    `pi/2 - 1.5` is `0.07`, two digits smaller, and that is not a problem
+    worth recomputing for. Only the width actually needed is returned, and
+    the caller compares it with the width it used, which starts a hundred
+    digits clear of it.
     """
-    if x.is_zero():
+    if reduced.coefficient.is_zero():
         return reduction_digits(x, precision)
-
-    comptime PROBE_MARGIN = 40
-    var probe = precision + PROBE_MARGIN
-    var two = BigDecimal.from_raw_components(
-        BigUInt.Word(2), scale=0, sign=False
-    )
-
-    for _ in range(4):
-        var half_pi = bigdecimal_constants.pi(precision=probe).true_divide(
-            two, precision=probe
-        )
-        var remainder = abs(x) % half_pi
-        if remainder.is_zero():
-            return reduction_digits(x, precision)
-        var complement = half_pi.subtract(remainder)
-        var distance = (
-            complement.adjusted() if complement.compare_absolute(remainder)
-            < 0 else remainder.adjusted()
-        )
-
-        # Below this the measurement is the probe's own error rather than the
-        # distance, and says nothing except "look again, wider".
-        var noise = x.adjusted() - probe
-        var cancellation = x.adjusted() - distance
-        var needed = (
-            precision
-            + RESERVE_DIGITS
-            + (cancellation if cancellation > 0 else 0)
-        )
-        if distance > noise + PROBE_MARGIN // 2:
-            return needed
-        probe = needed
-
-    return probe
+    var cancellation = x.adjusted() - reduced.adjusted()
+    return precision + SAFETY_DIGITS + (cancellation if cancellation > 0 else 0)
 
 
 def reduction_digits(x: BigDecimal, precision: Int) -> Int:
@@ -229,24 +200,51 @@ def sin(x: BigDecimal, precision: Int) raises -> BigDecimal:
         The sine of x with the specified precision.
 
     Raises:
-        Error: Propagated from underlying arithmetic operations.
+        Error: Propagated from underlying arithmetic operations, or if the
+            reduction does not settle within four attempts.
 
     Notes:
-    This function adopts range reduction for optimal convergence.
+
+    The reduction by pi is where the digits go, and how many it takes cannot
+    be known in advance: an argument far from zero spends its magnitude, and
+    an argument near a multiple of `pi/2` spends its closeness. So the first
+    attempt budgets for the magnitude, which is free to work out, and
+    `_sin_at()` reports what the reduction turned out to need. Almost every
+    argument settles on that first attempt; the ones that do not are computed
+    again at the width their own cancellation asked for.
     """
+    var budget = reduction_digits(x, precision)
+    for _ in range(4):
+        var attempt = _sin_at(x, precision, budget)
+        if attempt[1] <= budget:
+            return attempt[0].copy()
+        budget = attempt[1]
+    raise Error(
+        "the reduction of this argument did not settle; it lies closer to a"
+        " multiple of pi/2 than four widenings could measure"
+    )
 
-    # Yuhao Zhu's notes:
-    # I use a very comservative number of buffer digits because we need to have
-    # a very high precision to calculate the pi so that we can conduct range
-    # reduction accurately.
-    # Otherwise, the result will be inaccurate when x is close to π-related
-    # values, e.g., π/2, π, 3π/2, 2π, etc.
-    var working_precision = reduction_budget(x, precision)
 
-    var result: BigDecimal
+def _sin_at(
+    x: BigDecimal, precision: Int, working_precision: Int
+) raises -> Tuple[BigDecimal, Int]:
+    """Calculates sine at a given working precision, and says what it needed.
 
+    Args:
+        x: The input number in radians.
+        precision: The desired precision of the result.
+        working_precision: The width to reduce and sum at.
+
+    Returns:
+        The sine, and the width the reduction turned out to need. When the
+        second exceeds `working_precision` the first is meaningless: the
+        caller must try again with the wider one.
+
+    Raises:
+        Error: Propagated from underlying arithmetic operations.
+    """
     if x.is_zero():
-        return BigDecimal(BigUInt.zero())
+        return (BigDecimal(BigUInt.zero()), 0)
 
     var bdec_2 = BigDecimal.from_raw_components(
         BigUInt.Word(2), scale=0, sign=False
@@ -296,39 +294,49 @@ def sin(x: BigDecimal, precision: Int) raises -> BigDecimal:
     else:
         is_negative = False
 
-    # Step 3: Reduce to [0, π/4] with different cases
-
-    # |x| ≤ π/4: Use Taylor series directly
+    # Step 3: Reduce to [0, π/4], choosing the identity before applying it so
+    # that the cancellation can be weighed once, below, whichever branch did
+    # the subtracting.
+    #
+    # 0: |x| ≤ π/4, the series takes it as it stands
+    # 1: π/4 < |x| ≤ 1.6, sin(x) = cos(π/2 - x); 1.6 rather than π/2, which
+    #    is an unstable point for the comparison
+    # 2: 1.6 < |x| ≤ π, sin(x) = sin(π - x)
+    # 3: π < |x| < 2π, sin(x) = -sin(x - π)
+    var identity: Int
     if x_reduced.compare_absolute(bdec_pi_div_4) <= 0:
+        identity = 0
+    elif x_reduced.compare_absolute(bdec_1d6) <= 0:
+        identity = 1
+        x_reduced = bdec_pi_div_2.subtract(x_reduced)
+    elif x_reduced.compare_absolute(bdec_pi) <= 0:
+        identity = 2
+        x_reduced = bdec_pi.subtract(x_reduced)
+    else:
+        identity = 3
+        x_reduced = x_reduced.subtract(bdec_pi)
+
+    # What the reduction cost, now that it has happened. Wider is needed only
+    # when the argument was near a multiple of pi/2, which almost none are.
+    var needed = budget_for(x, x_reduced, precision)
+    if needed > working_precision:
+        return (
+            BigDecimal(BigUInt.zero()),
+            needed + RESERVE_DIGITS - SAFETY_DIGITS,
+        )
+
+    var result: BigDecimal
+    if identity == 0:
         result = sin_taylor_series(
             x_reduced, minimum_precision=working_precision
         )
-
-    # π/4 < |x| ≤ π/2: Use identity sin(x) = cos(π/2 - x)
-    # 0 ≤ (π/2 - x) < π/4
-    # Use 1.6 because π/4 is an instable point for the next case.
-    # To avoid infinite recursion, we use 1.6 as a threshold.
-    # π/4 < |x| ≤ 1.6
-    elif x_reduced.compare_absolute(bdec_1d6) <= 0:
-        x_reduced = bdec_pi_div_2.subtract(x_reduced)
+    elif identity == 1:
         result = cos_taylor_series(
             x_reduced, minimum_precision=working_precision
         )
-
-    # π/2 < |x| ≤ π: Use identity sin(x) = sin(π - x)
-    # 0 ≤ (π - x) < π/2
-    # Because 1.6 is used as a threshold before
-    # π/2 < 1.6 < |x| ≤ π
-    # 0 ≤ (π - x) < π - 1.6 < π/2
-    elif x_reduced.compare_absolute(bdec_pi) <= 0:
-        x_reduced = bdec_pi.subtract(x_reduced)
+    elif identity == 2:
         result = sin(x_reduced, precision=precision)
-
-    # π < |x| < 2π: Use identity sin(x) = -sin(x - π)
-    # 0 < (x - π) < π
-    # Note tha the acutal range is (π, 6), so it is reduced to (0, 6 - π).
     else:
-        x_reduced = x_reduced.subtract(bdec_pi)
         result = -sin(x_reduced, precision=precision)
 
     if is_negative:
@@ -341,7 +349,7 @@ def sin(x: BigDecimal, precision: Int) raises -> BigDecimal:
         fill_zeros_to_precision=False,
     )
 
-    return result^
+    return (result^, needed)
 
 
 def sin_taylor_series(
@@ -425,16 +433,26 @@ def cos(x: BigDecimal, precision: Int) raises -> BigDecimal:
     This function adopts range reduction for optimal convergence.
     """
 
-    var working_precision = reduction_budget(x, precision)
-
     if x.is_zero():
         return BigDecimal(BigUInt.one())
 
-    # cos(x) = sin(π/2 - x)
-    var pi = bigdecimal_constants.pi(precision=working_precision)
-    var pi_div_2 = pi.true_divide(2, precision=working_precision)
-    var result = sin(pi_div_2.subtract(x), precision=precision)
-    return result^
+    # cos(x) = sin(π/2 - x). That subtraction is this function's own
+    # reduction, and an argument near π/2 cancels in it, so what it cost is
+    # weighed afterwards and the width raised if it was not enough. `sin`
+    # then weighs its own.
+    var budget = reduction_digits(x, precision)
+    for _ in range(4):
+        var pi = bigdecimal_constants.pi(precision=budget)
+        var pi_div_2 = pi.true_divide(2, precision=budget)
+        var shifted = pi_div_2.subtract(x)
+        var needed = budget_for(x, shifted, precision)
+        if needed <= budget:
+            return sin(shifted, precision=precision)
+        budget = needed + RESERVE_DIGITS - SAFETY_DIGITS
+    raise Error(
+        "the reduction of this argument did not settle; it lies closer to a"
+        " multiple of pi/2 than four widenings could measure"
+    )
 
 
 def cos_taylor_series(
@@ -550,11 +568,41 @@ def cot(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
 
 def tan_cot(x: BigDecimal, precision: Int, is_tan: Bool) raises -> BigDecimal:
+    """Calculates tangent or cotangent, widening if the reduction asks.
+
+    Args:
+        x: The input number in radians.
+        precision: The desired precision of the result.
+        is_tan: If True, calculates tangent; if False, calculates cotangent.
+
+    Returns:
+        The tangent or cotangent of x.
+
+    Raises:
+        Error: Propagated from the arithmetic, or if the reduction does not
+            settle within four attempts.
+    """
+    var budget = reduction_digits(x, precision)
+    for _ in range(4):
+        var attempt = _tan_cot_at(x, precision, budget, is_tan)
+        if attempt[1] <= budget:
+            return attempt[0].copy()
+        budget = attempt[1]
+    raise Error(
+        "the reduction of this argument did not settle; it lies closer to a"
+        " multiple of pi/2 than four widenings could measure"
+    )
+
+
+def _tan_cot_at(
+    x: BigDecimal, precision: Int, working_precision: Int, is_tan: Bool
+) raises -> Tuple[BigDecimal, Int]:
     """Calculates tangent (tan) or cotangent (cot) of the number.
 
     Args:
         x: The input number in radians.
         precision: The desired precision of the result.
+        working_precision: The width to reduce and divide at.
         is_tan: If True, calculates tangent; if False, calculates cotangent.
 
     Returns:
@@ -571,12 +619,15 @@ def tan_cot(x: BigDecimal, precision: Int, is_tan: Bool) raises -> BigDecimal:
 
     # `tan` cancels twice: once reducing by pi, and again near a pole, where
     # `sin / cos` divides by something small. So pi carries the reserve twice.
-    var working_precision = reduction_budget(x, precision)
+    # The reduction below subtracts multiples of pi from the argument, and
+    # what that costs is weighed once it has happened: an argument near a
+    # multiple of pi/2 -- which for `tan` is a zero on one side and a pole on
+    # the other -- cancels there by as much as it is close.
     var working_precision_pi = working_precision + RESERVE_DIGITS
 
     if x.is_zero():
         if is_tan:
-            return BigDecimal(BigUInt.zero())
+            return (BigDecimal(BigUInt.zero()), 0)
         else:
             # cot(0) is undefined, but we return 0 for consistency
             # since tan(0) is defined as 0.
@@ -611,6 +662,14 @@ def tan_cot(x: BigDecimal, precision: Int, is_tan: Bool) raises -> BigDecimal:
         else:
             x_reduced.subtract_inplace(pi)
 
+    var needed = budget_for(x, x_reduced, precision)
+    if needed > working_precision:
+        # Not enough: the subtraction ate more than the width allowed.
+        return (
+            BigDecimal(BigUInt.zero()),
+            needed + RESERVE_DIGITS - SAFETY_DIGITS,
+        )
+
     # Calculate
     # tan(x) = sin(x) / cos(x)
     # cot(x) = cos(x) / sin(x)
@@ -629,7 +688,7 @@ def tan_cot(x: BigDecimal, precision: Int, is_tan: Bool) raises -> BigDecimal:
         fill_zeros_to_precision=False,
     )
 
-    return result^
+    return (result^, needed)
 
 
 def csc(x: BigDecimal, precision: Int) raises -> BigDecimal:
