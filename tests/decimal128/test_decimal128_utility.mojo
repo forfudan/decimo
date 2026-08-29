@@ -16,6 +16,7 @@ from decimo.decimal128.utility import (
     bitcast,
     power_of_10,
     udiv_u256_by_pow10_gm,
+    udiv_u256_by_u128,
 )
 
 
@@ -450,6 +451,59 @@ def test_reciprocal_divider_wide_range() raises:
             udiv_u256_by_pow10_gm(UInt256.MAX, k),
             UInt256.MAX // power_of_10[DType.uint256](k),
         )
+
+
+def test_divider_by_a_wide_divisor() raises:
+    """`udiv_u256_by_u128` agrees with plain division everywhere.
+
+    Knuth's algorithm D over 64-bit limbs, because the generic
+    `UInt256 // UInt256` is a software shift-subtract loop of about 261
+    nanoseconds against 22 here. Both ends of the divisor matter: at or below
+    64 bits it hands off to the narrower divider, above that it normalizes
+    and takes three trial quotients.
+    """
+    var state = UInt256(0x9E3779B97F4A7C15)
+    var checked = 0
+    for _ in range(150):
+        state ^= state << UInt256(13)
+        state ^= state >> UInt256(7)
+        state ^= state << UInt256(17)
+        for numerator_shift in range(0, 250, 29):
+            for divisor_shift in range(0, 120, 13):
+                var numerator = state >> UInt256(numerator_shift)
+                var divisor = UInt128(
+                    (state >> UInt256(divisor_shift)) & UInt256(UInt128.MAX)
+                )
+                if divisor == UInt128(0):
+                    continue
+                var pair = udiv_u256_by_u128(numerator, divisor)
+                var expected = numerator // UInt256(divisor)
+                assert_equal(pair[0], expected)
+                assert_equal(
+                    UInt256(pair[1]), numerator - expected * UInt256(divisor)
+                )
+                checked += 1
+    assert_true(checked > 10000, "the sweep should be a wide one")
+
+    # The two boundaries by hand.
+    var just_inside = UInt128(UInt64.MAX)
+    var just_outside = UInt128(UInt64.MAX) + UInt128(1)
+    for divisor in [just_inside, just_outside]:
+        var numerator = UInt256(10) ** 58 + UInt256(12345)
+        var pair = udiv_u256_by_u128(numerator, divisor)
+        assert_equal(pair[0], numerator // UInt256(divisor))
+        assert_equal(
+            UInt256(pair[1]),
+            numerator - (numerator // UInt256(divisor)) * UInt256(divisor),
+        )
+
+    # A divisor larger than the dividend, and one that divides it exactly.
+    var small = udiv_u256_by_u128(UInt256(5), UInt128(10) ** 30)
+    assert_equal(small[0], UInt256(0))
+    assert_equal(small[1], UInt128(5))
+    var exact = udiv_u256_by_u128(UInt256(10) ** 50, UInt128(10) ** 25)
+    assert_equal(exact[0], UInt256(10) ** 25)
+    assert_equal(exact[1], UInt128(0))
 
 
 def main() raises:

@@ -108,6 +108,49 @@ to even, where before the last digit was assumed rather than known -- so
 `ROUND_FLOOR` really does stay under the true value, and a tie really is a
 tie.
 
+### A second type for money
+
+`Decimal` is arbitrary precision and is what a program reaching for
+`decimal.Decimal` wants. `Decimal128` is the other one: 96 bits of
+coefficient and a scale from 0 to 28, in sixteen bytes that own nothing --
+the layout .NET's `System.Decimal` and Rust's `rust_decimal` use.
+
+```python
+from decimo import Decimal128        # Dec128 is the same type
+
+price = Decimal128("19.99")
+line = (price * 3).quantize(Decimal128("0.01"))     # 59.97
+Decimal128(2).sqrt()                                # and exp, ln, log10, sin, cos, tan
+Decimal128("1").to_ieee754()                        # the IEEE 754 interchange bytes
+```
+
+It arithmetics, compares, hashes and rounds like `Decimal`, mixes with `int`,
+`float` and `str` on either side of an operator, and converts both ways
+(`Decimal128(x).to_decimal()`, `Decimal(x)`). Its results never allocate, so
+it is quicker where the values are money and the shape of them is known:
+
+| | `Decimal128` | `Decimal` | `decimal` |
+| --- | ---: | ---: | ---: |
+| `a + b` | **46 ns** | 67 | 73 |
+| `a * b` | **57 ns** | 92 | 85 |
+| `a / b` | **114 ns** | 225 | 133 |
+| from text | **116 ns** | 160 | 136 |
+| `str(x)` | 118 ns | 437 | **67** |
+| an invoice | **633 ns** | 713 | 705 |
+
+`str` is the one that is slower.
+
+A mixed expression settles in the wider type: `Decimal128(x) + Decimal(y)` is
+a `Decimal`, either way round, because widening loses nothing.
+
+What it does not do: it stops at `7.9E+28` and 28 decimal places and raises
+rather than rounding into a context, it has no `Context` of its own beyond
+the rounding mode, and its scale is never negative -- `Decimal128("1.23E+5")`
+is `123000`, where `decimal` keeps a coefficient of 123 with an exponent of 3
+and can print it as `123E+3`. `Decimal128(0.1)` is `0.1` rather than the whole
+binary expansion, since 55 digits do not fit 28; what is promised is that
+`float(Decimal128(x)) == x`.
+
 ## What does not
 
 decimo refuses these rather than answering differently:

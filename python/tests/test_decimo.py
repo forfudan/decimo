@@ -933,6 +933,200 @@ sample = ["1.05", "2.10", "3.15", "0.001", "-4.2"]
 assert str(average(decimo, sample)) == str(average(decimal, sample))
 print("[PASS] the same function run against decimal and decimo agrees")
 
+# --- Decimal128, the fixed-width type --------------------------------------
+
+D128 = decimo.Decimal128
+
+assert decimo.Dec128 is D128
+
+# Construction from every source `Decimal` accepts.
+assert str(D128("3.14")) == "3.14"
+assert str(D128(42)) == "42"
+assert str(D128()) == "0"
+assert str(D128(D128("1.50"))) == "1.50"
+assert str(D128(decimo.Decimal("2.25"))) == "2.25"
+# A float comes back as itself. `Decimal128(float)` does not spell out the
+# whole binary expansion the way `decimal.Decimal(float)` does -- the type
+# holds 28 digits and 0.1 needs 55 -- so what is promised is the round trip.
+for _value in (0.1, 3.14, 2.675, 0.5, 1e20):
+    assert float(D128(_value)) == _value
+print("[PASS] Decimal128 is built from strings, integers, floats and decimals")
+
+# The exact operations agree with decimal digit for digit.
+for _a, _b in (("7.5", "2.5"), ("19.99", "3"), ("-1.25", "0.4"), ("0.1", "0.2")):
+    for _name, _op in (
+        ("+", operator.add),
+        ("-", operator.sub),
+        ("*", operator.mul),
+        ("//", operator.floordiv),
+        ("%", operator.mod),
+    ):
+        _got = str(_op(D128(_a), D128(_b)))
+        _want = str(_op(decimal.Decimal(_a), decimal.Decimal(_b)))
+        assert _got == _want, f"{_a} {_name} {_b}: {_got} != {_want}"
+
+# Division fills the type rather than a context: 29 significant digits and a
+# scale of at most 28, where `decimal` gives whatever `prec` says. Checked
+# against decimal at 60 digits, rounded to the exponent we came back with.
+for _a, _b in (("19.99", "3"), ("1", "7"), ("-1.25", "0.4"), ("2", "3")):
+    _got = D128(_a) / D128(_b)
+    with decimal.localcontext() as _ctx:
+        _ctx.prec = 60
+        _exact = decimal.Decimal(_a) / decimal.Decimal(_b)
+    with decimal.localcontext() as _ctx:
+        _ctx.prec = 60
+        _want = _exact.quantize(
+            decimal.Decimal((0, (1,), decimal.Decimal(str(_got)).as_tuple().exponent)),
+            rounding=decimal.ROUND_HALF_EVEN,
+        )
+    assert str(_got) == str(_want), f"{_a} / {_b}: {_got} != {_want}"
+assert str(D128("7.5") ** 2) == "56.25"
+assert divmod(D128("7.5"), D128("2.5")) == (D128("3"), D128("0.0"))
+print("[PASS] Decimal128 arithmetic agrees with decimal")
+
+# The other operand may be an int, a float or a string, on either side.
+assert str(D128("1.5") + 1) == "2.5"
+assert str(2 * D128("1.5")) == "3.0"
+assert str(7 // D128("2.5")) == "2"
+assert D128("1.5") == D128("1.50")
+assert D128("1.5") > 1
+assert sorted([D128("3"), D128("1"), D128("2")]) == [D128("1"), D128("2"), D128("3")]
+print("[PASS] Decimal128 mixes with numbers and sorts")
+
+# The hash agrees with everything that compares equal to it.
+for _text in ("1.5", "0", "-2", "12345.6789", "0.1", "79228162514264337593543950335"):
+    assert (
+        hash(D128(_text)) == hash(decimal.Decimal(_text)) == hash(decimo.Decimal(_text))
+    )
+assert hash(D128("1.5")) == hash(1.5)
+assert hash(D128("2")) == hash(2)
+assert {D128("1.5"): "x"}[D128("1.50")] == "x"
+print("[PASS] Decimal128 hashes with int, float, decimal and Decimal")
+
+# Money: the reason the type exists.
+_price = D128("19.99")
+_line = (_price * 3).quantize(D128("0.01"))
+assert str(_line) == "59.97"
+assert str(round(D128("2.675"), 2)) == str(round(decimal.Decimal("2.675"), 2))
+assert round(D128("19.99")) == 20 and isinstance(round(D128("19.99")), int)
+assert D128("19.99").as_tuple() == decimal.Decimal("19.99").as_tuple()
+print("[PASS] Decimal128 quantizes, rounds and reports its digits")
+
+# The mathematical functions, correctly rounded.
+assert str(D128(2).sqrt()) == "1.4142135623730950488016887242"
+assert str(D128(1).exp()) == "2.7182818284590452353602874714"
+assert str(D128(1000).log10()) == "3"
+assert str(D128(1).ln()) == "0"
+# The reduction holds wherever the argument sits, which is the point of it.
+assert str(D128("1e20").sin()) == "-0.6452512852657808442058117113"
+print("[PASS] Decimal128 has square roots, logarithms and trigonometry")
+
+# The IEEE 754 interchange format, little-endian as BSON stores it.
+assert D128("1").to_ieee754().hex() == "01000000000000000000000000004030"
+assert D128("0").to_ieee754().hex() == "00000000000000000000000000004030"
+for _text in ("1", "-1", "0.001", "1.0", "19.99", "79228162514264337593543950335"):
+    assert str(D128.from_ieee754(D128(_text).to_ieee754())) == _text
+print("[PASS] Decimal128 reads and writes IEEE 754 decimal128")
+
+# The wider method surface, against decimal where decimal has it.
+_x = D128("1.20")
+assert str(_x.normalize()) == "1.2"
+assert _x.adjusted() == decimal.Decimal("1.20").adjusted()
+assert _x.is_zero() is False and D128("0").is_zero() is True
+assert _x.is_signed() is False and D128("-1").is_signed() is True
+assert _x.same_quantum(D128("9.99")) is True
+assert _x.same_quantum(D128("9.9")) is False
+assert str(_x.compare(2)) == str(decimal.Decimal("1.20").compare(2))
+assert str(_x.copy_sign(D128("-1"))) == str(
+    decimal.Decimal("1.20").copy_sign(decimal.Decimal("-1"))
+)
+assert str(_x.to_integral_value()) == str(decimal.Decimal("1.20").to_integral_value())
+assert _x.as_integer_ratio() == decimal.Decimal("1.20").as_integer_ratio()
+for _text in ("123456", "0.000123", "1234", "19.99", "1.5"):
+    assert D128(_text).to_eng_string() == decimal.Decimal(_text).to_eng_string()
+# Where the two differ is where the type has no such value to print: a scale
+# is never negative here, so `1.23E+5` is 123000 and there is no cohort
+# member with an exponent of 3 to write as `123E+3`.
+assert D128("1.23E+5").to_eng_string() == "123000"
+assert str(D128("2").fma(3, 4)) == str(decimal.Decimal(2).fma(3, 4))
+assert str(D128("2").max(3)) == "3" and str(D128("2").min(3)) == "2"
+assert D128("1.5").is_finite() and not D128("1.5").is_nan()
+assert str(D128.from_float(0.5)) == "0.5"
+print("[PASS] Decimal128 carries the method surface decimal programs use")
+
+# The mathematics beyond the square root.
+assert str(D128("8").cbrt()) == "2"
+assert str(D128("16").root(4)) == "2"
+assert str(D128("8").log(D128("2"))) == "3"
+assert str(D128("1.2").cot()) == "0.3887795693682049116341915050"
+assert str(D128("1.2").sec()) == "2.7597036013324064568834329392"
+assert str(D128("1.2").csc()) == "1.0729163777098972287051169224"
+print("[PASS] Decimal128 has roots, arbitrary bases and the reciprocal angles")
+
+# The two ends of the range, which are fixed rather than a matter of context.
+assert str(D128.MAX) == "79228162514264337593543950335"
+assert str(D128.MIN) == "-79228162514264337593543950335"
+
+# Reflected operators, so the type may sit on either side.
+assert str(2 ** D128("3")) == "8"
+assert divmod(7, D128("2")) == (D128("3"), D128("1"))
+assert str(7 - D128("2.5")) == "4.5"
+print("[PASS] Decimal128 works from either side of an operator")
+
+# A mixed expression settles in the wider type, which loses nothing.
+for _left, _right in (
+    (D128("1.5"), decimo.Decimal("2")),
+    (decimo.Decimal("2"), D128("1.5")),
+):
+    _sum = _left + _right
+    assert isinstance(_sum, decimo.Decimal), type(_sum)
+    assert str(_sum) == "3.5"
+assert str(decimo.Decimal("7") / D128("2")) == "3.5"
+assert D128("1.5") == decimo.Decimal("1.5")
+assert D128("1.5") < decimo.Decimal("2")
+# And what cannot be converted is a TypeError, not something stranger.
+try:
+    D128("1.5") + "not a number"
+    raise AssertionError("adding a non-number should raise")
+except AssertionError:
+    raise
+except TypeError:
+    pass
+print("[PASS] Decimal128 mixes with Decimal and refuses the rest")
+
+# It behaves like a value: copied, pickled and formatted.
+_x = D128("1234.5678")
+assert copy.copy(_x) == _x and copy.deepcopy(_x) == _x
+assert pickle.loads(pickle.dumps(_x)) == _x
+assert f"{_x}" == "1234.5678"
+assert format(_x, ",.2f") == format(decimal.Decimal("1234.5678"), ",.2f")
+assert format(_x, ".3e") == format(decimal.Decimal("1234.5678"), ".3e")
+assert type(_x).__name__ == "Decimal128" and type(_x).__module__ == "decimo"
+assert repr(_x) == "Decimal128('1234.5678')"
+print("[PASS] Decimal128 copies, pickles, formats and names itself")
+
+# Crossing between the two types.
+assert str(D128("1.5").to_decimal()) == "1.5"
+assert isinstance(D128("1.5").to_decimal(), decimo.Decimal)
+assert str(decimo.Decimal(D128("1.5"))) == "1.5"
+print("[PASS] Decimal128 converts to and from Decimal")
+
+# What it refuses: the type stops at 7.9E+28 and 28 decimal places.
+try:
+    D128("79228162514264337593543950336")
+    raise AssertionError("a value past the maximum should not be accepted")
+except AssertionError:
+    raise
+except Exception:
+    pass
+try:
+    D128("1") / D128("0")
+    raise AssertionError("division by zero should raise")
+except ZeroDivisionError:
+    pass
+print("[PASS] Decimal128 refuses what it cannot hold")
+
+
 print()
 
 print("=== All Phase 0 tests passed! ===")

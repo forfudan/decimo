@@ -18,7 +18,10 @@ ROUND_05UP.
 from ._version import __version__ as __version__
 
 try:
-    from ._decimo import Decimal, get_precision as _get_precision
+    from ._decimo import Decimal, Decimal128 as _Decimal128
+    from ._decimo import decimal128_max_value as _decimal128_max_value
+    from ._decimo import decimal128_min_value as _decimal128_min_value
+    from ._decimo import get_precision as _get_precision
     from ._decimo import set_precision as _set_precision
     from ._decimo import pi as _pi
     from ._decimo import e as _e
@@ -84,6 +87,236 @@ del _name
 # install their own from Mojo's `Representable`, which prints the Mojo type
 # name, so point it at our own text instead.
 Decimal.__repr__ = Decimal.to_repr
+
+
+# --- The fixed-width type --------------------------------------------------
+#
+# `Decimal128` is 96 bits of coefficient and a scale from 0 to 28, in sixteen
+# bytes that own nothing -- the layout .NET's `System.Decimal` and Rust's
+# `rust_decimal` use. `Decimal` is the arbitrary-precision one and is what a
+# program reaching for `decimal.Decimal` wants; this is the one to reach for
+# when the values are money and the shape of them is known.
+#
+# Its dunders need the same assignment as `Decimal`'s, and for the same
+# reason. `+`, `-`, `*`, `/` and the comparisons are real slots in the Mojo
+# module and are left alone.
+Decimal128 = _Decimal128
+
+for _name in (
+    "__str__",
+    "__neg__",
+    "__pos__",
+    "__abs__",
+    "__bool__",
+    "__int__",
+    "__float__",
+    "__floordiv__",
+    "__rfloordiv__",
+    "__mod__",
+    "__rmod__",
+    "__divmod__",
+    "__pow__",
+):
+    setattr(Decimal128, _name, Decimal128.__dict__[_name])
+del _name
+
+Decimal128.__repr__ = Decimal128.to_repr
+
+
+def _decimal128_round(self, ndigits=None):
+    """`round(x)` and `round(x, n)`.
+
+    With no argument Python expects an `int` back, and with one it expects
+    the same type as the input, which is what `decimal` does too.
+    """
+    if ndigits is None:
+        return int(self._round(0))
+    return self._round(ndigits)
+
+
+def _decimal128_as_tuple(self):
+    """Return `(sign, digits, exponent)`, as `decimal.Decimal.as_tuple` does."""
+    text = str(self)
+    negative = text.startswith("-")
+    if negative:
+        text = text[1:]
+    point = text.find(".")
+    if point < 0:
+        digits, exponent = text, 0
+    else:
+        digits, exponent = text[:point] + text[point + 1 :], -(len(text) - point - 1)
+    return DecimalTuple(int(negative), tuple(int(d) for d in digits), exponent)
+
+
+def _decimal128_to_ieee754(self):
+    """The sixteen bytes of the IEEE 754 decimal128 interchange format.
+
+    Little-endian, which is the order BSON and Intel's library store them in.
+    """
+    return bytes.fromhex(self._to_ieee754_hex())[::-1]
+
+
+def _decimal128_from_ieee754(data):
+    """Read sixteen little-endian bytes of IEEE 754 decimal128."""
+    if len(data) != 16:
+        raise ValueError("a decimal128 is sixteen bytes")
+    return Decimal128()._from_ieee754_hex(bytes(data)[::-1].hex())
+
+
+def _decimal128_reduce(self):
+    return (Decimal128, (str(self),))
+
+
+def _decimal128_copy(self, memo=None):
+    """A `Decimal128` is a value; there is nothing to share, so a copy is
+    itself."""
+    return self
+
+
+def _decimal128_format(self, specification=""):
+    """Format the value, following `decimal.Decimal.__format__`.
+
+    The empty specification -- what an f-string with no `:` uses -- is
+    `str()`. Everything else goes to the standard library's mini-language
+    through `decimal.Decimal`, which is exact: the text this type produces
+    parses back into the same digits.
+    """
+    if specification == "":
+        return str(self)
+    import decimal as _stdlib
+
+    return format(_stdlib.Decimal(str(self)), specification)
+
+
+def _decimal128_compare(self, other):
+    """-1, 0 or 1, as `decimal.Decimal.compare` gives it."""
+    other = other if isinstance(other, Decimal128) else Decimal128(other)
+    if self < other:
+        return Decimal128(-1)
+    if self > other:
+        return Decimal128(1)
+    return Decimal128(0)
+
+
+def _decimal128_copy_sign(self, other):
+    """Self with the sign of other, as `decimal.Decimal.copy_sign` does."""
+    other = other if isinstance(other, Decimal128) else Decimal128(other)
+    magnitude = abs(self)
+    return -magnitude if other.is_signed() else magnitude
+
+
+def _decimal128_copy_abs(self):
+    """The magnitude, without rounding."""
+    return abs(self)
+
+
+def _decimal128_copy_negate(self):
+    """The negation, without rounding."""
+    return -self
+
+
+def _decimal128_to_integral_value(self, rounding=None):
+    """The value rounded to a whole number, keeping the type."""
+    if rounding is None:
+        return self._round(0)
+    with localcontext() as context:
+        context.rounding = rounding
+        return self._round(0)
+
+
+def _decimal128_as_integer_ratio(self):
+    """The value as an exact `(numerator, denominator)` pair."""
+    negative, digits, exponent = self.as_tuple()
+    numerator = int("".join(str(d) for d in digits) or "0")
+    if negative:
+        numerator = -numerator
+    if exponent >= 0:
+        return (numerator * 10**exponent, 1)
+    denominator = 10**-exponent
+    from math import gcd as _gcd
+
+    common = _gcd(numerator, denominator)
+    return (numerator // common, denominator // common)
+
+
+def _decimal128_from_float(cls, value):
+    """Build one from a float, as `decimal.Decimal.from_float` does."""
+    return cls(float(value))
+
+
+def _decimal128_is_finite(self):
+    """True. This type has no infinities and no NaNs."""
+    return True
+
+
+def _decimal128_is_nan(self):
+    """False. This type has no NaNs."""
+    return False
+
+
+def _decimal128_is_infinite(self):
+    """False. This type has no infinities."""
+    return False
+
+
+def _decimal128_to_eng_string(self):
+    """The value in engineering notation, as `decimal.to_eng_string` gives it.
+
+    Which is not always exponential: the rule is the specification's, and it
+    reads the exponent the value already carries, so `Decimal128("123456")`
+    is `123456` and `Decimal128("1.23E+5")` -- the same number with a
+    different exponent -- is `123E+3`. The Mojo method is unconditional, so
+    the rule is applied here.
+    """
+    import decimal as _stdlib
+
+    return _stdlib.Decimal(self.as_tuple()).to_eng_string()
+
+
+def _decimal128_to_scientific_string(self):
+    """The value in scientific notation, as `decimal`'s `str` gives it."""
+    import decimal as _stdlib
+
+    return str(_stdlib.Decimal(self.as_tuple()))
+
+
+Decimal128.to_eng_string = _decimal128_to_eng_string
+Decimal128.to_scientific_string = _decimal128_to_scientific_string
+Decimal128.compare = _decimal128_compare
+Decimal128.copy_sign = _decimal128_copy_sign
+Decimal128.copy_abs = _decimal128_copy_abs
+Decimal128.copy_negate = _decimal128_copy_negate
+Decimal128.to_integral_value = _decimal128_to_integral_value
+Decimal128.to_integral = _decimal128_to_integral_value
+Decimal128.as_integer_ratio = _decimal128_as_integer_ratio
+Decimal128.from_float = classmethod(_decimal128_from_float)
+Decimal128.is_finite = _decimal128_is_finite
+Decimal128.is_nan = _decimal128_is_nan
+Decimal128.is_infinite = _decimal128_is_infinite
+Decimal128.__round__ = _decimal128_round
+Decimal128.__reduce__ = _decimal128_reduce
+Decimal128.__copy__ = _decimal128_copy
+Decimal128.__deepcopy__ = _decimal128_copy
+Decimal128.__format__ = _decimal128_format
+Decimal128.as_tuple = _decimal128_as_tuple
+Decimal128.to_ieee754 = _decimal128_to_ieee754
+Decimal128.from_ieee754 = staticmethod(_decimal128_from_ieee754)
+
+try:
+    # The type says it lives in the extension module otherwise, which is an
+    # implementation detail, and pickle needs a name it can find again.
+    Decimal128.__module__ = "decimo"
+except (AttributeError, TypeError):  # pragma: no cover -- older bindings
+    pass
+
+#: The largest and smallest values the type holds, which are fixed rather
+#: than a matter of context.
+Decimal128.MAX = _decimal128_max_value()
+Decimal128.MIN = _decimal128_min_value()
+
+#: A shorter name for the same type, as the Mojo library has. `Decimal128`
+#: is the name it answers to: `repr` and `__name__` both say that one.
+Dec128 = Decimal128
 
 
 # Hashing is a `tp_hash` slot in the Mojo module: a number's hash has to agree
