@@ -895,5 +895,44 @@ def test_fma_overflow() raises:
         var _r = max_val.fma(Decimal128("2"), Decimal128.ZERO())
 
 
+def test_division_last_digit() raises:
+    """The last digit of a quotient is the correctly rounded one.
+
+    The quotient is taken to one digit past what the answer keeps and the
+    remainder settles the rest, so a tie rounds by what is actually below it.
+    Walking the digits and stopping when the budget ran out left
+    `504572829922.89957 / 525211.7899` one unit low.
+    """
+
+    def _check(left: String, right: String, expected: String) raises:
+        testing.assert_equal(
+            String(Decimal128(left) / Decimal128(right)), expected
+        )
+
+    _check(
+        "504572829922.89957",
+        "525211.7899",
+        "960703.5478372827936397396551",
+    )
+    _check("1", "3", "0.3333333333333333333333333333")
+    _check("1", "7", "0.1428571428571428571428571429")
+    _check("2", "3", "0.6666666666666666666666666667")
+
+
+def test_division_keeps_its_shapes() raises:
+    """The exact quotients keep the scale they had."""
+    testing.assert_equal(String(Decimal128("32") / Decimal128("2")), "16")
+    testing.assert_equal(String(Decimal128("18.00") / Decimal128("3.0")), "6.0")
+    testing.assert_equal(
+        String(Decimal128("123456780000") / Decimal128("1000")), "123456780"
+    )
+    testing.assert_equal(
+        String(Decimal128("246824.68") / Decimal128("12.341234")), "20000"
+    )
+    testing.assert_equal(
+        String(Decimal128("1234") / Decimal128("0.1234")), "10000"
+    )
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()

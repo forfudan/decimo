@@ -53,6 +53,9 @@ from std.python.python_object import (
 from std.os import abort
 
 from decimo import BigDecimal, RoundingMode
+from decimo.decimal128.decimal128 import Decimal128
+import decimo.ieee754 as ieee754
+import decimo.decimal128.trigonometric as decimal128_trigonometric
 from decimo.biguint.biguint import BigUInt
 from decimo.bigint.bigint import BigInt
 import decimo.bigdecimal.spec as bigdecimal_spec
@@ -95,6 +98,9 @@ struct _State(Defaultable, Movable):
     var rounding: RoundingMode
     """The context rounding mode, applied wherever an operation rounds."""
     var decimal_type: PyTypeObjectPtr
+    var decimal128_type: PyTypeObjectPtr
+    """The fixed-width type, found the same way and kept for the same
+    reason."""
     var float_function: PythonObject
     """`builtins.float`, kept because `float(x)` has to hand CPython the text
     -- Mojo's own parser refuses a long one -- and importing `builtins` for it
@@ -107,6 +113,7 @@ struct _State(Defaultable, Movable):
         self.precision = 28
         self.rounding = RoundingMode.ROUND_HALF_EVEN
         self.decimal_type = PyTypeObjectPtr()
+        self.decimal128_type = PyTypeObjectPtr()
         self.float_function = PythonObject(None)
         self.free_list = InlineArray[PyObjectPtr, FREE_LIST_SIZE](
             uninitialized=True
@@ -145,6 +152,40 @@ def decimal_type_ptr(mut cell: _State) raises -> PyTypeObjectPtr:
             BigDecimal
         ]()._obj_ptr.bitcast[PyTypeObject]()
     return cell.decimal_type
+
+
+@always_inline
+def decimal128_type_ptr(mut cell: _State) raises -> PyTypeObjectPtr:
+    """The fixed-width type object, found once and kept."""
+    if not cell.decimal128_type:
+        cell.decimal128_type = lookup_py_type_object[
+            Decimal128
+        ]()._obj_ptr.bitcast[PyTypeObject]()
+    return cell.decimal128_type
+
+
+@always_inline
+def new_decimal128(
+    mut cell: _State, var value: Decimal128
+) raises -> PythonObject:
+    """Wrap a fixed-width result.
+
+    No free list here. A `Decimal128` is sixteen bytes inside the object and
+    owns nothing, so releasing one is `tp_dealloc` and nothing else; the
+    arbitrary-precision type keeps a list because its coefficient is a heap
+    allocation that the reuse also saves.
+    """
+    return _unsafe_alloc_init(decimal128_type_ptr(cell), value)
+
+
+@always_inline
+def _value128_of(obj: PyObjectPtr) -> Pointer[Decimal128, MutUntrackedOrigin]:
+    """The `Decimal128` inside an object of that type, without touching its
+    reference count. Only call this after checking the type."""
+    ref mojo_object = obj.bitcast[PyMojoObject[Decimal128]]().value()[]
+    return Pointer(to=mojo_object.mojo_value).unsafe_origin_cast[
+        MutUntrackedOrigin
+    ]()
 
 
 @always_inline
@@ -286,6 +327,715 @@ def round_to_context(var value: BigDecimal) raises -> BigDecimal:
 
 
 # ===----------------------------------------------------------------------=== #
+# Decimal128, the fixed-width type
+#
+# `Decimal` is arbitrary precision and is what a program reaching for
+# `decimal.Decimal` wants. `Decimal128` is the other one: 96 bits of
+# coefficient and a scale from 0 to 28, the layout .NET's `System.Decimal` and
+# Rust's `rust_decimal` use, in sixteen bytes that own nothing. Its results
+# never allocate and its text is five times cheaper to produce.
+#
+# The two are separate types on purpose. Mixing them in an expression converts
+# through the wider one, which is what `Decimal(x) + Decimal128(y)` does, and
+# the conversion each way is a method rather than something that happens
+# quietly in an operator.
+# ===----------------------------------------------------------------------=== #
+
+
+def decimal128_py_init(
+    out self: Decimal128, args: PythonObject, kwargs: PythonObject
+) raises:
+    """Construct a `Decimal128` from a string, an integer, a float, or
+    another decimal.
+
+    Usage from Python:
+        Decimal128("3.14")
+        Decimal128(42)
+        Decimal128(3.14)        # read exactly, as `decimal.Decimal` does
+        Decimal128(Decimal("3.14"))
+        Decimal128()            # zero
+    """
+    if len(args) == 0:
+        self = Decimal128.ZERO()
+        return
+    if len(args) != 1:
+        raise Error(
+            "Decimal128() takes at most 1 argument ("
+            + String(len(args))
+            + " given)"
+        )
+
+    ref cpython = Python().cpython()
+    var argument = args[0]
+
+    if cpython.PyLong_Check(argument._obj_ptr):
+        var value = cpython.PyLong_AsSsize_t(argument._obj_ptr)
+        if value != -1:
+            self = Decimal128.from_int(Int(value))
+            return
+        if not cpython.PyErr_Occurred():
+            self = Decimal128.from_int(-1)
+            return
+        cpython.PyErr_Clear()
+
+    if cpython.PyFloat_Check(argument._obj_ptr):
+        self = Decimal128.from_float(
+            Float64(cpython.PyFloat_AsDouble(argument._obj_ptr))
+        )
+        return
+
+    ref cell = state()[]
+    if cpython.Py_TYPE(argument._obj_ptr) == decimal128_type_ptr(cell):
+        self = _value128_of(argument._obj_ptr)[]
+        return
+    if cpython.Py_TYPE(argument._obj_ptr) == decimal_type_ptr(cell):
+        self = Decimal128(String(_value_of(argument._obj_ptr)[]))
+        return
+
+    var borrowed = cpython.PyUnicode_AsUTF8AndSize(argument._obj_ptr)
+    if borrowed:
+        self = Decimal128.from_string(borrowed.value())
+        return
+
+    raise Error(
+        "Decimal128() argument must be a string, a number, or a decimal"
+    )
+
+
+@always_inline
+def _coerce128(object: PyObjectPtr) raises -> Decimal128:
+    """The other operand of an expression, as a `Decimal128`.
+
+    Integers, floats and text are accepted. A `Decimal` is refused here on
+    purpose: the wider type is the one that loses nothing, so the caller
+    turns the refusal into `NotImplemented` and the expression settles in
+    `Decimal` through the reflected operator.
+
+    Whatever is refused, CPython's error indicator is left clear. A failed
+    `PyUnicode_AsUTF8AndSize` sets one, and a slot that returned
+    `NotImplemented` with an error still pending had it surface later
+    attached to whatever ran next: `Decimal128(1) + Decimal(2)` raised
+    `OverflowError: bad argument type for built-in operation`.
+    """
+    ref cpython = Python().cpython()
+    if cpython.PyLong_Check(object):
+        var value = cpython.PyLong_AsSsize_t(object)
+        if value != -1 or not cpython.PyErr_Occurred():
+            return Decimal128.from_int(Int(value))
+        cpython.PyErr_Clear()
+    if cpython.PyFloat_Check(object):
+        return Decimal128.from_float(Float64(cpython.PyFloat_AsDouble(object)))
+    var borrowed = cpython.PyUnicode_AsUTF8AndSize(object)
+    if borrowed:
+        return Decimal128.from_string(borrowed.value())
+    cpython.PyErr_Clear()
+    raise Error("operand is not a number")
+
+
+def _binary_slot_128[
+    operation: def(Decimal128, Decimal128) thin raises -> Decimal128,
+    is_division: Bool = False,
+](left: PyObjectPtr, right: PyObjectPtr) abi("C") -> PyObjectPtr:
+    """The shared body of every fixed-width arithmetic slot."""
+    try:
+        ref cell = state()[]
+        ref cpython = Python().cpython()
+        var ours = decimal128_type_ptr(cell)
+        var left_is_ours = cpython.Py_TYPE(left) == ours
+        var right_is_ours = cpython.Py_TYPE(right) == ours
+
+        var result: Decimal128
+        if left_is_ours and right_is_ours:
+            result = operation(_value128_of(left)[], _value128_of(right)[])
+        elif left_is_ours:
+            var converted: Decimal128
+            try:
+                converted = _coerce128(right)
+            except:
+                return _not_implemented_ptr()
+            result = operation(_value128_of(left)[], converted)
+        elif right_is_ours:
+            var converted: Decimal128
+            try:
+                converted = _coerce128(left)
+            except:
+                return _not_implemented_ptr()
+            result = operation(converted, _value128_of(right)[])
+        else:
+            return _not_implemented_ptr()
+
+        return new_decimal128(cell, result).steal_data()
+    except e:
+        comptime if is_division:
+            return raise_python_exception(
+                Error("division by zero"),
+                ExceptionType("PyExc_ZeroDivisionError"),
+            )
+        return raise_python_exception(e, ExceptionType("PyExc_OverflowError"))
+
+
+def _do_add_128(x: Decimal128, y: Decimal128) raises -> Decimal128:
+    return x + y
+
+
+def _do_subtract_128(x: Decimal128, y: Decimal128) raises -> Decimal128:
+    return x - y
+
+
+def _do_multiply_128(x: Decimal128, y: Decimal128) raises -> Decimal128:
+    return x * y
+
+
+def _do_divide_128(x: Decimal128, y: Decimal128) raises -> Decimal128:
+    return x / y
+
+
+def slot128_add(left: PyObjectPtr, right: PyObjectPtr) abi("C") -> PyObjectPtr:
+    """`nb_add`."""
+    return _binary_slot_128[_do_add_128](left, right)
+
+
+def slot128_subtract(
+    left: PyObjectPtr, right: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`nb_subtract`."""
+    return _binary_slot_128[_do_subtract_128](left, right)
+
+
+def slot128_multiply(
+    left: PyObjectPtr, right: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`nb_multiply`."""
+    return _binary_slot_128[_do_multiply_128](left, right)
+
+
+def slot128_true_divide(
+    left: PyObjectPtr, right: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`nb_true_divide`. Division by zero is a `ZeroDivisionError`."""
+    return _binary_slot_128[_do_divide_128, is_division=True](left, right)
+
+
+def slot128_richcompare(
+    left: PyObjectPtr, right: PyObjectPtr, operation: c_int
+) abi("C") -> PyObjectPtr:
+    """`tp_richcompare`: all six comparisons, one C function."""
+    try:
+        ref cell = state()[]
+        ref cpython = Python().cpython()
+        var ours = decimal128_type_ptr(cell)
+
+        var first: Decimal128
+        var second: Decimal128
+        if cpython.Py_TYPE(left) == ours:
+            first = _value128_of(left)[]
+            if cpython.Py_TYPE(right) == ours:
+                second = _value128_of(right)[]
+            else:
+                try:
+                    second = _coerce128(right)
+                except:
+                    return _not_implemented_ptr()
+        elif cpython.Py_TYPE(right) == ours:
+            second = _value128_of(right)[]
+            try:
+                first = _coerce128(left)
+            except:
+                return _not_implemented_ptr()
+        else:
+            return _not_implemented_ptr()
+
+        var order: Int
+        if first < second:
+            order = -1
+        elif first > second:
+            order = 1
+        else:
+            order = 0
+
+        var answer: Bool
+        var which = Int(operation)
+        if which == 0:
+            answer = order < 0
+        elif which == 1:
+            answer = order <= 0
+        elif which == 2:
+            answer = order == 0
+        elif which == 3:
+            answer = order != 0
+        elif which == 4:
+            answer = order > 0
+        else:
+            answer = order >= 0
+
+        return PythonObject(answer).steal_data()
+    except e:
+        return raise_python_exception(e)
+
+
+def decimal128_to_string(py_self: PythonObject) raises -> PythonObject:
+    """`str(x)`."""
+    return PythonObject(
+        String(py_self.unchecked_downcast_value_ptr[Decimal128]()[])
+    )
+
+
+def decimal128_to_repr(py_self: PythonObject) raises -> PythonObject:
+    """`repr(x)`, which reads back as the same value."""
+    return PythonObject(
+        String(
+            "Decimal128('",
+            String(py_self.unchecked_downcast_value_ptr[Decimal128]()[]),
+            "')",
+        )
+    )
+
+
+def decimal128_to_int(py_self: PythonObject) raises -> PythonObject:
+    """`int(x)`, truncated toward zero."""
+    return PythonObject(
+        Int(py_self.unchecked_downcast_value_ptr[Decimal128]()[])
+    )
+
+
+def decimal128_to_float(py_self: PythonObject) raises -> PythonObject:
+    """`float(x)`."""
+    return PythonObject(
+        Float64(py_self.unchecked_downcast_value_ptr[Decimal128]()[])
+    )
+
+
+def decimal128_bool(py_self: PythonObject) raises -> PythonObject:
+    """`bool(x)`, which is False only for zero."""
+    return PythonObject(
+        not py_self.unchecked_downcast_value_ptr[Decimal128]()[].is_zero()
+    )
+
+
+def decimal128_neg(py_self: PythonObject) raises -> PythonObject:
+    """`-x`."""
+    return new_decimal128(
+        state()[], -py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    )
+
+
+def decimal128_pos(py_self: PythonObject) raises -> PythonObject:
+    """`+x`."""
+    return new_decimal128(
+        state()[], py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    )
+
+
+def decimal128_abs(py_self: PythonObject) raises -> PythonObject:
+    """`abs(x)`."""
+    return new_decimal128(
+        state()[], abs(py_self.unchecked_downcast_value_ptr[Decimal128]()[])
+    )
+
+
+def _decimal128_unary[
+    operation: def(Decimal128) thin raises -> Decimal128,
+    name: StaticString,
+](py_self: PythonObject) raises -> PythonObject:
+    """The shared body of the one-argument mathematical methods."""
+    var value = py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    var result: Decimal128
+    try:
+        result = operation(value)
+    except e:
+        raise Error(String(name, " is not defined for this value"))
+    return new_decimal128(state()[], result)
+
+
+def _d128_sqrt(x: Decimal128) raises -> Decimal128:
+    return x.sqrt()
+
+
+def _d128_exp(x: Decimal128) raises -> Decimal128:
+    return x.exp()
+
+
+def _d128_ln(x: Decimal128) raises -> Decimal128:
+    return x.ln()
+
+
+def _d128_log10(x: Decimal128) raises -> Decimal128:
+    return x.log10()
+
+
+def _d128_sin(x: Decimal128) raises -> Decimal128:
+    return x.sin()
+
+
+def _d128_cos(x: Decimal128) raises -> Decimal128:
+    return x.cos()
+
+
+def _d128_tan(x: Decimal128) raises -> Decimal128:
+    return x.tan()
+
+
+def decimal128_sqrt(py_self: PythonObject) raises -> PythonObject:
+    """The square root, correctly rounded."""
+    return _decimal128_unary[_d128_sqrt, "sqrt"](py_self)
+
+
+def decimal128_exp(py_self: PythonObject) raises -> PythonObject:
+    """`e` raised to this power, correctly rounded."""
+    return _decimal128_unary[_d128_exp, "exp"](py_self)
+
+
+def decimal128_ln(py_self: PythonObject) raises -> PythonObject:
+    """The natural logarithm, correctly rounded."""
+    return _decimal128_unary[_d128_ln, "ln"](py_self)
+
+
+def decimal128_log10(py_self: PythonObject) raises -> PythonObject:
+    """The base-10 logarithm, correctly rounded."""
+    return _decimal128_unary[_d128_log10, "log10"](py_self)
+
+
+def decimal128_sin(py_self: PythonObject) raises -> PythonObject:
+    """The sine of this angle in radians, correctly rounded."""
+    return _decimal128_unary[_d128_sin, "sin"](py_self)
+
+
+def decimal128_cos(py_self: PythonObject) raises -> PythonObject:
+    """The cosine of this angle in radians, correctly rounded."""
+    return _decimal128_unary[_d128_cos, "cos"](py_self)
+
+
+def decimal128_tan(py_self: PythonObject) raises -> PythonObject:
+    """The tangent of this angle in radians, correctly rounded."""
+    return _decimal128_unary[_d128_tan, "tan"](py_self)
+
+
+def _d128_cot(x: Decimal128) raises -> Decimal128:
+    return x.cot()
+
+
+def _d128_sec(x: Decimal128) raises -> Decimal128:
+    return x.sec()
+
+
+def _d128_csc(x: Decimal128) raises -> Decimal128:
+    return x.csc()
+
+
+def _d128_cbrt(x: Decimal128) raises -> Decimal128:
+    return x.cbrt()
+
+
+def _d128_normalize(x: Decimal128) raises -> Decimal128:
+    return x.normalize()
+
+
+def decimal128_cot(py_self: PythonObject) raises -> PythonObject:
+    """The cotangent of this angle in radians, correctly rounded."""
+    return _decimal128_unary[_d128_cot, "cot"](py_self)
+
+
+def decimal128_sec(py_self: PythonObject) raises -> PythonObject:
+    """The secant of this angle in radians, correctly rounded."""
+    return _decimal128_unary[_d128_sec, "sec"](py_self)
+
+
+def decimal128_csc(py_self: PythonObject) raises -> PythonObject:
+    """The cosecant of this angle in radians, correctly rounded."""
+    return _decimal128_unary[_d128_csc, "csc"](py_self)
+
+
+def decimal128_cbrt(py_self: PythonObject) raises -> PythonObject:
+    """The cube root, correctly rounded. Negative values have one."""
+    return _decimal128_unary[_d128_cbrt, "cbrt"](py_self)
+
+
+def decimal128_normalize(py_self: PythonObject) raises -> PythonObject:
+    """The value with its trailing zeros removed."""
+    return _decimal128_unary[_d128_normalize, "normalize"](py_self)
+
+
+def decimal128_root(
+    py_self: PythonObject, degree: PythonObject
+) raises -> PythonObject:
+    """The n-th root, correctly rounded."""
+    var value = py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    var result: Decimal128
+    try:
+        result = value.root(Int(py=degree))
+    except e:
+        raise Error("the root is not defined for this value")
+    return new_decimal128(state()[], result)
+
+
+def decimal128_log(
+    py_self: PythonObject, base: PythonObject
+) raises -> PythonObject:
+    """The logarithm to an arbitrary base, correctly rounded."""
+    var value = py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    var result: Decimal128
+    try:
+        result = value.log(_operand128(base))
+    except e:
+        raise Error("the logarithm is not defined for these values")
+    return new_decimal128(state()[], result)
+
+
+def decimal128_fma(
+    py_self: PythonObject, other: PythonObject, addend: PythonObject
+) raises -> PythonObject:
+    """`self * other + addend`, rounded once rather than twice."""
+    var value = py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    return new_decimal128(
+        state()[], value.fma(_operand128(other), _operand128(addend))
+    )
+
+
+def decimal128_max(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """The larger of the two."""
+    var value = py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    return new_decimal128(state()[], value.max(_operand128(other)))
+
+
+def decimal128_min(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """The smaller of the two."""
+    var value = py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    return new_decimal128(state()[], value.min(_operand128(other)))
+
+
+def decimal128_same_quantum(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """Whether the two have the same exponent."""
+    var value = py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    return PythonObject(value.same_quantum(_operand128(other)))
+
+
+def decimal128_adjusted(py_self: PythonObject) raises -> PythonObject:
+    """The exponent of the leading digit."""
+    return PythonObject(
+        py_self.unchecked_downcast_value_ptr[Decimal128]()[].adjusted()
+    )
+
+
+def decimal128_is_zero(py_self: PythonObject) raises -> PythonObject:
+    """Whether the value is zero."""
+    return PythonObject(
+        py_self.unchecked_downcast_value_ptr[Decimal128]()[].is_zero()
+    )
+
+
+def decimal128_is_signed(py_self: PythonObject) raises -> PythonObject:
+    """Whether the sign bit is set, which includes negative zero."""
+    return PythonObject(
+        py_self.unchecked_downcast_value_ptr[Decimal128]()[].is_signed()
+    )
+
+
+def decimal128_is_integer(py_self: PythonObject) raises -> PythonObject:
+    """Whether the value has nothing after the point."""
+    return PythonObject(
+        py_self.unchecked_downcast_value_ptr[Decimal128]()[].is_integer()
+    )
+
+
+def decimal128_to_eng_string(py_self: PythonObject) raises -> PythonObject:
+    """The value in engineering notation, where the exponent is a multiple
+    of three."""
+    return PythonObject(
+        py_self.unchecked_downcast_value_ptr[Decimal128]()[].to_eng_string()
+    )
+
+
+def decimal128_rdivmod(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """`divmod(b, a)`, when the left operand is not one of ours."""
+    ref cell = state()[]
+    var right = py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    var left = _operand128(other)
+    return Python.tuple(
+        new_decimal128(cell, left // right), new_decimal128(cell, left % right)
+    )
+
+
+def decimal128_rpower(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """`b ** a`, when the left operand is not one of ours."""
+    ref cell = state()[]
+    var exponent = py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    return new_decimal128(cell, _operand128(other).power(exponent))
+
+
+def decimal128_maximum() raises -> PythonObject:
+    """The largest value the type holds."""
+    return new_decimal128(state()[], Decimal128.MAX())
+
+
+def decimal128_minimum() raises -> PythonObject:
+    """The most negative value the type holds."""
+    return new_decimal128(state()[], Decimal128.MIN())
+
+
+def decimal128_quantize(
+    py_self: PythonObject, exponent: PythonObject
+) raises -> PythonObject:
+    """Round to the scale of another value, as `decimal.quantize` does.
+
+    The rounding mode is the context's, which is what `Decimal` follows too.
+    """
+    ref cell = state()[]
+    ref cpython = Python().cpython()
+    var target: Decimal128
+    if cpython.Py_TYPE(exponent._obj_ptr) == decimal128_type_ptr(cell):
+        target = _value128_of(exponent._obj_ptr)[]
+    else:
+        target = _coerce128(exponent._obj_ptr)
+    var value = py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    var result: Decimal128
+    try:
+        result = value.quantize(target, cell.rounding)
+    except e:
+        raise Error("quantize result has too many digits for Decimal128")
+    return new_decimal128(cell, result)
+
+
+def decimal128_round(
+    py_self: PythonObject, places: PythonObject
+) raises -> PythonObject:
+    """Round to a number of decimal places, under the context's mode.
+
+    `round(x)` and `round(x, n)` reach this through `__round__` in Python,
+    which is where the no-argument form's `int` result is put together.
+    """
+    ref cell = state()[]
+    var value = py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    return new_decimal128(cell, value.round(Int(py=places), cell.rounding))
+
+
+def decimal128_floordiv(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """`a // b`, truncated toward zero as `decimal` does it."""
+    ref cell = state()[]
+    var left = py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    return new_decimal128(cell, left // _operand128(other))
+
+
+def decimal128_rfloordiv(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """`b // a`, when the left operand is not one of ours."""
+    ref cell = state()[]
+    var right = py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    return new_decimal128(cell, _operand128(other) // right)
+
+
+def decimal128_mod(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """`a % b`, whose sign follows the dividend."""
+    ref cell = state()[]
+    var left = py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    return new_decimal128(cell, left % _operand128(other))
+
+
+def decimal128_rmod(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """`b % a`, when the left operand is not one of ours."""
+    ref cell = state()[]
+    var right = py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    return new_decimal128(cell, _operand128(other) % right)
+
+
+def decimal128_divmod(
+    py_self: PythonObject, other: PythonObject
+) raises -> PythonObject:
+    """`divmod(a, b)`."""
+    ref cell = state()[]
+    var left = py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    var right = _operand128(other)
+    return Python.tuple(
+        new_decimal128(cell, left // right), new_decimal128(cell, left % right)
+    )
+
+
+def decimal128_power(
+    py_self: PythonObject, exponent: PythonObject
+) raises -> PythonObject:
+    """`a ** b`."""
+    ref cell = state()[]
+    ref cpython = Python().cpython()
+    var base = py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    if cpython.PyLong_Check(exponent._obj_ptr):
+        var whole = cpython.PyLong_AsSsize_t(exponent._obj_ptr)
+        if whole != -1 or not cpython.PyErr_Occurred():
+            return new_decimal128(cell, base.power(Int(whole)))
+        cpython.PyErr_Clear()
+    return new_decimal128(cell, base.power(_operand128(exponent)))
+
+
+@always_inline
+def _operand128(object: PythonObject) raises -> Decimal128:
+    """The other operand of a method, as a `Decimal128`."""
+    ref cpython = Python().cpython()
+    if cpython.Py_TYPE(object._obj_ptr) == decimal128_type_ptr(state()[]):
+        return _value128_of(object._obj_ptr)[]
+    return _coerce128(object._obj_ptr)
+
+
+def decimal128_to_ieee754_hex(py_self: PythonObject) raises -> PythonObject:
+    """The IEEE 754 decimal128 pattern as 32 hexadecimal characters.
+
+    The bytes themselves are assembled in Python, where `bytes.fromhex` and
+    a reversal are one line each; what has to happen here is the encoding.
+    """
+    var value = py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    var bits = value.to_ieee754()
+    comptime digits = "0123456789abcdef"
+    var out = String("")
+    for index in range(32):
+        var nibble = Int((bits >> UInt128(4 * (31 - index))) & UInt128(0xF))
+        out += digits[byte=nibble]
+    return PythonObject(out)
+
+
+def decimal128_from_ieee754_hex(
+    py_self: PythonObject, text: PythonObject
+) raises -> PythonObject:
+    """Reads 32 hexadecimal characters back into a value."""
+    var characters = String(text)
+    if characters.byte_length() != 32:
+        raise Error("a decimal128 is sixteen bytes")
+    var bits = UInt128(0)
+    for index in range(32):
+        var character = Int(characters.as_bytes()[index])
+        var nibble: Int
+        if character >= 48 and character <= 57:
+            nibble = character - 48
+        elif character >= 97 and character <= 102:
+            nibble = character - 87
+        elif character >= 65 and character <= 70:
+            nibble = character - 55
+        else:
+            raise Error("not a hexadecimal digit")
+        bits = (bits << UInt128(4)) | UInt128(nibble)
+    return new_decimal128(state()[], Decimal128.from_ieee754(bits))
+
+
+def decimal128_to_decimal(py_self: PythonObject) raises -> PythonObject:
+    """The same number as a `Decimal`, which loses nothing."""
+    var value = py_self.unchecked_downcast_value_ptr[Decimal128]()[]
+    return new_decimal(state()[], BigDecimal(String(value)))
+
+
+# ===----------------------------------------------------------------------=== #
 # PyInit entry point
 #
 # The dunder names are registered next to the plain ones. Registering them is
@@ -303,6 +1053,8 @@ def PyInit__decimo() abi("C") -> PythonObject:
 
         m.def_function[get_precision]("get_precision")
         m.def_function[set_precision]("set_precision")
+        m.def_function[decimal128_maximum]("decimal128_max_value")
+        m.def_function[decimal128_minimum]("decimal128_min_value")
         m.def_function[module_pi]("pi")
         m.def_function[module_e]("e")
         m.def_function[get_rounding]("get_rounding")
@@ -430,6 +1182,87 @@ def PyInit__decimo() abi("C") -> PythonObject:
                 method_to_integral, "to_integral_exact"
             )
         )
+        # --- the fixed-width type -----------------------------------
+        ref decimal128_builder = m.add_type[Decimal128]("Decimal128")
+
+        decimal128_builder._insert_slot(
+            PyType_Slot(c_int(Py_nb_add), _fn_ptr_as_opaque(slot128_add))
+        )
+        decimal128_builder._insert_slot(
+            PyType_Slot(
+                c_int(Py_nb_subtract), _fn_ptr_as_opaque(slot128_subtract)
+            )
+        )
+        decimal128_builder._insert_slot(
+            PyType_Slot(
+                c_int(Py_nb_multiply), _fn_ptr_as_opaque(slot128_multiply)
+            )
+        )
+        decimal128_builder._insert_slot(
+            PyType_Slot(
+                c_int(Py_nb_true_divide),
+                _fn_ptr_as_opaque(slot128_true_divide),
+            )
+        )
+        decimal128_builder._insert_slot(
+            PyType_Slot(c_int(Py_tp_hash), _fn_ptr_as_opaque(slot128_hash))
+        )
+        decimal128_builder._insert_slot(
+            PyType_Slot(
+                c_int(Py_tp_richcompare),
+                _fn_ptr_as_opaque(slot128_richcompare),
+            )
+        )
+
+        _ = (
+            decimal128_builder.def_py_init[decimal128_py_init]()
+            .def_method[decimal128_to_string]("__str__")
+            .def_method[decimal128_to_string]("to_string")
+            .def_method[decimal128_to_repr]("__repr__")
+            .def_method[decimal128_to_repr]("to_repr")
+            .def_method[decimal128_to_int]("__int__")
+            .def_method[decimal128_to_float]("__float__")
+            .def_method[decimal128_bool]("__bool__")
+            .def_method[decimal128_neg]("__neg__")
+            .def_method[decimal128_pos]("__pos__")
+            .def_method[decimal128_abs]("__abs__")
+            .def_method[decimal128_sqrt]("sqrt")
+            .def_method[decimal128_exp]("exp")
+            .def_method[decimal128_ln]("ln")
+            .def_method[decimal128_log10]("log10")
+            .def_method[decimal128_sin]("sin")
+            .def_method[decimal128_cos]("cos")
+            .def_method[decimal128_tan]("tan")
+            .def_method[decimal128_quantize]("quantize")
+            .def_method[decimal128_floordiv]("__floordiv__")
+            .def_method[decimal128_rfloordiv]("__rfloordiv__")
+            .def_method[decimal128_mod]("__mod__")
+            .def_method[decimal128_rmod]("__rmod__")
+            .def_method[decimal128_divmod]("__divmod__")
+            .def_method[decimal128_power]("__pow__")
+            .def_method[decimal128_round]("_round")
+            .def_method[decimal128_to_ieee754_hex]("_to_ieee754_hex")
+            .def_method[decimal128_from_ieee754_hex]("_from_ieee754_hex")
+            .def_method[decimal128_to_decimal]("to_decimal")
+            .def_method[decimal128_cot]("cot")
+            .def_method[decimal128_sec]("sec")
+            .def_method[decimal128_csc]("csc")
+            .def_method[decimal128_cbrt]("cbrt")
+            .def_method[decimal128_normalize]("normalize")
+            .def_method[decimal128_root]("root")
+            .def_method[decimal128_log]("log")
+            .def_method[decimal128_fma]("fma")
+            .def_method[decimal128_max]("max")
+            .def_method[decimal128_min]("min")
+            .def_method[decimal128_same_quantum]("same_quantum")
+            .def_method[decimal128_adjusted]("adjusted")
+            .def_method[decimal128_is_zero]("is_zero")
+            .def_method[decimal128_is_signed]("is_signed")
+            .def_method[decimal128_is_integer]("is_integer")
+            .def_method[decimal128_rdivmod]("__rdivmod__")
+            .def_method[decimal128_rpower]("__rpow__")
+        )
+
         return m.finalize()
     except e:
         abort(String("error creating _decimo Python module: ", e))
@@ -518,6 +1351,13 @@ def convert_operand(other: PythonObject) raises -> BigDecimal:
         if not cpython.PyErr_Occurred():
             return BigDecimal.from_integral_scalar(Int64(-1))
         cpython.PyErr_Clear()
+    ref cell = state()[]
+    if cpython.Py_TYPE(other._obj_ptr) == decimal128_type_ptr(cell):
+        # The fixed-width type on the other side of the operator. Widening
+        # loses nothing -- 29 digits and a scale of 28 both fit -- so a mixed
+        # expression settles in `Decimal`, which is where the reflected
+        # operator sends it.
+        return BigDecimal(String(_value128_of(other._obj_ptr)[]))
     return convert_big_int(other)
 
 
@@ -1891,6 +2731,27 @@ def _power_modulus(var base: UInt64, var exponent: UInt64) -> UInt64:
         base = UInt64(UInt128(base) * UInt128(base) % modulus)
         exponent >>= 1
     return result
+
+
+def slot128_hash(py_self: PyObjectPtr) abi("C") -> Py_ssize_t:
+    """`tp_hash`, agreeing with `int`, `float`, `decimal.Decimal` and
+    `Decimal`.
+
+    The coefficient is one `UInt128`, so its residue is one remainder rather
+    than the loop over words the arbitrary-precision type needs.
+    """
+    ref value = _value128_of(py_self)[]
+    var modulus = UInt128(_HASH_MODULUS)
+    var residue = UInt64(value.coefficient() % modulus)
+
+    # The value is `coefficient * 10^-scale`, so the scale is a division:
+    # multiply by the inverse of ten instead.
+    var factor = _power_modulus(_TEN_INVERSE, UInt64(value.scale()))
+    var result = Int(UInt128(residue) * UInt128(factor) % modulus)
+    if value.is_negative():
+        result = -result
+    # -1 is reserved by CPython to mean "an error happened".
+    return Py_ssize_t(-2 if result == -1 else result)
 
 
 def slot_hash(py_self: PyObjectPtr) abi("C") -> Py_ssize_t:

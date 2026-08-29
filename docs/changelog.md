@@ -27,6 +27,35 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
 
 ### ⭐️ New in Unreleased
 
+1. **The Python package has `Decimal128`.** The fixed-width type is exposed
+   as `decimo.Decimal128`, with `Dec128` as the shorter name the Mojo library
+   uses: 96 bits of coefficient and a scale from 0 to 28, in sixteen bytes
+   that own nothing.
+
+   It arithmetics, compares, hashes and rounds like `Decimal`, takes an
+   `int`, a `float` or a `str` on either side of an operator, and copies,
+   pickles and formats like a value. Its hash agrees with `int`, `float`,
+   `decimal.Decimal` and `Decimal`, so the four are interchangeable as
+   dictionary keys.
+
+   The methods a `decimal` program reaches for are there: `quantize`,
+   `round`, `as_tuple`, `as_integer_ratio`, `normalize`, `adjusted`,
+   `compare`, `copy_sign`, `copy_abs`, `copy_negate`, `to_integral_value`,
+   `same_quantum`, `max`, `min`, `fma`, `to_eng_string`, `from_float` and the
+   `is_` predicates. So is the mathematics: `sqrt`, `cbrt`, `root`, `exp`,
+   `ln`, `log10`, `log`, and all six trigonometric functions. And the IEEE
+   754 interchange bytes.
+
+   A mixed expression settles in the wider type -- `Decimal128 + Decimal` is
+   a `Decimal`, either way round -- since widening loses nothing.
+
+   Its results never allocate. Against `Decimal` and `decimal.Decimal`:
+   addition 46 nanoseconds against 67 and 73, multiplication 57 against 92
+   and 85, division 114 against 225 and 133, construction from text 116
+   against 160 and 136, and `str` 118 against 437 and 67. A worked invoice --
+   three lines quantized to cents, with tax -- is 633 nanoseconds against 713
+   and 705. `str` is the one that is slower.
+
 1. **decimo reads and writes the IEEE 754 decimal128 interchange format.**
    `decimo.ieee754` encodes and decodes the sixteen bytes in the binary
    integer decimal layout -- what MongoDB's BSON `decimal128` and Intel's
@@ -241,6 +270,24 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
    `BigInt10.from_bigint()` and `BigInt10.to_bigint()` (PR #269).
 
 ### 🦋 Changed in Unreleased
+
+1. **`Decimal128` division is one wide division rather than a walk.** The
+   quotient was built a digit at a time -- two probe steps, then a bulk step
+   -- which cost 226 nanoseconds and could run out of digits before reaching
+   the position the rounding needed: `504572829922.89957 / 525211.7899` came
+   out one unit low, and 1 in 300 random pairs was wrong in the last place.
+
+   The numerator is now raised until the integer quotient is about thirty
+   digits, divided once, and rounded from the remainder, which is what
+   settles a tie. That needed a 256-by-128 divider, since a divisor past 64
+   bits fell through to `UInt256 // UInt256`, a software shift-subtract loop
+   of 261 nanoseconds. `udiv_u256_by_u128` is Knuth's algorithm D over 64-bit
+   limbs, and takes 22: every division inside it has a divisor that fits 64
+   bits, which is the case `__udivti3` does in 2.6 nanoseconds rather than
+   75.
+
+   Division is 70 nanoseconds against 226, and correct on all 300 pairs. From
+   Python that is 114 against `decimal`'s 133.
 
 1. **An exact integer power is known to be exact, and trailing zeros come
    off in one step.** A base of `d` digits raised to the `n`-th has at most

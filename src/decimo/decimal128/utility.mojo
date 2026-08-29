@@ -25,7 +25,7 @@ representation conversions.
 from std.memory import Pointer
 from std import sys
 from std import time
-from std.bit import bit_width
+from std.bit import bit_width, count_leading_zeros
 from std.builtin.globals import global_constant
 
 from decimo.decimal128.decimal128 import Decimal128
@@ -1243,6 +1243,97 @@ def udiv_u256_by_pow10_gm(value: UInt256, k: Int) -> UInt256:
 
 
 @always_inline
+def udiv_u256_by_u128(n: UInt256, d: UInt128) -> Tuple[UInt256, UInt128]:
+    """Divides a 256-bit value by a 128-bit one.
+
+    Args:
+        n: The dividend.
+        d: The divisor, which must be non-zero.
+
+    Returns:
+        A tuple `(quotient, remainder)`.
+
+    Notes:
+        Knuth's algorithm D over 64-bit limbs, which is what makes it worth
+        writing: a `UInt256 // UInt256` is a software shift-subtract loop of
+        about 261 nanoseconds, and a `UInt128 // UInt128` with a divisor past
+        64 bits is 75. A `UInt128` divided by something that fits in 64 bits
+        is 2.6, because `__udivti3` recognises it, and every division here is
+        one of those.
+
+        The divisor is shifted until its top bit is set, which is what bounds
+        the trial quotient's error at two. The three-word window it is
+        subtracted from fits a `UInt256`, so the multiply-subtract and its
+        corrections are ordinary arithmetic rather than limb-by-limb borrows.
+    """
+    debug_assert(d != UInt128(0), "udiv_u256_by_u128: divisor must be non-zero")
+
+    if d <= UInt128(UInt64.MAX):
+        var narrow = udiv_u256_by_u64(n, UInt64(d))
+        return (narrow[0], UInt128(narrow[1]))
+    if n < UInt256(d):
+        return (UInt256(0), UInt128(n))
+
+    # Shift the divisor's top bit into place, and the dividend with it.
+    var shift = Int(count_leading_zeros(UInt64(d >> UInt128(64))))
+    var divisor = d << UInt128(shift)
+    var divisor_high = UInt128(divisor >> UInt128(64))
+    var shifted = n << UInt256(shift)
+    var carried = UInt64(0)
+    if shift > 0:
+        carried = UInt64(n >> UInt256(256 - shift))
+
+    var words = InlineArray[UInt64, 5](uninitialized=True)
+    words[0] = UInt64(shifted & UInt256(0xFFFF_FFFF_FFFF_FFFF))
+    words[1] = UInt64((shifted >> UInt256(64)) & UInt256(0xFFFF_FFFF_FFFF_FFFF))
+    words[2] = UInt64(
+        (shifted >> UInt256(128)) & UInt256(0xFFFF_FFFF_FFFF_FFFF)
+    )
+    words[3] = UInt64(
+        (shifted >> UInt256(192)) & UInt256(0xFFFF_FFFF_FFFF_FFFF)
+    )
+    words[4] = carried
+
+    var quotient = UInt256(0)
+    for index in range(2, -1, -1):
+        # The three words the next quotient word is drawn from.
+        var window = (
+            (UInt256(words[index + 2]) << UInt256(128))
+            | (UInt256(words[index + 1]) << UInt256(64))
+            | UInt256(words[index])
+        )
+
+        # Trial quotient from the top two words over the divisor's top word,
+        # which is a 128-bit value divided by a 64-bit one.
+        var top = (UInt128(words[index + 2]) << UInt128(64)) | UInt128(
+            words[index + 1]
+        )
+        var trial = top // divisor_high
+        if trial > UInt128(UInt64.MAX):
+            trial = UInt128(UInt64.MAX)
+
+        # Normalizing the divisor bounds the overshoot at two.
+        var product = UInt256(trial) * UInt256(divisor)
+        while product > window:
+            trial -= UInt128(1)
+            product -= UInt256(divisor)
+
+        window -= product
+        quotient |= UInt256(trial) << UInt256(64 * index)
+        words[index + 2] = UInt64(
+            (window >> UInt256(128)) & UInt256(0xFFFF_FFFF_FFFF_FFFF)
+        )
+        words[index + 1] = UInt64(
+            (window >> UInt256(64)) & UInt256(0xFFFF_FFFF_FFFF_FFFF)
+        )
+        words[index] = UInt64(window & UInt256(0xFFFF_FFFF_FFFF_FFFF))
+
+    var remainder = (
+        (UInt128(words[1]) << UInt128(64)) | UInt128(words[0])
+    ) >> UInt128(shift)
+    return (quotient, remainder)
+
+
 def udiv_u256_by_u64(n: UInt256, d: UInt64) -> Tuple[UInt256, UInt64]:
     """Schoolbook UInt256 / UInt64 division, hardware-fast on aarch64.
 
