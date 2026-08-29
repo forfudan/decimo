@@ -2708,15 +2708,23 @@ def ln_series_expansion(
     # recurrence; we truncate it periodically to keep it bounded.
     var z_digits = z.coefficient.number_of_digits()
 
-    # Threshold: use Taylor when z has ≤ 1/10 of the working precision
-    # in digits.  Rationale (from benchmarks): when d = z_digits is small
-    # relative to n = working_precision, each Taylor multiply costs O(n×d)
-    # which is essentially O(n).  The atanh path trades 3× fewer iterations
-    # for a heavier per-iteration cost (full n×n multiply by u²), so it
-    # only wins when d ≈ n.  The 1/10 ratio was chosen empirically:
-    # at p=100 the crossover is around d=10; at p=1000 around d=100.
-    comptime _TAYLOR_ATANH_DIGIT_RATIO = 10
-    if z_digits <= working_precision // _TAYLOR_ATANH_DIGIT_RATIO:
+    # Which series to sum is decided by how small `z` is, not by how many
+    # digits it has. Taylor gains `-adjusted(z)` digits a term and atanh
+    # gains twice that, and once `z` is long enough to multiply by, a term
+    # costs about the same either way -- so Taylor is worth it only when the
+    # series is over in a few terms.
+    #
+    # The rule was `z_digits <= working_precision / 10`, which reads the
+    # coefficient's length and not its magnitude. `ln(2.3456789)` has eight
+    # digits but leaves `z = 0.34` after the reduction, so it took the Taylor
+    # path at every precision above 71 and paid twice over: 41.3 microseconds
+    # at 100 digits against 16.5, and 319 against 172 at 400.
+    comptime _TAYLOR_TERM_BUDGET = 20
+    var magnitude = -z.adjusted()
+    if magnitude < 1:
+        magnitude = 1
+
+    if working_precision <= _TAYLOR_TERM_BUDGET * magnitude:
         # ---- Taylor path (optimal for small/simple z) ----
         var max_terms = Int(Float64(working_precision) * 2.5) + 1
         var result = BigDecimal(BigUInt.zero(), working_precision, False)

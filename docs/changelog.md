@@ -271,6 +271,75 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
 
 ### 🦋 Changed in Unreleased
 
+1. **Burnikel-Ziegler starts where it begins to pay.** The recursion took
+   over from schoolbook at a divisor of 24 words, but it does not earn its
+   keep until about 48: dividing 2n by n with a 28-word divisor cost 3.50
+   microseconds against 2.25 for schoolbook, and 5.87 against 3.97 at 40
+   words. The cutoff is 48 now, which leaves everything above it as it was --
+   a 2n-by-n division there has a dividend longer than twice the cutoff, so
+   it recurses either way. Ninety-six was tried and is worse.
+
+   Division against multiplication of the same width, which is the ratio that
+   says whether the algorithm is right: 9.1 times at 32 words before, 6.2
+   after, against 2.7 at 1024 words where the recursion has always run and
+   GMP's own ratio is 2.6.
+
+1. **Reading a `BigUInt` from text is up to seven times faster.** The parser
+   normalized every string first, which writes a `List[UInt8]` of one digit
+   per byte and reads it back into words -- for a short value most of what
+   the parse costs. A string that is nothing but digits, which is nearly all
+   of them, now goes straight into the words. One digit is 10.7 nanoseconds
+   against 78.5, nine are 20.6 against 91.2, and twenty-eight are 46.8
+   against 118.4. `BigDecimal` has had this path for a while; this is the
+   same one, without the point.
+
+1. **Writing a `BigDecimal` out is two to four times cheaper.** The text was
+   built by making a `String` of the coefficient, concatenating around it,
+   and -- for `String(x)`, which is what `print` and the Python binding use
+   -- copying the result into a writer. Three allocations and two copies for
+   what is one row of digits.
+
+   The digits now go from the coefficient's words straight into one buffer,
+   which is on the stack when the value is short enough, with the integer
+   part sliding one byte left to open the slot for the point. `BigUInt`
+   writes its own text the same way, and emits two digits per division
+   rather than one against a table of pairs, which halves the divisions
+   every conversion does: `BigUInt.to_string()` is 15 nanoseconds at 18
+   digits against 49, and 57 at 28 against 94.
+
+   Nanoseconds, against CPython's `decimal` for the same value:
+
+   | Digits | `to_string()` before | after | `String(x)` before | after | `decimal` |
+   | ---: | ---: | ---: | ---: | ---: | ---: |
+   | 9 | 21 | 15 | 84 | 20 | 68 |
+   | 28 | 159 | 66 | 350 | 77 | 84 |
+   | 100 | 181 | 110 | 209 | 131 | 131 |
+   | 1,000 | 716 | 376 | 997 | 475 | 805 |
+
+   From Python, `str(Decimal(...))` went from 423 nanoseconds to 108 against
+   `decimal`'s 63, helped by `tp_str` becoming a real slot for both types
+   rather than a `__str__` CPython has to dispatch to.
+
+1. **`ln` picks its series by how small the argument is, not how long it is.**
+   The choice between the Taylor series and the atanh identity read the
+   number of digits in `z = x - 1` and compared it to a tenth of the working
+   precision. That is the wrong quantity: what decides the term count is `z`'s
+   magnitude. `ln(2.3456789)` has eight digits but leaves `z = 0.34` after the
+   reduction, so it took the Taylor path at every precision above 71 and paid
+   twice over.
+
+   | Precision | before | after |
+   | ---: | ---: | ---: |
+   | 80 | 25.9 µs | 12.9 µs |
+   | 100 | 41.6 µs | 17.4 µs |
+   | 200 | 107.9 µs | 50.0 µs |
+   | 400 | 323 µs | 179 µs |
+
+   At 100 digits that is 2.3 times faster than libmpdec, where it had been
+   1.83 times slower -- the one row in the benchmarks where the logarithm
+   lost. A `z` that is genuinely small still takes the Taylor path, which is
+   where it wins.
+
 1. **`Decimal128` division is one wide division rather than a walk.** The
    quotient was built a digit at a time -- two probe steps, then a bulk step
    -- which cost 226 nanoseconds and could run out of digits before reaching

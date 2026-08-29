@@ -83,13 +83,21 @@ neither the base-10^9 value (768) nor half of it (384, where the base change
 put it): unlike the vector widths, this one really did move, and not by the
 factor anyone would have guessed. Sweep, do not scale.
 """
-comptime CUTOFF_BURNIKEL_ZIEGLER = 24
+comptime CUTOFF_BURNIKEL_ZIEGLER = 48
 """The cutoff number of words for using Burnikel-Ziegler division.
 
 Schoolbook is used outright when the divisor has at most this many words
 *and* the dividend has at most twice as many; a longer dividend goes to
 Burnikel-Ziegler whatever the divisor's width. So this is not the same number
 as the block size below, and it is not a divisor-width cutoff on its own.
+
+Raised again to 48 on 20260829: with a divisor of 25 to 48 words the
+recursion still cost more than it saved, 3.50 microseconds against 2.25 at
+28 words and 5.87 against 3.97 at 40. Above 48 the recursion wins and the
+number does not matter, since the dividend of a 2n-by-n division is already
+longer than twice the cutoff. Ninety-six was tried and is worse: it holds
+schoolbook past where the recursion has taken over, 20.5 microseconds
+against 15.0 at 96 words.
 
 Raised from 32 on 20260826, after the Knuth D multiply-subtract step was taken
 off its carry chain. A 2.9x faster schoolbook stays ahead of the recursion for
@@ -233,7 +241,14 @@ the 112-word row, is the one being tuned for.
 # One 256-bit vector of words, and the run length that the two-pass kernels
 # chew through between carry walks. Both halved with the word count when the
 # base moved, to keep the same number of *bytes* per vector and per block.
-# Provisional: they want re-sweeping, like every other cutoff here.
+#
+# Swept on 20260829: four and sixteen words to the vector were both tried and
+# eight is the one to keep -- 6.0 nanoseconds against 6.3 for a 56-word
+# addition, 9.1 against 9.4 at 128, 25.5 against 26.0 at 512. Sixteen wins by
+# 8% at 2048 words and loses everywhere else. What an addition of that size
+# actually spends its time on is the allocation of the result, which is about
+# 36 nanoseconds whatever the length, so the kernel is not where the next
+# gain is.
 comptime WORDS_PER_VECTOR = 8
 comptime WORDS_PER_CARRY_BLOCK = 64
 

@@ -24,6 +24,7 @@ mathematical methods that do not implement a trait.
 """
 
 from std import math
+from std.builtin.globals import global_constant
 from std.memory import Pointer, unsafe_memcpy, memcmp
 from std.sys import size_of
 
@@ -64,6 +65,215 @@ ten base-10^9 words held before the base moved."""
 
 comptime Coefficient = WordList[WORD_DTYPE, INLINE_WORDS_BIGUINT]
 """The word storage of a `BigUInt`, little-endian."""
+
+
+comptime _TWO_DIGIT_TABLE: Array[UInt8, 200] = [
+    48,
+    48,  # 00
+    48,
+    49,  # 01
+    48,
+    50,  # 02
+    48,
+    51,  # 03
+    48,
+    52,  # 04
+    48,
+    53,  # 05
+    48,
+    54,  # 06
+    48,
+    55,  # 07
+    48,
+    56,  # 08
+    48,
+    57,  # 09
+    49,
+    48,  # 10
+    49,
+    49,  # 11
+    49,
+    50,  # 12
+    49,
+    51,  # 13
+    49,
+    52,  # 14
+    49,
+    53,  # 15
+    49,
+    54,  # 16
+    49,
+    55,  # 17
+    49,
+    56,  # 18
+    49,
+    57,  # 19
+    50,
+    48,  # 20
+    50,
+    49,  # 21
+    50,
+    50,  # 22
+    50,
+    51,  # 23
+    50,
+    52,  # 24
+    50,
+    53,  # 25
+    50,
+    54,  # 26
+    50,
+    55,  # 27
+    50,
+    56,  # 28
+    50,
+    57,  # 29
+    51,
+    48,  # 30
+    51,
+    49,  # 31
+    51,
+    50,  # 32
+    51,
+    51,  # 33
+    51,
+    52,  # 34
+    51,
+    53,  # 35
+    51,
+    54,  # 36
+    51,
+    55,  # 37
+    51,
+    56,  # 38
+    51,
+    57,  # 39
+    52,
+    48,  # 40
+    52,
+    49,  # 41
+    52,
+    50,  # 42
+    52,
+    51,  # 43
+    52,
+    52,  # 44
+    52,
+    53,  # 45
+    52,
+    54,  # 46
+    52,
+    55,  # 47
+    52,
+    56,  # 48
+    52,
+    57,  # 49
+    53,
+    48,  # 50
+    53,
+    49,  # 51
+    53,
+    50,  # 52
+    53,
+    51,  # 53
+    53,
+    52,  # 54
+    53,
+    53,  # 55
+    53,
+    54,  # 56
+    53,
+    55,  # 57
+    53,
+    56,  # 58
+    53,
+    57,  # 59
+    54,
+    48,  # 60
+    54,
+    49,  # 61
+    54,
+    50,  # 62
+    54,
+    51,  # 63
+    54,
+    52,  # 64
+    54,
+    53,  # 65
+    54,
+    54,  # 66
+    54,
+    55,  # 67
+    54,
+    56,  # 68
+    54,
+    57,  # 69
+    55,
+    48,  # 70
+    55,
+    49,  # 71
+    55,
+    50,  # 72
+    55,
+    51,  # 73
+    55,
+    52,  # 74
+    55,
+    53,  # 75
+    55,
+    54,  # 76
+    55,
+    55,  # 77
+    55,
+    56,  # 78
+    55,
+    57,  # 79
+    56,
+    48,  # 80
+    56,
+    49,  # 81
+    56,
+    50,  # 82
+    56,
+    51,  # 83
+    56,
+    52,  # 84
+    56,
+    53,  # 85
+    56,
+    54,  # 86
+    56,
+    55,  # 87
+    56,
+    56,  # 88
+    56,
+    57,  # 89
+    57,
+    48,  # 90
+    57,
+    49,  # 91
+    57,
+    50,  # 92
+    57,
+    51,  # 93
+    57,
+    52,  # 94
+    57,
+    53,  # 95
+    57,
+    54,  # 96
+    57,
+    55,  # 97
+    57,
+    56,  # 98
+    57,
+    57,  # 99
+]
+"""Every pair of digits from `00` to `99`, as characters.
+
+Emitting two digits per division halves the divisions a conversion does, and
+a division by a constant is the expensive part of writing a number out.
+"""
 
 
 struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
@@ -850,6 +1060,61 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             return result^
 
     @staticmethod
+    def _from_digits(value: StringSlice) raises -> Optional[BigUInt]:
+        """Reads `[+]?digits` into words without an intermediate list.
+
+        Args:
+            value: The text to read.
+
+        Returns:
+            The value, or nothing when the text is not of that shape -- a
+            sign, a point, an exponent, a separator, no digits at all -- in
+            which case the caller falls back to `parse_numeric_string()`.
+
+        Raises:
+            Error: If building the value fails.
+
+        Notes:
+            The general parser writes a `List[UInt8]` of one digit per byte
+            and reads it back into words, which for a short value is most of
+            what the parse costs: 78 nanoseconds for a single digit against
+            8 here. `BigDecimal` has had this path for a while; this is the
+            same one, without the point.
+        """
+        var bytes = value.as_bytes()
+        var length = len(bytes)
+        var start = 0
+        if length > 0 and bytes[0] == 0x2B:
+            start = 1
+        var digits = length - start
+        if digits <= 0:
+            return None
+        for index in range(start, length):
+            var character = bytes[index]
+            if character < 0x30 or character > 0x39:
+                return None
+
+        var result = Self(
+            uninitialized_capacity=math.ceildiv(digits, Self.DIGITS_PER_WORD)
+        )
+        # Right to left, since a word holds the lowest `DIGITS_PER_WORD`.
+        var index = length - 1
+        var remaining = digits
+        while remaining > 0:
+            var word: Self.Word = 0
+            var place: Self.Word = 1
+            var taken = 0
+            while taken < Self.DIGITS_PER_WORD and remaining > 0:
+                word += Self.Word(bytes[index] - 0x30) * place
+                place *= 10
+                taken += 1
+                remaining -= 1
+                index -= 1
+            result.words.append(word)
+        result.remove_leading_empty_words()
+        return result^
+
+    @staticmethod
     def from_string(
         value: StringSlice, ignore_sign: Bool = False
     ) raises -> BigUInt:
@@ -873,6 +1138,11 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         Returns:
             The BigUInt representation of the string.
         """
+        # Nearly every string is digits and nothing else.
+        var packed = Self._from_digits(value)
+        if packed:
+            return packed.take()
+
         var _tuple = decimo_str.parse_numeric_string(value)
         ref coef: List[UInt8] = _tuple[0]
         var scale: Int = _tuple[1]
@@ -1148,6 +1418,49 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             result = result * UInt128(Self.BASE) + UInt128(self.words[i])
         return result
 
+    def write_digits_into(
+        self,
+        pointer: Pointer[UInt8, MutUntrackedOrigin],
+        total_length: Int,
+    ):
+        """Writes the decimal digits into a buffer, right-aligned.
+
+        Args:
+            pointer: The start of a buffer with room for `total_length`
+                bytes.
+            total_length: How many bytes to fill, which must be exactly the
+                number of digits the value has.
+
+        Notes:
+            The digits go in from the right, one word at a time: every word
+            but the most significant is exactly `DIGITS_PER_WORD` of them,
+            zero-padded. The caller owns the buffer, so a value being turned
+            into text costs no allocation of its own -- a `String` around it
+            is the caller's to make, or not.
+        """
+        ref pairs = global_constant[_TWO_DIGIT_TABLE]()
+        var position = total_length
+        var word_count = len(self.words)
+        for index in range(word_count - 1):
+            var value = self.words[index]
+            # `DIGITS_PER_WORD` is even, so the word is exactly that many
+            # digits in pairs.
+            for _ in range(Self.DIGITS_PER_WORD // 2):
+                var remainder = Int(value % 100)
+                value //= 100
+                position -= 2
+                pointer[unsafe_offset=position] = pairs[remainder * 2]
+                pointer[unsafe_offset=position + 1] = pairs[remainder * 2 + 1]
+        var most_significant = self.words[word_count - 1]
+        while position >= 2:
+            var remainder = Int(most_significant % 100)
+            most_significant //= 100
+            position -= 2
+            pointer[unsafe_offset=position] = pairs[remainder * 2]
+            pointer[unsafe_offset=position + 1] = pairs[remainder * 2 + 1]
+        if position == 1:
+            pointer[unsafe_offset=0] = UInt8(most_significant % 10) + 48
+
     def to_string(self, line_width: Int = 0) -> String:
         """Returns string representation of the BigUInt.
 
@@ -1171,53 +1484,42 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         var result: String
         if n_words == 1:
             # Single word: the digits are exactly `String(word)`, no padding
-            # or concatenation needed.
+            # and no buffer of our own.
             result = String(self.words[0])
         else:
-            # Count the digits of the most-significant word (no zero-padding).
-            # It is non-zero because the number is not zero and there are no
-            # leading zero words.
-            var msb = self.words[n_words - 1]
-            var msb_len = 0
-            var t = msb
-            while t > 0:
-                msb_len += 1
-                t //= 10
+            # The most significant word decides the length; every other one
+            # contributes exactly `DIGITS_PER_WORD`.
+            var total_len = self.number_of_digits()
 
-            # The exact output length is known up-front: every word below the
-            # most significant contributes exactly `DIGITS_PER_WORD` digits.
-            # Allocate a buffer of that size and write digits straight into it
-            # through the pointer -- no per-byte `append`, no reallocation, no
-            # over-allocation -- then move the buffer into the result.
-            #
-            # There used to be a third path for two to four words that built
-            # the string with `+=` and `rjust`, on the measurement that the
-            # buffer's fixed cost did not pay off below about fifty digits.
-            # Re-measured at eighteen digits a word it does not pay off below
-            # *two words*, and two words is the smallest case that reaches
-            # here: 1.20x at three words and 1.38x at four, with two a wash.
-            # So the path had no inputs left and is gone.
-            var total_len = (n_words - 1) * Self.DIGITS_PER_WORD + msb_len
-            var buf = List[UInt8](unsafe_uninit_length=total_len)
-            var p = buf.unsafe_ptr()
-            var pos = total_len
-
-            # Least-significant words first: each emits exactly
-            # `DIGITS_PER_WORD` digits, written right-to-left.
-            for ci in range(n_words - 1):
-                var val = self.words[ci]
-                for _ in range(Self.DIGITS_PER_WORD):
-                    pos -= 1
-                    p[unsafe_offset=pos] = UInt8(val % 10) + 48
-                    val //= 10
-
-            # Most-significant word: its `msb_len` digits, right-to-left.
-            for _ in range(msb_len):
-                pos -= 1
-                p[unsafe_offset=pos] = UInt8(msb % 10) + 48
-                msb //= 10
-
-            result = String(unsafe_from_utf8=buf^)
+            # Short values are laid out on the stack and copied into the
+            # `String`'s own storage; longer ones get one heap buffer that
+            # the `String` then owns. Either way the digits are written once,
+            # two at a time, straight from the words.
+            comptime STACK_BYTES = 64
+            if total_len <= STACK_BYTES:
+                var buffer = Array[UInt8, STACK_BYTES](uninitialized=True)
+                self.write_digits_into(
+                    buffer.unsafe_ptr().unsafe_origin_cast[
+                        MutUntrackedOrigin
+                    ](),
+                    total_len,
+                )
+                result = String(
+                    StringSlice(
+                        unsafe_from_utf8=Span(
+                            unsafe_ptr=buffer.unsafe_ptr(), length=total_len
+                        )
+                    )
+                )
+            else:
+                var buffer = List[UInt8](unsafe_uninit_length=total_len)
+                self.write_digits_into(
+                    buffer.unsafe_ptr().unsafe_origin_cast[
+                        MutUntrackedOrigin
+                    ](),
+                    total_len,
+                )
+                result = String(unsafe_from_utf8=buffer^)
 
         if line_width > 0:
             var start = 0

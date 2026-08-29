@@ -58,6 +58,10 @@ from collections import namedtuple as _namedtuple
 # Once Mojo's `PythonModuleBuilder` grows a way to declare slots directly, this
 # loop can go away and nothing else here needs to change.
 
+# `__str__` is not in this list either: `tp_str` is a real slot in the Mojo
+# module, and assigning the dunder here would put CPython's dispatcher back
+# in front of it.
+#
 # The comparisons and `+`, `-`, `*`, `/`, `**` are not in this list. They are
 # registered as real CPython number slots by the Mojo module, so the operator
 # calls a C function directly instead of looking `__add__` up in the type
@@ -66,7 +70,6 @@ from collections import namedtuple as _namedtuple
 # indirection being avoided -- and for `**` it would also lose
 # `pow(3, x, 7)`, which that dispatcher refuses before Python 3.14.
 for _name in (
-    "__str__",
     "__floordiv__",
     "__rfloordiv__",
     "__mod__",
@@ -103,7 +106,6 @@ Decimal.__repr__ = Decimal.to_repr
 Decimal128 = _Decimal128
 
 for _name in (
-    "__str__",
     "__neg__",
     "__pos__",
     "__abs__",
