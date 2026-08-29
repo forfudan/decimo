@@ -1074,6 +1074,9 @@ def PyInit__decimo() abi("C") -> PythonObject:
             PyType_Slot(c_int(Py_tp_hash), _fn_ptr_as_opaque(slot_hash))
         )
         decimal_builder._insert_slot(
+            PyType_Slot(c_int(Py_tp_str), _fn_ptr_as_opaque(slot_str))
+        )
+        decimal_builder._insert_slot(
             PyType_Slot(c_int(Py_nb_subtract), _fn_ptr_as_opaque(slot_subtract))
         )
         decimal_builder._insert_slot(
@@ -1206,6 +1209,9 @@ def PyInit__decimo() abi("C") -> PythonObject:
         )
         decimal128_builder._insert_slot(
             PyType_Slot(c_int(Py_tp_hash), _fn_ptr_as_opaque(slot128_hash))
+        )
+        decimal128_builder._insert_slot(
+            PyType_Slot(c_int(Py_tp_str), _fn_ptr_as_opaque(slot128_str))
         )
         decimal128_builder._insert_slot(
             PyType_Slot(
@@ -1591,9 +1597,14 @@ def bigdecimal_py_init(
 
 
 def bigdecimal_to_string(py_self: PythonObject) raises -> PythonObject:
-    """Return the decimal as a plain string, e.g. '3.14'."""
+    """Return the decimal as a plain string, e.g. '3.14'.
+
+    Through `to_string()` rather than `String(value)`: the first builds the
+    text in one buffer it then owns, the second goes through a writer and
+    copies it again.
+    """
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
-    return PythonObject(String(self_ptr[]))
+    return PythonObject(self_ptr[].to_string())
 
 
 def bigdecimal_to_repr(py_self: PythonObject) raises -> PythonObject:
@@ -2543,12 +2554,14 @@ comptime Py_nb_subtract = 36
 comptime Py_nb_true_divide = 37
 comptime Py_tp_dealloc = 52
 comptime Py_tp_richcompare = 67
+comptime Py_tp_str = 70
 
 comptime binaryfunc = def(PyObjectPtr, PyObjectPtr) thin abi("C") -> PyObjectPtr
 comptime ternaryfunc = def(PyObjectPtr, PyObjectPtr, PyObjectPtr) thin abi(
     "C"
 ) -> PyObjectPtr
 comptime hashfunc = def(PyObjectPtr) thin abi("C") -> Py_ssize_t
+comptime reprfunc = def(PyObjectPtr) thin abi("C") -> PyObjectPtr
 comptime richcmpfunc = def(PyObjectPtr, PyObjectPtr, c_int) thin abi(
     "C"
 ) -> PyObjectPtr
@@ -2752,6 +2765,27 @@ def slot128_hash(py_self: PyObjectPtr) abi("C") -> Py_ssize_t:
         result = -result
     # -1 is reserved by CPython to mean "an error happened".
     return Py_ssize_t(-2 if result == -1 else result)
+
+
+def slot_str(py_self: PyObjectPtr) abi("C") -> PyObjectPtr:
+    """`tp_str`.
+
+    A `__str__` in the dictionary reaches the same text, but through
+    CPython's own dispatcher and an argument tuple. The slot is what `str(x)`
+    and every f-string call directly.
+    """
+    try:
+        return PythonObject(_value_of(py_self)[].to_string()).steal_data()
+    except e:
+        return raise_python_exception(e)
+
+
+def slot128_str(py_self: PyObjectPtr) abi("C") -> PyObjectPtr:
+    """`tp_str` for the fixed-width type."""
+    try:
+        return PythonObject(String(_value128_of(py_self)[])).steal_data()
+    except e:
+        return raise_python_exception(e)
 
 
 def slot_hash(py_self: PyObjectPtr) abi("C") -> Py_ssize_t:

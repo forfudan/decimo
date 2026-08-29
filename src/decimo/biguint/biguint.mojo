@@ -24,6 +24,7 @@ mathematical methods that do not implement a trait.
 """
 
 from std import math
+from std.builtin.globals import global_constant
 from std.memory import Pointer, unsafe_memcpy, memcmp
 from std.sys import size_of
 
@@ -64,6 +65,215 @@ ten base-10^9 words held before the base moved."""
 
 comptime Coefficient = WordList[WORD_DTYPE, INLINE_WORDS_BIGUINT]
 """The word storage of a `BigUInt`, little-endian."""
+
+
+comptime _TWO_DIGIT_TABLE: Array[UInt8, 200] = [
+    48,
+    48,  # 00
+    48,
+    49,  # 01
+    48,
+    50,  # 02
+    48,
+    51,  # 03
+    48,
+    52,  # 04
+    48,
+    53,  # 05
+    48,
+    54,  # 06
+    48,
+    55,  # 07
+    48,
+    56,  # 08
+    48,
+    57,  # 09
+    49,
+    48,  # 10
+    49,
+    49,  # 11
+    49,
+    50,  # 12
+    49,
+    51,  # 13
+    49,
+    52,  # 14
+    49,
+    53,  # 15
+    49,
+    54,  # 16
+    49,
+    55,  # 17
+    49,
+    56,  # 18
+    49,
+    57,  # 19
+    50,
+    48,  # 20
+    50,
+    49,  # 21
+    50,
+    50,  # 22
+    50,
+    51,  # 23
+    50,
+    52,  # 24
+    50,
+    53,  # 25
+    50,
+    54,  # 26
+    50,
+    55,  # 27
+    50,
+    56,  # 28
+    50,
+    57,  # 29
+    51,
+    48,  # 30
+    51,
+    49,  # 31
+    51,
+    50,  # 32
+    51,
+    51,  # 33
+    51,
+    52,  # 34
+    51,
+    53,  # 35
+    51,
+    54,  # 36
+    51,
+    55,  # 37
+    51,
+    56,  # 38
+    51,
+    57,  # 39
+    52,
+    48,  # 40
+    52,
+    49,  # 41
+    52,
+    50,  # 42
+    52,
+    51,  # 43
+    52,
+    52,  # 44
+    52,
+    53,  # 45
+    52,
+    54,  # 46
+    52,
+    55,  # 47
+    52,
+    56,  # 48
+    52,
+    57,  # 49
+    53,
+    48,  # 50
+    53,
+    49,  # 51
+    53,
+    50,  # 52
+    53,
+    51,  # 53
+    53,
+    52,  # 54
+    53,
+    53,  # 55
+    53,
+    54,  # 56
+    53,
+    55,  # 57
+    53,
+    56,  # 58
+    53,
+    57,  # 59
+    54,
+    48,  # 60
+    54,
+    49,  # 61
+    54,
+    50,  # 62
+    54,
+    51,  # 63
+    54,
+    52,  # 64
+    54,
+    53,  # 65
+    54,
+    54,  # 66
+    54,
+    55,  # 67
+    54,
+    56,  # 68
+    54,
+    57,  # 69
+    55,
+    48,  # 70
+    55,
+    49,  # 71
+    55,
+    50,  # 72
+    55,
+    51,  # 73
+    55,
+    52,  # 74
+    55,
+    53,  # 75
+    55,
+    54,  # 76
+    55,
+    55,  # 77
+    55,
+    56,  # 78
+    55,
+    57,  # 79
+    56,
+    48,  # 80
+    56,
+    49,  # 81
+    56,
+    50,  # 82
+    56,
+    51,  # 83
+    56,
+    52,  # 84
+    56,
+    53,  # 85
+    56,
+    54,  # 86
+    56,
+    55,  # 87
+    56,
+    56,  # 88
+    56,
+    57,  # 89
+    57,
+    48,  # 90
+    57,
+    49,  # 91
+    57,
+    50,  # 92
+    57,
+    51,  # 93
+    57,
+    52,  # 94
+    57,
+    53,  # 95
+    57,
+    54,  # 96
+    57,
+    55,  # 97
+    57,
+    56,  # 98
+    57,
+    57,  # 99
+]
+"""Every pair of digits from `00` to `99`, as characters.
+
+Emitting two digits per division halves the divisions a conversion does, and
+a division by a constant is the expensive part of writing a number out.
+"""
 
 
 struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
@@ -1147,6 +1357,49 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         for i in range(len(self.words) - 1, -1, -1):
             result = result * UInt128(Self.BASE) + UInt128(self.words[i])
         return result
+
+    def write_digits_into(
+        self,
+        pointer: Pointer[UInt8, MutUntrackedOrigin],
+        total_length: Int,
+    ):
+        """Writes the decimal digits into a buffer, right-aligned.
+
+        Args:
+            pointer: The start of a buffer with room for `total_length`
+                bytes.
+            total_length: How many bytes to fill, which must be exactly the
+                number of digits the value has.
+
+        Notes:
+            The digits go in from the right, one word at a time: every word
+            but the most significant is exactly `DIGITS_PER_WORD` of them,
+            zero-padded. The caller owns the buffer, so a value being turned
+            into text costs no allocation of its own -- a `String` around it
+            is the caller's to make, or not.
+        """
+        ref pairs = global_constant[_TWO_DIGIT_TABLE]()
+        var position = total_length
+        var word_count = len(self.words)
+        for index in range(word_count - 1):
+            var value = self.words[index]
+            # `DIGITS_PER_WORD` is even, so the word is exactly that many
+            # digits in pairs.
+            for _ in range(Self.DIGITS_PER_WORD // 2):
+                var remainder = Int(value % 100)
+                value //= 100
+                position -= 2
+                pointer[unsafe_offset=position] = pairs[remainder * 2]
+                pointer[unsafe_offset=position + 1] = pairs[remainder * 2 + 1]
+        var most_significant = self.words[word_count - 1]
+        while position >= 2:
+            var remainder = Int(most_significant % 100)
+            most_significant //= 100
+            position -= 2
+            pointer[unsafe_offset=position] = pairs[remainder * 2]
+            pointer[unsafe_offset=position + 1] = pairs[remainder * 2 + 1]
+        if position == 1:
+            pointer[unsafe_offset=0] = UInt8(most_significant % 10) + 48
 
     def to_string(self, line_width: Int = 0) -> String:
         """Returns string representation of the BigUInt.
