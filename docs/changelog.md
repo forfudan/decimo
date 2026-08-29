@@ -271,6 +271,19 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
 
 ### 🦋 Changed in Unreleased
 
+1. **Burnikel-Ziegler starts where it begins to pay.** The recursion took
+   over from schoolbook at a divisor of 24 words, but it does not earn its
+   keep until about 48: dividing 2n by n with a 28-word divisor cost 3.50
+   microseconds against 2.25 for schoolbook, and 5.87 against 3.97 at 40
+   words. The cutoff is 48 now, which leaves everything above it as it was --
+   a 2n-by-n division there has a dividend longer than twice the cutoff, so
+   it recurses either way. Ninety-six was tried and is worse.
+
+   Division against multiplication of the same width, which is the ratio that
+   says whether the algorithm is right: 9.1 times at 32 words before, 6.2
+   after, against 2.7 at 1024 words where the recursion has always run and
+   GMP's own ratio is 2.6.
+
 1. **Reading a `BigUInt` from text is up to seven times faster.** The parser
    normalized every string first, which writes a `List[UInt8]` of one digit
    per byte and reads it back into words -- for a short value most of what

@@ -83,13 +83,21 @@ neither the base-10^9 value (768) nor half of it (384, where the base change
 put it): unlike the vector widths, this one really did move, and not by the
 factor anyone would have guessed. Sweep, do not scale.
 """
-comptime CUTOFF_BURNIKEL_ZIEGLER = 24
+comptime CUTOFF_BURNIKEL_ZIEGLER = 48
 """The cutoff number of words for using Burnikel-Ziegler division.
 
 Schoolbook is used outright when the divisor has at most this many words
 *and* the dividend has at most twice as many; a longer dividend goes to
 Burnikel-Ziegler whatever the divisor's width. So this is not the same number
 as the block size below, and it is not a divisor-width cutoff on its own.
+
+Raised again to 48 on 20260829: with a divisor of 25 to 48 words the
+recursion still cost more than it saved, 3.50 microseconds against 2.25 at
+28 words and 5.87 against 3.97 at 40. Above 48 the recursion wins and the
+number does not matter, since the dividend of a 2n-by-n division is already
+longer than twice the cutoff. Ninety-six was tried and is worse: it holds
+schoolbook past where the recursion has taken over, 20.5 microseconds
+against 15.0 at 96 words.
 
 Raised from 32 on 20260826, after the Knuth D multiply-subtract step was taken
 off its carry chain. A 2.9x faster schoolbook stays ahead of the recursion for
