@@ -1,7 +1,8 @@
 name: Build Python wheels
 
-# Builds the `decimo` wheel for every supported interpreter on macOS arm64,
-# and uploads the set to PyPI (or TestPyPI).
+# Builds the `decimo` wheel for every supported interpreter on macOS arm64
+# and on Linux, x86_64 and arm64 alike, and uploads the set to PyPI (or
+# TestPyPI).
 #
 # Three ways in:
 #
@@ -105,10 +106,13 @@ jobs:
         # macOS 11, which is what the Mojo runtime libraries inside it say,
         # so 11 to 13 is reasoned rather than tested: the probe below proves
         # it loads on 14.
-        # Linux (ubuntu-22.04, glibc 2.35, manylinux_2_35 via auditwheel) is
-        # written in build_wheel.py but not yet verified; add it here when
-        # it is.
-        os: [macos-14]
+        #
+        # The Linux runners are 22.04 on purpose. Its glibc is 2.35, and
+        # `auditwheel` names the wheel for the glibc it was built against, so
+        # building on 24.04 would produce `manylinux_2_39` and refuse to
+        # install on anything older. Both architectures are built: Mojo
+        # publishes for `linux-64` and `linux-aarch64` alike.
+        os: [macos-14, ubuntu-22.04, ubuntu-22.04-arm]
     steps:
       - uses: actions/checkout@v7
 
