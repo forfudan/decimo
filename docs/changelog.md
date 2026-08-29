@@ -27,6 +27,25 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
 
 ### ⭐️ New in Unreleased
 
+1. **`Decimal128` has trigonometry.** `sin`, `cos`, `tan`, `cot`, `sec` and
+   `csc`, as functions and as methods, correctly rounded across the whole
+   range the type holds.
+
+   The work is the argument reduction. `Decimal128` reaches `7.9E+28`, so an
+   angle can be twenty billion billion billion quarter turns from zero, and
+   subtracting `k * (pi/2)` with the 28-digit quarter turn the type itself
+   holds answers a different question than the caller asked: at `1E+20` only
+   8 digits of the remainder are right, and at `1.2E+27` only one. The
+   quarter turn is kept here in four exact pieces of 38 digits. `k` has at
+   most 29 digits, so each `k * piece` is 67 and exact at `Extended`, and
+   what the subtractions leave is measured rather than assumed -- the same
+   two widths and the same decided rounding as `exp` and `ln`.
+
+   881 checks against a reference built on CPython's `decimal` at 140
+   digits, covering the quadrants, arguments from `1E+8` to `1E+28`, and
+   angles sitting on a quarter turn where the reduction cancels 28 digits:
+   none wrong.
+
 1. **The Python package rounds in every mode.** `getcontext().rounding`
    accepts `ROUND_HALF_EVEN`, `ROUND_HALF_UP`, `ROUND_HALF_DOWN`,
    `ROUND_DOWN`, `ROUND_UP`, `ROUND_CEILING` and `ROUND_FLOOR`, and every
@@ -204,6 +223,15 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
    `BigInt10.from_bigint()` and `BigInt10.to_bigint()` (PR #269).
 
 ### 🦋 Changed in Unreleased
+
+1. **The second width stopped paying for software division.** Multiplying
+   two 75-digit mantissas splits each in half, and the splitting used `//`
+   and `%`; lining up an addition whose gap was wider than `UInt256` had room
+   for did the same. Four software divides made one multiplication cost 370
+   nanoseconds. Through the reciprocal divider it is 20, which takes the
+   argument reduction from 3298 nanoseconds to 226 and the wider series from
+   20.9 microseconds to 2.4 -- so every second attempt in `exp`, `ln` and
+   `power` got about ten times cheaper as well.
 
 1. **`Wide` is written once and used at two widths.** `WideValue[DIGITS]`
    carries the mantissa the series run on; `Wide` is 38 digits of it and
@@ -595,6 +623,12 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
    `DECIMO_TEST_JOBS` explicitly still wins in both cases.
 
 ### 🩹 Fixed in Unreleased
+
+1. **A value too large for `Decimal128` came back with a scale of four
+   billion.** When more digits had to be dropped than there were places after
+   the point, the scale went negative and wrapped. Nothing reached it before:
+   `exp` refuses its argument above 66.54 and a logarithm is small. `tan` of
+   an angle a hair past a pole reaches it, and now raises `OverflowError`.
 
 1. **`Decimal128`'s powers and roots were wrong in the last digits.**
    `x^y` went through `exp(y * ln(x))` with the logarithm and the product
