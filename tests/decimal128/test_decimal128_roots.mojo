@@ -12,7 +12,7 @@ from decimo.toml.parser import TOMLDocument
 
 from decimo.decimal128.decimal128 import Decimal128, Dec128
 from decimo.rounding_mode import RoundingMode
-from decimo.decimal128.exponential import root, power
+from decimo.decimal128.exponential import root, power, cbrt
 from decimo.tests import parse_file, load_test_cases
 
 
@@ -404,6 +404,80 @@ def test_sqrt_keeps_exact_roots_exact() raises:
         String(Decimal128("15241578753238836750190519987").sqrt()),
         "123456789012345.67890000000000",
     )
+
+
+def test_power_last_digit() raises:
+    """The last digit of a power is the correctly rounded one.
+
+    Every value here was checked against CPython's `decimal` at 70 digits.
+    `x^y` went through `exp(y * ln(x))` with the logarithm and the product
+    each rounded to 28 digits first, which left 51 of 60 random arguments
+    wrong by up to 40 units in the last place; the integer path squared its
+    running product in `Decimal128` arithmetic and was wrong on 22 of 40, by
+    up to 13.
+    """
+
+    def _check(base: String, exponent: String, expected: String) raises:
+        testing.assert_equal(
+            String(Decimal128(base).power(Decimal128(exponent))), expected
+        )
+
+    def _check_integer(base: String, exponent: Int, expected: String) raises:
+        testing.assert_equal(
+            String(power(Decimal128(base), exponent)), expected
+        )
+
+    _check("23.69855786", "0.536338", "5.4615461062939198779397875130")
+    _check("149.78477924", "1.623903", "3409.9538231901326222913776149")
+    _check("134.14450932", "2.431874", "149275.73616002777489508497565")
+    _check("168.35958385", "6.112873", "40617127446270.717241392931381")
+    # An absolute error in `y * ln(x)` is a relative error in the answer, so
+    # a large exponent magnifies whatever the logarithm's last digit lost.
+    # This one was 84 units out.
+    _check("1.0001", "10000", "2.7181459268252248640376646749")
+
+    _check_integer("5.777848108727", 21, "9933185236281485.458837304712")
+    _check_integer("5.49117073291", 24, "564883293741294835.72291187699")
+    _check_integer("2.359115793215", 9, "2263.3062472552413853382531971")
+    _check_integer("3.159734890222", 9, "31394.661992953712652271397457")
+
+
+def test_root_last_digit() raises:
+    """The last digit of a root is the correctly rounded one.
+
+    `root` refined a 28-digit guess with 28-digit Newton steps, which left
+    the last digit one or two units out on a quarter of the arguments tried.
+    """
+
+    def _check(x: String, n: Int, expected: String) raises:
+        testing.assert_equal(String(root(Decimal128(x), n)), expected)
+
+    _check("973242.24143969", 4, "31.409081580571777663476199574")
+    _check("330531.2410107", 7, "6.1441092670932029270659008672")
+    _check("564130.65865956", 4, "27.405954080217533904429057594")
+    _check("178302.96102448", 4, "20.548950162889767454380461060")
+    testing.assert_equal(
+        String(cbrt(Decimal128("329725.30501610"))),
+        "69.085052648083268831875128752",
+    )
+
+
+def test_power_and_root_keep_whole_answers_whole() raises:
+    """A power or root that comes out exactly is not left with a tail.
+
+    The series can only say two-and-a-hair or two-less-a-hair, so the
+    rounded value names the candidate and raising it back to the n-th power
+    decides whether it was exact.
+    """
+    testing.assert_equal(String(root(Decimal128("8"), 3)), "2")
+    testing.assert_equal(String(root(Decimal128("27"), 3)), "3")
+    testing.assert_equal(String(root(Decimal128("1024"), 10)), "2")
+    testing.assert_equal(String(root(Decimal128("0.008"), 3)), "0.2")
+    testing.assert_equal(String(cbrt(Decimal128("-8"))), "-2")
+    testing.assert_equal(String(power(Decimal128("2"), 10)), "1024")
+    testing.assert_equal(String(power(Decimal128("1.5"), 3)), "3.375")
+    testing.assert_equal(String(power(Decimal128("2"), -3)), "0.125")
+    testing.assert_equal(String(Decimal128("4").power(Decimal128("0.5"))), "2")
 
 
 def main() raises:

@@ -12,7 +12,7 @@ from decimo.toml.parser import TOMLDocument
 
 from decimo.decimal128.decimal128 import Decimal128, Dec128
 from decimo.rounding_mode import RoundingMode
-from decimo.decimal128.exponential import exp, ln, log, log10, _ln_at
+from decimo.decimal128.exponential import exp, ln, log, log10, _ln_at, _exp_at
 from decimo.decimal128.special import factorial, factorial_reciprocal
 from decimo.tests import parse_file, load_test_cases
 
@@ -678,6 +678,29 @@ def test_logarithm_close_to_one() raises:
         String(log10(Decimal128("0.9999999999999999999999999999"))),
         "-0.0000000000000000000000000000",
     )
+
+
+def test_exponential_at_the_second_width() raises:
+    """The wider pass of `exp` runs without reaching past a table.
+
+    Shifting a 75-digit mantissa asks for powers of ten up to `10^74`, where
+    the reciprocal divider's table stops at `10^48`. Nothing exercised that
+    until `power` started calling the wider exponential, and it aborted
+    rather than answering.
+    """
+
+    def _check(argument: String) raises:
+        var narrow = _exp_at[38](Decimal128(argument))
+        var wide = _exp_at[75](Decimal128(argument))
+        testing.assert_equal(
+            String(wide[0].to_decimal()), String(narrow[0].to_decimal())
+        )
+
+    _check("2.5")
+    _check("-12.5")
+    _check("40.123456789")
+    _check("0.001")
+    _check("66.5")
 
 
 def main() raises:

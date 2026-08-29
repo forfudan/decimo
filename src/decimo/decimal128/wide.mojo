@@ -43,6 +43,26 @@ from decimo.errors import ValueError, OverflowError
 from decimo.rounding_mode import RoundingMode
 
 
+@always_inline
+def _drop_digits(value: UInt256, places: Int) -> UInt256:
+    """Returns `value` with its last `places` digits removed.
+
+    Args:
+        value: The digits.
+        places: How many to remove, from 1 up.
+
+    Returns:
+        The quotient. The reciprocal divider covers powers up to `10^48`,
+        which is every shift a `Wide` asks for; the wider type shifts by up
+        to 75 and pays the software divide for the few that go past.
+    """
+    if places <= 48:
+        return decimal128_utility.udiv_u256_by_pow10_gm(value, places)
+    if places > 77:
+        return UInt256(0)
+    return value // decimal128_utility.power_of_10[DType.uint256](places)
+
+
 struct WideValue[DIGITS: Int](Copyable, Movable):
     """A signed number of `DIGITS` decimal digits and a power of ten.
 
@@ -459,9 +479,7 @@ struct WideValue[DIGITS: Int](Copyable, Movable):
                 DType.uint256
             ](self.exponent)
         else:
-            magnitude = decimal128_utility.udiv_u256_by_pow10_gm(
-                self.mantissa, -self.exponent
-            )
+            magnitude = _drop_digits(self.mantissa, -self.exponent)
         var value = Int(magnitude)
         return -value if self.sign else value
 
@@ -495,9 +513,7 @@ struct WideValue[DIGITS: Int](Copyable, Movable):
         var digits = Self.DIGITS
         if drop >= digits:
             return 0
-        var value = Int(
-            decimal128_utility.udiv_u256_by_pow10_gm(shifted.mantissa, drop)
-        )
+        var value = Int(_drop_digits(shifted.mantissa, drop))
         return -value if self.sign else value
 
     def to_decimal(self) raises -> Decimal128:
@@ -663,11 +679,7 @@ struct WideValue[DIGITS: Int](Copyable, Movable):
             return False
 
         var unit = decimal128_utility.power_of_10[DType.uint256](drop)
-        var truncated: UInt256
-        if drop <= 48:
-            truncated = decimal128_utility.udiv_u256_by_pow10_gm(mantissa, drop)
-        else:
-            truncated = mantissa // unit
+        var truncated = _drop_digits(mantissa, drop)
         var remainder = mantissa - truncated * unit
 
         # Near an exact multiple, from either side: the rounding is clear but
