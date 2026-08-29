@@ -43,6 +43,10 @@ The API is the part of `List` that the number types use, spelled the
 same way, so the eight hundred-odd `.words` sites did not have to change.
 """
 
+from std.sys import size_of
+from std.atomic import Atomic
+from std.bit import bit_width
+from std.ffi import _Global
 from std.memory import Layout, ThinAllocation, alloc, dealloc
 from std.memory import unsafe_memcpy
 from std.os import abort
@@ -73,6 +77,172 @@ ten is within noise of a plain `List` everywhere.
 """
 
 
+# ===----------------------------------------------------------------------=== #
+# A pool of heap blocks
+#
+# `alloc` and `dealloc` together cost about 36 nanoseconds and the number does
+# not move with the size, so every operation whose result is longer than
+# `INLINE` pays the same toll -- a six-word addition cost 44 nanoseconds, most
+# of it there. Inline storage answers this for short values; for the rest, the
+# block the last operation released is almost always the size the next one
+# wants.
+#
+# So a released block goes on a stack instead of back to the allocator, and the
+# next request of that size takes it. Reaching the pool is a global fetch
+# (4.5 ns) and two atomic operations (3 ns), against 36 for the round trip it
+# replaces. Measured through `BigUInt` and `BigDecimal`, best of seven runs
+# (ns):
+#
+#     operation                before   after
+#     6-word addition            43.8    22.0
+#     56-word addition           63.0    41.3
+#     200-word addition           126      96
+#     3-by-3 multiplication      53.5    31.5
+#     20-by-20 multiplication     239     205
+#     200-word copy              54.3    28.5
+#     200-by-20 division         3166    1976
+#     60-digit BigDecimal /       262     177
+#
+# The work in a large multiplication dwarfs its own allocation, so 200-by-200
+# barely moves. Values that fit inline never reach the pool, but they do pay
+# for the branch that leads to it: about a nanosecond on a 28-digit
+# `BigDecimal` addition, against the twenty a heap value saves.
+#
+# The atomic is what makes this safe to share. Blocks are handed out under a
+# flag that a thread takes and releases; a thread that finds it taken goes to
+# the allocator instead, so two threads never see the same block and the worst
+# that concurrency costs is the pooling itself. The library has no other
+# mutable global state, and this one cannot be observed except as speed.
+#
+# Sizes are rounded up to a power of two, which is what makes a released block
+# fit a later request. It also means a list rarely has to grow twice. Blocks
+# larger than `_POOL_MAX_SHIFT` words go to the allocator: they are rare, and
+# the work done on them dwarfs the allocation anyway. Neither the depth nor the
+# largest class matters to the measurements above -- four and sixteen deep, and
+# a largest class of 1024 or 65536 words, all land within noise -- so they are
+# set for what the pool is allowed to hold rather than for speed.
+# ===----------------------------------------------------------------------=== #
+
+comptime _POOL_MIN_SHIFT = 3
+"""The smallest class, `2^3` words. Below this a list is inline anyway."""
+
+comptime _POOL_MAX_SHIFT = 12
+"""The largest class, `2^12` words -- 4096 of them, 32 KB."""
+
+comptime _POOL_CLASSES = _POOL_MAX_SHIFT - _POOL_MIN_SHIFT + 1
+
+comptime _POOL_DEPTH = 8
+"""Blocks kept per class. Eight is enough for the temporaries an expression
+holds at once, and bounds what the pool keeps at about 500 KB."""
+
+
+struct _BlockPool(Defaultable, Movable):
+    """Released blocks, by size class, waiting to be handed out again."""
+
+    var blocks: InlineArray[Int, _POOL_CLASSES * _POOL_DEPTH]
+    var counts: InlineArray[Int, _POOL_CLASSES]
+    var busy: Atomic[DType.int64]
+
+    def __init__(out self):
+        self.blocks = InlineArray[Int, _POOL_CLASSES * _POOL_DEPTH](
+            uninitialized=True
+        )
+        self.counts = InlineArray[Int, _POOL_CLASSES](uninitialized=True)
+        for index in range(_POOL_CLASSES):
+            self.counts[index] = 0
+        self.busy = Atomic[DType.int64](0)
+
+
+def _make_pool() -> _BlockPool:
+    return _BlockPool()
+
+
+comptime _POOL = _Global["decimo_wordlist_block_pool", _make_pool]
+
+
+@always_inline
+def _pool_class(words: Int) -> Int:
+    """Returns the size class that holds `words`, or -1 for none.
+
+    Args:
+        words: How many words are wanted.
+
+    Returns:
+        The class index, whose blocks hold `2^(index + _POOL_MIN_SHIFT)`
+        words, or -1 when the request is larger than the pool keeps.
+    """
+    if words <= (1 << _POOL_MIN_SHIFT):
+        return 0
+    if words > (1 << _POOL_MAX_SHIFT):
+        return -1
+    # The class of a value above the smallest is the bit length of one less
+    # than it: nine words through sixteen all have `bit_width(words - 1) == 4`.
+    return Int(bit_width(UInt64(words - 1))) - _POOL_MIN_SHIFT
+
+
+def _pool_take(class_index: Int) -> Int:
+    """Takes the address of a block of the given class, or zero.
+
+    Args:
+        class_index: Which class, from `_pool_class`.
+
+    Returns:
+        The address of a block of `2^(class_index + _POOL_MIN_SHIFT)` words,
+        or zero when the class is empty. Addresses rather than pointers:
+        `Pointer` cannot hold a null, and zero is the natural "nothing".
+    """
+    # The pool is a process global, which the comptime interpreter cannot
+    # reach. Constants such as `PI_1024` are built there, so it says "empty"
+    # and lets the caller allocate.
+    if __is_run_in_comptime_interpreter:
+        return 0
+    try:
+        ref pool = _POOL.get_or_create_ptr()[]
+        if pool.busy.fetch_add(1) != 0:
+            _ = pool.busy.fetch_sub(1)
+            return 0
+        var taken = 0
+        var count = pool.counts[class_index]
+        if count > 0:
+            taken = pool.blocks[class_index * _POOL_DEPTH + count - 1]
+            pool.counts[class_index] = count - 1
+        _ = pool.busy.fetch_sub(1)
+        return taken
+    except:
+        return 0
+
+
+def _pool_give(address: Int, class_index: Int) -> Bool:
+    """Offers a block back to the pool.
+
+    Args:
+        address: The block, which must be of exactly this class's size.
+        class_index: Which class, from `_pool_class`.
+
+    Returns:
+        True when the pool took it, and the caller must not free it. False
+        when the class is full or another thread holds the pool, and the
+        caller frees it as before.
+    """
+    if __is_run_in_comptime_interpreter:
+        return False
+    try:
+        ref pool = _POOL.get_or_create_ptr()[]
+        if pool.busy.fetch_add(1) != 0:
+            _ = pool.busy.fetch_sub(1)
+            return False
+        var count = pool.counts[class_index]
+        var kept = False
+        if count < _POOL_DEPTH:
+            pool.blocks[class_index * _POOL_DEPTH + count] = address
+            pool.counts[class_index] = count + 1
+            kept = True
+        _ = pool.busy.fetch_sub(1)
+        return kept
+    except:
+        return False
+
+
 struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
     Copyable, Movable, Sized
 ):
@@ -92,9 +262,9 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
     data", and it is on a field already in cache.
 
     Parameters:
-        dtype: The word type. `BigUInt` uses `uint32` because a base-billion
-            digit fits one, `BigInt` `uint64` because that is the widest
-            product the hardware gives in one instruction.
+        dtype: The word type. Both number types use `uint64`: `BigInt`
+            because that is the widest product the hardware gives in one
+            instruction, `BigUInt` because its base is 10^19.
         INLINE: How many words fit inside the struct before the heap is
             involved. The two number types have different sweet spots, so
             each picks its own; see `INLINE_WORDS` for how to choose.
@@ -111,6 +281,71 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
     # ===------------------------------------------------------------------=== #
     # Life cycle
     # ===------------------------------------------------------------------=== #
+
+    @staticmethod
+    @no_inline
+    def _acquire(capacity: Int) -> Tuple[Self._PointerType, Int]:
+        """Returns a heap block of at least `capacity` words, and its size.
+
+        A block of the right class is taken from the pool when one is there,
+        and allocated otherwise. It is deliberately kept out of line: the
+        callers are inlined into every list that is built, and the branch
+        that leads here is not taken by the inline ones.
+
+        Args:
+            capacity: How many words are wanted.
+
+        Returns:
+            The block and how many words it holds, which is at least
+            `capacity`.
+
+        Notes:
+            The pool is only for 64-bit words, which is what both number
+            types use. The pool holds raw blocks and a class is a number of
+            words, so a second word width would have to be a second pool.
+        """
+        var wanted = capacity
+        comptime if size_of[Scalar[Self.dtype]]() == 8:
+            var class_index = _pool_class(capacity)
+            if class_index >= 0:
+                # Round up to the class, so the block can be handed out again
+                # later: a block of exactly six words fits no class, so it
+                # would be freed rather than kept and the pool would stay
+                # empty.
+                wanted = 1 << (class_index + _POOL_MIN_SHIFT)
+                var address = _pool_take(class_index)
+                if address != 0:
+                    return (
+                        Self._PointerType(unsafe_from_address=address),
+                        wanted,
+                    )
+        return (
+            alloc(Layout[Scalar[Self.dtype]](count=wanted)).unsafe_leak(),
+            wanted,
+        )
+
+    @staticmethod
+    @no_inline
+    def _release(deinit_heap: Self._PointerType, capacity: Int):
+        """Returns a block to the pool, or frees it.
+
+        Args:
+            deinit_heap: The block.
+            capacity: How many words it holds.
+        """
+        comptime if size_of[Scalar[Self.dtype]]() == 8:
+            var class_index = _pool_class(capacity)
+            if (
+                class_index >= 0
+                and capacity == 1 << (class_index + _POOL_MIN_SHIFT)
+                and _pool_give(Int(deinit_heap), class_index)
+            ):
+                return
+        dealloc(
+            ThinAllocation(unsafe_owned_ptr=deinit_heap).unsafe_with_layout(
+                Layout[Scalar[Self.dtype]](count=capacity)
+            )
+        )
 
     @always_inline
     def __init__(out self):
@@ -134,10 +369,9 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
             uninitialized=True
         )
         if capacity > Self.INLINE:
-            self._capacity = capacity
-            self._heap = alloc(
-                Layout[Scalar[Self.dtype]](count=capacity)
-            ).unsafe_leak()
+            var block = Self._acquire(capacity)
+            self._heap = block[0]
+            self._capacity = block[1]
         else:
             self._capacity = Self.INLINE
             self._heap = Self._PointerType.unsafe_dangling()
@@ -252,11 +486,7 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
     def __deinit__(deinit self):
         """Release the storage, if any was ever taken."""
         if self._capacity > Self.INLINE:
-            dealloc(
-                ThinAllocation(unsafe_owned_ptr=self._heap).unsafe_with_layout(
-                    Layout[Scalar[Self.dtype]](count=self._capacity)
-                )
-            )
+            Self._release(self._heap, self._capacity)
 
     # ===------------------------------------------------------------------=== #
     # Access
@@ -371,19 +601,22 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
     def _grow(mut self, capacity: Int):
         """Move the words to a heap block of at least `capacity` words."""
         var wanted = max(capacity, self._capacity * 2)
-        var block = alloc(
-            Layout[Scalar[Self.dtype]](count=wanted)
-        ).unsafe_leak()
+        var previous_heap = self._heap
+        var previous_capacity = self._capacity
+        var block = Self._acquire(wanted)
+        self._heap = block[0]
+        self._capacity = block[1]
         if self._len > 0:
-            unsafe_memcpy(dest=block, src=self.unsafe_ptr(), count=self._len)
-        if self._capacity > Self.INLINE:
-            dealloc(
-                ThinAllocation(unsafe_owned_ptr=self._heap).unsafe_with_layout(
-                    Layout[Scalar[Self.dtype]](count=self._capacity)
-                )
+            unsafe_memcpy(
+                dest=self._heap,
+                src=previous_heap if previous_capacity
+                > Self.INLINE else Pointer(to=self._inline).unsafe_bitcast[
+                    Scalar[Self.dtype]
+                ](),
+                count=self._len,
             )
-        self._heap = block
-        self._capacity = wanted
+        if previous_capacity > Self.INLINE:
+            Self._release(previous_heap, previous_capacity)
 
     @always_inline
     def reserve(mut self, capacity: Int):
