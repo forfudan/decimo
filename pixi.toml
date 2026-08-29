@@ -4,7 +4,7 @@ channels = ["https://conda.modular.com/max", "https://repo.prefix.dev/modular-co
 description = "An arbitrary-precision decimal and integer library for Mojo"
 license = "Apache-2.0"
 name = "decimo"
-platforms = ["osx-arm64", "linux-64"]
+platforms = ["osx-arm64", "linux-64", "linux-aarch64"]
 readme = "README.md"
 version = "0.14.0"
 
@@ -166,8 +166,13 @@ twine = ">=6.2.0"
 
 # On Linux the wheel is made self-contained by `auditwheel repair`, which
 # copies the Mojo runtime libraries in and rewrites the rpath with patchelf;
-# on macOS `build_wheel.py` does the same job with install_name_tool.
+# on macOS `build_wheel.py` does the same job with install_name_tool. Both
+# architectures need them, and pixi asks for the dependencies per platform.
 [feature.publish.target.linux-64.dependencies]
+auditwheel = ">=6.0"
+patchelf = ">=0.17"
+
+[feature.publish.target.linux-aarch64.dependencies]
 auditwheel = ">=6.0"
 patchelf = ">=0.17"
 

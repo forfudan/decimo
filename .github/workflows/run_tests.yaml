@@ -105,6 +105,49 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # ── The library on Linux ─────────────────────────────────────────────────────
+  #
+  # Everything else in this file runs on macOS, and the wheels now go out for
+  # Linux as well, so the library is compiled and its suites are run there
+  # too. One job rather than twelve: the point is that the platform works at
+  # all, not to parallelise it.
+  #
+  # It builds its own package instead of taking the artifact the macOS job
+  # uploads -- a `.mojoc` is compiled code and does not cross platforms --
+  # and so it does not use the shared setup action either.
+  test-linux:
+    name: Test on Linux
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: prefix-dev/setup-pixi@v0.10.2
+        with:
+          cache: true
+          activate-environment: true
+      - name: Build package (with retry for Mojo compiler intermittent crashes)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== build attempt $attempt ==="
+            if pixi run mojo precompile src/decimo -o tests/decimo.mojoc; then
+              echo "=== build succeeded on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== build failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== build crashed, retrying in 5s... ==="
+            sleep 5
+          done
+      - name: Run the core suites
+        run: bash tests/test.sh decimo
+      - name: Build the Python extension and run its tests
+        run: |
+          pixi run mojo build python/decimo_module.mojo --emit shared-lib \
+            -I tests -o python/src/decimo/_decimo.so
+          pixi run python python/tests/test_decimo.py
+
   # ── Test: BigDecimal ─────────────────────────────────────────────────────────
   test-bigdecimal:
     name: Test BigDecimal

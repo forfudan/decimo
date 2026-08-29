@@ -27,6 +27,19 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
 
 ### ⭐️ New in Unreleased
 
+1. **Wheels for Linux, on x86_64 and on arm64.** `pip install decimo` now has
+   something to install on Linux as well as macOS: CPython 3.13 and 3.14,
+   glibc 2.35 and later. The wheel carries the Mojo runtime libraries beside
+   the extension, as the macOS one does; on Linux `auditwheel` copies them in
+   and names the wheel for the glibc it was built against, which is why the
+   builds run on Ubuntu 22.04 rather than something newer.
+
+   The library is also compiled and tested on Linux now. Everything in the
+   test workflow ran on macOS, and shipping a wheel for a platform nothing had
+   ever run on is not a wheel anyone should install: one job builds the
+   package on Ubuntu, runs the core suites, and runs the Python tests against
+   a freshly built extension.
+
 1. **The Python package has `Decimal128`.** The fixed-width type is exposed
    as `decimo.Decimal128`, with `Dec128` as the shorter name the Mojo library
    uses: 96 bits of coefficient and a scale from 0 to 28, in sixteen bytes
