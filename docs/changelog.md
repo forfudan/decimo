@@ -23,7 +23,10 @@ root by Zimmermann's recursion above about six hundred digits, and is measured
 against GMP rather than against CPython's `int`. Its magnitude moves from base
 2^32 to base 2^64, which with the Knuth D work before it makes division 2 to
 3.3x faster and brings it from 4.98x of GMP at a thousand digits to 1.52x. A
-`sqrt()` that hung for values at the top of a word is fixed.
+`sqrt()` that hung for values at the top of a word is fixed. Heap blocks are
+now pooled and handed out again rather than freed, which takes 20 to 40
+percent off every operation whose result does not fit inside the struct --
+additions, copies, and divisions alike.
 
 ### ⭐️ New in Unreleased
 
@@ -283,6 +286,26 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
    `BigInt10.from_bigint()` and `BigInt10.to_bigint()` (PR #269).
 
 ### 🦋 Changed in Unreleased
+
+1. **Heap blocks are reused instead of freed.** `alloc` and `dealloc`
+   together cost about 36 nanoseconds and the number does not move with the
+   size, so every value too long to sit inside the struct paid the same toll:
+   a six-word addition spent more than half its time there. A released block
+   now goes on a small stack, sorted by size, and the next request of that
+   size takes it back.
+
+   A six-word addition is 22.0 nanoseconds against 43.8, a 56-word one 41.3
+   against 63.0, a three-by-three multiplication 31.5 against 53.5, a
+   200-word copy 28.5 against 54.3, a 200-by-20 division 1.98 microseconds
+   against 3.17, and a 60-digit `BigDecimal` division 177 nanoseconds against
+   262. A large multiplication does enough work to hide its own allocation, so
+   200-by-200 moves by 3 percent. Values that fit inside the struct never
+   reach the pool, and pay about a nanosecond for the branch that leads to
+   it.
+
+   The pool is process-wide and holds at most eight blocks per size, about
+   500 KB in all. It is shared under an atomic flag: a thread that finds the
+   pool taken goes to the allocator, so two threads never see one block.
 
 1. **Burnikel-Ziegler starts where it begins to pay.** The recursion took
    over from schoolbook at a divisor of 24 words, but it does not earn its
