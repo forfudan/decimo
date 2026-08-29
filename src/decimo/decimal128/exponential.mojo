@@ -233,13 +233,108 @@ def power(base: Decimal128, exponent: Decimal128) raises -> Decimal128:
             )
 
     # GENERAL CASE
-    # Use the identity x^y = e^(y * ln(x))
-    try:
-        var ln_base = ln(base)
-        var product = exponent * ln_base
-        return exp(product)
-    except e:
-        raise e^
+    # Use the identity x^y = e^(y * ln(x)), with the logarithm, the product
+    # and the exponential all taken at the working width. Rounding each of
+    # them to 28 digits first put `1.0001^10000` 84 units in the last place
+    # out, because an absolute error in `y * ln(x)` is a relative error in
+    # the answer, and multiplying a 28-digit logarithm by ten thousand
+    # magnifies its last digit by that much.
+    var narrow = _real_power_at[38](base, exponent)
+    var decided = narrow[0].to_decimal_decided(narrow[1])
+    if decided:
+        return decided.value()
+
+    var wide = _real_power_at[75](base, exponent)
+    var settled = wide[0].to_decimal_decided(wide[1])
+    if settled:
+        return settled.value()
+    return wide[0].to_decimal()
+
+
+def _real_power_at[
+    WIDTH: Int
+](base: Decimal128, exponent: Decimal128) raises -> Tuple[
+    WideValue[WIDTH], UInt256
+]:
+    """Returns `base**exponent` at the given width, with how far it may be
+    off.
+
+    Parameters:
+        WIDTH: The width to compute at.
+
+    Args:
+        base: The base, which must be positive.
+        exponent: The exponent.
+
+    Returns:
+        The value, and the units in the last place of its mantissa that the
+        computation is trusted within.
+
+    Raises:
+        ValueError: If the base is not positive.
+        OverflowError: If the result is outside what `Decimal128` holds.
+        Error: Propagated from the arithmetic.
+    """
+    var logarithm = _ln_at[WIDTH](base)
+    var argument = logarithm[0] * WideValue[WIDTH].from_decimal(exponent)
+
+    if argument.compare_absolute(_exp_ceiling_at[WIDTH]()) > 0:
+        raise OverflowError(
+            message=(
+                "The result is too large for Decimal128. Consider using"
+                " BigDecimal type."
+            ),
+            function="power()",
+        )
+
+    var result = _exp_of_magnitude_at[WIDTH](abs_wide(argument))
+    if argument.sign:
+        result = WideValue[WIDTH].from_int(1) / result
+
+    # `exp` turns an absolute error in its argument into a relative error in
+    # its answer, one for one. The logarithm is trusted within so many units
+    # of its own last digit; multiplied by the exponent that becomes an
+    # absolute error on `argument`, and `10^(exponent of argument + WIDTH)`
+    # restates it as units of the answer's last digit.
+    var slack = _slack_at[WIDTH](EXP_SLACK) + logarithm[1] + UInt256(4)
+    var spread = argument.exponent + WIDTH
+    if spread > 0:
+        if spread > 70:
+            return (result^, UInt256.MAX)
+        slack *= decimal128_utility.power_of_10[DType.uint256](spread)
+    return (result^, slack)
+
+
+def _exp_ceiling_at[WIDTH: Int]() raises -> WideValue[WIDTH]:
+    """Returns the largest argument `exp` can answer for.
+
+    Parameters:
+        WIDTH: The width to return it at.
+
+    Returns:
+        66.54, above which the result leaves `Decimal128`.
+
+    Raises:
+        Error: Propagated from the construction.
+    """
+    return WideValue[WIDTH](UInt256(6654), -2, False)
+
+
+def abs_wide[WIDTH: Int](value: WideValue[WIDTH]) -> WideValue[WIDTH]:
+    """Returns the magnitude of a value.
+
+    Parameters:
+        WIDTH: The width in use.
+
+    Args:
+        value: The value.
+
+    Returns:
+        The same digits, without the sign.
+    """
+    var result = value.copy()
+    result.sign = False
+    return result^
 
 
 def power(base: Decimal128, exponent: Int) raises -> Decimal128:
@@ -250,92 +345,124 @@ def power(base: Decimal128, exponent: Int) raises -> Decimal128:
         exponent: The integer power to raise base to.
 
     Returns:
-        A new Decimal128 containing the result.
+        The power, correctly rounded.
 
     Raises:
         ValueError: If the base is zero and the exponent is negative
             (`0^n` is undefined for `n < 0`).
-        OverflowError: If an intermediate `result * current_base` step
-            (binary exponentiation) or the final reciprocal
-            `Decimal128.ONE() / result` (for negative exponents) does
-            not fit Decimal128's 96-bit coefficient.
-    """
+        OverflowError: If the result does not fit `Decimal128`'s 96-bit
+            coefficient.
 
-    # Special cases
+    Notes:
+        Binary exponentiation, in `Wide`. Squaring in `Decimal128` rounded
+        the running product to 28 digits at every step and the answer
+        inherited all of it: `5.49117073291^24` came out 13 units in the last
+        place high. The answer is rounded once here, and if the digits below
+        it do not say which way, the whole thing runs again at `Extended`.
+    """
     if exponent == 0:
         # x^0 = 1 (including 0^0 = 1 by convention)
         return Decimal128.ONE()
-
     if exponent == 1:
-        # x^1 = x
         return base
-
     if base.is_zero():
-        # 0^n = 0 for n > 0
         if exponent > 0:
             return Decimal128.ZERO()
-        else:
-            # 0^n is undefined for n < 0
-            raise ValueError(
-                message="Zero cannot be raised to a negative power.",
-                function="power()",
-            )
-
+        raise ValueError(
+            message="Zero cannot be raised to a negative power.",
+            function="power()",
+        )
     if base.coefficient() == 1 and base.scale() == 0:
         # 1^n = 1 for any n
         return Decimal128.ONE()
 
-    # Handle negative exponents: x^(-n) = 1/(x^n)
-    var negative_exponent = exponent < 0
-    var abs_exp = exponent
-    if negative_exponent:
-        abs_exp = -exponent
+    var narrow = _integer_power_at[38](base, exponent)
+    var decided = narrow[0].to_decimal_decided(narrow[1])
+    if decided:
+        return decided.value()
 
-    # Binary exponentiation for efficiency
-    var result = Decimal128.ONE()
-    var current_base = base
+    var wide = _integer_power_at[75](base, exponent)
+    var settled = wide[0].to_decimal_decided(wide[1])
+    if settled:
+        return settled.value()
+    return wide[0].to_decimal()
 
-    while abs_exp > 0:
-        if abs_exp & 1:  # exp_value is odd
-            result = result * current_base
 
-        abs_exp >>= 1  # exp_value = exp_value / 2
+def _integer_power_at[
+    WIDTH: Int
+](base: Decimal128, exponent: Int) raises -> Tuple[WideValue[WIDTH], UInt256]:
+    """Returns `base**exponent` at the given width, with how far it may be
+    off.
 
-        if abs_exp > 0:
-            current_base = current_base * current_base
+    Parameters:
+        WIDTH: The width to compute at.
 
-    # For negative exponents, take the reciprocal
-    if negative_exponent:
-        # For 1/x, use division
-        result = Decimal128.ONE() / result
+    Args:
+        base: The base, which may not be zero.
+        exponent: The power, which may be negative.
 
-    return result
+    Returns:
+        The value, and the units in the last place of its mantissa that the
+        computation is trusted within.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+    """
+    var magnitude = exponent if exponent > 0 else -exponent
+    var current = WideValue[WIDTH].from_decimal(base)
+
+    # The lowest set bit starts the product rather than multiplying one by
+    # it, which is two multiplications saved on a small exponent.
+    while magnitude & 1 == 0:
+        current = current * current
+        magnitude >>= 1
+    var result = current.copy()
+    var multiplications = 0
+    magnitude >>= 1
+    while magnitude > 0:
+        current = current * current
+        multiplications += 1
+        if magnitude & 1:
+            result = result * current
+            multiplications += 1
+        magnitude >>= 1
+
+    # Every multiplication can lose the last digit it carries, and a squaring
+    # doubles what it was already carrying.
+    var slack = _slack_at[WIDTH](2 * (multiplications + 1))
+    if exponent > 0:
+        return (result^, slack)
+    var reciprocal = WideValue[WIDTH].from_int(1) / result
+    return (reciprocal^, slack * UInt256(10) + UInt256(2))
 
 
 def root(x: Decimal128, n: Int) raises -> Decimal128:
-    """Calculates the n-th root of a Decimal128 value using Newton-Raphson method.
+    """Calculates the n-th root of a Decimal128 value.
 
     Args:
-        x: The Decimal128 value to compute the n-th root of.
-        n: The root to compute (must be positive).
+        x: The value to take the root of.
+        n: Which root, which must be positive.
 
     Returns:
-        A new Decimal128 containing the n-th root of x.
+        The n-th root of x, correctly rounded.
 
     Raises:
-        ValueError: If `n <= 0`, if `n` is even and `x` is negative, or
-            if the `n > 50` fallback path `exp(ln(x) / n)` raises (any
-            underlying `exp` / `ln` failure is wrapped as `ValueError`
-            with the original error attached as `previous_error`).
-        OverflowError: If an intermediate Newton-Raphson step overflows
-            Decimal128 capacity. In particular `power(guess, n-1)` and
-            the per-iteration `n_minus_1_decimal * guess + x / pow_n_minus_1`
-            combine can overflow for pathological inputs whose initial
-            guess sits far from the true root.
-    """
-    # var t0 = time.perf_counter_ns()
+        ValueError: If `n <= 0`, or if `n` is even and `x` is negative.
+        OverflowError: If the result does not fit `Decimal128`.
 
-    # Special cases for n
+    Notes:
+        `root(x, n) = exp(ln(x) / n)`, taken at the working width and
+        rounded once. Newton-Raphson in `Decimal128` arithmetic is what this
+        used to be, and refining a 28-digit guess with 28-digit steps left
+        the last digit one or two units out on a quarter of the arguments
+        tried.
+
+        A root that comes out whole is a fact about `x` and `n`, not
+        something the series can settle: at any width it is two-and-a-hair
+        or two-less-a-hair. So the rounded value names the candidate and
+        raising it back to the n-th power decides it, as `log` does for
+        exact powers.
+    """
     if n <= 0:
         raise ValueError(
             message="Cannot compute non-positive root.",
@@ -346,7 +473,6 @@ def root(x: Decimal128, n: Int) raises -> Decimal128:
     if n == 2:
         return sqrt(x)
 
-    # Special cases for x
     if x.is_zero():
         return Decimal128.ZERO()
     if x.is_one():
@@ -357,150 +483,63 @@ def root(x: Decimal128, n: Int) raises -> Decimal128:
                 message="Cannot compute even root of a negative number.",
                 function="root()",
             )
-        # For odd roots of negative numbers, compute |x|^(1/n) and negate
         return -root(-x, n)
 
-    # Special optimization for very large n
-    if n > 50:
-        # For large n, the Newton-Raphson method may converge slowly
-        # Use logarithm approach directly with higher precision
-        try:
-            # Direct calculation: x^n = e^(ln(x)/n)
-            return exp(ln(x) / Decimal128(n))
-        except e:
-            raise ValueError(
-                message="Root computation failed.",
-                function="root()",
-                previous_error=e^,
-            )
+    var narrow = _root_at[38](x, n)
+    var candidate = narrow[0].to_decimal_decided(narrow[1])
+    if not candidate:
+        var wide = _root_at[75](x, n)
+        candidate = wide[0].to_decimal_decided(wide[1])
+        if not candidate:
+            candidate = wide[0].to_decimal()
 
-    # Initial guess
-    # use floating point approach to quickly find a good guess
-    var x_coef: UInt128 = x.coefficient()
-    var x_scale = x.scale()
-    var guess: Decimal128
+    var result = candidate.value()
+    try:
+        if power(result, n) == x:
+            return result.normalize()
+    except:
+        pass
+    return result
 
-    # For numbers with zero scale (true integers)
-    if x_scale == 0:
-        if n <= 8:  # 3<=n<=8
-            var float_root = (
-                pow(Float64(x_coef), 1 / Float64(n)) * Float64(10) ** 8
-            )
-            guess = Decimal128.from_uint128(
-                UInt128(round(float_root)), scale=8, sign=False
-            )
-        elif n <= 16:
-            var float_root = (
-                pow(Float64(x_coef), 1 / Float64(n)) * Float64(10) ** 16
-            )
-            guess = Decimal128.from_uint128(
-                UInt128(round(float_root)), scale=16, sign=False
-            )
-        else:
-            var float_root = (
-                pow(Float64(x_coef), 1 / Float64(n)) * Float64(10) ** 26
-            )
-            guess = Decimal128.from_uint128(
-                UInt128(round(float_root)), scale=26, sign=False
-            )
 
-    # Otherwise, use the following formulae:
-    # let divmod(scale, n) = (x, y)
-    # so scale = x * n + y = (x + 1) * n + (y - n)
-    #   a^(1/n) / (10^scale)^(1/n)
-    # = a^(1/n) / (10^(scale/n))
-    # = a^(1/n) / (10^((x + 1) * n + y - n) / n))
-    # = a^(1/n) / (10^(x+1 + (y-n)/n))
-    # = a^(1/n) / 10^(x+1) / 10^((y-n)/n)
-    # = a^(1/n) / 10^((y/n-1) / 10^(x+1)
-    else:
-        var dividend = x_scale // n
-        var remainder = x_scale % n
-        var float_root = Float64(x_coef) ** (Float64(1) / Float64(n)) / Float64(
-            10
-        ) ** (Float64(remainder) / Float64(n) - 1)
-        guess = Decimal128.from_uint128(
-            UInt128(float_root), scale=UInt32(dividend + 1), sign=False
-        )
+def _root_at[
+    WIDTH: Int
+](x: Decimal128, n: Int) raises -> Tuple[WideValue[WIDTH], UInt256]:
+    """Returns the n-th root of `x` at the given width, with how far it may
+    be off.
 
-    # var t_initial_guess = time.perf_counter_ns()
+    Parameters:
+        WIDTH: The width to compute at.
 
-    # Newton-Raphson method for n-th root
-    # Formula: x_{k+1} = ((n-1)*x_k + a/x_k^(n-1))/n
-    var prev_guess = Decimal128.ZERO()
-    var n_decimal = Decimal128(n)
-    var n_minus_1 = n - 1
-    var n_minus_1_decimal = Decimal128(n_minus_1)
-    var iteration_count = 0
+    Args:
+        x: The value, which must be positive.
+        n: Which root, which must be at least two.
 
-    # Newton-Raphson iteration
-    while guess != prev_guess and iteration_count < 100:
-        prev_guess = guess
-        var pow_n_minus_1 = power(guess, n_minus_1)
-        var sum_result = n_minus_1_decimal * guess + x / pow_n_minus_1
-        guess = sum_result / n_decimal
-        iteration_count += 1
+    Returns:
+        The value, and the units in the last place of its mantissa that the
+        computation is trusted within.
 
-    # var t_newton_raphson = time.perf_counter_ns()
+    Raises:
+        ValueError: If `x` is not positive.
+        Error: Propagated from the arithmetic.
+    """
+    var logarithm = _ln_at[WIDTH](x)
+    var argument = logarithm[0].divide_by_int(n)
 
-    # If exact root found, remove trailing zeros after the decimal point
-    # For example, root(27, 3) = 9, not 3.0000000000000
-    # Exact root means that the n-th power of coefficient of guess after
-    # removing trailing zeros is equal to the coefficient of xs
-    var guess_coef = guess.coefficient()
+    var result = _exp_of_magnitude_at[WIDTH](abs_wide(argument))
+    if argument.sign:
+        result = WideValue[WIDTH].from_int(1) / result
 
-    # No need to do this if the last digit of the coefficient of guess is not zero
-    if guess_coef % 10 == 0:
-        var num_digits_x_ceof = decimal128_utility.number_of_digits(x_coef)
-        var num_digits_x_root_coef = (num_digits_x_ceof // n) + 1
-        var num_digits_guess_coef = decimal128_utility.number_of_digits(
-            guess_coef
-        )
-        var num_digits_to_decrease = (
-            num_digits_guess_coef - num_digits_x_root_coef
-        )
-
-        # testing.assert_true(
-        #     num_digits_to_decrease >= 0,
-        #     "root of x has fewer digits than expected",
-        # )
-        for _ in range(num_digits_to_decrease):
-            if guess_coef % 10 == 0:
-                guess_coef //= 10
-            else:
-                break
-        else:
-            var guess_coef_powered = guess_coef**n
-            if guess_coef_powered == x_coef:
-                return Decimal128.from_uint128(
-                    guess_coef,
-                    scale=UInt32(guess.scale() - num_digits_to_decrease),
-                    sign=False,
-                )
-            # `n` can be up to 50 here (the `n > 50` early-return path
-            # delegates to `exp(ln(x) / n)` instead). UInt128 can only
-            # represent 10^n for `n <= 38` (2^128 ~= 3.4e38), so we skip
-            # this trailing-zero recovery branch for `n in 39..50` --
-            # `x_coef * 10^n` would overflow UInt128 anyway, and the
-            # Newton-Raphson result above is already returned correctly
-            # below.
-            if n <= 38 and (
-                guess_coef_powered
-                == x_coef * decimal128_utility.power_of_10[DType.uint128](n)
-            ):
-                return Decimal128.from_uint128(
-                    guess_coef // 10,
-                    scale=UInt32(guess.scale() - num_digits_to_decrease - 1),
-                    sign=False,
-                )
-
-    # print("DEBUG: iteration_count", iteration_count)
-    # var t_remove_zeros = time.perf_counter_ns()
-    # print("TIME: initial guess", t_initial_guess - t0)
-    # print("TIME: Newton-Raphson", t_newton_raphson - t_initial_guess)
-    # print("TIME: remove zeros", t_remove_zeros - t_newton_raphson)
-
-    return guess
+    # As in `_real_power_at`: what the logarithm is trusted within is an
+    # absolute error on the exponential's argument, and that is a relative
+    # error on its answer.
+    var slack = _slack_at[WIDTH](EXP_SLACK) + logarithm[1] + UInt256(4)
+    var spread = argument.exponent + WIDTH
+    if spread > 0:
+        if spread > 70:
+            return (result^, UInt256.MAX)
+        slack *= decimal128_utility.power_of_10[DType.uint256](spread)
+    return (result^, slack)
 
 
 def cbrt(x: Decimal128) raises -> Decimal128:

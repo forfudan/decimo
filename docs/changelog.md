@@ -596,6 +596,27 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
 
 ### 🩹 Fixed in Unreleased
 
+1. **`Decimal128`'s powers and roots were wrong in the last digits.**
+   `x^y` went through `exp(y * ln(x))` with the logarithm and the product
+   each rounded to 28 digits on the way, and an absolute error in
+   `y * ln(x)` is a relative error in the answer: 51 of 60 random arguments
+   were wrong, by up to 40 units in the last place, and `1.0001^10000` by 84.
+   The integer path squared its running product in `Decimal128` arithmetic
+   and was wrong on 22 of 40, by up to 13. `root` refined a 28-digit guess
+   with 28-digit Newton steps and was wrong on a quarter of the arguments
+   tried.
+
+   All three now compute at 38 digits and round once, and run again at 75
+   when the digits below the answer do not settle it -- the same two widths
+   `exp` and `ln` use. 540 checks against CPython's `decimal`: none wrong.
+   A power or root that comes out whole stays whole, decided by raising the
+   rounded value back to the n-th power rather than by the series.
+
+1. **The wider pass aborted instead of answering.** Shifting a 75-digit
+   mantissa asks for powers of ten up to `10^74`, and the reciprocal
+   divider's table stops at `10^48`. `ln` and `log10` never took that path
+   at that width, so nothing caught it until `power` did.
+
 1. **`Decimal128`'s logarithms and exponentials decide their rounding.** The
    answer is rounded from digits the series carries below it, which is right
    whenever those digits say which side of the boundary the true value falls
