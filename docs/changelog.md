@@ -271,6 +271,15 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
 
 ### 🦋 Changed in Unreleased
 
+1. **Reading a `BigUInt` from text is up to seven times faster.** The parser
+   normalized every string first, which writes a `List[UInt8]` of one digit
+   per byte and reads it back into words -- for a short value most of what
+   the parse costs. A string that is nothing but digits, which is nearly all
+   of them, now goes straight into the words. One digit is 10.7 nanoseconds
+   against 78.5, nine are 20.6 against 91.2, and twenty-eight are 46.8
+   against 118.4. `BigDecimal` has had this path for a while; this is the
+   same one, without the point.
+
 1. **Writing a `BigDecimal` out is two to four times cheaper.** The text was
    built by making a `String` of the coefficient, concatenating around it,
    and -- for `String(x)`, which is what `print` and the Python binding use
@@ -279,9 +288,11 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
 
    The digits now go from the coefficient's words straight into one buffer,
    which is on the stack when the value is short enough, with the integer
-   part sliding one byte left to open the slot for the point. `BigUInt` also
-   emits two digits per division rather than one, against a table of pairs,
-   which halves the divisions every conversion does.
+   part sliding one byte left to open the slot for the point. `BigUInt`
+   writes its own text the same way, and emits two digits per division
+   rather than one against a table of pairs, which halves the divisions
+   every conversion does: `BigUInt.to_string()` is 15 nanoseconds at 18
+   digits against 49, and 57 at 28 against 94.
 
    Nanoseconds, against CPython's `decimal` for the same value:
 

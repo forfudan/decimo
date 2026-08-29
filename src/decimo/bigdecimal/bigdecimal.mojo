@@ -1020,7 +1020,7 @@ struct BigDecimal(
             path did by way of `String(word)`; anything longer gets one heap
             buffer that the `String` takes ownership of.
         """
-        comptime STACK_BYTES = 32
+        comptime STACK_BYTES = 64
         var digits = self.coefficient.number_of_digits()
         var length = self._plain_length(digits)
         if length <= STACK_BYTES:
@@ -1074,7 +1074,7 @@ struct BigDecimal(
             writer.write(self.to_string())
             return
 
-        comptime STACK_BYTES = 32
+        comptime STACK_BYTES = 64
         var digits = self.coefficient.number_of_digits()
         var length = self._plain_length(digits)
         if length <= STACK_BYTES:
