@@ -226,14 +226,14 @@ struct WideValue[DIGITS: Int](Copyable, Movable):
             if gap <= room:
                 left *= decimal128_utility.power_of_10[DType.uint256](gap)
             else:
-                right //= decimal128_utility.power_of_10[DType.uint256](gap)
+                right = _drop_digits(right, gap)
                 exponent = self.exponent
         elif gap < 0:
             exponent = self.exponent
             if -gap <= room:
                 right *= decimal128_utility.power_of_10[DType.uint256](-gap)
             else:
-                left //= decimal128_utility.power_of_10[DType.uint256](-gap)
+                left = _drop_digits(left, -gap)
                 exponent = other.exponent
         else:
             exponent = self.exponent
@@ -304,10 +304,13 @@ struct WideValue[DIGITS: Int](Copyable, Movable):
             # units in the last place.
             comptime half = (Self.DIGITS + 1) // 2
             var split = decimal128_utility.power_of_10[DType.uint256](half)
-            var left_high = self.mantissa // split
-            var left_low = self.mantissa % split
-            var right_high = other.mantissa // split
-            var right_low = other.mantissa % split
+            # Through the reciprocal divider, and the remainder derived from
+            # the quotient: the plain `//` and `%` are software divides, and
+            # four of them made a multiplication cost 370 ns instead of 20.
+            var left_high = _drop_digits(self.mantissa, half)
+            var left_low = self.mantissa - left_high * split
+            var right_high = _drop_digits(other.mantissa, half)
+            var right_low = other.mantissa - right_high * split
             var top = (
                 left_high
                 * right_high
@@ -516,6 +519,57 @@ struct WideValue[DIGITS: Int](Copyable, Movable):
         var value = Int(_drop_digits(shifted.mantissa, drop))
         return -value if self.sign else value
 
+    def rounded_to_integer(self) raises -> Self:
+        """Returns the nearest whole number, as a value of the same width.
+
+        Returns:
+            The nearest integer, ties away from zero. `to_int_nearest` gives
+            the same answer as an `Int`, which stops at 19 digits; the
+            argument reduction divides values of 29 digits by a quarter turn
+            and needs the whole quotient.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        if self.is_zero() or self.exponent >= 0:
+            return self.copy()
+        var drop = -self.exponent
+        if drop > Self.DIGITS:
+            return Self()
+        # Half a unit added before truncating, which rounds away from zero.
+        var half = decimal128_utility.power_of_10[DType.uint256](drop) >> 1
+        return Self(_drop_digits(self.mantissa + half, drop), 0, self.sign)
+
+    def integer_remainder(self, modulus: Int) raises -> Int:
+        """Returns this whole number modulo a small one.
+
+        Args:
+            modulus: The modulus, which must be positive.
+
+        Returns:
+            The remainder, always at or above zero, of the magnitude. The
+            caller applies the sign.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+
+        Notes:
+            The value must already be whole. Only the last digits matter, so
+            the mantissa is reduced where it stands rather than converted to
+            an `Int` it would not fit in.
+        """
+        if self.is_zero():
+            return 0
+        var whole = self.mantissa
+        if self.exponent < 0:
+            whole = _drop_digits(whole, -self.exponent)
+        elif self.exponent > 0:
+            var shifted = whole % UInt256(modulus)
+            for _ in range(self.exponent):
+                shifted = (shifted * UInt256(10)) % UInt256(modulus)
+            return Int(shifted)
+        return Int(whole % UInt256(modulus))
+
     def to_decimal(self) raises -> Decimal128:
         """Returns the value as a `Decimal128`, rounded once.
 
@@ -600,6 +654,16 @@ struct WideValue[DIGITS: Int](Copyable, Movable):
             drop = scale - Decimal128.MAX_SCALE
         if digits - drop > room:
             drop = digits - room
+
+        # More digits have to go than there are places after the point, so
+        # what is left needs more than 29 digits before it. `tan` of an angle
+        # a hair past a pole lands here; the scale used to come out negative
+        # and wrap around to four billion.
+        if drop > scale:
+            raise OverflowError(
+                message="Value too large for Decimal128.",
+                function="WideValue.to_decimal_decided()",
+            )
 
         var exact = True
         if drop > 0:

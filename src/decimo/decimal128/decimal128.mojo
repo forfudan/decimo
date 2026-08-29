@@ -33,6 +33,7 @@ import decimo.decimal128.comparison as decimal128_comparison
 import decimo.decimal128.constants as decimal128_constants
 import decimo.decimal128.exponential as decimal128_exponential
 import decimo.decimal128.rounding as decimal128_rounding
+import decimo.decimal128.trigonometric as decimal128_trigonometric
 from decimo.rounding_mode import RoundingMode
 from decimo.errors import (
     ValueError,
@@ -2452,6 +2453,90 @@ struct Decimal128(
             ValueError: If `n` is non-positive, or `n` is even and the value is negative.
         """
         return decimal128_exponential.root(self, n)
+
+    @always_inline
+    def sin(self) raises -> Self:
+        """Calculates the sine of this angle in radians.
+        See `sin()` for more information.
+
+        Returns:
+            The sine of this value.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return decimal128_trigonometric.sin(self)
+
+    @always_inline
+    def cos(self) raises -> Self:
+        """Calculates the cosine of this angle in radians.
+        See `cos()` for more information.
+
+        Returns:
+            The cosine of this value.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return decimal128_trigonometric.cos(self)
+
+    @always_inline
+    def tan(self) raises -> Self:
+        """Calculates the tangent of this angle in radians.
+        See `tan()` for more information.
+
+        Returns:
+            The tangent of this value.
+
+        Raises:
+            OverflowError: If the angle is too close to a pole.
+            Error: Propagated from the arithmetic.
+        """
+        return decimal128_trigonometric.tan(self)
+
+    @always_inline
+    def cot(self) raises -> Self:
+        """Calculates the cotangent of this angle in radians.
+        See `cot()` for more information.
+
+        Returns:
+            The cotangent of this value.
+
+        Raises:
+            ZeroDivisionError: If the angle is a whole number of half turns.
+            OverflowError: If the angle is too close to one.
+            Error: Propagated from the arithmetic.
+        """
+        return decimal128_trigonometric.cot(self)
+
+    @always_inline
+    def sec(self) raises -> Self:
+        """Calculates the secant of this angle in radians.
+        See `sec()` for more information.
+
+        Returns:
+            The secant of this value.
+
+        Raises:
+            OverflowError: If the angle is too close to a quarter turn.
+            Error: Propagated from the arithmetic.
+        """
+        return decimal128_trigonometric.sec(self)
+
+    @always_inline
+    def csc(self) raises -> Self:
+        """Calculates the cosecant of this angle in radians.
+        See `csc()` for more information.
+
+        Returns:
+            The cosecant of this value.
+
+        Raises:
+            ZeroDivisionError: If the angle is zero.
+            OverflowError: If the angle is too close to a half turn.
+            Error: Propagated from the arithmetic.
+        """
+        return decimal128_trigonometric.csc(self)
 
     @always_inline
     def sqrt(self) raises -> Self:
