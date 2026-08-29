@@ -241,7 +241,14 @@ the 112-word row, is the one being tuned for.
 # One 256-bit vector of words, and the run length that the two-pass kernels
 # chew through between carry walks. Both halved with the word count when the
 # base moved, to keep the same number of *bytes* per vector and per block.
-# Provisional: they want re-sweeping, like every other cutoff here.
+#
+# Swept on 20260829: four and sixteen words to the vector were both tried and
+# eight is the one to keep -- 6.0 nanoseconds against 6.3 for a 56-word
+# addition, 9.1 against 9.4 at 128, 25.5 against 26.0 at 512. Sixteen wins by
+# 8% at 2048 words and loses everywhere else. What an addition of that size
+# actually spends its time on is the allocation of the result, which is about
+# 36 nanoseconds whatever the length, so the kernel is not where the next
+# gain is.
 comptime WORDS_PER_VECTOR = 8
 comptime WORDS_PER_CARRY_BLOCK = 64
 
