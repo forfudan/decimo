@@ -1009,7 +1009,7 @@ def power_of_10_unsafe[
     else:
         debug_assert(
             n >= 0 and n <= 77,
-            "power_of_10_unsafe[uint256]: n out of range, must be 0..58",
+            "power_of_10_unsafe[uint256]: n out of range, must be 0..77",
         )
         ref table = global_constant[_POWER_OF_10_U256]()
         return rebind[Scalar[dtype]](table[n])

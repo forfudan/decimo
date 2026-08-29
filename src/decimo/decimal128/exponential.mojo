@@ -427,8 +427,16 @@ def _integer_power_at[
             multiplications += 1
         magnitude >>= 1
 
-    # Every multiplication can lose the last digit it carries, and a squaring
-    # doubles what it was already carrying.
+    # A base of `d` digits raised to the `n`-th has at most `d * n` digits,
+    # so below the width no multiplication along the way had anything to
+    # round: the answer is the exact one and needs no room at all. That is
+    # what keeps `1.05^12` -- 36 digits, and exact -- a single pass.
+    var base_digits = decimal128_utility.number_of_digits(base.coefficient())
+    if exponent > 0 and base_digits * exponent <= WIDTH:
+        return (result^, UInt256(0))
+
+    # Otherwise every multiplication can lose the last digit it carries, and
+    # a squaring doubles what it was already carrying.
     var slack = _slack_at[WIDTH](2 * (multiplications + 1))
     if exponent > 0:
         return (result^, slack)

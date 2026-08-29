@@ -242,6 +242,19 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
 
 ### 🦋 Changed in Unreleased
 
+1. **An exact integer power is known to be exact, and trailing zeros come
+   off in one step.** A base of `d` digits raised to the `n`-th has at most
+   `d * n` digits, so below the working width nothing was rounded and the
+   answer needs no second look: `1.05^12` is one pass again rather than
+   three. And the zeros at the end of an exact answer were stripped one at a
+   time, each a `UInt256` divided by a ten it did not know at compile time,
+   which is a software divide of about 185 nanoseconds -- four of them cost
+   more than the twelve multiplications that produced the value. Halving
+   finds them in five steps and one division.
+
+1. **The out-of-range message for `power_of_10_unsafe[uint256]` says 0..77.**
+   It still said 0..58 after the table was extended.
+
 1. **The second width stopped paying for software division.** Multiplying
    two 75-digit mantissas splits each in half, and the splitting used `//`
    and `%`; lining up an addition whose gap was wider than `UInt256` had room
@@ -641,6 +654,16 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
    `DECIMO_TEST_JOBS` explicitly still wins in both cases.
 
 ### 🩹 Fixed in Unreleased
+
+1. **A computed value whose dropped digits were all zeros claimed to be
+   exact.** `to_decimal_decided` refused to round when the digits below the
+   answer sat near a boundary, but treated a remainder of exactly zero as
+   settled however much room the computation had asked for. Zero is the
+   boundary: with room to be wrong the true value may sit either side of the
+   multiple, and the claim decides whether the trailing zeros are dropped.
+   `cos(0.0000000001)` printed `0.999999999999999999995`, saying the value
+   terminates there, where it continues `...41666` at the 41st digit; it now
+   prints the zeros it knows and stops claiming more.
 
 1. **A value too large for `Decimal128` came back with a scale of four
    billion.** When more digits had to be dropped than there were places after
