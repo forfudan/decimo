@@ -31,6 +31,7 @@ from std import testing
 from decimo.errors import ConversionError, ValueError
 from decimo.traits import Numeric, Parsable, Rootable
 from decimo.rounding_mode import RoundingMode
+import decimo.ieee754 as ieee754
 from decimo.numerals.chinese import ChineseNumeralStyle
 from decimo.bigdecimal.exponential import MathCache
 from decimo.bigint.bigint import BigInt
@@ -2214,6 +2215,62 @@ struct BigDecimal(
         return bigdecimal_exponential.root(self, root, precision)
 
     @always_inline
+    def to_ieee754_decimal128(self) raises -> UInt128:
+        """Returns this value in the IEEE 754 decimal128 interchange format.
+
+        Returns:
+            The sixteen bytes, as one integer, in the binary integer decimal
+            encoding.
+
+        Raises:
+            ValueError: If the coefficient has more than 34 digits or the
+                exponent is outside the range the format holds, which is
+                -6176 to 6111. A `BigDecimal` has neither limit, so this is
+                the direction that can fail; round it first if the extra
+                digits are not wanted.
+
+        Notes:
+            Trailing zeros are kept: `1.0` and `1` are one number and two
+            encodings, and this writes the one it was given.
+        """
+        if self.coefficient.number_of_digits() > ieee754.DECIMAL128_PRECISION:
+            raise ValueError(
+                message=(
+                    "The coefficient has more than 34 digits, which"
+                    " decimal128 does not hold."
+                ),
+                function="BigDecimal.to_ieee754_decimal128()",
+            )
+        return ieee754.encode_decimal128(
+            self.sign, self.coefficient.to_uint128(), -self.scale
+        )
+
+    @staticmethod
+    def from_ieee754_decimal128(bits: UInt128) raises -> Self:
+        """Returns an IEEE 754 decimal128 as a `BigDecimal`.
+
+        Args:
+            bits: The sixteen bytes, as one integer, in the binary integer
+                decimal encoding.
+
+        Returns:
+            The same number, exactly, with the same trailing zeros.
+
+        Raises:
+            ValueError: If the bytes hold an infinity or a NaN, which this
+                type does not have.
+
+        Notes:
+            Nothing is lost in this direction: 34 digits and an exponent
+            inside 6144 are well within what a `BigDecimal` holds.
+        """
+        var parts = ieee754.decode_decimal128(bits)
+        return Self(
+            BigUInt.from_unsigned_integral_scalar(parts[1]),
+            -parts[2],
+            parts[0],
+        )
+
     def sqrt(self) raises -> Self:
         """Returns the square root of the BigDecimal number with default
         precision.

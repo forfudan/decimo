@@ -34,6 +34,8 @@ import decimo.decimal128.constants as decimal128_constants
 import decimo.decimal128.exponential as decimal128_exponential
 import decimo.decimal128.rounding as decimal128_rounding
 import decimo.decimal128.trigonometric as decimal128_trigonometric
+import decimo.ieee754 as ieee754
+from decimo.decimal128.wide import Wide
 from decimo.rounding_mode import RoundingMode
 from decimo.errors import (
     ValueError,
@@ -2453,6 +2455,68 @@ struct Decimal128(
             ValueError: If `n` is non-positive, or `n` is even and the value is negative.
         """
         return decimal128_exponential.root(self, n)
+
+    def to_ieee754(self) raises -> UInt128:
+        """Returns this value in the IEEE 754 decimal128 interchange format.
+
+        Returns:
+            The sixteen bytes, as one integer, in the binary integer decimal
+            encoding. `decimal128_to_bytes` turns it into bytes in either
+            order.
+
+        Raises:
+            Error: Propagated from the encoding, which cannot fail for any
+                value this type holds: 29 digits and a scale of at most 28
+                sit well inside the 34 digits and the exponent range of the
+                format.
+
+        Notes:
+            The trailing zeros are kept. `Decimal128("1.0")` and
+            `Decimal128("1")` are the same number and different sixteen
+            bytes, which is what the format is for.
+        """
+        return ieee754.encode_decimal128(
+            self.is_negative(), self.coefficient(), -Int(self.scale())
+        )
+
+    @staticmethod
+    def from_ieee754(bits: UInt128) raises -> Self:
+        """Returns an IEEE 754 decimal128 as a `Decimal128`.
+
+        Args:
+            bits: The sixteen bytes, as one integer, in the binary integer
+                decimal encoding.
+
+        Returns:
+            The nearest `Decimal128`, ties to even.
+
+        Raises:
+            ValueError: If the bytes hold an infinity or a NaN.
+            OverflowError: If the number is larger than this type holds.
+
+        Notes:
+            The format reaches `1E+6144` and 34 digits where this type stops
+            at `7.9E+28` and 29, so this direction can round and can fail. A
+            value below the smallest scale rounds to zero rather than
+            failing.
+        """
+        var parts = ieee754.decode_decimal128(bits)
+        var coefficient = parts[1]
+        var exponent = parts[2]
+
+        # Written as this type writes it: keep it digit for digit, trailing
+        # zeros and all. `1.0` and `1` are one number and two encodings, and
+        # a codec that returned the other one would not be a codec.
+        if (
+            exponent <= 0
+            and exponent >= -Int(Self.MAX_SCALE)
+            and coefficient >> 96 == UInt128(0)
+        ):
+            return Self.from_uint128(coefficient, UInt32(-exponent), parts[0])
+
+        # Otherwise it has more digits, or a larger exponent, than this type
+        # holds, and it is rounded into range.
+        return Wide(UInt256(coefficient), exponent, parts[0]).to_decimal()
 
     @always_inline
     def sin(self) raises -> Self:

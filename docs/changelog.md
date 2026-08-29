@@ -27,6 +27,24 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
 
 ### ⭐️ New in Unreleased
 
+1. **decimo reads and writes the IEEE 754 decimal128 interchange format.**
+   `decimo.ieee754` encodes and decodes the sixteen bytes in the binary
+   integer decimal layout -- what MongoDB's BSON `decimal128` and Intel's
+   library store -- with `Decimal128.to_ieee754()`,
+   `Decimal128.from_ieee754()`,
+   `BigDecimal.to_ieee754_decimal128()` and
+   `BigDecimal.from_ieee754_decimal128()` on top, and helpers for the bytes
+   in either order.
+
+   It is a codec and brings no IEEE arithmetic with it. Trailing zeros are
+   part of the encoding and are kept: `1.0` and `1` are one number and two
+   patterns. Every `Decimal128` fits the format; every decimal128 fits a
+   `BigDecimal` exactly. Coming the other way into a `Decimal128` rounds to
+   nearest and refuses what is too large, and an infinity or a NaN is
+   refused by name rather than turned into something else. Densely packed
+   decimal, the encoding IBM's hardware and `decNumber` use, is not read
+   here.
+
 1. **`Decimal128` has trigonometry.** `sin`, `cos`, `tan`, `cot`, `sec` and
    `csc`, as functions and as methods, correctly rounded across the whole
    range the type holds.
