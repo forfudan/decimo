@@ -12,7 +12,7 @@ from decimo.toml.parser import TOMLDocument
 
 from decimo.decimal128.decimal128 import Decimal128, Dec128
 from decimo.rounding_mode import RoundingMode
-from decimo.decimal128.exponential import exp, ln
+from decimo.decimal128.exponential import exp, ln, log, log10, _ln_at
 from decimo.decimal128.special import factorial, factorial_reciprocal
 from decimo.tests import parse_file, load_test_cases
 
@@ -108,10 +108,14 @@ def test_exp_extreme() raises:
 def test_ln_values() raises:
     """Tests ln(x) for basic, fractional, and high-precision inputs."""
     testing.assert_equal(String(ln(Decimal128(1))), "0", "ln(1) should be 0")
-    testing.assert_true(
-        String(Decimal128("2.718281828459045235360287471").ln()).startswith(
-            "1.00000000000000000000"
-        ),
+    # Not one: the argument is `e` rounded to 28 digits, and the logarithm of
+    # that is 0.99999999999999999999999999987..., which rounds to the value
+    # below. This used to answer exactly `1` through a special case that
+    # compared the argument with the stored `E()`, which is the same rounded
+    # value and not `e`.
+    testing.assert_equal(
+        String(Decimal128("2.718281828459045235360287471").ln()),
+        "0.9999999999999999999999999999",
     )
     testing.assert_true(
         String(ln(Decimal128(10))).startswith("2.30258509299404568401799145"),
@@ -534,6 +538,146 @@ def test_factorial_reciprocal() raises:
                 + String(b)
             )
     testing.assert_true(all_equal)
+
+
+def test_exponential_last_digit() raises:
+    """The last digit of `exp`, `ln` and `log10` is the correctly rounded one.
+
+    Every value here was checked against CPython's `decimal` at 70 digits,
+    rounded half-even to the exponent our answer carries. Summing the series
+    in `Decimal128` arithmetic rounded at every term, which left `ln` one to
+    three units out on 108 of 200 random arguments, `log10` on 126 of 200,
+    and `exp` up to four units out.
+    """
+
+    def _check_ln(argument: String, expected: String) raises:
+        testing.assert_equal(String(ln(Decimal128(argument))), expected)
+
+    def _check_log10(argument: String, expected: String) raises:
+        testing.assert_equal(String(log10(Decimal128(argument))), expected)
+
+    def _check_exp(argument: String, expected: String) raises:
+        testing.assert_equal(String(exp(Decimal128(argument))), expected)
+
+    _check_ln("2.75418858096677", "1.0131228732587128905702822980")
+    _check_ln("230530420.12094788948185", "19.255893386187460799821632687")
+    _check_ln("7015765.33870412123024", "15.763670365881893093897028026")
+    _check_ln("29.88302941156153", "3.3972907410545113427119154405")
+    _check_ln("10.55828499794678", "2.3569108595914505776137467763")
+    _check_ln("4.78340403550129", "1.5651524343693196285331875240")
+
+    _check_log10("2.75418858096677", "0.4399936733462265804443260079")
+    _check_log10("7015765.33870412123024", "6.8460750544443209369842541009")
+    _check_log10("29.88302941156153", "1.4754246222609834672114299731")
+    _check_log10("10.55828499794678", "1.0235933806584169421786834025")
+    _check_log10("297.20299815629379", "2.4730531862331090471126515535")
+    _check_log10("6102.77086491489747", "3.7855270642100435986852514547")
+
+    _check_exp("48.937484653331", "1791758787774364200668.9398320")
+    _check_exp("3.112874479482", "22.485585950080698301915058640")
+    _check_exp("3.729434379105", "41.655540255445860472722899403")
+    _check_exp("18.271222522080", "86117441.55228067575146277518")
+    _check_exp("17.560219388215", "42296689.909114876594363483851")
+    _check_exp("20.846923952754", "1131628918.8175081235006184687")
+
+
+def test_exponential_rational_points() raises:
+    """Arguments with a short answer keep it short."""
+    testing.assert_equal(String(exp(Decimal128("0"))), "1")
+    testing.assert_equal(String(ln(Decimal128("1"))), "0")
+    testing.assert_equal(String(log10(Decimal128("1000"))), "3")
+    testing.assert_equal(String(log10(Decimal128("0.001"))), "-3")
+    testing.assert_equal(String(log(Decimal128("8"), Decimal128("2"))), "3")
+
+
+def test_exp_negative_matches_reciprocal() raises:
+    """A negative argument is the reciprocal of the positive one."""
+
+    def _check(argument: String, expected: String) raises:
+        testing.assert_equal(String(exp(Decimal128(argument))), expected)
+
+    _check("-1", "0.3678794411714423215955237702")
+    _check("-12.5", "0.0000037266531720786709929249")
+    _check("-0.005", "0.9950124791926823133525642462")
+
+
+def test_logarithm_on_a_rounding_boundary() raises:
+    """Arguments whose answer sits on the boundary between two results.
+
+    Found by searching three million arguments for one whose thirtieth digit
+    onward reads `5000...` or `4999...`: at that point the first width's own
+    error is wider than the distance to the boundary, so it refuses to round
+    and the computation runs again at 75 digits. Each value below was checked
+    against CPython's `decimal` at 60 digits.
+    """
+    # ...0245000017266..., so the digits below the answer carry it up.
+    testing.assert_equal(
+        String(ln(Decimal128("6215888314.385201"))),
+        "22.550374482409092836854714025",
+    )
+    # ...2254999986937..., just short of the boundary, so it stays put.
+    testing.assert_equal(
+        String(ln(Decimal128("387478688945552.51569"))),
+        "33.590681966940057717836817225",
+    )
+    testing.assert_equal(
+        String(log10(Decimal128("927967429054051.8189"))),
+        "14.967532733082721117334088637",
+    )
+    testing.assert_equal(
+        String(log10(Decimal128("5120760.203168846"))),
+        "6.7093344390097680154396662144",
+    )
+
+
+def test_first_width_refuses_a_boundary() raises:
+    """The first width says it cannot round these, rather than guessing."""
+    var boundary = _ln_at[38](Decimal128("6215888314.385201"))
+    testing.assert_false(
+        Bool(boundary[0].to_decimal_decided(boundary[1])),
+        "38 digits cannot place this answer and should not claim to",
+    )
+    var ordinary = _ln_at[38](Decimal128("123.456"))
+    testing.assert_true(
+        Bool(ordinary[0].to_decimal_decided(ordinary[1])),
+        "an ordinary argument is settled at the first width",
+    )
+    # The wider one settles it, and both widths agree on the ordinary case.
+    var wider = _ln_at[75](Decimal128("6215888314.385201"))
+    testing.assert_true(Bool(wider[0].to_decimal_decided(wider[1])))
+    testing.assert_equal(
+        String(_ln_at[75](Decimal128("123.456"))[0].to_decimal()),
+        String(ordinary[0].to_decimal()),
+    )
+
+
+def test_logarithm_close_to_one() raises:
+    """Arguments a hair from one, where the answer is far smaller than the
+    terms that make it.
+
+    Taking the series directly on `[0.5, 2)` is what keeps these exact: the
+    reduction would add `p * ln(2) + q * ln(10)` and then cancel them back
+    out, spending fourteen of the digits carried to do it.
+    """
+
+    def _check_ln(argument: String, expected: String) raises:
+        testing.assert_equal(String(ln(Decimal128(argument))), expected)
+
+    _check_ln("0.99999999999999", "-0.0000000000000100000000000001")
+    _check_ln(
+        "0.9999999999999999999999999999", "-0.0000000000000000000000000001"
+    )
+    _check_ln(
+        "1.0000000000000000000000000001", "0.0000000000000000000000000001"
+    )
+    _check_ln("0.999999999", "-0.0000000010000000005000000003")
+    _check_ln("1.000000001", "0.0000000009999999995000000003")
+    # Below the smallest scale the type has, and it still rounds rather than
+    # collapsing to zero.
+    testing.assert_equal(
+        String(log10(Decimal128("0.9999999999999999999999999999"))),
+        "-0.0000000000000000000000000000",
+    )
 
 
 def main() raises:

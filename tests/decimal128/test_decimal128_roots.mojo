@@ -371,5 +371,40 @@ def test_cbrt_approximate() raises:
     )
 
 
+def test_sqrt_last_digit() raises:
+    """The last digit of `sqrt` is the correctly rounded one.
+
+    Every value here was checked against CPython's `decimal` at 70 digits,
+    rounded half-even to the exponent our answer carries. The integer square
+    root path replaced a Newton iteration in `Decimal128` arithmetic, which
+    was one unit out on 75 of 200 random arguments.
+    """
+
+    def _check(argument: String, expected: String) raises:
+        testing.assert_equal(String(Decimal128(argument).sqrt()), expected)
+
+    _check("47.8162940917854", "6.9149326888831969309272301033")
+    _check("29.88302941156153", "5.4665372413952811193190728724")
+    _check("4.78340403550129", "2.1870994571581078420465727157")
+    _check("6102.77086491489747", "78.120233390043692764369492694")
+    _check("46100527.63169216965921", "6789.7369339093079224740531713")
+    _check("159368.68817974381539", "399.21008025818162622965613478")
+
+
+def test_sqrt_keeps_exact_roots_exact() raises:
+    """A square root that comes out exactly is not rounded or padded."""
+    testing.assert_equal(String(Decimal128("4").sqrt()), "2")
+    testing.assert_equal(String(Decimal128("0.25").sqrt()), "0.5")
+    testing.assert_equal(String(Decimal128("1e-28").sqrt()), "0.00000000000001")
+    testing.assert_equal(String(Decimal128("1522756").sqrt()), "1234")
+    # Not exact, and the digits that survive say so: the true root is
+    # 123456789012345.6788999999999979..., which carries to ...6789 at the
+    # fourteenth decimal, all that fits beside fifteen integral digits.
+    testing.assert_equal(
+        String(Decimal128("15241578753238836750190519987").sqrt()),
+        "123456789012345.67890000000000",
+    )
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()

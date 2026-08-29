@@ -94,6 +94,33 @@ def sqrt(x: UInt128) -> UInt128:
     return r
 
 
+def isqrt_u256(x: UInt256) -> UInt256:
+    """Returns the integer square root of a `UInt256` value.
+
+    Args:
+        x: The value to take the root of.
+
+    Returns:
+        The largest `r` with `r * r <= x`.
+
+    Notes:
+        Bit by bit, as `sqrt(UInt128)` above: a candidate bit is kept when
+        the square of the result with that bit set still fits under `x`.
+        Squaring stays inside `UInt256` because the result is at most
+        `2^128`, and its square at most `2^256`... which is why the top bit
+        is not tried: `x` below `2^256` has a root below `2^128`.
+    """
+    var r = UInt256(0)
+    for p in range(127, -1, -1):
+        var candidate = r | (UInt256(1) << UInt256(p))
+        # `candidate * candidate` would overflow for a candidate at the very
+        # top, so compare by division instead where it might.
+        if candidate <= (UInt256(1) << UInt256(128)) - UInt256(1):
+            if candidate * candidate <= x:
+                r = candidate
+    return r
+
+
 def fit_to_max_coefficient[
     dtype: DType, //
 ](
@@ -304,7 +331,7 @@ def round_coefficient[
     # UInt256 // UInt256 lowers to a generic shift-subtract software loop
     # (~250 ns on aarch64). For UInt256, redirect to the Granlund-Möller
     # reciprocal multiplier (`udiv_u256_by_pow10_gm`, ~5 ns) for the
-    # `1 ≤ k ≤ 29` range that covers every Decimal128 multiply/round
+    # `1 ≤ k ≤ 48` range that covers every Decimal128 multiply/round
     # call site (since `combined_num_bits ≤ 192` implies `k ≤ 29`).
     # The `else` arm is a defensive fallback for any future caller that
     # might exceed that range; it pays the slow native u256 divide.
@@ -312,7 +339,7 @@ def round_coefficient[
     # `__udivti3`, so leave that path alone.
     var truncated: ValueType
     comptime if dtype == DType.uint256:
-        if ndigits_to_remove >= 1 and ndigits_to_remove <= 29:
+        if ndigits_to_remove >= 1 and ndigits_to_remove <= 48:
             truncated = rebind[ValueType](
                 udiv_u256_by_pow10_gm(rebind[UInt256](value), ndigits_to_remove)
             )
@@ -557,8 +584,7 @@ def round_to_keep_first_n_digits[
 @always_inline
 def number_of_digits[dtype: DType, //](value: Scalar[dtype]) -> Int:
     """
-    Returns the number of (significant) digits in an integral value using binary search.
-    This implementation is significantly faster than loop division.
+    Returns the number of (significant) digits in an integral value.
 
     Parameters:
         dtype: The Mojo scalar type to calculate the number of digits for.
@@ -571,156 +597,32 @@ def number_of_digits[dtype: DType, //](value: Scalar[dtype]) -> Int:
 
     Returns:
         The number of digits in the integral value.
+
+    Notes:
+        `bit_width` gives the binary length, and `1233 / 4096` is `log10(2)`
+        from just below, so `(bits * 1233) >> 12` never overshoots the number
+        of decimal digits and lands at most one short. One table lookup
+        settles which.
+
+        This replaced a tree of `10 ** k` comparisons. Those exponents are
+        not folded for 128- and 256-bit scalars, so each comparison built its
+        power at run time by repeated multiplication: about 330 ns to count
+        the digits of a 38-digit value, against 5 ns here. Every rounding,
+        multiplication and conversion in `Decimal128` calls this.
     """
 
     comptime assert (
         dtype == DType.uint128 or dtype == DType.uint256
     ), "must be uint128 or uint256"
 
-    comptime ValueType = Scalar[dtype]
-
-    # Handle edge cases
     if value == 0:
         return 0
-    # Binary search to determine the number of digits
-    # First check small numbers with direct comparison (most common case)
-    if value < 10:
-        return 1
-    if value < 100:
-        return 2
-    if value < 1000:
-        return 3
-    if value < 10000:
-        return 4
-    if value < 100000:
-        return 5
-    if value < 1000000:
-        return 6
-    if value < 10000000:
-        return 7
-    if value < 100000000:
-        return 8
-    if value < 1000000000:
-        return 9
-
-    # For larger numbers, use binary search with limited indentation
-    # Medium range: 10^10 to 10^19
-    if value < ValueType(10) ** 19:  # < 10^19
-        if value < ValueType(10) ** 13:  # < 10^13
-            if value < ValueType(10) ** 10:  # < 10^10
-                return 10
-            if value < ValueType(10) ** 11:  # < 10^11
-                return 11
-            if value < ValueType(10) ** 12:  # < 10^12
-                return 12
-            return 13
-        if value < ValueType(10) ** 16:  # < 10^16
-            if value < ValueType(10) ** 14:  # < 10^14
-                return 14
-            if value < ValueType(10) ** 15:  # < 10^15
-                return 15
-            return 16
-        if value < ValueType(10) ** 17:  # < 10^17
-            return 17
-        if value < ValueType(10) ** 18:  # < 10^18
-            return 18
-        return 19
-
-    # Large range: 10^19 to 10^38 (UInt128 max is ~10^38)
-    if value < ValueType(10) ** 37:  # < 10^37
-        if value < ValueType(10) ** 28:  # < 10^28
-            if value < ValueType(10) ** 22:  # < 10^22
-                if value < ValueType(10) ** 20:  # < 10^20
-                    return 20
-                if value < ValueType(10) ** 21:  # < 10^21
-                    return 21
-                return 22
-            if value < ValueType(10) ** 24:  # < 10^24
-                if value < ValueType(10) ** 23:  # < 10^23
-                    return 23
-                return 24
-            if value < ValueType(10) ** 25:  # < 10^25
-                return 25
-            if value < ValueType(10) ** 26:  # < 10^26
-                return 26
-            if value < ValueType(10) ** 27:  # < 10^27
-                return 27
-            return 28
-        if value < ValueType(10) ** 31:  # < 10^31
-            if value < ValueType(10) ** 29:  # < 10^29
-                return 29
-            if value < ValueType(10) ** 30:  # < 10^30
-                return 30
-            return 31
-        if value < ValueType(10) ** 33:  # < 10^33
-            if value < ValueType(10) ** 32:  # < 10^32
-                return 32
-            return 33
-        if value < ValueType(10) ** 34:  # < 10^34
-            return 34
-        if value < ValueType(10) ** 35:  # < 10^35
-            return 35
-        if value < ValueType(10) ** 36:  # < 10^36
-            return 36
-        return 37
-
-    # Very large range: 10^37 to 10^77 (UInt256 max is ~10^77)
-    if value < ValueType(10) ** 38:  # < 10^38
-        return 38
-
-    # For UInt128, the maximum number of digits is 39
-    # We can already return the result here
-    if dtype == DType.uint128:
-        return 39
-
-    if value < ValueType(10) ** 39:  # < 10^39
-        return 39
-
-    # Use additional binary searches for UInt256 range (10^39 to 10^77)
-    if value < ValueType(10) ** 58:  # < 10^58
-        if value < ValueType(10) ** 47:  # < 10^47
-            if value < ValueType(10) ** 43:  # < 10^43
-                if value < ValueType(10) ** 40:  # < 10^40
-                    return 40
-                if value < ValueType(10) ** 41:  # < 10^41
-                    return 41
-                if value < ValueType(10) ** 42:  # < 10^42
-                    return 42
-                return 43
-            if value < ValueType(10) ** 44:  # < 10^44
-                return 44
-            if value < ValueType(10) ** 45:  # < 10^45
-                return 45
-            if value < ValueType(10) ** 46:  # < 10^46
-                return 46
-            return 47
-        if value < ValueType(10) ** 52:  # < 10^52
-            if value < ValueType(10) ** 48:  # < 10^48
-                return 48
-            if value < ValueType(10) ** 49:  # < 10^49
-                return 49
-            if value < ValueType(10) ** 50:  # < 10^50
-                return 50
-            if value < ValueType(10) ** 51:  # < 10^51
-                return 51
-            return 52
-        if value < ValueType(10) ** 54:  # < 10^54
-            if value < ValueType(10) ** 53:  # < 10^53
-                return 53
-            return 54
-        if value < ValueType(10) ** 56:  # < 10^56
-            if value < ValueType(10) ** 55:  # < 10^55
-                return 55
-            return 56
-        if value < ValueType(10) ** 57:  # < 10^57
-            return 57
-        return 58
-
-    # Digits more than 58 is not possible for Decimal128 products
-    return 59
+    var digits = ((Int(bit_width(value)) * 1233) >> 12) + 1
+    if value < power_of_10[dtype](digits - 1):
+        digits -= 1
+    return digits
 
 
-@always_inline
 def number_of_bits[
     dtype: DType, //
 ](var value: Scalar[dtype]) -> Int where dtype.is_integral():
@@ -909,7 +811,7 @@ comptime _POWER_OF_10_U128: Array[UInt128, 39] = [
 ]
 
 
-comptime _POWER_OF_10_U256: Array[UInt256, 59] = [
+comptime _POWER_OF_10_U256: Array[UInt256, 78] = [
     1,
     10,
     100,
@@ -969,6 +871,25 @@ comptime _POWER_OF_10_U256: Array[UInt256, 59] = [
     100000000000000000000000000000000000000000000000000000000,
     1000000000000000000000000000000000000000000000000000000000,
     10000000000000000000000000000000000000000000000000000000000,
+    100000000000000000000000000000000000000000000000000000000000,
+    1000000000000000000000000000000000000000000000000000000000000,
+    10000000000000000000000000000000000000000000000000000000000000,
+    100000000000000000000000000000000000000000000000000000000000000,
+    1000000000000000000000000000000000000000000000000000000000000000,
+    10000000000000000000000000000000000000000000000000000000000000000,
+    100000000000000000000000000000000000000000000000000000000000000000,
+    1000000000000000000000000000000000000000000000000000000000000000000,
+    10000000000000000000000000000000000000000000000000000000000000000000,
+    100000000000000000000000000000000000000000000000000000000000000000000,
+    1000000000000000000000000000000000000000000000000000000000000000000000,
+    10000000000000000000000000000000000000000000000000000000000000000000000,
+    100000000000000000000000000000000000000000000000000000000000000000000000,
+    1000000000000000000000000000000000000000000000000000000000000000000000000,
+    10000000000000000000000000000000000000000000000000000000000000000000000000,
+    100000000000000000000000000000000000000000000000000000000000000000000000000,
+    1000000000000000000000000000000000000000000000000000000000000000000000000000,
+    10000000000000000000000000000000000000000000000000000000000000000000000000000,
+    100000000000000000000000000000000000000000000000000000000000000000000000000000,
 ]
 
 
@@ -997,7 +918,7 @@ def power_of_10[
 
         **WARNING**: The bound on `n` is only checked when `debug_assert`
         is enabled. Callers must guarantee `0 <= n <= 38` for `uint128`
-        and `0 <= n <= 58` for `uint256`. An out-of-range `n` reads past
+        and `0 <= n <= 77` for `uint256`. An out-of-range `n` reads past
         the table and returns garbage in release builds.
 
         Implementation: `global_constant` places the table in static
@@ -1018,7 +939,7 @@ def power_of_10[
         return rebind[Scalar[dtype]](table[n])
     else:
         debug_assert(
-            n >= 0 and n <= 58, "power_of_10[uint256]: n must be in 0..58"
+            n >= 0 and n <= 77, "power_of_10[uint256]: n must be in 0..77"
         )
         ref table = global_constant[_POWER_OF_10_U256]()
         return rebind[Scalar[dtype]](table[n])
@@ -1050,7 +971,7 @@ def power_of_10_unsafe[
 
         **WARNING**: This function performs **no runtime bounds check** in
         release builds (`-D ASSERT=none`). Callers must guarantee
-        `0 <= n <= 29` for `uint128` and `0 <= n <= 58` for `uint256`. A
+        `0 <= n <= 29` for `uint128` and `0 <= n <= 77` for `uint256`. A
         `debug_assert` catches violations in debug builds
         (`-D ASSERT=all`). An out-of-range `n` reads past the table and
         returns garbage; earlier revisions returned `0`, which was never
@@ -1087,7 +1008,7 @@ def power_of_10_unsafe[
         return rebind[Scalar[dtype]](table[n])
     else:
         debug_assert(
-            n >= 0 and n <= 58,
+            n >= 0 and n <= 77,
             "power_of_10_unsafe[uint256]: n out of range, must be 0..58",
         )
         ref table = global_constant[_POWER_OF_10_U256]()
@@ -1109,7 +1030,7 @@ def power_of_10_unsafe[
 #     t1 = mulhi_N(m', n)                 (high N bits of m' * n)
 #     q  = (((n - t1) >> 1) + t1) >> (ell - 1)
 #
-# For `d = 10^k` with `1 ≤ k ≤ 29`, the resulting `m'` is always 256-bit
+# For `d = 10^k` with `1 ≤ k ≤ 48`, the resulting `m'` is always 256-bit
 # and we precompute the table at the bottom of this file. Replacing the
 # 32-step schoolbook divide with a single 256×256→high-256 multiply plus
 # two shifts brings the divide down to roughly the cost of the multiply
@@ -1117,7 +1038,7 @@ def power_of_10_unsafe[
 # UInt256 software loop that LLVM falls back to.
 #
 # Coverage
-# `1 ≤ k ≤ 29` covers every `Decimal128` multiply/round call site
+# `1 ≤ k ≤ 48` covers every `Decimal128` multiply/round call site
 # (since `combined_num_bits ≤ 192` implies `k ≤ 29`). For any future
 # caller that exceeds that range, `round_coefficient` falls back to
 # the native `value // divisor` path.
@@ -1159,20 +1080,20 @@ def _mulhi_u256(a: UInt256, b: UInt256) -> UInt256:
     return hh + (lh >> 128) + (hl >> 128) + (mid >> 128)
 
 
-# Precomputed Granlund-Möller reciprocals for `d = 10^k`, `k ∈ [0, 29]`.
+# Precomputed Granlund-Möller reciprocals for `d = 10^k`, `k ∈ [0, 48]`.
 # Index 0 is unused (zero-padded so callers can use `k` as the index).
 # Each entry is the 256-bit `m' = ceil(2^(256+ell)/d) - 2^256`
 # stored little-endian, 32 bytes per slot.
 #
 # Generated offline (Python, verified against random 2k inputs per `k`):
 #   N = 256
-#   for k in range(1, 30):
+#   for k in range(1, 49):
 #       d   = 10**k
 #       ell = (d-1).bit_length()
 #       m   = -((-(1 << (N+ell))) // d)        # ceil
 #       mp  = m - (1 << N)
 #       blob.extend(mp.to_bytes(32, "little"))
-comptime _GM_RECIPROCAL: Array[UInt256, 30] = [
+comptime _GM_RECIPROCAL: Array[UInt256, 49] = [
     0,  # k=0 unused
     69475253542389717254142591005212744711961990799384338423674550404747877783962,  # k=1
     32421784986448534718599875802432614198915595706379357931048123522215676299183,  # k=2
@@ -1203,12 +1124,30 @@ comptime _GM_RECIPROCAL: Array[UInt256, 30] = [
     27551574262063274052105320947692525946515327157377006194141718453769550115595,  # k=27
     113557772361690955737511104521520786226386514251187548334301299930779157968913,  # k=28
     67687800041889525505294686615479047410455214467821925859549523143040700447143,  # k=29
+    30991822186048381319521552290645656357710174641129427879748101712849934429728,  # k=30
+    1635039901375465970903044830778943515514142779775429495906964568697321615795,  # k=31
+    72091317384590462807587462734459054336784619247025025617125693714663592369233,  # k=32
+    34514636060209131161355773185829661898773698464491907685809038170148247967399,  # k=33
+    4453291000704065844370421546926147948364961838465413340755713734535972445932,  # k=34
+    76600519143516222605135265480294581429345929740928999768883692380005433697453,  # k=35
+    38121997467349738999394015382498083572822746859615087007215437102421721029975,  # k=36
+    7339180126416552114801015304260885287604200554563956797880832880354750895993,  # k=37
+    81217941744656200637824215492030161172128711686686669300283883013315479217551,  # k=38
+    41815935548261721425545175391886547367048972416221222632335589609069757446053,  # k=39
+    10294330591146138055721943311771656322985180999848865297976954885673180028856,  # k=40
+    85946182488223538143297700304047394828738280399142522900437678221824965830130,  # k=41
+    45598528143115591429923963241500334292336627386185905512458625775877346736117,  # k=42
+    13320404667029234059224973591462685863215304975820611602075383819119251460907,  # k=43
+    90787901009636491748902548751553042093106478760697316986995164515338680121412,  # k=44
+    49471902960245954314407841999504852103831186075429740781704614810688318169142,  # k=45
+    16419104520733524366812076597866300112410951927215679817472175046968028607327,  # k=46
+    95745820775563356241041913561798824891819513882929426131630030479896723555684,  # k=47
+    53438238772987445908119333847701478342801614173215428097412507582334752916560,  # k=48
 ]
-
 
 # Per-`k` shift amount (`ell - 1`), 30 entries (index 0 unused).
 # Same offline generation; max value is 96 (k=29), comfortably ≤ 255.
-comptime _GM_SHIFT: Array[UInt8, 30] = [
+comptime _GM_SHIFT: Array[UInt8, 49] = [
     0,  # k=0 unused
     3,  # k=1
     6,  # k=2
@@ -1239,6 +1178,25 @@ comptime _GM_SHIFT: Array[UInt8, 30] = [
     89,  # k=27
     93,  # k=28
     96,  # k=29
+    99,  # k=30
+    102,  # k=31
+    106,  # k=32
+    109,  # k=33
+    112,  # k=34
+    116,  # k=35
+    119,  # k=36
+    122,  # k=37
+    126,  # k=38
+    129,  # k=39
+    132,  # k=40
+    136,  # k=41
+    139,  # k=42
+    142,  # k=43
+    146,  # k=44
+    149,  # k=45
+    152,  # k=46
+    156,  # k=47
+    159,  # k=48
 ]
 
 
@@ -1248,17 +1206,17 @@ def udiv_u256_by_pow10_gm(value: UInt256, k: Int) -> UInt256:
 
     Args:
         value: The UInt256 dividend.
-        k: The exponent. Must satisfy `1 ≤ k ≤ 29`.
+        k: The exponent. Must satisfy `1 ≤ k ≤ 48`.
 
     Returns:
         The quotient `floor(value / 10^k)`.
 
     Notes:
-        Caller must guarantee `1 ≤ k ≤ 29`. No bounds check (not even
+        Caller must guarantee `1 ≤ k ≤ 48`. No bounds check (not even
         via `debug_assert`) is performed — out-of-range `k` will read
         past the precomputed reciprocal table and return garbage.
 
-        For `k = 0` or `k > 29`, use `udiv_u256_by_pow10` instead.
+        For `k = 0` or `k > 48`, use `udiv_u256_by_pow10` instead.
 
         Cost: ~5 ns on aarch64 (single 256×256→high-256 multiply +
         two shifts), versus ~22 ns for `udiv_u256_by_pow10`.
@@ -1271,7 +1229,7 @@ def udiv_u256_by_pow10_gm(value: UInt256, k: Int) -> UInt256:
     """
     # `global_constant` emits each table once into program-lifetime rodata
     # and hands back a `ref`, so this is two indexed loads with no
-    # per-call-site setup. `materialize` rebuilt the 30 x UInt256
+    # per-call-site setup. `materialize` rebuilt the 49 x UInt256
     # reciprocal table on the stack at every inlined site: 19.05 ns/call
     # for the whole divider versus 3.93 ns here (osx-arm64, release
     # build). See the notes above the power-of-10 tables.

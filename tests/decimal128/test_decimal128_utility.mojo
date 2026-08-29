@@ -14,6 +14,8 @@ from decimo.decimal128.utility import (
     round_coefficient,
     round_to_keep_first_n_digits,
     bitcast,
+    power_of_10,
+    udiv_u256_by_pow10_gm,
 )
 
 
@@ -399,6 +401,55 @@ def test_bitcast() raises:
     _check(Decimal128("-987.654321"))
     _check(Decimal128("0.000000000123456789"))
     _check(Decimal128(12345, 67890, 0xABCDEF, 0x55))
+
+
+def test_number_of_digits_whole_range() raises:
+    """Every power-of-ten boundary is counted correctly, to the top of both
+    types.
+
+    The count used to stop at 58 digits and return 59 for anything larger,
+    which is a wrong answer rather than a refused one. `Wide` multiplies two
+    38-digit mantissas into a 76-digit product, so the whole range is
+    exercised now.
+    """
+    for k in range(0, 78):
+        var power = power_of_10[DType.uint256](k)
+        assert_equal(number_of_digits(power), k + 1)
+        assert_equal(number_of_digits(power + UInt256(1)), k + 1)
+        if k > 0:
+            assert_equal(number_of_digits(power - UInt256(1)), k)
+    assert_equal(number_of_digits(UInt256.MAX), 78)
+
+    for k in range(0, 39):
+        var power = power_of_10[DType.uint128](k)
+        assert_equal(number_of_digits(power), k + 1)
+        assert_equal(number_of_digits(power + UInt128(1)), k + 1)
+        if k > 0:
+            assert_equal(number_of_digits(power - UInt128(1)), k)
+    assert_equal(number_of_digits(UInt128.MAX), 39)
+
+
+def test_reciprocal_divider_wide_range() raises:
+    """The reciprocal divider agrees with plain division up to `10^48`.
+
+    Its table used to stop at `10^29`, which covered every `Decimal128` call
+    site but none of the `Wide` ones: normalizing a 76-digit product removes
+    38 digits.
+    """
+    var value = UInt256(0)
+    for k in range(1, 49):
+        # A value with digits in every position, so no divisor divides it
+        # evenly.
+        value = value * UInt256(10) + UInt256(1 + (k % 9))
+    for k in range(1, 49):
+        assert_equal(
+            udiv_u256_by_pow10_gm(value, k),
+            value // power_of_10[DType.uint256](k),
+        )
+        assert_equal(
+            udiv_u256_by_pow10_gm(UInt256.MAX, k),
+            UInt256.MAX // power_of_10[DType.uint256](k),
+        )
 
 
 def main() raises:
