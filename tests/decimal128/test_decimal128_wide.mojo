@@ -249,6 +249,20 @@ def test_conversion_refuses_an_undecided_rounding() raises:
     )
     assert_true(Bool(clear.to_decimal_decided(UInt256(100))))
 
+    # Exactly on a multiple, which is the same case: the digits being
+    # dropped are all zeros, but with room to be wrong the true value may
+    # sit either side of the multiple, so this width cannot say the value
+    # terminates here. `cos(1E-10)` is the one that showed it -- its 38
+    # digits end in zeros and it continues `...41666` at the 41st.
+    var on_a_multiple = Wide(
+        UInt256(12345678901234567890123456789000000000), -37, False
+    )
+    assert_equal(
+        String(on_a_multiple.to_decimal_decided(UInt256(0)).value()),
+        "1.2345678901234567890123456789",
+    )
+    assert_false(Bool(on_a_multiple.to_decimal_decided(UInt256(100))))
+
     # Just above an exact multiple: the rounding is not in doubt, but the
     # claim that nothing was lost is, and that claim is what decides whether
     # the trailing zeros stay.

@@ -713,13 +713,50 @@ struct WideValue[DIGITS: Int](Copyable, Movable):
         # end `sqrt(99)` at 29 digits are digits of the answer, since it goes
         # on `...100121`, and dropping them would claim less than is known.
         if exact:
-            while scale > 0 and mantissa % UInt256(10) == UInt256(0):
-                mantissa //= UInt256(10)
-                scale -= 1
+            var strippable = Self._trailing_zeros(mantissa, scale)
+            if strippable > 0:
+                mantissa = _drop_digits(mantissa, strippable)
+                scale -= strippable
 
         return Decimal128.from_uint128(
             UInt128(mantissa), UInt32(scale), self.sign
         )
+
+    @staticmethod
+    def _trailing_zeros(mantissa: UInt256, limit: Int) -> Int:
+        """Returns how many zeros the mantissa ends in, up to a limit.
+
+        Args:
+            mantissa: The digits.
+            limit: The most that may be counted, which for a `Decimal128` is
+                the scale -- past that the zeros are before the point and
+                belong to the number.
+
+        Returns:
+            The count.
+
+        Notes:
+            Found by halving rather than by stripping one at a time: a
+            `UInt256` divided by a ten it does not know at compile time is a
+            software divide of about 185 nanoseconds, and `1.05^12` ends in
+            four zeros, which cost more than the twelve multiplications that
+            produced it.
+        """
+        if mantissa == UInt256(0) or limit <= 0:
+            return 0
+        var count = 0
+        var remaining = limit if limit < 77 else 77
+        var step = 32
+        while step > 0:
+            if count + step <= remaining:
+                var candidate = count + step
+                var unit = decimal128_utility.power_of_10[DType.uint256](
+                    candidate
+                )
+                if _drop_digits(mantissa, candidate) * unit == mantissa:
+                    count = candidate
+            step >>= 1
+        return count
 
     @staticmethod
     def _tail_decides(mantissa: UInt256, drop: Int, slack: UInt256) -> Bool:
@@ -747,9 +784,13 @@ struct WideValue[DIGITS: Int](Copyable, Movable):
         var remainder = mantissa - truncated * unit
 
         # Near an exact multiple, from either side: the rounding is clear but
-        # the claim that nothing was lost is not.
+        # the claim that nothing was lost is not, and that claim decides
+        # whether the trailing zeros stay. A remainder of exactly zero is no
+        # different: with room to be wrong the true value may sit either side
+        # of the multiple, so the width that says the value terminates here
+        # has to be one that was not given any room.
         if remainder <= slack:
-            return remainder == UInt256(0)
+            return False
         if unit - remainder <= slack:
             return False
 
