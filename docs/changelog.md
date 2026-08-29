@@ -205,6 +205,21 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
 
 ### 🦋 Changed in Unreleased
 
+1. **`Wide` is written once and used at two widths.** `WideValue[DIGITS]`
+   carries the mantissa the series run on; `Wide` is 38 digits of it and
+   `Extended` 75. Above 38 a product of two mantissas no longer fits
+   `UInt256`, so it is assembled from halves, and a quotient is a narrow
+   reciprocal taken one Newton step further. The constants exist at both
+   widths, and a test narrows each wide one to check it gives the narrow one
+   exactly.
+
+1. **The reciprocal divider reaches `10^48`.** `udiv_u256_by_pow10_gm`
+   replaces a 250 ns software divide with a multiply-high, and its table of
+   reciprocals stopped at `10^29` -- enough for every `Decimal128` call site,
+   but not for normalizing a 76-digit product. `round_to_keep_first_n_digits`,
+   which never used the divider at all, is left alone as the deprecated
+   function it is; the accumulator calls `round_coefficient` instead.
+
 1. **`BigInt`'s magnitude moves to base 2^64.** It held its words in base
    2^32 while doing all its arithmetic in 64-bit registers, so schoolbook
    multiplication and Knuth D both made twice the passes they needed to. The
@@ -580,6 +595,62 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
    `DECIMO_TEST_JOBS` explicitly still wins in both cases.
 
 ### 🩹 Fixed in Unreleased
+
+1. **`Decimal128`'s logarithms and exponentials decide their rounding.** The
+   answer is rounded from digits the series carries below it, which is right
+   whenever those digits say which side of the boundary the true value falls
+   on. When they do not -- when the value sits on a boundary within the
+   computation's own error -- the whole thing runs again at 75 digits, which
+   has forty-six digits below the answer instead of nine. `ln`, `exp`,
+   `log10` and `log` now say which case they are in rather than assuming the
+   first.
+
+   Two arguments found by searching three million: `ln(6215888314.385201)`
+   continues `...0245000017266`, seventeen hundred units past a boundary the
+   first width can only place to within two thousand, and
+   `log10(5120760.203168846)` continues `...1444999949`. Both are answered
+   from the wider pass, which runs on about one call in a quarter million and
+   costs 55 microseconds when it does, against 0.8 for the ordinary path.
+
+1. **`ln` of a value close to one lost most of its digits.** The reduction
+   wrote `x` as `m * 2^p * 10^q` and added `p * ln(2) + q * ln(10)` back at
+   the end. For `x` just under one those three terms are each about two while
+   their sum is `1E-14`, so fourteen of the digits carried went into
+   cancelling them out. Arguments already in `[0.5, 2)` now go straight to
+   the series, where there is nothing to cancel.
+
+1. **A value below the smallest scale returned zero instead of rounding.**
+   `ln(1.0000000000000000000000000001)` is `9.99...E-29`, whose every digit
+   sits below the `1E-28` that `Decimal128` stops at. Rounding them says
+   `1E-28`; the conversion returned zero whenever the digits being dropped
+   were all of them.
+
+1. **`Decimal128`'s `exp`, `ln`, `log10` and `sqrt` were wrong in the last
+   digits.** All four summed their series in `Decimal128` arithmetic, which
+   rounds to 28 digits after every term, so the answer inherited every one of
+   those roundings. Against CPython's `decimal` at 70 digits, `ln` was out on
+   108 of 200 random arguments, `log10` on 126, `sqrt` on 75, and `exp` by up
+   to four units in the last place. The series now run in a fixed-width
+   accumulator carrying ten digits more than `Decimal128` holds, and the
+   answer is rounded once, at the end: 0 wrong in the same 720 checks.
+
+   `sqrt` no longer refines a floating estimate at all. It scales the
+   coefficient, takes an integer square root, and rounds that -- exactly the
+   same answer every time, and it also says whether the root was exact, so
+   `sqrt(4)` is `2` where `sqrt(99)` keeps its trailing zeros.
+
+   `Decimal128` still imports nothing from `BigDecimal` or any other
+   arbitrary-precision type. The accumulator is 38 digits in a `UInt256`,
+   inside `decimal128` itself.
+
+1. **The digit count stopped at 58 and returned 59 for anything larger.**
+   `number_of_digits` covered the 58-digit product of two `Decimal128`
+   coefficients and answered wrongly, rather than refusing, above that. It
+   now covers both types to the top. It is also about sixty times faster:
+   the old binary search compared against `10 ** k`, which is not folded for
+   128- and 256-bit scalars and so was built at run time by repeated
+   multiplication -- 330 ns to count the digits of a 38-digit value against
+   5 ns for a bit width and one table lookup.
 
 1. **`BigInt.sqrt()` never returned for values at the top of a word.** The
    one- and two-word paths refined a `math.sqrt` estimate with

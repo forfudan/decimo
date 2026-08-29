@@ -25,10 +25,152 @@ from decimo.decimal128.decimal128 import Decimal128
 import decimo.decimal128.constants as decimal128_constants
 import decimo.decimal128.special as decimal128_special
 import decimo.decimal128.utility as decimal128_utility
+from decimo.decimal128.wide import (
+    Wide,
+    Extended,
+    WideValue,
+    ln2_at,
+    ln10_at,
+    e_power_of_two_at,
+    e_tenth_at,
+    e_hundredth_at,
+    wide_ln2,
+    wide_ln10,
+    fixed_from_wide,
+    wide_from_fixed,
+    fixed_multiply,
+    fixed_divide_by_int,
+    wide_e_power_of_two,
+    wide_e_tenth,
+    wide_e_hundredth,
+    FIXED_ONE,
+)
 
 # ===----------------------------------------------------------------------=== #
 # Power and root functions
 # ===----------------------------------------------------------------------=== #
+
+
+# ===----------------------------------------------------------------------=== #
+# Deciding the rounding rather than assuming it
+#
+# A series carries more digits than the answer keeps, and the answer is
+# rounded from them once. That is right whenever the extra digits say which
+# side of the boundary the true value falls on -- and they do, except when
+# the value sits almost exactly on one. Then the extra digits are the
+# computation's own error and not the answer's digits at all.
+#
+# So each kernel states what it is trusted within, in units of the last digit
+# it carries, and the conversion refuses to answer when that interval
+# straddles a boundary. The caller then runs the same computation at
+# `Extended`: 75 digits, forty-six of them below what `Decimal128` keeps,
+# where the same interval is a billion times narrower relative to the answer.
+#
+# The counts below are what the operations can lose, with room to spare. They
+# are not measurements of how wrong the kernels are; they are the width of
+# the interval the rounding has to place, and the cost of naming them
+# generously is how often the second attempt runs, which for these is once in
+# a few million calls.
+# ===----------------------------------------------------------------------=== #
+
+comptime HALF = Decimal128(5, 0, 0, 1 << 16)
+"""One half, the bottom of the range the logarithm series takes directly."""
+
+
+comptime TWO = Decimal128(2, 0, 0, 0)
+"""Two, the top of that range."""
+
+
+comptime LN_SLACK = 2000
+"""Units in the last place `ln` is trusted within, at 38 digits.
+
+Forty series terms, each truncated at the fixed point's own last digit --
+which is one digit coarser than the mantissa's -- with the halvings and the
+two constants after them. Four hundred units covers it; this is five times
+that.
+"""
+
+
+comptime EXP_SLACK = 500
+"""Units in the last place `exp` is trusted within, at 38 digits.
+
+A dozen series terms and up to ten table multiplications, each losing under
+a unit, at a fixed point whose last digit matches the mantissa's.
+"""
+
+
+comptime SLACK_WIDENING = 20
+"""How much larger the counts are at `Extended`.
+
+The wider series runs twice as many terms and runs them in `WideValue`
+arithmetic rather than fixed point, so each term can lose a unit of its own.
+Even twenty times the narrow count is nothing beside the forty-six digits
+that width has below the answer.
+"""
+
+
+def _slack_at[WIDTH: Int](units: Int) -> UInt256:
+    """Returns a count of units in the last place, for the width in use.
+
+    Parameters:
+        WIDTH: The width the kernel is running at.
+
+    Args:
+        units: What the count is at 38 digits.
+
+    Returns:
+        The count to use.
+    """
+    comptime if WIDTH == 38:
+        return UInt256(units)
+    else:
+        return UInt256(units) * UInt256(SLACK_WIDENING)
+
+
+def _slack_after_cancellation[
+    WIDTH: Int
+](units: UInt256, largest_exponent: Int, result: WideValue[WIDTH]) -> UInt256:
+    """Restates a count of units at the size of a sum that cancelled.
+
+    Args:
+        units: The count, in units of the last digit of the terms.
+        largest_exponent: The exponent of the largest term that went in.
+        result: The sum.
+
+    Parameters:
+        WIDTH: The width in use.
+
+    Returns:
+        The count, in units of the last digit of the sum. A sum that lost
+        `k` digits to cancellation is trusted within `10^k` times as many of
+        its own units as the terms were.
+    """
+    if result.is_zero():
+        return units
+    var spread = largest_exponent - result.exponent
+    if spread <= 0:
+        return units
+    if spread > 70:
+        # Nothing of the terms survived; no rounding at this width can be
+        # justified, so ask for the wider one.
+        return UInt256.MAX
+    return units * decimal128_utility.power_of_10[DType.uint256](spread)
+
+
+def _quotient_slack(numerator: UInt256, denominator: UInt256) -> UInt256:
+    """Returns what a quotient of two trusted values is trusted within.
+
+    Args:
+        numerator: The count for the value being divided.
+        denominator: The count for the divisor.
+
+    Returns:
+        The count for the quotient. Relative error adds, and the quotient's
+        last digit can be ten times finer than either input's, so the counts
+        are added, multiplied by ten, and given a unit for the division
+        itself.
+    """
+    return (numerator + denominator) * UInt256(10) + UInt256(2)
 
 
 def power(base: Decimal128, exponent: Decimal128) raises -> Decimal128:
@@ -389,158 +531,138 @@ def cbrt(x: Decimal128) raises -> Decimal128:
 
 
 def sqrt(x: Decimal128) raises -> Decimal128:
-    """Computes the square root of a Decimal128 value using Newton-Raphson method.
+    """Computes the square root of a Decimal128 value.
 
     Args:
         x: The Decimal128 value to compute the square root of.
 
     Returns:
-        A new Decimal128 containing the square root of x.
+        The square root of x, correctly rounded.
 
     Raises:
         ValueError: If `x` is negative.
 
     Notes:
-        `sqrt(x)` is monotone non-expanding for `x >= 1`
-        (`sqrt(x) <= x`) and bounded by `sqrt(MAX) ~= 2.81e14` for
-        any valid `x`, so the Newton-Raphson intermediates cannot
-        overflow Decimal128 capacity. No `OverflowError` path exists
-        for any non-negative input.
+        By integer square root rather than by Newton in `Decimal128`, which
+        rounded to 28 digits at every iteration and was wrong in 18 of 80
+        random cases.
+
+        The coefficient is scaled so that its integer square root has the
+        digits the answer needs, and `isqrt` decides the answer exactly: the
+        true root lies between `r` and `r + 1` whenever the scaled value is
+        not a perfect square, so the last digit of `r` says what the
+        discarded tail would -- once `r` is nudged off `0` and `5`, where a
+        half-way mode would otherwise read a tie that is not there. The same
+        argument as `BigDecimal.sqrt`.
     """
-    # Special cases
     if x.is_negative():
         raise ValueError(
             message="Cannot compute square root of a negative number.",
             function="sqrt()",
         )
-
     if x.is_zero():
         return Decimal128.ZERO()
 
-    # Initial guess
-    # use floating point approach to quickly find a good guess
-    var x_coef: UInt128 = x.coefficient()
-    var x_scale = x.scale()
-    var guess: Decimal128
+    var coefficient = x.coefficient()
+    var scale = Int(x.scale())
+    var digits = decimal128_utility.number_of_digits(coefficient)
 
-    # For numbers with zero scale (true integers)
-    if x_scale == 0:
-        var float_sqrt = std.math.sqrt(Float64(x_coef))
-        guess = Decimal128.from_uint128(UInt128(round(float_sqrt)))
+    # Scale up so that the root lands on 30 digits -- one more than the answer
+    # keeps, since `isqrt` truncates and that last digit is what says which
+    # way to round. The shift is kept even with the scale so that the halved
+    # exponent is whole.
+    var shift = 59 - digits
+    if (shift + scale) % 2 != 0:
+        shift += 1
+    var target_scale = (shift + scale) // 2
 
-    # For numbers with even scale
-    elif x_scale % 2 == 0:
-        var float_sqrt = std.math.sqrt(Float64(x_coef))
-        guess = Decimal128.from_uint128(
-            UInt128(float_sqrt), scale=UInt32(x_scale >> 1), sign=False
+    var scaled = UInt256(coefficient) * decimal128_utility.power_of_10[
+        DType.uint256
+    ](shift)
+    var root = decimal128_utility.isqrt_u256(scaled)
+    var exact = root * root == scaled
+    if not exact and root % UInt256(5) == UInt256(0):
+        # Neither `0` nor `5` in the last place, so no mode reads a tie that
+        # the true root does not sit on.
+        root += UInt256(1)
+
+    # Down to what `Decimal128` holds, in a single rounding: the answer keeps
+    # at most 29 digits and a scale of at most 28, and rounding for one and
+    # then the other can hand the second a tie the true root does not sit on.
+    var root_digits = decimal128_utility.number_of_digits(root)
+    var drop = 0
+    if root_digits > 29:
+        drop = root_digits - 29
+    if target_scale - drop > Decimal128.MAX_SCALE:
+        drop = target_scale - Decimal128.MAX_SCALE
+    if drop >= root_digits:
+        return Decimal128.ZERO()
+    if drop > 0:
+        var kept = decimal128_utility.round_to_keep_first_n_digits(
+            root, False, root_digits - drop
         )
-        # print("DEBUG: scale is even")
+        # 29 digits reach `9.9E+28` where the type stops at `7.9E+28`, so one
+        # more may have to go -- from the original root, keeping this a
+        # single rounding.
+        if kept > Decimal128.MAX_AS_UINT256:
+            drop += 1
+            kept = decimal128_utility.round_to_keep_first_n_digits(
+                root, False, root_digits - drop
+            )
+        if kept * decimal128_utility.power_of_10[DType.uint256](drop) != root:
+            exact = False
+        root = kept
+        target_scale -= drop
 
-    # For numbers with odd scale
-    else:
-        var float_sqrt = std.math.sqrt(Float64(x_coef)) * Float64(3.15625)
-        guess = Decimal128.from_uint128(
-            UInt128(float_sqrt), scale=UInt32((x_scale + 1) >> 1), sign=False
-        )
-        # print("DEBUG: scale is odd")
+    # Bring the pair into what `Decimal128` holds: a scale of at most 28 and
+    # a coefficient of at most 96 bits.
+    # A carry can push the root into another digit; that value is exact, so
+    # shortening it again loses nothing.
+    while root > Decimal128.MAX_AS_UINT256:
+        if target_scale == 0:
+            raise OverflowError(
+                message="Square root does not fit in Decimal128.",
+                function="sqrt()",
+            )
+        root //= UInt256(10)
+        target_scale -= 1
 
-    # print("DEBUG: initial guess", guess)
-    # testing.assert_false(guess.is_zero(), "Initial guess should not be zero")
+    # An exact root keeps its own length: `sqrt(4)` is two, not
+    # 2.0000000000000000000000000000. An inexact one keeps its zeros, which
+    # are digits of the answer: `sqrt(99)` ends `...82100` and goes on.
+    while exact and target_scale > 0 and root % UInt256(10) == UInt256(0):
+        root //= UInt256(10)
+        target_scale -= 1
 
-    # Newton-Raphson iterations
-    # x_n+1 = (x_n + S/x_n) / 2
-    var prev_guess = Decimal128.ZERO()
-    var iteration_count = 0
-
-    # Iterate until guess converges or max iterations reached
-    # max iterations is set to 100 to avoid infinite loop
-    # log2(1e18) ~= 60, so 100 iterations should be enough
-    while guess != prev_guess and iteration_count < 100:
-        prev_guess = guess
-        var division_result = x / guess
-        var sum_result = guess + division_result
-        guess = sum_result / Decimal128(2, 0, 0, 0, False)
-        iteration_count += 1
-
-        # print("------------------------------------------------------")
-        # print("DEBUG: iteration_count", iteration_count)
-        # print("DEBUG: prev guess", prev_guess)
-        # print("DEBUG: new guess ", guess)
-
-    # print("DEBUG: iteration_count", iteration_count)
-
-    # If exact square root found, remove trailing zeros after the decimal point
-    # For example, sqrt(81) = 9, not 9.000000
-    # For example, sqrt(100.0000) = 10.00 not 10.000000
-    # Exact square means that the squared coefficient of guess after removing
-    # trailing zeros is equal to the coefficient of x
-
-    var guess_coef = guess.coefficient()
-
-    # No need to do this if the last digit of the coefficient of guess is not zero
-    if guess_coef % 10 == 0:
-        var num_digits_x_ceof = decimal128_utility.number_of_digits(x_coef)
-        var num_digits_x_sqrt_coef = (num_digits_x_ceof >> 1) + 1
-        var num_digits_guess_coef = decimal128_utility.number_of_digits(
-            guess_coef
-        )
-        var num_digits_to_decrease = (
-            num_digits_guess_coef - num_digits_x_sqrt_coef
-        )
-
-        # testing.assert_true(
-        #     num_digits_to_decrease >= 0,
-        #     "sqrt of x has fewer digits than expected",
-        # )
-        for _ in range(num_digits_to_decrease):
-            if guess_coef % 10 == 0:
-                guess_coef //= 10
-            else:
-                break
-        else:
-            # print("DEBUG: guess", guess)
-            # print("DEBUG: guess_coef after removing trailing zeros", guess_coef)
-            var guess_coef_squared = guess_coef * guess_coef
-            if (guess_coef_squared == x_coef) or (
-                guess_coef_squared == x_coef * 10
-            ):
-                return Decimal128.from_uint128(
-                    guess_coef,
-                    scale=UInt32(guess.scale() - num_digits_to_decrease),
-                    sign=False,
-                )
-
-    return guess
-
-
-# ===----------------------------------------------------------------------=== #
-# Exponential functions
-# ===----------------------------------------------------------------------=== #
+    return Decimal128.from_uint128(UInt128(root), UInt32(target_scale), False)
 
 
 def exp(x: Decimal128) raises -> Decimal128:
-    """Calculates e^x for any Decimal128 value using optimized range reduction.
-    x should be no greater than 66 to avoid overflow.
+    """Calculates e^x for a Decimal128 value.
 
     Args:
         x: The exponent.
 
     Returns:
-        A Decimal128 approximation of e^x.
+        E raised to x, correctly rounded.
 
     Raises:
-        OverflowError: If `x > 66.54` (raised explicitly), or if
-            `x < -66.54` and the recursive `Decimal128.ONE() / exp(-x)`
-            divide cannot fit because `exp(-x)` overflowed first.
-            Intermediate `power(exp_chunk, num_chunks)` and
-            `exp_main * exp_remainder` multiplies can also overflow
-            for `x` close to the `66.54` boundary.
+        OverflowError: If the result is larger than `Decimal128` holds, which
+            is anything above about 66.54.
 
     Notes:
-        Because ln(2^96-1) ~= 66.54212933375474970405428366,
-        the x value should be no greater than 66 to avoid overflow.
-    """
+        `|x|` is split into a whole part, its first two decimal digits, and
+        what is left below 0.01:
 
+            exp(x) = e^n * e^(d1/10) * e^(d2/100) * exp(residual)
+
+        The three factors are read from a table and the residual takes about
+        a dozen series terms. The answer is rounded once, at the end, and
+        only if the digits below it say which way it goes; when they do not,
+        the whole thing runs again at `Extended`.
+    """
+    if x.is_zero():
+        return Decimal128.ONE()
     if x > Decimal128.from_int(value=6654, scale=UInt32(2)):
         raise OverflowError(
             message=(
@@ -550,189 +672,142 @@ def exp(x: Decimal128) raises -> Decimal128:
             function="exp()",
         )
 
-    # Handle special cases
-    if x.is_zero():
-        return Decimal128.ONE()
+    var narrow = _exp_at[38](x)
+    var decided = narrow[0].to_decimal_decided(narrow[1])
+    if decided:
+        return decided.value()
 
-    if x.is_negative():
-        return Decimal128.ONE() / exp(-x)
+    var wide = _exp_at[75](x)
+    var settled = wide[0].to_decimal_decided(wide[1])
+    if settled:
+        return settled.value()
+    return wide[0].to_decimal()
 
-    # For x < 1, use Taylor series expansion
-    # For x > 1, use optimized range reduction with smaller chunks
-    # Yuhao's notes:
-    # e^50 is more accurate than (e^2)^25 if e^2 needs to be approximated
-    #   because estimating e^x would introduce errors
-    # e^50 is less accurate than (e^2)^25 if e^2 is precomputed
-    #   because too many multiplications would introduce errors
-    # So we need to find a way to reduce both the number of multiplications
-    #   and the error introduced by approximating e^x
-    # This helps improve accuracy as well as speed.
-    # My solution is to factorize x into a combination of integers and
-    #   a fractional part smaller than 1.
-    # Then use precomputed e^integer values to calculate e^x
-    # For example, e^59.12 = (e^50)^1 * (e^5)^1 * (e^2)^2 * e^0.12
-    # This way, we just need to do 4 multiplications instead of 59.
-    # The fractional part is then calculated using the series expansion.
-    # Because the fractional part is <1, the series converges quickly.
 
-    var exp_chunk: Decimal128
-    var remainder: Decimal128
-    var num_chunks: Int = 1
-    var x_int = Int(x)
+def _exp_at[
+    WIDTH: Int
+](x: Decimal128) raises -> Tuple[WideValue[WIDTH], UInt256]:
+    """Returns `exp(x)` at the given width, with how far it may be off.
 
-    if x.is_one():
-        return decimal128_constants.E()
+    Parameters:
+        WIDTH: The width to compute at.
 
-    elif x_int < 1:
-        # Sub-unit chunking by the first two decimal digits.
-        # Tier 1 peels off `d1 = floor(x * 10) ∈ [0, 9]` and applies `E0D{d1}`;
-        # the tier-1 residual `r1 = x − d1/10` lives in `[0, 0.1)`.
-        # When `d1 == 0` we drop into Tier 2: peel off
-        # `d2 = floor(x * 100) ∈ [0, 9]` and apply `E0D0{d2}`;
-        # the tier-2 residual `r2 = x − d2/100` lives in `[0, 0.01)`.
-        # Both tiers are short-circuited when their digit is zero so we never
-        # multiply by `Decimal128.ONE()`.
-        #
-        # [Mojo Miji]
-        # Why two tiers (precision, not just speed): every chunk multiply
-        # truncates ~0.5 ulp, but every saved Taylor multiply also avoids
-        # ~0.5 ulp. The Taylor count drops from ~17 (old `[0, 0.25)` arm)
-        # to ~10 (1-tier, residual < 0.1) to ~5 (2-tier, residual < 0.01).
-        # Net: ~10 fewer multiplies on `exp(π)` and `exp(typical)`,
-        # bringing them from ~3 ulp off the BigDecimal reference to within
-        # 0–1 ulp.
-        var ten = Decimal128(10)
-        var d1 = Int(x * ten)  # 0..9; truncated toward zero, x ≥ 0 here.
-        if d1 != 0:
-            var d1_over_10 = Decimal128.from_int(value=d1, scale=UInt32(1))
-            var residual = x - d1_over_10
-            if d1 == 1:
-                exp_chunk = decimal128_constants.E0D1()
-            elif d1 == 2:
-                exp_chunk = decimal128_constants.E0D2()
-            elif d1 == 3:
-                exp_chunk = decimal128_constants.E0D3()
-            elif d1 == 4:
-                exp_chunk = decimal128_constants.E0D4()
-            elif d1 == 5:
-                exp_chunk = decimal128_constants.E0D5()
-            elif d1 == 6:
-                exp_chunk = decimal128_constants.E0D6()
-            elif d1 == 7:
-                exp_chunk = decimal128_constants.E0D7()
-            elif d1 == 8:
-                exp_chunk = decimal128_constants.E0D8()
-            else:  # d1 == 9
-                exp_chunk = decimal128_constants.E0D9()
-            remainder = residual
-        else:
-            # d1 == 0 ⇒ x < 0.1, drop into tier 2.
-            var hundred = Decimal128(100)
-            var d2 = Int(x * hundred)  # 0..9
-            if d2 == 0:
-                # x < 0.01 — Taylor converges in ≤ 5 terms, no chunk needed.
-                return exp_series(x)
-            var d2_over_100 = Decimal128.from_int(value=d2, scale=UInt32(2))
-            var residual = x - d2_over_100
-            if d2 == 1:
-                exp_chunk = decimal128_constants.E0D01()
-            elif d2 == 2:
-                exp_chunk = decimal128_constants.E0D02()
-            elif d2 == 3:
-                exp_chunk = decimal128_constants.E0D03()
-            elif d2 == 4:
-                exp_chunk = decimal128_constants.E0D04()
-            elif d2 == 5:
-                exp_chunk = decimal128_constants.E0D05()
-            elif d2 == 6:
-                exp_chunk = decimal128_constants.E0D06()
-            elif d2 == 7:
-                exp_chunk = decimal128_constants.E0D07()
-            elif d2 == 8:
-                exp_chunk = decimal128_constants.E0D08()
-            else:  # d2 == 9
-                exp_chunk = decimal128_constants.E0D09()
-            remainder = residual
+    Args:
+        x: The exponent.
 
-    elif x_int == 1:  # 1 <= x < 2, chunk = 1
-        exp_chunk = decimal128_constants.E()
-        remainder = x - x_int
+    Returns:
+        The value, and the units in the last place of its mantissa that the
+        computation is trusted within.
 
-    elif x_int == 2:  # 2 <= x < 3, chunk = 2
-        exp_chunk = decimal128_constants.E2()
-        remainder = x - x_int
+    Raises:
+        Error: Propagated from the arithmetic.
+    """
+    var magnitude = _exp_of_magnitude_at[WIDTH](
+        WideValue[WIDTH].from_decimal(abs(x))
+    )
+    var slack = _slack_at[WIDTH](EXP_SLACK)
+    if not x.is_negative():
+        return (magnitude^, slack)
+    # A reciprocal keeps the relative error and adds its own unit; the
+    # mantissa it lands on can be ten times finer, so the count of units it
+    # is trusted within grows by that much.
+    var reciprocal = WideValue[WIDTH].from_int(1) / magnitude
+    return (reciprocal^, slack * UInt256(10) + UInt256(2))
 
-    elif x_int == 3:  # 3 <= x < 4, chunk = 3
-        exp_chunk = decimal128_constants.E3()
-        remainder = x - x_int
 
-    elif x_int == 4:  # 4 <= x < 5, chunk = 4
-        exp_chunk = decimal128_constants.E4()
-        remainder = x - x_int
+def _exp_of_magnitude_at[
+    WIDTH: Int
+](x: WideValue[WIDTH]) raises -> WideValue[WIDTH]:
+    """Returns `exp(x)` for a non-negative `x`, at the given width.
 
-    elif x_int == 5:  # 5 <= x < 6, chunk = 5
-        exp_chunk = decimal128_constants.E5()
-        remainder = x - x_int
+    Parameters:
+        WIDTH: The width to compute at.
 
-    elif x_int == 6:  # 6 <= x < 7, chunk = 6
-        exp_chunk = decimal128_constants.E6()
-        remainder = x - x_int
+    Args:
+        x: The exponent, which must be zero or positive and at most 66.54.
 
-    elif x_int == 7:  # 7 <= x < 8, chunk = 7
-        exp_chunk = decimal128_constants.E7()
-        remainder = x - x_int
+    Returns:
+        Its exponential.
 
-    elif x_int == 8:  # 8 <= x < 9, chunk = 8
-        exp_chunk = decimal128_constants.E8()
-        remainder = x - x_int
+    Raises:
+        Error: Propagated from the arithmetic.
+    """
+    var whole = x.to_int_truncated()
+    var fraction = x - WideValue[WIDTH].from_int(whole)
 
-    elif x_int == 9:  # 9 <= x < 10, chunk = 9
-        exp_chunk = decimal128_constants.E9()
-        remainder = x - x_int
+    # The first two decimal digits of the fraction.
+    var first = fraction.scaled_by_power_of_ten(1).to_int_truncated()
+    var after_first = fraction - WideValue[WIDTH](UInt256(first), -1, False)
+    var second = after_first.scaled_by_power_of_ten(2).to_int_truncated()
+    var residual = after_first - WideValue[WIDTH](UInt256(second), -2, False)
 
-    elif x_int == 10:  # 10 <= x < 11, chunk = 10
-        exp_chunk = decimal128_constants.E10()
-        remainder = x - x_int
+    var result = _exp_series_at[WIDTH](residual)
+    if second != 0:
+        result = result * e_hundredth_at[WIDTH](second)
+    if first != 0:
+        result = result * e_tenth_at[WIDTH](first)
 
-    elif x_int == 11:  # 11 <= x < 12, chunk = 11
-        exp_chunk = decimal128_constants.E11()
-        remainder = x - x_int
+    var bit = 0
+    while whole != 0:
+        if whole & 1:
+            result = result * e_power_of_two_at[WIDTH](bit)
+        whole >>= 1
+        bit += 1
+    return result^
 
-    elif x_int == 12:  # 12 <= x < 13, chunk = 12
-        exp_chunk = decimal128_constants.E12()
-        remainder = x - x_int
 
-    elif x_int == 13:  # 13 <= x < 14, chunk = 13
-        exp_chunk = decimal128_constants.E13()
-        remainder = x - x_int
+def _exp_series_at[WIDTH: Int](r: WideValue[WIDTH]) raises -> WideValue[WIDTH]:
+    """Returns `exp(r)` for a small `r`, at the given width.
 
-    elif x_int == 14:  # 14 <= x < 15, chunk = 14
-        exp_chunk = decimal128_constants.E14()
-        remainder = x - x_int
+    Parameters:
+        WIDTH: The width to compute at.
 
-    elif x_int == 15:  # 15 <= x < 16, chunk = 15
-        exp_chunk = decimal128_constants.E15()
-        remainder = x - x_int
+    Args:
+        r: The exponent, whose magnitude must be below 0.01.
 
-    elif x_int < 32:  # 16 <= x < 32, chunk = 16
-        num_chunks = x_int >> 4
-        exp_chunk = decimal128_constants.E16()
-        remainder = x - (num_chunks << 4)
+    Returns:
+        Its exponential.
 
-    else:  # chunk = 32
-        num_chunks = x_int >> 5
-        exp_chunk = decimal128_constants.E32()
-        remainder = x - (num_chunks << 5)
+    Raises:
+        Error: Propagated from the arithmetic.
 
-    # Calculate e^(chunk * num_chunks) = (e^chunk)^num_chunks
-    var exp_main = power(exp_chunk, num_chunks)
+    Notes:
+        The plain Taylor series. With `|r| < 0.01` the terms fall by more
+        than two decimal places each time, so a dozen of them cross 38
+        digits and about thirty cross 75.
 
-    # Calculate e^remainder by calling exp() again
-    # If it is <1, then use Taylor's series
-    var exp_remainder = exp(remainder)
+        At 38 digits the sum is taken in fixed point, where an addition is an
+        addition and a multiplication is one multiply-high; in `WideValue`
+        ops it cost thirty times as much for the same answer. The wider pass
+        has no fixed-point form to run in -- a 75-digit product does not fit
+        the register the trick relies on -- and pays the ordinary way, which
+        is what a path taken once in a million calls should do.
+    """
+    if r.is_zero():
+        return WideValue[WIDTH].from_int(1)
 
-    # Combine: e^x = e^(main+remainder) = e^main * e^remainder
-    return exp_main * exp_remainder
+    comptime if WIDTH == 38:
+        var r_fixed = fixed_from_wide(r.to_width[38]())
+        var total = FIXED_ONE
+        var term = FIXED_ONE
+        for index in range(1, 200):
+            term = fixed_divide_by_int(fixed_multiply(term, r_fixed), index)
+            if term == Int256(0):
+                break
+            total += term
+        return wide_from_fixed(total).to_width[WIDTH]()
+    else:
+        var total = WideValue[WIDTH].from_int(1)
+        var term = WideValue[WIDTH].from_int(1)
+        for index in range(1, 200):
+            term = (term * r).divide_by_int(index)
+            if term.is_zero():
+                break
+            var next = total + term
+            if next.compare_absolute(total) == 0:
+                break
+            total = next^
+        return total^
 
 
 def exp_series(x: Decimal128) raises -> Decimal128:
@@ -803,211 +878,213 @@ def ln(x: Decimal128) raises -> Decimal128:
         x: The Decimal128 value to compute the natural logarithm of.
 
     Returns:
-        A Decimal128 approximation of ln(x).
+        The natural logarithm of x, correctly rounded.
 
     Raises:
         ValueError: If `x` is non-positive.
 
     Notes:
-        This implementation uses range reduction to improve accuracy
-        and performance. For any positive Decimal128 input the result
-        magnitude is bounded by `|ln(MAX)| < 67`, so no `OverflowError`
-        path exists.
+        The value is written `m * 2^p * 10^q` with `m` in `[0.5, 2)`, and
+
+            ln(x) = ln(m) + p * ln(2) + q * ln(10)
+
+        with `ln(m) = 2 * atanh((m - 1) / (m + 1))`, whose series converges
+        on `|z| <= 1/3` here.
+
+        The answer is rounded once, at the end, and only if the digits below
+        it say which way it goes; when they do not, the whole thing runs
+        again at `Extended`.
     """
-
-    # print("DEBUG: ln(x) called with x =", x)
-
-    # Handle special cases
     if x.is_negative() or x.is_zero():
         raise ValueError(
             message="Cannot compute logarithm of a non-positive number.",
             function="ln()",
         )
-
     if x.is_one():
         return Decimal128.ZERO()
 
-    # Special cases for common values
-    if x == decimal128_constants.E():
-        return Decimal128.ONE()
+    var narrow = _ln_at[38](x)
+    var decided = narrow[0].to_decimal_decided(narrow[1])
+    if decided:
+        return decided.value()
 
-    # For values close to 1, use series expansion directly
-    if Decimal128(95, 0, 0, 2 << 16) <= x <= Decimal128(105, 0, 0, 2 << 16):
-        return ln_series(x - Decimal128.ONE())
+    var wide = _ln_at[75](x)
+    var settled = wide[0].to_decimal_decided(wide[1])
+    if settled:
+        return settled.value()
+    return wide[0].to_decimal()
 
-    # For all other values, use range reduction
-    # ln(x) = ln(m * 2^p * 10^q) = ln(m) + p*ln(2) + q*ln(10), where 1 <= m < 2
 
-    var m: Decimal128
-    var q: Int
-    var p: Int = 0
+def _ln_at[
+    WIDTH: Int
+](x: Decimal128) raises -> Tuple[WideValue[WIDTH], UInt256]:
+    """Returns `ln(x)` at the given width, with how far it may be off.
 
-    # STEP 1:
-    # Extract a power of 10. For inputs already in [0.1, 10) skip this
-    # (the old code's direct path keeps precision since ln(m) is then read
-    # from a single LN constant; chaining ln + q*ln(10) introduces 1 ulp).
-    # For magnitudes outside [0.1, 10), read q directly from the scale instead
-    # of looping divides: pick new_scale = num_digits(coef) - 1 so the
-    # reconstructed m = coef * 10^(-new_scale) lies in [1, 10).
-    if x >= decimal128_constants.M10() or x < Decimal128(1, 0, 0, 1 << 16):
-        var x_coef = x.coefficient()
-        var x_scale = Int(x.scale())
-        var num_digits = decimal128_utility.number_of_digits(x_coef)
-        var new_scale = num_digits - 1  # in [0, 28]
-        q = new_scale - x_scale
-        m = Decimal128.from_uint128(x_coef, scale=UInt32(new_scale), sign=False)
+    Parameters:
+        WIDTH: The width to compute at.
+
+    Args:
+        x: The value, which must be positive.
+
+    Returns:
+        The value, and the units in the last place of its mantissa that the
+        computation is trusted within.
+
+    Raises:
+        ValueError: If `x` is not positive.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+        The three parts of the sum are each around one, while their total can
+        be far smaller: `ln(0.9999)` is `-1E-4` from three terms of size two.
+        What the series and the constants are trusted within is a count of
+        units at the size of those terms, so it is restated at the size of
+        the answer -- which is where the rounding reads it -- by the number
+        of digits the sum cancelled away.
+    """
+    if x.is_negative() or x.is_zero():
+        raise ValueError(
+            message="Cannot compute logarithm of a non-positive number.",
+            function="_ln_at()",
+        )
+    if x.is_one():
+        return (WideValue[WIDTH](), UInt256(0))
+
+    var m: WideValue[WIDTH]
+    var p = 0
+    var q = 0
+
+    if x >= HALF and x < TWO:
+        # Already where the series wants it. Taking the reduction anyway
+        # would add `p * ln(2) + q * ln(10)` to a series that cancels them
+        # back out: `ln(0.99999999999999)` is `-1E-14` from three terms of
+        # size two, which throws away fourteen of the digits carried. Here
+        # there are no terms to cancel.
+        m = WideValue[WIDTH].from_decimal(x)
     else:
-        m = x
-        q = 0
+        # Write x as `m * 10^q` with `m` in [1, 10), by moving the point.
+        var coefficient = x.coefficient()
+        var digits = decimal128_utility.number_of_digits(coefficient)
+        q = digits - 1 - Int(x.scale())
+        m = WideValue[WIDTH](UInt256(coefficient), -(digits - 1), False)
 
-    # STEP 2:
-    # normalize m to [0.5, 2) using powers of 2.
-    # After step 1, m is in [0.1, 10); at most 4 halvings or 1 doubling.
-    if m >= decimal128_constants.M2():
-        while m >= decimal128_constants.M2():
-            m = m / decimal128_constants.M2()
+        # And on into [1, 2), by halving. At most three halvings from
+        # [1, 10), and each one is exact: the mantissa is raised a digit and
+        # halved, which is a multiplication by five.
+        var two = WideValue[WIDTH].from_int(2)
+        while m.compare_absolute(two) >= 0:
+            m = m.divide_by_int(2)
             p += 1
-    elif m < Decimal128(5, 0, 0, 1 << 16):
-        while m < Decimal128(5, 0, 0, 1 << 16):
-            m = m * decimal128_constants.M2()
-            p -= 1
 
-    # Now 0.5 <= m < 2
-    var ln_m: Decimal128
-
-    # Use precomputed values and series expansion for accuracy and performance
-    if m < Decimal128.ONE():
-        # For 0.5 <= m < 1
-        if m >= Decimal128(9, 0, 0, 1 << 16):
-            ln_m = (
-                ln_series(
-                    (m - Decimal128(9, 0, 0, 1 << 16))
-                    * decimal128_constants.INV0D9()
-                )
-                + decimal128_constants.LN0D9()
-            )
-        elif m >= Decimal128(8, 0, 0, 1 << 16):
-            ln_m = (
-                ln_series(
-                    (m - Decimal128(8, 0, 0, 1 << 16))
-                    * decimal128_constants.INV0D8()
-                )
-                + decimal128_constants.LN0D8()
-            )
-        elif m >= Decimal128(7, 0, 0, 1 << 16):
-            ln_m = (
-                ln_series(
-                    (m - Decimal128(7, 0, 0, 1 << 16))
-                    * decimal128_constants.INV0D7()
-                )
-                + decimal128_constants.LN0D7()
-            )
-        elif m >= Decimal128(6, 0, 0, 1 << 16):
-            ln_m = (
-                ln_series(
-                    (m - Decimal128(6, 0, 0, 1 << 16))
-                    * decimal128_constants.INV0D6()
-                )
-                + decimal128_constants.LN0D6()
-            )
-        else:  # 0.5 <= m < 0.6
-            ln_m = (
-                ln_series(
-                    (m - Decimal128(5, 0, 0, 1 << 16))
-                    * decimal128_constants.INV0D5()
-                )
-                + decimal128_constants.LN0D5()
-            )
-
-    else:
-        # For 1 < m < 2
-        if m < Decimal128(11, 0, 0, 1 << 16):  # 1 < m < 1.1
-            ln_m = ln_series(m - Decimal128.ONE())
-        elif m < Decimal128(12, 0, 0, 1 << 16):  # 1.1 <= m < 1.2
-            ln_m = (
-                ln_series(
-                    (m - Decimal128(11, 0, 0, 1 << 16))
-                    * decimal128_constants.INV1D1()
-                )
-                + decimal128_constants.LN1D1()
-            )
-        elif m < Decimal128(13, 0, 0, 1 << 16):  # 1.2 <= m < 1.3
-            ln_m = (
-                ln_series(
-                    (m - Decimal128(12, 0, 0, 1 << 16))
-                    * decimal128_constants.INV1D2()
-                )
-                + decimal128_constants.LN1D2()
-            )
-        elif m < Decimal128(14, 0, 0, 1 << 16):  # 1.3 <= m < 1.4
-            ln_m = (
-                ln_series(
-                    (m - Decimal128(13, 0, 0, 1 << 16))
-                    * decimal128_constants.INV1D3()
-                )
-                + decimal128_constants.LN1D3()
-            )
-        elif m < Decimal128(15, 0, 0, 1 << 16):  # 1.4 <= m < 1.5
-            ln_m = (
-                ln_series(
-                    (m - Decimal128(14, 0, 0, 1 << 16))
-                    * decimal128_constants.INV1D4()
-                )
-                + decimal128_constants.LN1D4()
-            )
-        elif m < Decimal128(16, 0, 0, 1 << 16):  # 1.5 <= m < 1.6
-            ln_m = (
-                ln_series(
-                    (m - Decimal128(15, 0, 0, 1 << 16))
-                    * decimal128_constants.INV1D5()
-                )
-                + decimal128_constants.LN1D5()
-            )
-        elif m < Decimal128(17, 0, 0, 1 << 16):  # 1.6 <= m < 1.7
-            ln_m = (
-                ln_series(
-                    (m - Decimal128(16, 0, 0, 1 << 16))
-                    * decimal128_constants.INV1D6()
-                )
-                + decimal128_constants.LN1D6()
-            )
-        elif m < Decimal128(18, 0, 0, 1 << 16):  # 1.7 <= m < 1.8
-            ln_m = (
-                ln_series(
-                    (m - Decimal128(17, 0, 0, 1 << 16))
-                    * decimal128_constants.INV1D7()
-                )
-                + decimal128_constants.LN1D7()
-            )
-        elif m < Decimal128(19, 0, 0, 1 << 16):  # 1.8 <= m < 1.9
-            ln_m = (
-                ln_series(
-                    (m - Decimal128(18, 0, 0, 1 << 16))
-                    * decimal128_constants.INV1D8()
-                )
-                + decimal128_constants.LN1D8()
-            )
-        else:  # 1.9 <= m < 2
-            ln_m = (
-                ln_series(
-                    (m - Decimal128(19, 0, 0, 1 << 16))
-                    * decimal128_constants.INV1D9()
-                )
-                + decimal128_constants.LN1D9()
-            )
-
-    # Combine result: ln(x) = ln(m) + p*ln(2) + q*ln(10)
-    var result = ln_m
-
-    # Add power of 2 contribution
+    var result = _ln_series_at[WIDTH](m)
+    # The largest term that went in, to measure the sum against. A term that
+    # is exactly zero -- `ln(10)` has one, since its `m` is exactly one --
+    # carries no error and no digits, and counting its exponent would claim
+    # a cancellation that never happened.
+    var largest = Int.MIN
+    if not result.is_zero():
+        largest = result.exponent
     if p != 0:
-        result = result + Decimal128(p) * decimal128_constants.LN2()
-
-    # Add power of 10 contribution
+        var term = ln2_at[WIDTH]() * WideValue[WIDTH].from_int(p)
+        largest = max(largest, term.exponent)
+        result = result + term
     if q != 0:
-        result = result + Decimal128(q) * decimal128_constants.LN10()
+        var term = ln10_at[WIDTH]() * WideValue[WIDTH].from_int(q)
+        largest = max(largest, term.exponent)
+        result = result + term
+    if largest == Int.MIN:
+        largest = result.exponent
 
-    return result
+    var slack = _slack_after_cancellation(
+        _slack_at[WIDTH](LN_SLACK), largest, result
+    )
+    return (result^, slack)
+
+
+def _ln_series_at[WIDTH: Int](m: WideValue[WIDTH]) raises -> WideValue[WIDTH]:
+    """Returns `ln(m)` for `m` in `[0.5, 2)`, at the given width.
+
+    Parameters:
+        WIDTH: The width to compute at.
+
+    Args:
+        m: The value, which must lie in `[0.5, 2)`.
+
+    Returns:
+        Its natural logarithm.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+        `ln(m) = 2 * atanh(z)` with `z = (m - 1) / (m + 1)`, so `|z| <= 1/3`
+        and each pair of terms is nine times smaller than the last: forty
+        terms cross 38 digits, eighty cross 75. `m - 1` is exact, so a value
+        close to one loses nothing here.
+
+        Forty terms are worth summing in fixed point, which is what the
+        first width does. Fixed point holds a fixed number of decimal
+        places rather than of digits, though, and for a tiny `z` those places
+        run out: at `z = 5E-15` only 23 of them are digits of `z`, and the
+        answer would be 23 digits long where the caller needs 29. Below a
+        thousandth the series is two or three terms anyway, and those are
+        taken in the floating form, which keeps its digits wherever the value
+        sits.
+    """
+    var one = WideValue[WIDTH].from_int(1)
+    var z = (m - one) / (m + one)
+    if z.is_zero():
+        return WideValue[WIDTH]()
+
+    comptime if WIDTH == 38:
+        if z.exponent >= -41:
+            var z_fixed = fixed_from_wide(z.to_width[38]())
+            var z_squared = fixed_multiply(z_fixed, z_fixed)
+            var term = z_fixed
+            var total = z_fixed
+            for index in range(1, 200):
+                term = fixed_multiply(term, z_squared)
+                if term == Int256(0):
+                    break
+                var contribution = fixed_divide_by_int(term, 2 * index + 1)
+                if contribution == Int256(0):
+                    break
+                total += contribution
+            return wide_from_fixed(total * Int256(2)).to_width[WIDTH]()
+        return _atanh_series_at[WIDTH](z) * WideValue[WIDTH].from_int(2)
+    else:
+        return _atanh_series_at[WIDTH](z) * WideValue[WIDTH].from_int(2)
+
+
+def _atanh_series_at[
+    WIDTH: Int
+](z: WideValue[WIDTH]) raises -> WideValue[WIDTH]:
+    """Returns `atanh(z)` for `|z| <= 1/3`, in the floating form.
+
+    Parameters:
+        WIDTH: The width to compute at.
+
+    Args:
+        z: The argument, whose magnitude must be at most a third.
+
+    Returns:
+        Its inverse hyperbolic tangent.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+    """
+    var z_squared = z * z
+    var term = z.copy()
+    var total = z.copy()
+    for index in range(1, 400):
+        term = term * z_squared
+        if term.is_zero():
+            break
+        var contribution = total + term.divide_by_int(2 * index + 1)
+        if contribution.compare_absolute(total) == 0:
+            break
+        total = contribution^
+    return total^
 
 
 def ln_series(z: Decimal128) raises -> Decimal128:
@@ -1132,11 +1209,40 @@ def log(x: Decimal128, base: Decimal128) raises -> Decimal128:
     if base == Decimal128(10, 0, 0, 0):
         return log10(x)
 
-    # Use the identity: log_base(x) = ln(x) / ln(base)
-    var ln_x = ln(x)
-    var ln_base = ln(base)
+    # log_base(x) = ln(x) / ln(base), with both logarithms and the division
+    # taken in `Wide`: rounding each to 28 digits first made `log_2(8)` come
+    # out as 2.9999999999999999999999999999.
+    var numerator = _ln_at[38](x)
+    var denominator = _ln_at[38](base)
+    var quotient = numerator[0] / denominator[0]
 
-    return ln_x / ln_base
+    # A whole answer is a fact about the two numbers, not something the
+    # quotient can settle: at any width it is three-and-a-hair or
+    # three-less-a-hair. So the quotient names the candidate and an exact
+    # power decides it, as `log10` already does for powers of ten.
+    var candidate = quotient.to_int_nearest()
+    if candidate != 0:
+        try:
+            if power(base, candidate) == x:
+                return Decimal128.from_int(candidate)
+        except:
+            pass
+
+    var decided = quotient.to_decimal_decided(
+        _quotient_slack(numerator[1], denominator[1])
+    )
+    if decided:
+        return decided.value()
+
+    var wide_numerator = _ln_at[75](x)
+    var wide_denominator = _ln_at[75](base)
+    var wide_quotient = wide_numerator[0] / wide_denominator[0]
+    var settled = wide_quotient.to_decimal_decided(
+        _quotient_slack(wide_numerator[1], wide_denominator[1])
+    )
+    if settled:
+        return settled.value()
+    return wide_quotient.to_decimal()
 
 
 def log10(x: Decimal128) raises -> Decimal128:
@@ -1195,5 +1301,18 @@ def log10(x: Decimal128) raises -> Decimal128:
         if integral_part == pow10_check:
             return Decimal128(UInt32(n_digits - 1), 0, 0, 0)
 
-    # Use the identity: log10(x) = ln(x) / ln(10)
-    return ln(x) / decimal128_constants.LN10()
+    # log10(x) = ln(x) / ln(10), with the division taken at the working
+    # width as well: dividing two rounded 28-digit values is one more
+    # rounding, and it showed in 18 of 80 random cases before this.
+    var narrow = _ln_at[38](x)
+    var quotient = narrow[0] / ln10_at[38]()
+    var decided = quotient.to_decimal_decided(_quotient_slack(narrow[1], 1))
+    if decided:
+        return decided.value()
+
+    var wide = _ln_at[75](x)
+    var wide_quotient = wide[0] / ln10_at[75]()
+    var settled = wide_quotient.to_decimal_decided(_quotient_slack(wide[1], 1))
+    if settled:
+        return settled.value()
+    return wide_quotient.to_decimal()
