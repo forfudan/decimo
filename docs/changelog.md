@@ -36,6 +36,12 @@ against GMP rather than against CPython's `int`. Its magnitude moves from base
    keyword overrides; `BasicContext` and `ExtendedContext` exist. On the
    Mojo side `add`, `subtract`, `multiply`, `true_divide` and the three
    in-place forms take a `rounding_mode`. `ROUND_05UP` is refused.
+1. **`arctan`, `cot`, `csc` and `sec` decide their rounding too.** The
+   inverse and reciprocal functions were the last ones adding nine guard
+   digits and rounding once. An argument was built to catch that -- take a
+   value whose 29th digit is a 5, apply the inverse function to it -- and
+   `arctan` came back one unit low, `log10` one unit high. Both are correct
+   now, and the arguments are pinned as tests.
 1. **The trigonometric reduction budget is measured, not guessed.** An
    argument close to a multiple of `pi/2` loses digits to the subtraction
    there, by as much as it is close, and no constant can cover that: `sin` of

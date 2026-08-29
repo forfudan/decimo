@@ -753,6 +753,106 @@ def sec(x: BigDecimal, precision: Int) raises -> BigDecimal:
 # ===----------------------------------------------------------------------=== #
 
 
+comptime ARCTAN_SLACK = 4
+"""Units in the last place `arctan()` may be off at the width it was asked
+for.
+
+It reaches the series through at most one halving and one reciprocal, each
+rounding once, and the series itself is summed with its own buffer.
+"""
+
+
+def cot_rounded(
+    x: BigDecimal, precision: Int, rounding_mode: RoundingMode
+) raises -> BigDecimal:
+    """Returns `cot(x)` rounded to `precision` digits, decided not assumed.
+
+    Args:
+        x: The angle in radians.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The correctly rounded value.
+
+    Raises:
+        Error: Propagated from `cot()`.
+    """
+    return _round_by_deciding[cot, TRIG_SLACK](x, precision, rounding_mode)
+
+
+def csc_rounded(
+    x: BigDecimal, precision: Int, rounding_mode: RoundingMode
+) raises -> BigDecimal:
+    """Returns `csc(x)` rounded to `precision` digits, decided not assumed.
+
+    Args:
+        x: The angle in radians.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The correctly rounded value.
+
+    Raises:
+        Error: Propagated from `csc()`.
+    """
+    return _round_by_deciding[csc, TRIG_SLACK](x, precision, rounding_mode)
+
+
+def sec_rounded(
+    x: BigDecimal, precision: Int, rounding_mode: RoundingMode
+) raises -> BigDecimal:
+    """Returns `sec(x)` rounded to `precision` digits, decided not assumed.
+
+    Args:
+        x: The angle in radians.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The correctly rounded value.
+
+    Raises:
+        Error: Propagated from `sec()`.
+    """
+    if x.is_zero():
+        # `sec(0)` is exactly one, which the loop could not settle on.
+        return sec(x, precision)
+    return _round_by_deciding[sec, TRIG_SLACK](x, precision, rounding_mode)
+
+
+def arctan_rounded(
+    x: BigDecimal, precision: Int, rounding_mode: RoundingMode
+) raises -> BigDecimal:
+    """Returns `arctan(x)` rounded to `precision` digits, decided not assumed.
+
+    Args:
+        x: The value to take the arctangent of.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The correctly rounded value.
+
+    Raises:
+        Error: Propagated from `arctan()`.
+
+    Notes:
+
+    `arctan()` on its own adds nine guard digits and rounds once, which is
+    wrong when the discarded tail sits on a boundary. It does, for instance,
+    at `x = 0.719140535117048373117282825889546395318364929183100430962012`,
+    where the true value continues `...67850000000000000000000000000021929`
+    and nine digits of guard see only the zeros: the kernel rounds the
+    apparent tie to even and answers one unit low.
+    """
+    if x.is_zero():
+        # `arctan(0)` is exactly zero.
+        return arctan(x, precision)
+    return _round_by_deciding[arctan, ARCTAN_SLACK](x, precision, rounding_mode)
+
+
 def arctan(x: BigDecimal, precision: Int) raises -> BigDecimal:
     """Calculates arctangent (arctan) of the number.
 
