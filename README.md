@@ -573,6 +573,16 @@ After cloning the repo onto your local disk, you can:
   live in the optional
   `benchdoc` environment (`pixi install -e benchdoc`).
 - Use `pixi run buildcli` to compile the CLI calculator to a `./decimo` binary.
+- Use `pixi run organize_imports` to group, sort and de-duplicate the imports
+  in every `.mojo` file: four blocks separated by a blank line — the Mojo
+  standard library, third-party packages, `decimo` itself, and modules reached
+  through `-I`. `--check` is what the pre-commit hook runs. A file whose import
+  block holds a comment is left alone and named as skipped;
+  `scripts/organize_mojo_imports.py`'s docstring says why, and why
+  `--remove-unused` is opt-in.
+- Use `pixi run check_import_fixed_point` after changing the organizer or the
+  Mojo version: it asserts that the organizer and `mojo format` do not undo
+  each other's work.
 
 ## Citation
 

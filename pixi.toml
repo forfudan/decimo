@@ -26,7 +26,14 @@ format = """pixi run clean \
 && pixi run mojo format ./benches \
 && pixi run mojo format ./tests \
 && pixi run mojo format ./docs \
+&& pixi run mojo format ./examples \
 && pixi run ruff format ./python"""
+
+# group, sort and de-duplicate imports (see the README's Tests and benches)
+organize_imports = """python3 scripts/organize_mojo_imports.py \
+src tests benches examples python docs"""
+# assert the organizer and `mojo format` agree; run after changing either
+check_import_fixed_point = "bash scripts/check_import_fixed_point.sh"
 
 # doc
 # Note: the CLI calculator doc step uses `-I tests` (the prebuilt
