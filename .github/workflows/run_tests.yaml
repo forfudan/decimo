@@ -26,11 +26,15 @@ defaults:
 # them. That single job took 20 minutes where each macOS suite took under
 # one, and almost all of it was compiling test files: it had no Mojo
 # compilation cache, because the cache lives in `setup-decimo` alongside the
-# artifact download that only macOS can use, and `tests/test.sh` runs
+# artifact download that only macOS could use, and `tests/test.sh` runs
 # sequentially under CI on the grounds that each suite is already its own
-# job -- which was true of every job except that one. Splitting it gives
-# both back. A `.mojoc` does not cross platforms, so the Linux legs compile
-# their own; that costs about ten seconds against the twenty minutes.
+# job -- which was true of every job except that one.
+#
+# `build-linux` exists so that the Linux legs share one package the way the
+# macOS legs do. Letting each build its own looked equivalent and was not:
+# the compilation cache keys on the package a test file imports, so two
+# independently built `.mojoc` files miss it, and every Linux test compiled
+# cold at 11 s a file against 1 s on macOS.
 
 jobs:
   # ── Gate: Format + Doc + Build package ───────────────────────────────────────
@@ -111,7 +115,49 @@ jobs:
       - name: Upload decimo.mojoc artifact
         uses: actions/upload-artifact@v7
         with:
-          name: decimo-mojoc
+          name: decimo-mojoc-${{ runner.os }}
+          path: decimo.mojoc
+          retention-days: 1
+          if-no-files-found: error
+
+  # ── Gate: build the package for Linux ────────────────────────────────────────
+  #
+  # A `.mojoc` is compiled code and does not cross platforms, so Linux cannot
+  # use the artifact the macOS job uploads. Building it once here rather than
+  # in every Linux test job is not about the eleven seconds it costs: the Mojo
+  # compilation cache keys on the package the test file imports, and two
+  # independently built `.mojoc` files are not reliably identical. Each job
+  # building its own meant every test compile missed the cache -- 11 s a file
+  # against 1 s on macOS, which downloads one shared artifact.
+  build-linux:
+    name: Build package (Linux)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: prefix-dev/setup-pixi@v0.10.2
+        with:
+          cache: true
+          activate-environment: true
+      - name: Build package (with retry for Mojo compiler intermittent crashes)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== build attempt $attempt ==="
+            if pixi run mojo precompile src/decimo -o decimo.mojoc; then
+              echo "=== build succeeded on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== build failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== build crashed, retrying in 5s... ==="
+            sleep 5
+          done
+      - name: Upload decimo.mojoc artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: decimo-mojoc-${{ runner.os }}
           path: decimo.mojoc
           retention-days: 1
           if-no-files-found: error
@@ -119,7 +165,7 @@ jobs:
   # ── Test: BigDecimal ─────────────────────────────────────────────────────────
   test-bigdecimal:
     name: Test BigDecimal (${{ matrix.os }})
-    needs: build
+    needs: [build, build-linux]
     strategy:
       fail-fast: false
       matrix:
@@ -148,7 +194,7 @@ jobs:
   # ── Test: BigInt ─────────────────────────────────────────────────────────────
   test-bigint:
     name: Test BigInt (${{ matrix.os }})
-    needs: build
+    needs: [build, build-linux]
     strategy:
       fail-fast: false
       matrix:
@@ -177,7 +223,7 @@ jobs:
   # ── Test: BigUint ────────────────────────────────────────────────────────────
   test-biguint:
     name: Test BigUint (${{ matrix.os }})
-    needs: build
+    needs: [build, build-linux]
     strategy:
       fail-fast: false
       matrix:
@@ -206,7 +252,7 @@ jobs:
   # ── Test: BigInt10 ───────────────────────────────────────────────────────────
   test-bigint10:
     name: Test BigInt10 (${{ matrix.os }})
-    needs: build
+    needs: [build, build-linux]
     strategy:
       fail-fast: false
       matrix:
@@ -235,7 +281,7 @@ jobs:
   # ── Test: Decimal128 ─────────────────────────────────────────────────────────
   test-decimal128:
     name: Test Decimal128 (${{ matrix.os }})
-    needs: build
+    needs: [build, build-linux]
     strategy:
       fail-fast: false
       matrix:
@@ -264,7 +310,7 @@ jobs:
   # ── Test: Rational ──────────────────────────────────────────────────────────
   test-rational:
     name: Test Rational (${{ matrix.os }})
-    needs: build
+    needs: [build, build-linux]
     strategy:
       fail-fast: false
       matrix:
@@ -293,7 +339,7 @@ jobs:
   # ── Test: Expression engine ───────────────────────────────────────────────
   test-expression:
     name: Test Expression (${{ matrix.os }})
-    needs: build
+    needs: [build, build-linux]
     strategy:
       fail-fast: false
       matrix:
@@ -350,7 +396,7 @@ jobs:
   # assertion, and only a job that builds them catches it.
   test-traits:
     name: Test Traits (${{ matrix.os }})
-    needs: build
+    needs: [build, build-linux]
     strategy:
       fail-fast: false
       matrix:

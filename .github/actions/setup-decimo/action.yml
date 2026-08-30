@@ -56,34 +56,15 @@ runs:
         echo "compiler reports: $(pixi run mojo --print-cache-location 2>&1 | tail -1)"
         echo "we cache        : $PWD/.pixi/envs/default/share/max/cache/.mojo_cache"
 
-    # A `.mojoc` is compiled code and does not cross platforms, so the artifact
-    # the macOS build job uploads is only good on macOS. Linux compiles its
-    # own, which costs about ten seconds -- far less than the cold test
-    # compiles the cache above is there to avoid.
+    # Each platform's own package: a `.mojoc` is compiled code and does not
+    # cross platforms. It matters that this is a shared artifact rather than a
+    # per-job build -- the compilation cache keys on the package the test file
+    # imports, so two independently built `.mojoc` files miss it.
     - name: Download decimo.mojoc artifact
-      if: runner.os != 'Linux'
       uses: actions/download-artifact@v8
       with:
-        name: decimo-mojoc
+        name: decimo-mojoc-${{ runner.os }}
         path: .
     - name: Stage package next to tests
-      if: runner.os != 'Linux'
       shell: bash
       run: cp decimo.mojoc tests/
-    - name: Build the package for this platform
-      if: runner.os == 'Linux'
-      shell: bash
-      run: |
-        for attempt in 1 2 3; do
-          echo "=== build attempt $attempt ==="
-          if pixi run mojo precompile src/decimo -o tests/decimo.mojoc; then
-            echo "=== build succeeded on attempt $attempt ==="
-            break
-          fi
-          if [ "$attempt" -eq 3 ]; then
-            echo "=== build failed after 3 attempts ==="
-            exit 1
-          fi
-          echo "=== build crashed, retrying in 5s... ==="
-          sleep 5
-        done
