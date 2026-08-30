@@ -30,7 +30,7 @@ def compare_magnitudes(x1: BigInt10, x2: BigInt10) -> Int8:
         x2: Second number.
 
     Returns:
-        Terinary value indicating the comparison result:
+        Ternary value indicating the comparison result:
         (1)  1 if |x1| > |x2|.
         (2)  0 if |x1| = |x2|.
         (3) -1 if |x1| < |x2|.
@@ -46,7 +46,7 @@ def compare(x1: BigInt10, x2: BigInt10) -> Int8:
         x2: Second number.
 
     Returns:
-        Terinary value indicating the comparison result:
+        Ternary value indicating the comparison result:
         (1)  1 if x1 > x2.
         (2)  0 if x1 = x2.
         (3) -1 if x1 < x2.

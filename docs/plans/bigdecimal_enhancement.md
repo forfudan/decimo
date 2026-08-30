@@ -2,7 +2,7 @@
 
 > **Date**: 2026-02-21 (created), 2026-04-30 (last consolidated)
 > **Target**: decimo >=0.9.0
-> **Mojo Version**: >=0.26.2
+> **Mojo Version**: >=1.0.0
 >
 > 子曰：學而時習之，不亦說乎。
 
@@ -20,7 +20,7 @@ fixed-precision (covered by `decimal128_enhancement.md`).
 
 | Library             | Limb base           | Mul algorithm tier               | Div algo           | Sqrt              |
 | ------------------- | ------------------- | -------------------------------- | ------------------ | ----------------- |
-| decimo BigDecimal   | 10^9 (UInt32 LE)    | School → Karatsuba → Toom-3      | B-Z (Knuth-D base) | reciprocal-Newton |
+| decimo BigDecimal   | 10^18 (UInt64 LE)   | School → Karatsuba → Toom-3 → NTT | B-Z (Knuth-D base) | reciprocal-Newton |
 | Py `decimal`/libmpd | 10^9 / 10^19        | School → Karatsuba → **NTT**     | reciprocal-Newton  | reciprocal-Newton |
 | Rust `bigdecimal`   | 10^9 (num-bigint)   | School → Karatsuba → Toom-3      | schoolbook (slow)  | Newton with div   |
 | Java `BigDecimal`   | binary `BigInteger` | School → Kara → Toom → Schönhage | Burnikel-Ziegler   | Newton (binary)   |
@@ -1005,7 +1005,7 @@ issue at fixed precision.
 
 ## 7. Architectural Reference
 
-### 7.1 Why base-10^9, not 2^32
+### 7.1 Why a decimal base, not a binary one
 
 `libmpdec` itself uses base-10^9 (32-bit) or base-10^19 (64-bit) and
 implements NTT directly on decimal limbs. The strongest evidence that
@@ -1017,19 +1017,19 @@ implements NTT directly on decimal limbs. The strongest evidence that
   financial / engineering users.
 - Scale arithmetic is exact word-insert / word-remove. No multiplication
   by powers of 10 needed for shifting.
-- Truncating to `p` significant digits = keeping `⌈p/9⌉` words.
+- Truncating to `p` significant digits = keeping `⌈p/18⌉` words.
 - The NTT $O(n \log n)$ advantage works in any base. Base-10^9 NTT
   primes can be chosen so the transform operates on `[0, 10^9)`.
 
-The performance gap vs `libmpdec` is **not** the base choice; it is the
-algorithm tier for large operands (NTT, reciprocal-Newton division,
-binary splitting). All implementable in base-10^9.
+The gap against `libmpdec` was never the base choice; it was the algorithm
+tier for large operands. The NTT and the binary splitting both landed in
+2026-08; reciprocal-Newton division (T-D6) is the one left.
 
 ### 7.2 Algorithm tier comparison
 
 | Feature            | decimo BigDecimal          | Python `libmpdec`              | Status        |
 | ------------------ | -------------------------- | ------------------------------ | ------------- |
-| Base               | 10^9 (UInt32)              | 10^9 / 10^19                   | parity        |
+| Base               | 10^18 (UInt64)             | 10^9 / 10^19                   | parity        |
 | Small mul          | Schoolbook                 | Schoolbook                     | parity        |
 | Medium mul         | Karatsuba (cutoff 64w)     | Karatsuba                      | parity        |
 | Large mul          | Toom-3 (cutoff 128w)       | **NTT** $O(n \log n)$          | **gap**       |
@@ -1075,7 +1075,7 @@ some ops < 1.0×):
 |        |                                            |        |          | far-from-1 ln now addressed by T-3e                     |
 | T-B1   | Name the base: `DIGITS_PER_WORD`, derived  | M      | **DONE** | 20260828; groundwork for T-B2, no perf change           |
 |        | `BASE*`, `*_power_of_base`                 |        |          |                                                         |
-| T-B2   | Move `BigUInt` to base 10^18               | XL     | **OPEN** | prototype: add 1.1-1.5x, Comba 1.2-3.0x above           |
+| T-B2   | Move `BigUInt` to base 10^18               | XL     | **DONE** | #288; `DIGITS_PER_WORD = 18`, `UInt64` words            |
 |        |                                            |        |          | 72 digits, Knuth D 1.5-1.7x above 36; loses             |
 |        |                                            |        |          | below 36. See `docs/internal/todo.md` item 9            |
 | T-IO1  | `from_string` digit batching               | M      | **DONE** | batching already present;                               |

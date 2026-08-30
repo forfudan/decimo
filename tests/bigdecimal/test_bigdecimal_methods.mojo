@@ -1,4 +1,3 @@
-# Consider incorporating some of the tests to other test files in future
 """
 Tests for BigDecimal utility methods.
 
@@ -14,7 +13,6 @@ Tests for BigDecimal utility methods.
   - fma()
   - to_string_with_separators()
 
-More tests can be added here for other non-arithmetic methods as needed.
 """
 
 from std import testing

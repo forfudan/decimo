@@ -388,7 +388,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     comptime BASE_HALF = Self.BASE // 2
     """Half of the base used for the BigUInt representation."""
     comptime VECTOR_WIDTH = 4
-    """The width of the SIMD vector used for arithmetic operations (128-bit)."""
+    """The width of the SIMD vector used for arithmetic operations (256-bit)."""
 
     comptime ZERO = Self.zero()
     """A `BigUInt` constant representing zero."""
@@ -773,7 +773,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         Returns:
             A new `BigUInt` containing the specified slice of words.
         """
-        # Safty checks on bounds
+        # Safety checks on bounds
         var start_index: Int
         var end_index: Int
 
@@ -791,7 +791,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         if n_words <= 0:
             return Self()
 
-        # Now we can safely copy the words
         var result = BigUInt(unsafe_uninit_length=n_words)
         unsafe_memcpy(
             dest=result.words.unsafe_ptr(),
@@ -1018,8 +1017,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             return Self.from_word_unsafe(Self.Word(value))
 
         elif (dtype == DType.int8) or (dtype == DType.int16):
-            # For signed types that are smaller than 1_000_000_000,
-            # we need to handle it differently
+            # Signed types narrower than one word, handled separately for the sign
             if value < 0:
                 # Because -Int16.MIN == Int16.MAX + 1,
                 # we need to handle the case by converting it to Int32
@@ -1218,7 +1216,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             return Self(raw_words=result_words^)
 
         else:  # scale < 0
-            # This is a true integer with postive exponent
+            # This is a true integer with positive exponent
             var number_of_trailing_zero_words = -scale // Self.DIGITS_PER_WORD
             var remaining_trailing_zero_digits = -scale % Self.DIGITS_PER_WORD
 
@@ -1594,7 +1592,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
     @always_inline
     def __rshift__(self, shift_amount: Int) -> Self:
-        """Returns the result of floored divison by 2 to the power of `shift_amount`.
+        """Returns the result of floored division by 2 to the power of `shift_amount`.
 
         Args:
             shift_amount: The number of bit positions to shift right.
@@ -2405,7 +2403,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             `True` if the value is zero, `False` otherwise.
         """
         # Yuhao ZHU:
-        # BigUInt are desgined to have no leading zero words,
+        # BigUInt is designed to have no leading zero words,
         # so that we only need to check words[0] for zero.
         # If there are leading zero words, it means that we have to loop over
         # all words to check if the number is zero.
@@ -2416,16 +2414,6 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         )  # 0 should have only one word by design
 
         return len(self.words) == 1 and self.words.unsafe_ptr()[] == 0
-
-        # Yuhao ZHU:
-        # The following code is commented out because BigUInt is designed
-        # to have no leading zero words.
-        # We only need to check the first word.
-        # They are left here for reference.
-        # return (self.words._data[] == 0) and (
-        #     memcmp(self.words._data, self.words._data + 1, len(self.words) - 1)
-        #     == 0
-        # )
 
     @always_inline
     def is_zero_in_bounds(self, bounds: Tuple[Int, Int]) -> Bool:
@@ -2718,7 +2706,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         Otherwise, the embedded list will be empty.
         """
         if self.words[len(self.words) - 1] != 0:
-            # The least significant word is not zero, so we do not remove it
+            # The most significant word is not zero, so there is nothing to remove
             return
         else:
             var n_empty_words: Int = 0
@@ -2763,7 +2751,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
         Notes:
 
-        Rounding can result in an extra digit. Exmaple: remove last 1 digit of
+        Rounding can result in an extra digit. Example: remove last 1 digit of
         999 with rounding up results in 100. If
         `remove_extra_digit_due_to_rounding` is True, the result will be 10.
 

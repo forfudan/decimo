@@ -274,7 +274,7 @@ def _sin_at(
 
     # Step 2: Reduce [-2π, -6] or [6, 2π] to [6-2π, 2π-6]
     # sin(x) = sin(x - 2π)
-    # This is because 2π is an instable point for comparison.
+    # This is because 2π is an unstable point for comparison.
     # To avoid infinite recursion in the final step,
     # we reduce it to [6-2π, 2π-6].
     if x_reduced.compare_absolute(bdec_6) >= 0:
@@ -285,7 +285,7 @@ def _sin_at(
             # x in [6, 2π], reduce to [0, 2π-6]
             x_reduced.subtract_inplace(bdec_2pi)
 
-    # Step 2: Reduce to [0, 2π) using symmetry
+    # Step 3: Reduce to [0, 2π) using symmetry
     # At this stage, the value should be in the range [0, 6].
     var is_negative: Bool
     if x_reduced.sign:
@@ -294,7 +294,7 @@ def _sin_at(
     else:
         is_negative = False
 
-    # Step 3: Reduce to [0, π/4], choosing the identity before applying it so
+    # Step 4: Reduce to [0, π/4], choosing the identity before applying it so
     # that the cancellation can be weighed once, below, whichever branch did
     # the subtracting.
     #
@@ -374,7 +374,7 @@ def sin_taylor_series(
     sin(x) = x - x³/3! + x⁵/5! - x⁷/7! + ...
     """
 
-    comptime BUFFER_DIGITS = 9  # word-length, easy to append and trim
+    comptime BUFFER_DIGITS = 9  # guard digits, not a word width
     var working_precision = minimum_precision + BUFFER_DIGITS
 
     if x.is_zero():
@@ -395,7 +395,7 @@ def sin_taylor_series(
         # Use inplace multiply to avoid BigDecimal allocation
         term.multiply_inplace(x_squared)
         # Use O(n) single-word division instead of full BigDecimal divide
-        # n*(n-1) fits in UInt32 for any practical Taylor series iteration count
+        # n*(n-1) fits in one word for any practical Taylor series iteration count
         term = term.true_divide_inexact_by_word(
             BigUInt.Word(n * (n - 1)), working_precision
         )
@@ -512,7 +512,7 @@ def cos_taylor_series(
 
         sign *= -1
 
-        # # Prevent size explosion
+        # Prevent size explosion
         result.round_to_precision_inplace(
             working_precision,
             rounding_mode=RoundingMode.down(),
@@ -629,10 +629,8 @@ def _tan_cot_at(
         if is_tan:
             return (BigDecimal(BigUInt.zero()), 0)
         else:
-            # cot(0) is undefined, but we return 0 for consistency
-            # since tan(0) is defined as 0.
-            # This is a design choice, not a mathematical one.
-            # In practice, cot(0) should raise an error.
+            # cot(0) is undefined, so it raises. tan(0) is defined and
+            # returns 0 in the branch above.
             raise ValueError(
                 message="cot(nπ) is undefined", function="tan_cot()"
             )
@@ -873,7 +871,7 @@ def arctan(x: BigDecimal, precision: Int) raises -> BigDecimal:
         Error: Propagated from underlying arithmetic operations.
     """
 
-    comptime BUFFER_DIGITS = 9  # word-length, easy to append and trim
+    comptime BUFFER_DIGITS = 9  # guard digits, not a word width
     var working_precision = precision + BUFFER_DIGITS
 
     var bdec_1 = BigDecimal.from_raw_components(
@@ -890,15 +888,12 @@ def arctan(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
     if x.compare_absolute(bdec_0d5) <= 0:
         # |x| <= 0.5, use Taylor series:
-        # print("Using Taylor series for arctan with |x| <= 0.5")
         result = arctan_taylor_series(x, minimum_precision=precision)
 
     elif x.compare_absolute(bdec_2) <= 0:
         # |x| <= 2, use the identity:
         # arctan(x) = 2 * arctan(x / (1 + sqrt(1 + x²)))
         # This is to ensure convergence of the Taylor series.
-        # print("Using identity for arctan with |x| <= 2")
-        # print(bdec_1 + x * x)
         # Use sqrt_via_reciprocal_iteration for speed — exact perfect square detection is
         # unnecessary since this is an intermediate computation.
         var sqrt_term = bigdecimal_exponential.sqrt_via_reciprocal_iteration(
@@ -916,7 +911,6 @@ def arctan(x: BigDecimal, precision: Int) raises -> BigDecimal:
         # For x > 2: arctan(x) = π/2 - arctan(1/x)
         # For x < -2: arctan(x) = -π/2 - arctan(1/x)
         # This is to ensure convergence of the Taylor series.
-        # print("Using identity for arctan with |x| > 2")
         var half_pi = bigdecimal_constants.pi(
             precision=working_precision
         ).true_divide(bdec_2, precision=working_precision)
@@ -962,7 +956,7 @@ def arctan_taylor_series(
     The input x must be in the range (-0.5, 0.5) for convergence.
     """
 
-    comptime BUFFER_DIGITS = 9  # word-length, easy to append and trim
+    comptime BUFFER_DIGITS = 9  # guard digits, not a word width
     var working_precision = minimum_precision + BUFFER_DIGITS
 
     if x.is_zero():

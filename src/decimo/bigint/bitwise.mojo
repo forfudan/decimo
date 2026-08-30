@@ -33,8 +33,8 @@ For binary operations (AND, OR, XOR), the algorithm is:
    negate magnitude: subtract 1, then invert all words.
    The "sign extension" is implicitly all-1s for negative numbers.
 2. Perform word-by-word bitwise operation, extending shorter operand
-   with its sign-extension fill (0x00000000 for non-negative, 0xFFFFFFFF
-   for negative).
+   with its sign-extension fill (all-zero words for non-negative, all-one
+   words for negative).
 3. Determine the result sign from the operation on the sign-extension bits.
 4. If the result is negative (in two's complement), convert back to
    sign-magnitude: invert all words, then add 1 to the magnitude.

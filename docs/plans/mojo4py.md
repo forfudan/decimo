@@ -6,8 +6,7 @@
 > *written in Mojo* that is callable *from Python*. The inverse ("py4mojo")
 > would be calling Python from Mojo, which decimo already does in some places.
 >
-> This name is pretty concise and descriptive. I will use the same "mojo4py"
-> for Mojo Miji when discussing the Mojo-Python inter-operability.
+> The same name is used in Mojo Miji for Mojo-Python interoperability.
 
 ---
 
@@ -19,8 +18,8 @@ can write `import decimo` and get access to Mojo-native `Decimal128`,
 `BigDecimal`, `BigInt`, and `BigUint` types at near-native speed, without
 rewriting anything in Python.
 
-**Feasibility verdict: Possible but non-trivial.** The main (no surprise)
-blocker is that decimo is a *packaged* Mojo library (`.mojoc`), not a single
+**Feasibility verdict: possible but non-trivial.** The main blocker is
+that decimo is a *packaged* Mojo library (`.mojoc`), not a single
 `.mojo` file. The Mojo importer hook (the easy dev-time path) does not support
 custom import paths for non-stdlib Mojo packages. The `.so` build path (the
 distribution path) works fine. This means the developer workflow is slightly
@@ -368,7 +367,7 @@ build-backend = "setuptools.backends.legacy:build"
 
 [project]
 name = "decimo"
-version = "0.8.0"
+version = "0.14.0"
 description = "Arbitrary-precision decimal and integer types for Python, powered by Mojo"
 requires-python = ">=3.13"
 license = {text = "Apache-2.0"}
@@ -409,7 +408,7 @@ jobs:
 
 ## 8. Roadmap
 
-### Phase 0 — Proof of Concept ✅ DONE (2026-03-02)
+### Phase 0 — proof of concept. DONE (2026-03-02)
 
 - [x] Write binding for `BigDecimal.__init__(str)` and `BigDecimal.__str__`.
 - [x] Manually build the `.so` with `mojo build --emit shared-lib -I src`.
@@ -566,29 +565,31 @@ the binding growing a thick compatibility layer on top.
 
 ### Phase 1 — BigDecimal Full Binding
 
-- [ ] Expose `RoundingMode` as Python constants or a Python enum.
+- [x] Expose the eight `decimal` rounding names as module constants, with
+      `Context.rounding` and `getcontext().rounding`.
 - [x] (20260826) Expose the arithmetic operators `__add__`, `__sub__`,
       `__mul__`, `__truediv__`, `__neg__`, `__pos__`, `__abs__`, their
-      reflected forms, and `__bool__`. `__mod__` and `__pow__` are still
-      open.
+      reflected forms, `__bool__`, `__mod__` and `__pow__` (including the
+      three-argument `pow`).
 - [x] (20260826) Expose comparison: `__eq__`, `__ne__`, `__lt__`, `__le__`,
       `__gt__`, `__ge__`. An operand that will not convert gives
       `NotImplemented`, so these behave the way `decimal.Decimal` does.
 - [x] Expose constructors from `int`, `float`, `str` (all via `str`).
-- [ ] Expose transcendentals: `sqrt`, `exp`, `ln`, `log10`.
-- [ ] Expose `round(d, ndigits)` via `__round__`.
-- [ ] Write Python test suite for `BigDecimal` (parity with
-      `tests/bigdecimal/`).
-- [ ] Add `pixi run py_build_bigdecimal` task.
+- [x] Expose transcendentals: `sqrt`, `exp`, `ln`, `log10`.
+- [x] Expose `round(d, ndigits)` via `__round__`.
+- [x] Write Python test suite for `BigDecimal` (`python/tests/test_decimo.py`,
+      run by `pixi run testpy`).
+- [x] Dropped: `pixi run buildpy` builds the whole module, so no separate
+      task was needed.
 - [x] (20260826) Write `.pyi` stub for `BigDecimal`.
 - [x] Set `Decimal = BigDecimal` alias in `python/src/decimo/__init__.py`.
 - [x] Verify `Decimal is BigDecimal` (in `test_decimo.py`).
 
 ### Phase 2 — Decimal128 Binding
 
-- [ ] Expose `Decimal128`: same API surface as `BigDecimal` but fixed precision.
+- [x] Expose `Decimal128`: same API surface as `BigDecimal` but fixed precision.
 - [ ] Write `.pyi` stub for `Decimal128` (can largely mirror `bigdecimal.pyi`).
-- [ ] Python tests with parity checks against `tests/decimal128/`.
+- [x] Python tests with parity checks against `tests/decimal128/`.
 
 ### Phase 3 — BigInt / BigUint Binding
 
@@ -607,22 +608,23 @@ the binding growing a thick compatibility layer on top.
 - [x] Write `.pyi` stubs for `BigDecimal` (`_decimo.pyi`).
 - [x] Add `py.typed` marker (PEP 561).
 - [x] PyPI name reserved — placeholder wheel (`0.1.0.dev0`) published to PyPI.
-- [ ] Test `pip install` of the built wheel locally (blocked until pre-built
-      `.so` in wheel).
-- [ ] Set up GitHub Actions for wheel builds (macOS arm64, Linux x86_64).
-- [ ] Publish platform-specific wheels with bundled `.so`.
+- [x] Test `pip install` of the built wheel locally.
+- [x] Set up GitHub Actions for wheel builds (macOS arm64, Linux x86_64 and
+      arm64) -- `.github/workflows/release_python.yaml`.
+- [x] Publish platform-specific wheels with bundled `.so`.
 
 ### Phase 5 — Ergonomics + Stabilization
 
-- [ ] Add `__hash__` for use in dicts/sets.
-- [ ] Add `__copy__` / `__deepcopy__`.
-- [ ] Add `__reduce__` / `__reduce_ex__` for pickling.
-- [ ] Handle `math.floor`, `math.ceil`, `math.trunc` via `__floor__`,
+- [x] Add `__hash__` for use in dicts/sets.
+- [x] Add `__copy__` / `__deepcopy__`.
+- [x] Add `__reduce__` / `__reduce_ex__` for pickling.
+- [x] Handle `math.floor`, `math.ceil`, `math.trunc` via `__floor__`,
       `__ceil__`, `__trunc__`.
 - [ ] Add `numbers.Number` ABC registration (soft-codes into Python's numeric
       tower).
-- [ ] Implement `__format__` for f-string formatting.
-- [ ] Benchmark against `decimal.Decimal` and publish results.
+- [x] Implement `__format__` for f-string formatting.
+- [x] Benchmark against `decimal.Decimal` and publish results
+      (`python/benchmarks/compare.py`, `python/README.md`).
 - [ ] Wait for Modular to stabilize the bindings API before final API freeze.
 
 ---

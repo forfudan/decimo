@@ -63,9 +63,6 @@ def test_biguint_sqrt() raises:
 
 
 def test_biguint_sqrt_random_numbers_against_python() raises:
-    # print("------------------------------------------------------")
-    # print("Testing BigUInt sqrt on random numbers with python...")
-
     var pymath = Python.import_module("math")
     _set_max_str_digits(25000)
 
@@ -88,12 +85,7 @@ def test_biguint_sqrt_random_numbers_against_python() raises:
             + "\n\nPython int sqrt: \n"
             + python_result,
         )
-    # print("BigUInt sqrt tests passed!")
 
 
 def main() raises:
-    # test_biguint_sqrt()
-    # test_biguint_sqrt_random_numbers_against_python()
     testing.TestSuite.discover_tests[__functions_in_module()]().run()
-    # print("All BigUInt exponential tests passed!")
-    # print("------------------------------------------------------")

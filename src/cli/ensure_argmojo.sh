@@ -5,9 +5,8 @@
 # Two sources, tried in order:
 #
 #   1. The conda package `argmojo` from the modular-community channel
-#      (uncomment the `argmojo` line in pixi.toml's [dependencies] once the
-#      channel ships a build matching the pinned version below).  If the
-#      environment already provides argmojo, nothing else is done.
+#      (declared in pixi.toml's [dependencies]).  If the environment already
+#      provides argmojo, nothing else is done.
 #
 #   2. Fallback: the upstream git repository, pinned at $ARGMOJO_COMMIT
 #      (= release v0.8.0).  The sources are cloned into temp/argmojo and

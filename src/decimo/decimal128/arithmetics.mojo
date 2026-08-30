@@ -18,12 +18,6 @@
 #
 # ===----------------------------------------------------------------------=== #
 #
-# List of functions in this module:
-#
-# add(x1: Decimal128, x2: Decimal128): Adds two Decimal128 values and returns a new Decimal128 containing the sum
-# subtract(x1: Decimal128, x2: Decimal128): Subtracts the x2 Decimal128 from x1 and returns a new Decimal128
-# multiply(x1: Decimal128, x2: Decimal128): Multiplies two Decimal128 values and returns a new Decimal128 containing the product
-# true_divide(x1: Decimal128, x2: Decimal128): Divides x1 by x2 and returns a new Decimal128 containing the quotient
 #
 # ===----------------------------------------------------------------------=== #
 
@@ -48,7 +42,7 @@ from decimo.decimal128.wide import Wide
 def add(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     """
     Adds two Decimal128 values and returns a new Decimal128 containing the sum.
-    The results will be rounded (up to even) if digits are too many.
+    The result is rounded half to even if it has too many digits.
 
     Args:
         x1: The first Decimal128 operand.
@@ -622,30 +616,22 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
                 function="multiply()",
             )
 
-    # NOTE: A previous version had a separate branch here for
-    # `x1.is_integer() and x2.is_integer()` (e.g. `123.0 * 456.00`) that
-    # divided each coefficient by `10^scale`, multiplied the integral parts
-    # in UInt256, and rescaled. Empirically that branch was a catastrophic
-    # net loss: the dispatch alone (two `is_integer()` calls, each up to
-    # ~125 ns of UInt128 modulus even with the cheap pre-check) plus the
-    # UInt256 multiply + UInt256 power-of-10 rescale cost ~550-760 ns,
-    # while the same inputs fall through to the `combined_num_bits <= 96`
-    # UInt128 fast path below in ~5 ns (the integral parts already share
-    # all trailing zeros that disappear during rounding). Removing the
-    # branch made `Both integer, different scale` cases drop from
-    # 548-759 ns to ~4-7 ns (~100x).
+    # A separate branch here for two integer-valued operands of different
+    # scales cost 550-760 ns, most of it in the two `is_integer()` calls
+    # that dispatched it, where the same inputs take the
+    # `combined_num_bits <= 96` path below in about 5 ns. It was removed.
 
     # GENERAL CASES: Decimal128 multiplication with any scales
 
     # SUB-CASE: Both operands are small
     # The bits of the product will not exceed 96 bits
     # It can just fit into Decimal128's capacity without overflow
-    # Result coefficient will less than 2^96 - 1 = 79228162514264337593543950335
+    # Result coefficient will be less than 2^96 - 1 = 79228162514264337593543950335
     # Examples: 1.23 * 4.56
     if combined_num_bits <= 96:
         var prod: UInt128 = x1_coef * x2_coef
 
-        # Combined scale more than max precision, no need to truncate
+        # Combined scale within max precision, so no truncation is needed
         if combined_scale <= Decimal128.MAX_SCALE:
             return Decimal128.from_uint128(
                 prod, UInt32(combined_scale), is_negative
@@ -666,9 +652,9 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
     # SUB-CASE: Both operands are moderate
     # The bits of the product will not exceed 128 bits
-    # Result coefficient will less than 2^128 - 1 but more than 2^96 - 1
+    # Result coefficient will be less than 2^128 - 1 but more than 2^96 - 1
     # IMPORTANT: This means that the product will exceed Decimal128's capacity
-    # Either raises an error if intergral part overflows
+    # Either raises an error if the integral part overflows
     # Or truncates the product to fit into Decimal128's capacity
 
     if combined_num_bits <= 128:
@@ -730,9 +716,9 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
     # REMAINING CASES: Both operands are big
     # The bits of the product will not exceed 192 bits
-    # Result coefficient will less than 2^192 - 1 but more than 2^128 - 1
+    # Result coefficient will be less than 2^192 - 1 but more than 2^128 - 1
     # IMPORTANT: This means that the product will exceed Decimal128's capacity
-    # Either raises an error if intergral part overflows
+    # Either raises an error if the integral part overflows
     # Or truncates the product to fit into Decimal128's capacity
 
     var prod: UInt256 = UInt256(x1_coef) * UInt256(x2_coef)
@@ -788,7 +774,7 @@ def multiply(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     """
     Divides x1 by x2 and returns a new Decimal128 containing the quotient.
-    Uses a simpler string-based long division approach as fallback.
+    The quotient is taken with one wide division and rounded once.
 
     Args:
         x1: The dividend.
@@ -834,7 +820,7 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     var diff_scale = x1_scale - x2_scale
     var is_negative = x1.is_negative() != x2.is_negative()
 
-    # SPECIAL CASE: one dividend or coefficient of dividend is one
+    # SPECIAL CASE: the divisor is one, or its coefficient is one
     # 特例: 除數爲一或者除數的係數爲一
     # Return divisor with appropriate scale and sign
     # For example, 1.412 / 1 = 1.412
@@ -919,9 +905,8 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         if diff_scale >= 0:
             # If diff_scale >= 0, return the quotient with diff_scale
             # Yuhao's notes:
-            # Because the dividor == 1 has been handled before dividor shoud be greater than 1
-            # High will be zero because the quotient is less than 2^48
-            # For safety, we still calcuate the high word
+            # The divisor of coefficient 1 is handled above, so that coefficient
+            # is at least 2 and the quotient is smaller than the dividend's.
             var quot = x1_coef // x2_coef
             return Decimal128.from_uint128(
                 quot, UInt32(diff_scale), is_negative
@@ -929,7 +914,7 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
         else:
             # If diff_scale < 0, return the quotient with scaling up
-            # Posibly overflow, so we need to check
+            # This may overflow, so it has to be checked
 
             var quot = x1_coef // x2_coef
 

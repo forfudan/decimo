@@ -71,7 +71,7 @@ The core types are[^auxiliary]:
 <!-- - An arbitrary-precision exact rational number type (`Rational`) represented as a reduced fraction of two `BigInt`s (numerator and denominator). It supports exact arithmetic and comparisons without any loss of precision, making it ideal for applications that require precise fractional calculations. -->
 
 Decimo is fast: at a million digits `pi()` is ten times quicker than pure-Python
-mpmath, `BigInt` multiplication is seven times quicker than CPython's `int`, and
+mpmath, `BigInt` multiplication is fifteen times quicker than CPython's `int`, and
 small `BigDecimal` operations are close to libmpdec, the C library behind
 Python's `decimal`. The measured numbers, with the commit they were taken on,
 are in [docs/benchmarks.md](docs/benchmarks.md); `pixi run benchdoc`
@@ -191,7 +191,7 @@ this is to import everything from the `prelude` module, which provides the most
 commonly used types.
 
 ```mojo
-from decimo import *
+from decimo.prelude import *
 ```
 
 This will import the following types or aliases into your namespace:
@@ -202,8 +202,8 @@ This will import the following types or aliases into your namespace:
   decimal type, equivalent to Python's `decimal.Decimal`.
 - `Decimal128` (and its alias `Dec128`): A 128-bit fixed-precision decimal type.
 - `RoundingMode`: An enumeration for rounding modes.
-- `ROUND_DOWN`, `ROUND_HALF_UP`, `ROUND_HALF_EVEN`, `ROUND_UP`: Constants for
-  common rounding modes.
+- `ROUND_DOWN`, `ROUND_HALF_UP`, `ROUND_HALF_EVEN`, `ROUND_UP`,
+  `ROUND_CEILING`, `ROUND_FLOOR`: Constants for common rounding modes.
 
 ---
 
@@ -280,13 +280,10 @@ def main() raises:
     #                 615113531369940724079062641335
     # negative:       False
     # scale:          59
-    # word 0:         62641335
-    # word 1:         940724079
-    # word 2:         113531369
-    # word 3:         99987615
-    # word 4:         861883449
-    # word 5:         440108935
-    # word 6:         986960
+    # word 0:         940724079062641335
+    # word 1:         99987615113531369
+    # word 2:         440108935861883449
+    # word 3:         986960
     # ----------------------------------------------
 ```
 
@@ -297,8 +294,7 @@ def main() raises:
 <details>
 <summary><b>BigInt — arbitrary-precision signed integers</b></summary>
 
-Here is a comprehensive quick-start guide showcasing each major function of the
-`BigInt` (`BInt`) type.
+A quick tour of the main methods of the `BigInt` (`BInt`) type.
 
 ```mojo
 from decimo.prelude import *
@@ -314,12 +310,12 @@ def main() raises:
     # === Basic Arithmetic ===
     print(a + b)  # Addition: 12345678901234580235
     print(a - b)  # Subtraction: 12345678901234555545
-    print(a * b)  # Multiplication: 152415787814108380241050
+    print(a * b)  # Multiplication: 152407406035740740602050
 
     # === Division Operations ===
-    print(a // b)  # Floor division: 999650944609516
-    print(a.truncate_divide(b))  # Truncate division: 999650944609516
-    print(a % b)  # Modulo: 9615
+    print(a // b)  # Floor division: 1000054994024671
+    print(a.truncate_divide(b))  # Truncate division: 1000054994024671
+    print(a % b)  # Modulo: 4395
 
     # === Power Operation ===
     print(BigInt(2).power(10))  # Power: 1024
@@ -356,8 +352,7 @@ def main() raises:
 <details>
 <summary><b>Decimal128 — a fixed 128-bit decimal</b></summary>
 
-Here is a comprehensive quick-start guide showcasing each major function of the
-`Decimal128` (`Dec128`) type.
+A quick tour of the main methods of the `Decimal128` (`Dec128`) type.
 
 ```mojo
 from decimo.prelude import *
@@ -378,7 +373,7 @@ def main() raises:
     print(a / b)  # Division: 1.0036585365853658536585365854
 
     # === Rounding & Precision ===
-    print(a.round(1))  # Round to 1 decimal place: 123.5
+    print(a.round(1))  # Round to 1 decimal place, half to even: 123.4
     print(a.quantize(Dec128("0.01")))  # Format to 2 decimal places: 123.45
     print(a.round(0, RoundingMode.ROUND_DOWN))  # Round down to integer: 123
 
@@ -573,8 +568,9 @@ After cloning the repo onto your local disk, you can:
 - Use `pixi run testcli` to run CLI calculator tests.
 - Use `pixi run bench` to run benchmarks.
 - Use `pixi run benchdoc` to regenerate [docs/benchmarks.md](docs/benchmarks.md)
-  against libmpdec, CPython and MPFR. Needs `mpdecimal` installed for the C
-  comparison; the reference libraries for the `pi()` table live in the optional
+  against libmpdec, GMP, CPython and MPFR. Needs `mpdecimal` and `gmp`
+  installed for the C comparisons; the reference libraries for the `pi()` table
+  live in the optional
   `benchdoc` environment (`pixi install -e benchdoc`).
 - Use `pixi run buildcli` to compile the CLI calculator to a `./decimo` binary.
 
@@ -636,7 +632,7 @@ for details.
     toward negative infinity) and truncate division (round toward zero)
     semantics, enabling precise handling of division operations with
     correct mathematical behavior regardless of operand signs.
-[^arbitrary]: Built on top of our completed BigInt10 implementation, Decimal
+[^arbitrary]: Built on the `BigUInt` implementation, Decimal
     supports arbitrary precision for both the integer and fractional
     parts, similar to `decimal` and `mpmath` in Python,
     `java.math.BigDecimal` in Java, etc.

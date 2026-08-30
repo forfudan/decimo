@@ -16,9 +16,11 @@
 
 """Implements exponential functions for the BigInt type.
 
-This module provides integer square root using CPython's precision-doubling
-algorithm with a UInt64 fast path for early iterations, leveraging BigInt's
-base-2^64 representation for efficient bit-level operations.
+This module provides the integer square root. A one-word value is answered by
+hardware; up to `CUTOFF_SQRT_RECURSIVE` words the value goes through CPython's
+precision-doubling algorithm, with a `UInt64` and `UInt128` fast path for the
+early iterations; above it, through Zimmermann's recursion. It also provides
+the fixed-point reciprocal square root that `BigDecimal` builds on.
 """
 
 from std import math
@@ -286,10 +288,10 @@ def sqrt(x: BigInt) raises -> BigInt:
 
 
 def _sqrt_precision_doubling_fast(x: BigInt) raises -> BigInt:
-    """Optimized precision-doubling integer sqrt with UInt64 fast path.
+    """Precision-doubling integer sqrt with a UInt64 fast path.
 
     Args:
-        x: The BigInt value (must be positive, >= 3 words).
+        x: The BigInt value (must be positive, at least two words).
 
     Returns:
         The integer square root.
@@ -485,7 +487,7 @@ def reciprocal_sqrt_fixed_point(
     `bigdecimal.exponential.sqrt_via_reciprocal_iteration()` merely reaches
     the root through one and returns the root.
 
-    It exists because a `BigDecimal` holds its coefficient in base 10^9, where
+    It exists because a `BigDecimal` holds its coefficient in a decimal base,
     the same multiplication costs about 2.8x what it did in the base-2^32
     `BigInt` that figure was measured against. `BigInt` is base 2^64 now and
     multiplies 1.0x to 1.4x faster again, so the gap only widened.

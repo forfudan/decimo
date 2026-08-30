@@ -50,7 +50,7 @@ Decimo 是 Decimal 和 Mojo
 
 ---
 
-此倉庫包含內建的 [TOML 解析器](./docs/readme_toml.md)（`decimo.toml`），一個純
+此倉庫包含內建的 [TOML 解析器](./readme_toml.md)（`decimo.toml`），一個純
 Mojo 實現的輕量級 TOML v1.0
 解析器。它解析配置文件和測試數據，支持基本類型、數組和嵌套表。雖然爲 Decimo
 的測試框架而創建，但它提供通用的結構化數據解析，具有簡潔的 API。
@@ -107,7 +107,7 @@ channels = ["https://conda.modular.com/max", "https://repo.prefix.dev/modular-co
 模塊導入所有內容，它提供最常用的類型。
 
 ```mojo
-from decimo import *
+from decimo.prelude import *
 ```
 
 這將導入以下類型或別名到您的命名空間：
@@ -117,7 +117,7 @@ from decimo import *
   `decimal.Decimal`。
 - `Dec128`（`Decimal128` 的別名）：128 位定點精度小數類型。
 - `RoundingMode`：捨入模式的枚舉。
-- `ROUND_DOWN`、`ROUND_HALF_UP`、`ROUND_HALF_EVEN`、`ROUND_UP`：常用捨入模式的常量。
+- `ROUND_DOWN`、`ROUND_HALF_UP`、`ROUND_HALF_EVEN`、`ROUND_UP`、`ROUND_CEILING`、`ROUND_FLOOR`：常用捨入模式的常量。
 
 ---
 
@@ -191,13 +191,10 @@ def main() raises:
     #                 615113531369940724079062641335
     # negative:       False
     # scale:          59
-    # word 0:         62641335
-    # word 1:         940724079
-    # word 2:         113531369
-    # word 3:         99987615
-    # word 4:         861883449
-    # word 5:         440108935
-    # word 6:         986960
+    # word 0:         940724079062641335
+    # word 1:         99987615113531369
+    # word 2:         440108935861883449
+    # word 3:         986960
     # ----------------------------------------------
 ```
 
@@ -219,12 +216,12 @@ def main() raises:
     # === 基本算術 ===
     print(a + b)  # 加法: 12345678901234580235
     print(a - b)  # 減法: 12345678901234555545
-    print(a * b)  # 乘法: 152415787814108380241050
+    print(a * b)  # 乘法: 152407406035740740602050
 
     # === 除法運算 ===
-    print(a // b)  # 向下整除: 999650944609516
-    print(a.truncate_divide(b))  # 截斷除法: 999650944609516
-    print(a % b)  # 取模: 9615
+    print(a // b)  # 向下整除: 1000054994024671
+    print(a.truncate_divide(b))  # 截斷除法: 1000054994024671
+    print(a % b)  # 取模: 4395
 
     # === 冪運算 ===
     print(BInt(2).power(10))  # 冪: 1024
@@ -275,7 +272,7 @@ def main() raises:
     print(a / b)                                     # 除法: 1.0036585365853658536585365854
     
     # === 捨入與精度 ===
-    print(a.round(1))                                # 捨入到 1 位小數: 123.5
+    print(a.round(1))                                # 捨入到 1 位小數（五成雙）: 123.4
     print(a.quantize(Dec128("0.01")))                # 格式化到 2 位小數: 123.45
     print(a.round(0, RoundingMode.ROUND_DOWN))       # 向下捨入到整數: 123
     
@@ -288,7 +285,7 @@ def main() raises:
     # === 類型轉換 ===
     print(Float64(a))                                # 轉換爲浮點數: 123.45
     print(a.to_int())                                # 轉換爲整數: 123
-    print(a.to_str())                                # 轉換爲字符串: "123.45"
+    print(a.to_string())                             # 轉換爲字符串: "123.45"
     print(a.coefficient())                           # 獲取係數: 12345
     print(a.scale())                                 # 獲取精度: 2
     
@@ -316,7 +313,7 @@ def main() raises:
     # === 便利方法 ===
     print(Dec128("123.400").is_integer())            # 檢查是否爲整數: False
     print(a.number_of_significant_digits())          # 計算有效數字位數: 5
-    print(Dec128("12.34").to_str_scientific())       # 科學計數法: 1.234E+1
+    print(Dec128("12.34").to_scientific_string())    # 科學計數法: 1.234E+1
 ```
 
 ## 目標
@@ -358,7 +355,7 @@ Python 遷移到 Mojo 時，我需要一個可靠的、能够正確捨入的、�
     year         = {2026},
     title        = {Decimo: An arbitrary-precision integer and decimal library for Mojo},
     url          = {https://github.com/forfudan/decimo},
-    version      = {0.9.0},
+    version      = {0.13.0},
     note         = {Computer Software}
 }
 ```
@@ -382,6 +379,6 @@ Python 遷移到 Mojo 時，我需要一個可靠的、能够正確捨入的、�
 [^bigint10]: BigInt10 使用基於 10 的表示（保持十進制語義），而內部使用優化的基於
     10^18
     的存儲系統進行高效計算。這種方法在人類可讀的十進制操作與高性能計算之間取得平衡。它提供向下整除（向負無窮舍入）和截斷除法（向零舍入）語義，無論操作數符號如何，都能確保除法操作具有正確的數學行爲。
-[^arbitrary]: 建立在已完成的 BigInt10 實現之上，Decimal
+[^arbitrary]: 建立在 BigUInt 實現之上，Decimal
     支持整數和小數部分的任意精度，類似於 Python 中的 `decimal` 和
     `mpmath`、Java 中的 `java.math.BigDecimal` 等。

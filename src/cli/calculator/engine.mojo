@@ -17,9 +17,9 @@
 """
 Shared evaluation pipeline for the Decimo CLI calculator.
 
-Provides `evaluate_and_print`, `display_calc_error`, and `pad_to_precision`
-used by both one-shot/pipe/file modes (main.mojo) and the interactive REPL
-(repl.mojo).
+Provides `evaluate_and_print`, `evaluate_and_return`, `display_calc_error`
+and `pad_to_precision`, used by both one-shot/pipe/file modes (main.mojo)
+and the interactive REPL (repl.mojo).
 """
 
 from decimo import Decimal

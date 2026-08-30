@@ -19,7 +19,7 @@ Interactive REPL (Read-Eval-Print Loop) for the Decimo CLI calculator.
 
 Launched when `decimo` is invoked with no expression and stdin is a TTY.
 Reads one expression per line, evaluates it, prints the result, and loops
-until the user types `exit`, `quit`, or presses Ctrl-D.
+until the user types `exit`, `quit`, `:q`, or presses Ctrl-D.
 
 Features:
 - `ans` — automatically holds the result of the last successful evaluation.
@@ -110,9 +110,8 @@ def run_repl(
             print(file=stderr)  # newline after the prompt
             break
 
-        # Case-insensitive — lowercase all input before processing
-        # By doing this early, we ensure that meta-commands, variable names, and
-        # function names are all case-insensitive in a consistent way.
+        # Lowercase the whole line here, so meta-commands, variable names and
+        # function names are all case-insensitive.
         var line = to_lower(strip(maybe_line.value()))
 
         # Skip blank lines and comments
@@ -436,7 +435,7 @@ def _print_settings(settings: Settings):
 
 
 def _print_variables(variables: Dict[String, Decimal]) raises:
-    """Display all user-defined variables and their values to stderr."""
+    """Display `ans` and all user-defined variables to stderr."""
     var count = len(variables)
     if count == 0:
         print("No variables defined.", file=stderr)
@@ -847,7 +846,7 @@ def _print_help():
         + "                    List all variables.",
         file=w,
     )
-    #     |:about, :a, :info |            <- 18 + 10 = 28
+    #     |:about, :a, :info|             <- 17 + 11 = 28
     print(
         "  "
         + LONG_NAME_COLOR

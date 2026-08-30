@@ -6,63 +6,9 @@ enhancement plans in `docs/plans/` carry the detail and the reasoning, and
 ranking. There were four such lists in August 2026 and they had already
 drifted apart, so there is now one.
 
-Last reviewed 2026-08-28 (sixth pass).
+Last reviewed 2026-08-30 (seventh pass).
 
-## Goal, round one: met (20260826)
-
-Beat libmpdec on every operation at 1000 digits. Measured side by side in one
-`benchdoc` run at 06bafb7:
-
-| operation | decimo   | libmpdec |                  |
-| --------- | -------- | -------- | ---------------- |
-| add       | 83.5 ns  | 113.2 ns | **1.36x faster** |
-| subtract  | 87.4 ns  | 88.8 ns  | parity           |
-| multiply  | 2.81 us  | 8.94 us  | **3.18x faster** |
-| divide    | 13.86 us | 14.38 us | parity           |
-| round     | 82.0 ns  | 97.7 ns  | **1.19x faster** |
-| parse     | 1.10 us  | 1.41 us  | **1.28x faster** |
-
-Nothing is slower. Divide started the day 1.68x behind and add 1.12x behind.
-Three changes did it, and all three carried to the larger sizes as well:
-
-1. The add and subtract word kernels vectorized a block at a time.
-2. Knuth D's multiply-subtract taken off its carry chain, 2.9x on schoolbook
-   division.
-3. The Burnikel-Ziegler base case taking the remainder schoolbook already had,
-   instead of rebuilding it with a multiply.
-
-Both cutoffs were re-swept after each of those, because a cheaper base case
-moves every crossover above it. That happened three times in one day.
-
-## Goal, round two: met for everything but division (20260827)
-
-Be no more than 1.2x of CPython's `decimal` from Python at 28 digits, now
-that `BigUInt` keeps small values inline. Measured with
-`python/benchmarks/compare.py`, which runs the same source file under both:
-
-| operation  | decimo | decimal |                  |
-| ---------- | ------ | ------- | ---------------- |
-| `a + b`    | 45.8   | 42.7    | 1.07x            |
-| `a * b`    | 52.8   | 47.3    | 1.12x            |
-| `a / b`    | 138.8  | 100.3   | 1.38x            |
-| `a < b`    | 21.9   | 18.8    | 1.16x            |
-| `a + 2`    | 57.2   | 65.6    | **1.15x faster** |
-| `quantize` | 42.6   | 61.8    | **1.45x faster** |
-
-At 9 digits: add 1.06x, subtract 1.17x, multiply 1.09x, divide 1.24x.
-
-Whole programs: compound interest **1.12x faster**, sqrt by Newton at parity,
-e from its series 1.17x, pi by Machin 1.30x, and 1000-digit arithmetic 1.59x
-faster. The day started at 4.8x on the four operators and 4.1x on compound
-interest.
-
-Against libmpdec directly, without the Python call in the way, decimo is now
-faster at **every operation at 1000 digits** and 3.4x faster at addition at 9.
-See `docs/benchmarks.md`.
-
-Division is the one left outside the bar, and it is item 1 below.
-
-## Goal, round three: `BigInt` against GMP (20260827)
+## `BigInt` against GMP (20260827)
 
 `BigInt` had only ever been measured against CPython's `int`, which is not an
 opponent: it is reached through the interpreter, so it loses on call overhead
@@ -220,8 +166,8 @@ Ordered by what actually moves:
    `BigUInt` for free, sum ignoring carry, then propagate. A lane only
    propagates when its digit is all ones, so the second pass can be a mask
    test that almost never fires rather than `BigUInt`'s serial walk.
-4. **Multiplication thresholds.** `CUTOFF_KARATSUBA` is 256 words, which is
-   2466 decimal digits; GMP switches around 500. Our Comba is good enough that
+4. **Multiplication thresholds.** `CUTOFF_KARATSUBA` is 64 words, which is
+   1233 decimal digits; GMP switches around 500. Our Comba is good enough that
    schoolbook at 104 words is only 1.91x of GMP's Karatsuba, so this is worth
    measuring rather than assuming.
 
@@ -268,8 +214,8 @@ Three things measured the wrong way round here, so they are not retried:
 
 ## Now
 
-Ordered by value. Three things are still behind CPython's `decimal`, and
-they are the first three.
+Ordered by value. Division from Python is the only operation still behind
+CPython's `decimal`, and it is the first item.
 
 1. **`divide`, 1.24x at 9 digits and 1.38x at 28.** The only operator still
    outside 1.2x. 138.8 ns against 100.3, of which ~109 is Mojo and ~30 the
@@ -280,33 +226,21 @@ they are the first three.
    instead of whole words (worse, because `multiply_by_power_of_base` only
    prepends zero words while `multiply_by_power_of_ten` walks the number),
    hoisting the estimator's invariants (neutral), and raising the inline
-   capacity past ten (no gain). What is left is either Newton reciprocal
-   division or base 10^18.
-2. **`subtract` at 1000 digits and above, 1.11x to 1.32x slower than
-   CPython's `decimal`**, where `add` at the same sizes is 1.18x to 1.73x
-   *faster*. The only operation still behind at any size against `decimal`,
-   together with `round`. Isolated to the
-   kernels: `_add_words_vectorized` runs 100 000 digits in ~3.9 us and
-   `_subtract_words_vectorized` in ~4.6-5.1 us, from code that looks
-   symmetric instruction for instruction. Flattening subtract's carry walk to
-   match add's measured neutral inside a ~10% noise band. Not yet explained.
-3. **`round` at 100 000 and 10^6, 1.11x and 1.33x slower.** Improved once
-   today by taking the pointer out of two shift loops; whatever is left is
-   elsewhere.
-4. **`parse`, 1.37x slower than libmpdec at 9 digits** (was 2.65x). What
-   remains is the digit list: `parse_numeric_string()` returns one `UInt8`
-   per digit, so a 9-digit number is allocated for and walked twice before
-   any packing happens. Parsing straight from the string into words would
-   remove both.
-5. **Newton reciprocal division**, worth ~115 ms of `pi(10^6)` as well as
+   capacity past ten (no gain). Base 10^18 has since landed, so what is left
+   is Newton reciprocal division.
+2. **`parse`, 1.28x slower than libmpdec at 9 digits.** The digit-list detour
+   is gone: a plain string goes straight into the words through
+   `_from_plain_string()`. What is left has not been taken apart.
+
+3. **Newton reciprocal division**, worth ~115 ms of `pi(10^6)` as well as
    item 1. See `bigint_enhancement.md` T-D4.
-6. **`subtract_inplace()`** builds a negated copy of its right operand to flip
+4. **`subtract_inplace()`** builds a negated copy of its right operand to flip
    a sign: `x -= y` is 5.2x slower than libmpdec in place, where `x += y` is
    1.3x *faster*. See `bigdecimal_enhancement.md` H#21.
-7. **A cheaper NTT butterfly** -- precomputed (Shoup) twiddles and radix-4.
+5. **A cheaper NTT butterfly** -- precomputed (Shoup) twiddles and radix-4.
    Needed for goal 1: `pi(10^6)` at 1.2x of mpmath+GMP wants roughly 2.5x here
    on top of item 5.
-8. **Audit the remaining `UInt128` and `UInt256` uses.** Three of the day's
+6. **Audit the remaining `UInt128` and `UInt256` uses.** Three of the day's
    biggest wins were removing one. The rule: 128-bit as an *accumulator* is
    fine, because a 64x64 multiply is one instruction; 128-bit or 256-bit as
    the *left side of a divide by a variable* is a call to a software helper,
@@ -327,58 +261,13 @@ they are the first three.
 
    The hand-rolled reciprocal is *slower* than what the compiler emits for a
    constant. Reach for it only when the divisor is a runtime value.
-9. **Base 10^18 for `BigUInt`.** The honest answer to "why is division still
-   behind": for a 28-digit value libmpdec holds two words and decimo holds
-   four, so every loop runs twice as long. Nothing above closes that.
-
-   `BigInt` answered the same question for itself on 20260828 by moving to
-   base 2^64, and what that cost is now known rather than guessed. The
-   arithmetic was the easy half; the traps were all in code the type checker
-   was happy with. In order of how long each took to find: a decimal chunk
-   base that had to stay a power of `10^9` because `to_biguint()` reads the
-   chunks as `BigUInt` words; `String(Int(word))` printing every value at or
-   above `2^63` as negative; a borrow taken from the sign bit of a widened
-   subtraction, which a word of exactly `2^63` sets with no borrow at all; a
-   `>>= 64` that is a no-op on arm64 and so an infinite allocating loop; and
-   Toom-3's exact division by three carrying `(2^32 - 1) / 3`.
-
-   `BigUInt` is a smaller job -- base 10^18 is still a decimal base, so the
-   conversion paths do not move -- but every partial product needs 128-bit
-   accumulation.
-
-   **Measured on a prototype (20260828), and it is worth doing.** The two
-   bases written the same way, same digit count, results cross-checked
-   against each other. Ratios are 10^9 over 10^18, so above 1.00 means the
-   wider word wins:
-
-   | digits | add   | Comba multiply | Knuth D multiply-subtract |
-   | ------ | ----- | -------------- | ------------------------- |
-   | 18     | 1.26x | 0.52x          | 0.71x                     |
-   | 36     | 1.19x | 0.94x          | 1.46x                     |
-   | 72-90  | 1.43x | 1.24x          | 1.58x                     |
-   | 288    | 1.15x | 2.41x          | 1.66x                     |
-   | 1 000  | 1.49x | 2.59x          | 1.67x                     |
-   | 9 000  | 1.48x | ~3.0x          | 1.69x                     |
-   | 10^6   | 1.10x | (transform)    | --                        |
-
-   Three things the numbers say that the model did not. Multiply passes 2x
-   and keeps going, because base 10^9's wide path pays a 128-bit *add* per
-   partial product and there are four times as many of them. Add gains from
-   the second pass of `_add_words_vectorized`, which walks every word
-   serially and so halves; the SIMD pass moves the same bytes either way, and
-   at 10^6 the whole thing is memory-bound and the gain falls to 1.10x. And
-   the wider word *loses* below about 36 digits, where the existing narrow
-   `UInt64` column path is strong and base 10^18 has no equivalent -- a
-   partial product is `10^36` and needs 128 bits whatever the operands are.
-   That is exactly where item 1 lives, so small-operand paths would have to
-   be written by hand rather than inherited.
-
-   Ground laid (20260828): `DIGITS_PER_WORD` now names the digits in a word,
-   `BASE` and friends are derived from it, `*_power_of_billion` is
-   `*_power_of_base`, and the `BigUInt` docstring lists what a base change
-   still has to rewrite by hand. A guard-digit count of 9 is not a word width
-   and was deliberately left alone.
-10. ~~**`floor_divide()` 2n-by-n scaling** in `BigUInt`~~ -- answered below.
+7. ~~**Base 10^18 for `BigUInt`.**~~ **Done 20260828 (#288).** A 28-digit
+   value is two words where it used to be four, the same as libmpdec.
+   Measured on the same operands, base 10^9 over base 10^18: add 1.06x to
+   1.54x, multiply up to 2.91x, divide up to 2.16x. The traps the type
+   checker could not see are recorded in `docs/plans/bigint_enhancement.md`
+   under T-W1.
+8. ~~**`floor_divide()` 2n-by-n scaling** in `BigUInt`~~ -- answered below.
 
 ## Blocked on the language
 
@@ -456,7 +345,10 @@ Nothing to do here until Mojo grows the feature.
       wanted, since CPython `int` and libmpdec are the same code decimo is
       measured against. Not worth doing for speed.
 
-- [ ] (20260828) **Cache the Mojo compilation cache in CI.** Mojo keeps a
+- [x] (20260828) **Cache the Mojo compilation cache in CI. Done.**
+      `run_tests.yaml` restores `.mojo_cache` after `setup-pixi`, keyed per
+      job. The notes below are the measurements that decided the shape.
+      Mojo keeps a
       content-addressed cache at `$MODULAR_HOME/cache/.mojo_cache`, which
       under pixi lives inside `.pixi/envs/`. `setup-pixi` caches the
       environment's *packages*; nothing caches this, so every CI job compiles
@@ -494,116 +386,3 @@ Nothing to do here until Mojo grows the feature.
       pass 10 GB the same way. Locally `mojo --clear-cache -f` empties it
       without touching the environment, which `pixi clean` would also remove
       but only by deleting `.pixi/` entirely.
-
-## Done
-
-Kept as a record; the detail is in the plans.
-
-- [x] (20260827) **Small operations stopped being allocation.** `BigUInt.words`
-      is a `WordList` that keeps ten words in the struct. A four-word add was
-      40 ns of which 38 was the allocator; in place it was 1.2 ns. Ten words
-      because that is what a division's intermediates need -- eight allocated
-      twice per division, twelve only made every value bigger. See
-      `docs/plans/inline_storage.md`.
-
-- [x] (20260827) **Three 128-bit divisions removed, worth 2-3x each.**
-      `floor_divide_by_uint128` (written in `UInt256`, so two software
-      256-bit divides per four dividend words), Knuth D's quotient estimate
-      (a 128-bit divide per quotient word, replaced by Knuth's own step D3 in
-      64 bits), and Comba's column accumulator (a 128-bit divide by a constant
-      per result word, now 64-bit for a shorter operand). A 28-digit division
-      went 619 -> 112 ns in Mojo and a 4x4-word multiply 24.7 -> 12.2.
-
-- [x] (20260827) **The Python operators became real C slots.** `a + b` was
-      reaching Mojo through `slot_nb_add`, which looks `__add__` up in the
-      type dictionary on every operation -- so the operator cost *more* than
-      the method call it wrapped. `+ - * /` and all six comparisons are now
-      function pointers in the type spec, and the slots read their operands
-      in place instead of taking references. Also: `Decimal(int)` and
-      `Decimal + int` no longer format the integer and parse it back, and the
-      optional-argument methods use vectorcall instead of packing a tuple.
-
-- [x] (20260827) **`decimo.Decimal` is a drop-in replacement for `decimal`.**
-      Context, hashing, `//` `%` `divmod` `**`, `int`/`float`/`round`/`floor`/
-      `ceil`/`trunc`, `quantize`, `sqrt`/`exp`/`ln`/`log10`, `as_tuple`,
-      `as_integer_ratio`, `format`, `copy`, `pickle`, and `ZeroDivisionError`
-      where a program expects it. `python/benchmarks/compare.py` runs the same
-      source file under both libraries and checks every answer matches.
-
-      Three real differences turned up on the way and were fixed in the Mojo
-      core, not papered over in the binding:
-
-      1. Rounding that carried into a new leading digit kept one significant
-         digit too many: at precision 5, `0.99999999 + 0` gave `1.00000`
-         instead of `1.0000`. `add`, `subtract`, `multiply` and the two
-         in-place forms now pass `remove_extra_digit_due_to_rounding=True`,
-         which the division and exponential paths were already doing.
-      2. `to_eng_string()` stripped trailing zeros and forced an exponent
-         where CPython prints plainly. It now matches CPython on every case
-         tried: engineering notation changes only the *choice* of exponent.
-      3. Unary `+` did not round. In `decimal` it does, and `+value` is the
-         standard way to bring a wide intermediate back to the working
-         precision — the `pi` benchmark depends on it. Added
-         `BigDecimal.round_to_precision(precision)` for this.
-
-- [x] (20260827) **A self-contained wheel.** `pixi run release` builds it,
-      `--testpypi` / `--pypi` upload it. The extension loads three Mojo
-      runtime libraries through an `@rpath` pointing into the local pixi
-      environment, so they are copied in beside it and the paths rewritten to
-      `@loader_path`; about 1.6 MB. Editing a Mach-O file invalidates its
-      signature and macOS answers that with SIGKILL and no message, so each
-      touched file is re-signed ad-hoc. Verified by installing the wheel into
-      a venv built from a Homebrew Python with pixi nowhere in sight.
-
-- [x] (20260825) Use debug mode to check for unnecessary zero words before all
-      arithmetic operations. `BigUInt.assert_invariant()` and
-      `BigInt.assert_invariant()` check that the words are non-empty and carry
-      no leading zero word. They are `debug_assert`, so they cost nothing in a
-      normal build and run in the test suite.
-      `remove_leading_empty_words()` carries the check as a post-condition,
-      which covers all thirty repair sites at once.
-
-- [x] Consider using `Decimal` as the struct name instead of `BigDecimal`, and
-      use `comptime BigDecimal = Decimal` to create an alias for the `Decimal`
-      struct. This just switches the alias and the struct name, but it may be
-      more intuitive to use `Decimal` as the struct name since it is more
-      consistent with Python's `decimal.Decimal`. Moreover, hovering over
-      `Decimal` will show the docstring of the struct, which is more intuitive
-      than hovering over `BigDecimal` to see the docstring of the struct.
-
-- [x] (PR #127, #128, #131) Make all default constructor "safe", which means
-      that the words are checked and normalized to ensure that there are no zero
-      words and that the number is in a valid state. This will help prevent bugs
-      and ensure that all `BigUInt` instances are in a consistent state. Also
-      allow users to create "unsafe" `BigUInt` instances if they want to, but
-      there must be a key-word only argument, e.g., `raw_words`.
-
-- [x] (#31) The `exp()` function performs slower than Python's counterpart in
-      specific cases. Detailed investigation reveals the bottleneck stems from
-      multiplication operations between decimals with significant fractional
-      components. These operations currently rely on UInt256 arithmetic, which
-      introduces performance overhead. Optimization of the `multiply()` function
-      is required to address these performance bottlenecks, particularly for
-      high-precision decimal multiplication with many digits after the decimal
-      point. Internally, also use `Decimal` instead of `BigDecimal` or `BDec` to
-      be consistent.
-
-- [x] Implement different methods for augmented arithmetic assignments to
-      improve memory-efficiency and performance.
-
-- [x] Implement a method `remove_leading_zeros` for `BigUInt`, which removes the
-      zero words from the most significant end of the number.
-
-- [x] Use debug mode to check for uninitialized `BigUInt` before all arithmetic
-      operations. This will help ensure that there are no uninitialized
-      `BigUInt`.
-
-## Roadmap for Decimo
-
-- [x] Re-implement some methods of `BigUInt` to improve the performance, since
-      it is the building block of `BigDecimal` and `BigInt10`.
-- [x] Refine the methods of `BigDecimal` to improve the performance.
-- [x] Implement the big **binary** integer type (`BigInt`) using base-2^32
-      internal representation. The new `BigInt` (alias `BInt`) replaces the
-      previous base-10^9 implementation (now `BigInt10`) and delivers
-      significantly improved performance.

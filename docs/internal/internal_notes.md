@@ -20,11 +20,11 @@ Newton reciprocal division (T-D6) is worth about 115 ms; the rest has to come
 from a cheaper NTT butterfly (precomputed twiddles, radix-4). `pi()` runs its
 Chudnovsky binary splitting on `BigInt`, so it does get the NTT.
 
-**2. Beat CPython's `decimal` on small numbers.** Natively we are close --
-add, subtract, multiply and round all beat `decimal`, divide and parse do not.
-Through the Python binding we are 2-4x *behind* on small operands, because the
-binding costs ~110 ns on top of a ~40 ns operation. See "The Python binding is
-the dominant cost".
+**2. Beat CPython's `decimal` on small numbers. Met (20260827).** Natively
+every operation but divide and parse wins at 9 digits, and both of those are
+within 1.3x. Through the Python binding, division is the one operator still
+outside 1.2x. The sections below that quote a 2-4x binding penalty are the
+record of how it got there, not the current position.
 
 ### What the shape of the results is (updated 20260826)
 
@@ -55,21 +55,7 @@ Two losses that are not about small-operand overhead and are worth chasing:
 - **`divide` at 10^6 digits is 1.26x slower** and at 1 000 digits 1.87x. This
   is the Newton reciprocal work (T-D6) that has not been done.
 
-### The older summary
-
-Consistent across every comparison: **weak on per-operation overhead, strong
-on algorithms at scale.** Small operands lose to libmpdec on all six basic
-operations; at 1000 digits we beat it on sqrt (4.1x), exp (11.6x), ln (2.0x)
-and power (3.4x), and on multiply from 100 to 10 000 digits.
-
-Two exceptions worth knowing:
-
-- **Multiply reverses at 100 000 digits** (1.5x slower). Not a regression --
-  libmpdec changes algorithm there and we do not. See "Multiply loses at
-  100 000 digits because we never leave Toom-3".
-- **Divide loses nearly everywhere**, only winning at 10 000 digits.
-
-### The Python binding is the dominant cost
+### The Python binding used to be the dominant cost (superseded 20260827)
 
 `decimal.Decimal` *is* `_decimal.Decimal`; there is no extra Python layer. And
 `PyDecObject` embeds the coefficient inline (`sizeof` grows 120 -> 208 bytes
@@ -94,7 +80,7 @@ real.** It only dominates on small operands. Of the ~110 ns, about 18 ns is
 that the binding exposes `.mul()` rather than `__mul__` — measured on CPython's
 own Decimal, a method call costs 18.1 ns more than an operator.
 
-### Multiply loses at 100 000 digits because we never leave Toom-3
+### `BigUInt` used to stop at Toom-3, and it cost 3.7x at 100 000 digits (closed 20260826)
 
 The measured exponent per decade says it plainly:
 
@@ -111,9 +97,10 @@ between 10 000 and 100 000 digits. Below the switch our Toom-3 beats their
 Karatsuba, above it their n log n beats our n^1.465, and the gap widens from
 there.
 
-The fix is known and the evidence is direct: our NTT lives in `bigint/` and is
-reachable only from base-2^32 multiplication. `BigUInt` is base-10^9 and stops
-at Toom-3 (`CUTOFF_TOOM3 = 768` words, nothing above). The *same* 100 000-digit
+The fix was known and the evidence was direct: the NTT lived in `bigint/` and
+was reachable only from binary multiplication, while `BigUInt` stopped at
+Toom-3. `biguint/ntt.mojo` closed it on 20260826, sharing the field arithmetic
+and the transforms and differing only in the packing. The *same* 100 000-digit
 product costs **1.14 ms through `BigInt`** and **4.19 ms through `BigDecimal`**
 — 3.7x, identical numbers. And 1.14 ms would beat libmpdec's 2.72 ms by 2.4x.
 
@@ -292,7 +279,7 @@ decimal digits and mpmath's `pi_fixed` does not:
 | 50 000  | 47.9     | 61.5     |
 | 100 000 | 148      | 189      |
 
-Note that "pure-Python mpmath" still multiplies and divides in C: what the
+"Pure-Python mpmath" still multiplies and divides in C: what the
 backend switch turns off is gmpy2, not CPython's own Karatsuba `int`. Only the
 orchestration is Python.
 
@@ -387,54 +374,6 @@ measure an exponent of 1.24; the difference is entirely the constant, which is
 why every pi record uses Chudnovsky and not AGM.
 
 ## Addition and subtraction
-
-### Blocking is what makes the vector pass win (20260826)
-
-The word kernels were a carry-select chain: compute both answers for a word,
-one for carry-in 0 and one for carry-in 1, and let the incoming carry pick.
-That keeps the loop-carried chain down to a select, and it beat the obvious
-add-compare-branch shape. It also beat an earlier two-pass shape — add the
-words in vectors with no carries, then normalise the whole result — which is
-why the header comment said one pass was better than two.
-
-One pass is *not* better than two. What was wrong with the old two-pass version
-was that it ran each pass over the whole operand, so the words went to memory
-and came back. Run the same two passes **a block at a time** and the carry walk
-reads what the vector pass has just written, still in L1. Interleaved, same
-process, same buffers:
-
-| words | add        | subtract   |
-| ----- | ---------- | ---------- |
-| 2-4   | 0.92-1.00x | 0.93-1.00x |
-| 8     | 1.61x      | 1.34x      |
-| 32    | 1.87x      | 1.70x      |
-| 112   | 2.09x      | 1.94x      |
-| 1000  | 2.10x      | 2.18x      |
-
-The block is 64 words and the generate flags live in a stack buffer, so there
-is no allocation. Below one vector's worth of words the old chain still wins,
-so it stays as the short path — and as the reference implementation the new one
-is checked against.
-
-Two facts make the carry walk a single pass rather than a cascade. A word that
-generated a carry came out at `BASE - 2` or below, so it cannot generate a
-second one when it takes the carry beneath it; only a word sitting at exactly
-`BASE - 1` can, and that word did not generate. The subtraction side is the
-mirror image: a word that borrowed came out at 1 or above, and only a word left
-at zero can borrow again.
-
-At 1000 digits this moved `BigDecimal`:
-
-| operation | before | after | libmpdec |
-| --------- | ------ | ----- | -------- |
-| add       | 108 ns | 85 ns | 111 ns   |
-| subtract  | 107 ns | 94 ns | 82 ns    |
-
-So add crosses over from losing to winning. Subtract does not, and the reason
-is not the kernel — the two kernels time the same. `subtract` is `raises` where
-`add` is not, and it re-derives an ordering that `BigDecimal.subtract` has
-already established. Multiply is unchanged and divide gains about 3%: at
-1000 digits neither spends much of its time in these loops.
 
 ### The 1000-digit deficit was never the loop
 
@@ -545,40 +484,6 @@ short-divisor gain actually came from (9-digit divide 168 ns -> 131 ns).
 The same tuple limitation was costing a copy at every level of both
 Burnikel-Ziegler recursions, base-10^9 and base-2^32. Worth ~3% each.
 
-### Burnikel-Ziegler padding has to survive every halving
-
-Found while making the above change, and worth recording separately because it
-had nothing to do with `pi()`: `BigInt` division was losing its asymptotics on
-about half of all operand sizes.
-
-`_bz_two_by_one_slices()` bails out to schoolbook Knuth D when the block size
-`n` is odd. That is correct - Knuth D gives the right answer at any size - so
-nothing failed; it just meant the recursion could stop one step in. `n` was
-rounded up only to even, and evenness does not survive halving. A 20 762-word
-divisor is even, its half is 10 381, and the very first recursive step
-therefore ran a 10 381-word schoolbook division. Measured on 100 000-digit
-operands: 81 ms, against 26 ms for the same operands one power of two smaller,
-where the halving happened to stay even further down.
-
-The fix is to pad to `n = j * 2^k`, with `2^k` the smallest power of two that
-brings `j` down to the cutoff. Halving then stays even until it reaches `j`,
-which is small enough that Knuth D is the right answer. That took the same
-division to 18 ms.
-
-`BigUInt` had the opposite version of the same problem. It padded to
-`2^k * cutoff`, which always halves cleanly but rounds a 5 556-word divisor up
-to 8 192 - both operands carry nearly 50% dead words through every level.
-Deriving `j` from the divisor instead pads it to 5 632, and division is 20%
-faster from 10 000 digits up.
-
-Two lessons. First, a performance bug that hides behind a correct fallback path
-produces no test failure and no exception; the only symptom is a timing curve
-with a step in it, which is why the division benchmark now sweeps sizes rather
-than checking one. Second, the padding rule and the recursion's base case are
-one decision, not two - the base case's condition (`n` odd) is what determines
-what the padding has to guarantee, and they were written far enough apart in
-the file to be changed independently.
-
 ### GMP's own division and base-conversion ratios, as a target
 
 Measured at 104 200 words (10^6 digits), against a same-size multiply:
@@ -594,35 +499,6 @@ its Newton-reciprocal machinery, so 2.7x is the realistic floor for T-D6 — not
 the ~2.1x the textbook operation count suggests. And our raw multiply is
 24.0 ms against GMP's 5.83, a 4.1x gap that is pure constant factor: same
 algorithm class, thirty years of tuning apart.
-
-### A Newton schedule reaches `seed * 2^n`, and nothing caps it
-
-Two bugs in `sqrt_via_reciprocal_iteration()` and `isqrt_via_reciprocal_seed()`,
-caught while measuring the above, both of which returned the full requested
-digit count with a wrong tail and raised nothing.
-
-The iteration `r <- r * (3 - x * r^2) / 2` doubles the correct digits. It does
-*not* get pulled up to whatever precision the arithmetic inside it runs at, so
-`n` iterations return `seed * 2^n` digits and no more. Both functions built
-their schedule by halving from the target down to 20, which credits the seed
-with 20 digits; and both seeded with `x ** -0.5`, which goes through `exp`/`log`
-and is accurate to about ten digits for some inputs while being exact for
-others. Instrumented, `sqrt_via_reciprocal_iteration(1234.5678, 1500)`:
-
-| iteration precision | 34 | 58 | 106 | 201 | 392 | 773 | 1535 |
-| ------------------- | -- | -- | --- | --- | --- | --- | ---- |
-| correct digits      | 19 | 38 | 78  | 156 | 312 | 624 | 1248 |
-
-Clean doubling from a ten-digit seed, never once reaching the precision the
-iteration was nominally running at. The schedule now halves down to
-`_F64_SEED_DIGITS`, and the seed is `1 / sqrt(x)`, which is correctly rounded.
-
-The reason this survived so long is that both dials have to be wrong *and* the
-schedule has to land badly. `sqrt_via_reciprocal_iteration(10005, 1000)` and
-`(10005, 2000)` were correct in full; `(10005, 1500)` was correct in full but
-`(1234.5678, 1500)` was not, because `1.0005 ** -0.5` happens to be exact and
-`12.345678 ** -0.5` is not. Any spot check picks a survivor. The test sweeps
-inputs against precisions for that reason.
 
 ### Where the last of a 1000-digit division goes (20260826)
 
@@ -686,18 +562,6 @@ two for ~23 ns where one of ours costs ~33 — so per allocation it is roughly
 three times cheaper. Inline storage would therefore put us clearly ahead
 rather than merely level.
 
-### A missing `return` in `subtract_inplace()`
-
-Found while checking a Copilot review comment on PR #271 (which was itself
-right: the B-Z block guard tested `len(a.words)` where `t` counts blocks of
-`normalized_a`).
-
-```mojo
-if comparison_result == 0:
-    x.words.resize(unsafe_uninit_length=1)
-    x.words[0] = UInt32(0)   # Result is zero
-elif comparison_result < 0:
-    raise OverflowError(...)
 # ... and then falls straight through into the general subtraction
 ```
 
@@ -987,8 +851,9 @@ in one session, three pairs:
 - **Raising the inline capacity past ten.** Twelve and sixteen are the same as
   ten on division and slightly worse on everything else.
 
-What is left in division is not bookkeeping. It is that a 28-digit value is
-four base-10^9 words here and two base-10^19 words in libmpdec.
+What was left in division was that a 28-digit value took four base-10^9 words
+here and two in libmpdec. Base 10^18 (20260828) closed that; the words match
+now.
 
 ## Traps worth remembering
 
@@ -1033,15 +898,17 @@ The exclusivity checker rejects `kernel(p, p, ...)` when the destination
 parameter requires `Origin[mut=True]`: `list.unsafe_ptr()` carries
 `origin_of(list.words)`, and two arguments tied to the same origin, one of them
 mutable, is an aliasing error even when the aliasing is the whole point of an
-in-place loop. `list._data` yields the same address without the origin, so
-`kernel(x._data, x._data, ...)` compiles. Used by every in-place add/sub kernel
-in both types.
+in-place loop. `decimo.utility.alias_as_immutable_source()` re-hands the
+mutable pointer as its own read source, which is what every in-place add and
+subtract kernel uses. It asserts that the overlap is total; do not reach for it
+to alias two different buffers.
 
-Reading a `UInt32` array two words at a time needs
+Reading a 32-bit word array two words at a time needs
 `ptr.unsafe_bitcast[UInt64]().unsafe_load[alignment=4](i)`. Without the
 explicit alignment the load claims 8-byte alignment, which a slice starting at
 an odd word offset does not have — and the Karatsuba and Toom-3 helpers pass
-exactly those.
+exactly those. Both number types store 64-bit words now, so this applies only
+to code that still pairs 32-bit ones.
 
 ### A stray `.mojoc` silently wins over `-I src`
 
@@ -1063,9 +930,8 @@ believing any benchmark that says a change did nothing.
 element at index 0 comes back as zero while every later index reads correctly.
 It cost an afternoon in the NTT twiddle table, where the first entry of the
 root-of-unity table is `w^0 = 1` and silently became `0`. `unsafe_ptr()` is
-right in every case; `_data` is only for the one situation described above,
-where an origin would trip the exclusivity checker, and those lists are all
-built with `resize(unsafe_uninit_length=...)`.
+right in every case, and it is now the only one used: `_data` has no callers
+left in `src/decimo`.
 
 ### Two size points are not a size sweep
 
@@ -1085,61 +951,6 @@ The dispatch has four branches and the three-or-four-word one behaves
 differently for each residue of the dividend length mod 4. Two samples cannot
 cross that. `test_biguint_divide_across_the_dispatch_boundaries_against_python`
 now walks divisor 1-40 digits against dividend up to 90.
-
-## `Rational` addition and unbalanced `gcd`
-
-Two changes that came out of the question above, and that stand on their own.
-
-`Rational.__add__` used to form `(a.n*b.d + b.n*a.d) / (a.d*b.d)` and then
-normalize, which pays a gcd over two full-width operands to throw away a
-denominator it just built. `__mul__` and `__truediv__` already cross-cancelled;
-addition now does the equivalent, via Algorithm A of Knuth 4.5.1: gcd the two
-denominators first, and both branches return a fraction already in lowest
-terms.
-
-That change on its own was *slower*, which is the interesting part. Knuth's
-form replaces one gcd of two big operands with `gcd(big denominator, small
-denominator)` - and Stein's binary algorithm is close to its worst case on
-exactly that shape. It makes about one bit of progress per iteration and every
-iteration costs a subtraction over the larger operand, so gcd(18 000-bit,
-20-bit) spends 18 000 full-width subtractions to reach what a single remainder
-reaches at once. Euclidean steps have the opposite profile: worth their
-division cost only while they shrink the operand by a large factor.
-
-So `gcd()` now takes Euclidean steps while the bit-length gap exceeds two
-words, and hands over to Stein as soon as it does not:
-
-| `gcd(a, b)`             | Stein only | Euclid-balanced |
-| ----------------------- | ---------- | --------------- |
-| 1 795 bits, 20 bits     | 0.049 ms   | 0.002 ms        |
-| 5 981 bits, 20 bits     | 0.534 ms   | 0.002 ms        |
-| 17 940 bits, 20 bits    | 4.850 ms   | 0.003 ms        |
-| 5 980 bits, 5 980 bits  | 0.805 ms   | 0.818 ms        |
-
-The balanced row is the control: the loop never fires there, and the difference
-is noise. With that in place the `Rational` change pays - summing `1/k^2` to
-1 200 terms goes from 123 ms to 3.1 ms, a 39x improvement.
-
-One trap worth recording, caught in review of PR #270. `bit_length()` returns a
-signed `Int`, so for `gcd(small, big)` the gap is simply negative, the
-balancing loop never runs, and the call drops straight back into the quadratic
-binary loop. Both argument orders still return the right answer, so no
-correctness test can see it:
-
-| `gcd(a, b)`            | forward  | reversed, unordered | reversed, ordered |
-| ---------------------- | -------- | ------------------- | ----------------- |
-| 1 329 bits, 41 bits    | 0.000 ms | 0.014 ms            | 0.000 ms          |
-| 5 980 bits, 7 bits     | 0.001 ms | 0.268 ms            | 0.001 ms          |
-| 17 939 bits, 7 bits    | 0.002 ms | 2.367 ms            | 0.003 ms          |
-
-`gcd()` therefore orders its operands by magnitude before measuring the gap.
-Each Euclidean step preserves that order on its own - the new pair is
-`(v, u mod v)`, and a remainder is smaller than what it was taken modulo - so
-one comparison at the top is enough.
-
-The balanced case is still Stein's, which is quadratic. A subquadratic gcd
-(Lehmer, or half-gcd) would be the next step, and would also change the
-full-gcd-per-combine trade-off recorded above.
 
 ## Test suite timing
 
@@ -1211,26 +1022,3 @@ GitHub Actions and every other provider set. There, each suite is already its
 own job on a runner with few cores to share, and when the only evidence of a
 crash is a log file, a transcript that stops at the offending line is worth
 more than one that has to be read backwards.
-
-### Building long decimal literals in tests
-
-Several cross-check tests build a long decimal literal out of random 18-digit
-groups. A review flagged the `result += String(...)` loop as quadratic. It is
-not: `String._iadd` grows through `_realloc_mutable`, which allocates
-`max(requested, capacity * 2)`, so appending is amortised O(1).
-
-Measured, best of 20, including the `random_ui64` draws (which dominate):
-
-| Groups    | `+=`      | `+=` after reserving | `List` + `join` |
-| --------- | --------- | -------------------- | --------------- |
-| 789       | 0.044 ms  | 0.047 ms             | 0.041 ms        |
-| 12 345    | 0.699 ms  | 0.743 ms             | 0.649 ms        |
-| 123 450   | 7.052 ms  | 7.496 ms             | 6.644 ms        |
-| 1 234 500 | 71.450 ms | 75.658 ms            | 67.633 ms       |
-
-Linear across three orders of magnitude, and the three forms are within 10% of
-each other. Reserving up front is *slower* than the naive loop here, because it
-touches the full 18-bytes-per-group upper bound while the doubling strategy
-never allocates more than twice what is used. The tests use
-`decimo.tests.random_decimal_string()` (the `join` form) for the marginal win
-and, mainly, so the intent lives in one place.

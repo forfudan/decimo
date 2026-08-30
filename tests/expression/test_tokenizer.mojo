@@ -190,7 +190,7 @@ def test_invalid_character() raises:
 
 
 def test_empty_string() raises:
-    """Empty string should raise an error since Phase 3."""
+    """An empty string raises rather than tokenizing to nothing."""
     var raised = False
     try:
         _ = tokenize("")
@@ -316,7 +316,7 @@ def test_comma_in_function() raises:
 
 
 # ===----------------------------------------------------------------------=== #
-# Tests: unary minus with new tokens (Phase 2)
+# Tests: unary minus before functions, constants and parentheses
 # ===----------------------------------------------------------------------=== #
 
 

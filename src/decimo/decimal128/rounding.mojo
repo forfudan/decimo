@@ -14,8 +14,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 #
-# Implements basic object methods for the Decimal128 type
-# which supports correctly-rounded, fixed-point arithmetic.
+# Implements rounding and quantization for the Decimal128 type
 #
 # ===----------------------------------------------------------------------=== #
 #
@@ -26,7 +25,7 @@
 # ===----------------------------------------------------------------------=== #
 
 """
-Implements functions for mathematical operations on Decimal128 objects.
+Implements rounding and quantization for Decimal128 objects.
 """
 
 from std import testing
@@ -138,7 +137,7 @@ def round(
     # Scale down the coefficient of the number to the desired scale and round
     # 情况三：如果ndigits小于当前标度, 将係數縮小, 然后捨去
     #
-    # If `ndigits` is negative, the result need to be scaled up again.
+    # If `ndigits` is negative, the result needs to be scaled up again.
     #
     # Examples:
     # round(Decimal128("987.654321"), 3) -> Decimal128("987.654")

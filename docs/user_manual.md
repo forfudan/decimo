@@ -1,7 +1,6 @@
 # Decimo — User Manual <!-- omit from toc -->
 
-> Comprehensive guide to using the Decimo arbitrary-precision arithmetic library
-> in Mojo.
+> A guide to the Decimo arbitrary-precision arithmetic library for Mojo.
 
 All code examples below assume that you have imported the prelude at the top of
 your Mojo file:
@@ -82,7 +81,7 @@ def main() raises:
     # Arbitrary-precision integer
     var a = BInt("12345678901234567890")
     var b = BInt(42)
-    print(a * b)          # 518518513851851851180
+    print(a * b)          # 518518513851851851380
     print(BInt(2) ** 256)  # 2^256, all 78 digits
 
     # Arbitrary-precision decimal
@@ -204,7 +203,7 @@ as `BInt(raw_words=Magnitude(words^), sign=False)`.
 | `-a`       | Negation                       |
 | `+a`       | Unary plus (returns copy)      |
 | `abs(a)`   | Absolute value                 |
-| `bool(a)`  | `True` if nonzero              |
+| `if a:`    | Nonzero test (`Bool(a)` is not supported) |
 | `~a`       | Bitwise NOT (two's complement) |
 
 #### In-place operators <!-- omit from toc -->
@@ -217,9 +216,9 @@ var a = BInt("12345678901234567890")
 var b = BInt(12345)
 print(a + b)   # 12345678901234580235
 print(a - b)   # 12345678901234555545
-print(a * b)   # 152415787814108380241050
-print(a // b)  # 999650944609516
-print(a % b)   # 9615
+print(a * b)   # 152407406035740740602050
+print(a // b)  # 1000054994024671
+print(a % b)   # 4395
 print(BInt(2) ** 10)  # 1024
 ```
 
@@ -393,7 +392,7 @@ print(mod_inverse(BInt(3), BInt(7)))      # 5
 
 | Method                             | Example output      |
 | ---------------------------------- | ------------------- |
-| `str(x)` / `String(x)`             | `"12345"`           |
+| `String(x)`                        | `"12345"`           |
 | `repr(x)`                          | `'BigInt("12345")'` |
 | `x.to_string_with_separators("_")` | `"1_234_567"`       |
 | `x.to_string_with_separators(",")` | `"1,234,567"`       |
@@ -406,8 +405,8 @@ print(mod_inverse(BInt(3), BInt(7)))      # 5
 
 | Method            | Description                                       |
 | ----------------- | ------------------------------------------------- |
-| `int(x)`          | Convert to `Int` (raises if exceeds 64-bit range) |
-| `float(x)`        | Convert to `Float64` (may lose precision)         |
+| `Int(x)`          | Convert to `Int` (raises if exceeds 64-bit range) |
+| `Float64(x)`      | Convert to `Float64` (may lose precision)         |
 | `x.to_biguint()`  | Convert the magnitude to `BigUInt` (base-10^18)   |
 
 ```mojo
@@ -453,9 +452,9 @@ print(x.is_positive())      # True
 | `BInt.zero()`          | 0     |
 | `BInt.one()`           | 1     |
 | `BInt.negative_one()`  | −1    |
-| `BigInt.ZERO`          | 0     |
-| `BigInt.ONE`           | 1     |
-| `BigInt.BITS_PER_WORD` | 32    |
+| `BigInt.ZERO`          | 0 (comptime; use `materialize[BigInt.ZERO]()` at runtime) |
+| `BigInt.ONE`           | 1 (comptime; use `materialize[BigInt.ONE]()` at runtime)  |
+| `BigInt.BITS_PER_WORD` | 64    |
 
 ## Part II — Decimal
 
@@ -574,8 +573,11 @@ Works with all integral SIMD types.
 
 #### From floating-point — `from_float_scalar()` <!-- omit from toc -->
 
-When constructing a `Decimal` from a floating-point number, the number is first
-converted to its string representation and then parsed as a `Decimal`.
+`from_float_scalar()` reads the bits of the float and returns the value the
+float actually holds, not the literal that was written to produce it:
+`from_float_scalar(0.1)` is
+0.1000000000000000055511151231257827021181583404541015625, which is what
+`decimal.Decimal(0.1)` gives as well.
 
 Note that not all decimal numbers can be represented exactly as binary
 floating-point. You may lose precision without awareness.
@@ -636,21 +638,23 @@ must ensure the data is valid.
 | Constructor                                               | Description                            |
 | --------------------------------------------------------- | -------------------------------------- |
 | `Decimal(coefficient: BigUInt, scale: Int, sign: Bool)`   | From raw components                    |
-| `Decimal.from_raw_components(words, scale=0, sign=False)` | From raw `List[UInt32]` words (unsafe) |
-| `Decimal.from_raw_components(word, scale=0, sign=False)`  | From a single `UInt32` word (unsafe)   |
+| `Decimal.from_raw_components(words, scale=0, sign=False)` | From raw `List[BigUInt.Word]` words (unsafe) |
+| `Decimal.from_raw_components(word, scale=0, sign=False)`  | From a single `BigUInt.Word` (unsafe)       |
 
 ### Decimal Arithmetic
 
-Addition, subtraction, and multiplication are always **exact** (no precision
-loss).
+The operators `+`, `-` and `*` round their result HALF_EVEN to 28 significant
+digits, as Python's `decimal` default context does. Use `.add()`, `.subtract()`
+and `.multiply()` for the exact, unrounded result; see
+[How Precision Works](#how-precision-works).
 
-| Expression    | Description                           | Exact?               |
+| Expression    | Description                           | Result               |
 | ------------- | ------------------------------------- | -------------------- |
-| `a + b`       | Addition                              | ✓ Always exact       |
-| `a - b`       | Subtraction                           | ✓ Always exact       |
-| `a * b`       | Multiplication                        | ✓ Always exact       |
+| `a + b`       | Addition                              | Rounded to 28 digits |
+| `a - b`       | Subtraction                           | Rounded to 28 digits |
+| `a * b`       | Multiplication                        | Rounded to 28 digits |
 | `a / b`       | True division (default precision=28)  | Rounded to precision |
-| `a // b`      | Truncated division (toward zero)      | ✓ Integer part       |
+| `a // b`      | Truncated division (toward zero)      | Integer part         |
 | `a % b`       | Truncated modulo                      | —                    |
 | `a ** b`      | Exponentiation (default precision=28) | Rounded to precision |
 | `divmod(a,b)` | Returns `(a // b, a % b)`             | —                    |
@@ -730,7 +734,7 @@ var x = Decimal("123.456")
 print(x.round(2))                       # 123.46 (ROUND_HALF_EVEN)
 print(x.round(1))                       # 123.5
 print(x.round(0))                       # 123
-print(x.round(-1))                      # 12E+1
+print(x.round(-1))                      # 1.2E+2
 print(x.round(2, ROUND_DOWN))           # 123.45
 print(x.round(2, ROUND_UP))            # 123.46
 ```
@@ -766,10 +770,9 @@ print(Decimal("1.2345000").normalize())  # 1.2345
 #### `__ceil__`, `__floor__`, `__trunc__` <!-- omit from toc -->
 
 ```mojo
-from math import ceil, floor, trunc
-print(ceil(Decimal("1.1")))    # 2
-print(floor(Decimal("1.9")))   # 1
-print(trunc(Decimal("-1.9")))  # -1
+print(Decimal("1.1").__ceil__())    # 2
+print(Decimal("1.9").__floor__())   # 1
+print(Decimal("-1.9").__trunc__())  # -1
 ```
 
 ### RoundingMode
@@ -811,7 +814,7 @@ print(Decimal("2").sqrt(precision=100))  # 100 significant digits
 #### Cube root <!-- omit from toc -->
 
 ```mojo
-print(Decimal("27").cbrt())  # 3
+print(Decimal("27").cbrt())  # 3.000000000000000000000000000
 print(Decimal("2").cbrt(precision=50))
 ```
 
@@ -860,7 +863,7 @@ var r2 = x2.ln(100, cache)  # Reuses cached ln(2) and ln(1.25)
 
 ```mojo
 print(Decimal("100").log(Decimal("10")))  # 2
-print(Decimal("8").log(Decimal("2")))     # 3
+print(Decimal("8").log(Decimal("2")))     # 3.000000000000000000000000000
 ```
 
 #### Base-10 logarithm <!-- omit from toc -->
@@ -927,7 +930,7 @@ The `to_string()` method provides flexible formatting:
 var x = Decimal("123456789.123456789")
 print(x)                                          # 123456789.123456789
 print(x.to_string(scientific=True))               # 1.23456789123456789E+8
-print(x.to_string(engineering=True))              # 123.456789123456789E+6
+print(x.to_string(engineering=True, force_exponent=True))  # 123.456789123456789E+6
 print(x.to_string(delimiter="_"))                 # 123_456_789.123_456_789
 print(x.to_string(line_width=20))                 # Multi-line output
 print(x.to_string(force_plain=True))              # Suppress auto-scientific notation
@@ -937,7 +940,7 @@ Default output follows CPython's `Decimal.__str__()` rules: plain notation when
 feasible, scientific notation when there would be more than 6 leading zeros
 or the exponent is positive.
 
-`Dec128` does not switch: it is bounded to 28 digits and a scale of 0 to 28,
+`Dec128` does not switch: it is bounded to 29 digits and a scale of 0 to 28,
 so plain notation is never longer than 30 characters, and it always prints
 plain (the .NET `System.Decimal` rule). The two types therefore print the
 same value differently below `1E-6` and at a positive exponent:
@@ -978,7 +981,7 @@ print(repr(Decimal("123.45")))  # BigDecimal("123.45")
 #### Decimal numeric conversions <!-- omit from toc -->
 
 ```mojo
-var n = Int(Decimal("123.99"))     # 123 (truncates)
+var n = Int(Decimal("123.99").truncate())  # 123; Int() alone raises on a fraction
 var f = Float64(Decimal("3.14"))   # 3.14 (may lose precision)
 ```
 
@@ -999,7 +1002,8 @@ var f = Float64(Decimal("3.14"))   # 3.14 (may lose precision)
 #### `as_tuple()` — Python-compatible decomposition <!-- omit from toc -->
 
 ```mojo
-var sign, digits, exp = Decimal("7.25").as_tuple()
+var parts = Decimal("7.25").as_tuple()
+# parts[0] = False (sign), parts[1] = [7, 2, 5] (digits), parts[2] = -2 (exponent)
 # sign=False, digits=[7, 2, 5], exp=-2
 ```
 
@@ -1254,7 +1258,7 @@ print(evaluate_rpn(rpn^, precision=50))         # 7
 ```mojo
 # Recommended: import everything commonly needed
 from decimo.prelude import *
-# Brings in: BigInt, BInt, Decimal, BigDecimal, BDec, Dec128,
+# Brings in: BigInt, BInt, Decimal, BigDecimal, BDec, Decimal128, Dec128,
 #   RoundingMode, ROUND_DOWN, ROUND_HALF_UP, ROUND_HALF_EVEN,
 #   ROUND_UP, ROUND_CEILING, ROUND_FLOOR
 
@@ -1324,7 +1328,7 @@ returns `nan`, as it does for every other function outside its domain.
 | `Parsable`         | `T.from_string(text)` in generic code |
 | `Rootable`         | `x.sqrt()` in generic code            |
 | `Representable`    | `repr(x)`                             |
-| `Stringable`       | `String(x)`, `str(x)`                 |
+| `Stringable`       | `String(x)`                           |
 | `Writable`         | `print(x)`, writer protocol           |
 
 #### Decimal <!-- omit from toc -->
@@ -1342,7 +1346,7 @@ returns `nan`, as it does for every other function outside its domain.
 | `Rootable`         | `x.sqrt()` in generic code            |
 | `Representable`    | `repr(x)`                             |
 | `Roundable`        | `round(x)`, `round(x, ndigits)`       |
-| `Stringable`       | `String(x)`, `str(x)`                 |
+| `Stringable`       | `String(x)`                           |
 | `Writable`         | `print(x)`, writer protocol           |
 
 ### Appendix C — Complete API Tables

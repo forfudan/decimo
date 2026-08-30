@@ -16,10 +16,10 @@
 
 """Provides a readline-style line editor with history support.
 
-Provides arrow-key navigation, Emacs-style shortcuts (Ctrl+A/E/K/U/W/L),
+Provides arrow-key navigation, Emacs-style shortcuts (Ctrl+A/B/E/F/K/U/W/L),
 backspace, delete, and up/down history navigation for interactive REPLs.
 
-Usage::
+Usage:
 
     from limo import LineEditor
 
@@ -76,7 +76,7 @@ struct LineEditor(Movable):
     Enters raw terminal mode during `read_line()` and restores the
     original terminal settings on return (even on error).  Supports:
 
-    - Left/Right arrow cursor movement
+    - Left/Right arrow cursor movement (and Ctrl+B/Ctrl+F)
     - Home/End (and Ctrl+A/Ctrl+E)
     - Backspace and Delete
     - Ctrl+K (kill to end), Ctrl+U (kill to start), Ctrl+W (kill word)
@@ -107,7 +107,7 @@ struct LineEditor(Movable):
 
         Returns the edited line on Enter, or None on EOF (Ctrl-D on
         empty line).  Automatically adds non-empty lines to history.
-        Non-empty duplicate of the most recent history entry is skipped.
+        A line identical to the most recent history entry is not added again.
 
         The prompt is written to stderr so that stdout remains clean
         for piping results.
@@ -121,7 +121,7 @@ struct LineEditor(Movable):
         # Enter raw mode — restored after the loop exits
         var original_settings = enable_raw_mode()
 
-        # Result accumulator — set when we're ready to return
+        # Result accumulator — set when the loop is ready to return
         var result: Optional[String] = None
         var done = False
 
@@ -322,7 +322,7 @@ struct LineEditor(Movable):
         # 1. Carriage return
         move_to_column_zero()
 
-        # 2. Prompt (to stderr — but in raw mode we write directly)
+        # 2. Prompt (written to stderr with a direct write(2) call)
         write_stderr("\x1b[1m\x1b[92m" + prompt + "\x1b[0m")
 
         # 3. Buffer content
@@ -379,8 +379,8 @@ struct LineEditor(Movable):
             else:
                 return _ACT_IGNORE
 
-        # Alt+key sequences (ESC followed by a printable char)
-        # Phase 2: Alt+B, Alt+F, Alt+D, Alt+Backspace
+        # Alt+key sequences (ESC followed by a printable char) are not
+        # handled yet: Alt+B, Alt+F, Alt+D and Alt+Backspace are ignored.
         return _ACT_IGNORE
 
     def _add_history(mut self, line: String):

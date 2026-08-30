@@ -176,9 +176,9 @@ def write_prompt(prompt: String):
 def format_about(use_color: Bool = True) -> String:
     """Returns a formatted about/info string.
 
-    Used by both ``--about`` (CLI, printed to stdout) and ``:about``
-    (REPL, printed to stderr).  When *use_color* is False the output
-    contains no ANSI escape codes, suitable for piped/redirected output.
+    Used by both `--about` (CLI, printed to stdout) and `:about`
+    (REPL, printed to stderr).  When `use_color` is False the output
+    contains no ANSI escape codes, suitable for piped or redirected output.
 
     Args:
         use_color: Whether to include ANSI colour codes.  Defaults to True.

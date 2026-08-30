@@ -80,7 +80,7 @@ import decimo.bigdecimal.comparison as bigdecimal_comparison
 
 
 struct _State(Defaultable, Movable):
-    """The two things every operation needs, in one cell.
+    """Everything an operation needs, in one cell.
 
     Reaching a `_Global` costs about 14 ns, because the runtime hashes its
     name. Two of them per operation was 28 ns of a 139 ns addition, so both
@@ -260,7 +260,7 @@ def module_pi() raises -> PythonObject:
 
     `decimal` has no pi at all -- its documentation gives a recipe to write
     one -- so this is decimo's own. The Mojo side computes it by Chudnovsky
-    with binary splitting, which is why a thousand digits costs milliseconds.
+    with binary splitting, so a thousand digits takes tens of microseconds.
     """
     ref cell = state()[]
     return new_decimal(cell, BigDecimal.pi(cell.precision))
@@ -320,10 +320,10 @@ def round_to_context(var value: BigDecimal) raises -> BigDecimal:
 
 # `decimal` applies the context mode to `**` and ignores it for `sqrt`, `exp`,
 # `ln` and `log10`, which are always half to even; decimo follows it in both.
-# Where a mode is applied it is now decided rather than approximated: the
-# library computes wider, checks whether the whole interval its own error
-# allows rounds one way, and widens again if it does not. Nothing here adds a
-# fixed number of guard digits any more.
+# Where a mode is applied it is decided rather than approximated: the library
+# computes wider, checks whether the whole interval its own error allows
+# rounds one way, and widens again if it does not. No fixed number of guard
+# digits is added anywhere.
 
 
 # ===----------------------------------------------------------------------=== #
@@ -351,7 +351,7 @@ def decimal128_py_init(
     Usage from Python:
         Decimal128("3.14")
         Decimal128(42)
-        Decimal128(3.14)        # read exactly, as `decimal.Decimal` does
+        Decimal128(3.14)        # 3.14, not the exact binary value
         Decimal128(Decimal("3.14"))
         Decimal128()            # zero
     """
@@ -3282,7 +3282,7 @@ def method_sqrt(
 def method_exp(
     py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
 ) abi("C") -> PyObjectPtr:
-    """`exp(context=None)`, to the context precision."""
+    """`exp(context=None, rounding=None)`, to the context precision."""
     return _method_to_precision[_do_exp, "exp() is undefined for this value"](
         py_self, py_args, py_kwargs
     )
@@ -3291,7 +3291,7 @@ def method_exp(
 def method_ln(
     py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
 ) abi("C") -> PyObjectPtr:
-    """`ln(context=None)`, to the context precision."""
+    """`ln(context=None, rounding=None)`, to the context precision."""
     return _method_to_precision[_do_ln, "ln() needs a positive value"](
         py_self, py_args, py_kwargs
     )
@@ -3300,7 +3300,7 @@ def method_ln(
 def method_log10(
     py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
 ) abi("C") -> PyObjectPtr:
-    """`log10(context=None)`, to the context precision."""
+    """`log10(context=None, rounding=None)`, to the context precision."""
     return _method_to_precision[_do_log10, "log10() needs a positive value"](
         py_self, py_args, py_kwargs
     )

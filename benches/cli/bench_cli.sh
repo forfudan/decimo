@@ -85,8 +85,8 @@ elapsed_ms() {
 
 # Extract a canonical comparison key from a numeric string:
 # adjusted base-10 exponent + ALL significant digits.
-# This ensures values that differ only by exponent (e.g. 1E+10 vs 1E+11)
-# are correctly detected as a MISMATCH, and full-precision agreement is verified.
+# Values that differ only by exponent (1E+10 against 1E+11) then compare as
+# a MISMATCH, and agreement is checked at full precision.
 sig_digits() {
     local s="${1#-}"            # strip sign; check_match handles sign separately
     local explicit_exp=0

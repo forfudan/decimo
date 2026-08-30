@@ -66,14 +66,7 @@ from std import os
 
 
 struct TestCase(Copyable, Movable, Writable):
-    """Structure to hold test case data.
-
-    Attributes:
-        a: The first input value as numeric string.
-        b: The second input value as numeric string.
-        expected: The expected output value as numeric string.
-        description: A description of the test case.
-    """
+    """Structure to hold test case data."""
 
     var a: String
     """The first input operand as a numeric string."""

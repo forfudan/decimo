@@ -70,7 +70,7 @@ def sqrt(x: BigUInt) -> BigUInt:
         if x.is_zero():
             debug_assert[assert_mode="none"](
                 len(x.words) == 1,
-                "biguint.exponential.sqrt(): 0 hould be a single word",
+                "biguint.exponential.sqrt(): 0 should be a single word",
             )
             return BigUInt.zero()
 
@@ -108,13 +108,6 @@ def sqrt(x: BigUInt) -> BigUInt:
             if guess == prev_guess + BigUInt.one():
                 return prev_guess^
 
-        # # Ensure we return the floor of the square root
-        # # Check if guess^2 > x, if so, decrement guess
-        # var guess_squared = guess * guess
-        # if guess_squared > x:
-        #     # guess must be larger than 1
-        #     decimo.biguint.arithmetics.subtract_by_word_inplace(guess, 1)
-
         return guess^
 
 
@@ -127,12 +120,11 @@ def isqrt(x: BigUInt) -> BigUInt:
     Returns:
         The integer square root of x as a BigUInt.
     """
-    # Use the sqrt function for the actual calculation
     return sqrt(x)
 
 
 def sqrt_initial_guess(x: BigUInt) -> BigUInt:
-    """Calculates a intial guess for the square root of a BigUInt.
+    """Calculates an initial guess for the square root of a BigUInt.
 
     Notes:
 
@@ -148,12 +140,12 @@ def sqrt_initial_guess(x: BigUInt) -> BigUInt:
     """
 
     # Yuhao ZHU:
-    # If a number consists of mutliple limbs, we can remove the last 2n limbs,
+    # If a number consists of multiple limbs, we can remove the last 2n limbs,
     # take the sqrt of the remaining limbs, and then append 2n zeros.
-    # The less libms are removed, the more accurate the initial guess is.
+    # The fewer limbs are removed, the more accurate the initial guess is.
     # So I will try to make the remaining limbs as large as possible so as to
     # make use of the built-in sqrt function.
-    # For exmaple, a number with 8 limbs, <a7a6a5a4a3a2a1a0>:
+    # For example, a number with 8 limbs, <a7a6a5a4a3a2a1a0>:
     # (1) Remove the last 6 limbs
     # (2) Convert <a7a6> to UInt64, take the sqrt, transfer to UInt32
     # (3) Append 3 zero limbs to the result

@@ -48,7 +48,8 @@ Best of five, on an Apple M-series laptop:
 **decimo is faster once the numbers are large, and 20-25% behind on small
 ones.** The small-number gap is not the arithmetic: measured against
 libmpdec directly, without an interpreter in the way, decimo is 2-4× faster
-at 9 digits and faster at every operation at 1000 digits. What is left is the
+at 9 digits on add, subtract, multiply and round, and faster at every
+operation at 1000 digits. What is left is the
 cost of the Python call itself -- building the result object and converting
 the operands -- which CPython's `decimal` has had thirty years to shave. See
 [the benchmarks](https://github.com/forfudan/decimo/blob/main/docs/benchmarks.md).
@@ -125,21 +126,12 @@ Decimal128(2).sqrt()                                # and exp, ln, log10, sin, c
 Decimal128("1").to_ieee754()                        # the IEEE 754 interchange bytes
 ```
 
-It arithmetics, compares, hashes and rounds like `Decimal`, mixes with `int`,
+It does arithmetic, compares, hashes and rounds like `Decimal`, mixes with `int`,
 `float` and `str` on either side of an operator, and converts both ways
 (`Decimal128(x).to_decimal()`, `Decimal(x)`). Its results never allocate, so
-it is quicker where the values are money and the shape of them is known:
-
-| | `Decimal128` | `Decimal` | `decimal` |
-| --- | ---: | ---: | ---: |
-| `a + b` | **46 ns** | 67 | 73 |
-| `a * b` | **57 ns** | 92 | 85 |
-| `a / b` | **114 ns** | 225 | 133 |
-| from text | **116 ns** | 160 | 136 |
-| `str(x)` | 118 ns | 437 | **67** |
-| an invoice | **633 ns** | 713 | 705 |
-
-`str` is the one that is slower.
+it is quicker than `Decimal` on every operation where the values are money and
+the shape of them is known, and quicker than `decimal` on all of them but
+`str()`.
 
 A mixed expression settles in the wider type: `Decimal128(x) + Decimal(y)` is
 a `Decimal`, either way round, because widening loses nothing.
@@ -208,4 +200,4 @@ pip install python/dist/*.whl
 - **Changelog**:
   <https://github.com/forfudan/decimo/blob/main/docs/changelog.md>
 - **Mojo library docs**:
-  <https://github.com/forfudan/decimo/blob/main/docs/api.md>
+  <https://github.com/forfudan/decimo/blob/main/docs/user_manual.md>

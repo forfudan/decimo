@@ -14,4 +14,4 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-"""Sub-package for base-10^9 big decimal type."""
+"""Sub-package for the base-10^18 big decimal type."""

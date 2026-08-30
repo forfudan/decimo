@@ -70,7 +70,7 @@ struct Decimal128(
 
     Internal Representation:
 
-    Each decimal128 uses a 128-bit on memory, where:
+    Each Decimal128 occupies 128 bits in memory, where:
     - 96 bits for the coefficient (significand), which is 96-bit unsigned
     integers stored as three 32 bit integer (little-endian).
         - Bit 0 to 31 are stored in the low field: least significant bits.
@@ -387,7 +387,7 @@ struct Decimal128(
             low: Least significant 32 bits of coefficient.
             mid: Middle 32 bits of coefficient.
             high: Most significant 32 bits of coefficient.
-            scale: Number of decimal128 places (0-28).
+            scale: Number of decimal places (0-28).
             sign: True if the number is negative.
 
         Returns:
@@ -498,7 +498,7 @@ struct Decimal128(
 
         Args:
             value: The integer value to convert to Decimal128.
-            scale: The number of decimal128 places (0-28).
+            scale: The number of decimal places (0-28).
 
         Returns:
             The Decimal128 representation of the integer.
@@ -636,7 +636,7 @@ struct Decimal128(
 
         Args:
             value: The UInt128 value to convert to Decimal128.
-            scale: The number of decimal128 places (0-28).
+            scale: The number of decimal places (0-28).
             sign: True if the number is negative.
 
         Returns:
@@ -695,12 +695,8 @@ struct Decimal128(
         if value_bytes_len == 0:
             return Decimal128.ZERO()
 
-        # NOTE: A previous version did a separate full-input pass to reject
-        # non-ASCII bytes. That pre-scan is now folded into the main loop:
-        # any unrecognised byte ends up in the catch-all `else` branch,
-        # which raises ValueError. Non-ASCII bytes (`code > 127`) are
-        # special-cased there to include the offending byte value and the
-        # original input string in the error message.
+        # Non-ASCII bytes are rejected by the catch-all `else` branch of the
+        # main loop, which reports the offending byte and the input string.
 
         # Yuhao's notes:
         # We scan each char in the string input.
@@ -710,7 +706,6 @@ struct Decimal128(
         var decimal_point_read = False
         var exponent_notation_read = False
         var exponent_sign_read = False
-        # var exponent_start = False
         var unexpected_end_char = False
 
         var mantissa_sign: Bool = False  # True if negative
@@ -853,11 +848,6 @@ struct Decimal128(
                 function="Decimal128.from_string()",
             )
 
-        # print("DEBUG: coef = ", coef)
-        # print("DEBUG: scale = ", scale)
-        # print("DEBUG: raw_exponent = ", raw_exponent)
-        # print("DEBUG: exponent_sign = ", exponent_sign)
-
         if raw_exponent != 0:
             # If exponent is negative, increase the scale
             if exponent_sign:
@@ -885,9 +875,6 @@ struct Decimal128(
                         DType.uint128
                     ](exponent_delta)
                     scale = 0
-
-        # print("DEBUG: coef = ", coef)
-        # print("DEBUG: scale = ", scale)
 
         # TODO: The following part can be written into a function
         # because it is used in many cases
@@ -1095,8 +1082,6 @@ struct Decimal128(
         )
         var biased_exponent: Int = Int((bits >> 52) & 0x7FF)
 
-        # print("DEBUG: biased_exponent = ", biased_exponent)
-
         # CASE: Denormalized number that is very close to zero
         if biased_exponent == 0:
             return Self(0, 0, 0, UInt32(Decimal128.MAX_SCALE), is_negative)
@@ -1112,12 +1097,10 @@ struct Decimal128(
 
         # Get unbias exponent
         var binary_exp: Int = biased_exponent - 1023
-        # print("DEBUG: binary_exp = ", binary_exp)
 
-        # Convert binary exponent to approximate decimal128 exponent
+        # Convert binary exponent to approximate decimal exponent
         # log10(2^exp) = exp * log10(2)
         var decimal_exp: Int = Int(Float64(binary_exp) * 0.301029995663981)
-        # print("DEBUG: decimal_exp = ", decimal_exp)
 
         # Fine-tune decimal128 exponent
         var power_check: Float64 = abs_value / Float64(10) ** decimal_exp
@@ -1126,12 +1109,8 @@ struct Decimal128(
         elif power_check < 1.0:
             decimal_exp -= 1
 
-        # print("DEBUG: decimal_exp = ", decimal_exp)
-
         var coefficient: UInt128 = UInt128(abs_value)
         var remainder = abs(abs_value - Float64(coefficient))
-        # print("DEBUG: integer_part = ", coefficient)
-        # print("DEBUG: remainder = ", remainder)
 
         var scale = 0
         var temp_coef: UInt128
@@ -1149,9 +1128,6 @@ struct Decimal128(
                 num_trailing_zeros += 1
             else:
                 num_trailing_zeros = 0
-            # print("DEBUG: coefficient = ", coefficient)
-            # print("DEBUG: scale = ", scale)
-            # print("DEBUG: remainder = ", remainder)
 
         coefficient = coefficient // decimal128_utility.power_of_10_unsafe[
             DType.uint128
@@ -1215,7 +1191,7 @@ struct Decimal128(
 
     def write_to[W: Writer](self, mut writer: W):
         """Writes the Decimal128 to a writer.
-        This implement the `write` method of the `Writer` trait.
+        This implements the `write_to` method of the `Writable` trait.
 
         Parameters:
             W: A type conforming to the `Writer` interface.
@@ -1664,7 +1640,7 @@ struct Decimal128(
 
     def as_tuple(self) -> Tuple[Bool, UInt128, Int]:
         """Returns a tuple representation of the number.
-        Tuple(sign, signficand, exponent).
+        Tuple(sign, coefficient, scale).
 
         Returns:
             A tuple representation of the number.
@@ -1723,7 +1699,7 @@ struct Decimal128(
     # ===------------------------------------------------------------------=== #
     # Basic binary arithmetic operation dunders
     # These methods are called to implement the binary arithmetic operations
-    # (+, -, *, @, /, //, %, divmod(), pow(), **, <<, >>, &, ^, |)
+    # (+, -, *, /, //, %, divmod(), pow(), **)
     # ===------------------------------------------------------------------=== #
 
     @always_inline
@@ -1880,7 +1856,7 @@ struct Decimal128(
     # Basic binary arithmetic operation dunders with reflected operands
     # These methods are called to implement the binary arithmetic operations
     # with reflected operands
-    # (+, -, *, @, /, //, %, divmod(), pow(), **, <<, >>, &, ^, |)
+    # (+, -, *, /, //, %)
     # ===------------------------------------------------------------------=== #
 
     @always_inline
@@ -1980,7 +1956,7 @@ struct Decimal128(
     # Basic binary augmented arithmetic assignments dunders
     # These methods are called to implement the binary augmented arithmetic
     # assignments
-    # (+=, -=, *=, @=, /=, //=, %=, **=, <<=, >>=, &=, ^=, |=)
+    # (+=, -=, *=, /=, //=, %=)
     # ===------------------------------------------------------------------=== #
 
     @always_inline
@@ -2195,8 +2171,8 @@ struct Decimal128(
 
     @always_inline
     def __round__(self, ndigits: Int) -> Self:
-        """Rounds this Decimal128 to the specified number of decimal128 places.
-        If `ndigits` is not given, rounds to 0 decimal128 places.
+        """Rounds this Decimal128 to the specified number of decimal places.
+        If `ndigits` is not given, rounds to 0 decimal places.
         If rounding causes overflow, returns the value itself.
 
         raises:
@@ -2273,7 +2249,7 @@ struct Decimal128(
         ndigits: Int = 0,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """Rounds this Decimal128 to the specified number of decimal128 places.
+        """Rounds this Decimal128 to the specified number of decimal places.
         Compared to `__round__`, this method:
         (1) Allows specifying the rounding mode.
         (2) Raises an error if the operation would result in overflow.
@@ -2998,7 +2974,7 @@ struct Decimal128(
     @always_inline
     def is_signed(self) -> Bool:
         """Returns True iff the sign bit is set. Alias of `is_negative()`,
-        provided for parity with Python `Decimal.is_signed()`. Note that a
+        provided for parity with Python `Decimal.is_signed()`. A
         scaled negative zero (e.g. `Decimal128("-0.00")`) is *signed* even
         though it compares equal to positive zero.
 
@@ -3033,17 +3009,17 @@ struct Decimal128(
     @always_inline
     def coefficient(self) -> UInt128:
         """Returns the unscaled integer coefficient as an UInt128 value.
-        This is the absolute value of the decimal128 digits without considering
+        This is the absolute value of the decimal digits without considering
         the scale.
         The value of the coefficient is: `high * 2**64 + mid * 2**32 + low`.
 
         Returns:
-            Int128: The coefficient as a unsigned 128-bit signed integer.
+            The coefficient as an unsigned 128-bit integer.
         """
 
         # Fast implementation using bitcast
         # Use bitcast to directly convert the three 32-bit parts to a UInt128
-        # UInt128 must little-endian on memory
+        # UInt128 must be little-endian in memory
         return decimal128_utility.bitcast[DType.uint128](self)
 
         # Alternative implementation using arithmetic
@@ -3055,12 +3031,12 @@ struct Decimal128(
         # )
 
     def extend_precision(self, var precision_diff: Int) raises -> Self:
-        """Returns a number with additional decimal128 places (trailing zeros).
+        """Returns a number with additional decimal places (trailing zeros).
         This multiplies the coefficient by 10^precision_diff and increases
         the scale accordingly, preserving the numeric value.
 
         Args:
-            precision_diff: The number of decimal128 places to add.
+            precision_diff: The number of decimal places to add.
 
         Returns:
             A new Decimal128 with increased precision.
@@ -3099,8 +3075,6 @@ struct Decimal128(
         # Update the scale in the flags
         var new_scale = self.scale() + precision_diff
 
-        # TODO: Check if multiplication by 10^level would cause overflow
-        # If yes, then raise an error
         if new_scale > Decimal128.MAX_SCALE + 1:
             # Cannot scale beyond max precision, limit the scaling
             precision_diff = Decimal128.MAX_SCALE + 1 - self.scale()
@@ -3113,8 +3087,6 @@ struct Decimal128(
             | UInt128(self.low)
         )
 
-        # TODO: Check if multiplication by 10^level would cause overflow
-        # If yes, then raise an error
         var max_coefficient = ~UInt128(
             0
         ) / decimal128_utility.power_of_10_unsafe[DType.uint128](
@@ -3194,7 +3166,7 @@ struct Decimal128(
     def is_integer(self) -> Bool:
         """Determines whether this Decimal128 value represents an integer.
         A Decimal128 represents an integer when it has no fractional part
-        (i.e., all digits after the decimal128 point are zero).
+        (i.e., all digits after the decimal point are zero).
 
         Returns:
             True if this Decimal128 represents an integer value, False otherwise.
@@ -3311,7 +3283,7 @@ struct Decimal128(
 
     @always_inline
     def scale(self) -> Int:
-        """Returns the scale (number of decimal128 places) of this Decimal128.
+        """Returns the scale (number of decimal places) of this Decimal128.
 
         Returns:
             The scale as an `Int`.

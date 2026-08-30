@@ -6,7 +6,7 @@
 > 子曰：工欲善其事，必先利其器。
 
 This document is the single source of truth for the arbitrary-precision
-**signed integer** (`decimo.BigInt`, base-2^32) performance & correctness
+**signed integer** (`decimo.BigInt`, base-2^64 since 2026-08-27) performance & correctness
 effort. It supersedes `bigint2_benchmark_analysis.md` (2026-02-20), keeping
 only the still-relevant historical work items; the full predecessor is
 recoverable from git history.
@@ -14,11 +14,11 @@ recoverable from git history.
 ## 1. Cross-Language Snapshot
 
 Scope: **arbitrary-precision** signed integers. `BigInt10` (the legacy
-base-10^9 integer) and `BigUInt` are out of scope here.
+base-10^18 integer) and `BigUInt` are out of scope here.
 
 | Library           | Limb | Mul algorithm tier         | Div algorithm  | Sqrt                    |
 | ----------------- | ---- | -------------------------- | -------------- | ----------------------- |
-| decimo BigInt     | 2^32 | School → Kara → Toom-3     | Knuth-D → B-Z  | Newton → prec-doubling  |
+| decimo BigInt     | 2^64 | School → Kara → Toom → NTT | Knuth-D → B-Z  | Newton → prec-doubling  |
 | Py `int` (C)      | 2^30 | School → Kara              | Knuth (school) | prec-doubling (`isqrt`) |
 | Rust `num-bigint` | 2^64 | School → Kara → Toom-3     | Knuth (school) | Newton                  |
 | Java `BigInteger` | 2^32 | School → Kara → Toom-3     | Knuth → B-Z    | Newton                  |
@@ -28,7 +28,7 @@ base-10^9 integer) and `BigUInt` are out of scope here.
 `+ - * // % **`, `<< >>`, `& | ^ ~`, `sqrt` (integer), `from_string`,
 `to_string`, plus `gcd`/`extended_gcd`/`lcm`/`mod_pow`/`mod_inverse`
 (`number_theory.mojo`). No API gaps versus Python `int` or Rust
-`num-bigint`; the open work is purely performance (but the most difficult :D)
+`num-bigint`; the open work is purely performance, which is the harder half.
 
 ## 2. Baseline (authoritative, 2026-06-19)
 
@@ -216,7 +216,7 @@ hardware before trying again.
 ### multiply — T-M5 (NTT) done (2026-08-25)
 
 **T-M6 — the transform is now shared with `BigUInt`. DONE (2026-08-26).**
-`biguint/ntt.mojo` multiplies base-10^9 magnitudes with the same field
+`biguint/ntt.mojo` multiplies base-10^18 magnitudes with the same field
 arithmetic, twiddle tables and transforms. Those work on residues and do not
 depend on the base, so they lost their leading underscore and are imported
 rather than duplicated; only the packing differs, because a base-billion
@@ -404,7 +404,7 @@ allocation-bound. Pre-size the result buffer with
 `resize(unsafe_uninit_length=…)` (O(1) capacity plus memset) instead of
 letting it grow.
 
-### A bigger bet: base-2^64 limbs (unproven, not the first lever)
+### Base-2^64 limbs (done 2026-08-27, #286; the survey that led to it)
 
 num-bigint stores base-2^64 limbs on 64-bit targets; decimo stores
 base-2^32. For the same number num-bigint holds half the limbs, so its

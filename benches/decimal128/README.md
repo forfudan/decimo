@@ -12,9 +12,8 @@ implementations on the *same* test cases, for both **result equivalence** and
 | `vbnet/`  | .NET 10 `System.Decimal` (VB) | enabled |
 
 The previous suite compared `decimo.Decimal128` to Python's `decimal.Decimal`,
-which is architecturally different (arbitrary-precision BigDecimal under the
-hood). Comparing against fixed-width 128-bit decimals (rust_decimal,
-System.Decimal) is the apples-to-apples reference.
+which is arbitrary precision, so it answers a different question and is
+compared in `benches/bigdecimal/` instead.
 
 ## Layout
 
@@ -26,6 +25,10 @@ benches/decimal128/
 │   ├── multiply.toml
 │   ├── divide.toml
 │   ├── comparison.toml
+│   ├── exp.toml
+│   ├── ln.toml
+│   ├── log10.toml
+│   ├── fma.toml
 │   ├── from_string.toml
 │   └── to_string.toml
 ├── mojo/
@@ -89,7 +92,7 @@ The aggregator joins on `(op, case_name)` to produce the comparison report.
 
 # Re-run aggregator only (uses latest log per (lang, op))
 python3 ./aggregate.py --logs-dir logs --reports-dir reports \
-    --ops add subtract multiply divide comparison from_string to_string
+    --ops add subtract multiply divide comparison from_string to_string ln log10 exp
 ```
 
 The aggregator emits `reports/dec128_report_<timestamp>.md` with a system &

@@ -191,7 +191,7 @@ def test_fit_to_max_cascade_rounding() raises:
 
 
 def test_round_coefficient() raises:
-    """Tests for round_coefficient (the optimized replacement)."""
+    """Half-even rounding by a given number of removed digits."""
 
     # Remove 0 digits → unchanged
     assert_equal(

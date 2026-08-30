@@ -15,7 +15,7 @@
 # ===----------------------------------------------------------------------=== #
 
 """
-Implements functions for mathematical operations on Decimal objects.
+Implements rounding and quantization for BigDecimal objects.
 """
 
 from decimo.biguint.biguint import BigUInt

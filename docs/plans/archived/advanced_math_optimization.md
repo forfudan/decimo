@@ -18,9 +18,17 @@ MPFR at 100 and 1 000 digits, and 1.5× behind at 10 000 — not 500 000×. At
 10 000 digits `sqrt`, `exp`, `ln` and `power` run 12× to 27× faster than
 libmpdec.
 
-Trig is the part that has not been revisited; items 1, 2, 3, 5 and 6 below are
-still open and still worth doing. The accuracy was always good (full precision
-digits match WolframAlpha); this document is about performance.
+> [!NOTE]
+> **This document can be closed (reviewed 2026-08-30).** Items 2 and 5 landed
+> in #299 and #300: `BUFFER_DIGITS` is 9, `reduction_digits()` sizes the
+> argument reduction to the argument and `budget_for()` measures what it cost.
+> Item 8 was settled the other way on 2026-08-28 — `BigInt` went to base 2^64
+> and `BigUInt` to base 10^18. Items 1, 3 and 6 are still open; they are
+> tracked in `docs/internal/todo.md`. Kept as the record of what was measured
+> and why.
+
+The accuracy was always good (full precision digits match WolframAlpha); this
+document is about performance.
 
 > Measurements live elsewhere. This document holds intent — what to do about
 > trig and pi, and why. What was actually measured is in
@@ -135,9 +143,9 @@ measured rather than assumed — see the BigDecimal plan, H#26.
 
 ### 8. Base Representation
 
-**Current:** Decimo uses base 10^9 with UInt32 words. GMP uses base 2^64 with
-native 64-bit words, which is inherently more efficient for binary hardware
-(full use of 64-bit multiply/divide, double the digits per word).
+**Current:** `BigUInt` uses base 10^18 with UInt64 words; `BigInt` is base
+2^64. GMP uses base 2^64 throughout, which for a purely binary type is the
+same thing decimo now does.
 
 **Decision:** Changing to base 2^64 would fundamentally alter the library
 architecture (input/output conversion, all arithmetic routines, decimal scaling

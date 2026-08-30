@@ -31,14 +31,14 @@ This plan proposes a full public type.
 
 ## 2. Design Decision: BigInt as the Underlying Integer Type
 
-| Criterion               | BigInt (base 2^32)                             | BigInt10 (base 10^9)     | BigUInt (base 10^9, unsigned) |
+| Criterion               | BigInt (base 2^64)                             | BigInt10 (base 10^18)    | BigUInt (base 10^18, unsigned) |
 | ----------------------- | ---------------------------------------------- | ------------------------ | ----------------------------- |
 | GCD / LCM support       | ✓ (binary Stein's algorithm)                   | ✗                        | ✗                             |
 | Extended GCD            | ✓                                              | ✗                        | ✗                             |
 | Bitwise operations      | ✓                                              | ✗                        | ✗                             |
 | Signed                  | ✓                                              | ✓                        | ✗                             |
 | Performance vs Python   | Add 4.30×, Mul 3.98×, Power 11.17×             | Slower                   | N/A                           |
-| Forward-looking status  | Primary integer type (alias `BInt`, `Integer`) | Legacy, being phased out | Internal for `BigDecimal`     |
+| Forward-looking status  | Primary integer type (alias `BInt`)            | Legacy, being phased out | Internal for `BigDecimal`     |
 | Arithmetic completeness | +, -, *, //, %, **, mod_exp, mod_inv, sqrt     | +, -, *, //, %           | +, -, * (internal)            |
 
 **Recommendation**: Use `BigInt` for both numerator and denominator.
@@ -503,17 +503,17 @@ is the correct choice for our `Rational` struct.
 
 ### 8.2 Underlying Integer Type: BigInt vs. BigInt10
 
-**Research question:** Should numerator and denominator use `BigInt` (base 2^32
-binary) or `BigInt10` (base 10^9 decimal)?
+**Research question:** Should numerator and denominator use `BigInt` (binary)
+or `BigInt10` (decimal)?
 
-| Criterion         | BigInt (base 2^32)                         | BigInt10 (base 10^9)     |
+| Criterion         | BigInt (base 2^64)                         | BigInt10 (base 10^18)    |
 | ----------------- | ------------------------------------------ | ------------------------ |
 | GCD support       | Binary Stein's algorithm (fast)            | Not implemented          |
 | LCM support       | Yes                                        | No                       |
 | Extended GCD      | Yes                                        | No                       |
 | Arithmetic speed  | 4.3× faster add, 4.0× faster mul vs Python | Slower                   |
 | Bitwise ops       | Full support                               | No                       |
-| Project direction | Primary type, aliased as `BInt`, `Integer` | Legacy, being phased out |
+| Project direction | Primary type, aliased as `BInt`            | Legacy, being phased out |
 
 All four reference libraries use a binary representation for the underlying
 integer:

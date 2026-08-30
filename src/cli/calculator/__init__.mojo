@@ -15,10 +15,10 @@
 # ===----------------------------------------------------------------------=== #
 
 """
-Calculator engine for the Decimo CLI.
+Front end of the Decimo CLI calculator.
 
-Provides tokenizer, parser (shunting-yard), and evaluator (RPN) for
-arbitrary-precision arithmetic expressions.
+Provides the REPL, settings, terminal output and I/O helpers, and
+re-exports the expression evaluator from `decimo.expression`.
 
 ```mojo
 from calculator import evaluate

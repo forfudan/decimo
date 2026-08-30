@@ -21,5 +21,5 @@
 # Underscores can be used in the module name if it improves readability.
 # Python packages should also have short, all-lowercase names, although the use
 # of underscores is discouraged.
-# Becuase the readability of `bigint10` is already good, I use `bigint10`
-# instead of `big_int` for this sub-package and the module.
+# Because the readability of `bigint10` is already good, I use `bigint10`
+# instead of `big_int10` for this sub-package and the module.

@@ -130,12 +130,12 @@ struct Settings(Copyable, Movable, Writable):
 
 
 # ===----------------------------------------------------------------------=== #
-# Settings parser (core of 4.7)
+# Settings parser
 # ===----------------------------------------------------------------------=== #
 
 
 def parse_settings(input: String, mut settings: Settings) raises:
-    """Parses a one-line settings string and apply changes to `settings`.
+    """Parses a one-line settings string and applies the changes to `settings`.
 
     Splits by whitespace, scans tokens left-to-right. Each token is
     matched against known option/flag names (case-insensitive). Options
@@ -144,7 +144,7 @@ def parse_settings(input: String, mut settings: Settings) raises:
 
     Raises on unknown tokens or missing values.
 
-    This is enlightened by and is a simplified version of ArgMojo's parser.
+    This is a simplified version of ArgMojo's parser.
 
     Args:
         input: The settings string (without the leading `:`).
@@ -164,10 +164,9 @@ def parse_settings(input: String, mut settings: Settings) raises:
         var token = to_lower(tokens[i])
 
         # == Options (consume next token as value) ========================
-        # TODO: Maybe the improvement is marginal but can try:
-        # Re-order the checks so that more common options are checked first
-        # (e.g. precision > scientific/engineering > rounding mode > delimiter),
-        # to reduce average checks per token.
+        # TODO: Order the checks by frequency (precision, scientific and
+        # engineering, rounding mode, delimiter) to cut the average number
+        # of comparisons per token.
         if _is_precision_name(token):
             i += 1
             if i >= n:
@@ -412,11 +411,11 @@ def _parse_rounding_mode(s: String) raises -> RoundingMode:
     """Parse a rounding-mode name (case-insensitive, hyphen/underscore OK).
 
     Accepted names:
-        half-even  half_even  he  (default)
+        half-even  half_even  he  b  bankers  (default)
         half-up    half_up    hu
         half-down  half_down  hd
-        up  u
-        down
+        up    u
+        down  d
         ceiling  ceil  c
         floor  f
     """

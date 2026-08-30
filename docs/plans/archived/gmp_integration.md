@@ -2,16 +2,36 @@
 
 > **Date**: 2026-04-02  
 > **Target**: decimo >=0.9.0  
-> **Mojo Version**: >=0.26.2  
+> **Mojo Version**: >=1.0.0  
 > **GMP Version**: 6.3.0 (tested on macOS ARM64, Apple Silicon)
 >
 > 子曰工欲善其事必先利其器  
 > The mechanic, who wishes to do his work well, must first sharpen his tools --
 > Confucius
 
+> [!NOTE]
+> **This document can be closed (reviewed 2026-08-30).** Phase 1 shipped:
+> `BigFloat`, the MPFR wrapper under `src/decimo/gmp/`, the `buildgmp` and
+> `testfloat` tasks, and `tests/bigfloat/`.
+>
+> Phase 2, the `gmp=True` sugar on `BigDecimal`, was never started and is no
+> longer wanted. The gap it was meant to close has gone: `pi()` is faster than
+> mpmath+GMP and than MPFR at 100 and 1 000 digits, and at 10 000 digits
+> `sqrt`, `exp`, `ln` and `power` run 12 to 27 times faster than libmpdec.
+> Routing those through MPFR would cost a string conversion each way to buy
+> nothing. Revisit only if a measurement says otherwise.
+>
+> Phases 3 and 4 are open but unranked. The build commands, the platform
+> differences and the FFI traps that this document used to be the reference for
+> now live in `src/decimo/gmp/README.md`, beside the code.
+>
+> Kept as the record of why `BigFloat` exists and how the prototype was
+> measured. The performance tables are April 2026 and predate both base
+> changes.
+
 ## 1. Executive Summary
 
-### Verdict: FEASIBLE ✓
+### Verdict: feasible
 
 GMP integration into Decimo is technically feasible — I've proven it with a
 working prototype. A C wrapper (`gmp_wrapper.c`) bridges Mojo's FFI layer to
@@ -83,7 +103,8 @@ A complete prototype was built in `temp/gmp/`:
 
 ### 2.3 Why C Wrapper Is Required
 
-Direct FFI to GMP doesn't work in Mojo 0.26.2 because:
+Direct FFI to GMP did not work in Mojo 0.26.2, when this was written,
+because:
 
 1. **No `DLHandle`**: Mojo 0.26.2 does not expose `DLHandle` for runtime dynamic
    library loading. Only `external_call` (compile-time/link-time binding) is
@@ -143,8 +164,8 @@ var result = external_call["gmpw_add", NoneType, Int32, Int32, Int32](a, b, c)
 ```txt
 Decimo Types                Internal Representation
 ─────────────               ───────────────────────
-BigInt (BInt)        →      List[UInt32] in base-2^32 + Bool sign
-BigUInt              →      List[UInt32] in base-10^9 (unsigned)
+BigInt (BInt)        →      WordList[UInt64] in base-2^64 + Bool sign
+BigUInt              →      WordList[UInt64] in base-10^18 (unsigned)
 BigDecimal (Decimal) →      BigUInt coefficient + Int scale + Bool sign
 Dec128               →      3×UInt32 coefficient + UInt32 flags (fixed 128-bit)
 ```
@@ -453,7 +474,7 @@ All benchmarks run side-by-side in a single binary (`bench_gmp_vs_decimo.mojo`),
 compiled with `mojo build -O3` (release mode, assertions off). Each data point
 is the **median of 7 runs**. Platform: Apple M2, macOS, GMP 6.3.0, Mojo 0.26.2.
 
-### 5.1 BigInt (base-2³²) vs GMP `mpz`
+### 5.1 BigInt vs GMP `mpz` (measured 2026-04-02, when BigInt was base-2³²)
 
 These compare Decimo's `BigInt` (Karatsuba multiply, Burnikel-Ziegler divide)
 against GMP's `mpz_*` functions. Both operate in binary representation; no base
@@ -531,7 +552,7 @@ GMP is **4–7× faster** for GCD. GMP uses a sub-quadratic half-GCD algorithm
 (Lehmer/​Schönhage); Decimo currently uses the Euclidean algorithm. This is the
 smallest gap of all operations.
 
-### 5.2 BigDecimal (base-10⁹) vs GMP Integer Equivalents
+### 5.2 BigDecimal vs GMP integer equivalents (measured 2026-04-02, when BigUInt was base-10⁹)
 
 GMP has no native decimal type. To compare fairly, I benchmark GMP performing
 the **equivalent integer computation** that a GMP-backed BigDecimal would
@@ -702,8 +723,8 @@ These must remain native Mojo:
 
 ### 7.1 BigInt ↔ GMP (Efficient)
 
-BigInt uses base-2^32 `List[UInt32]` in little-endian order — basically the same
-thing as GMP's `mpz_t` but with 32-bit limbs instead of 64-bit.
+BigInt uses base-2^64 `WordList[UInt64]` in little-endian order, which is what
+GMP's `mpz_t` holds. The two representations are identical since #286.
 
 **Conversion approach**:
 
@@ -746,7 +767,7 @@ int  gmpw_export_u32_le(int handle, uint32_t* out_buf, int max_count);
 
 ### 7.2 BigUInt ↔ GMP (Expensive)
 
-BigUInt uses base-10^9 — a completely different number base from GMP's binary
+BigUInt uses base-10^18 — a different number base from GMP's binary
 format.
 
 **Conversion options**:
@@ -886,7 +907,7 @@ Decimo gets two arbitrary-precision types with different backends and semantics.
 
 |                    | **BigDecimal**                   | **BigFloat**                                       |
 | ------------------ | -------------------------------- | -------------------------------------------------- |
-| Internal base      | 10⁹ (decimal)                    | binary (MPFR `mpfr_t`)                             |
+| Internal base      | 10¹⁸ (decimal)                   | binary (MPFR `mpfr_t`)                             |
 | Python analogue    | `decimal.Decimal`                | `mpmath.mpf`                                       |
 | `sqrt(0.01)`       | `0.1` (exact)                    | `0.1000...0` (padded)                              |
 | Dependency         | None                             | MPFR required                                      |
@@ -928,7 +949,7 @@ struct BigFloat:
     var handle: Int32  # MPFR handle (via C wrapper handle pool)
 ```
 
-**BigFloat requires MPFR. No fallback.**
+BigFloat requires MPFR. There is no pure-Mojo fallback.
 
 I considered a pure-Mojo BigInt-based fallback (like mpmath's pure-Python mode),
 but:
@@ -942,8 +963,8 @@ but:
 - A half-working BigFloat (add/sub/mul work but sqrt/exp/ln don't) would be
   confusing
 
-So: BigFloat without MPFR is like numpy without its C core. Users without MPFR
-use BigDecimal. This is an honest, clean boundary.
+Users without MPFR use BigDecimal, which covers the same functions in pure
+Mojo.
 
 ### 9.4 Why MPFR, Not `mpz_t` with Manual Scale
 
@@ -1112,15 +1133,10 @@ How it would work:
 4. If MPFR unavailable (or `.collect(gmp=False)`): execute natively in
    BigDecimal
 
-This is the same pattern as:
+This is the deferred-evaluation pattern of Polars, Spark and C++ Eigen.
 
-- **Polars** — lazy DataFrames, `.collect()` triggers execution
-- **Spark** — query planning, transformations are lazy until action
-- **C++ Eigen** — expression templates, deferred evaluation until assignment
-- **TensorFlow 1.x** — computation graphs, `session.run()` triggers execution
-
-The key insight: users write BigDecimal code (familiar API), the engine figures
-out the fastest execution path. This goes beyond the roadmap below but is
+The caller writes BigDecimal code and the engine picks the execution path.
+This goes beyond the roadmap below but is
 architecturally clean because BigFloat and the MPFR wrapper already provide the
 fast backend.
 
@@ -1481,13 +1497,11 @@ pkg-config --exists gmp && pkg-config --cflags --libs gmp
 
 ## 13. Lessons from Other Libraries
 
-Before diving into the roadmap, I looked at how major open-source libraries
-integrate GMP/MPFR to see what I can learn from them.
+How four other libraries integrate GMP or MPFR, and what carries over.
 
 ### 13.1 mpmath (Python) — Backend Abstraction
 
-mpmath is *the* arbitrary-precision math library for Python (~1M+ monthly
-downloads).
+mpmath is the standard arbitrary-precision math library for Python.
 
 **How mpmath does it**:
 
@@ -1571,7 +1585,7 @@ arithmetic.
 
 **Takeaway**: The guard bits pattern confirms my approach of using
 `prec + 10` in MPFR calls. I should also add a precision cap for safety.
-The polynomial time guarantee is worth stealing for my iterative operations.
+The polynomial time guarantee is worth adopting for the iterative operations.
 
 ### 13.4 python-flint — Direct FLINT/Arb Bindings
 
@@ -1708,7 +1722,7 @@ each uses BigFloat (Phase 1), so this is just plumbing.
   `BigFloat.pi(P+10).to_bigdecimal(P)`. No Chudnovsky needed.
 - [ ] **2.5 Instance method wrappers** (Small, deps: 2.4)
   Update `self.sqrt()`, `self.exp()`, etc. to accept `gmp: Bool = False`.
-- [ ] **2.6 Comprehensive test suite** (Large, deps: 2.5)
+- [ ] **2.6 Test suite** (Large, deps: 2.5)
   For each function × {gmp=True, gmp=False}: verify agreement to requested
   precision. Edge cases: 0, negative, very large/small.
 - [ ] **2.7 Benchmark gmp=True vs gmp=False** (Medium, deps: 2.6)
@@ -1832,13 +1846,13 @@ const char* gmpw_version(void);
 ```mojo
 from std.ffi import external_call, c_int
 
-# ⚠️ SAFE pattern: pass length explicitly to avoid use-after-free (see Section 16.1)
+# Safe pattern: pass length explicitly to avoid use-after-free (see Section 16.1)
 def gmp_set_str(h: c_int, s: String):
     var slen = c_int(len(s))
     var ptr = Int(s.unsafe_ptr())
     _ = external_call["gmpw_set_str_n", c_int, c_int, Int, c_int](h, ptr, slen)
 
-# ❌ UNSAFE pattern: DO NOT USE — String may be freed before external_call executes
+# Unsafe pattern, do not use: the String may be freed before external_call runs
 # def gmp_set_str(h: c_int, s: String):
 #     _ = external_call["gmpw_set_str", c_int, c_int, Int](h, Int(s.unsafe_ptr()))
 
@@ -1866,9 +1880,7 @@ def gmp_add(r: c_int, a: c_int, b: c_int):
 
 ## 16. Lessons Learned from Prototype Development
 
-This section documents gotchas from the GMP prototype build-test cycle
-and how I fixed them. **Read this before starting implementation** — every item
-cost me real debugging time and will bite again if not handled.
+Problems found while building the GMP prototype, and their fixes.
 
 ### 16.1 CRITICAL: Mojo String Use-After-Free in FFI
 
@@ -1943,11 +1955,11 @@ flags, causing "undefined symbol" errors at runtime.
 GMP-linked code.
 
 ```bash
-# ✓ Correct
+# Correct
 pixi run mojo build -Xlinker -L... -Xlinker -lgmp_wrapper -o program program.mojo
 ./program
 
-# ✗ Wrong — linker flags silently ignored
+# Wrong: the linker flags are silently ignored
 pixi run mojo run -Xlinker -L... program.mojo
 ```
 
@@ -2026,7 +2038,7 @@ architecture:
 1. **BigFloat** — new first-class MPFR-backed binary float type. Like mpmath's
    `mpf` but faster. Every operation (sqrt, exp, ln, sin, cos, tan, π, divide)
    is a **single MPFR call**. Struct is one field (`handle: Int32`). Requires
-   MPFR — no fallback, no apologies. Users without MPFR use BigDecimal.
+   MPFR, with no fallback. Users without MPFR use BigDecimal.
 2. **BigDecimal `gmp=True`** — convenience sugar for one-off acceleration.
    Internally delegates to BigFloat. Backward-compatible: defaults to
    `gmp=False`, existing code unchanged. Guard digits handle binary↔decimal

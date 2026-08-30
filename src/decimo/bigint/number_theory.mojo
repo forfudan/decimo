@@ -48,7 +48,7 @@ def _count_trailing_zeros(words: Magnitude) -> Int:
     """Counts the number of trailing zero bits in a magnitude word list.
 
     Words are stored little-endian, so trailing zero bits correspond to
-    the least-significant bits of the first non-zero word, plus 32 for
+    the least-significant bits of the first non-zero word, plus 64 for
     every entirely-zero word that precedes it.
 
     Returns 0 for the zero value (trailing zeros undefined for zero).
