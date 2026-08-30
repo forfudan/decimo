@@ -30,9 +30,9 @@ not a claim.
 
 ## How fast is it?
 
-The same benchmark file run against both libraries -- `python/benchmarks/compare.py`
-in the repository, which imports one or the other and runs identical code.
-Best of five, on an Apple M-series laptop:
+The same benchmark file run against both libraries --
+`python/benchmarks/compare.py` in the repository, which imports one or the other
+and runs identical code. Best of five, on an Apple M-series laptop:
 
 | Program                         |    decimo |   decimal |                  |
 | ------------------------------- | --------: | --------: | ---------------- |
@@ -126,12 +126,11 @@ Decimal128(2).sqrt()                                # and exp, ln, log10, sin, c
 Decimal128("1").to_ieee754()                        # the IEEE 754 interchange bytes
 ```
 
-It does arithmetic, compares, hashes and rounds like `Decimal`, mixes with `int`,
-`float` and `str` on either side of an operator, and converts both ways
-(`Decimal128(x).to_decimal()`, `Decimal(x)`). Its results never allocate, so
-it is quicker than `Decimal` on every operation where the values are money and
-the shape of them is known, and quicker than `decimal` on all of them but
-`str()`.
+It does arithmetic, compares, hashes and rounds like `Decimal`, mixes with
+`int`, `float` and `str` on either side of an operator, and converts both ways
+(`Decimal128(x).to_decimal()`, `Decimal(x)`). Its results never allocate, so it
+is quicker than `Decimal` on every operation where the values are money and the
+shape of them is known, and quicker than `decimal` on all of them but `str()`.
 
 A mixed expression settles in the wider type: `Decimal128(x) + Decimal(y)` is
 a `Decimal`, either way round, because widening loses nothing.

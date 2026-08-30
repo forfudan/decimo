@@ -6,9 +6,9 @@
 > 子曰：工欲善其事，必先利其器。
 
 This document is the single source of truth for the arbitrary-precision
-**signed integer** (`decimo.BigInt`, base-2^64 since 2026-08-27) performance & correctness
-effort. It supersedes `bigint2_benchmark_analysis.md` (2026-02-20), keeping
-only the still-relevant historical work items; the full predecessor is
+**signed integer** (`decimo.BigInt`, base-2^64 since 2026-08-27) performance &
+correctness effort. It supersedes `bigint2_benchmark_analysis.md` (2026-02-20),
+keeping only the still-relevant historical work items; the full predecessor is
 recoverable from git history.
 
 ## 1. Cross-Language Snapshot

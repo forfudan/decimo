@@ -157,13 +157,13 @@ Accepts any integral scalar type (`Int8` through `Int256`, `UInt8` through
 
 #### Summary of constructors <!-- omit from toc -->
 
-| Constructor                        | Description                           |
-| ---------------------------------- | ------------------------------------- |
-| `BInt()`                           | Zero                                  |
-| `BInt(value: String)`              | From decimal string (raises)          |
-| `BInt(value: Scalar)`              | From any integral scalar (implicit)   |
-| `BInt.from_integral_scalar(value)` | From any integral scalar type         |
-| `BInt.from_string(value)`          | Explicit factory from string (raises) |
+| Constructor                        | Description                            |
+| ---------------------------------- | -------------------------------------- |
+| `BInt()`                           | Zero                                   |
+| `BInt(value: String)`              | From decimal string (raises)           |
+| `BInt(value: Scalar)`              | From any integral scalar (implicit)    |
+| `BInt.from_integral_scalar(value)` | From any integral scalar type          |
+| `BInt.from_string(value)`          | Explicit factory from string (raises)  |
 | `BInt.from_biguint(value, sign)`   | From a base-10^18 magnitude and a sign |
 
 #### Unsafe constructors <!-- omit from toc -->
@@ -198,13 +198,13 @@ as `BInt(raw_words=Magnitude(words^), sign=False)`.
 
 #### Unary operators <!-- omit from toc -->
 
-| Expression | Description                    |
-| ---------- | ------------------------------ |
-| `-a`       | Negation                       |
-| `+a`       | Unary plus (returns copy)      |
-| `abs(a)`   | Absolute value                 |
+| Expression | Description                               |
+| ---------- | ----------------------------------------- |
+| `-a`       | Negation                                  |
+| `+a`       | Unary plus (returns copy)                 |
+| `abs(a)`   | Absolute value                            |
 | `if a:`    | Nonzero test (`Bool(a)` is not supported) |
-| `~a`       | Bitwise NOT (two's complement) |
+| `~a`       | Bitwise NOT (two's complement)            |
 
 #### In-place operators <!-- omit from toc -->
 
@@ -447,14 +447,14 @@ print(x.is_positive())      # True
 
 ### Constants and Factory Methods
 
-| Method / Constant      | Value |
-| ---------------------- | ----- |
-| `BInt.zero()`          | 0     |
-| `BInt.one()`           | 1     |
-| `BInt.negative_one()`  | −1    |
+| Method / Constant      | Value                                                     |
+| ---------------------- | --------------------------------------------------------- |
+| `BInt.zero()`          | 0                                                         |
+| `BInt.one()`           | 1                                                         |
+| `BInt.negative_one()`  | −1                                                        |
 | `BigInt.ZERO`          | 0 (comptime; use `materialize[BigInt.ZERO]()` at runtime) |
 | `BigInt.ONE`           | 1 (comptime; use `materialize[BigInt.ONE]()` at runtime)  |
-| `BigInt.BITS_PER_WORD` | 64    |
+| `BigInt.BITS_PER_WORD` | 64                                                        |
 
 ## Part II — Decimal
 
@@ -465,13 +465,13 @@ Python's `decimal.Decimal`. It can represent numbers with unlimited digits and
 decimal places, making it suitable for financial modeling, scientific computing,
 and applications where floating-point errors are unacceptable.
 
-| Property          | Value                                   |
-| ----------------- | --------------------------------------- |
-| Name              | `Decimal`                               |
-| Aliases           | `BigDecimal`, `BDec`                    |
+| Property          | Value                                     |
+| ----------------- | ----------------------------------------- |
+| Name              | `Decimal`                                 |
+| Aliases           | `BigDecimal`, `BDec`                      |
 | Internal base     | Base-10^18 (each word stores ≤ 18 digits) |
-| Default precision | 28 significant digits                   |
-| Python equivalent | `decimal.Decimal`                       |
+| Default precision | 28 significant digits                     |
+| Python equivalent | `decimal.Decimal`                         |
 
 `Decimal`, `BigDecimal`, and `BDec` are all the same type. We recommend
 `Decimal` for consistency with Python's `decimal.Decimal`.
@@ -635,11 +635,11 @@ var b = Decimal(py=py_dec)  # Alternative keyword-only syntax
 These constructors skip validation for performance-sensitive code. The caller
 must ensure the data is valid.
 
-| Constructor                                               | Description                            |
-| --------------------------------------------------------- | -------------------------------------- |
-| `Decimal(coefficient: BigUInt, scale: Int, sign: Bool)`   | From raw components                    |
+| Constructor                                               | Description                                  |
+| --------------------------------------------------------- | -------------------------------------------- |
+| `Decimal(coefficient: BigUInt, scale: Int, sign: Bool)`   | From raw components                          |
 | `Decimal.from_raw_components(words, scale=0, sign=False)` | From raw `List[BigUInt.Word]` words (unsafe) |
-| `Decimal.from_raw_components(word, scale=0, sign=False)`  | From a single `BigUInt.Word` (unsafe)       |
+| `Decimal.from_raw_components(word, scale=0, sign=False)`  | From a single `BigUInt.Word` (unsafe)        |
 
 ### Decimal Arithmetic
 

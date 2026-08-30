@@ -332,10 +332,10 @@ pass all integer and pointer arguments as `Int` (which is `i64` on 64-bit
 platforms). Pointers are cast to `Int` via `Int(ptr)`. This is the convention
 adopted by argmojo and followed by limo:
 
-| C function  | Mojo `external_call` signature (shared by argmojo and limo)    |
-| ----------- | -------------------------------------------------------------- |
-| `tcgetattr` | `external_call["tcgetattr", Int, Int, Int](fd, ptr)`           |
-| `tcsetattr` | `external_call["tcsetattr", Int, Int, Int, Int](fd, act, ptr)` |
+| C function  | Mojo `external_call` signature (shared by argmojo and limo)                                       |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| `tcgetattr` | `external_call["tcgetattr", Int, Int, Int](fd, ptr)`                                              |
+| `tcsetattr` | `external_call["tcsetattr", Int, Int, Int, Int](fd, act, ptr)`                                    |
 | `read`      | `external_call["read", Int](fd, buf, count)` — return type only, since the stdlib declares `read` |
 
 Because LLVM sees identical declarations from both packages, the merge is clean

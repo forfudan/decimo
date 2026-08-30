@@ -31,15 +31,15 @@ This plan proposes a full public type.
 
 ## 2. Design Decision: BigInt as the Underlying Integer Type
 
-| Criterion               | BigInt (base 2^64)                             | BigInt10 (base 10^18)    | BigUInt (base 10^18, unsigned) |
-| ----------------------- | ---------------------------------------------- | ------------------------ | ----------------------------- |
-| GCD / LCM support       | ✓ (binary Stein's algorithm)                   | ✗                        | ✗                             |
-| Extended GCD            | ✓                                              | ✗                        | ✗                             |
-| Bitwise operations      | ✓                                              | ✗                        | ✗                             |
-| Signed                  | ✓                                              | ✓                        | ✗                             |
-| Performance vs Python   | Add 4.30×, Mul 3.98×, Power 11.17×             | Slower                   | N/A                           |
-| Forward-looking status  | Primary integer type (alias `BInt`)            | Legacy, being phased out | Internal for `BigDecimal`     |
-| Arithmetic completeness | +, -, *, //, %, **, mod_exp, mod_inv, sqrt     | +, -, *, //, %           | +, -, * (internal)            |
+| Criterion               | BigInt (base 2^64)                         | BigInt10 (base 10^18)    | BigUInt (base 10^18, unsigned) |
+| ----------------------- | ------------------------------------------ | ------------------------ | ------------------------------ |
+| GCD / LCM support       | ✓ (binary Stein's algorithm)               | ✗                        | ✗                              |
+| Extended GCD            | ✓                                          | ✗                        | ✗                              |
+| Bitwise operations      | ✓                                          | ✗                        | ✗                              |
+| Signed                  | ✓                                          | ✓                        | ✗                              |
+| Performance vs Python   | Add 4.30×, Mul 3.98×, Power 11.17×         | Slower                   | N/A                            |
+| Forward-looking status  | Primary integer type (alias `BInt`)        | Legacy, being phased out | Internal for `BigDecimal`      |
+| Arithmetic completeness | +, -, *, //, %, **, mod_exp, mod_inv, sqrt | +, -, *, //, %           | +, -, * (internal)             |
 
 **Recommendation**: Use `BigInt` for both numerator and denominator.
 

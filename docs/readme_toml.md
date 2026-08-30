@@ -28,12 +28,12 @@ a subpackage of [Decimo](https://github.com/forfudan/decimo).
 
 ## Overview
 
-`decimo.toml` (formerly TOMLMojo) is a lightweight, pure-Mojo TOML parser
-(about 2,000 lines) that implements the core
+`decimo.toml` (formerly TOMLMojo) is a lightweight, pure-Mojo TOML parser (about
+2,000 lines) that implements the core
 [TOML v1.0 specification](https://toml.io/en/v1.0.0). It parses TOML source text
 into a `TOMLDocument` — a nested dictionary structure that you can query by key,
-table name, or array index. It handles nested tables, inline tables, dotted keys and arrays of tables.
-Every TOML type except datetime is supported.
+table name, or array index. It handles nested tables, inline tables, dotted keys
+and arrays of tables. Every TOML type except datetime is supported.
 
 ## History
 

@@ -71,11 +71,11 @@ The core types are[^auxiliary]:
 <!-- - An arbitrary-precision exact rational number type (`Rational`) represented as a reduced fraction of two `BigInt`s (numerator and denominator). It supports exact arithmetic and comparisons without any loss of precision, making it ideal for applications that require precise fractional calculations. -->
 
 Decimo is fast: at a million digits `pi()` is ten times quicker than pure-Python
-mpmath, `BigInt` multiplication is fifteen times quicker than CPython's `int`, and
-small `BigDecimal` operations are close to libmpdec, the C library behind
+mpmath, `BigInt` multiplication is fifteen times quicker than CPython's `int`,
+and small `BigDecimal` operations are close to libmpdec, the C library behind
 Python's `decimal`. The measured numbers, with the commit they were taken on,
-are in [docs/benchmarks.md](docs/benchmarks.md); `pixi run benchdoc`
-regenerates them.
+are in [docs/benchmarks.md](docs/benchmarks.md); `pixi run benchdoc` regenerates
+them.
 
 **Decimo** combines "**Deci**mal" and "**Mo**jo" - reflecting its purpose and
 implementation language. "Decimo" is also a Latin word meaning "tenth" and is

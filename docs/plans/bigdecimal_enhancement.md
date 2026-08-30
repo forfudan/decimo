@@ -18,15 +18,15 @@ fuller historical view is needed.
 Scope: **arbitrary-precision** decimal types. Out of scope: 128-bit
 fixed-precision (covered by `decimal128_enhancement.md`).
 
-| Library             | Limb base           | Mul algorithm tier               | Div algo           | Sqrt              |
-| ------------------- | ------------------- | -------------------------------- | ------------------ | ----------------- |
+| Library             | Limb base           | Mul algorithm tier                | Div algo           | Sqrt              |
+| ------------------- | ------------------- | --------------------------------- | ------------------ | ----------------- |
 | decimo BigDecimal   | 10^18 (UInt64 LE)   | School → Karatsuba → Toom-3 → NTT | B-Z (Knuth-D base) | reciprocal-Newton |
-| Py `decimal`/libmpd | 10^9 / 10^19        | School → Karatsuba → **NTT**     | reciprocal-Newton  | reciprocal-Newton |
-| Rust `bigdecimal`   | 10^9 (num-bigint)   | School → Karatsuba → Toom-3      | schoolbook (slow)  | Newton with div   |
-| Java `BigDecimal`   | binary `BigInteger` | School → Kara → Toom → Schönhage | Burnikel-Ziegler   | Newton (binary)   |
-| GMP `mpz_t` / MPFR  | 2^64                | School → Kara → Toom → **FFT**   | reciprocal-Newton  | reciprocal-Newton |
-| JS `decimal.js`     | 10^7 (Number arr)   | School only                      | schoolbook         | Newton            |
-| Go `math/big.Float` | 2^64 (binary)       | School → Karatsuba               | reciprocal-Newton  | Newton            |
+| Py `decimal`/libmpd | 10^9 / 10^19        | School → Karatsuba → **NTT**      | reciprocal-Newton  | reciprocal-Newton |
+| Rust `bigdecimal`   | 10^9 (num-bigint)   | School → Karatsuba → Toom-3       | schoolbook (slow)  | Newton with div   |
+| Java `BigDecimal`   | binary `BigInteger` | School → Kara → Toom → Schönhage  | Burnikel-Ziegler   | Newton (binary)   |
+| GMP `mpz_t` / MPFR  | 2^64                | School → Kara → Toom → **FFT**    | reciprocal-Newton  | reciprocal-Newton |
+| JS `decimal.js`     | 10^7 (Number arr)   | School only                       | schoolbook         | Newton            |
+| Go `math/big.Float` | 2^64 (binary)       | School → Karatsuba                | reciprocal-Newton  | Newton            |
 
 **Coverage matrix.** decimo offers the broadest decimal API: `add`,
 `subtract`, `multiply`, `divide`, `sqrt`, `cbrt`, `root(x,n)`, `exp`,
@@ -54,7 +54,7 @@ Dated by report file under `benches/bigdecimal/reports/`. Append-only.
 | Date     | Item                                                                                  |
 | -------- | ------------------------------------------------------------------------------------- |
 | 20260222 | `MathCache` struct: caches `ln(2)`, `ln(1.25)`, `ln(10)` with precision-upgrade logic |
-| 20260222 | `true_divide_inexact_by_word()` — single-word division wraps `BigUInt.fdiv_uint32`  |
+| 20260222 | `true_divide_inexact_by_word()` — single-word division wraps `BigUInt.fdiv_uint32`    |
 | 20260223 | BigDecimal `multiply_inplace`, `add_inplace`, `subtract_inplace`                      |
 | 20260223 | `__iadd__` / `__isub__` / `__imul__` route through inplace versions                   |
 | 20260224 | Toom-3 helpers: `_exact_divide_by_{2,3,6}_inplace` (carry-based, no BigUInt division) |

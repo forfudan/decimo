@@ -526,14 +526,14 @@ This is comparable to linenoise (1,100 lines of C for the full feature set).
 
 ## 10. Risk and Mitigation
 
-| Risk                                                    | Mitigation                                                              |
-| ------------------------------------------------------- | ----------------------------------------------------------------------- |
-| TermIOS struct layout differs on Linux                  | Start macOS-only; add Linux layout with conditional compilation later   |
+| Risk                                                    | Mitigation                                                             |
+| ------------------------------------------------------- | ---------------------------------------------------------------------- |
+| TermIOS struct layout differs on Linux                  | Start macOS-only; add Linux layout with conditional compilation later  |
 | Mojo's `external_call` behavior changes across versions | Pin Mojo version in pixi.toml (currently >=1.0.0,<1.1.0)               |
-| Raw mode not restored on crash/panic                    | `disable_raw_mode()` is called explicitly on every exit and error path  |
-| Unicode cursor positioning off-by-one for CJK           | Phase 1 is ASCII-only; add `char_width()` in Phase 2                    |
-| UTF-8 multi-byte characters split across reads          | Phase 1 handles printable ASCII only; Phase 2 adds UTF-8 continuation   |
-| Performance overhead of per-keystroke redraw            | Single-line redraw is fast; benchmark if needed                         |
+| Raw mode not restored on crash/panic                    | `disable_raw_mode()` is called explicitly on every exit and error path |
+| Unicode cursor positioning off-by-one for CJK           | Phase 1 is ASCII-only; add `char_width()` in Phase 2                   |
+| UTF-8 multi-byte characters split across reads          | Phase 1 handles printable ASCII only; Phase 2 adds UTF-8 continuation  |
+| Performance overhead of per-keystroke redraw            | Single-line redraw is fast; benchmark if needed                        |
 
 ## 11. References
 

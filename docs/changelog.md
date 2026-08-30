@@ -7,31 +7,30 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 The Python package becomes a drop-in replacement for the standard library's
 `decimal`, with wheels for macOS and Linux, a real context, every rounding mode
 but `ROUND_05UP`, and `Decimal128` beside `Decimal`. Every transcendental now
-decides its own rounding instead of assuming it, and the trigonometric
-functions size their argument reduction to the argument rather than to a flat
-ninety-nine digits. `BigUInt` moves from base 10^9 to base 10^18, which halves
-the word count of every value. `Rational` grows a full set of conversions and joins the
+decides its own rounding instead of assuming it, and the trigonometric functions
+size their argument reduction to the argument rather than to a flat ninety-nine
+digits. `BigUInt` moves from base 10^9 to base 10^18, which halves the word
+count of every value. `Rational` grows a full set of conversions and joins the
 `from_integral_scalar()` / `from_float_scalar()` naming used by the other
 numeric types, `BigInt10` is no longer referenced by the rest of the library,
 and `BigDecimal.pi()` gets four orders of magnitude faster — 100 000 digits in
 35 ms, a million in 0.8 s, and ahead of pure-Python mpmath from 500 digits up.
-`BigInt` multiplication gains a number-theoretic transform, which is 2.3x
-faster than Toom-3 at a million digits and closes the last asymptotic gap in
-the library. Multiplication is 2-3x faster for both `BigInt` and `BigUInt` at
+`BigInt` multiplication gains a number-theoretic transform, which is 2.3x faster
+than Toom-3 at a million digits and closes the last asymptotic gap in the
+library. Multiplication is 2-3x faster for both `BigInt` and `BigUInt` at
 smaller sizes too, which puts `BigInt` ahead of CPython's `int` on every large
-operation. Addition and subtraction are 2-3x
-faster in turn, which the recursive multiplications and divisions inherit.
-Burnikel-Ziegler division loses a padding choice that cost it its own
-asymptotics on some sizes, which speeds up every division in the library. A
-Newton iteration that silently returned short of its requested precision is
-fixed. `BigInt` now keeps small values inside the struct, takes its square
-root by Zimmermann's recursion above about six hundred digits, and is measured
-against GMP rather than against CPython's `int`. Its magnitude moves from base
-2^32 to base 2^64, which with the Knuth D work before it makes division 2 to
-3.3x faster and brings it from 4.98x of GMP at a thousand digits to 1.52x. A
-`sqrt()` that hung for values at the top of a word is fixed. Heap blocks are
-now pooled and handed out again rather than freed, which takes 20 to 40
-percent off every operation whose result does not fit inside the struct --
+operation. Addition and subtraction are 2-3x faster in turn, which the recursive
+multiplications and divisions inherit. Burnikel-Ziegler division loses a padding
+choice that cost it its own asymptotics on some sizes, which speeds up every
+division in the library. A Newton iteration that silently returned short of its
+requested precision is fixed. `BigInt` now keeps small values inside the struct,
+takes its square root by Zimmermann's recursion above about six hundred digits,
+and is measured against GMP rather than against CPython's `int`. Its magnitude
+moves from base 2^32 to base 2^64, which with the Knuth D work before it makes
+division 2 to 3.3x faster and brings it from 4.98x of GMP at a thousand digits
+to 1.52x. A `sqrt()` that hung for values at the top of a word is fixed. Heap
+blocks are now pooled and handed out again rather than freed, which takes 20 to
+40 percent off every operation whose result does not fit inside the struct --
 additions, copies, and divisions alike.
 
 ### ⭐️ New in Unreleased
@@ -220,17 +219,17 @@ additions, copies, and divisions alike.
    when the rounding carries.
 1. **Wheels for macOS arm64, CPython 3.13 and 3.14.**
    `pixi run -e py313 release` (or `py314`) builds one; the new
-   `release_python.yaml` workflow builds both and uploads them to PyPI
-   through trusted publishing. A tag publishes a release and a commit on
-   `main` publishes `<version>.devYYYYMMDDHHMMSS`, the second only once the
-   repository variable `PUBLISH_DEV` is set. The wheel takes its version
-   from the library's, so `pip show decimo` and the CLI's `--version` say
-   the same thing, and a tag that disagrees with `pixi.toml` stops the run. The extension is linked for macOS 11 -- what the Mojo
-   runtime libraries in the wheel are built for -- and the wheel is tagged so,
-   instead of for the build machine's version, which no other machine accepts
-   and which pixi, resolving against macOS 13, refuses outright. The Linux
-   path (`auditwheel`, `manylinux_2_35`) landed with it; see the Linux wheel
-   entry above.
+   `release_python.yaml` workflow builds both and uploads them to PyPI through
+   trusted publishing. A tag publishes a release and a commit on `main`
+   publishes `<version>.devYYYYMMDDHHMMSS`, the second only once the repository
+   variable `PUBLISH_DEV` is set. The wheel takes its version from the
+   library's, so `pip show decimo` and the CLI's `--version` say the same thing,
+   and a tag that disagrees with `pixi.toml` stops the run. The extension is
+   linked for macOS 11 -- what the Mojo runtime libraries in the wheel are built
+   for -- and the wheel is tagged so, instead of for the build machine's
+   version, which no other machine accepts and which pixi, resolving against
+   macOS 13, refuses outright. The Linux path (`auditwheel`, `manylinux_2_35`)
+   landed with it; see the Linux wheel entry above.
 
 1. **`BigInt` keeps small values inside the struct.** `WordList`, written for
    `BigUInt`, gains an inline-capacity parameter and moves to
@@ -338,30 +337,30 @@ additions, copies, and divisions alike.
 
 1. **Writing a `BigDecimal` out is two to four times cheaper.** The text was
    built by making a `String` of the coefficient, concatenating around it,
-   and -- for `String(x)`, which is what `print` and the Python binding use
-   -- copying the result into a writer. Three allocations and two copies for
-   what is one row of digits.
+   and -- for `String(x)`, which is what `print` and the Python binding use --
+   copying the result into a writer. Three allocations and two copies for what
+   is one row of digits.
 
    The digits now go from the coefficient's words straight into one buffer,
-   which is on the stack when the value is short enough, with the integer
-   part sliding one byte left to open the slot for the point. `BigUInt`
-   writes its own text the same way, and emits two digits per division
-   rather than one against a table of pairs, which halves the divisions
-   every conversion does: `BigUInt.to_string()` is 15 nanoseconds at 18
-   digits against 49, and 57 at 28 against 94.
+   which is on the stack when the value is short enough, with the integer part
+   sliding one byte left to open the slot for the point. `BigUInt` writes its
+   own text the same way, and emits two digits per division rather than one
+   against a table of pairs, which halves the divisions every conversion does:
+   `BigUInt.to_string()` is 15 nanoseconds at 18 digits against 49, and 57 at 28
+   against 94.
 
    Nanoseconds, against CPython's `decimal` for the same value:
 
    | Digits | `to_string()` before | after | `String(x)` before | after | `decimal` |
-   | ---: | ---: | ---: | ---: | ---: | ---: |
-   | 9 | 21 | 15 | 84 | 20 | 68 |
-   | 28 | 159 | 66 | 350 | 77 | 84 |
-   | 100 | 181 | 110 | 209 | 131 | 131 |
-   | 1,000 | 716 | 376 | 997 | 475 | 805 |
+   | -----: | -------------------: | ----: | -----------------: | ----: | --------: |
+   |      9 |                   21 |    15 |                 84 |    20 |        68 |
+   |     28 |                  159 |    66 |                350 |    77 |        84 |
+   |    100 |                  181 |   110 |                209 |   131 |       131 |
+   |  1,000 |                  716 |   376 |                997 |   475 |       805 |
 
    From Python, `str(Decimal(...))` went from 423 nanoseconds to 108 against
-   `decimal`'s 63, helped by `tp_str` becoming a real slot for both types
-   rather than a `__str__` CPython has to dispatch to.
+   `decimal`'s 63, helped by `tp_str` becoming a real slot for both types rather
+   than a `__str__` CPython has to dispatch to.
 
 1. **`ln` picks its series by how small the argument is, not how long it is.**
    The choice between the Taylor series and the atanh identity read the
@@ -371,12 +370,12 @@ additions, copies, and divisions alike.
    reduction, so it took the Taylor path at every precision above 71 and paid
    twice over.
 
-   | Precision | before | after |
-   | ---: | ---: | ---: |
-   | 80 | 25.9 µs | 12.9 µs |
-   | 100 | 41.6 µs | 17.4 µs |
-   | 200 | 107.9 µs | 50.0 µs |
-   | 400 | 323 µs | 179 µs |
+   | Precision |   before |   after |
+   | --------: | -------: | ------: |
+   |        80 |  25.9 µs | 12.9 µs |
+   |       100 |  41.6 µs | 17.4 µs |
+   |       200 | 107.9 µs | 50.0 µs |
+   |       400 |   323 µs |  179 µs |
 
    At 100 digits that is 2.3 times faster than libmpdec, where it had been
    1.83 times slower -- the one row in the benchmarks where the logarithm
@@ -533,11 +532,11 @@ additions, copies, and divisions alike.
    round 2.45x, divide 1.73x, `BigUInt` add 1.95x.
 1. **`List._data` is no longer used anywhere.** All 63 sites moved to
    `unsafe_ptr()`, which returns the same address with an origin attached, so
-   the compiler tracks the buffer's lifetime and the library no longer
-   depends on a private field of the standard library. No performance change. Restoring
+   the compiler tracks the buffer's lifetime and the library no longer depends
+   on a private field of the standard library. No performance change. Restoring
    origins exposed twelve deliberate in-place aliases, which now say so
-   explicitly through `alias_as_immutable_source()` instead of hiding behind
-   an untracked pointer.
+   explicitly through `alias_as_immutable_source()` instead of hiding behind an
+   untracked pointer.
 1. **`BigDecimal` construction no longer copies its coefficient.** The
    component constructor took `coefficient` borrowed and then copied it, so
    every call site already written as `coefficient=coef^` — 27 of them, the
@@ -732,7 +731,6 @@ additions, copies, and divisions alike.
    18.2 ms). Its Newton loop is not where its time goes: the exact-integer
    refinement that follows costs 7.7x the whole reciprocal iteration, because it
    divides and squares at full width in the decimal base.
-
 
 1. **Burnikel-Ziegler pads the divisor to `j * 2^k` words.** The recursion
    halves the block size and falls back to schoolbook Knuth D as soon as it
