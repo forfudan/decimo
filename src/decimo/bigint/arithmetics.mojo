@@ -18,7 +18,7 @@
 Implements basic arithmetic functions for the BigInt type.
 
 BigInt uses base-2^64 representation with UInt64 words in little-endian order.
-Unlike the BigInt10 (base-10^9) type which delegates magnitude operations to
+Unlike the BigInt10 (base-10^18) type which delegates magnitude operations to
 BigUInt, BigInt implements all magnitude arithmetic directly since there is
 no separate unsigned counterpart.
 
@@ -309,7 +309,7 @@ def _divide_two_by_one(
 def _add_magnitudes(a: Magnitude, b: Magnitude) -> Magnitude:
     """Adds two unsigned magnitudes represented as little-endian UInt64 words.
 
-    Uses UInt64 accumulation to handle carries naturally via bit shift.
+    The carry out of each word is recovered by comparison; see `_add_words()`.
 
     Args:
         a: First magnitude (little-endian UInt64 words).
@@ -722,11 +722,8 @@ def _multiply_magnitudes_karatsuba(
     result.resize(unsafe_uninit_length=result_len)
     unsafe_memset_zero(ptr=result.unsafe_ptr(), count=result_len)
 
-    # Add z0 at offset 0
     _add_at_offset_inplace(result, z0, 0)
-    # Add z1 at offset m
     _add_at_offset_inplace(result, z1, m)
-    # Add z2 at offset 2*m
     _add_at_offset_inplace(result, z2, 2 * m)
 
     # Strip leading zeros
@@ -1382,7 +1379,7 @@ def _divmod_magnitudes(
     # ===--- Knuth's Algorithm D ---=== #
     # Step D1: Normalize
     # Shift so that the leading bit of the divisor's MSW is set.
-    # This ensures the trial quotient estimate is accurate.
+    # The trial quotient estimate is only accurate for a normalized divisor.
     var shift = _count_leading_zeros(b[len_b - 1])
 
     # Create normalized copies
@@ -1449,7 +1446,7 @@ def _divmod_magnitudes(
             r_hat += UInt128(v_n_minus_1)
 
         # Step D4: multiply and subtract, u[j..j+n] -= q_hat * v[0..n-1].
-        # Two words at a time; see `_submul_words()`.
+        # One word at a time; see `_submul_words()`.
         var carry = _submul_words(u_ptr.unsafe_offset(j), v_ptr, n, q_hat)
 
         # Step D5. Taking the debt off the top word wraps exactly when the
@@ -1894,7 +1891,7 @@ def _divmod_knuth_d_from_slices(
     # single-word divisor was handled earlier, so `n >= 2` and `j + n - 2`
     # cannot go negative either. The three buffers are borrowed through raw
     # pointers for the same reason the multiply kernels are: a `List[i]` reads
-    # the list's `_data` field again on every element (Lesson 7). None of them
+    # where its storage lives again on every element. None of them
     # is resized while these pointers are live.
     var u_ptr = u.unsafe_ptr()
     var b_ptr = b.unsafe_ptr()
@@ -1976,7 +1973,7 @@ def _divmod_burnikel_ziegler(
     Slice-based implementation: passes word-list bounds through the recursion
     to avoid copying the large inputs until the Knuth D base case.
 
-    In base-2^64, normalization is a simple bit-shift (unlike base-10^9
+    In base-2^64, normalization is a simple bit-shift (unlike base-10^18
     where multiplication by a normalization factor is needed).
 
     Args:
@@ -2443,7 +2440,6 @@ def add_int_inplace(mut x: BigInt, value: Int):
     """Performs x += value (Int) by mutating x.words directly.
 
     Optimized for adding a small integer: avoids constructing a full BigInt.
-    Handles the common cases of adding +1, -1, or any Int-sized value.
 
     Args:
         x: The accumulator (modified in-place).
@@ -2511,7 +2507,7 @@ def add_int_inplace(mut x: BigInt, value: Int):
 def subtract_inplace(mut x: BigInt, imm other: BigInt):
     """Performs x -= other by mutating x.words directly.
 
-    Avoids allocating a new BigInt. Leverages the relationship:
+    Avoids allocating a new BigInt. Uses the relationship:
     x -= other is equivalent to x += (-other), i.e., flip other's sign
     and apply add_inplace logic.
 

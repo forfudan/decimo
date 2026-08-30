@@ -26,7 +26,7 @@ from decimo.errors import ValueError
 # Extra significant digits carried during a rounded factorial, on top of the
 # requested precision and the digit count of `n`. Covers the rounding error
 # that accumulates over the `n` intermediate products.
-comptime FACTORIAL_GUARD_DIGITS = 9  # word size
+comptime FACTORIAL_GUARD_DIGITS = 9  # guard digits, not a word width
 """Extra guard digits carried during a rounded `factorial`."""
 
 # Largest argument accepted by `factorial`. Even 10^6 already needs ~10^6

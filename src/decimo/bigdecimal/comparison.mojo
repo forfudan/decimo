@@ -29,7 +29,7 @@ def compare_absolute(x1: BigDecimal, x2: BigDecimal) -> Int8:
         x2: Second number.
 
     Returns:
-        Terinary value indicating the comparison result:
+        Ternary value indicating the comparison result:
         (1)  1 if |x1| > |x2|.
         (2)  0 if |x1| = |x2|.
         (3) -1 if |x1| < |x2|.
@@ -44,7 +44,6 @@ def compare_absolute(x1: BigDecimal, x2: BigDecimal) -> Int8:
 
     # If scales are equal, compare coefficients directly
     if x1.scale == x2.scale:
-        # Use existing BigUInt comparison
         return x1.coefficient.compare(x2.coefficient)
 
     # Compare number of digits before the decimal point (integer part)
@@ -79,7 +78,7 @@ def compare(x1: BigDecimal, x2: BigDecimal) -> Int8:
         x2: Second number.
 
     Returns:
-        Terinary value indicating the comparison result:
+        Ternary value indicating the comparison result:
         (1)  1 if x1 > x2.
         (2)  0 if x1 = x2.
         (3) -1 if x1 < x2.
@@ -88,7 +87,6 @@ def compare(x1: BigDecimal, x2: BigDecimal) -> Int8:
     if x1.coefficient.is_zero() and x2.coefficient.is_zero():
         return 0
 
-    # If one is zero, handle specially
     if x1.coefficient.is_zero():
         return Int8(1) if x2.sign else Int8(-1)  # 0 > negative, 0 < positive
     if x2.coefficient.is_zero():

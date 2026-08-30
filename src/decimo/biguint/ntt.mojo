@@ -25,9 +25,9 @@ field arithmetic modulo the Goldilocks prime, the twiddle tables and the two
 transforms. Those work on residues and do not depend on the base. Only the
 packing is different.
 
-A base-2^32 magnitude is a bit string, so `bigint` may cut it at any bit
+A base-2^64 magnitude is a bit string, so `bigint` may cut it at any bit
 position. A decimal magnitude is not. Its value is
-`w[0] + w[1] * 10^9 + ...`, and only cuts at a power of ten are cheap.
+`w[0] + w[1] * 10^18 + ...`, and only cuts at a power of ten are cheap.
 
 The question is therefore how many decimal digits one coefficient should hold.
 With `d` digits per coefficient, each product is below `10^(2d)`, and at most
@@ -35,9 +35,9 @@ With `d` digits per coefficient, each product is below `10^(2d)`, and at most
 
     min(len_x, len_y) * 10^(2d) < P = 2^64 - 2^32 + 1
 
-- `d = 9` (one whole word) allows only 18 coefficients. Too few.
-- `d = 3` divides a word evenly, but needs three coefficients per word.
-- `d = 6` is used here. Two words are 18 decimal digits, that is three
+- `d = 9` (half a word) allows only 18 coefficients. Too few.
+- `d = 3` divides a word evenly, but needs six coefficients per word.
+- `d = 6` is used here. One word is 18 decimal digits, that is three
   coefficients of six digits. The bound allows about 1.8 * 10^7 coefficients,
   or 10^8 decimal digits.
 
@@ -297,8 +297,8 @@ def should_multiply_ntt(len_x: Int, len_y: Int) -> Bool:
     #
     # The count is of *coefficients*, not words: a convolution coefficient sums
     # at most `min(coefficients_a, coefficients_b)` products, and a word gives
-    # about 1.5 coefficients. Counting words here would allow operands half
-    # again as long as the prime can hold.
+    # three coefficients. Counting words here would allow operands three times
+    # as long as the prime can hold.
     var largest_term = (COEFFICIENT_BASE - 1) * (COEFFICIENT_BASE - 1)
     var terms = min(
         coefficients_for_words(len_x), coefficients_for_words(len_y)

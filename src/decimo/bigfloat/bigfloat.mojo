@@ -71,8 +71,7 @@ from decimo.bigfloat.mpfr_wrapper import (
 # Guard bits added to user-requested precision to absorb binary↔decimal rounding.
 comptime _GUARD_BITS: Int = 64
 
-# Approximate bits per decimal digit: ceil(log2(10)) ≈ 3.322.
-# Use 4 for safety.
+# Bits per decimal digit: log2(10) ≈ 3.322. Rounded up to 4 for safety.
 comptime _BITS_PER_DIGIT: Int = 4
 
 # Default precision in decimal digits, same as BigDecimal.

@@ -206,9 +206,6 @@ def test_biguint_truncate_divide() raises:
 
 
 def test_biguint_truncate_divide_random_numbers_against_python() raises:
-    # print("------------------------------------------------------")
-    # print("Testing BigUInt truncate division on random numbers with python...")
-
     _set_max_str_digits(500000)
 
     var number_a: String
@@ -234,7 +231,6 @@ def test_biguint_truncate_divide_random_numbers_against_python() raises:
             + "\n\nPython int division: \n"
             + python_result,
         )
-    # print("BigUInt truncate division tests passed!")
 
 
 def test_biguint_divide_across_the_dispatch_boundaries_against_python() raises:
@@ -665,9 +661,4 @@ def test_biguint_add_subtract_carry_chains() raises:
 
 
 def main() raises:
-    # test_biguint_arithmetics()
-    # test_biguint_truncate_divide()
-    # test_biguint_truncate_divide_random_numbers_against_python()
     testing.TestSuite.discover_tests[__functions_in_module()]().run()
-    # print("All BigUInt arithmetic tests passed!")
-    # print("------------------------------------------------------")

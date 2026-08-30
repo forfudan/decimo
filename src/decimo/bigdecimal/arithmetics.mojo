@@ -27,15 +27,6 @@ from decimo.bigdecimal.rounding import round_to_precision_inplace
 from decimo.errors import ZeroDivisionError
 from decimo.rounding_mode import RoundingMode
 
-# ===----------------------------------------------------------------------=== #
-# Arithmetic operations on BigDecimal objects
-# add(x1, x2, precision=0)
-# subtract(x1, x2, precision=0)
-# multiply(x1, x2, precision=0)
-# true_divide(x1, x2, precision)
-# true_divide_inexact(x1, x2, number_of_significant_digits)
-# ===----------------------------------------------------------------------=== #
-
 
 def add(
     x1: BigDecimal,
@@ -562,7 +553,7 @@ def true_divide(
         )
 
     # For other cases, we use `true_divide_general()` to handle the division
-    # Note that this function already considers extra buffer digits.
+    # This function already considers extra buffer digits.
     # Short divisors are already routed by `BigUInt.floor_divide` to
     # `floor_divide_by_word`, so the fast path is active end-to-end here
     # without a dedicated `BigDecimal` branch.
@@ -598,8 +589,8 @@ def true_divide_general(
     """
 
     # Yuhao Zhu:
-    # x = a * 10*(-m)
-    # y = b * 10*(-n)
+    # x = a * 10^(-m)
+    # y = b * 10^(-n)
     # Let s = extra digits to ensure precision
     # x / y = x * 10^s / y / 10^s = (a * 10^s // b) * 10*(-(m + s - n))
     # We need to ensure that a * 10^s // b has more significant digits than p.

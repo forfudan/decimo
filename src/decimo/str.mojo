@@ -56,15 +56,14 @@ def ljust(s: String, width: Int, fillchar: String = " ") -> String:
 
 
 # ============================================================================
-# Numeric string parser for BigDecimal: parse_numeric_string()
 # Cold raise helpers for parse_numeric_string()
 #
 # Each helper carries the `String.format(...)` allocation that would otherwise
 # bloat the parser body. Marked `@no_inline` so they never participate in
 # inlining decisions for the hot scan loop -- this is the same pattern used
-# for `Decimal128.from_uint128`'s raise helpers (see decimal128_enhancement
-# Lesson #4: extracting `.format()` raises lets the parent stay small enough
-# to be inlined into its callers).
+# for `Decimal128.from_uint128`'s raise helpers (see Lesson #4 in
+# `docs/plans/archived/decimal128_enhancement.md`: extracting `.format()`
+# raises lets the parent stay small enough to be inlined into its callers).
 #
 # Plain string-literal raises stay inline -- they are zero-cost on the cold
 # path and would only add call overhead if extracted.
@@ -104,7 +103,7 @@ def parse_numeric_string(
 
     For contiguous digit regions (the common case), Pass 2 uses SIMD to
     batch-subtract ASCII '0' (48) from 16 bytes at a time, which is
-    significantly faster than byte-by-byte processing for large numbers.
+    faster than byte-by-byte processing for large numbers.
 
     Args:
         value: The string representation of a number.

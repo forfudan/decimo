@@ -17,8 +17,6 @@ def run_test[
     func: def(BigDecimal, Int) thin raises -> BigDecimal
 ](toml: TOMLDocument, table_name: String, msg: String) raises:
     """Run a specific test case from the TOML document."""
-    # print("------------------------------------------------------")
-    # print("Testing BigDecimal ", msg, "...", sep="")
     var test_cases = load_test_cases(toml, table_name)
     var count_wrong = 0
     for test_case in test_cases:
@@ -78,8 +76,4 @@ def test_bigdecimal_trignometric() raises:
 
 
 def main() raises:
-    # print("Running BigDecimal trigonometric tests")
-
     testing.TestSuite.discover_tests[__functions_in_module()]().run()
-
-    # print("All BigDecimal trigonometric tests passed!")

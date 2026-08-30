@@ -32,8 +32,6 @@ def test_from_int() raises:
     )
     assert_true(neg.is_negative(), "-5 should be negative")
 
-    print("  PASS: from_int")
-
 
 def test_from_bigint() raises:
     """Test construction from BigInt (denominator = 1)."""
@@ -45,8 +43,6 @@ def test_from_bigint() raises:
     assert_true(
         String(neg) == "-100", "Rational(BigInt(-100)) should be '-100'"
     )
-
-    print("  PASS: from_bigint")
 
 
 def test_from_two_ints() raises:
@@ -80,8 +76,6 @@ def test_from_two_ints() raises:
     assert_true(r5.is_zero(), "0/999 should be zero")
     assert_true(String(r5) == "0", "0/999 should be '0'")
 
-    print("  PASS: from_two_ints")
-
 
 def test_zero_denominator_raises() raises:
     """Test that zero denominator raises an error."""
@@ -91,8 +85,6 @@ def test_zero_denominator_raises() raises:
     except:
         raised = True
     assert_true(raised, "Zero denominator should raise")
-
-    print("  PASS: zero_denominator_raises")
 
 
 # ===----------------------------------------------------------------------=== #
@@ -117,8 +109,6 @@ def test_str_and_repr() raises:
         + integer.__repr__(),
     )
 
-    print("  PASS: str_and_repr")
-
 
 # ===----------------------------------------------------------------------=== #
 # Comparison
@@ -137,8 +127,6 @@ def test_equality() raises:
     var d = Rational(0)
     var e = Rational(BigInt(0), BigInt(100))
     assert_true(d == e, "0 should equal 0/100")
-
-    print("  PASS: equality")
 
 
 def test_ordering() raises:
@@ -160,8 +148,6 @@ def test_ordering() raises:
     var neg_half = Rational(BigInt(-1), BigInt(2))
     assert_true(neg_half < half, "-1/2 < 1/2")
     assert_true(neg_half < Rational(0), "-1/2 < 0")
-
-    print("  PASS: ordering")
 
 
 # ===----------------------------------------------------------------------=== #
@@ -186,8 +172,6 @@ def test_neg() raises:
     assert_true(neg_zero.is_zero(), "-0 should be zero")
     assert_true(String(neg_zero) == "0", "-0 should be '0'")
 
-    print("  PASS: neg")
-
 
 def test_abs() raises:
     """Test absolute value."""
@@ -202,8 +186,6 @@ def test_abs() raises:
     assert_true(
         abs(already_pos) == already_pos, "abs of positive should be same"
     )
-
-    print("  PASS: abs")
 
 
 # ===----------------------------------------------------------------------=== #
@@ -242,8 +224,6 @@ def test_add() raises:
         "2/5 + 1/5 should be '3/5', got: " + String(result3),
     )
 
-    print("  PASS: add")
-
 
 def test_sub() raises:
     """Test subtraction."""
@@ -258,8 +238,6 @@ def test_sub() raises:
     # Self subtraction = zero
     var result2 = a - a
     assert_true(result2.is_zero(), "x - x should be zero")
-
-    print("  PASS: sub")
 
 
 def test_add_sub_reduction_paths() raises:
@@ -328,8 +306,6 @@ def test_add_sub_reduction_paths() raises:
         acc = acc - Rational(BigInt(1), BigInt(k))
     assert_true(acc.is_zero(), "the sum minus its own terms should be zero")
 
-    print("  PASS: add/sub reduction paths")
-
 
 def test_mul() raises:
     """Test multiplication."""
@@ -358,8 +334,6 @@ def test_mul() raises:
         "(-1/2) * (-1/2) should be '1/4', got: " + String(result3),
     )
 
-    print("  PASS: mul")
-
 
 def test_truediv() raises:
     """Test true division."""
@@ -382,8 +356,6 @@ def test_truediv() raises:
         "x / x should be '1', got: " + String(result2),
     )
 
-    print("  PASS: truediv")
-
 
 def test_truediv_by_zero_raises() raises:
     """Test that division by zero raises."""
@@ -395,8 +367,6 @@ def test_truediv_by_zero_raises() raises:
     except:
         raised = True
     assert_true(raised, "Division by zero should raise")
-
-    print("  PASS: truediv_by_zero_raises")
 
 
 # ===----------------------------------------------------------------------=== #
@@ -425,8 +395,6 @@ def test_query_methods() raises:
 
     var integer = Rational(42)
     assert_true(integer.is_integer(), "42 should be integer")
-
-    print("  PASS: query_methods")
 
 
 # ===----------------------------------------------------------------------=== #
@@ -468,8 +436,6 @@ def test_reciprocal() raises:
         raised = True
     assert_true(raised, "reciprocal of zero should raise")
 
-    print("  PASS: reciprocal")
-
 
 # ===----------------------------------------------------------------------=== #
 # Normalization edge cases
@@ -501,8 +467,6 @@ def test_normalization() raises:
         "12345/67890 should normalize to '823/4526', got: " + String(r3),
     )
 
-    print("  PASS: normalization")
-
 
 # ===----------------------------------------------------------------------=== #
 # Constants
@@ -530,8 +494,6 @@ def test_constants() raises:
     var third = Rational.one_third()
     assert_true(String(third) == "1/3", "ONE_THIRD should be '1/3'")
 
-    print("  PASS: constants")
-
 
 # ===----------------------------------------------------------------------=== #
 # Main
@@ -539,7 +501,6 @@ def test_constants() raises:
 
 
 def main() raises:
-    print("Testing Rational basic functionality...")
     test_from_int()
     test_from_bigint()
     test_from_two_ints()
@@ -559,4 +520,3 @@ def main() raises:
     test_reciprocal()
     test_normalization()
     test_constants()
-    print("All Rational basic tests passed!")

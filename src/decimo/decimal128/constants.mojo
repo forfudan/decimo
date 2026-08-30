@@ -22,8 +22,8 @@ from decimo.errors import ValueError
 # ===----------------------------------------------------------------------=== #
 #
 # Integer and decimal constants
-# The prefix "M" stands for a decimal (money) value.
-# This is a convention in C.
+# The prefix "M" stands for a decimal (money) value, after the `m`
+# suffix C# uses for decimal literals.
 #
 # ===----------------------------------------------------------------------=== #
 
@@ -893,7 +893,6 @@ def E0D09() -> Decimal128:
 #         ln_value: The natural logarithm as a String.
 #     """
 #     var log_decimal = Decimal128(ln_value)
-#     print("ln(" + value + "): " + log_decimal.repr_words())
 # ```
 
 

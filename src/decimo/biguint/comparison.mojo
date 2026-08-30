@@ -29,7 +29,7 @@ def compare(x1: BigUInt, x2: BigUInt) -> Int8:
         x2: Second unsigned integer.
 
     Returns:
-        Terinary value indicating the comparison result:
+        Ternary value indicating the comparison result:
         (1)  1 if x1 > x2.
         (2)  0 if x1 = x2.
         (3) -1 if x1 < x2.
@@ -47,14 +47,8 @@ def compare(x1: BigUInt, x2: BigUInt) -> Int8:
 
     # Compare the number of words
     if len(x1.words) > len(x2.words):
-        # for i in range(len(x2.words), len(x1.words)):
-        #     # Check if the extra words in x1 are non-zero
-        #     if x1.words[i] != 0:
         return Int8(1)
     if len(x1.words) < len(x2.words):
-        # for i in range(len(x1.words), len(x2.words)):
-        #     # Check if the extra words in x2 are non-zero
-        #     if x2.words[i] != 0:
         return Int8(-1)
 
     # If the number of words that are not leading zeros are equal,

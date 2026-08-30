@@ -14,8 +14,8 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-"""Arithmetic operations for the Rational type.
+"""Placeholder for arithmetic operations on the Rational type.
 
-Implements addition, subtraction, multiplication, division, and other
-arithmetic helpers for the arbitrary-precision Rational number type.
+The operators are currently implemented as methods on `Rational` in
+`rational.mojo`. Nothing imports this module yet.
 """

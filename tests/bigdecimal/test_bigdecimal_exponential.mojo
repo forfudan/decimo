@@ -166,7 +166,7 @@ def test_negative_sqrt() raises:
 def test_ln_invalid_inputs() raises:
     """Test that natural logarithm with invalid inputs raises appropriate errors.
     """
-    # Test 1: ln of zero should raise an error
+    # ln of zero raises
     var zero = BDec("0")
     var exception_caught: Bool
     try:
@@ -176,7 +176,7 @@ def test_ln_invalid_inputs() raises:
         exception_caught = True
     testing.assert_true(exception_caught, "ln(0) should raise an error")
 
-    # Test 2: ln of negative number should raise an error
+    # ln of a negative number raises
     var negative = BDec("-1")
     try:
         _ = negative.ln()

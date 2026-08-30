@@ -121,7 +121,7 @@ def test_unlimited_length() raises:
 
 
 def test_unlimited_big_length() raises:
-    """Integers far beyond any fixed-width type still convert."""
+    """An 85-digit integer in the 繁體 style, well past 亿亿."""
     testing.assert_equal(
         decimal_string_to_chinese(
             "1234567890123456000077192370915780023409000070983127058120003078900000123456789012345",

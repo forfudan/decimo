@@ -32,9 +32,6 @@
 # min(a: Decimal128, b: Decimal128) -> Decimal128: Returns the smaller of two Decimals
 # clamp(x: Decimal128, lower: Decimal128, upper: Decimal128) -> Decimal128: Clamps x into [lower, upper]
 #
-# List of internal functions in this module:
-#
-# _compare_abs(a: Decimal128, b: Decimal128) -> Int: Compares absolute values of two Decimals
 #
 # ===----------------------------------------------------------------------=== #
 
@@ -57,7 +54,7 @@ def compare(x: Decimal128, y: Decimal128) -> Int8:
         y: Second Decimal128 value.
 
     Returns:
-        Terinary value indicating the comparison result:
+        Ternary value indicating the comparison result:
         (1)  1 if x > y.
         (2)  0 if x = y.
         (3) -1 if x < y.
@@ -95,7 +92,7 @@ def compare_absolute(x: Decimal128, y: Decimal128) -> Int8:
         y: Second Decimal128 value.
 
     Returns:
-        Terinary value indicating the comparison result:
+        Ternary value indicating the comparison result:
         (1)  1 if |x| > |y|.
         (2)  0 if |x| = |y|.
         (3) -1 if |x| < |y|.

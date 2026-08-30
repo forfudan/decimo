@@ -16,7 +16,6 @@
 
 """Implements basic object methods for the BigDecimal type.
 
-This module contains the basic object methods for the BigDecimal type.
 These methods include constructors, life time methods, output dunders,
 type-transfer dunders, basic arithmetic operation dunders, comparison
 operation dunders, and other dunders that implement traits, as well as
@@ -79,7 +78,7 @@ print(Decimal("12_345.678_9"))  # Underscores for readability
 
 """
 
-comptime PRECISION = 28  # Same as Python's decimal module default precision of 28 places.
+comptime PRECISION = 28  # Same as Python's decimal module: 28 significant digits.
 """Default precision for BigDecimal operations.
 This will be configurable in future when Mojo supports global variables.
 """
@@ -321,7 +320,7 @@ struct BigDecimal(
         The raw components are a single word, scale, and sign.
 
         Args:
-            word: The single raw UInt32 word for the coefficient.
+            word: The single raw word for the coefficient.
             scale: The number of decimal places.
             sign: Whether the value is negative.
 
@@ -579,11 +578,6 @@ struct BigDecimal(
         5. Marginal performance gain: The time complexity of as_tuple() is still
            O(n) compared to O(n) for direct memory copy.
 
-        The as_tuple() API provides:
-        - Safe, stable interface across Python versions.
-        - Portable across all platforms (32/64-bit, CPython/PyPy).
-        - Clean, maintainable code.
-        - Adequate performance for real-world use cases.
         """
         try:
             # Get DecimalTuple: (sign, digits, exponent)
@@ -2175,7 +2169,7 @@ struct BigDecimal(
             x=Self(BigUInt.one()), precision=precision
         )
 
-    # === Exponentional operations === #
+    # === Exponential operations === #
 
     @always_inline
     def exp(
@@ -2724,7 +2718,7 @@ struct BigDecimal(
     def true_divide_inexact_by_word(
         self, y: BigUInt.Word, number_of_significant_digits: Int
     ) raises -> Self:
-        """Returns the result of division by a small UInt32 integer.
+        """Returns the result of division by a single-word integer.
         See `arithmetics.true_divide_inexact_by_word()` for more information.
 
         Args:
@@ -2732,7 +2726,7 @@ struct BigDecimal(
             number_of_significant_digits: The number of significant digits for the result.
 
         Returns:
-            The quotient of dividing this value by the given `UInt32`.
+            The quotient of dividing this value by the given word.
 
         Raises:
             ZeroDivisionError: If `y` is zero.
@@ -2843,9 +2837,9 @@ struct BigDecimal(
 
         Notes:
 
-        Note that precision is the number of significant digits,
-        not the number of decimal places. If you want to round to a
-        specific number of decimal places, use `round()` instead.
+        Precision is the number of significant digits, not the number of
+        decimal places. To round to a given number of decimal places, use
+        `round()` instead.
 
         See `rounding.round_to_precision_inplace()` for more information.
 
@@ -3601,7 +3595,7 @@ def _insert_digit_separators(s: String, delimiter: String) -> String:
 #
 # `multiply_by_word_inplace()` needs its multiplier below BASE, or the carry
 # out of a word no longer fits in one. So both of these step by the largest
-# power that stays under 10^9 and finish with the remainder.
+# power that stays under `BASE` and finish with the remainder.
 # ===----------------------------------------------------------------------=== #
 
 

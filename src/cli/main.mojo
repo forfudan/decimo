@@ -121,7 +121,7 @@ def main():
         _run()
     except e:
         # Should not reach here — _run() handles all expected errors.
-        # This is a last-resort safety net that still avoids the ugly
+        # This is a last-resort safety net that replaces Mojo's default
         # "Unhandled exception caught during execution:" message.
         print_error(String(e))
         exit(1)
@@ -273,7 +273,7 @@ def _run_file_mode(
     except e:
         print_error("cannot read file '" + path + "': " + String(e))
         exit(1)
-        return  # Unreachable, but keeps the compiler happy
+        return  # Unreachable; the compiler cannot see that exit() never returns
 
     var expressions = filter_expression_lines(split_into_lines(text))
     var had_error = False

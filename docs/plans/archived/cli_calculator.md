@@ -425,7 +425,7 @@ decimo> exit
 | 4.3  | Custom prompt (`decimo>`)                  |   ✓    | Coloured prompt to stderr so results can be piped                           |
 | 4.4  | `ans` variable (previous result)           |   ✓    | Stored in `Dict[String, Decimal]`; updated after each successful evaluation |
 | 4.5  | Variable assignment (`x = expr`)           |   ✓    | `name = expr` detection in REPL; protected names (pi, e, functions, ans)    |
-| 4.6  | Meta-commands (`:precision N`, etc.)       |   ✓    | `:` prefix avoids collision; settings names + aliases (`:vars` not yet)     |
+| 4.6  | Meta-commands (`:precision N`, etc.)       |   ✓    | `:` prefix avoids collision; settings names + aliases                       |
 | 4.7  | One-line quick setting                     |   ✓    | `:p 100 s r down` sets precision, scientific, and rounding in one line      |
 | 4.8  | Same-line temp precision setting           |   ✓    | `2*sqrt(1.23):p 100 s r down` — temp override via `:` separator             |
 | 4.9  | Print settings (`:`)                       |   ✓    | Bare `:` displays full settings block; shown after every `:...` change      |

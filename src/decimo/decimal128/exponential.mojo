@@ -1156,8 +1156,6 @@ def ln_series(z: Decimal128) raises -> Decimal128:
         This series converges fastest when |z| is small.
     """
 
-    # print("DEBUG: ln_series(z) called with z =", z)
-
     var max_terms = 500
 
     # For z=0, ln(1+z) = ln(1) = 0
@@ -1191,10 +1189,7 @@ def ln_series(z: Decimal128) raises -> Decimal128:
 
         # Check for convergence
         if term.is_zero():
-            # print("DEBUG: i = ", i)
             break
-
-    # print("DEBUG: result =", result)
 
     return result
 
@@ -1320,7 +1315,7 @@ def log10(x: Decimal128) raises -> Decimal128:
     var x_scale = x.scale()
     var x_coef = x.coefficient()
 
-    # Sepcial case: x = 10^(-n)
+    # Special case: x = 10^(-n)
     if x_coef == 1:
         # Special case: x = 1
         if x_scale == 0:

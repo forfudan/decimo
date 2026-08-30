@@ -1,6 +1,8 @@
-"""Verify BigDecimal round-trip through Mojo-Python bindings.
+"""Check the decimo Python package against the standard library `decimal`.
 
-Cross-validates against Python's standard library decimal.Decimal where applicable.
+Every result is compared with `decimal.Decimal` wherever `decimal` has the
+same operation. Covers `Decimal`, `Decimal128`, the context, the rounding
+modes and the error types.
 """
 
 import copy
@@ -55,7 +57,7 @@ def check_cmp(op_name, a_str, b_str, op):
 # Tests
 # ---------------------------------------------------------------------------
 
-print("=== decimo mojo4py Phase 0 ===")
+print("=== decimo Python bindings ===")
 print()
 
 # --- Alias test ---
@@ -1129,4 +1131,4 @@ print("[PASS] Decimal128 refuses what it cannot hold")
 
 print()
 
-print("=== All Phase 0 tests passed! ===")
+print("=== All tests passed ===")

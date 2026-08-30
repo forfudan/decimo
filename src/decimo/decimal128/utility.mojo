@@ -113,8 +113,8 @@ def isqrt_u256(x: UInt256) -> UInt256:
     var r = UInt256(0)
     for p in range(127, -1, -1):
         var candidate = r | (UInt256(1) << UInt256(p))
-        # `candidate * candidate` would overflow for a candidate at the very
-        # top, so compare by division instead where it might.
+        # Squaring a candidate above `2^128 - 1` would overflow `UInt256`, so
+        # such a candidate is skipped rather than tested.
         if candidate <= (UInt256(1) << UInt256(128)) - UInt256(1):
             if candidate * candidate <= x:
                 r = candidate
@@ -228,8 +228,9 @@ def fit_to_max_coefficient[
 # of the generated ARM64 assembly disproved this:
 # LLVM lowers `urem` to `sub(a, mul(udiv, b))` and CSE-deduplicates
 # the shared `udiv`, so `// + %` and the manual rewrite produce
-# identical code with exactly one division. The function now uses
-# the natural `// + %` form.)
+# identical code with exactly one division. The UInt256 path takes its
+# quotient from the reciprocal divider instead, so it derives the
+# remainder itself.)
 @always_inline
 def round_coefficient[
     dtype: DType,
@@ -322,11 +323,9 @@ def round_coefficient[
                 return ValueType(1)
             return ValueType(0)
 
-    # Single divmod: writing `// + %` lets LLVM compute one division and
-    # derive the remainder via `a - (a/b) * b`, then CSE-dedup the shared
-    # division (verified at the ARM64 asm level).
-    # An earlier `value - truncated * divisor` rewrite was strictly more
-    # source code for identical generated code.
+    # The remainder is derived from the quotient below rather than taken
+    # with `%`: the UInt256 path gets its quotient from the reciprocal
+    # divider, where a `%` would be a second software division.
     var divisor = power_of_10_unsafe[dtype](ndigits_to_remove)
     # UInt256 // UInt256 lowers to a generic shift-subtract software loop
     # (~250 ns on aarch64). For UInt256, redirect to the Granlund-Möller
@@ -401,9 +400,9 @@ def round_coefficient[
     return truncated
 
 
-# DEPRECATED: Use `round_coefficient` instead.
-# This function is kept for backward compatibility but is no longer used
-# in production code.  `round_coefficient` is faster because it:
+# DEPRECATED: Use `round_coefficient` instead. Only `exponential.sqrt()`
+# still calls this, for its keep-first-n-digits form.
+# `round_coefficient` is faster because it:
 #   (1) takes ndigits_to_remove (avoids redundant number_of_digits call),
 #   (2) computes remainder via multiply instead of a second division, and
 #   (3) uses 2*remainder vs divisor instead of 5*power_of_10(n-1) cutoff.
@@ -653,93 +652,9 @@ def number_of_bits[
     return Int(bit_width(value))
 
 
-# ===----------------------------------------------------------------------=== #
-# Cache for powers of 10
-#
-# Yuhao's notes:
-# This is a module-level cache for powers of 10.
-# It is used to store the powers of 10 up to the required value.
-# The cache is initialized with the first value (10^0 = 1).
-# When a new power of 10 is requested, it is calculated and added to the cache.
-# This cache is used to avoid recalculating the same powers of 10 multiple times.
-#
-# Or, simply create a module-level inline array with hard-coded powers of 10
-# up to 58, which is the maximum number of digits we need to handle for
-# Dec128 coefficients.
-#
-# TODO: Currently, this won't work when you create a .mojoc package to use.
-# When Mojo supports module-level variables, this part can be used.
-# ===----------------------------------------------------------------------=== #
-
-
-# # Module-level cache for powers of 10
-# var _power_of_10_as_uint128_cache = List[UInt128]()
-# var _power_of_10_as_uint256_cache = List[UInt256]()
-
-
-# # Initialize with the first value
-# @always_inline
-# def _init_power_of_10_as_uint128_cache():
-#     if len(_power_of_10_as_uint128_cache) == 0:
-#         _power_of_10_as_uint128_cache.append(1)  # 10^0 = 1
-
-
-# @always_inline
-# def _init_power_of_10_as_uint256_cache():
-#     if len(_power_of_10_as_uint256_cache) == 0:
-#         _power_of_10_as_uint256_cache.append(1)  # 10^0 = 1
-
-
-# @always_inline
-# def power_of_10_as_uint128(n: Int) raises -> UInt128:
-#     """
-#     Returns 10^n using cached values when available.
-#     """
-
-#     # Check for negative exponent
-#     if n < 0:
-#         raise Error(
-#             "power_of_10() requires non-negative exponent, got {}".format(n)
-#         )
-
-#     # Initialize cache if needed
-#     if len(_power_of_10_as_uint128_cache) == 0:
-#         _init_power_of_10_as_uint128_cache()
-
-#     # Extend cache if needed
-#     while len(_power_of_10_as_uint128_cache) <= n:
-#         var next_power = _power_of_10_as_uint128_cache[
-#             len(_power_of_10_as_uint128_cache) - 1
-#         ] * 10
-#         _power_of_10_as_uint128_cache.append(next_power)
-
-#     return _power_of_10_as_uint128_cache[n]
-
-
-# @always_inline
-# def power_of_10_as_uint256(n: Int) raises -> UInt256:
-#     """
-#     Returns 10^n using cached values when available.
-#     """
-
-#     # Check for negative exponent
-#     if n < 0:
-#         raise Error(
-#             "power_of_10() requires non-negative exponent, got {}".format(n)
-#         )
-
-#     # Initialize cache if needed
-#     if len(_power_of_10_as_uint256_cache) == 0:
-#         _init_power_of_10_as_uint256_cache()
-
-#     # Extend cache if needed
-#     while len(_power_of_10_as_uint256_cache) <= n:
-#         var next_power = _power_of_10_as_uint256_cache[
-#             len(_power_of_10_as_uint256_cache) - 1
-#         ] * 10
-#         _power_of_10_as_uint256_cache.append(next_power)
-
-#     return _power_of_10_as_uint256_cache[n]
+# A runtime cache that grows on demand was tried first. It needs a
+# module-level variable, which does not survive packaging into a
+# `.mojoc`, so the hard-coded tables below were used instead.
 
 
 # ===----------------------------------------------------------------------=== #
@@ -1083,7 +998,6 @@ def _mulhi_u256(a: UInt256, b: UInt256) -> UInt256:
 # Precomputed Granlund-Möller reciprocals for `d = 10^k`, `k ∈ [0, 48]`.
 # Index 0 is unused (zero-padded so callers can use `k` as the index).
 # Each entry is the 256-bit `m' = ceil(2^(256+ell)/d) - 2^256`
-# stored little-endian, 32 bytes per slot.
 #
 # Generated offline (Python, verified against random 2k inputs per `k`):
 #   N = 256
@@ -1092,7 +1006,7 @@ def _mulhi_u256(a: UInt256, b: UInt256) -> UInt256:
 #       ell = (d-1).bit_length()
 #       m   = -((-(1 << (N+ell))) // d)        # ceil
 #       mp  = m - (1 << N)
-#       blob.extend(mp.to_bytes(32, "little"))
+#       print(mp)
 comptime _GM_RECIPROCAL: Array[UInt256, 49] = [
     0,  # k=0 unused
     69475253542389717254142591005212744711961990799384338423674550404747877783962,  # k=1
@@ -1145,8 +1059,8 @@ comptime _GM_RECIPROCAL: Array[UInt256, 49] = [
     53438238772987445908119333847701478342801614173215428097412507582334752916560,  # k=48
 ]
 
-# Per-`k` shift amount (`ell - 1`), 30 entries (index 0 unused).
-# Same offline generation; max value is 96 (k=29), comfortably ≤ 255.
+# Per-`k` shift amount (`ell - 1`), 49 entries (index 0 unused).
+# Same offline generation; max value is 159 (k=48), comfortably ≤ 255.
 comptime _GM_SHIFT: Array[UInt8, 49] = [
     0,  # k=0 unused
     3,  # k=1
@@ -1216,10 +1130,11 @@ def udiv_u256_by_pow10_gm(value: UInt256, k: Int) -> UInt256:
         via `debug_assert`) is performed — out-of-range `k` will read
         past the precomputed reciprocal table and return garbage.
 
-        For `k = 0` or `k > 48`, use `udiv_u256_by_pow10` instead.
+        For `k = 0` or `k > 48`, divide by `power_of_10[DType.uint256](k)`
+            instead.
 
         Cost: ~5 ns on aarch64 (single 256×256→high-256 multiply +
-        two shifts), versus ~22 ns for `udiv_u256_by_pow10`.
+        two shifts), against the generic `UInt256 // UInt256` software divide.
 
         Algorithm: Granlund-Möller saturating reciprocal (Hacker's
         Delight §10-9). The 256-bit reciprocal `m'` and shift amount

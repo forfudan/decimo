@@ -13,7 +13,6 @@ def test_default_constructor() raises:
     assert_true(not x.is_negative(), "Zero should not be negative")
     assert_true(not x.is_positive(), "Zero should not be positive")
     assert_true(String(x) == "0", "Zero should stringify to '0'")
-    print("  PASS: default constructor")
 
 
 def test_from_int() raises:
@@ -49,8 +48,6 @@ def test_from_int() raises:
         "BigInt(2^32): " + String(two_words),
     )
 
-    print("  PASS: from_int")
-
 
 def test_from_string() raises:
     """Test construction from String."""
@@ -85,8 +82,6 @@ def test_from_string() raises:
     var plus = BigInt("+100")
     assert_true(String(plus) == "100", "from_string('+100'): " + String(plus))
 
-    print("  PASS: from_string")
-
 
 def test_negation_and_abs() raises:
     """Test __neg__ and __abs__."""
@@ -101,8 +96,6 @@ def test_negation_and_abs() raises:
     var neg_zero = -zero
     assert_true(neg_zero.is_zero(), "neg(0) should be zero")
     assert_true(not neg_zero.sign, "neg(0) sign should be False")
-
-    print("  PASS: negation and abs")
 
 
 def test_hex_and_binary_string() raises:
@@ -132,8 +125,6 @@ def test_hex_and_binary_string() raises:
         "hex(-16): " + neg.to_hex_string(),
     )
 
-    print("  PASS: hex and binary string")
-
 
 def test_bit_length() raises:
     """Test bit_length."""
@@ -152,8 +143,6 @@ def test_bit_length() raises:
     var val_256 = BigInt(256)
     assert_true(val_256.bit_length() == 9, "bit_length(256)")
 
-    print("  PASS: bit_length")
-
 
 def test_copy() raises:
     """Test copy method."""
@@ -169,8 +158,6 @@ def test_copy() raises:
         "copy should be independent of original",
     )
 
-    print("  PASS: copy")
-
 
 def test_normalize() raises:
     """Test _normalize strips leading zeros and normalizes -0."""
@@ -184,14 +171,11 @@ def test_normalize() raises:
     neg_zero._normalize()
     assert_true(not neg_zero.sign, "-0 should normalize to +0")
 
-    print("  PASS: normalize")
-
 
 def test_print_internal() raises:
     """Smoke test for print_internal_representation."""
     var x = BigInt("1234567890123456789")
     x.print_internal_representation()
-    print("  PASS: print_internal_representation (visual check above)")
 
 
 def assert_true(cond: Bool, msg: String) raises:

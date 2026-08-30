@@ -14,8 +14,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-"""Implements the RoundingMode for different rounding modes.
-"""
+"""Implements `RoundingMode`, the rounding modes the decimal types accept."""
 
 comptime ROUND_DOWN = RoundingMode.ROUND_DOWN
 """Rounding mode: Truncate (toward zero)."""

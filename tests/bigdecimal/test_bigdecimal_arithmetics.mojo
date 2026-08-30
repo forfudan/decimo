@@ -505,8 +505,4 @@ def test_divide_tie_with_a_truncated_dividend() raises:
 
 
 def main() raises:
-    # print("Running BigDecimal arithmetic tests")
-
     testing.TestSuite.discover_tests[__functions_in_module()]().run()
-
-    # print("All BigDecimal arithmetic tests passed!")

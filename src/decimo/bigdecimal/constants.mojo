@@ -94,13 +94,6 @@ comptime PI_1024 = BigDecimal(
 """Pi to 1024 digits of precision."""
 
 
-# TODO: When Mojo support global variables,
-# we save the value of π to a certain precision in the global scope.
-# This will allow us to use it everywhere without recalculating it
-# if the required precision is the same or lower.
-# Everytime when user calls pi(precision),
-# we check whether the precision is higher than the current precision.
-# If yes, then we save it into the global scope as cached value.
 def pi(precision: Int) raises -> BigDecimal:
     """Calculates π using the fastest available algorithm.
 
@@ -277,7 +270,7 @@ def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
 
     # `q / t` is formed as a single fixed-point integer division rather than as
     # `BigDecimal(q).true_divide(BigDecimal(t))`. The latter converts *both*
-    # operands from base 2^32 to base 10^9 before dividing, and base conversion
+    # operands from base 2^64 to base 10^18 before dividing, and base conversion
     # is the one cost a binary bignum library never pays at all. Scaling in
     # binary and converting only the quotient halves that bill: the scaling
     # multiply and the binary division together come to less than the
@@ -305,7 +298,7 @@ def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
     # as a *reciprocal* square root, which Newton computes without a single
     # division. `426880 * 10005 = 4270934400`, which still fits in a word.
     #
-    # All three factors are combined in `BigInt` and converted to base 10^9
+    # All three factors are combined in `BigInt` and converted to base 10^18
     # exactly once, at the end. The obvious alternative - build a `BigDecimal`
     # from `quotient` and multiply it by `sqrt_via_reciprocal_iteration()` - converts here
     # instead of at the end, and then does the square root and both final

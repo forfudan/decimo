@@ -32,8 +32,8 @@ from decimo.errors import ValueError
 comptime FACTORIAL_MAX_INPUT = 1_000_000
 """The largest argument accepted by `factorial` (10^6)."""
 
-# Below this many factors, `product_range` stops splitting and accumulates the
-# consecutive factors with in-place single-word multiplies instead. That avoids
+# At this many factors or fewer, `product_range` stops splitting and
+# accumulates them with in-place single-word multiplies instead. That avoids
 # building a fresh BigInt for every factor and the buffer churn of the pairwise
 # products near the bottom of the recursion. Measured ~1.1x (large n) to ~4x
 # (small n) faster than splitting all the way down.

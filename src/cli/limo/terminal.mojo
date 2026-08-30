@@ -365,10 +365,10 @@ def read_byte() raises -> UInt8:
 def write_stdout(data: String):
     """Writes a string to stdout (best-effort, for terminal output)."""
     var byte_span = data.as_bytes()
-    # NOTE: Unlike tcgetattr/tcsetattr/read, we do NOT use explicit Int arg
-    # types here because `write` already has a declaration in the Mojo stdlib
-    # with different arg types — adding explicit types would cause an LLVM IR
-    # signature conflict.
+    # NOTE: Unlike tcgetattr/tcsetattr, we do NOT use explicit Int arg types
+    # here because `write` already has a declaration in the Mojo stdlib with
+    # different arg types — adding explicit types would cause an LLVM IR
+    # signature conflict.  `read` is exempt for the same reason.
     _ = external_call["write", Int](
         Int(STDOUT_FILENO),
         byte_span.unsafe_ptr(),

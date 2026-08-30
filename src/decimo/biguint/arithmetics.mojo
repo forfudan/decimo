@@ -78,7 +78,7 @@ Swept at eighteen digits a word (20260828), three runs each, ns:
 |  1 536 | 291.4 k | 269.1 k |
 |  2 048 | 469.6 k | 446.0 k |
 
-Neutral to a thousand words and 1.05-1.08x above it. Worth noting that 512 is
+Neutral to a thousand words and 1.05-1.08x above it. 512 is
 neither the base-10^9 value (768) nor half of it (384, where the base change
 put it): unlike the vector widths, this one really did move, and not by the
 factor anyone would have guessed. Sweep, do not scale.
@@ -197,11 +197,6 @@ the 112-word row, is the one being tuned for.
 # normalize_carries_lt_2_bases(x: BigUInt) -> None
 # normalize_carries_lt4_bases(x: BigUInt) -> None
 # power_of_10(n: Int) -> BigUInt
-# ===----------------------------------------------------------------------=== #
-
-# ===----------------------------------------------------------------------=== #
-# Unary operations
-# negative, absolute
 # ===----------------------------------------------------------------------=== #
 
 
@@ -763,7 +758,7 @@ def negative(x: BigUInt) raises -> BigUInt:
             function="negative()",
             message="Negative of non-zero unsigned integer is undefined",
         )
-    return BigUInt.zero()  # Return zero
+    return BigUInt.zero()
 
 
 def absolute(x: BigUInt) -> BigUInt:
@@ -820,17 +815,17 @@ def add(x: BigUInt, y: BigUInt) -> BigUInt:
 
     if len(x.words) == 1:
         if len(y.words) == 1:
-            # If both numbers are single-word, we can handle them with UInt32
+            # Both single-word: the sum fits one machine integer.
             return BigUInt.from_unsigned_integral_scalar(
                 x.words[0] + y.words[0]
             )
-        else:  # If x is single-word, we can handle it with UInt32
+        else:  # x is single-word: add it into a copy of y.
             var result = y.copy()
             add_by_word_inplace(result, x.words[0])
             return result^
 
     if len(y.words) == 1:
-        # If y is single-word, we can handle it with UInt32
+        # y is single-word: add it into a copy of x.
         var result = x.copy()
         add_by_word_inplace(result, y.words[0])
         return result^
@@ -847,7 +842,7 @@ def add(x: BigUInt, y: BigUInt) -> BigUInt:
     # Yuhao ZHU:
     # Use SIMD operations for addition if both numbers are large enough.
     # This will first add the words in parallel, and then handle the carries.
-    # Although you use an extra loop to normalize the carries, this is still
+    # Although this takes an extra loop to normalize the carries, it is still
     # faster than the school method for large numbers, as the normalized carries
     # can be simplified to addition and subtraction instead of floor division
     # and modulo operations.
@@ -974,7 +969,7 @@ def add_inplace(mut x: BigUInt, y: BigUInt) -> None:
         debug_assert[assert_mode="none"](
             len(x.words) == 1, "add_inplace(): leading zero words"
         )
-        x.words = y.words.copy()  # Copy the words from y
+        x.words = y.words.copy()
         return
     if y.is_zero():
         debug_assert[assert_mode="none"](
@@ -1103,12 +1098,6 @@ def subtract(x: BigUInt, y: BigUInt) raises -> BigUInt:
     # reference; it is the same algorithm with the borrow on the critical path.
     return subtract_carry_select(x, y)
 
-    # Yuhao ZHU:
-    # Below is a school method for subtraction.
-    # You go from the least significant word to the most significant word.
-    #
-    # return subtract_schoolbook(x, y)
-
 
 def subtract_schoolbook(x: BigUInt, y: BigUInt) raises -> BigUInt:
     """Returns the difference of two unsigned integers using the school method.
@@ -1141,7 +1130,7 @@ def subtract_schoolbook(x: BigUInt, y: BigUInt) raises -> BigUInt:
     var comparison_result = x.compare(y)
     if comparison_result == 0:
         # |x| = |y|
-        return BigUInt.zero()  # Return zero
+        return BigUInt.zero()
     if comparison_result < 0:
         raise OverflowError(
             function="subtract_schoolbook()",
@@ -1229,7 +1218,7 @@ def subtract_carry_select(x: BigUInt, y: BigUInt) raises -> BigUInt:
     var comparison_result = x.compare(y)
     if comparison_result == 0:
         # |x| = |y|
-        return BigUInt.zero()  # Return zero
+        return BigUInt.zero()
     if comparison_result < 0:
         raise OverflowError(
             function="subtract()",
@@ -1339,7 +1328,7 @@ def subtract_inplace(mut x: BigUInt, y: BigUInt) raises -> None:
         subtract_by_word_inplace(x, y.words[0])
         return
 
-    # Note that len(x.words) >= len(y.words) here
+    # Here len(x.words) >= len(y.words)
     var xp = x.words.unsafe_ptr()
     var borrow = _subtract_words(
         xp,
@@ -1379,7 +1368,7 @@ def subtract_no_check_inplace(mut x: BigUInt, y: BigUInt) -> None:
         return
 
     # Underflow checks are skipped here, so we assume x >= y
-    # Note that len(x.words) >= len(y.words) under this assumption
+    # Under this assumption len(x.words) >= len(y.words)
     var xp = x.words.unsafe_ptr()
     var borrow = _subtract_words(
         xp,
@@ -1424,18 +1413,16 @@ def subtract_by_word_inplace(mut x: BigUInt, y: BigUInt.Word) -> None:
         var borrow: BigUInt.Word = 0
         for ref word in x.words:
             if borrow == 0:
-                if word <= BigUInt.BASE_MAX:  # 0 <= word <= 999_999_999
+                if word <= BigUInt.BASE_MAX:  # a valid word
                     break  # No borrow, we can stop early
-                else:  # word >= 3294967297, overflowed value
+                else:  # the subtraction wrapped
                     word += BigUInt.BASE
                     borrow = 1
             else:  # borrow == 1
-                if (word >= 1) and (
-                    word <= BigUInt.BASE_MAX
-                ):  # 1 <= word <= 999_999_999
+                if (word >= 1) and (word <= BigUInt.BASE_MAX):
                     word -= 1
                     borrow = 0
-                else:  # word >= 3294967297 or word == 0, overflowed value
+                else:  # the subtraction wrapped, or the word was zero
                     word = (word + BigUInt.BASE) - 1
                     # borrow = 1
         x.remove_leading_empty_words()
@@ -1524,11 +1511,9 @@ def multiply(x: BigUInt, y: BigUInt) -> BigUInt:
     # Use school multiplication for small numbers
     var max_words = max(len(x.words), len(y.words))
     if max_words <= CUTOFF_KARATSUBA:
-        # return multiply_slices_schoolbook (x, y)
         return multiply_slices_schoolbook(
             x, y, (0, len(x.words)), (0, len(y.words))
         )
-        # multiply_slices_schoolbook can also take x, y, and indices
 
     # CASE 2
     # Use Toom-3 multiplication for very large numbers.
@@ -1580,9 +1565,7 @@ def multiply_slices(
     # Use school multiplication for small numbers
     var max_words = max(n_words_x_slice, n_words_y_slice)
     if max_words <= CUTOFF_KARATSUBA:
-        # return multiply_slices_schoolbook (x, y)
         return multiply_slices_schoolbook(x, y, bounds_x, bounds_y)
-        # multiply_slices_schoolbook can also take x, y, and indices
 
     # CASE 2
     # Use Toom-3 multiplication for very large numbers.
@@ -1773,8 +1756,6 @@ def multiply_slices_karatsuba(
     ):
         return BigUInt.zero()
 
-    # Number of words in the slice 1: end_x - start_x
-    # Number of words in the slice 2: end_y - start_y
     var n_words_x_slice = bounds_x[1] - bounds_x[0]
     var n_words_y_slice = bounds_y[1] - bounds_y[0]
 
@@ -1790,14 +1771,12 @@ def multiply_slices_karatsuba(
     # Use school multiplication for small numbers
     var n_words_max = max(n_words_x_slice, n_words_y_slice)
     if n_words_max <= cutoff_number_of_words:
-        # return multiply_slices_schoolbook (x, y)
         return multiply_slices_schoolbook(x, y, bounds_x, bounds_y)
-        # multiply_slices_schoolbook can also takes in x, y, and indices
 
     # Otherwise, use Karatsuba
 
     # A number is split into two as-equal-length-as-possible parts:
-    # x = x1 * 10^(9*m) + x0
+    # x = x1 * BASE^m + x0
     # The low part takes the first m words, the high part takes the rest.
     var m = n_words_max // 2
     var z0: BigUInt
@@ -1805,7 +1784,6 @@ def multiply_slices_karatsuba(
     var z2: BigUInt
 
     if n_words_x_slice <= m:
-        # print("Karatsuba multiplication with x slice shorter than m words")
         # x slice is shorter than m words
         # Two times of multiplication
         # x0 = x_slice
@@ -1834,7 +1812,6 @@ def multiply_slices_karatsuba(
         return z1^
 
     elif n_words_y_slice <= m:
-        # print("Karatsuba multiplication with y slice shorter than m words")
         # y slice is shorter than m words
         # Two times of multiplication
         # x0 = x_slice.words[0:m]
@@ -1862,7 +1839,6 @@ def multiply_slices_karatsuba(
         return z1^
 
     else:
-        # print("normal Karatsuba multiplication")
         # Normal Karatsuba multiplication
         # Three times of multiplication
         # x0 = x_slice.words[0:m]
@@ -1912,7 +1888,7 @@ def multiply_slices_karatsuba(
         subtract_no_check_inplace(z1, z2)
         subtract_no_check_inplace(z1, z0)
 
-        # z2*9^(m * 2) + z1*9^m + z0
+        # z2 * BASE^(2m) + z1 * BASE^m + z0
         z2.multiply_by_power_of_base_inplace(2 * m)
         z1.multiply_by_power_of_base_inplace(m)
         z2 += z1
@@ -2091,9 +2067,7 @@ def multiply_slices_toom3(
     var y0_slice = BigUInt.from_slice(y, (sy0_start, sy0_end))
     add_inplace(qy2, y0_slice)
 
-    # ===================================================================
-    # POINTWISE MULTIPLICATION: 5 recursive multiplications
-    # ===================================================================
+    # Pointwise multiplication: five recursive products.
 
     # v0 = p(0) * q(0) = x0 * y0 (use original bounds, no copy)
     var v0 = multiply_slices(x, y, (sx0_start, sx0_end), (sy0_start, sy0_end))
@@ -2110,7 +2084,7 @@ def multiply_slices_toom3(
 
     # vm1 = p(-1) * q(-1), sign = pxm1_neg XOR qym1_neg
     var vm1 = multiply(pxm1, qym1)
-    var vm1_neg = pxm1_neg != qym1_neg  # XOR
+    var vm1_neg = pxm1_neg != qym1_neg
 
     # v2 = p(2) * q(2)
     var v2 = multiply(px2, qy2)
@@ -2193,9 +2167,7 @@ def multiply_slices_toom3(
     subtract_no_check_inplace(t1, t3)
     # t1 now holds w1
 
-    # ===================================================================
-    # RECOMPOSITION: result = w0 + w1*B^m + w2*B^(2m) + w3*B^(3m) + w4*B^(4m)
-    # ===================================================================
+    # Recomposition: result = w0 + w1*B^m + w2*B^(2m) + w3*B^(3m) + w4*B^(4m).
 
     # Pre-allocate the result array.
     # Maximum result length: nx + ny words (product of two numbers).
@@ -2203,7 +2175,6 @@ def multiply_slices_toom3(
     var result = BigUInt(unsafe_uninit_length=result_len)
     unsafe_memset_zero(ptr=result.words.unsafe_ptr(), count=result_len)
 
-    # Helper: add a BigUInt value at a word offset into result
     @parameter
     def _add_at_offset(mut result: BigUInt, value: BigUInt, offset: Int):
         """Adds value into result starting at the given word offset."""
@@ -2322,7 +2293,7 @@ def multiply_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
 
     Notes:
 
-    In non-debug model, if n is less than or equal to 0, the function returns x
+    In non-debug mode, if n is less than or equal to 0, the function returns x
     unchanged. In debug mode, it asserts that n is non-negative.
     """
     debug_assert[assert_mode="none"](
@@ -2383,7 +2354,7 @@ def multiply_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
 
     Notes:
 
-    In non-debug model, if n is less than or equal to 0, the function returns x
+    In non-debug mode, if n is less than or equal to 0, the function returns x
     unchanged. In debug mode, it asserts that n is non-negative.
     """
     debug_assert[assert_mode="none"](
@@ -2407,9 +2378,9 @@ def multiply_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
     var number_of_zero_words = n // BigUInt.DIGITS_PER_WORD
     var number_of_remaining_digits = n % BigUInt.DIGITS_PER_WORD
 
-    # SPECIAL CASE: If n is a multiple of 9
+    # SPECIAL CASE: If n is a multiple of DIGITS_PER_WORD
     if number_of_remaining_digits == 0:
-        # If n is a multiple of 9, we just need to add zero words
+        # A whole number of words: just add that many zero words.
         x.multiply_by_power_of_base_inplace(number_of_zero_words)
         return
 
@@ -2438,7 +2409,7 @@ def multiply_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
             x.words[i] = BigUInt.Word(product % UInt128(BigUInt.BASE))
             carry = product // UInt128(BigUInt.BASE)
 
-        # Add the last carry no matter it is 0 or not
+        # Write the last carry, whether or not it is zero
         x.words[x_original_length] = BigUInt.Word(carry)
 
         # Now we shift the words to the right by number_of_zero_words
@@ -2456,7 +2427,7 @@ def multiply_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
 
 def multiply_by_power_of_base(x: BigUInt, n: Int) -> BigUInt:
     """Multiplies a BigUInt by `BASE^n` (n >= 0).
-    This equals to appending `n` zero words to the end of the number.
+    This is the same as appending `n` zero words to the end of the number.
 
     Args:
         x: The BigUInt value to multiply.
@@ -2464,7 +2435,7 @@ def multiply_by_power_of_base(x: BigUInt, n: Int) -> BigUInt:
 
     Notes:
 
-    In non-debug model, if n is less than or equal to 0, the function returns x
+    In non-debug mode, if n is less than or equal to 0, the function returns x
     unchanged. In debug mode, it asserts that n is non-negative.
 
     Returns:
@@ -2504,7 +2475,7 @@ def multiply_by_power_of_base(x: BigUInt, n: Int) -> BigUInt:
 
 def multiply_by_power_of_base_inplace(mut x: BigUInt, n: Int):
     """Multiplies a BigUInt in-place by `BASE^n` (n >= 0).
-    This equals to appending `n` zero words to the end of the number.
+    This is the same as appending `n` zero words to the end of the number.
 
     Args:
         x: The BigUInt value to multiply.
@@ -2512,7 +2483,7 @@ def multiply_by_power_of_base_inplace(mut x: BigUInt, n: Int):
 
     Notes:
 
-    In non-debug model, if n is less than or equal to 0, the function returns x
+    In non-debug mode, if n is less than or equal to 0, the function returns x
     unchanged. In debug mode, it asserts that n is non-negative.
     """
     debug_assert[assert_mode="none"](
@@ -2561,7 +2532,7 @@ def exact_divide_by_2_inplace(mut x: BigUInt):
     var carry: BigUInt.Word = 0
     for i in range(len(x.words) - 1, -1, -1):
         # carry is 0 or 1; carry * BASE + words[i] fits in BigUInt.Word
-        # because max = 1 * 10^9 + 999_999_999 = 1_999_999_999 < 2^32
+        # because max = 1 * 10^18 + (10^18 - 1) = 1_999_999_999_999_999_999 < 2^64
         var val = carry * BigUInt.Word(BigUInt.BASE) + x.words[i]
         x.words[i] = val // 2
         carry = val % 2
@@ -2581,10 +2552,10 @@ def exact_divide_by_3_inplace(mut x: BigUInt):
     because a compiler turns both the division and the modulus by a constant
     into multiply-high.
 
-    The division comes off the chain by splitting it. Since `10^9 = 3 * T + 1`
-    with `T = 333_333_333`, writing `word = 3 * d + m`:
+    The division comes off the chain by splitting it. Since
+    `BASE = 3 * T + 1` with `T = BASE_MAX / 3`, writing `word = 3 * d + m`:
 
-        carry * 10^9 + word = 3 * (carry * T + d) + (carry + m)
+        carry * BASE + word = 3 * (carry * T + d) + (carry + m)
 
     so, with `carry + m <= 4`,
 
@@ -2593,7 +2564,7 @@ def exact_divide_by_3_inplace(mut x: BigUInt):
 
     `d` and `m` depend only on `word`, so the one division left is off the
     chain. See `bigint.arithmetics._exact_divide_by_3_inplace()`, which uses
-    the same identity in base 2^32 — both bases happen to be `1 mod 3`.
+    the same identity in base 2^64 — both bases happen to be `1 mod 3`.
     Every power of ten is, so this survives a change of `DIGITS_PER_WORD`.
 
     Args:
@@ -2601,7 +2572,7 @@ def exact_divide_by_3_inplace(mut x: BigUInt):
     """
     comptime BASE_OVER_THREE = BigUInt.Word(
         BigUInt.BASE_MAX // 3
-    )  # 333_333_333
+    )  # 333_333_333_333_333_333
 
     var carry = BigUInt.Word(0)  # 0, 1 or 2
     var xp = x.words.unsafe_ptr()
@@ -2680,16 +2651,16 @@ def floor_divide(x: BigUInt, y: BigUInt) raises -> BigUInt:
             len(x.words) == 1,
             "biguint.arithmetics.floor_divide(): x has leading zero words",
         )
-        return BigUInt.zero()  # Return zero
+        return BigUInt.zero()
 
     # CASE: x is not greater than y
     var comparison_result: Int8 = x.compare(y)
     # SUB-CASE: dividend < divisor
     if comparison_result < 0:
-        return BigUInt.zero()  # Return zero
+        return BigUInt.zero()
     # SUB-CASE: dividend == divisor
     if comparison_result == 0:
-        return BigUInt.one()  # Return one
+        return BigUInt.one()
 
     # CASE: y is single word
     if len(y.words) == 1:
@@ -2700,7 +2671,7 @@ def floor_divide(x: BigUInt, y: BigUInt) raises -> BigUInt:
         if len(x.words) == 1:
             var result = BigUInt.from_word_unsafe(x.words[0] // y.words[0])
             return result^
-        # SUB-CASE: Divisor is single word (<= 9 digits)
+        # SUB-CASE: Divisor is single word (<= DIGITS_PER_WORD digits)
         else:
             return floor_divide_by_word(x, y.words[0])
 
@@ -2735,8 +2706,8 @@ def floor_divide(x: BigUInt, y: BigUInt) raises -> BigUInt:
     # exact multiple of four words, where the routine skips its leading-group
     # branch -- not a reason to keep a slower path for every other size.
     #
-    # One- and two-word divisors keep their shortcuts: `UInt32` and `UInt64`
-    # division *is* a hardware instruction, and those paths win by 2-3x.
+    # A one-word divisor keeps its shortcut: a 128-by-64 divide *is* a
+    # hardware instruction, and that path wins by 2-3x.
     #
     # The shortcut was correct, not just slow -- `x == q * y + r` with
     # `r < y` was checked across 555 operand shapes before it was removed.
@@ -2781,7 +2752,7 @@ def floor_divide(x: BigUInt, y: BigUInt) raises -> BigUInt:
 # TODO: Implement a `floor_divide_slices_schoolbook()` function that
 # can be used for slices of BigUInt numbers.
 def floor_divide_schoolbook(x: BigUInt, y: BigUInt) raises -> BigUInt:
-    """**[PRIVATE]** General schoolbook division algorithm for BigInt10 numbers.
+    """**[PRIVATE]** General schoolbook division algorithm for `BigUInt` numbers.
 
     Args:
         x: The dividend.
@@ -2800,7 +2771,7 @@ def floor_divide_schoolbook(x: BigUInt, y: BigUInt) raises -> BigUInt:
 def floor_divide_modulo_schoolbook(
     x: BigUInt, y: BigUInt, mut remainder: BigUInt
 ) raises -> BigUInt:
-    """**[PRIVATE]** General schoolbook division algorithm for BigInt10 numbers,
+    """**[PRIVATE]** General schoolbook division algorithm for `BigUInt` numbers,
     keeping the remainder.
 
     Args:
@@ -2840,14 +2811,14 @@ def floor_divide_modulo_schoolbook(
             "biguint.arithmetics.floor_divide(): x has leading zero words",
         )
         overwrite_with_word(remainder, 0)
-        return BigUInt.zero()  # Return zero
+        return BigUInt.zero()
 
     # CASE: x is not greater than y
     var comparison_result: Int8 = x.compare(y)
     # SUB-CASE: dividend < divisor
     if comparison_result < 0:
         remainder = x.copy()  # The dividend passes through untouched
-        return BigUInt.zero()  # Return zero
+        return BigUInt.zero()
     # SUB-CASE: dividend == divisor
     if comparison_result == 0:
         overwrite_with_word(remainder, 0)
@@ -2864,7 +2835,7 @@ def floor_divide_modulo_schoolbook(
             overwrite_with_word(remainder, x.words[0] % y.words[0])
             var result = BigUInt.from_word_unsafe(x.words[0] // y.words[0])
             return result^
-        # SUB-CASE: Divisor is single word (<= 9 digits)
+        # SUB-CASE: Divisor is single word (<= DIGITS_PER_WORD digits)
         else:
             var word_remainder = BigUInt.Word(0)
             var result = floor_divide_modulo_by_word(
@@ -2924,7 +2895,7 @@ def floor_divide_modulo_schoolbook(
         #
         # `carry` carries both halves of the step: the high word of the
         # product, and the borrow, which is folded into it exactly one word
-        # later - the same trick the base-2^32 Knuth D uses. Biasing the
+        # later - the same trick the base-2^64 Knuth D uses. Biasing the
         # difference by BASE keeps it non-negative, so the borrow is just
         # whether the biased value stayed below BASE.
         var carry = _multiply_subtract_words(
@@ -3083,12 +3054,12 @@ def floor_divide_by_word(x: BigUInt, y: BigUInt.Word) -> BigUInt:
 def floor_divide_modulo_by_word(
     x: BigUInt, y: BigUInt.Word, mut remainder: BigUInt.Word
 ) -> BigUInt:
-    """**[PRIVATE]** Divides a BigUInt by a UInt32 divisor, keeping the
+    """**[PRIVATE]** Divides a BigUInt by a single-word divisor, keeping the
     remainder.
 
     Args:
         x: The BigUInt value to divide by the divisor.
-        y: The UInt32 divisor. Must be non-zero.
+        y: The single-word divisor. Must be non-zero.
         remainder: Set to `x % y` on return.
 
     Returns:
@@ -3154,11 +3125,11 @@ def floor_divide_modulo_by_word(
 
 
 def floor_divide_by_word_inplace(mut x: BigUInt, y: BigUInt.Word) -> None:
-    """Divides a BigUInt by a UInt32 divisor in-place.
+    """Divides a BigUInt by a single-word divisor in-place.
 
     Args:
         x: The BigUInt value to divide by the divisor.
-        y: The UInt32 divisor. Must be non-zero.
+        y: The single-word divisor. Must be non-zero.
 
     Notes:
 
@@ -3275,8 +3246,6 @@ def floor_divide_by_2_inplace(mut x: BigUInt) -> None:
     x.remove_leading_empty_words()
 
 
-# TODO: If `n` is a multiple of `DIGITS_PER_WORD`, the in-place version can
-# be optimized by delegating to `floor_divide_by_power_of_base_inplace`.
 def floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
     """Floor divides a BigUInt by 10^n (n>=0).
     It is equal to removing the last n digits of the number.
@@ -3290,7 +3259,7 @@ def floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
 
     Notes:
 
-    In non-debug model, if n is less than or equal to 0, the function returns x
+    In non-debug mode, if n is less than or equal to 0, the function returns x
     unchanged. In debug mode, it asserts that n is non-negative.
     """
     # The message is passed as separate pieces rather than concatenated: a
@@ -3315,7 +3284,7 @@ def floor_divide_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
     var word_shift = n // BigUInt.DIGITS_PER_WORD
     var digit_shift = n % BigUInt.DIGITS_PER_WORD
 
-    # If we need to drop more words than exists, the result is zero.
+    # If we need to drop more words than there are, the result is zero.
     if word_shift >= len(x.words):
         return BigUInt.zero()
 
@@ -3493,7 +3462,7 @@ def floor_divide_by_power_of_base(x: BigUInt, n: Int) -> BigUInt:
 
     Notes:
 
-    In non-debug model, if n is less than or equal to 0, the function returns x
+    In non-debug mode, if n is less than or equal to 0, the function returns x
     unchanged. In debug mode, it asserts that n is non-negative.
     """
     # Message in pieces, not concatenated -- see `floor_divide_by_power_of_ten()`.
@@ -3511,7 +3480,7 @@ def floor_divide_by_power_of_base(x: BigUInt, n: Int) -> BigUInt:
 
     var n_words_of_result = len(x.words) - n
     if n_words_of_result <= 0:
-        # If we need to drop more words than exists, result is zero
+        # If we need to drop more words than there are, the result is zero
         return BigUInt.zero()
     else:
         var result = BigUInt(unsafe_uninit_length=n_words_of_result)
@@ -3564,7 +3533,7 @@ def floor_divide_by_power_of_base_inplace(mut x: BigUInt, n: Int):
     x.words.shrink(keep)
 
 
-# FAST RUCURSIVE DIVISION ALGORITHM
+# FAST RECURSIVE DIVISION ALGORITHM
 # =============================== #
 # The following functions implement the Burnikel-Ziegler algorithm.
 #
@@ -3707,7 +3676,7 @@ def floor_divide_modulo_burnikel_ziegler(
         # If the number of words in the dividend is already a multiple of n
         # We check if the most significant word is >= `BASE_HALF`.
         # If it is, we need to add one more block to the dividend.
-        # This ensures that the most significant word of the dividend
+        # so that the most significant word of the dividend
         # is smaller than `BASE_HALF`.
         # In this sense, the first 2-by-1 division will generate a quotient
         # of either 0 or 1, which would otherwise exceed n-word capacity.
@@ -3734,7 +3703,7 @@ def floor_divide_modulo_burnikel_ziegler(
         # iteration and we can do some inplace operations.
 
         if i == t - 2:
-            # The first iteration, we can use the slize of normalized_a
+            # The first iteration, so the dividend is a slice of normalized_a
             q = floor_divide_slices_two_by_one(
                 normalized_a,
                 normalized_b,
@@ -4107,7 +4076,7 @@ def floor_divide_slices_three_by_two(
     """
 
     # SPECIAL CASE:
-    # If a2 is empty or zero, than it becomes a2a1 // b1b0
+    # If a2 is empty or zero, then it becomes a2a1 // b1b0
     # Because the most significant word of b1 is at least `BASE_HALF`,
     # The quotient will be either 1 or 0.
     if bounds_a[0] + 2 * n == bounds_a[1]:
@@ -4157,11 +4126,11 @@ def floor_divide_slices_three_by_two(
 
 
 # Yuhao ZHU:
-# The following functions are most granular implementations of the
+# The following functions are the most granular implementations of the
 # Burnikel-Ziegler algorithm, which divide a 3-word number by a 2-word number
 # and a 4-word number by a 2-word number, respectively.
 # They are not used because they are too granular and not efficient.
-# When then size of the divisor is less than N, we switch to the schoolbook
+# When the size of the divisor is less than the cutoff, we switch to the schoolbook
 # division algorithm.
 # However, these functions are still valid and can be used if needed.
 def floor_divide_three_by_two_words(
@@ -4183,9 +4152,9 @@ def floor_divide_three_by_two_words(
 
     Returns:
         A tuple containing
-        (1) the quotient (as UInt32)
-        (2) the most significant word of the remainder (as UInt32)
-        (3) the least significant word of the remainder (as UInt32).
+        (1) the quotient (as BigUInt.Word)
+        (2) the most significant word of the remainder (as BigUInt.Word)
+        (3) the least significant word of the remainder (as BigUInt.Word).
 
     Raises:
         ValueError: If b1 < `BASE_HALF`.
@@ -4503,7 +4472,7 @@ def floor_divide_modulo(
         if len(x.words) == 1:
             overwrite_with_word(remainder, x.words[0] % y.words[0])
             return BigUInt.from_word_unsafe(x.words[0] // y.words[0])
-        # SUB-CASE: Divisor is single word (<= 9 digits)
+        # SUB-CASE: Divisor is single word (<= DIGITS_PER_WORD digits)
         var word_remainder = BigUInt.Word(0)
         var quotient = floor_divide_modulo_by_word(
             x, y.words[0], word_remainder
@@ -4600,7 +4569,7 @@ def normalize_carries_lt_2_bases(mut x: BigUInt):
 
     Notes:
 
-    If we adds two BigUInt numbers word-by-word, we may end up with
+    If we add two BigUInt numbers word by word, we may end up with
     a situation where some words are larger than BASE. This function
     normalizes the carries, ensuring that all words are within the valid range.
     It modifies the input BigUInt in-place.

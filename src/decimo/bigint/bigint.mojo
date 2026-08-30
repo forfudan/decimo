@@ -16,7 +16,6 @@
 
 """Implements basic object methods for the BigInt type.
 
-This module contains the basic object methods for the BigInt type.
 These methods include constructors, life time methods, output dunders,
 type-transfer dunders, basic arithmetic operation dunders, comparison
 operation dunders, and other dunders that implement traits, as well as
@@ -82,7 +81,6 @@ cannot reuse a destination, so this is where we come out ahead rather than
 behind -- 1.4x at a hundred digits and 2.7x at ten. `docs/benchmarks.md`
 carries the current figures.
 
-7 is a prime number. I love prime numbers. 😃
 """
 
 comptime Magnitude = WordList[DType.uint64, INLINE_WORDS]
@@ -451,10 +449,10 @@ struct BigInt(
 
     @staticmethod
     def from_biguint(magnitude: BigUInt, sign: Bool = False) -> Self:
-        """Converts a base-10^9 magnitude and a sign to a base-2^64 BigInt.
+        """Converts a base-10^18 magnitude and a sign to a base-2^64 BigInt.
 
         Args:
-            magnitude: The unsigned base-10^9 magnitude to convert.
+            magnitude: The unsigned base-10^18 magnitude to convert.
             sign: Whether the result is negative. Ignored when the magnitude
                 is zero, which is always stored unsigned.
 
@@ -464,7 +462,7 @@ struct BigInt(
         if magnitude.is_zero():
             return Self()
 
-        # Convert from base 10^9 to base 2^64 using repeated division
+        # Convert from base 10^18 to base 2^64 using repeated division
         var div_words = Magnitude(capacity=len(magnitude.words))
         for word in magnitude.words:
             div_words.append(UInt64(word))
@@ -472,8 +470,8 @@ struct BigInt(
 
         var all_zero = False
         while not all_zero:
-            # The dividend is base 10^9 and the divisor is 2^64, so the
-            # running remainder is up to `2^64 - 1` and `remainder * 10^9`
+            # The dividend is base 10^18 and the divisor is 2^64, so the
+            # running remainder is up to `2^64 - 1` and `remainder * BASE`
             # needs the wider type.
             var remainder = UInt128(0)
             for i in range(len(div_words) - 1, -1, -1):
@@ -595,13 +593,13 @@ struct BigInt(
             return Int(magnitude)
 
     def to_biguint(self) -> BigUInt:
-        """Converts the magnitude of the BigInt to a base-10^9 BigUInt.
+        """Converts the magnitude of the BigInt to a base-10^18 BigUInt.
 
         The sign is dropped: the result is the absolute value. Use
         `is_negative()` to recover it.
 
         Returns:
-            The magnitude as a `BigUInt` (base-10^9).
+            The magnitude as a `BigUInt` (base-10^18).
         """
         if self.is_zero():
             return BigUInt()
@@ -610,7 +608,7 @@ struct BigInt(
         while effective_words > 1 and self.words[effective_words - 1] == 0:
             effective_words -= 1
 
-        # Above the divide-and-conquer threshold, split on powers of 10^9:
+        # Above the divide-and-conquer threshold, split on powers of 10^18:
         # repeated division is O(n^2), while the recursion is O(M(n) log n)
         # and lands each half on a base-10^18 word boundary, so the words go
         # straight into the result with no decimal string in between.
@@ -626,9 +624,6 @@ struct BigInt(
         else:
             chunks = _magnitude_to_chunks_simple(self.words, effective_words)
 
-        # A chunk is `10^18`, which is `(10^9)^2`, so each one splits into
-        # exactly two of `BigUInt`'s words. That is the whole reason the chunk
-        # is eighteen digits rather than the nineteen a word would hold.
         # A decimal chunk is 10^18, which is exactly one `BigUInt` word.
         var words = List[BigUInt.Word](capacity=len(chunks))
         for i in range(len(chunks)):
@@ -641,7 +636,7 @@ struct BigInt(
         """Returns the decimal string representation of the BigInt.
 
         Uses divide-and-conquer base conversion for large numbers (O(M(n)·log n))
-        and simple repeated division by 10^9 for small numbers (O(n²)).
+        and simple repeated division by 10^18 for small numbers (O(n²)).
 
         Args:
             line_width: The maximum line width for the string representation.
@@ -805,11 +800,8 @@ struct BigInt(
                     result += hex(word)[byte=2:]
                     first_word = False
             else:
-                # Four bits to a hex digit. The literal here used to be 8,
-                # which is a 32-bit word's worth; a 64-bit word needs 16, and
-                # every value whose lower words did not happen to fill all
-                # sixteen came out short. `to_binary_string()` below was
-                # written against `BITS_PER_WORD` and never had the problem.
+                # Four bits to a hex digit, so sixteen per 64-bit word. A
+                # literal 8 here left every lower word short by eight digits.
                 comptime HEX_DIGITS_PER_WORD = BigInt.BITS_PER_WORD // 4
                 var h = hex(word)[byte=2:]
                 for _ in range(HEX_DIGITS_PER_WORD - h.byte_length()):
@@ -1604,7 +1596,7 @@ struct BigInt(
 
         Raises:
             ValueError: If `self` or `k` is negative, if `k` is larger than
-                10^6, or if `self` is larger than `2^32 - 1`.
+                10^6, or if `self` is larger than `2^63 - 1`.
         """
         return bigint_special.permutation(self, k)
 
@@ -1986,7 +1978,7 @@ struct BigInt(
         if self.is_zero():
             return 1
 
-        # Convert to base-10^9 and use its digit counting
+        # Convert to base-10^18 and use its digit counting
         return self.to_biguint().number_of_digits()
 
     # ===------------------------------------------------------------------=== #
@@ -2107,7 +2099,7 @@ struct BigInt(
 # much larger sizes
 # than for to_string (where the saved divisions are each expensive).
 # Entry threshold: only enter D&C when the digit count is large enough
-# that the O(n²) simple method is significantly slower than the O(M(n)·log n)
+# that the O(n²) simple method is slower than the O(M(n)·log n)
 # D&C method despite the power-table construction overhead.
 # Base threshold: within the recursion, switch to simple method.
 # Entry lowered from 10000 to 2000 in 2026-08 when the multiply kernels became
@@ -2122,14 +2114,14 @@ def _from_decimal_digits_simple(
     digits: List[UInt8], start: Int, end: Int
 ) -> BigInt:
     """Converts a range of digit values to a BigInt using the simple
-    O(n²) multiply-and-add method (9 digits at a time).
+    O(n²) multiply-and-add method (18 digits at a time).
 
     Optimizations over the naive approach:
     - Pre-allocates the word array to its maximum possible size, avoiding
       all dynamic growth (append / reallocation) during conversion.
     - Handles the first (possibly shorter) chunk separately so the main
-      loop always processes exactly 9 digits with a compile-time constant
-      10^9 multiplier — no inner loop to compute 10^chunk_size.
+      loop always processes exactly 18 digits with a compile-time constant
+      10^18 multiplier — no inner loop to compute 10^chunk_size.
     - Uses raw pointer access for both the digit array and the word array
       to eliminate bounds-checking overhead in the hot inner loop.
     - Tracks the live word count in a local variable, trimming once at end.
@@ -2342,7 +2334,7 @@ def _dc_from_str_recursive(
 # ===----------------------------------------------------------------------=== #
 
 # The thresholds (in UInt64 words) below which we use the simple O(n^2) method
-# of repeated division by 10^9. Above them, the D&C method is used.
+# of repeated division by 10^18. Above them, the D&C method is used.
 #
 # - _DC_TO_STR_ENTRY_THRESHOLD (64): gates the top-level decision to enter D&C
 #   (~616 decimal digits; below this the simple O(n^2) path is faster)
@@ -2353,7 +2345,7 @@ def _dc_from_str_recursive(
 # said D&C only wins once its internal divisions reach Burnikel-Ziegler, so
 # with a divisor half the dividend the entry point had to be `2 * 64 = 128`
 # words. But what D&C actually buys is the balanced split -- it replaces a
-# quadratic walk of `x % 10^9` with two half-sized problems, and that pays
+# quadratic walk of `x % 10^18` with two half-sized problems, and that pays
 # long before any division inside it is large enough for B-Z. Measured, best
 # of seven, `String(BigInt)` in microseconds:
 #
@@ -2377,11 +2369,10 @@ comptime _DC_TO_STR_BASE_THRESHOLD = 48
 # Base for extracting decimal chunks, both ways.
 #
 # Nineteen digits is the most that fit a word, but eighteen is the right
-# number, for two reasons that agree. It carries exactly twice what `10^9`
-# carried in a half-as-wide word, so the density is unchanged and the
+# number, for two reasons that agree. It is a multiple of three, so the
 # three-digit grouping people read numbers by survives; and `to_biguint()`
-# hands these chunks straight to `BigUInt`, whose own base is `10^9`, where
-# only a whole number of nine-digit groups splits cleanly.
+# hands these chunks straight to `BigUInt`, whose own base is `10^18`, so a
+# chunk is exactly one of its words.
 comptime _DECIMAL_CHUNK_DIGITS = 18
 comptime _DECIMAL_CHUNK_BASE: UInt64 = 1_000_000_000_000_000_000
 

@@ -276,9 +276,4 @@ def test_the_comparison_operators_agree_with_each_other() raises:
 
 
 def main() raises:
-    # print("Running BigDecimal comparison tests")
-
-    # Run compare_absolute tests
     testing.TestSuite.discover_tests[__functions_in_module()]().run()
-
-    # print("All BigDecimal comparison tests passed!")

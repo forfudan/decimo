@@ -153,7 +153,7 @@ def test_precision_5() raises:
 
 
 # ===----------------------------------------------------------------------=== #
-# Tests: the showcase expression from the plan
+# Tests: a long expression at the default precision
 # ===----------------------------------------------------------------------=== #
 
 
@@ -319,7 +319,7 @@ def test_ln_e_is_one() raises:
 
 
 # ===----------------------------------------------------------------------=== #
-# Tests: remaining functions (Phase 2 – smoke tests per function)
+# Tests: one case per remaining function
 # ===----------------------------------------------------------------------=== #
 
 

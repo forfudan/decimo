@@ -1,6 +1,6 @@
 """Test error handling and edge cases for the Decimo CLI calculator.
 
-Phase 3 items 1 & 2: clear diagnostics for malformed expressions,
+Covers clear diagnostics for malformed expressions,
 and proper handling of edge cases (empty expression, division by zero,
 negative sqrt, etc.).
 """

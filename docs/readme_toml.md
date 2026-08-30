@@ -28,13 +28,12 @@ a subpackage of [Decimo](https://github.com/forfudan/decimo).
 
 ## Overview
 
-`decimo.toml` (formerly TOMLMojo) is a lightweight, pure-Mojo TOML parser
-(~1,500 LOC) that implements the core
+`decimo.toml` (formerly TOMLMojo) is a lightweight, pure-Mojo TOML parser (about
+2,000 lines) that implements the core
 [TOML v1.0 specification](https://toml.io/en/v1.0.0). It parses TOML source text
 into a `TOMLDocument` — a nested dictionary structure that you can query by key,
-table name, or array index. It handles all common TOML constructs including
-nested tables, inline tables, dotted keys, arrays of tables, and all TOML data
-types.
+table name, or array index. It handles nested tables, inline tables, dotted keys
+and arrays of tables. Every TOML type except datetime is supported.
 
 ## History
 
@@ -43,9 +42,8 @@ TOMLMojo was initially developed in **April 2025** alongside
 TOML-based test data system. At that time, no TOML parser existed in the Mojo
 ecosystem, so I wrote one from scratch.
 
-Decimo heavily depends on this TOML parser for its entire testing and
-benchmarking infrastructure. All test cases and benchmark configurations are
-stored as TOML files and loaded via `parse_file()`.
+Decimo's test cases and benchmark configurations are all stored as TOML
+files and loaded with `parse_file()`.
 
 Starting from Decimo v0.9.0, TOMLMojo has been merged into the Decimo package as
 the `decimo.toml` subpackage to simplify dependency management and packaging. It
@@ -281,5 +279,5 @@ Constants: `NULL`, `STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ARRAY`, `TABLE`.
 
 ## License
 
-TOMLMojo is part of the [Decimo](https://github.com/forfudan/decimo) project and
-is licensed under the Apache License v2.0.
+`decimo.toml` is part of the [Decimo](https://github.com/forfudan/decimo)
+project and is licensed under the Apache License v2.0.

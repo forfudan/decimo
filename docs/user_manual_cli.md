@@ -57,15 +57,24 @@
 - **Multiple rounding modes** — half-even (banker's), half-up, half-down, up,
   down, ceiling, floor.
 
-It compiles to a **single native binary** with zero runtime dependencies.
+It compiles to a single native binary. The release tarballs carry the Mojo
+runtime libraries beside it, so neither Mojo nor Pixi is needed to run it.
 
 ## Installation
 
-Build the CLI from source:
+Pre-built binaries for macOS arm64 and Linux x86_64 are published through the
+[`forfudan/tap`](https://github.com/forfudan/homebrew-tap) Homebrew tap:
+
+```bash
+brew install forfudan/tap/decimo
+decimo --version
+```
+
+To build from a clone instead:
 
 ```bash
 cd /path/to/decimo
-mojo build -I src -I src/cli src/cli/main.mojo -o decimo
+pixi run buildcli        # produces ./decimo
 ```
 
 Then move the binary to a directory in your `$PATH`:
@@ -83,17 +92,17 @@ decimo "1 + 2 * 3"
 
 # High-precision division
 decimo "1/3" -P 100
-# → 0.3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+# → 0.3333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
 
 # Square root of 2 to 50 digits
 decimo "sqrt(2)" -P 50
-# → 1.4142135623730950488016887242096980785696718753770
+# → 1.4142135623730950488016887242096980785696718753769
 
 # 1000 digits of pi
 decimo "pi" -P 1000
 
 # Large integer exponentiation
-decimo "2^256"
+decimo "2^256" -P 78
 # → 115792089237316195423570985008687907853269984665640564039457584007913129639936
 ```
 
@@ -155,29 +164,29 @@ All functions use the CLI's precision setting (default 50, configurable with
 | Function   | Description         | Example               |
 | ---------- | ------------------- | --------------------- |
 | `sqrt(x)`  | Square root         | `sqrt(2)`             |
-| `cbrt(x)`  | Cube root           | `cbrt(27)` → `3`      |
+| `cbrt(x)`  | Cube root           | `cbrt(27)`            |
 | `abs(x)`   | Absolute value      | `abs(-5)` → `5`       |
-| `ln(x)`    | Natural logarithm   | `ln(e)` → `1`         |
+| `ln(x)`    | Natural logarithm   | `ln(e)`               |
 | `log10(x)` | Base-10 logarithm   | `log10(1000)` → `3`   |
 | `exp(x)`   | Exponential (e^x)   | `exp(1)` → `2.718...` |
-| `sin(x)`   | Sine (radians)      | `sin(pi/2)` → `1`     |
+| `sin(x)`   | Sine (radians)      | `sin(pi/2)`           |
 | `cos(x)`   | Cosine (radians)    | `cos(0)` → `1`        |
-| `tan(x)`   | Tangent (radians)   | `tan(pi/4)` → `1`     |
-| `cot(x)`   | Cotangent (radians) | `cot(pi/4)` → `1`     |
-| `csc(x)`   | Cosecant (radians)  | `csc(pi/2)` → `1`     |
+| `tan(x)`   | Tangent (radians)   | `tan(pi/4)`           |
+| `cot(x)`   | Cotangent (radians) | `cot(pi/4)`           |
+| `csc(x)`   | Cosecant (radians)  | `csc(pi/2)`           |
 
 **Multi-argument functions:**
 
 | Function       | Description             | Example             |
 | -------------- | ----------------------- | ------------------- |
 | `root(x, n)`   | Nth root of x           | `root(27, 3)` → `3` |
-| `log(x, base)` | Logarithm with any base | `log(8, 2)` → `3`   |
+| `log(x, base)` | Logarithm with any base | `log(8, 2)`         |
 
 Functions can be nested:
 
 ```bash
 decimo "sqrt(abs(1.1 * -12 - 23/17))"
-decimo "ln(exp(1))"   # → 1
+decimo "ln(exp(1))"
 ```
 
 ### Constants
@@ -415,11 +424,13 @@ decimo> sqrt(2):p 100
 
 #### Info commands
 
-| Command                  | Effect                      |
-| ------------------------ | --------------------------- |
-| `:`                      | Show all current settings.  |
-| `?`, `:help`, `:h`, `:?` | Show REPL help.             |
-| `$`, `:v`, `:vars`       | List all defined variables. |
+| Command                  | Effect                                    |
+| ------------------------ | ----------------------------------------- |
+| `:`                      | Show all current settings.                |
+| `?`, `:help`, `:h`, `:?` | Show REPL help.                           |
+| `$`, `:vars`             | List all defined variables.               |
+| `:about`, `:a`, `:info`  | Show version, author, license, and links. |
+| `:version`, `:v`         | Show version number.                      |
 
 #### Quitting
 
@@ -433,10 +444,10 @@ The shell interprets `*`, `(`, `)`, and other characters before `decimo` sees
 them. **Always wrap expressions in quotes:**
 
 ```bash
-# ✓ Correct: quoted
+# Correct: quoted
 decimo "2 * (3 + 4)"
 
-# ✗ Wrong: shell may glob or split
+# Wrong: the shell may glob or split it
 decimo 2 * (3 + 4)
 ```
 
@@ -463,7 +474,8 @@ decimo -P 10 "-3*pi"
 decimo "-3*pi" -P 10
 ```
 
-Because all short option names are uppercase (`-P`, `-S`, `-E`, `-R`),
+Because every short option the calculator defines is uppercase (`-P`, `-S`,
+`-E`, `-R`, `-F`, `-A`),
 expressions like `-e`, `-sin(1)`, and `-pi` are never mistaken for flags:
 
 ```bash
@@ -537,30 +549,26 @@ available modes.
 
 `decimo` compiles to a single native binary. For most expressions, end-to-end
 latency is dominated by process startup rather than computation. The benchmark
-suite verifies both **correctness** (results agree with `bc` and `python3` to 15
-significant digits) and **performance** (wall-clock timing).
+suite verifies both correctness (every significant digit agrees with `bc`, bar
+one guard digit for last-digit rounding) and performance (wall-clock timing).
 
 Typical latencies (measured on Apple M1 Max, macOS):
 
 | Expression          | Precision | `decimo` | `bc -l` | `python3` | Match |
 | ------------------- | :-------: | -------: | ------: | --------: | :---: |
-| `1 + 1`             |    50     |    ~6 ms |   ~4 ms |    ~18 ms |   ✓   |
-| `100*12 - 23/17`    |    50     |    ~6 ms |   ~4 ms |    ~21 ms |   ✓   |
-| `sqrt(2)`           |    50     |    ~5 ms |   ~4 ms |    ~21 ms |   ✓   |
-| `ln(2)`             |    50     |    ~5 ms |   ~4 ms |    ~41 ms |   ✓   |
-| `sin(1)`            |    50     |    ~6 ms |   ~4 ms |    ~41 ms |   ✓   |
-| `pi`                |    50     |    ~6 ms |   ~4 ms |    ~41 ms |   ✓   |
-| `sqrt(2)`           |   1000    |    ~6 ms |   ~5 ms |    ~22 ms |   ✓   |
-| `pi`                |   1000    |   ~49 ms |  ~13 ms |    ~40 ms |   ✓   |
+| `1 + 1`             |    50     |    ~6 ms |   ~4 ms |    ~18 ms |  yes  |
+| `100*12 - 23/17`    |    50     |    ~6 ms |   ~4 ms |    ~21 ms |  yes  |
+| `sqrt(2)`           |    50     |    ~5 ms |   ~4 ms |    ~21 ms |  yes  |
+| `ln(2)`             |    50     |    ~5 ms |   ~4 ms |    ~41 ms |  yes  |
+| `sin(1)`            |    50     |    ~6 ms |   ~4 ms |    ~41 ms |  yes  |
+| `pi`                |    50     |    ~6 ms |   ~4 ms |    ~41 ms |  yes  |
+| `sqrt(2)`           |   1000    |    ~6 ms |   ~5 ms |    ~22 ms |  yes  |
+| `pi`                |   1000    |   ~49 ms |  ~13 ms |    ~40 ms |  yes  |
 | pipe: 5 mixed exprs |    50     |    ~8 ms |     N/A |       N/A |       |
 
-Tokenizer and parser overhead is negligible — trivial (`1+1`) and moderate
-(`sqrt(2)`) expressions complete in ~5 ms. Computation time only becomes visible
-for expensive operations at very high precision (e.g., computing π to 1000
-digits).
-
-`decimo` is **3–4× faster than `python3`** and comparable to `bc` (a lightweight
-BSD utility).
+Computation time becomes visible only at high precision, such as π to 1000
+digits. At the default precision `decimo` is about three to four times quicker
+than `python3` to start and answer, and close to `bc`.
 
 To run the full benchmark (correctness + performance, all 3 tools):
 
@@ -574,12 +582,12 @@ bash benches/cli/bench_cli.sh
 
 ```bash
 decimo "100 * 12 - 23/17"
-# → 1198.647058823529411764705882352941176470588235294118
+# → 1198.6470588235294117647058823529411764705882352941
 
 decimo "(1 + 2) * (3 + 4)"
 # → 21
 
-decimo "2 ^ 256"
+decimo "2 ^ 256" -P 78
 # → 115792089237316195423570985008687907853269984665640564039457584007913129639936
 ```
 
@@ -603,21 +611,21 @@ decimo "sqrt(2)" -P 100
 
 ```bash
 # Trigonometry
-decimo "sin(pi/6)" -P 50       # → 0.5
-decimo "cos(pi/3)" -P 50       # → 0.5
-decimo "tan(pi/4)" -P 50       # → 1
+decimo "sin(pi/6)" -P 50       # → 0.5 followed by trailing zeros
+decimo "cos(pi/3)" -P 50       # → 0.5 followed by trailing zeros
+decimo "tan(pi/4)" -P 50       # → 1 followed by trailing zeros
 
 # Logarithms
 decimo "ln(2)" -P 100
 decimo "log10(1000)"            # → 3
-decimo "log(256, 2)"            # → 8
+decimo "log(256, 2)"            # → 8 followed by trailing zeros
 
 # Nested functions
 decimo "sqrt(abs(1.1 * -12 - 23/17))" -P 30
-decimo "exp(ln(100))" -P 30     # → 100
+decimo "exp(ln(100))" -P 30     # → 100.0000000000000000000000000000
 
 # Cube root
-decimo "cbrt(27)"               # → 3
+decimo "cbrt(27)"               # → 3 followed by trailing zeros
 decimo "root(1000000, 6)"       # → 10
 ```
 
@@ -665,7 +673,7 @@ Error: missing operand for '+'
 $ decimo "sqrt(-1)"
 Error: sqrt() is undefined for negative numbers (got -1)
   sqrt(-1)
-  ^^^^
+  ^
 
 $ decimo "1 / 0"
 Error: division by zero
@@ -675,7 +683,7 @@ Error: division by zero
 $ decimo "hello + 1"
 Error: unknown identifier 'hello'
   hello + 1
-  ^^^^^
+  ^
 
 $ decimo "2 * (3 + 4"
 Error: unmatched '('
@@ -688,35 +696,41 @@ Error: unmatched '('
 ```txt
 Arbitrary-precision CLI calculator powered by Decimo.
 
-Tip: If your expression contains *, ( or ), quote it: decimo "2 * (3 + 4)"
-Tip: Or use noglob: alias decimo='noglob decimo' (add to ~/.zshrc)
-Tip: Pipe expressions: echo '1/3' | decimo -P 100
-Tip: Evaluate a file: decimo -F expressions.dm -P 50
+usage: decimo [OPTIONS] [EXPR]
 
-Usage: decimo [OPTIONS] [EXPR]
+arguments:
+  expr  Math expression to evaluate (e.g. 'sqrt(2)', '1/3 + pi')
 
-Arguments:
-  expr    Math expression to evaluate
-          (e.g. 'sqrt(2)')
+options:
+  -h, --help                Show this help message
+  -V, --version             Show version
+      --completions <SHELL>
+                            Generate shell completion (bash, zsh, fish)
 
-Options:
-  -P, --precision <N>
-          Number of significant digits (default: 50)
-  -S, --scientific
-          Output in scientific notation (e.g. 1.23E+10)
-  -E, --engineering
-          Output in engineering notation (exponent multiple of 3)
-  --pad
-          Pad trailing zeros to the specified precision
-  --delimiter <CHAR>
-          Digit-group separator inserted every 3 digits (e.g. '_' gives 1_234.567_89)
+Input:
+  -F, --file <PATH>  Evaluate expressions from a file (one per line)
+
+Computation:
+  -P, --precision <N>       Number of significant digits
   -R, --rounding-mode <MODE>
-          Rounding mode for the final result (default: half-even)
-          {half-even,half-up,half-down,up,down,ceiling,floor}
-  -F, --file <PATH>
-          Evaluate expressions from a file (one per line)
-  -h, --help
-          Show this help message
-  -V, --version
-          Show version
+                            Rounding mode for the final result
+
+Formatting:
+  -S, --scientific        Output in scientific notation (e.g. 1.23E+10)
+  -E, --engineering       Output in engineering notation (exponent multiple of
+                          3)
+      --pad               Pad trailing zeros to the specified precision
+      --delimiter <CHAR>  Digit-group separator inserted every 3 digits (e.g.
+                          '_' gives 1_234.567_89)
+
+Info:
+  -A, --about  Display version, author, license, and links
+      --info   Same as --about
+
+tips:
+  Use '--' to force option-like tokens into positionals:  decimo -- -p
+  If your expression contains *, ( or ), quote it: decimo "2 * (3 + 4)"
+  Or use noglob: alias decimo='noglob decimo' (add to ~/.zshrc)
+  Pipe expressions: echo '1/3' | decimo -P 100
+  Evaluate a file: decimo -F expressions.dm -P 50
 ```

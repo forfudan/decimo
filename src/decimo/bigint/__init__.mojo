@@ -17,13 +17,13 @@
 """Sub-package for binary base-2^64 big integer type.
 
 BigInt is a signed arbitrary-precision integer that uses base-2^64
-representation internally. This is the binary counterpart to BigInt10 (base-10^9).
+representation internally. This is the binary counterpart to BigInt10
+(base-10^18).
 
-`BInt` now names BigInt. BigInt10 is no longer referenced by any other module
-of the library: the base-10^9 side of the bridge is `to_biguint()` /
-`from_biguint()`, which speak `BigUInt` directly, and BigInt10 itself carries
-`to_bigint()` / `from_bigint()` for the code that still wants it. The module is
-kept for now, but nothing depends on it.
+`BInt` is an alias of BigInt. No other module of the library depends on
+BigInt10: the decimal side of the bridge is `to_biguint()` / `from_biguint()`,
+which speak `BigUInt` (base 10^18) directly, and BigInt10 itself carries
+`to_bigint()` / `from_bigint()` for the code that still wants it.
 
 Modules:
 - bigint: Core struct with constructors, conversions, dunders

@@ -1,4 +1,4 @@
-# Limo — Line Editor for Mojo 🔥
+# Limo — line editor for Mojo
 
 > Date of initial planning: 2026-04-15 Author: Yuhao Zhu Scope: A lightweight,
 > reusable line-editing library for Mojo REPL applications Location:
@@ -6,12 +6,12 @@
 > Extract to standalone repo `forfudan/limo` for general-purpose use
 >
 > The name "limo" = **li**ne + **mo**jo.
-> Name availability: not taken on PyPI or conda-forge (checked 2025-07-15).
+> Name availability: not taken on PyPI or conda-forge (checked 2026-04-15).
 
 ## 1. Motivation
 
-The decimo REPL (`src/cli/calculator/repl.mojo`) currently reads input via a
-simple `getchar()` loop in cooked/canonical terminal mode. This means:
+Before limo, the decimo REPL (`src/cli/calculator/repl.mojo`) read input via a
+simple `getchar()` loop in cooked/canonical terminal mode. That meant:
 
 - **No line editing** — users cannot move the cursor left/right, jump to
   Home/End, or delete characters mid-line.
@@ -21,7 +21,7 @@ simple `getchar()` loop in cooked/canonical terminal mode. This means:
   (kill to end), Ctrl+U (kill to beginning), Ctrl+W (delete word backward) —
   none of these work.
 
-These are table-stakes features for any interactive REPL. Every comparable tool
+Every interactive REPL is expected to have these. Every comparable tool
 — Python, IPython, bc, calc, qalc — provides them, typically via GNU readline or
 linenoise.
 
@@ -526,14 +526,14 @@ This is comparable to linenoise (1,100 lines of C for the full feature set).
 
 ## 10. Risk and Mitigation
 
-| Risk                                                    | Mitigation                                                              |
-| ------------------------------------------------------- | ----------------------------------------------------------------------- |
-| TermIOS struct layout differs on Linux                  | Start macOS-only; add Linux layout with conditional compilation later   |
-| Mojo's `external_call` behavior changes across versions | Pin Mojo version in pixi.toml; termo code already tested on 0.26.x      |
-| Raw mode not restored on crash/panic                    | `RawModeGuard.__del__` does direct FFI (no raise); always defer cleanup |
-| Unicode cursor positioning off-by-one for CJK           | Phase 1 is ASCII-only; add `char_width()` in Phase 2                    |
-| UTF-8 multi-byte characters split across reads          | Phase 1 handles printable ASCII only; Phase 2 adds UTF-8 continuation   |
-| Performance overhead of per-keystroke redraw            | Single-line redraw is fast; benchmark if needed                         |
+| Risk                                                    | Mitigation                                                             |
+| ------------------------------------------------------- | ---------------------------------------------------------------------- |
+| TermIOS struct layout differs on Linux                  | Start macOS-only; add Linux layout with conditional compilation later  |
+| Mojo's `external_call` behavior changes across versions | Pin Mojo version in pixi.toml (currently >=1.0.0,<1.1.0)               |
+| Raw mode not restored on crash/panic                    | `disable_raw_mode()` is called explicitly on every exit and error path |
+| Unicode cursor positioning off-by-one for CJK           | Phase 1 is ASCII-only; add `char_width()` in Phase 2                   |
+| UTF-8 multi-byte characters split across reads          | Phase 1 handles printable ASCII only; Phase 2 adds UTF-8 continuation  |
+| Performance overhead of per-keystroke redraw            | Single-line redraw is fast; benchmark if needed                        |
 
 ## 11. References
 

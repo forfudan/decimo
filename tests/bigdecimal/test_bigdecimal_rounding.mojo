@@ -295,8 +295,6 @@ def test_bigdecimal_rounding() raises:
 
 def test_default_rounding_mode() raises:
     """Test that the default rounding mode is ROUND_HALF_EVEN."""
-    # print("------------------------------------------------------")
-    # print("Testing BigDecimal default rounding mode...")
 
     var value = BDec("2.5")
     var result = value.round(0)
@@ -317,8 +315,6 @@ def test_default_rounding_mode() raises:
         String(expected),
         "Default rounding mode should be ROUND_HALF_EVEN",
     )
-
-    # print("✓ Default rounding mode tests passed")
 
 
 def test_quantize_basic() raises:
@@ -656,12 +652,4 @@ def test_quantize_rounding_modes() raises:
 
 
 def main() raises:
-    # print("Running BigDecimal rounding tests")
-
-    # Test different rounding modes
-    # test_bigdecimal_rounding()
-    # Test default rounding mode
-    # test_default_rounding_mode()
     testing.TestSuite.discover_tests[__functions_in_module()]().run()
-
-    # print("All BigDecimal rounding tests passed!")

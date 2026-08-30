@@ -2,6 +2,11 @@
 
 > Written 2026-08-27 mid-work as a hand-over note, and **done the same day**.
 > Kept for the reasoning and the measurements; what shipped is at the bottom.
+>
+> The one follow-up it named has also landed: the inline capacity is a
+> parameter now, `WordList[dtype, INLINE]`, and both number types pass their
+> own -- seven words for `BigInt`, five for `BigUInt` after the move to base
+> 10^18. Making `words` private is the only part still open.
 
 ## The finding
 
@@ -95,7 +100,7 @@ and the failure mode of the other one is corruption rather than slowness.
 
 ### Order of work
 
-1. `src/decimo/biguint/wordlist.mojo` -- the type, with the API above.
+1. `src/decimo/wordlist.mojo` -- the type, with the API above.
 2. Switch `BigUInt.words` and fix `biguint.mojo`'s constructors.
 3. Compile; work through the errors elsewhere.
 4. `bash tests/test.sh all` -- 1071 tests must stay green.
@@ -125,7 +130,7 @@ result `PyObject`. The last of those needs the value embedded in the
 
 ## What shipped
 
-`src/decimo/biguint/wordlist.mojo`, `INLINE_WORDS = 10`, `BigUInt.words`
+`src/decimo/wordlist.mojo`, `INLINE_WORDS = 10`, `BigUInt.words`
 switched over. Thirteen of the 846 `.words` sites needed changing: list
 literals, two slices and a `Span`.
 

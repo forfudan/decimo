@@ -274,7 +274,7 @@ struct MathCache:
         down to the requested precision). Otherwise, ln(10) is recomputed and
         cached at the new precision.
 
-        Uses the identity: ln(10) = 3*ln(2) + ln(1.25), leveraging the cached
+        Uses the identity ln(10) = 3*ln(2) + ln(1.25), with the cached
         values of ln(2) and ln(1.25) to avoid redundant computation.
 
         Args:
@@ -391,7 +391,6 @@ def power(
         return BigDecimal(BigUInt.one(), 0, False)  # 1^y = 1
 
     if exponent == BigDecimal(BigUInt.one(), 0, False):
-        # return base  # x^1 = x
         var result = base.copy()
         result.round_to_precision_inplace(
             precision,
@@ -751,7 +750,7 @@ def integer_root(
 
         if n_uint.words[0] % 2 == 1:  # Odd root
             result_sign = True
-        else:  # n_uint.words[0] % 2 == 0:  # Even root
+        else:  # Even root
             raise ValueError(
                 message="Cannot compute even root of a negative number.",
                 function="integer_root()",
@@ -1017,10 +1016,9 @@ def is_odd_reciprocal(n: BigDecimal) raises -> Bool:
 
     Numbers with infinite decimal places cannot be represented as BigDecimal.
     If integer m ends with 3, n=1/m cannot be exactly represented as input.
-    Same applies to 1 (execpt exact 1), 7, 9.
+    Same applies to 1 (except exact 1), 7, 9.
     """
-    # If n is of form 1/m where m is an odd integer, then 1/n = m is odd
-    # This is true when n = 1/m for odd integer m
+    # If n is of form 1/m where m is an odd integer, then 1/n = m is odd.
 
     var m = BigDecimal(BigUInt.one(), 0, False).true_divide(
         n, precision=n.coefficient.number_of_digits() + 9
@@ -1480,7 +1478,7 @@ def sqrt_exact(
     var e = x_exp >> 1  # arithmetic right-shift = floor division by 2
 
     # If x_exp is odd, multiply c by 10 so c becomes "even-exponent" form
-    # This ensures sqrt(c) * 10^e = sqrt(x)
+    # so that sqrt(c) * 10^e = sqrt(x)
     var num_digits = c.number_of_digits()
     var l: Int  # number of base-100 "digits" of c
 
@@ -1514,7 +1512,7 @@ def sqrt_exact(
     # --- Integer square root: n = isqrt(c) ---
     # For large c, use reciprocal sqrt with precision doubling to get a fast
     # initial approximation, then verify/correct with exact integer arithmetic.
-    # For small c (≤ 180 digits), BigUInt.sqrt() is fast enough directly.
+    # For small c (up to 20 words), BigUInt.sqrt() is fast enough directly.
     var n: BigUInt
     if len(c.words) <= 20:
         n = biguint_exponential.sqrt(c)
@@ -1536,7 +1534,7 @@ def sqrt_exact(
         # For inexact results, if n ends in 0 or 5, perturb by +1.
         # This avoids exact midpoint ties when rounding to `precision` digits.
         # Check: n % 5 == 0
-        # Since our BigUInt base is 10^9, n % 5 == (last_word % 5)
+        # The BigUInt base is a power of ten, so n % 5 == (last_word % 5)
         if n.words[0] % 5 == 0:
             biguint_arithmetics.add_by_word_inplace(n, 1)
 
@@ -1821,7 +1819,7 @@ def sqrt_newton(x: BigDecimal, precision: Int) raises -> BigDecimal:
     # where c_0 is the new coefficient after taking the square root and
     # t is the new scale.
     # So we first need to extend the coefficient by 10^(2t-s) to ensure
-    # the square root has enough precision. Let's denote the precision as p.
+    # the square root has enough precision. Denote the precision as p.
     # Thus, the number of digits of c*10^(2t-s) should be at least 2p.
     # That is t > p + (s - d(c)) // 2
 
@@ -2366,11 +2364,9 @@ def exp_taylor_series(
     # For x=1, we need approximately n ≈ precision * ln(10) ≈ precision * 2.3
     #
     # ZHU: About complexity:
-    # In each loop, there are 2 mul (2 x 100ns) and 1 div (2000ns)
-    # There are intotal 2.3 * precision iterations
-
-    # print("DEBUG: exp_taylor_series")
-    # print("DEBUG: x =", x)
+    # Each loop does one single-word division, one multiplication and one
+    # addition, and there are about 2.3 * precision iterations. The division
+    # dominates.
 
     var max_number_of_terms = Int(Float64(minimum_precision) * 2.5) + 1
     var result = BigDecimal(BigUInt.one(), 0, False)
@@ -2396,8 +2392,6 @@ def exp_taylor_series(
         # Add term to result
         result.add_inplace(term)
 
-        # print("DEUBG: round {}, term {}, result {}".format(n, term, result))
-
         # Check if we've reached desired precision
         if term.adjusted() < -minimum_precision:
             break
@@ -2408,7 +2402,6 @@ def exp_taylor_series(
         remove_extra_digit_due_to_rounding=False,
         fill_zeros_to_precision=False,
     )
-    # print("DEBUG: final result", result)
 
     return result^
 
@@ -2444,7 +2437,7 @@ def ln(
     """Calculate the natural logarithm of x to the specified precision.
 
     This overload accepts a `MathCache` to reuse cached values of ln(2) and
-    ln(1.25) across multiple calls, significantly improving performance.
+    ln(1.25) across multiple calls.
 
     Args:
         x: The input value.
@@ -2457,7 +2450,7 @@ def ln(
     Raises:
         ValueError: If x is negative or zero.
     """
-    comptime BUFFER_DIGITS = 9  # word-length, easy to append and trim
+    comptime BUFFER_DIGITS = 9  # guard digits, dropped by the final rounding
     var working_precision = precision + BUFFER_DIGITS
 
     # Handle special cases
@@ -2479,7 +2472,7 @@ def ln(
     #       = ln(m) + p10*ln(10) + (a+2b)*ln(2) + b*ln(1.25)
     #   where 0.5 <= m < 1.5
     # By keeping power_of_10 separate (cached), we avoid decomposing it into
-    # ln(2) and ln(1.25), which was the source of the catastrophic slowdown
+    # ln(2) and ln(1.25), which was the source of the large slowdown
     # for ln(10), ln(100), ln(0.001) etc.
     var m = x.copy()
     var adj_power_of_2: Int = 0
@@ -2559,7 +2552,7 @@ def log(x: BigDecimal, base: BigDecimal, precision: Int) raises -> BigDecimal:
         ValueError: If x is negative or zero.
         ValueError: If base is negative, zero, or one.
     """
-    comptime BUFFER_DIGITS = 9  # word-length, easy to append and trim
+    comptime BUFFER_DIGITS = 9  # guard digits, dropped by the final rounding
     var working_precision = precision + BUFFER_DIGITS
 
     # Special cases
@@ -2628,7 +2621,7 @@ def log10(x: BigDecimal, precision: Int) raises -> BigDecimal:
     Raises:
         ValueError: If x is negative or zero.
     """
-    comptime BUFFER_DIGITS = 9  # word-length, easy to append and trim
+    comptime BUFFER_DIGITS = 9  # guard digits, dropped by the final rounding
     var working_precision = precision + BUFFER_DIGITS
 
     # Special cases
@@ -2699,13 +2692,8 @@ def ln_series_expansion(
     if z.is_zero():
         return BigDecimal(BigUInt.zero(), 0, False)
 
-    # Decide strategy based on z's coefficient digit count.
-    # When z has few significant digits (e.g. z = -0.01 for ln(0.99)),
-    # the multiply-by-z is O(n × d) with d << n, making Taylor cheaper.
-    # When z has many digits (after range reduction), the multiply cost
-    # is similar for both, but atanh needs ~3× fewer terms.
-    # The coefficient grows by ~z_digits each iteration in the Taylor
-    # recurrence; we truncate it periodically to keep it bounded.
+    # The Taylor recurrence grows the coefficient by about `z_digits` each
+    # iteration, and the loop truncates it back to keep the multiply bounded.
     var z_digits = z.coefficient.number_of_digits()
 
     # Which series to sum is decided by how small `z` is, not by how many
@@ -2952,7 +2940,7 @@ def compute_ln2(working_precision: Int) raises -> BigDecimal:
     #
     # `x` is a finite-precision decimal approximation to 1/3. Because 1/3 is a
     # unit fraction, the x² factor is the rational 1/9, which we apply as a
-    # single UInt32 divide by 9 (rounded once to the target precision) instead
+    # single single-word divide by 9 (rounded once to the target precision) instead
     # of an O(M(n)) BigDecimal multiply by a pre-truncated 0.111…. We fold the
     # 1/9 and the 1/(k+2) factors into one divide by 9*(k+2), and apply the *k
     # factor at the coefficient level — so each iteration is O(n), and the
@@ -2960,7 +2948,7 @@ def compute_ln2(working_precision: Int) raises -> BigDecimal:
     for _ in range(1, max_terms):
         result.add_inplace(term)
         var new_k = k + 2
-        # Multiply by k using coefficient-level UInt32 multiply (avoids BigDecimal alloc)
+        # Multiply by k at the coefficient level (avoids a BigDecimal alloc)
         biguint_arithmetics.multiply_by_word_inplace(term.coefficient, k)
         # term *= 1/9 * 1/(k+2): one O(n) single-word divide by 9*(k+2)
         term = term.true_divide_inexact_by_word(9 * new_k, working_precision)
@@ -3000,7 +2988,7 @@ def compute_ln1d25(precision: Int) raises -> BigDecimal:
     # So ln(1.25) = 2*(1/9 + (1/9)³/3 + (1/9)⁵/5 + ...).
     # As in compute_ln2, `x` is a finite-precision decimal approximation to 1/9.
     # Because 1/9 is a unit fraction, the x² factor is the rational 1/81, which
-    # we apply as a single UInt32 divide by 81 (rounded once to the target
+    # we apply as a single single-word divide by 81 (rounded once to the target
     # precision) instead of an O(M(n)) BigDecimal multiply. We fold the 1/81 and
     # the 1/(2k+1) factors into one divide by 81*(k+2) and apply the *k factor
     # at the coefficient level, so each iteration is O(n).
@@ -3039,7 +3027,7 @@ def compute_ln1d25(precision: Int) raises -> BigDecimal:
     for _ in range(1, max_terms):
         result.add_inplace(term)
         var new_k = k + 2
-        # Multiply by k using coefficient-level UInt32 multiply (avoids BigDecimal alloc)
+        # Multiply by k at the coefficient level (avoids a BigDecimal alloc)
         biguint_arithmetics.multiply_by_word_inplace(term.coefficient, k)
         # term *= 1/81 * 1/(k+2): one O(n) single-word divide by 81*(k+2)
         term = term.true_divide_inexact_by_word(81 * new_k, working_precision)

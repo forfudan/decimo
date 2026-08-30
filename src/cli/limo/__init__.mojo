@@ -20,7 +20,7 @@ Limo is a zero-dependency line-editing library that provides
 arrow-key navigation, Emacs-style shortcuts, and input history
 for interactive REPL applications.
 
-Usage::
+Usage:
 
     from limo import LineEditor
 

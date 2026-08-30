@@ -58,7 +58,7 @@ from collections import namedtuple as _namedtuple
 # Once Mojo's `PythonModuleBuilder` grows a way to declare slots directly, this
 # loop can go away and nothing else here needs to change.
 
-# `__str__` is not in this list either: `tp_str` is a real slot in the Mojo
+# `__str__` is not in this list: `tp_str` is a real slot in the Mojo
 # module, and assigning the dunder here would put CPython's dispatcher back
 # in front of it.
 #
@@ -413,7 +413,7 @@ def _complex(self):
 #
 # decimo has unbounded exponents, so the Mojo library has no smallest value to
 # step to and no idea what "subnormal" would mean. `decimal` answers these
-# from `Emin`, which lives on the context here, so the four methods that need
+# from `Emin`, which lives on the context here, so the methods that need
 # it are finished off in Python. Everything else in this file's surface is the
 # native method as it comes.
 
@@ -498,9 +498,9 @@ except (AttributeError, TypeError):  # pragma: no cover -- older bindings
 # All of `decimal`'s modes except ROUND_05UP, which nothing in the Mojo
 # library implements; setting it raises rather than rounding a different way.
 # Arithmetic, `quantize`, `round(x, n)` and `to_integral_value` are exact under
-# every mode. `sqrt`, `exp`, `ln`, `log10` and `**` are computed nine digits
-# wider and rounded once more under a mode other than ROUND_HALF_EVEN; see
-# `DIRECTED_GUARD_DIGITS` in the Mojo module.
+# every mode. `sqrt`, `exp`, `ln`, `log10` and `**` are exact too: the Mojo
+# library widens until the whole interval its own error allows rounds one
+# way, rather than adding a fixed number of guard digits.
 
 ROUND_DOWN = "ROUND_DOWN"
 ROUND_HALF_UP = "ROUND_HALF_UP"

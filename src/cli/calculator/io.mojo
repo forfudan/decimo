@@ -23,7 +23,7 @@ processing (comment stripping, whitespace handling).
 
 The text-processing primitives (`strip_comment`, `is_blank`, `strip`)
 are designed to be composable and reusable across all input modes —
-pipe, file, and future REPL.
+pipe, file, and REPL.
 """
 
 from std.ffi import external_call
@@ -94,7 +94,7 @@ def read_line() -> Optional[String]:
 
 
 def read_stdin() -> String:
-    """Reads all data from stdin and return it as a String.
+    """Reads all data from stdin and returns it as a String.
 
     Uses the C `getchar()` function to read one byte at a time until
     EOF. This avoids FFI conflicts with the POSIX `read()` syscall.
@@ -165,8 +165,6 @@ def strip_comment(line: String) -> String:
     Returns everything before the first `#` character. If there is
     no `#`, the line is returned unchanged.
 
-    This is a composable primitive — use it in combination with
-    `strip()` and `is_blank()` for full line processing.
 
     Args:
         line: The input line to process.
@@ -174,7 +172,7 @@ def strip_comment(line: String) -> String:
     Returns:
         The line content before any `#` comment.
 
-    Examples::
+    Examples:
 
         strip_comment("1+2 # add")    → `1+2 `.
         strip_comment("# comment")    → `""`.
@@ -200,9 +198,6 @@ def strip_comment(line: String) -> String:
 def is_blank(line: String) -> Bool:
     """Returns True if the line is empty or contains only whitespace
     (spaces and tabs).
-
-    This is a composable primitive — combine with `strip_comment()`
-    to check for comment-or-blank lines.
 
     Args:
         line: The input line to check.
@@ -310,7 +305,7 @@ def read_file_text(path: String) raises -> String:
     with Mojo's stdlib and ArgMojo for `read`/`fclose`.
 
     The original stdin is saved via `dup()` before redirection and
-    restored afterwards, so callers (e.g. a future REPL `:load` command)
+    restored afterwards, so callers
     can continue reading from the real stdin after this call returns.
 
     Args:

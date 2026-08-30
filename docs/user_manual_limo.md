@@ -47,7 +47,7 @@ into its own standalone repository.
 
 **Design goals:**
 
-- **Minimal** — two modules plus an `__init__`, under 900 lines total.
+- **Minimal** — two modules plus an `__init__`, about 1,000 lines in total.
 - **No dependencies** — only uses Mojo's standard library and libc FFI calls.
 - **Focused** — single-line editing only. No multi-line, no TUI, no screen
   buffer.
@@ -115,8 +115,7 @@ Standard Emacs-style keybindings, matching readline/linenoise defaults:
 ## Module Reference: terminal.mojo
 
 This module handles the low-level conversation with the operating system's
-terminal driver. If you've never worked with terminal I/O at the C level before,
-the next two sections give you the essential background.
+terminal driver. The next two sections give the background needed to read it.
 
 ### Background: What Is a Terminal Driver?
 
@@ -313,8 +312,8 @@ The private FFI functions in terminal.mojo (all prefixed with `_`):
 
 ### FFI Signature Convention (Alignment with argmojo)
 
-Limo calls three POSIX C functions via `external_call`: `tcgetattr`,
-`tcsetattr`, and `read`. The **argmojo** package
+Limo shares two POSIX C functions with argmojo via `external_call`:
+`tcgetattr` and `tcsetattr`. The **argmojo** package
 ([forfudan/argmojo](https://github.com/forfudan/argmojo)) also calls the same
 three C functions in its `utils.mojo` for interactive password input.
 
@@ -333,18 +332,20 @@ pass all integer and pointer arguments as `Int` (which is `i64` on 64-bit
 platforms). Pointers are cast to `Int` via `Int(ptr)`. This is the convention
 adopted by argmojo and followed by limo:
 
-| C function  | Mojo `external_call` signature (shared by argmojo and limo)    |
-| ----------- | -------------------------------------------------------------- |
-| `tcgetattr` | `external_call["tcgetattr", Int, Int, Int](fd, ptr)`           |
-| `tcsetattr` | `external_call["tcsetattr", Int, Int, Int, Int](fd, act, ptr)` |
-| `read`      | `external_call["read", Int, Int, Int, Int](fd, buf, count)`    |
+| C function  | Mojo `external_call` signature (shared by argmojo and limo)                                       |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| `tcgetattr` | `external_call["tcgetattr", Int, Int, Int](fd, ptr)`                                              |
+| `tcsetattr` | `external_call["tcsetattr", Int, Int, Int, Int](fd, act, ptr)`                                    |
+| `read`      | `external_call["read", Int](fd, buf, count)` — return type only, since the stdlib declares `read` |
 
 Because LLVM sees identical declarations from both packages, the merge is clean
 and there is no conflict.
 
-> **Note for library authors:** If you write a Mojo package that calls any of
-> these three C functions via `external_call`, use the `Int`-only signatures
-> above to stay compatible with both argmojo and limo.
+> **Note for library authors:** If you write a Mojo package that calls
+> `tcgetattr` or `tcsetattr` via `external_call`, use the `Int`-only signatures
+> above to stay compatible with both argmojo and limo. For `read`, `write` and
+> `isatty` the Mojo standard library already declares the symbol, so give the
+> return type only (`isatty` takes `Int32`) and let the arguments be inferred.
 
 ### Raw Mode Control Functions
 
@@ -352,7 +353,7 @@ These are the public functions that `line_editor.mojo` uses to manage raw mode:
 
 **`enable_raw_mode() raises -> TermIOS`**
 
-The main entry point for raw mode. Here's what it does step by step:
+The main entry point for raw mode. The steps are:
 
 1. Checks that stdin is actually a terminal (not a pipe or file).
 2. Creates an empty `TermIOS` and asks the OS to fill it with the current
@@ -480,7 +481,7 @@ The only public symbol in the limo package. It holds:
 
 ### The Main Loop: read_line()
 
-This is the core function. Here's the step-by-step flow:
+This is the core function. The flow is:
 
 1. **Enter raw mode** — calls `enable_raw_mode()`, saves the original terminal
    settings in `original_settings`.
@@ -555,9 +556,8 @@ Step 4: Write ESC[K — clear any leftover characters from a previous longer lin
 Step 5: Move cursor back to the correct position within the buffer
 ```
 
-This approach is simple and works reliably. It redraws the entire line every
-time, which is fine for single-line input where the buffer is rarely more than a
-few hundred characters.
+It redraws the entire line every time, which is fine for single-line input
+where the buffer is rarely more than a few hundred characters.
 
 ### Buffer Manipulation Functions
 

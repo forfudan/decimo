@@ -1050,9 +1050,8 @@ def parse_string(input: String) raises -> TOMLDocument:
         input: The TOML-formatted string to parse.
 
     Returns:
-        The parsed `TOMLDocument`. Note that tokenization or parsing
-        errors that are not explicitly detected may yield a partial
-        document rather than raise.
+        The parsed `TOMLDocument`. Tokenization or parsing errors that are
+        not explicitly detected yield a partial document rather than raise.
 
     Raises:
         Error: Propagated from the underlying tokenizer or parser when an
@@ -1070,9 +1069,8 @@ def parse_file(file_path: String) raises -> TOMLDocument:
         file_path: The path to the TOML file.
 
     Returns:
-        The parsed `TOMLDocument`. Note that tokenization or parsing
-        errors that are not explicitly detected may yield a partial
-        document rather than raise.
+        The parsed `TOMLDocument`. Tokenization or parsing errors that are
+        not explicitly detected yield a partial document rather than raise.
 
     Raises:
         Error: If the file cannot be opened or read, or propagated from

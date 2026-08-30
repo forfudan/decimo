@@ -264,7 +264,7 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
     Parameters:
         dtype: The word type. Both number types use `uint64`: `BigInt`
             because that is the widest product the hardware gives in one
-            instruction, `BigUInt` because its base is 10^19.
+            instruction, `BigUInt` because its base is 10^18.
         INLINE: How many words fit inside the struct before the heap is
             involved. The two number types have different sweet spots, so
             each picks its own; see `INLINE_WORDS` for how to choose.

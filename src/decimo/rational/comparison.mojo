@@ -14,8 +14,8 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-"""Comparison operations for the Rational type.
+"""Placeholder for comparison operations on the Rational type.
 
-Implements equality and ordering comparisons (==, !=, <, <=, >, >=) for
-the arbitrary-precision Rational number type.
+The comparison operators are currently implemented as methods on
+`Rational` in `rational.mojo`. Nothing imports this module yet.
 """

@@ -15,9 +15,9 @@
 # ===----------------------------------------------------------------------=== #
 
 """
-Decimo: A comprehensive decimal mathematics library for Mojo.
+Decimo: A decimal and arbitrary-precision arithmetic library for Mojo.
 
-You can import a list of useful objects in one line, e.g., 
+You can import the most useful objects in one line, for example:
 
 ```mojo
 from decimo import Decimal, BInt, RoundingMode

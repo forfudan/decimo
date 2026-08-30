@@ -1,4 +1,4 @@
-"""Comprehensive test suite for decimo.toml — covers all TOML features."""
+"""Tests for the TOML parser: keys, tables, arrays, strings, and numbers."""
 
 from decimo.toml import parse_string, parse_file
 from std import testing
@@ -23,7 +23,6 @@ enabled = true
     assert_true(doc.get("title").as_string() == "TOML Example", "basic string")
     assert_true(doc.get("count").as_int() == 42, "basic int")
     assert_true(doc.get("enabled").as_bool() == True, "basic bool")
-    print("  PASS  test_basic_key_value")
 
 
 # ---------------------------------------------------------------------------
@@ -40,7 +39,6 @@ port = 1018
     var srv = doc.get_table("server")
     assert_true(srv["host"].as_string() == "localhost", "table host")
     assert_true(srv["port"].as_int() == 1018, "table port")
-    print("  PASS  test_table")
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +55,6 @@ numbers = [1, 2, 3]
     assert_true(len(colors) == 3, "array len")
     assert_true(colors[0].as_string() == "red", "array[0]")
     assert_true(colors[2].as_string() == "blue", "array[2]")
-    print("  PASS  test_array")
 
 
 # ---------------------------------------------------------------------------
@@ -76,7 +73,6 @@ fruits = [
     var fruits = doc.get("fruits").as_array()
     assert_true(len(fruits) == 3, "multiline array len")
     assert_true(fruits[1].as_string() == "banana", "multiline array[1]")
-    print("  PASS  test_multiline_array")
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +96,6 @@ fruit.size.height = 20
     var size = fruit["size"].as_table()
     assert_true(size["width"].as_int() == 10, "dotted key nested width")
     assert_true(size["height"].as_int() == 20, "dotted key nested height")
-    print("  PASS  test_dotted_keys")
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +115,6 @@ key = "value"
     ref c = b.as_table()["c"]
     assert_true(c.is_table(), "dotted header c is table")
     assert_true(c.as_table()["key"].as_string() == "value", "dotted header val")
-    print("  PASS  test_dotted_table_headers")
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +128,6 @@ def test_quoted_keys() raises:
 """
     )
     assert_true(doc.get("my key").as_string() == "value1", "quoted key")
-    print("  PASS  test_quoted_keys")
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +144,6 @@ point = {x = 1, y = 2}
     var t = pt.as_table()
     assert_true(t["x"].as_int() == 1, "inline table x")
     assert_true(t["y"].as_int() == 2, "inline table y")
-    print("  PASS  test_inline_table")
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +158,6 @@ animal = {type.name = "cat"}
     var animal = doc.get("animal").as_table()
     var type_tbl = animal["type"].as_table()
     assert_true(type_tbl["name"].as_string() == "cat", "nested inline table")
-    print("  PASS  test_inline_table_nested")
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +179,6 @@ sku = 284758393
     assert_true(len(products) == 2, "AoT length")
     assert_true(products[0]["name"].as_string() == "Hammer", "AoT[0] name")
     assert_true(products[1]["name"].as_string() == "Nail", "AoT[1] name")
-    print("  PASS  test_array_of_tables")
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +198,6 @@ name = "banana"
     assert_true(len(fruits) == 2, "dotted AoT len")
     assert_true(fruits[0]["name"].as_string() == "apple", "dotted AoT[0]")
     assert_true(fruits[1]["name"].as_string() == "banana", "dotted AoT[1]")
-    print("  PASS  test_array_of_tables_dotted")
 
 
 # ---------------------------------------------------------------------------
@@ -222,7 +211,6 @@ smile = "\\u0041"
     )
     # \u0041 = 'A'
     assert_true(doc.get("smile").as_string() == "A", "unicode \\u0041 = A")
-    print("  PASS  test_unicode_escapes")
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +229,6 @@ dec = 1_000_000
     assert_true(doc.get("oct").as_int() == 0o755, "octal int")
     assert_true(doc.get("bin").as_int() == 0b11010110, "binary int")
     assert_true(doc.get("dec").as_int() == 1000000, "underscore int")
-    print("  PASS  test_integer_bases")
 
 
 # ---------------------------------------------------------------------------
@@ -257,7 +244,6 @@ not_a_number = nan
     )
     assert_true(doc.get("pos_inf").as_float() == Float64.MAX, "inf")
     assert_true(doc.get("neg_inf").as_float() == -Float64.MAX, "-inf")
-    print("  PASS  test_special_floats")
 
 
 # ---------------------------------------------------------------------------
@@ -270,7 +256,6 @@ def test_multiline_strings() raises:
     var ml = tbl["ml"].as_string()
     # The multiline string should contain the newlines
     assert_true(ml.byte_length() > 0, "multiline string not empty")
-    print("  PASS  test_multiline_strings")
 
 
 # ---------------------------------------------------------------------------
@@ -294,7 +279,6 @@ port = 1314
         db["name"].as_string() == "books_of_yuhao", "server.database.name"
     )
     assert_true(db["port"].as_int() == 1314, "server.database.port")
-    print("  PASS  test_nested_tables_via_dotted")
 
 
 # ---------------------------------------------------------------------------
@@ -312,7 +296,6 @@ name = "second"
     except e:
         caught = True
     assert_true(caught, "duplicate key should raise")
-    print("  PASS  test_duplicate_key_detection")
 
 
 # ---------------------------------------------------------------------------
@@ -357,11 +340,10 @@ role = "backend"
     assert_true(len(servers) == 2, "mixed servers len")
     assert_true(servers[0]["name"].as_string() == "alpha", "mixed server[0]")
     assert_true(servers[1]["role"].as_string() == "backend", "mixed server[1]")
-    print("  PASS  test_mixed_features")
 
 
 # ---------------------------------------------------------------------------
-# 19. Parse our actual pixi.toml to make sure it still works
+# 19. The repository's own pixi.toml
 # ---------------------------------------------------------------------------
 def test_our_pixi_toml() raises:
     var doc = parse_file("pixi.toml")
@@ -370,7 +352,6 @@ def test_our_pixi_toml() raises:
     assert_true(ws["name"].as_string() == "decimo", "pixi.toml name")
     var tasks = doc.get_table("tasks")
     assert_true(len(tasks) > 0, "pixi.toml tasks table non-empty")
-    print("  PASS  test_our_pixi_toml")
 
 
 # ---------------------------------------------------------------------------

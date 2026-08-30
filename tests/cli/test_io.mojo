@@ -133,7 +133,7 @@ def test_strip_no_change() raises:
 
 
 # ===----------------------------------------------------------------------=== #
-# is_comment_or_blank (backward compat / composition)
+# is_comment_or_blank
 # ===----------------------------------------------------------------------=== #
 
 
@@ -234,7 +234,7 @@ def main() raises:
     test_strip_empty()
     test_strip_no_change()
 
-    # is_comment_or_blank (backward compat)
+    # is_comment_or_blank
     test_blank_line()
     test_whitespace_only()
     test_comment_line()
