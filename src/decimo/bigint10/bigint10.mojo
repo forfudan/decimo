@@ -26,16 +26,16 @@ mathematical methods that do not implement a trait.
 from std.memory import Pointer
 from std.python import PythonObject
 
+from decimo.bigdecimal.bigdecimal import BigDecimal
+from decimo.bigint.bigint import BigInt
 import decimo.bigint10.arithmetics as bigint10_arithmetics
 import decimo.bigint10.comparison as bigint10_comparison
 import decimo.biguint.arithmetics as biguint_arithmetics
-from decimo.bigdecimal.bigdecimal import BigDecimal
-from decimo.bigint.bigint import BigInt
 from decimo.biguint.biguint import BigUInt
 from decimo.errors import (
-    ValueError,
-    OverflowError,
     ConversionError,
+    OverflowError,
+    ValueError,
     ZeroDivisionError,
 )
 import decimo.str as decimo_str

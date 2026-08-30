@@ -1,18 +1,19 @@
 """Benchmarks for BigUInt scale_up_by_power_of_10. No Python comparison (Mojo-only)."""
 
-from decimo.biguint.biguint import BigUInt
+from std.collections import List
+from std.python import Python, PythonObject
+from std.time import perf_counter_ns
+
 import decimo.biguint.arithmetics
+from decimo.biguint.biguint import BigUInt
 from decimo.tests import (
     BenchCase,
     load_bench_cases,
     load_bench_iterations,
-    open_log_file,
     log_print,
+    open_log_file,
     print_header,
 )
-from std.python import Python, PythonObject
-from std.time import perf_counter_ns
-from std.collections import List
 
 
 def run_case(

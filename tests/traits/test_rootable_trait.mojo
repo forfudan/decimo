@@ -17,11 +17,11 @@ because it needs MPFR at runtime.
 
 from std import testing
 
-from decimo.traits import Numeric, Rootable
+from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.bigint.bigint import BigInt
 from decimo.biguint.biguint import BigUInt
-from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.decimal128.decimal128 import Decimal128
+from decimo.traits import Numeric, Rootable
 
 
 def _hypotenuse[T: Numeric & Rootable](a: T, b: T) raises -> T:

@@ -8,7 +8,7 @@ same operands and precision.
 """
 
 from std import testing
-from std.testing import assert_equal, assert_true, assert_raises
+from std.testing import assert_equal, assert_raises, assert_true
 
 from decimo.bigdecimal.bigdecimal import BDec
 import decimo.bigdecimal.comparison as comparison

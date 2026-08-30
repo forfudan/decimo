@@ -15,8 +15,8 @@ word counts that are not a multiple of it.
 from std import testing
 from std.testing import assert_equal
 
-from decimo.biguint.biguint import BigUInt
 import decimo.biguint.arithmetics as biguint_arithmetics
+from decimo.biguint.biguint import BigUInt
 
 
 def _repeat(text: String, times: Int) -> String:

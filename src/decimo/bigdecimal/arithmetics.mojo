@@ -20,10 +20,10 @@ Implements functions for mathematical operations on BigDecimal objects.
 
 from std import math
 
-import decimo.biguint.arithmetics as biguint_arithmetics
-from decimo.biguint.biguint import BigUInt
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.bigdecimal.rounding import round_to_precision_inplace
+import decimo.biguint.arithmetics as biguint_arithmetics
+from decimo.biguint.biguint import BigUInt
 from decimo.errors import ZeroDivisionError
 from decimo.rounding_mode import RoundingMode
 

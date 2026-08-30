@@ -2,9 +2,11 @@
 
 from std import testing
 
+from decimo.biguint import (
+    arithmetics as biguint_arithmetics,
+    ntt as biguint_ntt,
+)
 from decimo.biguint.biguint import BigUInt
-from decimo.biguint import arithmetics as biguint_arithmetics
-from decimo.biguint import ntt as biguint_ntt
 
 
 def build_digits(count: Int, seed: Int) -> String:

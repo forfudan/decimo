@@ -4,11 +4,10 @@ Merges former to_string, to_int, to_float test files.
 """
 
 from std import testing
-from decimo.toml.parser import TOMLDocument
 
-from decimo import Dec128
-from decimo import Decimal128
-from decimo.tests import TestCase, parse_file, load_test_cases
+from decimo import Dec128, Decimal128
+from decimo.tests import TestCase, load_test_cases, parse_file
+from decimo.toml.parser import TOMLDocument
 
 comptime file_path = "tests/decimal128/test_data/decimal128_conversions.toml"
 

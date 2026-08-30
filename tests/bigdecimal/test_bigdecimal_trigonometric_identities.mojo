@@ -20,8 +20,8 @@ written: `a - b` and `a + b` on `BigDecimal` round to the default precision of
 from std import testing
 from std.testing import assert_true
 
-from decimo.bigdecimal.bigdecimal import BDec
 from decimo.bigdecimal.arithmetics import add, multiply, subtract
+from decimo.bigdecimal.bigdecimal import BDec
 from decimo.rounding_mode import RoundingMode
 
 comptime SLACK = 3

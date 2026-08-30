@@ -3,6 +3,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from std import testing
+
 from decimo.bigdecimal.bigdecimal import BigDecimal
 
 

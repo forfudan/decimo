@@ -18,8 +18,8 @@ truncated path whatever the guard becomes.
 from std import testing
 from std.testing import assert_equal
 
-from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.bigdecimal.arithmetics import true_divide
+from decimo.bigdecimal.bigdecimal import BigDecimal
 
 
 def _one_followed_by_zeros(n: Int) -> String:

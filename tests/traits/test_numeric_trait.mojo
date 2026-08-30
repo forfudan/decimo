@@ -14,10 +14,10 @@ value, which is the case the `Movable` supertrait exists to serve.
 
 from std import testing
 
-from decimo.traits import Numeric
-from decimo.bigint.bigint import BigInt
 from decimo.bigdecimal.bigdecimal import BigDecimal
+from decimo.bigint.bigint import BigInt
 from decimo.decimal128.decimal128 import Decimal128
+from decimo.traits import Numeric
 
 
 def _sum[T: Numeric](values: List[T]) raises -> T:

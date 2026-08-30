@@ -25,17 +25,16 @@
 Implements functions for mathematical operations on Decimal128 objects.
 """
 
-from std import time
-from std import testing
+from std import testing, time
 
 from decimo.decimal128.decimal128 import Decimal128
-from decimo.rounding_mode import RoundingMode
+import decimo.decimal128.utility as decimal128_utility
+from decimo.decimal128.wide import Wide
 from decimo.errors import (
     OverflowError,
     ZeroDivisionError,
 )
-import decimo.decimal128.utility as decimal128_utility
-from decimo.decimal128.wide import Wide
+from decimo.rounding_mode import RoundingMode
 
 
 @always_inline

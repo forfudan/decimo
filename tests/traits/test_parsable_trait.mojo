@@ -15,10 +15,10 @@ sum below rather than merely lose a digit somewhere invisible.
 
 from std import testing
 
-from decimo.traits import Parsable
-from decimo.bigint.bigint import BigInt
 from decimo.bigdecimal.bigdecimal import BigDecimal
+from decimo.bigint.bigint import BigInt
 from decimo.decimal128.decimal128 import Decimal128
+from decimo.traits import Parsable
 
 
 def _parse_all[

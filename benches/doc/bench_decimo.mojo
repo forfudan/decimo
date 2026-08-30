@@ -9,13 +9,15 @@ operands and precisions match `bench_libmpdec.c` and `bench_python.py`.
 
 from std.time import perf_counter_ns
 
+from decimo.bigdecimal import (
+    arithmetics as bd_arithmetics,
+    constants as bd_constants,
+    exponential as bd_exponential,
+    rounding as bd_rounding,
+)
 from decimo.bigdecimal.bigdecimal import BigDecimal
-from decimo.bigdecimal import arithmetics as bd_arithmetics
-from decimo.bigdecimal import rounding as bd_rounding
-from decimo.bigdecimal import constants as bd_constants
-from decimo.bigdecimal import exponential as bd_exponential
-from decimo.bigint.bigint import BigInt
 from decimo.bigint import exponential as bigint_exponential
+from decimo.bigint.bigint import BigInt
 from decimo.rounding_mode import RoundingMode
 
 comptime ROUNDS = 7

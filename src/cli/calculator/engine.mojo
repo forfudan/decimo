@@ -22,10 +22,12 @@ and `pad_to_precision`, used by both one-shot/pipe/file modes (main.mojo)
 and the interactive REPL (repl.mojo).
 """
 
-from decimo import Decimal
-from decimo.rounding_mode import RoundingMode
 from std.collections import Dict
-from decimo.expression import tokenize, parse_to_rpn, evaluate_rpn, final_round
+
+from decimo import Decimal
+from decimo.expression import evaluate_rpn, final_round, parse_to_rpn, tokenize
+from decimo.rounding_mode import RoundingMode
+
 from .display import print_error
 
 

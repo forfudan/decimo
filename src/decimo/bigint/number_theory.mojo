@@ -22,20 +22,20 @@ Provides greatest common divisor (GCD), extended GCD, least common multiple
 
 from std.bit import count_trailing_zeros
 
-from decimo.bigint.bigint import BigInt, Magnitude
-from decimo.bigint.comparison import compare_magnitudes
 from decimo.bigint.arithmetics import (
     absolute,
-    negative,
-    multiply,
-    subtract,
     floor_divide,
-    floor_modulo,
     floor_divmod,
+    floor_modulo,
     left_shift,
-    subtract_inplace,
+    multiply,
+    negative,
     right_shift_inplace,
+    subtract,
+    subtract_inplace,
 )
+from decimo.bigint.bigint import BigInt, Magnitude
+from decimo.bigint.comparison import compare_magnitudes
 from decimo.errors import ValueError
 
 

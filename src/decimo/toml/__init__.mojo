@@ -36,9 +36,9 @@ Supports:
 """
 
 from .parser import (
-    parse_file,
-    parse_string,
+    TOMLDocument,
     TOMLValue,
     TOMLValueType,
-    TOMLDocument,
+    parse_file,
+    parse_string,
 )

@@ -4,6 +4,7 @@ settings splitting."""
 from std import testing
 
 from decimo.rounding_mode import RoundingMode
+
 from calculator.settings import (
     Settings,
     parse_settings,

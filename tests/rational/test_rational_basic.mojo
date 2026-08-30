@@ -4,8 +4,9 @@
 
 from std import testing
 from std.testing import assert_true
-from decimo.rational.rational import Rational
+
 from decimo.bigint.bigint import BigInt
+from decimo.rational.rational import Rational
 
 
 # ===----------------------------------------------------------------------=== #

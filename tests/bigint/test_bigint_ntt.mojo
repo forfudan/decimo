@@ -4,8 +4,9 @@ transform round trip, and agreement with the Toom-3 path it replaces.
 """
 
 from std import testing
-from decimo.bigint.bigint import BigInt, Magnitude
+
 import decimo.bigint.arithmetics as bigint_arithmetics
+from decimo.bigint.bigint import BigInt, Magnitude
 import decimo.bigint.ntt as bigint_ntt
 
 

@@ -21,7 +21,7 @@
 """Implements functions for special operations on Decimal128 objects."""
 
 from decimo.decimal128.decimal128 import Decimal128
-from decimo.errors import ValueError, OverflowError
+from decimo.errors import OverflowError, ValueError
 
 
 def factorial(n: Int) raises -> Decimal128:

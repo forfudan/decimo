@@ -13,14 +13,23 @@
 # Available ops: add, subtract, multiply, divide, comparison,
 #                from_string, to_string, sqrt, exp, ln, root, round.
 
+from std.benchmark import keep
+from std.python import Python
+from std.sys import argv as sys_argv
+from std.time import perf_counter_ns
+
 from decimo import BigDecimal
 from decimo.bigdecimal.arithmetics import add, multiply, subtract, true_divide
-from decimo.bigdecimal.exponential import sqrt as bd_sqrt
-from decimo.bigdecimal.exponential import exp as bd_exp
-from decimo.bigdecimal.exponential import ln as bd_ln
-from decimo.bigdecimal.exponential import root as bd_root
-from decimo.bigdecimal.rounding import round as bd_round
-from decimo.bigdecimal.rounding import round_to_precision_inplace
+from decimo.bigdecimal.exponential import (
+    exp as bd_exp,
+    ln as bd_ln,
+    root as bd_root,
+    sqrt as bd_sqrt,
+)
+from decimo.bigdecimal.rounding import (
+    round as bd_round,
+    round_to_precision_inplace,
+)
 from decimo.rounding_mode import RoundingMode
 from decimo.tests import (
     BenchCase,
@@ -28,10 +37,6 @@ from decimo.tests import (
     load_bench_iterations,
     load_bench_precision,
 )
-from std.benchmark import keep
-from std.python import Python
-from std.sys import argv as sys_argv
-from std.time import perf_counter_ns
 
 
 def _now_stamp() raises -> String:

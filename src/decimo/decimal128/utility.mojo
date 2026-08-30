@@ -22,11 +22,10 @@ low-level helpers such as bit manipulation, rounding helpers, and
 representation conversions.
 """
 
-from std.memory import Pointer
-from std import sys
-from std import time
+from std import sys, time
 from std.bit import bit_width, count_leading_zeros
 from std.builtin.globals import global_constant
+from std.memory import Pointer
 
 from decimo.decimal128.decimal128 import Decimal128
 from decimo.rounding_mode import RoundingMode

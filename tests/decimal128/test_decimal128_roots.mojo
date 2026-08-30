@@ -6,14 +6,14 @@ root_power TOML data files are each parsed exactly once per test (was 3
 + 3 separate parses across small test functions before consolidation).
 """
 
-import decimo
 from std import testing
-from decimo.toml.parser import TOMLDocument
 
-from decimo.decimal128.decimal128 import Decimal128, Dec128
+import decimo
+from decimo.decimal128.decimal128 import Dec128, Decimal128
+from decimo.decimal128.exponential import cbrt, power, root
 from decimo.rounding_mode import RoundingMode
-from decimo.decimal128.exponential import root, power, cbrt
-from decimo.tests import parse_file, load_test_cases
+from decimo.tests import load_test_cases, parse_file
+from decimo.toml.parser import TOMLDocument
 
 
 comptime sqrt_path = "tests/decimal128/test_data/decimal128_sqrt.toml"

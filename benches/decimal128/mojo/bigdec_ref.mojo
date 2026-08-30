@@ -15,12 +15,12 @@
 #       -I ../../../src --debug-level=line-tables -D ASSERT=none \
 #       ./bigdec_ref.mojo --op ln --cases-dir ../cases --logs-dir ../logs
 
-from decimo import BigDecimal
-from decimo import Decimal128
-import decimo.bigdecimal.exponential as bdexp
-from decimo.tests import load_bench_cases
 from std.python import Python
 from std.sys import argv as sys_argv
+
+from decimo import BigDecimal, Decimal128
+import decimo.bigdecimal.exponential as bdexp
+from decimo.tests import load_bench_cases
 
 
 def _now_stamp() raises -> String:

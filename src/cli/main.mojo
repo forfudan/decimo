@@ -13,18 +13,20 @@
 
 from std.sys import exit
 
-from argmojo import Parsable, Option, Flag, Positional, Command
+from argmojo import Command, Flag, Option, Parsable, Positional
+
 from decimo import DECIMO_VERSION_TAG
 from decimo.rounding_mode import RoundingMode
-from calculator.display import print_error, format_about
+
+from calculator.display import format_about, print_error
 from calculator.engine import evaluate_and_print
 from calculator.io import (
-    stdin_is_tty,
-    stdout_is_tty,
-    read_stdin,
-    split_into_lines,
     filter_expression_lines,
     read_file_text,
+    read_stdin,
+    split_into_lines,
+    stdin_is_tty,
+    stdout_is_tty,
 )
 from calculator.repl import run_repl
 

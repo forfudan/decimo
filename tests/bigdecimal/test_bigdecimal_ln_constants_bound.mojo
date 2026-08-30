@@ -19,9 +19,9 @@ runs. The references are CPython's `decimal` at 2100 digits, truncated to
 from std import testing
 from std.testing import assert_true
 
-from decimo.bigdecimal.bigdecimal import BDec
 from decimo.bigdecimal.arithmetics import subtract
-from decimo.bigdecimal.exponential import compute_ln2, compute_ln1d25
+from decimo.bigdecimal.bigdecimal import BDec
+from decimo.bigdecimal.exponential import compute_ln1d25, compute_ln2
 
 comptime LN2_2010 = (
     "0.6931471805599453094172321214581765680755001343602552541206800094"

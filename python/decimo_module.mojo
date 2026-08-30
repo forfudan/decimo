@@ -25,18 +25,18 @@
 # that is not a decimal goes down the conversion path instead.
 # ===----------------------------------------------------------------------=== #
 
-from std.ffi import _Global
+from std.ffi import _Global, c_int
+from std.os import abort
 from std.python import Python, PythonObject
 from std.python._cpython import (
+    Py_ssize_t,
     PyObject,
     PyObjectPtr,
-    Py_ssize_t,
     PyType_Slot,
     PyTypeObject,
     PyTypeObjectPtr,
     _fn_ptr_as_opaque,
 )
-from std.ffi import c_int
 from std.python.bindings import (
     ExceptionType,
     PyMojoObject,
@@ -50,16 +50,15 @@ from std.python.python_object import (
     _unsafe_alloc_init,
     _unsafe_init,
 )
-from std.os import abort
 
 from decimo import BigDecimal, RoundingMode
-from decimo.decimal128.decimal128 import Decimal128
-import decimo.ieee754 as ieee754
-import decimo.decimal128.trigonometric as decimal128_trigonometric
-from decimo.biguint.biguint import BigUInt
-from decimo.bigint.bigint import BigInt
-import decimo.bigdecimal.spec as bigdecimal_spec
 import decimo.bigdecimal.comparison as bigdecimal_comparison
+import decimo.bigdecimal.spec as bigdecimal_spec
+from decimo.bigint.bigint import BigInt
+from decimo.biguint.biguint import BigUInt
+from decimo.decimal128.decimal128 import Decimal128
+import decimo.decimal128.trigonometric as decimal128_trigonometric
+import decimo.ieee754 as ieee754
 
 
 # ===----------------------------------------------------------------------=== #

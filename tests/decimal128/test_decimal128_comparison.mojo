@@ -10,18 +10,17 @@ Test Decimal128 comparison operations including:
 
 from std import testing
 
-from decimo import Dec128
-from decimo import Decimal128
+from decimo import Dec128, Decimal128
 from decimo.decimal128.comparison import (
+    clamp,
+    equal,
     greater,
     greater_equal,
     less,
     less_equal,
-    equal,
-    not_equal,
     max,
     min,
-    clamp,
+    not_equal,
 )
 
 

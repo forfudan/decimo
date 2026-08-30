@@ -21,20 +21,20 @@ Converts infix token lists to Reverse Polish Notation (RPN).
 """
 
 from .tokenizer import (
-    Token,
+    TOKEN_CARET,
+    TOKEN_COMMA,
+    TOKEN_CONST,
+    TOKEN_FUNC,
+    TOKEN_LPAREN,
+    TOKEN_MINUS,
     TOKEN_NUMBER,
     TOKEN_PLUS,
-    TOKEN_MINUS,
-    TOKEN_STAR,
-    TOKEN_SLASH,
-    TOKEN_LPAREN,
     TOKEN_RPAREN,
+    TOKEN_SLASH,
+    TOKEN_STAR,
     TOKEN_UNARY_MINUS,
-    TOKEN_CARET,
-    TOKEN_FUNC,
-    TOKEN_CONST,
-    TOKEN_COMMA,
     TOKEN_VARIABLE,
+    Token,
 )
 
 

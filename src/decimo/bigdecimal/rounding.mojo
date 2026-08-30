@@ -18,8 +18,8 @@
 Implements rounding and quantization for BigDecimal objects.
 """
 
-from decimo.biguint.biguint import BigUInt
 from decimo.bigdecimal.bigdecimal import BigDecimal
+from decimo.biguint.biguint import BigUInt
 from decimo.rounding_mode import RoundingMode
 
 # ===------------------------------------------------------------------------===#

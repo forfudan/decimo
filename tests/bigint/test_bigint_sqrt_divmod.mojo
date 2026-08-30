@@ -4,6 +4,7 @@ with positive, negative, mixed-sign, and consistency checks.
 """
 
 from std import testing
+
 from decimo.bigint.bigint import BigInt
 import decimo.bigint.exponential as bigint_exponential
 

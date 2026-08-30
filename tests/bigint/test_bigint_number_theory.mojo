@@ -2,13 +2,14 @@
 modular exponentiation, and modular inverse."""
 
 from std import testing
+
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.number_theory import (
-    gcd,
     extended_gcd,
+    gcd,
     lcm,
-    mod_pow,
     mod_inverse,
+    mod_pow,
 )
 
 

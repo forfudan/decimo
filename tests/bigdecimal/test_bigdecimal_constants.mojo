@@ -10,9 +10,9 @@
 
 from std import testing
 
+from decimo.bigdecimal.bigdecimal import BigDecimal
 import decimo.bigdecimal.constants as decimo_constants
 from decimo.rounding_mode import RoundingMode
-from decimo.bigdecimal.bigdecimal import BigDecimal
 
 
 def test_pi_small_precisions() raises:

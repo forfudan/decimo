@@ -32,15 +32,15 @@ Usage:
 """
 
 from .terminal import (
-    enable_raw_mode,
-    disable_raw_mode_nothrow,
-    read_byte,
-    write_stdout,
-    write_stderr,
-    cursor_move_left,
     clear_line_from_cursor,
     clear_screen,
+    cursor_move_left,
+    disable_raw_mode_nothrow,
+    enable_raw_mode,
     move_to_column_zero,
+    read_byte,
+    write_stderr,
+    write_stdout,
 )
 
 

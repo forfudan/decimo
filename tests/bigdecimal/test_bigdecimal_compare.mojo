@@ -2,12 +2,12 @@
 Test BigDecimal comparison operations.
 """
 
-from std.python import Python
 from std import testing
+from std.python import Python
 
 from decimo import BDec
-from decimo.bigdecimal.comparison import compare_absolute, compare
-from decimo.tests import TestCase, parse_file, load_test_cases
+from decimo.bigdecimal.comparison import compare, compare_absolute
+from decimo.tests import TestCase, load_test_cases, parse_file
 
 comptime file_path = "tests/bigdecimal/test_data/bigdecimal_compare.toml"
 

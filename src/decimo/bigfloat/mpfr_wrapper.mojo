@@ -26,7 +26,7 @@ by an `Int32` index. The Mojo side never touches raw `mpfr_t` pointers.
 All functions here are internal — users interact with `BigFloat`, not these.
 """
 
-from std.ffi import external_call, c_int, c_char
+from std.ffi import c_char, c_int, external_call
 
 # ===----------------------------------------------------------------------=== #
 # Availability check

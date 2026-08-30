@@ -5,8 +5,9 @@ Test BigDecimal creation: `from_string` (TOML-driven, exercises
 
 from std import testing
 from std.python import Python
+
 from decimo.bigdecimal.bigdecimal import BigDecimal
-from decimo.tests import TestCase, parse_file, load_test_cases
+from decimo.tests import TestCase, load_test_cases, parse_file
 from decimo.toml.parser import TOMLDocument
 
 comptime from_string_file_path = (

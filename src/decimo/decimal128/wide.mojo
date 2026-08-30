@@ -39,7 +39,7 @@ from std.builtin.globals import global_constant
 
 from decimo.decimal128.decimal128 import Decimal128
 import decimo.decimal128.utility as decimal128_utility
-from decimo.errors import ValueError, OverflowError
+from decimo.errors import OverflowError, ValueError
 from decimo.rounding_mode import RoundingMode
 
 

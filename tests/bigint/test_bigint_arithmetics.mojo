@@ -6,11 +6,12 @@ Reuses TOML test data from the BigInt10 test suite, since the test cases
 use decimal string representations that are valid for both BigInt10 and BigInt.
 """
 
-from std.python import Python
 from std import testing
+from std.python import Python
+
 from decimo.bigint.bigint import BigInt
 from decimo.bigint10.bigint10 import BigInt10
-from decimo.tests import TestCase, parse_file, load_test_cases
+from decimo.tests import TestCase, load_test_cases, parse_file
 
 comptime file_path_arithmetics = (
     "tests/bigint10/test_data/bigint10_arithmetics.toml"

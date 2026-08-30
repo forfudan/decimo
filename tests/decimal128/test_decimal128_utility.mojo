@@ -7,17 +7,17 @@ from std import testing
 from std.testing import assert_equal, assert_true
 
 from decimo.decimal128.decimal128 import Decimal128
-from decimo.rounding_mode import RoundingMode
 from decimo.decimal128.utility import (
+    bitcast,
     fit_to_max_coefficient,
     number_of_digits,
+    power_of_10,
     round_coefficient,
     round_to_keep_first_n_digits,
-    bitcast,
-    power_of_10,
     udiv_u256_by_pow10_gm,
     udiv_u256_by_u128,
 )
+from decimo.rounding_mode import RoundingMode
 
 
 def test_number_of_digits() raises:

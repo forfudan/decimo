@@ -10,12 +10,10 @@ of its checks are startswith-style.
 """
 
 from std import testing
-from decimo.toml.parser import TOMLDocument
 
-from decimo import Dec128
-from decimo import Decimal128
-from decimo import BigDecimal
-from decimo.tests import TestCase, parse_file, load_test_cases
+from decimo import BigDecimal, Dec128, Decimal128
+from decimo.tests import TestCase, load_test_cases, parse_file
+from decimo.toml.parser import TOMLDocument
 
 
 comptime from_string_path = (

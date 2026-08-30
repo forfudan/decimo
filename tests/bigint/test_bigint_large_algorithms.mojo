@@ -17,8 +17,9 @@ below and just above the boundary. Generated with seed 20260812.
 """
 
 from std import testing
-from decimo.bigint.bigint import BigInt
+
 import decimo.bigint.arithmetics as bigint_arithmetics
+from decimo.bigint.bigint import BigInt
 
 
 # ===----------------------------------------------------------------=== #

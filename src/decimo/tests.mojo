@@ -51,13 +51,14 @@ Pattern expansion in string values:
         "{123456789,5}" → "123456789" repeated 5 times
 """
 
-from .toml import parse_file as parse_toml_file
-from .toml.parser import TOMLDocument
-from .errors import ValueError
+from std import os
+from std.collections import List
 from std.python import Python, PythonObject
 from std.random import random_ui64
-from std.collections import List
-from std import os
+
+from .errors import ValueError
+from .toml import parse_file as parse_toml_file
+from .toml.parser import TOMLDocument
 
 
 # ===----------------------------------------------------------------------=== #

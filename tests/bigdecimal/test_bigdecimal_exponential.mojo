@@ -6,12 +6,12 @@ against TOML expected values), because Python's Decimal cannot compute most
 non-integer exponents.
 """
 
-from std.python import Python
 from std import testing
+from std.python import Python
 
 from decimo import BDec
 import decimo.bigdecimal.exponential as bigdecimal_exponential
-from decimo.tests import TestCase, parse_file, load_test_cases
+from decimo.tests import TestCase, load_test_cases, parse_file
 
 comptime file_path = "tests/bigdecimal/test_data/bigdecimal_exponential.toml"
 

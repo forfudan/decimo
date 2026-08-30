@@ -18,13 +18,13 @@
 """
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
-from decimo.errors import ValueError
-from decimo.bigint.bigint import BigInt, Magnitude
-from decimo.biguint.biguint import BigUInt
-from decimo.rounding_mode import RoundingMode
-import decimo.bigint.arithmetics as bigint_arithmetics
-import decimo.bigint.exponential as bigint_exponential
 import decimo.bigdecimal.trigonometric as bigdecimal_trigonometric
+import decimo.bigint.arithmetics as bigint_arithmetics
+from decimo.bigint.bigint import BigInt, Magnitude
+import decimo.bigint.exponential as bigint_exponential
+from decimo.biguint.biguint import BigUInt
+from decimo.errors import ValueError
+from decimo.rounding_mode import RoundingMode
 
 comptime PI_1024 = BigDecimal(
     coefficient=BigUInt(

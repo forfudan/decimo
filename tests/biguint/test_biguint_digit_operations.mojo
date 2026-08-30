@@ -16,8 +16,8 @@ seventeen) rather than at the extremes.
 from std import testing
 from std.testing import assert_equal, assert_true
 
-from decimo.biguint.biguint import BigUInt
 import decimo.biguint.arithmetics as biguint_arithmetics
+from decimo.biguint.biguint import BigUInt
 from decimo.rounding_mode import RoundingMode
 
 

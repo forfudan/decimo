@@ -24,26 +24,26 @@ mathematical methods that do not implement a trait.
 """
 
 from std.collections import Span
+from std.hashlib.hasher import Hasher
 from std.memory import Pointer
 from std.sys import bit_width_of
-from std.hashlib.hasher import Hasher
 
+from decimo.bigdecimal.bigdecimal import BigDecimal
 import decimo.decimal128.arithmetics as decimal128_arithmetics
 import decimo.decimal128.comparison as decimal128_comparison
 import decimo.decimal128.constants as decimal128_constants
 import decimo.decimal128.exponential as decimal128_exponential
 import decimo.decimal128.rounding as decimal128_rounding
 import decimo.decimal128.trigonometric as decimal128_trigonometric
-import decimo.ieee754 as ieee754
-from decimo.decimal128.wide import Wide
-from decimo.rounding_mode import RoundingMode
-from decimo.errors import (
-    ValueError,
-    OverflowError,
-    ConversionError,
-)
 import decimo.decimal128.utility as decimal128_utility
-from decimo.bigdecimal.bigdecimal import BigDecimal
+from decimo.decimal128.wide import Wide
+from decimo.errors import (
+    ConversionError,
+    OverflowError,
+    ValueError,
+)
+import decimo.ieee754 as ieee754
+from decimo.rounding_mode import RoundingMode
 from decimo.traits import Numeric, Parsable, Rootable
 
 comptime Dec128 = Decimal128

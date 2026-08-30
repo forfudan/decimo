@@ -4,6 +4,7 @@ augmented assignment (<<=, >>=), and power-of-2 vs shift cross-checks.
 """
 
 from std import testing
+
 from decimo.bigint.bigint import BigInt
 
 

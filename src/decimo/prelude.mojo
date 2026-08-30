@@ -27,15 +27,15 @@ from decimo.prelude import *
 
 import decimo
 import decimo as dm
-from decimo.decimal128.decimal128 import Decimal128, Dec128
-from decimo.bigdecimal.bigdecimal import BigDecimal, BDec, Decimal
+from decimo.bigdecimal.bigdecimal import BDec, BigDecimal, Decimal
 from decimo.bigint.bigint import BigInt, BInt
+from decimo.decimal128.decimal128 import Dec128, Decimal128
 from decimo.rounding_mode import (
-    RoundingMode,
-    ROUND_DOWN,
-    ROUND_HALF_UP,
-    ROUND_HALF_EVEN,
-    ROUND_UP,
     ROUND_CEILING,
+    ROUND_DOWN,
     ROUND_FLOOR,
+    ROUND_HALF_EVEN,
+    ROUND_HALF_UP,
+    ROUND_UP,
+    RoundingMode,
 )

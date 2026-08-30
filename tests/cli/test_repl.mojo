@@ -6,15 +6,15 @@ _is_quit_command."""
 from std import testing
 
 from calculator.repl import (
-    _parse_assignment,
-    _validate_variable_name,
-    _is_meta_command,
-    _strip_colon_prefix,
-    _is_help_command,
-    _is_vars_command,
     _is_about_command,
-    _is_version_command,
+    _is_help_command,
+    _is_meta_command,
     _is_quit_command,
+    _is_vars_command,
+    _is_version_command,
+    _parse_assignment,
+    _strip_colon_prefix,
+    _validate_variable_name,
 )
 
 

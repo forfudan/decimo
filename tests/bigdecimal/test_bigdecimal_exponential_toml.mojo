@@ -9,7 +9,7 @@ of Python cross-checking.
 from std import testing
 
 from decimo import BDec
-from decimo.tests import TestCase, parse_file, load_test_cases
+from decimo.tests import TestCase, load_test_cases, parse_file
 
 comptime file_path = "tests/bigdecimal/test_data/bigdecimal_exponential.toml"
 

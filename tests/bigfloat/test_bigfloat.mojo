@@ -16,7 +16,7 @@
 
 """Smoke tests for BigFloat: verify MPFR pipeline works end-to-end."""
 
-from decimo.bigfloat.bigfloat import BigFloat, PRECISION
+from decimo.bigfloat.bigfloat import PRECISION, BigFloat
 from decimo.bigfloat.mpfr_wrapper import mpfrw_available
 from decimo.traits import Rootable
 

@@ -7,6 +7,7 @@ its digits to the shared engine correctly.
 """
 
 from std import testing
+
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.numerals.chinese import ChineseNumeralStyle
 
