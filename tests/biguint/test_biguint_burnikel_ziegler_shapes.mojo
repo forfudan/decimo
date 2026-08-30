@@ -33,8 +33,8 @@ by zeros with a one at the bottom.
 from std import testing
 from std.testing import assert_true
 
-from decimo.biguint.biguint import BigUInt
 from decimo.biguint import arithmetics as biguint_arithmetics
+from decimo.biguint.biguint import BigUInt
 
 
 def repeated(digit: String, count: Int) -> String:

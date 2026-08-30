@@ -1,7 +1,8 @@
 """Tests for the TOML parser: keys, tables, arrays, strings, and numbers."""
 
-from decimo.toml import parse_string, parse_file
 from std import testing
+
+from decimo.toml import parse_file, parse_string
 
 
 def main() raises:

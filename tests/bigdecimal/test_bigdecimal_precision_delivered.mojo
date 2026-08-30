@@ -38,8 +38,8 @@ check.
 from std import testing
 from std.testing import assert_true
 
-from decimo.bigdecimal.bigdecimal import BDec
 from decimo.bigdecimal.arithmetics import multiply, subtract
+from decimo.bigdecimal.bigdecimal import BDec
 
 comptime SLACK = 3
 """Digits allowed to be lost to the round trip's own rounding."""

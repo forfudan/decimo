@@ -16,18 +16,19 @@
 # Available ops: add, multiply, floor_divide, power, shift, sqrt,
 #                from_string, to_string.
 
-from decimo.bigint.bigint import BigInt
+from std.benchmark import keep
+from std.python import Python
+from std.sys import argv as sys_argv
+from std.time import perf_counter_ns
+
 import decimo.bigint.arithmetics
+from decimo.bigint.bigint import BigInt
 import decimo.bigint.exponential
 from decimo.tests import (
     BenchCase,
     load_bench_cases,
     load_bench_iterations,
 )
-from std.benchmark import keep
-from std.python import Python
-from std.sys import argv as sys_argv
-from std.time import perf_counter_ns
 
 
 def _now_stamp() raises -> String:

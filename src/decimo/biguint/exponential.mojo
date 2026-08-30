@@ -19,9 +19,9 @@
 from std import math
 from std.memory import unsafe_memset_zero
 
-from decimo.biguint.biguint import BigUInt
-from decimo.utility import isqrt_uint64, isqrt_uint128
 import decimo.biguint.arithmetics as biguint_arithmetics
+from decimo.biguint.biguint import BigUInt
+from decimo.utility import isqrt_uint128, isqrt_uint64
 
 # ===----------------------------------------------------------------------=== #
 # Square Root

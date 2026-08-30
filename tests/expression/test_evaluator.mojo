@@ -3,14 +3,14 @@
 from std import testing
 from std.collections import Dict
 
+from decimo import Decimal
 from decimo.expression import (
     evaluate,
-    tokenize,
-    parse_to_rpn,
     evaluate_rpn,
     final_round,
+    parse_to_rpn,
+    tokenize,
 )
-from decimo import Decimal
 from decimo.rounding_mode import RoundingMode
 
 

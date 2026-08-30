@@ -18,8 +18,8 @@ sit either side of where the old seed overflowed.
 from std import testing
 from std.testing import assert_true
 
-from decimo.bigdecimal.bigdecimal import BDec
 from decimo.bigdecimal.arithmetics import multiply, subtract
+from decimo.bigdecimal.bigdecimal import BDec
 
 
 def correct_digits(x: BDec, back: BDec) raises -> Int:

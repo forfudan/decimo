@@ -40,7 +40,7 @@ and can be out of range entirely, so the conversion is allowed to fail.
 
 from std.builtin.simd import SIMD
 
-from decimo.errors import ValueError, OverflowError
+from decimo.errors import OverflowError, ValueError
 
 
 comptime DECIMAL128_PRECISION = 34

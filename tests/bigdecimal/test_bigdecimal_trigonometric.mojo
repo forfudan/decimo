@@ -2,13 +2,13 @@
 Tests BigDecimal trigonometric functions.
 """
 
-from std.python import Python
 from std import testing
+from std.python import Python
 
 from decimo import BigDecimal
-from decimo.tests import TestCase, parse_file, load_test_cases
-from decimo.toml.parser import TOMLDocument
 import decimo.bigdecimal.trigonometric
+from decimo.tests import TestCase, load_test_cases, parse_file
+from decimo.toml.parser import TOMLDocument
 
 comptime file_path = "tests/bigdecimal/test_data/bigdecimal_trigonometric.toml"
 

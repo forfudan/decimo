@@ -16,6 +16,7 @@ Tests for BigDecimal utility methods.
 """
 
 from std import testing
+
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.biguint.biguint import BigUInt
 

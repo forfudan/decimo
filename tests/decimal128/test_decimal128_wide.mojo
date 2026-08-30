@@ -4,27 +4,27 @@ the `Decimal128` series run in.
 """
 
 from std import testing
-from std.testing import assert_equal, assert_true, assert_false
+from std.testing import assert_equal, assert_false, assert_true
 
 from decimo.decimal128.decimal128 import Decimal128
 from decimo.decimal128.wide import (
-    Wide,
+    FIXED_ONE,
     Extended,
-    extended_ln2,
-    extended_ln10,
+    Wide,
+    extended_e_hundredth,
     extended_e_power_of_two,
     extended_e_tenth,
-    extended_e_hundredth,
-    wide_ln2,
-    wide_ln10,
+    extended_ln10,
+    extended_ln2,
+    fixed_divide_by_int,
+    fixed_from_wide,
+    fixed_multiply,
+    wide_e_hundredth,
     wide_e_power_of_two,
     wide_e_tenth,
-    wide_e_hundredth,
-    fixed_from_wide,
     wide_from_fixed,
-    fixed_multiply,
-    fixed_divide_by_int,
-    FIXED_ONE,
+    wide_ln10,
+    wide_ln2,
 )
 
 

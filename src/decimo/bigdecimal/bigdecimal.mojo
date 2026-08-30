@@ -22,29 +22,28 @@ operation dunders, and other dunders that implement traits, as well as
 mathematical methods that do not implement a trait.
 """
 
-from std import math
+from std import math, testing
 from std.memory import Pointer, unsafe_memcpy
 from std.python import PythonObject
-from std import testing
 
-from decimo.errors import ConversionError, ValueError
-from decimo.traits import Numeric, Parsable, Rootable
-from decimo.rounding_mode import RoundingMode
-import decimo.ieee754 as ieee754
-from decimo.numerals.chinese import ChineseNumeralStyle
-from decimo.bigdecimal.exponential import MathCache
-from decimo.bigint.bigint import BigInt
-import decimo.str as decimo_str
-import decimo.numerals.chinese as decimo_chinese
 import decimo.bigdecimal.arithmetics as bigdecimal_arithmetics
 import decimo.bigdecimal.comparison as bigdecimal_comparison
 import decimo.bigdecimal.constants as bigdecimal_constants
+from decimo.bigdecimal.exponential import MathCache
 import decimo.bigdecimal.exponential as bigdecimal_exponential
 import decimo.bigdecimal.rounding as bigdecimal_rounding
 import decimo.bigdecimal.special as bigdecimal_special
 import decimo.bigdecimal.trigonometric as bigdecimal_trigonometric
-from decimo.biguint.biguint import BigUInt
+from decimo.bigint.bigint import BigInt
 import decimo.biguint.arithmetics as biguint_arithmetics
+from decimo.biguint.biguint import BigUInt
+from decimo.errors import ConversionError, ValueError
+import decimo.ieee754 as ieee754
+from decimo.numerals.chinese import ChineseNumeralStyle
+import decimo.numerals.chinese as decimo_chinese
+from decimo.rounding_mode import RoundingMode
+import decimo.str as decimo_str
+from decimo.traits import Numeric, Parsable, Rootable
 
 # Type aliases for the arbitrary-precision decimal type.
 # The names BigDecimal, Decimal, and BDec can be used interchangeably.

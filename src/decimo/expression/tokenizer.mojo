@@ -21,6 +21,7 @@ Converts an expression string into a list of tokens for the parser.
 """
 
 from std.collections import Dict
+
 from ..bigdecimal.bigdecimal import Decimal
 
 # ===----------------------------------------------------------------------=== #

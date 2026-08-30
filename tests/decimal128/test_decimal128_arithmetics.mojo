@@ -8,14 +8,13 @@ once per test function (was repeatedly opened across many small test
 functions before the consolidation).
 """
 
-from std.python import Python, PythonObject
 from std import testing
-from decimo.toml.parser import TOMLDocument
+from std.python import Python, PythonObject
 
-from decimo import Dec128
-from decimo import Decimal128
+from decimo import Dec128, Decimal128
 from decimo.rounding_mode import RoundingMode
-from decimo.tests import TestCase, parse_file, load_test_cases
+from decimo.tests import TestCase, load_test_cases, parse_file
+from decimo.toml.parser import TOMLDocument
 
 
 comptime arithmetics_path = (

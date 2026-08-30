@@ -18,8 +18,8 @@ from std.testing import assert_equal
 from decimo.bigdecimal.bigdecimal import BDec
 from decimo.bigdecimal.exponential import exp_rounded, ln_rounded, log10_rounded
 from decimo.bigdecimal.trigonometric import (
-    sin_rounded,
     cos_rounded,
+    sin_rounded,
     tan_rounded,
 )
 from decimo.rounding_mode import RoundingMode

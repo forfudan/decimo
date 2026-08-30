@@ -34,14 +34,14 @@ Algorithms:
 """
 
 from std.bit import count_leading_zeros
-from std.sys import is_little_endian
 from std.memory import unsafe_memcpy, unsafe_memset_zero
+from std.sys import is_little_endian
 
 from decimo.bigint.bigint import BigInt, Magnitude
-from decimo.utility import alias_as_immutable_source
 from decimo.bigint.comparison import compare_magnitudes
 import decimo.bigint.ntt as bigint_ntt
 from decimo.errors import ValueError, ZeroDivisionError
+from decimo.utility import alias_as_immutable_source
 
 
 # Karatsuba cutoff: operands with this many words or fewer use schoolbook.

@@ -13,12 +13,13 @@
 # Available ops: add, subtract, multiply, divide, comparison, from_string,
 #                to_string.
 
-from decimo import Decimal128
-from decimo.tests import BenchCase, load_bench_cases, load_bench_iterations
 from std.benchmark import black_box, keep
 from std.python import Python, PythonObject
 from std.sys import argv as sys_argv
 from std.time import perf_counter_ns
+
+from decimo import Decimal128
+from decimo.tests import BenchCase, load_bench_cases, load_bench_iterations
 
 
 def _now_stamp() raises -> String:

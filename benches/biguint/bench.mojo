@@ -1,12 +1,12 @@
 from bench_biguint_add import main as bench_add
-from bench_biguint_subtraction import main as bench_subtraction
-from bench_biguint_multiply import main as bench_multiply
-from bench_biguint_truncate_divide import main as bench_truncate_divide
-from bench_biguint_sqrt import main as bench_sqrt
-from bench_biguint_from_string import main as bench_from_string
-from bench_scale_up_by_power_of_10 import main as bench_scale_up
 from bench_biguint_divide_complexity import main as bench_div_complexity
+from bench_biguint_from_string import main as bench_from_string
+from bench_biguint_multiply import main as bench_multiply
 from bench_biguint_multiply_complexity import main as bench_mul_complexity
+from bench_biguint_sqrt import main as bench_sqrt
+from bench_biguint_subtraction import main as bench_subtraction
+from bench_biguint_truncate_divide import main as bench_truncate_divide
+from bench_scale_up_by_power_of_10 import main as bench_scale_up
 
 
 def main() raises:

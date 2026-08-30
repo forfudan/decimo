@@ -31,24 +31,32 @@ Features:
 - Error recovery — display error and continue, don't crash the session.
 """
 
-from std.sys import stderr
 from std.collections import Dict
+from std.sys import stderr
 
-from decimo import Decimal
-from decimo.rounding_mode import RoundingMode
-from limo import LineEditor
-from decimo import DECIMO_VERSION_TAG
-from .display import BOLD, RESET, YELLOW, CYAN, GREEN, MAGENTA
-from .display import print_error, format_about
-from .engine import evaluate_and_return
-from .io import strip, is_comment_or_blank
-from .settings import Settings, parse_settings, split_inline_settings, to_lower
+from decimo import DECIMO_VERSION_TAG, Decimal
 from decimo.expression import (
-    is_alpha_or_underscore,
     is_alnum_or_underscore,
-    is_known_function,
+    is_alpha_or_underscore,
     is_known_constant,
+    is_known_function,
 )
+from decimo.rounding_mode import RoundingMode
+
+from .display import (
+    BOLD,
+    CYAN,
+    GREEN,
+    MAGENTA,
+    RESET,
+    YELLOW,
+    format_about,
+    print_error,
+)
+from .engine import evaluate_and_return
+from .io import is_comment_or_blank, strip
+from .settings import Settings, parse_settings, split_inline_settings, to_lower
+from limo import LineEditor
 
 
 def run_repl(

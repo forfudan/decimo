@@ -28,7 +28,7 @@ from std import math
 import decimo.bigint.arithmetics as bigint_arithmetics
 from decimo.bigint.bigint import BigInt, Magnitude
 from decimo.errors import ValueError
-from decimo.utility import isqrt_uint64, isqrt_uint128
+from decimo.utility import isqrt_uint128, isqrt_uint64
 
 
 # ===----------------------------------------------------------------------=== #

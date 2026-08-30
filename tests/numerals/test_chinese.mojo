@@ -8,6 +8,7 @@ Covers `decimal_string_to_chinese()`, the string-level engine, and the
 """
 
 from std import testing
+
 from decimo.numerals.chinese import (
     MAX_CHINESE_NUMERAL_DIGITS,
     ChineseNumeralStyle,

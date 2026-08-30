@@ -21,7 +21,7 @@ Four properties:
 """
 
 from std import testing
-from std.testing import assert_true, assert_equal
+from std.testing import assert_equal, assert_true
 
 from decimo.bigdecimal.bigdecimal import BDec
 

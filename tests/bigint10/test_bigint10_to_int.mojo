@@ -5,8 +5,8 @@ for different numerical cases.
 
 from std import testing
 
-from decimo.bigint10.bigint10 import BigInt10
 import decimo.bigint10.arithmetics as arithmetics
+from decimo.bigint10.bigint10 import BigInt10
 
 
 def test_int_conversion() raises:

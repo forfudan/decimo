@@ -7,21 +7,21 @@ values MongoDB's BSON specification writes out for the same numbers.
 """
 
 from std import testing
-from std.testing import assert_equal, assert_true, assert_false
+from std.testing import assert_equal, assert_false, assert_true
 
 from decimo.decimal128.decimal128 import Decimal128
 from decimo.ieee754 import (
-    encode_decimal128,
-    decode_decimal128,
+    DECIMAL128_MAX_COEFFICIENT,
+    decimal128_from_bytes,
+    decimal128_infinity,
     decimal128_is_finite,
     decimal128_is_infinity,
     decimal128_is_nan,
     decimal128_is_signaling_nan,
-    decimal128_infinity,
     decimal128_quiet_nan,
     decimal128_to_bytes,
-    decimal128_from_bytes,
-    DECIMAL128_MAX_COEFFICIENT,
+    decode_decimal128,
+    encode_decimal128,
 )
 
 

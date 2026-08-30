@@ -10,11 +10,11 @@ quantize tests have no TOML; they cross-check against Python's decimal.
 
 from std import testing
 from std.python import Python, PythonObject
-from decimo.toml.parser import TOMLDocument
 
-from decimo.decimal128.decimal128 import Decimal128, Dec128
+from decimo.decimal128.decimal128 import Dec128, Decimal128
 from decimo.rounding_mode import RoundingMode
-from decimo.tests import parse_file, load_test_cases
+from decimo.tests import load_test_cases, parse_file
+from decimo.toml.parser import TOMLDocument
 
 
 comptime round_path = "tests/decimal128/test_data/decimal128_round.toml"

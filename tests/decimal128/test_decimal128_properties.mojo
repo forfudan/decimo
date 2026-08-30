@@ -17,7 +17,7 @@ the part of that worth keeping in the suite.
 """
 
 from std import testing
-from std.testing import assert_true, assert_equal
+from std.testing import assert_equal, assert_true
 
 from decimo.decimal128.decimal128 import Dec128
 

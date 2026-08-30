@@ -3,9 +3,10 @@ Test BigUInt exponential functions.
 """
 
 
-from std.python import Python
 from std import testing
+from std.python import Python
 from std.testing import assert_equal, assert_true
+
 from decimo.biguint.biguint import BigUInt
 from decimo.tests import (
     TestCase,

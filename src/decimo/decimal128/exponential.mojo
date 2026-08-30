@@ -16,35 +16,34 @@
 
 """Implements exponential functions for the Decimal128 type."""
 
+from std import testing, time
 import std.math
-from std import testing
-from std import time
 
-from decimo.errors import ValueError, OverflowError, ZeroDivisionError
-from decimo.decimal128.decimal128 import Decimal128
 import decimo.decimal128.constants as decimal128_constants
+from decimo.decimal128.decimal128 import Decimal128
 import decimo.decimal128.special as decimal128_special
 import decimo.decimal128.utility as decimal128_utility
 from decimo.decimal128.wide import (
-    Wide,
+    FIXED_ONE,
     Extended,
+    Wide,
     WideValue,
-    ln2_at,
-    ln10_at,
+    e_hundredth_at,
     e_power_of_two_at,
     e_tenth_at,
-    e_hundredth_at,
-    wide_ln2,
-    wide_ln10,
-    fixed_from_wide,
-    wide_from_fixed,
-    fixed_multiply,
     fixed_divide_by_int,
+    fixed_from_wide,
+    fixed_multiply,
+    ln10_at,
+    ln2_at,
+    wide_e_hundredth,
     wide_e_power_of_two,
     wide_e_tenth,
-    wide_e_hundredth,
-    FIXED_ONE,
+    wide_from_fixed,
+    wide_ln10,
+    wide_ln2,
 )
+from decimo.errors import OverflowError, ValueError, ZeroDivisionError
 
 # ===----------------------------------------------------------------------=== #
 # Power and root functions

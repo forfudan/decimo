@@ -6,19 +6,19 @@ Test BigDecimal arithmetic operations including:
 4. division.
 """
 
-from std.python import Python
 from std import testing
+from std.python import Python
 
 from decimo import BDec
 from decimo.bigdecimal.arithmetics import (
     add,
-    subtract,
     multiply,
+    subtract,
     true_divide,
 )
 from decimo.bigdecimal.rounding import round_to_precision_inplace
 from decimo.rounding_mode import RoundingMode
-from decimo.tests import TestCase, parse_file, load_test_cases
+from decimo.tests import TestCase, load_test_cases, parse_file
 
 comptime file_path = "tests/bigdecimal/test_data/bigdecimal_arithmetics.toml"
 

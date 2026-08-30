@@ -20,25 +20,25 @@ RPN evaluator for the Decimo expression engine.
 Evaluates a Reverse Polish Notation token list using BigDecimal arithmetic.
 """
 
-from ..bigdecimal.bigdecimal import Decimal
-from ..rounding_mode import RoundingMode
 from std.collections import Dict
 
+from ..bigdecimal.bigdecimal import Decimal
+from ..rounding_mode import RoundingMode
+from .parser import parse_to_rpn
 from .tokenizer import (
-    Token,
+    TOKEN_CARET,
+    TOKEN_CONST,
+    TOKEN_FUNC,
+    TOKEN_MINUS,
     TOKEN_NUMBER,
     TOKEN_PLUS,
-    TOKEN_MINUS,
-    TOKEN_STAR,
     TOKEN_SLASH,
+    TOKEN_STAR,
     TOKEN_UNARY_MINUS,
-    TOKEN_CARET,
-    TOKEN_FUNC,
-    TOKEN_CONST,
     TOKEN_VARIABLE,
+    Token,
+    tokenize,
 )
-from .parser import parse_to_rpn
-from .tokenizer import tokenize
 
 
 # ===----------------------------------------------------------------------=== #

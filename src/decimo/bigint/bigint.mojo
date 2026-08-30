@@ -36,19 +36,19 @@ import decimo.bigint.comparison as bigint_comparison
 import decimo.bigint.exponential as bigint_exponential
 import decimo.bigint.number_theory as bigint_number_theory
 import decimo.bigint.special as bigint_special
-import decimo.str as decimo_str
-from decimo.traits import Numeric, Parsable, Rootable
-import decimo.numerals.chinese as decimo_chinese
-from decimo.numerals.chinese import ChineseNumeralStyle
 from decimo.biguint.biguint import BigUInt
-from decimo.wordlist import WordList
-from decimo.utility import unsigned_counterpart
 from decimo.errors import (
     ConversionError,
     OverflowError,
     ValueError,
     ZeroDivisionError,
 )
+from decimo.numerals.chinese import ChineseNumeralStyle
+import decimo.numerals.chinese as decimo_chinese
+import decimo.str as decimo_str
+from decimo.traits import Numeric, Parsable, Rootable
+from decimo.utility import unsigned_counterpart
+from decimo.wordlist import WordList
 
 comptime INLINE_WORDS = 7
 """How many words a `BigInt` keeps inside itself before it allocates.

@@ -31,9 +31,9 @@ Implements rounding and quantization for Decimal128 objects.
 from std import testing
 
 from decimo.decimal128.decimal128 import Decimal128
-from decimo.rounding_mode import RoundingMode
-from decimo.errors import OverflowError
 import decimo.decimal128.utility as decimal128_utility
+from decimo.errors import OverflowError
+from decimo.rounding_mode import RoundingMode
 
 # ===------------------------------------------------------------------------===#
 # Rounding

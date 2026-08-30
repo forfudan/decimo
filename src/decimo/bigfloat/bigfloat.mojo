@@ -34,39 +34,39 @@ Design:
 """
 
 from std import math
-from std.ffi import external_call, c_char
+from std.ffi import c_char, external_call
 from std.memory import Pointer
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
+from decimo.bigfloat.mpfr_wrapper import (
+    mpfrw_abs,
+    mpfrw_add,
+    mpfrw_available,
+    mpfrw_clear,
+    mpfrw_cmp,
+    mpfrw_const_pi,
+    mpfrw_cos,
+    mpfrw_div,
+    mpfrw_exp,
+    mpfrw_free_raw_str,
+    mpfrw_free_str,
+    mpfrw_get_raw_digits,
+    mpfrw_get_str,
+    mpfrw_init,
+    mpfrw_log,
+    mpfrw_mul,
+    mpfrw_neg,
+    mpfrw_pow,
+    mpfrw_rootn_ui,
+    mpfrw_set_str,
+    mpfrw_sin,
+    mpfrw_sqrt,
+    mpfrw_sub,
+    mpfrw_tan,
+)
 from decimo.biguint.biguint import BigUInt
 from decimo.errors import ConversionError, RuntimeError, ValueError
 from decimo.traits import Rootable
-from decimo.bigfloat.mpfr_wrapper import (
-    mpfrw_available,
-    mpfrw_init,
-    mpfrw_clear,
-    mpfrw_set_str,
-    mpfrw_get_str,
-    mpfrw_free_str,
-    mpfrw_get_raw_digits,
-    mpfrw_free_raw_str,
-    mpfrw_add,
-    mpfrw_sub,
-    mpfrw_mul,
-    mpfrw_div,
-    mpfrw_neg,
-    mpfrw_abs,
-    mpfrw_cmp,
-    mpfrw_sqrt,
-    mpfrw_exp,
-    mpfrw_log,
-    mpfrw_sin,
-    mpfrw_cos,
-    mpfrw_tan,
-    mpfrw_pow,
-    mpfrw_rootn_ui,
-    mpfrw_const_pi,
-)
 
 # Guard bits added to user-requested precision to absorb binary↔decimal rounding.
 comptime _GUARD_BITS: Int = 64

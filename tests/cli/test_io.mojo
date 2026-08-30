@@ -3,14 +3,14 @@
 from std import testing
 
 from calculator.io import (
-    split_into_lines,
-    strip_comment,
+    _to_cstr,
+    file_exists,
+    filter_expression_lines,
     is_blank,
     is_comment_or_blank,
+    split_into_lines,
     strip,
-    filter_expression_lines,
-    file_exists,
-    _to_cstr,
+    strip_comment,
 )
 
 

@@ -23,13 +23,13 @@ operating on the arbitrary-precision BigDecimal type.
 
 from std import time
 
-from decimo.biguint.biguint import BigUInt
 from decimo.bigdecimal.bigdecimal import BigDecimal
+import decimo.bigdecimal.constants as bigdecimal_constants
+from decimo.bigdecimal.exponential import _round_by_deciding
+import decimo.bigdecimal.exponential as bigdecimal_exponential
+from decimo.biguint.biguint import BigUInt
 from decimo.errors import ValueError
 from decimo.rounding_mode import RoundingMode
-import decimo.bigdecimal.constants as bigdecimal_constants
-import decimo.bigdecimal.exponential as bigdecimal_exponential
-from decimo.bigdecimal.exponential import _round_by_deciding
 
 
 # ===----------------------------------------------------------------------=== #

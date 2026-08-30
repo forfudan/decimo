@@ -22,7 +22,7 @@ from std import testing
 from std.testing import assert_equal
 
 from decimo.bigdecimal.bigdecimal import BDec
-from decimo.bigdecimal.trigonometric import sin, cos, tan, cot, csc, sec
+from decimo.bigdecimal.trigonometric import cos, cot, csc, sec, sin, tan
 
 
 def test_sine_of_a_large_argument() raises:

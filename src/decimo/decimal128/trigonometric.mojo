@@ -39,15 +39,17 @@ from std.builtin.globals import global_constant
 
 from decimo.decimal128.decimal128 import Decimal128
 import decimo.decimal128.utility as decimal128_utility
-from decimo.decimal128.wide import Wide, Extended, WideValue
 from decimo.decimal128.wide import (
-    fixed_from_wide,
-    wide_from_fixed,
-    fixed_multiply,
-    fixed_divide_by_int,
     FIXED_ONE,
+    Extended,
+    Wide,
+    WideValue,
+    fixed_divide_by_int,
+    fixed_from_wide,
+    fixed_multiply,
+    wide_from_fixed,
 )
-from decimo.errors import ValueError, OverflowError, ZeroDivisionError
+from decimo.errors import OverflowError, ValueError, ZeroDivisionError
 
 
 # ===----------------------------------------------------------------------=== #

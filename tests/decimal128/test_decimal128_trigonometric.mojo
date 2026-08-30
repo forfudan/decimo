@@ -11,15 +11,15 @@ from std.testing import assert_equal, assert_true
 
 from decimo.decimal128.decimal128 import Decimal128
 from decimo.decimal128.trigonometric import (
-    sin,
     cos,
-    tan,
     cot,
-    sec,
     csc,
     reduce,
+    sec,
+    sin,
+    tan,
 )
-from decimo.errors import ZeroDivisionError, OverflowError
+from decimo.errors import OverflowError, ZeroDivisionError
 
 
 def test_trigonometric_values() raises:

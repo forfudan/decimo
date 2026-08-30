@@ -29,4 +29,4 @@ Modules:
 - mpfr_wrapper: Low-level FFI bindings to the MPFR C wrapper
 """
 
-from .bigfloat import BigFloat, BFlt, Float, PRECISION as BIGFLOAT_PRECISION
+from .bigfloat import PRECISION as BIGFLOAT_PRECISION, BFlt, BigFloat, Float

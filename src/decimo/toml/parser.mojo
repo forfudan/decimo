@@ -30,8 +30,10 @@ Supports:
 """
 
 from std.collections import Dict
+
 from decimo.errors import ValueError
-from .tokenizer import Token, TokenType, Tokenizer
+
+from .tokenizer import Token, Tokenizer, TokenType
 
 
 struct TOMLValue(Copyable, Deinitable, Movable):

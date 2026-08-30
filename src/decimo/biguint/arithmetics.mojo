@@ -18,21 +18,21 @@
 Implements basic arithmetic functions for the BigUInt type.
 """
 
-from std.algorithm import vectorize
 from std import math
+from std.algorithm import vectorize
 from std.memory import unsafe_memcpy, unsafe_memset_zero
 
-from decimo.biguint.biguint import BigUInt, WORD_DTYPE, Coefficient
-from decimo.wordlist import WordList
+from decimo.biguint.biguint import WORD_DTYPE, BigUInt, Coefficient
 import decimo.biguint.comparison as biguint_comparison
+import decimo.biguint.ntt as biguint_ntt
 from decimo.errors import (
     OverflowError,
     ValueError,
     ZeroDivisionError,
 )
 from decimo.rounding_mode import RoundingMode
-import decimo.biguint.ntt as biguint_ntt
 from decimo.utility import alias_as_immutable_source
+from decimo.wordlist import WordList
 
 comptime CUTOFF_KARATSUBA = 128
 """The cutoff number of words for using Karatsuba multiplication.

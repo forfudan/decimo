@@ -28,7 +28,7 @@ Invariants maintained by all constructors and operations:
 
 from std.memory import bitcast
 
-from decimo.bigdecimal.bigdecimal import BigDecimal, PRECISION
+from decimo.bigdecimal.bigdecimal import PRECISION, BigDecimal
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.number_theory import gcd
 from decimo.errors import ConversionError, ValueError, ZeroDivisionError

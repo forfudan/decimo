@@ -3,8 +3,9 @@
 # ===----------------------------------------------------------------------=== #
 
 from std import testing
-from decimo.bigint.bigint import BigInt
+
 from decimo.bigint.arithmetics import multiply_by_word_inplace
+from decimo.bigint.bigint import BigInt
 from decimo.bigint.special import product_range
 
 

@@ -25,7 +25,7 @@ mathematical methods that do not implement a trait.
 
 from std import math
 from std.builtin.globals import global_constant
-from std.memory import Pointer, unsafe_memcpy, memcmp
+from std.memory import Pointer, memcmp, unsafe_memcpy
 from std.sys import size_of
 
 import decimo.biguint.arithmetics as biguint_arithmetics
@@ -33,16 +33,16 @@ import decimo.biguint.comparison as biguint_comparison
 import decimo.biguint.exponential as biguint_exponential
 from decimo.errors import (
     ConversionError,
-    ValueError,
     IndexError,
     OverflowError,
+    ValueError,
     ZeroDivisionError,
 )
-import decimo.str as decimo_str
-from decimo.wordlist import WordList, INLINE_WORDS
 from decimo.rounding_mode import RoundingMode
+import decimo.str as decimo_str
 from decimo.traits import Rootable
 from decimo.utility import unsigned_counterpart
+from decimo.wordlist import INLINE_WORDS, WordList
 
 # Type aliases
 comptime BUInt = BigUInt

@@ -7,6 +7,7 @@ digits to the shared engine correctly.
 """
 
 from std import testing
+
 from decimo.bigint.bigint import BigInt
 from decimo.numerals.chinese import (
     MAX_CHINESE_NUMERAL_DIGITS,

@@ -21,3 +21,10 @@ repos:
         language: system
         files: '\.(mojo|🔥)$'
         stages: [pre-commit]
+
+      - id: organize-mojo-imports
+        name: organize-mojo-imports
+        entry: python3 scripts/organize_mojo_imports.py --check
+        language: system
+        files: '\.(mojo|🔥)$'
+        stages: [pre-commit]

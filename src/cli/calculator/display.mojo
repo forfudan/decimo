@@ -31,6 +31,7 @@ in an expression.  Modelled after ArgMojo's colour system.
 
 from std.sys import stderr
 from std.sys.defines import MOJO_VERSION
+
 from decimo import DECIMO_VERSION_TAG
 
 # == ANSI colour codes ========================================================

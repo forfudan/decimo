@@ -23,8 +23,8 @@ the one taken.
 from std import testing
 from std.testing import assert_true
 
-from decimo.bigint.bigint import BigInt
 from decimo.bigint import arithmetics as bigint_arithmetics
+from decimo.bigint.bigint import BigInt
 
 
 def assert_divmod_invariant(x: BigInt, y: BigInt, context: String) raises:

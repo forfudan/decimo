@@ -20,8 +20,8 @@
 
 """Implements functions for special operations on BigInt objects."""
 
-from decimo.bigint.bigint import BigInt
 from decimo.bigint.arithmetics import multiply_by_word_inplace
+from decimo.bigint.bigint import BigInt
 from decimo.errors import ValueError
 
 # Largest argument accepted by `factorial`. Even 10^6 already needs ~10^6

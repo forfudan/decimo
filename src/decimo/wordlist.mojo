@@ -43,13 +43,12 @@ The API is the part of `List` that the number types use, spelled the
 same way, so the eight hundred-odd `.words` sites did not have to change.
 """
 
-from std.sys import size_of
 from std.atomic import Atomic
 from std.bit import bit_width
 from std.ffi import _Global
-from std.memory import Layout, ThinAllocation, alloc, dealloc
-from std.memory import unsafe_memcpy
+from std.memory import Layout, ThinAllocation, alloc, dealloc, unsafe_memcpy
 from std.os import abort
+from std.sys import size_of
 
 comptime INLINE_WORDS = 10
 """How many words live in a `BigUInt` before the heap is involved.
