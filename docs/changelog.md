@@ -4,149 +4,128 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 
 ## 20260901 (v0.14.0)
 
-Decimo v0.14.0 is a **Python and correctness** release, on top of a base change
-in both integer types.
+Decimo v0.14.0 is a **Python and optimization** release, on top of a base
+change in both integer types. Seventeen bugs go with it, two of them in
+versions already released.
 
-The Python package becomes a real drop-in for the standard library's `decimal`:
-wheels for macOS and Linux, a full `Context`, every rounding mode but
-`ROUND_05UP`, the whole method surface, and `Decimal128` beside `Decimal`.
-
-Every transcendental now *decides* its rounding rather than assuming it — it
-takes the interval its own error bound allows and checks that the whole of it
-rounds to one answer — and the trigonometric functions size their argument
-reduction to the argument instead of to a flat ninety-nine digits, which they
-were silently wrong past.
+The Python package becomes a near drop-in for the standard library's
+`decimal`, and a superset of it. Every method `decimal.Decimal` has,
+`decimo.Decimal` now has: a full `Context`, every rounding mode but
+`ROUND_05UP`, and the whole specification surface. On top of that are `pi()`,
+`e()`, a `rounding=` argument on `sqrt`, `exp`, `ln` and `log10` that
+`decimal` has no equivalent of, and `Decimal128`, which brings trigonometry,
+`cbrt`, `root` and the IEEE 754 interchange bytes. What it refuses rather
+than answers differently: NaN and infinity, `ROUND_05UP`, signals and traps,
+and one context per process rather than per thread. Wheels for macOS and
+Linux.
 
 `BigUInt` moves from base 10^9 to base 10^18 and `BigInt` from base 2^32 to
 base 2^64, both gain a number-theoretic transform, and small values now live
-inside the struct. Multiplication, division, addition and text conversion are
-each 2-3x faster, `BigDecimal.pi()` four orders of magnitude, and `BigInt` is
-ahead of CPython's `int` on every large operation. It is measured against GMP
-now, which is the comparison it should be held to. Seventeen bugs are fixed,
-two of them present in released versions.
+inside the struct. Against v0.13.0, on the same machine:
 
-The measurements are in [docs/benchmarks.md](benchmarks.md); the reasoning
-behind them is in [docs/internal/internal_notes.md](internal/internal_notes.md).
+|                               | speedup                  |
+| ----------------------------- | ------------------------ |
+| addition and subtraction      | 2-3x                     |
+| multiplication                | 2-3x                     |
+| division                      | 1.2-2x                   |
+| reading and writing text      | 2-7x                     |
+| small `BigDecimal` operations | about 2x                 |
+| `BigDecimal.pi()`             | four orders of magnitude |
+
+Ratios rather than times, since the times belong to whatever machine took
+them. The absolute numbers, on one machine and one commit, are in
+[docs/benchmarks.md](benchmarks.md). `BigInt` is ahead of CPython's `int` on
+every large operation, and is measured against GMP now, which is the
+comparison it should be held to.
+
+Every transcendental also *decides* its rounding rather than assuming it: it
+takes the interval its own error bound allows and checks that the whole of it
+rounds to one answer. The trigonometric functions size their argument
+reduction to the argument instead of to a flat ninety-nine digits, which they
+were silently wrong past.
 
 ### ⭐️ New in v0.14.0
 
 **The Python package**:
 
-1. **Wheels for macOS and Linux**, CPython 3.13 and 3.14 — macOS arm64
-   (macOS 11 and later) and Linux x86_64 and arm64 (glibc 2.35 and later).
-   The Mojo runtime libraries travel inside the wheel, so nothing else is
-   needed. `pixi run -e py313 release` (or `py314`) builds one;
+1. **Wheels for macOS and Linux**, CPython 3.13 and 3.14 — macOS arm64 (11
+   and later) and Linux x86_64 and arm64 (glibc 2.35 and later). The Mojo
+   runtime libraries travel inside the wheel, so nothing else is needed.
    `release_python.yaml` builds the set and uploads through PyPI trusted
-   publishing. A tag publishes a release, a commit on `main` publishes
-   `<version>.devYYYYMMDDHHMMSS`, and a tag that disagrees with `pixi.toml`
-   stops the run. The library is compiled and tested on Linux now too — a
-   wheel for a platform nothing had ever run on is not one anyone should
-   install.
+   publishing. The library is compiled and tested on Linux now too.
 
 1. **Every rounding mode.** `getcontext().rounding` accepts all seven but
    `ROUND_05UP`, and arithmetic, `quantize`, `round(x, n)` and
-   `to_integral_value` follow it exactly, checked against `decimal` digit for
-   digit. `Context` is a value until installed, as in `decimal`;
-   `localcontext()` takes keyword overrides; `BasicContext` and
-   `ExtendedContext` exist. On the Mojo side `add`, `subtract`, `multiply`,
-   `true_divide` and the in-place forms take a `rounding_mode`.
+   `to_integral_value` follow it, checked against `decimal` digit for digit.
+   `Context` is a value until installed, `localcontext()` takes keyword
+   overrides, and the Mojo arithmetic methods take a `rounding_mode`.
 
 1. **The rest of `decimal`'s surface.** Keyword arguments where `decimal`
-   takes them (`quantize(exp, rounding=...)` and the rest);
-   `Decimal((sign, digits, exponent))`, which closes the `as_tuple()` round
-   trip; `pow(x, y, modulus)` by modular exponentiation; the sixty `Context`
-   methods that compute without disturbing the current context; and
-   `remainder_near`, `next_plus`, `next_minus`, `next_toward`, `shift`,
-   `rotate`, the four `logical_` methods, `logb`, `compare_total`,
-   `compare_total_mag`, `compare_signal`, `max_mag`, `min_mag`,
-   `number_class`, `to_integral_exact`, `is_normal`, `is_subnormal`,
-   `is_qnan`, `is_snan` and `from_number` — all checked against `decimal`.
-   The arithmetic lives in Mojo, in the new `decimo.bigdecimal.spec`; the four
-   answers that need an `Emin` are finished in the Python layer, since
-   decimo's exponents are unbounded.
+   takes them; `Decimal((sign, digits, exponent))`, closing the `as_tuple()`
+   round trip; `pow(x, y, modulus)`; the sixty `Context` methods that compute
+   without disturbing the current context; and the specification methods from
+   `remainder_near` through the four `logical_` ones to `number_class`. The
+   arithmetic lives in Mojo, in the new `decimo.bigdecimal.spec`.
 
 1. **`decimo.pi()` and `decimo.e()`**, to the context precision or to the
-   digits asked for: `decimo.pi(1000)`. `decimal` has neither.
+   digits asked for. `decimal` has neither.
 
-1. **`sqrt`, `exp`, `ln` and `log10` are always half to even**, which is what
-   `decimal` does with them; `**` still follows the context mode, also as
-   `decimal` does. All four additionally take decimo's own `rounding=`, which
-   `decimal` has no equivalent of, and are correctly rounded under whichever
-   mode applies.
+1. **`sqrt`, `exp`, `ln` and `log10` are always half to even**, as in
+   `decimal`; `**` follows the context mode, also as in `decimal`. All four
+   additionally take decimo's own `rounding=`, and are correctly rounded
+   under whichever mode applies.
 
 1. **Every operation applies the context, as in `decimal`.** `abs()`, `max`,
-   `min`, `normalize`, `scaleb`, `fma` and the remainder from `%` and `divmod`
-   were returning an exact value where `decimal` returns a rounded one. `fma`
-   is also exact now where it went through `*` and `+`, which round at each
-   step; `x ** n` and `exp` no longer come back one digit wide when the
-   rounding carries.
+   `min`, `normalize`, `scaleb`, `fma` and the remainder from `%` and
+   `divmod` were returning an exact value where `decimal` returns a rounded
+   one. `fma` is exact now where it went through `*` and `+`, which round at
+   each step.
 
 1. **`Decimal128` in Python**, as `decimo.Decimal128` (`Dec128` for short):
    96 bits of coefficient and a scale from 0 to 28, in sixteen bytes that own
    nothing. It does arithmetic, compares, hashes, rounds, copies, pickles and
    formats like `Decimal`, takes an `int`, a `float` or a `str` on either side
-   of an operator, and carries the methods and the mathematics — `quantize`,
-   `as_tuple`, `fma`, `sqrt`, `exp`, `ln`, `log10`, all six trigonometric
-   functions, the IEEE 754 bytes. Its hash agrees with `int`, `float`,
-   `decimal.Decimal` and `Decimal`, so the four are interchangeable as
-   dictionary keys, and a mixed expression settles in the wider type:
-   `Decimal128 + Decimal` is a `Decimal`, either way round.
+   of an operator, and carries the methods and the mathematics, the IEEE 754
+   bytes included. Its hash agrees with `int`, `float`, `decimal.Decimal` and
+   `Decimal`, so the four are interchangeable as dictionary keys, and a mixed
+   expression settles in the wider type. Its results never allocate, which
+   makes it quicker than `Decimal` on every operation and quicker than
+   `decimal` on all of them but `str`.
 
-   Its results never allocate. Nanoseconds against `Decimal` and
-   `decimal.Decimal`: addition 46 / 67 / 73, multiplication 57 / 92 / 85,
-   division 114 / 225 / 133, construction from text 116 / 160 / 136, `str`
-   118 / 437 / 67. A worked invoice — three lines quantized to cents, with
-   tax — is 633 / 713 / 705. `str` is the one that is slower.
-
-1. **Four conversions no longer go through a string.** `hash()` is a `tp_hash`
-   slot reducing the coefficient over its own words (493 ns to 33),
-   `Decimal(x)` copies the struct when `x` is already one (348 to 89), `int()`
-   uses `PyLong_FromSsize_t` for anything that fits a machine word (295 to
-   77), and `float()` no longer imports `builtins` on every call (342 to 179).
+1. **Four conversions no longer go through a string.** `hash()` is a
+   `tp_hash` slot reducing the coefficient over its own words, `Decimal(x)`
+   copies the struct when `x` is already one, `int()` uses
+   `PyLong_FromSsize_t` for anything that fits a machine word, and `float()`
+   no longer imports `builtins` on every call. Between 2x and 15x each.
 
 **`Decimal128`**:
 
-1. **The IEEE 754 decimal128 interchange format.** `decimo.ieee754` encodes and
-   decodes the sixteen bytes in the binary integer decimal layout — what
+1. **The IEEE 754 decimal128 interchange format.** `decimo.ieee754` encodes
+   and decodes the sixteen bytes in the binary integer decimal layout — what
    MongoDB's BSON `decimal128` and Intel's library store — with
-   `Decimal128.to_ieee754()`, `from_ieee754()`,
-   `BigDecimal.to_ieee754_decimal128()` and `from_ieee754_decimal128()` on top.
+   `Decimal128.to_ieee754()`, `from_ieee754()` and the `BigDecimal`
+   equivalents on top. It is a codec and brings no IEEE arithmetic with it:
+   trailing zeros are part of the encoding and are kept, an infinity or a NaN
+   is refused by name, and densely packed decimal is not read here.
 
-   It is a codec and brings no IEEE arithmetic with it. Trailing zeros are part
-   of the encoding and are kept, so `1.0` and `1` are one number and two
-   patterns. Every `Decimal128` fits the format and every decimal128 fits a
-   `BigDecimal` exactly; coming the other way into a `Decimal128` rounds to
-   nearest and refuses what is too large, and an infinity or a NaN is refused
-   by name. Densely packed decimal is not read here.
-
-1. **Trigonometry.** `sin`, `cos`, `tan`, `cot`, `sec` and `csc`, as functions
-   and as methods, correctly rounded across the whole range the type holds.
-   The work is the argument reduction: `Decimal128` reaches `7.9E+28`, so
-   subtracting `k * (pi/2)` with the 28-digit quarter turn the type itself
-   holds answers a different question than the caller asked — at `1E+20` only
-   8 digits of the remainder are right, and at `1.2E+27` only one. The quarter
-   turn is kept here in four exact pieces of 38 digits, and what the
-   subtractions leave is measured rather than assumed. 881 checks against a
-   reference built on CPython's `decimal` at 140 digits: none wrong.
+1. **Trigonometry.** `sin`, `cos`, `tan`, `cot`, `sec` and `csc`, correctly
+   rounded across the whole range the type holds. The work is the argument
+   reduction: `Decimal128` reaches `7.9E+28`, so subtracting `k * (pi/2)` with
+   the 28-digit quarter turn the type itself holds answers a different
+   question than the caller asked. The quarter turn is kept here in four exact
+   pieces of 38 digits. 881 checks against CPython's `decimal`: none wrong.
 
 **Rounding that is decided rather than assumed**:
 
 1. **`exp`, `ln`, `log10`, `**`, `sin`, `cos` and `tan`** computed a fixed
    number of digits beyond what was asked and rounded once, which is right
-   whenever the discarded tail happens to miss a boundary and silently wrong
-   when it does not — for the default half to even as much as for a
-   directional mode, since a tie is just another boundary. They now take the
-   interval their own error bound allows and check that the whole of it rounds
-   to one answer, widening and asking again when a boundary falls inside. Each
-   states its bound instead of carrying its own guess. `sqrt` needs no loop: a
-   root is algebraic, so `isqrt` of the scaled coefficient, nudged off `0` and
-   `5`, is already correctly rounded under every mode.
-
-   About 12% on `exp` at 28 digits and 1% on the trigonometric functions; a
-   second attempt is needed on about eight calls in a thousand. Checked over
-   seventeen thousand cases against `decimal` at forty digits beyond the
-   precision, and twenty-one thousand for `sqrt` against exact rational
-   arithmetic.
+   whenever the discarded tail misses a boundary and silently wrong when it
+   does not — for half to even as much as for a directional mode, since a tie
+   is just another boundary. They now take the interval their own error bound
+   allows and check that the whole of it rounds to one answer, widening when a
+   boundary falls inside. `sqrt` needs no loop, being algebraic. A second
+   attempt is needed on about eight calls in a thousand. Checked over
+   seventeen thousand cases against `decimal`.
 
 1. **`arctan`, `cot`, `csc` and `sec` decide theirs too.** They were the last
    ones adding nine guard digits and rounding once. An argument built to catch
@@ -154,16 +133,14 @@ behind them is in [docs/internal/internal_notes.md](internal/internal_notes.md).
    — had `arctan` come back one unit low and `log10` one unit high. Both are
    correct now, and the arguments are pinned as tests.
 
-1. **The trigonometric reduction budget is measured, not guessed.** An argument
-   close to a multiple of `pi/2` loses digits to the subtraction there, by as
-   much as it is close, and no constant can cover that: `sin` of pi taken to
-   250 digits is `1.456...E-250`, and the library returned `3.904...E-127` — a
-   number with no digit of the answer in it. `budget_for()` now measures the
-   distance to the nearest multiple, at a narrow width first since almost no
-   argument is near one, and widens when the measurement comes back at its own
+1. **The trigonometric reduction budget is measured, not guessed.** An
+   argument close to a multiple of `pi/2` loses digits to the subtraction
+   there, by as much as it is close, and no constant can cover that: `sin` of
+   pi taken to 250 digits came back with no digit of the answer in it.
+   `budget_for()` now measures the distance to the nearest multiple, at a
+   narrow width first and widening when the measurement comes back at its own
    noise floor. The measurement is the reduction the function was going to do
-   anyway, so an argument nowhere near a multiple pays nothing: `sin(1.5)` is
-   18.7 us, where a separate probe made it 20.1.
+   anyway, so an argument nowhere near a multiple pays nothing.
 
 **Integers**:
 
@@ -171,286 +148,210 @@ behind them is in [docs/internal/internal_notes.md](internal/internal_notes.md).
    `BigUInt`, gains an inline-capacity parameter and moves to
    `decimo.wordlist`; `BigInt` uses it under the name `Magnitude`, at seven
    words after the move to base 2^64 — the sum of two hundred-digit values.
-   Addition at a hundred digits goes from 40.3 ns to 11.2 ns and division from
-   406 ns to 296 ns. Above a thousand digits nothing moves.
+   Addition at a hundred digits is 3.6x, division 1.4x. Above a thousand
+   digits nothing moves.
 
-1. **`BigInt` is measured against GMP.** `docs/benchmarks.md` times GMP in C
-   alongside libmpdec, which is the comparison a big-integer library should be
-   held to; CPython's `int` can only be reached through the interpreter and
-   loses on call overhead before the arithmetic starts. GMP wins most rows.
-   The exception is small values, where an `mpz_t` still goes to the heap and
-   decimo no longer does: at ten digits decimo is 2.45x faster at addition and
-   1.94x at multiplication. What is left is written down in
-   `docs/internal/todo.md`.
+1. **`BigInt` is measured against GMP**, timed in C, which is the comparison a
+   big-integer library should be held to; CPython's `int` can only be reached
+   through the interpreter and loses on call overhead before the arithmetic
+   starts. GMP wins most rows. The exception is small values, where an `mpz_t`
+   still goes to the heap and decimo no longer does.
 
-1. **`BigInt.sqrt()` gains Zimmermann's recursion.** Above 64 words it uses the
-   Karatsuba square root of INRIA RR-3805 instead of CPython's
-   precision-doubling: the division at the last step is half the width, and the
-   remainder falls out of the recursion. At 10 000 digits 50.0 us against
-   87.8, and at 100 000 digits 1297 us against 2417. Below the crossover the
-   older path still wins and stays, as the recursion's base case.
+1. **`BigInt.sqrt()` gains Zimmermann's recursion.** Above 64 words it uses
+   the Karatsuba square root of INRIA RR-3805 instead of CPython's
+   precision-doubling: the division at the last step is half the width, and
+   the remainder falls out of the recursion. Roughly 1.8x from ten thousand
+   digits up. Below the crossover the older path still wins and stays, as the
+   recursion's base case.
 
 1. **`BigUInt` multiplication gains a number-theoretic transform.** Toom-3 was
    the largest algorithm available to it, so `BigDecimal` multiplication was
    stuck at O(n^1.465) while libmpdec switches to a transform.
    `decimo.biguint.ntt` supplies that tier, reusing the field arithmetic in
    `decimo.bigint.ntt` — only the packing differs, since a decimal magnitude
-   can only be cut at a power of ten. At 100 000 decimal digits multiplication
-   goes from 4.53 ms to 2.58 ms, and division follows, 16.53 ms to 13.74 ms.
+   can only be cut at a power of ten.
 
 **Conversions** (PR #269):
 
-1. **`Rational` conversions.** Constructors from an integral scalar, a `String`
-   and a `BigDecimal`; the factories `from_string()`, `from_integral_scalar()`,
-   `from_float_scalar()` and `from_bigdecimal()`; and the outbound `__int__()`,
-   `__float__()`, `to_int()`, `to_integer()`, `to_float()` and
-   `to_bigdecimal()`.
+1. **`Rational` conversions.** Constructors from an integral scalar, a
+   `String` and a `BigDecimal`; the factories `from_string()`,
+   `from_integral_scalar()`, `from_float_scalar()` and `from_bigdecimal()`;
+   and the outbound `__int__()`, `__float__()`, `to_int()`, `to_integer()`,
+   `to_float()` and `to_bigdecimal()`.
 
 1. **`from_integral_scalar()` and `from_float_scalar()`** on `BigInt`,
    `BigDecimal`, `Decimal128` and `Rational` — one pair of names across the
    library, constrained with `where` clauses rather than `comptime assert`, so
    the wrong scalar kind is an overload mismatch and not an assertion. Plus
-   `BigInt.from_biguint()` / `to_biguint()` and `BigInt10.from_bigint()` /
-   `to_bigint()`.
+   `BigInt.from_biguint()` / `to_biguint()` and the `BigInt10` pair.
 
 ### 🦋 Changed in v0.14.0
 
 **Allocation, and the small operations it dominates**:
 
-1. **Heap blocks are reused instead of freed.** `alloc` and `dealloc` together
-   cost about 36 nanoseconds whatever the size, so every value too long to sit
-   inside the struct paid the same toll — a six-word addition spent more than
-   half its time there. A released block now goes on a small stack sorted by
-   size, and the next request of that size takes it back.
+1. **Heap blocks are reused instead of freed.** `alloc` and `dealloc` cost
+   about the same whatever the size, so every value too long to sit inside the
+   struct paid the same toll — a six-word addition spent more than half its
+   time there. A released block now goes on a small stack sorted by size, and
+   the next request of that size takes it back. The pool is process-wide,
+   holds at most eight blocks per size, and is shared under an atomic flag.
 
-   A six-word addition is 22.0 ns against 43.8, a 200-word copy 28.5 against
-   54.3, a 200-by-20 division 1.98 us against 3.17, and a 60-digit
-   `BigDecimal` division 177 ns against 262. A large multiplication does
-   enough work to hide its own allocation, so 200-by-200 moves by 3 percent.
-   Values that fit inside the struct never reach the pool. The pool is
-   process-wide, holds at most eight blocks per size (about 500 KB in all),
-   and is shared under an atomic flag, so two threads never see one block.
-
-1. **Small operations are about twice as fast.** At these sizes the library
-   spends ~4 ns on arithmetic and ~33 ns per allocation, so an operation's
-   speed is very nearly its allocation count — and several were allocating for
+1. **Small operations are about twice as fast.** At these sizes an operation's
+   speed is very nearly its allocation count, and several were allocating for
    nothing: `add()` and `subtract()` scaled both coefficients when only one
-   ever needs it, a buffer was sized exactly and then grown, `multiply()`'s
-   single-word paths copied the other operand before growing the copy, and
-   three `debug_assert` calls built their message with `+ String(n)`, which
+   ever needs it, a buffer was sized exactly and then grown, and three
+   `debug_assert` calls built their message with `+ String(n)`, which
    allocates even with assertions compiled out (modular/modular#6439).
-   Add 1.90x, subtract 1.82x, multiply 2.06x, round 2.45x, divide 1.73x.
 
 1. **`BigDecimal` construction no longer copies its coefficient.** The
-   component constructor took `coefficient` borrowed and then copied it, so
-   every one of the 27 call sites already written as `coefficient=coef^` paid
-   a full heap allocation for a move it had explicitly asked for. `a + b` on
-   short operands goes from 73 ns to 43 ns; against libmpdec, multiply goes
-   from 2.3x to 1.2x and add from 2.5x to 1.9x.
+   component constructor took it borrowed and then copied, so all 27 call
+   sites already written as `coefficient=coef^` paid a heap allocation for a
+   move they had explicitly asked for.
 
 **Multiplication, division and roots**:
 
 1. **Multiplication is 2-3x faster.** Toom-3 comes to `BigInt`, which had
-   stopped at Karatsuba while `BigUInt` has had it since v0.10.0. The
-   schoolbook base case is rewritten to product scanning — it walks the result
-   one word at a time and sums each column in `UInt128` accumulators, so the
-   column stays in registers — and then packed into base-2^64 limbs, which
-   quarters the word pairs. Both crossovers were re-swept afterwards, worth
-   another 20% on their own. At 100 000 decimal digits a `BigInt` product goes
-   from 7.7 ms to 2.3 ms and a `BigUInt` product from 11.8 to 6.0.
+   stopped at Karatsuba. The schoolbook base case is rewritten to product
+   scanning, so each column stays in registers, and then packed into base-2^64
+   limbs, which quarters the word pairs. Both crossovers were re-swept
+   afterwards, worth another 20% on their own.
 
-1. **`BigInt` multiplication gains a number-theoretic transform.** Above
-   Toom-3 the product is evaluated as a cyclic convolution modulo the
-   Goldilocks prime `2^64 - 2^32 + 1`, which brings the exponent down from
-   `n^1.465` to `n log n`. One prime, so there is no CRT step. Two choices
-   carried most of the speedup: the chunk width is left free rather than fixed
-   at 16 bits, since the transform length has to be a power of two and the
-   rounding up is pure waste; and the dispatch compares fitted cost models
-   rather than a word count, because the transform's cost steps at powers of
-   two while Toom-3's climbs smoothly. At a million digits multiplication goes
-   from 54.7 ms to 24.0 ms.
+1. **`BigInt` multiplication gains a number-theoretic transform.** Above Toom-3
+   the product is a cyclic convolution modulo the Goldilocks prime
+   `2^64 - 2^32 + 1`, bringing the exponent from `n^1.465` to `n log n`. One
+   prime, so no CRT step. The chunk width is left free rather than fixed at 16
+   bits, since the transform length must be a power of two and the rounding up
+   is waste, and the dispatch compares fitted cost models rather than a word
+   count, because the transform's cost steps at powers of two while Toom-3's
+   climbs smoothly.
 
-1. **Addition and subtraction are 2-3x faster**, and the recursive algorithms,
-   which are add-heavy at every level, inherit most of it. `BigInt`'s
-   little-endian words are already base-2^64 limbs in pairs, so one 64-bit add
-   does the work of two 32-bit ones (0.71 to 0.25 ns/word). A base-10^9
+1. **Addition and subtraction are 2-3x faster**, and the recursive algorithms
+   inherit most of it. `BigInt`'s little-endian words are already base-2^64
+   limbs in pairs, so one 64-bit add does the work of two. A base-10^9
    `BigUInt` word carries by comparison against `BASE`, which put the carry on
-   the loop-carried chain; both answers are now computed off that chain and
-   the incoming carry only selects between them, in one pass rather than two
-   (1.75 to 0.83 ns/word at 100 000 words). Exact division by three, which
-   Toom-3 calls once per node, is split so its one division is off the chain
-   too. `subtract_simd()` and `add_slices_simd()` are renamed
-   `subtract_carry_select()` and `add_slices_carry_select()`, since neither is
-   vectorized any more, and `normalize_borrows()` is gone.
+   the loop-carried chain; both answers are computed off that chain now and
+   the incoming carry only selects. `subtract_simd()` and `add_slices_simd()`
+   become `subtract_carry_select()` and `add_slices_carry_select()`, since
+   neither is vectorized any more, and `normalize_borrows()` is gone.
 
 1. **Division is 1.2x to 2x faster.** Knuth D was spending six of its own
-   multiplications on work a multiplication does in one — at 500 digits, 2.50
-   us against 0.42 for the 52x52 schoolbook multiply underneath it, for the
-   same number of word products. Its multiply-subtract now runs two words at a
-   time, and it no longer allocates a fifth word list for its remainder: the
-   working dividend *is* the remainder by then. Against GMP, floor divide goes
-   from 4.98x slower at 1000 digits to 2.87x, and at ten digits it reaches
-   parity.
+   multiplications on work a multiplication does in one. Its multiply-subtract
+   runs two words at a time now, and it no longer allocates a fifth word list
+   for its remainder: the working dividend *is* the remainder by then.
 
-1. **`BigUInt` schoolbook division is 1.3-2x faster.** Each quotient word used
-   to build `q * y` as a fresh `BigUInt`, shift it, compare it against the
-   whole remainder and subtract it — four passes over the full dividend plus
-   an allocation, per word. It is now a single fused multiply-subtract over
-   the `n + 1` word window the quotient word touches. 2.0x at 100 digits, 1.5x
-   at 300, 1.3x at 1 000.
+1. **`BigUInt` schoolbook division is 1.3-2x faster.** Each quotient word built
+   `q * y` as a fresh `BigUInt`, shifted it, compared it against the whole
+   remainder and subtracted it — four passes plus an allocation, per word. It
+   is one fused multiply-subtract over the `n + 1` word window now.
 
 1. **Burnikel-Ziegler starts where it begins to pay, and pads to `j * 2^k`
-   words.** The cutoff was a 24-word divisor and the recursion does not earn
-   its keep until about 48. Separately, the recursion falls back to schoolbook
-   as soon as it meets an odd block, so the padding has to keep the block size
-   even the whole way down; `BigInt` rounded up only to even, so a
-   20 762-word divisor landed on schoolbook at the first recursive step and
-   the algorithm lost its asymptotics — a 100 000-digit division took 81 ms
-   where the same operands one power of two smaller took 26, and now takes 18.
-   `BigUInt` was correct but carried up to 50% dead words through every level.
-   `BigDecimal.true_divide()` at 20 000 digits goes from 4.49 ms to 3.83 ms.
+   words.** The cutoff was a 24-word divisor where the recursion does not earn
+   its keep until about 48. And the recursion falls back to schoolbook on the
+   first odd block, so the padding has to keep the block size even the whole
+   way down; `BigInt` rounded up only to even, so a large divisor lost the
+   algorithm's asymptotics at the first step.
 
-1. **`sqrt_via_reciprocal_iteration()` is 1.6x faster at high precision.** The
-   Newton step was the textbook `r * (3 - x * r^2) / 2`, whose second multiply
-   is half-width by full-width. Written around the residual instead —
-   `r + r * (1 - x * r^2) / 2`, algebraically the same — the correction is
-   around `10^(-p/2)`, which a `BigDecimal` keeps in the scale rather than in
-   the coefficient, so the multiply is half-width by half-width. At 100 000
-   digits, 6.6 ms against 10.4.
+1. **`sqrt_via_reciprocal_iteration()` is 1.6x faster at high precision.**
+   Written around the residual — `r + r * (1 - x * r^2) / 2` rather than
+   `r * (3 - x * r^2) / 2`, algebraically the same — the correction is tiny,
+   which a `BigDecimal` keeps in the scale rather than the coefficient, so the
+   multiply is half-width by half-width instead of half by full.
 
 **`pi()`, and the constants**:
 
-1. **`BigDecimal.pi()` is four orders of magnitude faster.** Five changes, and
-   they compound. The Chudnovsky binary splitting uses the `P`/`Q`/`T`
-   recurrence, so each leaf is O(1); the leaves are built in machine
-   arithmetic, since `P(k)`, `Q(k)` and `T(k)` all fit a `UInt128` below four
-   million; the term count is sized to the precision rather than to a flat
-   margin; the square root of 10005 is no longer taken exactly, which means
-   nothing for a fixed non-square constant used as an intermediate; and the
-   pipeline stays binary to the end, so the irrational factor enters as a
-   *reciprocal* square root, which Newton reaches without a division.
-
-   | digits  | before  | after   |
-   | ------- | ------- | ------- |
-   | 1 000   | --      | 71 us   |
-   | 10 000  | 13.7 s  | 1.59 ms |
-   | 100 000 | --      | 50.2 ms |
-
-   100 000 digits was out of practical reach before. Digits are unchanged:
-   exact against MPFR at every precision from 1 to 100 000. Everything that
-   range-reduces against pi inherits the gain. With the transform and the
-   faster addition and the block pool on top, `pi(1000000)` is 700 ms,
-   ahead of pure-Python mpmath from 500 digits up.
+1. **`BigDecimal.pi()` is four orders of magnitude faster.** Five changes that
+   compound: the Chudnovsky binary splitting uses the `P`/`Q`/`T` recurrence,
+   so each leaf is O(1); the leaves are built in machine arithmetic; the term
+   count is sized to the precision rather than to a flat margin; the square
+   root of 10005 is no longer taken exactly; and the pipeline stays binary to
+   the end, so the irrational factor enters as a *reciprocal* square root,
+   which Newton reaches without a division. A hundred thousand digits was out
+   of practical reach before. Digits are unchanged, exact against MPFR from 1
+   to 100 000, and everything that range-reduces against pi inherits the gain.
 
 1. **`ln` picks its series by how small the argument is, not how long it is.**
-   The choice between the Taylor series and the atanh identity read the number
-   of digits in `z = x - 1` and compared it to a tenth of the working
-   precision. That is the wrong quantity: what decides the term count is `z`'s
-   magnitude. `ln(2.3456789)` has eight digits but leaves `z = 0.34`, so it
-   took the Taylor path at every precision above 71 and paid twice over. At
-   100 digits, 17.4 us against 41.6 — 2.3 times faster than libmpdec, where it
-   had been 1.83 times slower, the one row in the benchmarks where the
-   logarithm lost.
+   The choice between the Taylor series and the atanh identity read the digit
+   count of `z = x - 1`, where what decides the term count is `z`'s magnitude.
+   `ln(2.3456789)` has eight digits but leaves `z = 0.34`, so it took the
+   Taylor path and paid twice over. About 2x, which turns the one benchmark
+   row where the logarithm lost against libmpdec into a win.
 
 **Text**:
 
 1. **Reading a `BigUInt` from text is up to seven times faster.** The parser
-   normalized every string first, writing a `List[UInt8]` of one digit per byte
-   and reading it back into words. A string that is nothing but digits, which
-   is nearly all of them, now goes straight into the words: one digit 10.7 ns
-   against 78.5, nine 20.6 against 91.2, twenty-eight 46.8 against 118.4.
+   normalized every string first, writing one digit per byte and reading it
+   back into words. A string that is nothing but digits goes straight into the
+   words now, which is nearly all of them.
 
 1. **A plain decimal string is parsed straight into the words.** The same for
-   `BigDecimal` — a sign, some digits, at most one point: 59 ns to 10, 64 to
-   19, and forty digits 114 to 74. Anything with an exponent or a separator
-   still takes the general parser. `from_string` and the `Parsable` trait take
-   a `StringSlice` now, so a substring or a foreign buffer costs no
-   allocation, which is what lets the Python binding read CPython's own
-   string: `Decimal("1.5")` 182 ns to 104, and a forty-digit literal 367 to
-   163, which is where `decimal` is.
+   `BigDecimal`; anything with an exponent or a separator still takes the
+   general parser. `from_string` and the `Parsable` trait take a `StringSlice`
+   now, so a substring or a foreign buffer costs no allocation — which is what
+   lets the Python binding read CPython's own string rather than copy it.
 
 1. **Writing a `BigDecimal` out is two to four times cheaper.** The text was
    three allocations and two copies for what is one row of digits. The digits
-   now go from the coefficient's words straight into one buffer — on the stack
-   when the value is short enough — and `BigUInt` emits two digits per
-   division against a table of pairs, halving the divisions.
+   go straight from the coefficient's words into one buffer now, on the stack
+   when the value is short enough, and `BigUInt` emits two digits per division
+   against a table of pairs. `tp_str` is a real slot for both Python types
+   rather than a `__str__` CPython has to dispatch to.
 
-   | Digits | `to_string()` before | after | `String(x)` before | after | `decimal` |
-   | -----: | -------------------: | ----: | -----------------: | ----: | --------: |
-   |      9 |                   21 |    15 |                 84 |    20 |        68 |
-   |     28 |                  159 |    66 |                350 |    77 |        84 |
-   |    100 |                  181 |   110 |                209 |   131 |       131 |
-   |  1,000 |                  716 |   376 |                997 |   475 |       805 |
-
-   From Python, `str(Decimal(...))` went from 423 ns to 108 against
-   `decimal`'s 63.
-
-1. **`String(BigInt)` is 1.3x to 1.9x faster above about 600 digits.** The
-   divide-and-conquer conversion had its two thresholds derived rather than
-   measured, and the derivation was wrong: what D&C buys is the balanced
-   split, not large enough internal divisions, and that pays long before any
-   division inside it reaches Burnikel-Ziegler. Measured, the entry threshold
-   belongs at 64 words and the base case at 48. At 1233 digits, 18.80 us
-   against 36.37.
+1. **`String(BigInt)` is 1.3x to 1.9x faster above about 600 digits.** Its two
+   divide-and-conquer thresholds were derived rather than measured, and the
+   derivation was wrong: what D&C buys is the balanced split, not large enough
+   internal divisions, and that pays long before any division inside it
+   reaches Burnikel-Ziegler.
 
 1. **`BigInt.to_biguint()` no longer detours through a decimal string.** The
-   divide-and-conquer conversion splits on powers of `10^18` instead of powers
-   of `10`, so each half lands on a word boundary and its words go straight
-   into the result.
+   conversion splits on powers of `10^18` instead of powers of `10`, so each
+   half lands on a word boundary and its words go straight into the result.
 
 **`Decimal128` internals**:
 
 1. **Division is one wide division rather than a walk.** The quotient was built
    a digit at a time and could run out of digits before reaching the position
-   the rounding needed: 1 in 300 random pairs was wrong in the last place. The
-   numerator is now raised until the integer quotient is about thirty digits,
+   the rounding needed — 1 in 300 random pairs was wrong in the last place.
+   The numerator is raised until the integer quotient is about thirty digits,
    divided once, and rounded from the remainder. That needed a 256-by-128
-   divider — `udiv_u256_by_u128`, Knuth D over 64-bit limbs, 22 ns against the
-   261 of the software shift-subtract loop it replaces. Division is 70 ns
-   against 226, and correct on all 300 pairs.
+   divider, `udiv_u256_by_u128`, Knuth D over 64-bit limbs. Division is 3.2x
+   and correct on all 300 pairs.
 
 1. **`Wide` is written once and used at two widths.** `WideValue[DIGITS]`
    carries the mantissa the series run on; `Wide` is 38 digits of it and
    `Extended` 75. The constants exist at both widths, and a test narrows each
    wide one to check it gives the narrow one exactly. The reciprocal divider
-   `udiv_u256_by_pow10_gm` reaches `10^48` now, since normalizing a 76-digit
-   product needs it, and the second width no longer falls back to software
-   division: one 75-digit multiplication goes from 370 ns to 20, which takes
-   the argument reduction from 3298 ns to 226.
+   reaches `10^48` now, so the second width no longer falls back to software
+   division — which made every second attempt in `exp`, `ln` and `power` about
+   ten times cheaper.
 
 1. **An exact integer power is known to be exact, and trailing zeros come off
    in one step.** A base of `d` digits raised to the `n`-th has at most `d * n`
    digits, so below the working width nothing is rounded and the answer needs
    no second look: `1.05^12` is one pass again rather than three. The zeros at
-   the end were stripped one at a time, each a software divide of about 185 ns;
-   halving finds them in five steps and one division.
+   the end were stripped one at a time; halving finds them in five steps.
 
 **Other**:
 
-1. **`Rational.__add__` and `__sub__` cancel before they multiply**, using
+1. **`Rational.__add__` and `__sub__` cancel before they multiply**, by
    Algorithm A of Knuth 4.5.1, so the result is in lowest terms without a
-   second gcd over two full-width operands. Summing `1/k^2` to 1 200 terms
-   goes from 123 ms to 3.1 ms. This pays because **`gcd()` now balances its
-   operands** before entering Stein's binary loop, which makes about one bit of
-   progress per full-width subtraction and so is quadratic when one operand
-   dwarfs the other: `gcd(17 940-bit, 20-bit)` drops from 4.85 ms to 0.003 ms.
+   second gcd over full-width operands. Summing `1/k^2` to 1 200 terms is 40x.
+   This pays because **`gcd()` balances its operands** before entering Stein's
+   binary loop, which makes about one bit of progress per full-width
+   subtraction and so is quadratic when one operand dwarfs the other.
 
 1. **`BigInt10` is no longer used by any other module.** Bridging goes through
-   `BigUInt`, and `BigInt10` keeps its own conversions for code that still
-   wants them (PR #269).
+   `BigUInt`; `BigInt10` keeps its own conversions for code that wants them
+   (PR #269).
 
 1. **`List._data` is no longer used anywhere.** All 63 sites moved to
    `unsafe_ptr()`, which returns the same address with an origin attached, so
    the library no longer depends on a private field of the standard library.
-   No performance change. Restoring origins exposed twelve deliberate in-place
-   aliases, which now say so through `alias_as_immutable_source()`.
+   Restoring origins exposed twelve deliberate in-place aliases, which say so
+   through `alias_as_immutable_source()` now.
 
 1. **`tests/test.sh` runs in parallel by default.** `DECIMO_TEST_JOBS` defaults
-   to the machine's logical CPU count, which takes `test.sh all` from ~68 s to
-   ~13 s on 14 cores. CI stays at 1, since each suite is already its own job
-   there. Test helpers that built large decimal strings by repeated appending
-   now pre-size the `String`, and `decimo.tests` gains
-   `random_decimal_string()`.
+   to the machine's logical CPU count. CI stays at 1, since each suite is
+   already its own job there.
 
 1. **The out-of-range message for `power_of_10_unsafe[uint256]` says 0..77.**
    It still said 0..58 after the table was extended.
@@ -458,114 +359,82 @@ behind them is in [docs/internal/internal_notes.md](internal/internal_notes.md).
 ### 🩹 Fixed in v0.14.0
 
 1. **`sin`, `cos` and `tan` were wrong for a large argument, silently.** The
-   reduction `x mod 2*pi` cancels everything above the remainder, so an
-   argument of `10^k` spends `k` digits of pi before the remainder starts. The
-   budget was a flat ninety-nine digits: right up to `10^99`, half wrong by
-   `10^105`, and at `10^150` `sin` returned `-0.89395145461803107` where the
-   true value is `-0.95074387683304597` — nothing correct in it, and nothing
-   to say so. `reduction_digits()` now sizes the budget to the argument, and
-   `cot`, `csc` and `sec` inherit it. Pinned against an independent
-   computation up to `10^300`.
+   reduction `x mod 2*pi` cancels everything above the remainder, so `10^k`
+   spends `k` digits of pi before the remainder starts. The budget was a flat
+   ninety-nine digits: right up to `10^99`, half wrong by `10^105`, and at
+   `10^150` nothing in the answer was correct, with nothing to say so.
+   `reduction_digits()` sizes the budget to the argument now, and `cot`, `csc`
+   and `sec` inherit it. Pinned against an independent computation to `10^300`.
 
-1. **`BigInt.sqrt()` never returned for values at the top of a word.** The
-   one- and two-word paths refined a `math.sqrt` estimate with
+1. **`BigInt.sqrt()` never returned for values at the top of a word.** The one-
+   and two-word paths refined an estimate with
    `while (guess + 1) * (guess + 1) <= value`. Near the top of the range that
-   square overflows and wraps to something small, the test reads true forever,
-   and the walk does not stop. `sqrt(2^32 - 1)` hung, as did 131 071 other
-   single-word values and about 2^33 two-word ones. Both paths now go through
-   `isqrt_uint64()`, which clamps the estimate first. **Present since v0.13.0,
-   so released versions are affected.**
-
-   That helper also stopped asking `math.sqrt` for an integer root — Mojo
-   resolves that to a software integer square root, 21.3 ns against 0.45 — and
-   four more places in `biguint.exponential` were asking the same way. Small
-   `BigUInt.sqrt()` goes from 10.8 ns to 2.2 at one word.
+   square wraps, so the test reads true forever. `sqrt(2^32 - 1)` hung, as did
+   131 071 other single-word values and about 2^33 two-word ones. Both paths
+   go through `isqrt_uint64()` now, which clamps the estimate first.
+   **Present since v0.13.0, so released versions are affected.**
 
 1. **`BigUInt` division crashed, or silently lost a factor of 10^9, for
-   three-word dividends.** `floor_divide()` routes a divisor of three or four
-   words to `floor_divide_by_uint128()`, which consumes the dividend four words
-   at a time; when the word count is not a multiple of four the leading group
-   is short, and its quotient was discarded. A seven-word dividend over a
-   three-word divisor came back a factor of 10^9 too small, and a three-word
-   one produced a `BigUInt` with no words at all, which faults the next
-   operation that reads `words[len(words) - 1]`. A sweep of dividend lengths
-   one to nine against divisor lengths one to five had 80 wrong results in
-   1 824. **Present since PR #111 (2025-07-23), so released versions are
-   affected.**
+   three-word dividends.** `floor_divide_by_uint128()` consumes the dividend
+   four words at a time, and when the count is not a multiple of four the
+   leading group is short — its quotient was discarded. A seven-word dividend
+   over a three-word divisor came back 10^9 too small, and a three-word one
+   produced a `BigUInt` with no words at all, which faults the next operation
+   that reads it. 80 wrong results in an 1 824-case sweep.
+   **Present since PR #111 (2025-07-23), so released versions are affected.**
 
-1. **`BigUInt` in-place subtraction returned garbage when the two operands were
-   equal**, and with it long division for a whole class of dividends.
-   `subtract_inplace()` handled `x == y` by shortening `x` to a single zero
-   word — and then fell through into the general path, which subtracted over
-   `len(y.words)` words of a value now one word long, reading and writing past
-   the end. `x -= x` returned `877910460` for one 18-word operand. The reach
-   went past `-=`: Burnikel-Ziegler's base case computes its remainder as
-   `a_slice -= q * b_slice`, and a block that divides exactly makes those two
-   equal, so `//` and `%` returned wrong quotients whenever the recursion met
-   such a block — 676 wrong results in a 5 148-case sweep, and none now. The
-   fix is a `return`. `BigInt`, `BigDecimal` and `gcd()` have their own
-   subtraction and were never affected.
+1. **`BigUInt` in-place subtraction returned garbage for equal operands**, and
+   with it long division for a whole class of dividends. `subtract_inplace()`
+   handled `x == y` by shortening `x` to one zero word and then fell through
+   into the general path, reading and writing past the end. The reach went
+   past `-=`: Burnikel-Ziegler's base case computes its remainder as
+   `a_slice -= q * b_slice`, and a block that divides exactly makes those
+   equal, so `//` and `%` were wrong whenever the recursion met one — 676
+   wrong results in a 5 148-case sweep. The fix is a `return`.
 
 1. **Toom-3 wrote one word past the end of its result buffer for lopsided
    operands.** A three-way split sizes its limbs by the longer operand, so a
-   short second operand can have empty high limbs while `4 * m` — where the
-   `w4` coefficient is recomposed — runs past the end of the result. With 513
-   and 129 words, `4 * m` is 684 against a 642-word buffer. `w4` is zero in
-   exactly those cases, so it wrote a zero out of bounds and no value
-   comparison could see it. `BigUInt`'s Toom-3 was never affected. Found by
-   Copilot on PR #273. `_add_at_offset_inplace()` now states the precondition
-   and asserts it, so the suite catches any recurrence.
+   short second operand can leave `4 * m`, where the `w4` coefficient is
+   recomposed, past the end of the result. `w4` is zero in exactly those
+   cases, so it wrote a zero out of bounds and no value comparison could see
+   it. `_add_at_offset_inplace()` states the precondition and asserts it now.
 
 1. **`sqrt_via_reciprocal_iteration()` returned fewer correct digits than asked
-   for**, from two causes: the iteration schedule halved down to 20, crediting
-   the seed with more digits than it carries, and the seed itself was
-   `x ** -0.5`, accurate for some inputs to only about ten digits. Together
-   these left `sqrt_via_reciprocal_iteration(1234.5678, 1500)` correct to 1248
-   of 1500 digits, with the full digit count returned and nothing raised.
-   `isqrt_via_reciprocal_seed()` shared both and was hiding them behind
-   full-size corrective divisions, so `sqrt_exact()` is about 30% faster now.
+   for**, from two causes: the iteration schedule credited the seed with more
+   digits than it carries, and the seed itself was `x ** -0.5`, good for some
+   inputs to only about ten digits. A 1500-digit request came back correct to
+   1248, with the full count returned and nothing raised.
+   `isqrt_via_reciprocal_seed()` shared both and hid them behind full-size
+   corrective divisions, so `sqrt_exact()` is about 30% faster now.
 
 1. **`Decimal128`'s `exp`, `ln`, `log10` and `sqrt` were wrong in the last
    digits.** All four summed their series in `Decimal128` arithmetic, which
    rounds to 28 digits after every term, so the answer inherited every one of
-   those roundings. Against CPython's `decimal` at 70 digits, `ln` was out on
-   108 of 200 random arguments, `log10` on 126, `sqrt` on 75, and `exp` by up
-   to four units in the last place. The series now run in a fixed-width
-   accumulator carrying ten digits more than `Decimal128` holds, and the
-   answer is rounded once: 0 wrong in the same 720 checks. `sqrt` no longer
-   refines a floating estimate at all — it scales the coefficient, takes an
-   integer square root, and says whether the root was exact. `Decimal128`
-   still imports nothing from `BigDecimal`; the accumulator is 38 digits in a
-   `UInt256`, inside `decimal128` itself.
+   those roundings — `ln` was out on 108 of 200 random arguments. The series
+   run in a fixed-width accumulator ten digits wider now, rounded once at the
+   end: none wrong in the same 720 checks. `sqrt` no longer refines a floating
+   estimate at all. `Decimal128` still imports nothing from `BigDecimal`.
 
 1. **`Decimal128`'s powers and roots were wrong in the last digits.** `x^y`
    went through `exp(y * ln(x))` with the logarithm and the product each
    rounded to 28 digits on the way, and an absolute error in `y * ln(x)` is a
-   relative error in the answer: 51 of 60 random arguments were wrong, by up
-   to 40 units in the last place, and `1.0001^10000` by 84. The integer path
-   was wrong on 22 of 40 and `root` on a quarter of the arguments tried. All
-   three now compute at 38 digits and round once, and run again at 75 when the
-   digits below the answer do not settle it. 540 checks against `decimal`:
-   none wrong. A power or root that comes out whole stays whole.
+   relative error in the answer: 51 of 60 random arguments were wrong. The
+   integer path was wrong on 22 of 40 and `root` on a quarter of those tried.
+   All three compute at 38 digits and round once now, running again at 75 when
+   the digits below the answer do not settle it. 540 checks: none wrong.
 
 1. **`Decimal128`'s logarithms and exponentials decide their rounding.** When
    the value sits on a boundary within the computation's own error, the whole
    thing runs again at 75 digits, which has forty-six digits below the answer
-   instead of nine. Two arguments found by searching three million:
-   `ln(6215888314.385201)` continues `...0245000017266`, seventeen hundred
-   units past a boundary the first width can only place to within two
-   thousand, and `log10(5120760.203168846)` continues `...1444999949`. The
-   wider pass runs on about one call in a quarter million and costs 55 us when
-   it does, against 0.8 for the ordinary path. It used to abort rather than
-   answer, because shifting a 75-digit mantissa asks for powers of ten up to
-   `10^74` and the reciprocal divider's table stopped at `10^48`.
+   instead of nine. Two such arguments were found by searching three million.
+   It used to abort rather than answer, because a 75-digit mantissa asks for
+   powers of ten the reciprocal divider's table did not reach.
 
 1. **`ln` of a value close to one lost most of its digits.** The reduction
    wrote `x` as `m * 2^p * 10^q` and added `p * ln(2) + q * ln(10)` back at the
-   end. For `x` just under one those three terms are each about two while
-   their sum is `1E-14`, so fourteen of the digits carried went into
-   cancelling them out. Arguments already in `[0.5, 2)` now go straight to the
-   series.
+   end. For `x` just under one those terms are each about two while their sum
+   is tiny, so most of the digits carried went into cancelling them out.
+   Arguments already in `[0.5, 2)` go straight to the series now.
 
 1. **A computed value whose dropped digits were all zeros claimed to be exact.**
    `to_decimal_decided` refused to round when the digits below the answer sat
@@ -573,33 +442,29 @@ behind them is in [docs/internal/internal_notes.md](internal/internal_notes.md).
    much room the computation had asked for. Zero *is* the boundary: with room
    to be wrong the true value may sit either side of the multiple, and the
    claim decides whether the trailing zeros are dropped.
-   `cos(0.0000000001)` printed `0.999999999999999999995`, saying the value
-   terminates there, where it continues `...41666` at the 41st digit.
 
 1. **A value too large for `Decimal128` came back with a scale of four
    billion.** When more digits had to be dropped than there were places after
    the point, the scale went negative and wrapped. Nothing reached it before:
    `exp` refuses its argument above 66.54 and a logarithm is small. `tan` of
-   an angle a hair past a pole reaches it, and now raises `OverflowError`.
+   an angle a hair past a pole reaches it, and raises `OverflowError` now.
 
 1. **A value below the smallest scale returned zero instead of rounding.**
-   `ln(1.0000000000000000000000000001)` is `9.99...E-29`, whose every digit
-   sits below the `1E-28` that `Decimal128` stops at. Rounding them says
-   `1E-28`; the conversion returned zero whenever the digits being dropped
-   were all of them.
+   `ln(1.0000000000000000000000000001)` has every digit below the `1E-28` that
+   `Decimal128` stops at. Rounding them says `1E-28`; the conversion returned
+   zero whenever the digits being dropped were all of them.
 
 1. **The digit count stopped at 58 and returned 59 for anything larger.**
    `number_of_digits` covered the 58-digit product of two `Decimal128`
-   coefficients and answered wrongly, rather than refusing, above that. It now
-   covers both types to the top, and is about sixty times faster: the old
+   coefficients and answered wrongly, rather than refusing, above that. It
+   covers both types to the top now, and is about sixty times faster: the old
    binary search compared against `10 ** k`, which is not folded for 128- and
-   256-bit scalars and so was built at run time by repeated multiplication —
-   330 ns against 5.
+   256-bit scalars and so was built at run time by repeated multiplication.
 
 1. **Burnikel-Ziegler's "add one more block" guard tested the wrong length.**
    It compared `len(a.words)` against `t * n` while `t` counts blocks of the
    *normalized* dividend, which the normalization has usually lengthened, so
-   the guard fired more or less at random. It now tests the normalized length,
+   the guard fired more or less at random. It tests the normalized length now,
    as `BigInt`'s copy of the algorithm always has.
 
 1. **The in-place single-word divisions left a `BigUInt` with no words at all**
@@ -611,8 +476,7 @@ behind them is in [docs/internal/internal_notes.md](internal/internal_notes.md).
 1. **`BigUInt.is_two()` could not return `True` for any value.** It asked for a
    two-word value and then for the second word to be zero, which the
    no-leading-zero invariant forbids; `words[0]` was never compared against 2
-   at all. It has no callers in the library, which is why nothing caught it
-   (issue #312).
+   at all. It has no callers, which is why nothing caught it (issue #312).
 
 ### 🗑️ Deprecated in v0.14.0
 
@@ -629,8 +493,7 @@ behind them is in [docs/internal/internal_notes.md](internal/internal_notes.md).
    and a list literal becomes `[UInt64(1)]`. Write `BigUInt.Word` for the type
    of a coefficient word and `BigUInt.DIGITS_PER_WORD` for how many digits it
    holds, rather than a literal `UInt32` or `9`. Values, strings and every
-   arithmetic result are unchanged; only the representation is. Add 1.06x to
-   1.54x, multiply up to 2.91x, divide up to 2.16x.
+   arithmetic result are unchanged; only the representation is.
 
 1. **`BigInt`'s words are `UInt64`, and its base is 2^64.** `BigInt.words`,
    `Magnitude` and `BInt(raw_words=..., sign=...)` all follow. Code that reads
@@ -641,8 +504,7 @@ behind them is in [docs/internal/internal_notes.md](internal/internal_notes.md).
    `(bits + 63) // 64`. Values, strings and every arithmetic result are
    unchanged; only the representation is. It held its words in base 2^32 while
    doing all its arithmetic in 64-bit registers, so schoolbook multiplication
-   and Knuth D both made twice the passes they needed to: floor divide 1.99x
-   at ten digits and 1.86x at a thousand, sqrt 1.76x and 1.41x.
+   and Knuth D both made twice the passes they needed to.
 
 1. **`BInt(raw_words=..., sign=...)` takes a `Magnitude`, not a
    `List[UInt32]`.** That is the inline word storage `BigInt` moved to, and the

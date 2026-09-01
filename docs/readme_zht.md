@@ -6,8 +6,18 @@
 **[English](https://zhuyuhao.com/decimo/)**　|　**[更新日誌](https://github.com/forfudan/decimo/blob/main/docs/changelog.md)**　|　**[GitHub 倉庫»](https://github.com/forfudan/decimo)**　|　**[Discord 頻道»](https://discord.gg/3rGH87uZTk)**
 
 - [概述](#概述)
+  - [Decimo 庫](#decimo-庫)
+  - [命令行計算器](#命令行計算器)
+  - [Python 套件](#python-套件)
+  - [TOML 解析器](#toml-解析器)
 - [安裝](#安裝)
+  - [安裝 Decimo 庫（Mojo 項目）](#安裝-decimo-庫mojo-項目)
+  - [安裝命令行計算器](#安裝命令行計算器)
+  - [安裝 Python 套件](#安裝-python-套件)
 - [快速開始](#快速開始)
+  - [Mojo 庫](#mojo-庫)
+  - [命令行計算器](#命令行計算器-1)
+  - [Python 套件](#python-套件-1)
 - [目標](#目標)
 - [狀態](#狀態)
 - [測試與基準](#測試與基準)
@@ -57,8 +67,8 @@ Decimo 是 Decimal 和 Mojo
 
 ### 命令行計算器
 
-`decimo` 是基於 Decimo 庫、由
-[ArgMojo](https://github.com/forfudan/argmojo) 驅動的命令行計算器。不帶參數運行即進入交互式
+`decimo` 是基於 Decimo 庫、由 [ArgMojo](https://github.com/forfudan/argmojo)
+驅動的命令行計算器。不帶參數運行即進入交互式
 REPL，也可以傳入表達式、文件或管道輸入做一次性求值。二進制文件是自足的，用戶機器上不需要
 Mojo 或 Pixi。完整說明見[用戶手冊](./user_manual_cli.md)。
 
@@ -68,10 +78,10 @@ Mojo 或 Pixi。完整說明見[用戶手冊](./user_manual_cli.md)。
 ### Python 套件
 
 ![Decimo for Python](https://raw.githubusercontent.com/forfudan/forfudan-github-data/main/decimo/python.webp)  
-*`decimal` 的直接替代品，外加兩樣 `decimal` 沒有的東西*
+*`decimal` 有的它都有，`decimal` 沒有的它也有*
 
-同一個 Mojo 庫也編譯成了 Python 擴展並發布到 PyPI，作爲標準庫 `decimal`
-的直接替代品。只需改一行 import，原本的 `decimal` 程序就能繼續運行：
+同一個 Mojo 庫也編譯成了 Python 擴展並發布到 PyPI，用來頂替標準庫的
+`decimal`。只需改一行 import，原本的 `decimal` 程序就能繼續運行：
 
 ```python
 # from decimal import Decimal, getcontext
@@ -85,12 +95,17 @@ print(Decimal(1) / Decimal(7))
 兩者逐位一致。測試套件把每一個運算都拿去和標準庫對照，而不是對照一張預期字符串表，所以「與
 `decimal` 一致」是量出來的，不是說出來的。
 
-數字大的時候它比 `decimal` 快——一千位時快 2.9
-倍；數字小的時候慢 20-25%，慢的是 Python 調用本身的開銷，不是算術本身。`Decimal128`
-也在裏面，作爲處理金額的定寬類型；此外還有 `decimal` 沒有的 `pi()`、`e()`，以及
-`sqrt`、`exp`、`ln`、`log10` 上的 `rounding=` 參數。
+一樣都不缺：`decimal.Decimal` 有的方法，`decimo.Decimal`
+全都有。而且還往前走了一步。`pi()` 和 `e()` 是 `decimal`
+沒有的。`sqrt`、`exp`、`ln`、`log10` 接受 `rounding=` 參數，而 `decimal`
+對這四個函數一律忽略上下文的捨入模式，只做 half-even。`Decimal128`
+還帶來了三角函數、`cbrt`、`root` 和 IEEE 754
+互換格式。數字大的時候它也更快——一千位時快 2.9 倍；數字小的時候慢 20-25%，慢的是
+Python 調用本身的開銷，不是算術本身。
 
-詳細的支持範圍、不支持的部分和完整的基準表見
+不能直接替換的地方，它選擇報錯而不是給出不同答案：沒有 NaN 和無窮、沒有
+`ROUND_05UP`、沒有 signal 和
+trap，上下文是每進程一個而不是每線程一個。完整清單和理由見
 [python/README.md](../python/README.md)。
 
 ### TOML 解析器
@@ -175,8 +190,9 @@ pip install decimo
 ```
 
 預編譯的 wheel 覆蓋 macOS arm64（macOS 11 及以上）和 Linux 的 x86_64 與
-arm64（glibc 2.35 及以上），支持 CPython 3.13 和 3.14。不需要另外安裝任何東西，Mojo
-運行時庫就在 wheel 裏面。其他平臺請用 [pixi](https://pixi.sh) 從源碼構建：
+arm64（glibc 2.35 及以上），支持 CPython 3.13 和
+3.14。不需要另外安裝任何東西，Mojo 運行時庫就在 wheel 裏面。其他平臺請用
+[pixi](https://pixi.sh) 從源碼構建：
 
 ```bash
 git clone https://github.com/forfudan/decimo && cd decimo
@@ -420,7 +436,8 @@ $ echo "1/3" | decimo -P 50
 $ decimo -F expressions.dm -P 80
 ```
 
-常用選項：`-P N`（精度）、`-R MODE`（捨入模式）、`-S` / `-E`（科學/工程計數法）、`--pad`、`--delimiter`、`--completions {bash,zsh,fish}`。完整列表見
+常用選項：`-P N`（精度）、`-R MODE`（捨入模式）、`-S` /
+`-E`（科學/工程計數法）、`--pad`、`--delimiter`、`--completions {bash,zsh,fish}`。完整列表見
 `decimo --help`。
 
 ### Python 套件
@@ -453,7 +470,8 @@ price = Decimal128("19.99")
 (price * 3).quantize(Decimal128("0.01"))  # 59.97
 ```
 
-混合表達式落在更寬的類型上——`Decimal128 + Decimal` 是 `Decimal`，反過來也一樣。`Decimal`、`Decimal128`、`int`、`float` 和
+混合表達式落在更寬的類型上——`Decimal128 + Decimal` 是
+`Decimal`，反過來也一樣。`Decimal`、`Decimal128`、`int`、`float` 和
 `decimal.Decimal` 的哈希值彼此一致，所以五者作爲字典的鍵可以互換。
 
 decimo 選擇報錯而不是給出不同答案的地方：NaN 和無窮、`ROUND_05UP`、signal 和
@@ -477,8 +495,8 @@ Python 遷移到 Mojo 時，我需要一個可靠的、能够正確捨入的、�
 羅馬不是一日建成的。Decimo 目前正在積極開發中。它已成功通過 **"讓它工作"**
 階段和 **"讓它正確"** 階段，現已深入 **"讓它快速"** 階段。
 
-`BInt` 類型已經完全實現並優化。它的對照基準是用 C 計時的 GMP，而不再是 CPython 的
-`int`——後者要經過解釋器，算術還沒開始就先輸在調用開銷上。
+`BInt` 類型已經完全實現並優化。它的對照基準是用 C 計時的 GMP，而不再是 CPython
+的 `int`——後者要經過解釋器，算術還沒開始就先輸在調用開銷上。
 
 歡迎錯誤報告和功能請求！如果您遇到問題，請[在此提交](https://github.com/forfudan/decimo/issues)。
 

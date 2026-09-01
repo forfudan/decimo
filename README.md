@@ -9,14 +9,19 @@ Comes with an interactive arbitrary-precision calculator (REPL + one-shot mode)
 powered by [ArgMojo](https://github.com/forfudan/argmojo). Install it with
 `brew install forfudan/tap/decimo`.
 
-The same library is packaged for Python as a drop-in replacement for the
-standard library's `decimal`. Install it with `pip install decimo`.
+The same library is packaged for Python as a near drop-in for the standard
+library's `decimal`, and a superset of it: the whole of its method surface,
+plus `pi()`, `e()` and a 128-bit decimal type. Install it with
+`pip install decimo`.
 
 [![Version](https://img.shields.io/badge/version-v0.14.0-blue)](https://github.com/forfudan/decimo/releases/tag/v0.14.0)
 [![Mojo](https://img.shields.io/badge/mojo-1.0.0-orange)](https://docs.modular.com/mojo/manual/)
-[![pixi](https://img.shields.io/badge/pixi%20add-decimo-purple)](https://prefix.dev/channels/modular-community/packages/decimo)
-[![PyPI](https://img.shields.io/pypi/v/decimo?label=pip%20install)](https://pypi.org/project/decimo/)
 [![CI](https://img.shields.io/github/actions/workflow/status/forfudan/decimo/run_tests.yaml?branch=main&label=tests)](https://github.com/forfudan/decimo/actions/workflows/run_tests.yaml)
+[![License](https://img.shields.io/github/license/forfudan/decimo)](https://github.com/forfudan/decimo/blob/main/LICENSE)
+
+[![pixi](https://img.shields.io/badge/pixi%20add-decimo-purple)](https://prefix.dev/channels/modular-community/packages/decimo)
+[![PyPI](https://img.shields.io/badge/pip%20install-decimo-blue)](https://pypi.org/project/decimo/)
+[![Homebrew](https://img.shields.io/badge/brew%20install-forfudan%2Ftap%2Fdecimo-orange)](https://github.com/forfudan/homebrew-tap)
 
 | Type         | Alias             | Information                              | Layout       |
 | ------------ | ----------------- | ---------------------------------------- | ------------ |
@@ -26,7 +31,6 @@ standard library's `decimal`. Install it with `pip install decimo`.
 | `BigFloat`   | `Float`           | Arbitrary-precision floating-point type  | MPFR/GMP     |
 
 <!--
-[![License](https://img.shields.io/github/license/forfudan/decimo)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/forfudan/decimo?style=flat)](https://github.com/forfudan/decimo/stargazers)
 [![Issues](https://img.shields.io/github/issues/forfudan/decimo)](https://github.com/forfudan/decimo/issues)
 ![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)
@@ -104,11 +108,11 @@ reference, and the [Quick start](#cli-quick-start) below for a taste.
 ### Python package
 
 ![Decimo for Python](https://raw.githubusercontent.com/forfudan/forfudan-github-data/main/decimo/python.webp)  
-*A drop-in for `decimal`, plus two things `decimal` has no equivalent of*
+*Everything `decimal` has, and things it does not*
 
 The Mojo library is also compiled into a Python extension and published on PyPI,
-where it is a drop-in replacement for the standard library's `decimal`. Change
-one import and a `decimal` program keeps working:
+where it stands in for the standard library's `decimal`. Change one import and
+a `decimal` program keeps working:
 
 ```python
 # from decimal import Decimal, getcontext
@@ -123,15 +127,20 @@ The two agree digit for digit. The test suite checks every operation against
 the standard library rather than against a table of expected strings, so
 "agrees with `decimal`" is measured rather than claimed.
 
-It is faster than `decimal` once the numbers are large — 2.9x at a thousand
-digits — and 20-25% behind on small ones, where what is left is the cost of
-the Python call rather than the arithmetic. `Decimal128` is there too, as the
-fixed-width type for money, and so are `pi()`, `e()` and a `rounding=` argument
-on `sqrt`, `exp`, `ln` and `log10` that `decimal` does not have.
+Nothing is missing: every method `decimal.Decimal` has, `decimo.Decimal` has
+too. And it goes further. `pi()` and `e()` are there, which `decimal` has
+neither of. `sqrt`, `exp`, `ln` and `log10` take a `rounding=` argument, where
+`decimal` ignores the context mode for those and always rounds half to even.
+`Decimal128` brings trigonometry, `cbrt`, `root` and the IEEE 754 interchange
+bytes with it. And it is faster once the numbers are large — 2.9x at a
+thousand digits — 20-25% behind on small ones, where what is left is the cost
+of the Python call rather than the arithmetic.
 
-See [python/README.md](./python/README.md) for what works, what does not, and
-the full benchmark table, and the [Python quick start](#python-quick-start)
-below for a taste.
+Where it is not a drop-in it refuses rather than answers differently: no NaN
+or infinity, no `ROUND_05UP`, no signals or traps, and one context per process
+rather than per thread. See [python/README.md](./python/README.md) for the
+full list with the reasoning, and the
+[Python quick start](#python-quick-start) below for a taste.
 
 ### TOML parser
 
