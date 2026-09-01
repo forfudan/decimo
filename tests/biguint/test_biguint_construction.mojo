@@ -238,5 +238,23 @@ def test_overflow_predicates_at_their_boundaries() raises:
     assert_true(BigUInt("9" * 45).is_uint128_overflow())
 
 
+def test_is_one_and_is_two() raises:
+    """`is_two()` used to answer `False` for two, and for everything else.
+
+    It asked for a two-word value and then for the second word to be zero,
+    which the no-leading-zero invariant forbids, so nothing could pass it.
+    """
+    assert_true(BigUInt("1").is_one())
+    assert_true(not BigUInt("0").is_one())
+    assert_true(not BigUInt("2").is_one())
+
+    assert_true(BigUInt("2").is_two())
+    assert_true(not BigUInt("0").is_two())
+    assert_true(not BigUInt("1").is_two())
+    assert_true(not BigUInt("3").is_two())
+    # A value whose lowest word is 2 but which carries more words.
+    assert_true(not BigUInt("1" + "0" * 18 + "2").is_two())
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()
