@@ -339,8 +339,8 @@ behind them is in [docs/internal/internal_notes.md](internal/internal_notes.md).
    100 000 digits was out of practical reach before. Digits are unchanged:
    exact against MPFR at every precision from 1 to 100 000. Everything that
    range-reduces against pi inherits the gain. With the transform and the
-   faster addition on top, `pi(1000000)` is 821 ms, ahead of pure-Python
-   mpmath from 500 digits up.
+   faster addition and the block pool on top, `pi(1000000)` is 700 ms,
+   ahead of pure-Python mpmath from 500 digits up.
 
 1. **`ln` picks its series by how small the argument is, not how long it is.**
    The choice between the Taylor series and the atanh identity read the number

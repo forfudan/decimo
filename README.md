@@ -77,8 +77,9 @@ The core types are[^auxiliary]:
   requires MPFR/GMP to be installed on the user's system.
 <!-- - An arbitrary-precision exact rational number type (`Rational`) represented as a reduced fraction of two `BigInt`s (numerator and denominator). It supports exact arithmetic and comparisons without any loss of precision, making it ideal for applications that require precise fractional calculations. -->
 
-Decimo is fast: at a million digits `pi()` is ten times quicker than pure-Python
-mpmath, `BigInt` multiplication is fifteen times quicker than CPython's `int`,
+Decimo is fast: at a million digits `pi()` is nearly twelve times quicker than
+pure-Python mpmath, `BigInt` multiplication is fifteen times quicker than
+CPython's `int`,
 and small `BigDecimal` operations are close to libmpdec, the C library behind
 Python's `decimal`. The measured numbers, with the commit they were taken on,
 are in [docs/benchmarks.md](docs/benchmarks.md); `pixi run benchdoc` regenerates
