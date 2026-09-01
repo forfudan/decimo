@@ -3,9 +3,11 @@
     pixi run benchdoc
 
 Every number in the generated document comes from this run; nothing is carried
-over from a previous one. The document records the commit it was measured on,
-so a reader can tell whether it is current, and a stale table is visibly stale
-rather than quietly wrong.
+over from a previous one. The document records the `main` commit it was
+measured on -- the merge base, not `HEAD`, since a branch is squashed on merge
+and its own commits never reach `main` -- so a reader can tell whether it is
+current, and a stale table is visibly stale rather than quietly wrong. When
+the run happened on a branch, the pull request is named beside it.
 
 Four comparisons, and they are not equally fair -- the document says so:
 
@@ -50,8 +52,34 @@ def run(cmd: list[str], **kwargs) -> str:
     ).stdout
 
 
+def merge_base_with_main(commit: str) -> str:
+    """The newest commit on `main` that `commit` descends from.
+
+    Recording `HEAD` was wrong on a branch: the pull request is squashed on
+    merge, so the branch commits never reach `main` and the link in the
+    document points at an object that is eventually collected. The merge base
+    is on `main` by construction, so it stays reachable and a reader can go
+    to it.
+
+    `origin/main` rather than `main`, since a local `main` is often behind,
+    and the merge base rather than `origin/main` itself, because main may have
+    moved past the branch point -- its tip would then name code that was never
+    measured. The two are the same commit whenever the branch is current.
+
+    `origin/main` is whatever the last fetch left; a stale ref only moves the
+    answer further back, which is still an ancestor and still true.
+    """
+    for ref in ("origin/main", "main"):
+        try:
+            return run(["git", "merge-base", commit, ref]).strip()
+        except subprocess.CalledProcessError:
+            continue
+    return commit
+
+
 def git_context() -> dict:
     commit = run(["git", "rev-parse", "HEAD"]).strip()
+    base = merge_base_with_main(commit)
     dirty = bool(run(["git", "status", "--porcelain"]).strip())
     branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"]).strip()
     subject = run(["git", "log", "-1", "--format=%s"]).strip()
@@ -90,8 +118,9 @@ def git_context() -> dict:
         except Exception:
             pull_request = None
     return {
-        "commit": commit,
-        "short": commit[:7],
+        "commit": base,
+        "short": base[:7],
+        "head": commit,
         "branch": branch,
         "subject": subject,
         "dirty": dirty,
@@ -412,7 +441,7 @@ def render(
     add("     overwrites this file. See benches/doc/generate.py. -->")
     add("")
     add(
-        f"{date.today().isoformat()} · commit [`{context['short']}`]"
+        f"{date.today().isoformat()} · main [`{context['short']}`]"
         f"(https://github.com/forfudan/decimo/commit/{context['commit']})"
         f"{pr_text} · {cpython['machine']}, {cpython['platform']}"
     )
