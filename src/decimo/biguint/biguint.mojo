@@ -2459,12 +2459,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         Returns:
             `True` if the value is two, `False` otherwise.
         """
-        if len(self.words) != 2:
-            return False
-        for index in range(1, len(self.words)):
-            if self.words[index] != 0:
-                return False
-        return True
+        # Two is one word. This used to ask for a two-word value and then for
+        # its second word to be zero, which the no-leading-zero invariant
+        # forbids, so it answered `False` for every value including two.
+        return len(self.words) == 1 and self.words[0] == 2
 
     @always_inline
     def is_power_of_10(x: BigUInt) -> Bool:

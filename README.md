@@ -9,10 +9,19 @@ Comes with an interactive arbitrary-precision calculator (REPL + one-shot mode)
 powered by [ArgMojo](https://github.com/forfudan/argmojo). Install it with
 `brew install forfudan/tap/decimo`.
 
-[![Version](https://img.shields.io/badge/version-v0.13.0-blue)](https://github.com/forfudan/decimo/releases/tag/v0.13.0)
+The same library is packaged for Python as a near drop-in for the standard
+library's `decimal`, and a superset of it: the whole of its method surface,
+plus `pi()`, `e()` and a 128-bit decimal type. Install it with
+`pip install decimo`.
+
+[![Version](https://img.shields.io/badge/version-v0.14.0-blue)](https://github.com/forfudan/decimo/releases/tag/v0.14.0)
 [![Mojo](https://img.shields.io/badge/mojo-1.0.0-orange)](https://docs.modular.com/mojo/manual/)
-[![pixi](https://img.shields.io/badge/pixi%20add-decimo-purple)](https://prefix.dev/channels/modular-community/packages/decimo)
 [![CI](https://img.shields.io/github/actions/workflow/status/forfudan/decimo/run_tests.yaml?branch=main&label=tests)](https://github.com/forfudan/decimo/actions/workflows/run_tests.yaml)
+[![License](https://img.shields.io/github/license/forfudan/decimo)](https://github.com/forfudan/decimo/blob/main/LICENSE)
+
+[![pixi](https://img.shields.io/badge/pixi%20add-decimo-purple)](https://prefix.dev/channels/modular-community/packages/decimo)
+[![PyPI](https://img.shields.io/badge/pip%20install-decimo-blue)](https://pypi.org/project/decimo/)
+[![Homebrew](https://img.shields.io/badge/brew%20install-forfudan%2Ftap%2Fdecimo-orange)](https://github.com/forfudan/homebrew-tap)
 
 | Type         | Alias             | Information                              | Layout       |
 | ------------ | ----------------- | ---------------------------------------- | ------------ |
@@ -22,7 +31,6 @@ powered by [ArgMojo](https://github.com/forfudan/argmojo). Install it with
 | `BigFloat`   | `Float`           | Arbitrary-precision floating-point type  | MPFR/GMP     |
 
 <!--
-[![License](https://img.shields.io/github/license/forfudan/decimo)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/forfudan/decimo?style=flat)](https://github.com/forfudan/decimo/stargazers)
 [![Issues](https://img.shields.io/github/issues/forfudan/decimo)](https://github.com/forfudan/decimo/issues)
 ![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)
@@ -39,6 +47,9 @@ powered by [ArgMojo](https://github.com/forfudan/argmojo). Install it with
 ## Overview
 
 ### Decimo library
+
+![Decimo library](https://raw.githubusercontent.com/forfudan/forfudan-github-data/main/decimo/library.webp)  
+*Base-ten arithmetic, integers with no width limit, and an expression evaluator*
 
 Decimo provides an arbitrary-precision integer and decimal library for Mojo. It
 delivers exact calculations for financial modeling, scientific computing, and
@@ -70,8 +81,9 @@ The core types are[^auxiliary]:
   requires MPFR/GMP to be installed on the user's system.
 <!-- - An arbitrary-precision exact rational number type (`Rational`) represented as a reduced fraction of two `BigInt`s (numerator and denominator). It supports exact arithmetic and comparisons without any loss of precision, making it ideal for applications that require precise fractional calculations. -->
 
-Decimo is fast: at a million digits `pi()` is ten times quicker than pure-Python
-mpmath, `BigInt` multiplication is fifteen times quicker than CPython's `int`,
+Decimo is fast: at a million digits `pi()` is nearly twelve times quicker than
+pure-Python mpmath, `BigInt` multiplication is fifteen times quicker than
+CPython's `int`,
 and small `BigDecimal` operations are close to libmpdec, the C library behind
 Python's `decimal`. The measured numbers, with the commit they were taken on,
 are in [docs/benchmarks.md](docs/benchmarks.md); `pixi run benchdoc` regenerates
@@ -89,6 +101,46 @@ interactive REPL, or pass an expression / file / piped stdin for one-shot
 evaluation. The binary is self-contained — no Mojo or Pixi needed on the user's
 machine. See the [user manual](./docs/user_manual_cli.md) for the full
 reference, and the [Quick start](#cli-quick-start) below for a taste.
+
+![Decimo CLI calculator](https://raw.githubusercontent.com/forfudan/forfudan-github-data/main/decimo/cli.webp)  
+*Ask for as many significant digits as you like*
+
+### Python package
+
+![Decimo for Python](https://raw.githubusercontent.com/forfudan/forfudan-github-data/main/decimo/python.webp)  
+*Everything `decimal` has, and things it does not*
+
+The Mojo library is also compiled into a Python extension and published on PyPI,
+where it stands in for the standard library's `decimal`. Change one import and
+a `decimal` program keeps working:
+
+```python
+# from decimal import Decimal, getcontext
+from decimo import Decimal, getcontext
+
+getcontext().prec = 50
+print(Decimal(1) / Decimal(7))
+# 0.14285714285714285714285714285714285714285714285714
+```
+
+The two agree digit for digit. The test suite checks every operation against
+the standard library rather than against a table of expected strings, so
+"agrees with `decimal`" is measured rather than claimed.
+
+Nothing is missing: every method `decimal.Decimal` has, `decimo.Decimal` has
+too. And it goes further. `pi()` and `e()` are there, which `decimal` has
+neither of. `sqrt`, `exp`, `ln` and `log10` take a `rounding=` argument, where
+`decimal` ignores the context mode for those and always rounds half to even.
+`Decimal128` brings trigonometry, `cbrt`, `root` and the IEEE 754 interchange
+bytes with it. And it is faster once the numbers are large — 2.9x at a
+thousand digits — 20-25% behind on small ones, where what is left is the cost
+of the Python call rather than the arithmetic.
+
+Where it is not a drop-in it refuses rather than answers differently: no NaN
+or infinity, no `ROUND_05UP`, no signals or traps, and one context per process
+rather than per thread. See [python/README.md](./python/README.md) for the
+full list with the reasoning, and the
+[Python quick start](#python-quick-start) below for a taste.
 
 ### TOML parser
 
@@ -118,7 +170,7 @@ Then, you can install Decimo using any of these methods:
 1. In the `mojoproject.toml` file of your project, add the following dependency:
 
     ```toml
-    decimo = ">=0.13.0, <0.14.0"
+    decimo = ">=0.14.0, <0.15.0"
     ```
 
     Then run `pixi install` to download and install the package.
@@ -151,6 +203,7 @@ versions:
 | `decimo`   | v0.11.0 | ==1.0.0b2       | pixi            |
 | `decimo`   | v0.12.0 | >=1.0.0, <1.1.0 | pixi            |
 | `decimo`   | v0.13.0 | >=1.0.0, <1.1.0 | pixi            |
+| `decimo`   | v0.14.0 | >=1.0.0, <1.1.0 | pixi            |
 
 </details>
 
@@ -180,6 +233,23 @@ To upgrade to a later release:
 
 ```bash
 brew update && brew upgrade decimo
+```
+
+### Install the Python package
+
+```bash
+pip install decimo
+```
+
+Wheels are built for macOS arm64 (macOS 11 and later) and for Linux on x86_64
+and arm64 (glibc 2.35 and later), for CPython 3.13 and 3.14. Nothing else is
+needed — the Mojo runtime libraries travel inside the wheel. On any other
+platform, build from source with [pixi](https://pixi.sh):
+
+```bash
+git clone https://github.com/forfudan/decimo && cd decimo
+pixi run -e py314 release        # or py313; the wheel lands in python/dist/
+pip install python/dist/*.whl
 ```
 
 ## Quick start
@@ -429,18 +499,28 @@ def main() raises:
 
 For an interactive session, just type `decimo`:
 
+![Decimo REPL](https://raw.githubusercontent.com/forfudan/forfudan-github-data/main/decimo/repl.webp)  
+*A real session: `ans`, the `:` settings system, and inline settings*
+
 ```sh
 $ decimo
 Decimo — an arbitrary-precision calculator 🔥
 Type ? for help, : for settings, :q to quit.
 Precision: 50. Rounding: ROUND_HALF_EVEN.
-decimo> x = sqrt(2)
-1.4142135623730950488016887242096980785696718753769
-decimo> x ^ 2
-2
-decimo> ans + 1
-3
+decimo> 2 ^ 10
+1024
+decimo> ans / 4
+256
+decimo> 1/7
+0.14285714285714285714285714285714285714285714285714
 decimo> :100
+Current settings:
+  Precision     : 100
+  Scientific    : off
+  Engineering   : off
+  Pad           : off
+  Delimiter     : (none)
+  Rounding mode : ROUND_HALF_EVEN
 decimo> pi
 3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117068
 decimo> sqrt(e) / ln(10) + sin(-1.23) :200 e he delimiter _
@@ -478,6 +558,46 @@ Useful flags: `-P N` (precision), `-R MODE` (rounding), `-S` / `-E` (scientific
 / engineering), `--pad`, `--delimiter`, `--completions {bash,zsh,fish}`. Run
 `decimo --help` for the full list.
 
+### Python quick start
+
+Everything a `decimal` program normally touches is there, under the same names:
+
+```python
+from decimo import Decimal, Decimal128, getcontext, localcontext, ROUND_FLOOR
+
+getcontext().prec = 28
+
+# The operators, the context, and the methods, as in `decimal`.
+Decimal("0.1") + Decimal("0.2")          # 0.3, exactly
+Decimal(1) / Decimal(7)                  # to the context precision
+Decimal("2.675").quantize(Decimal("0.01"))
+divmod(Decimal(17), Decimal(5))          # (3, 2)
+
+# A context you can compute in, without touching the global one.
+with localcontext(prec=50):
+    print(Decimal(2).sqrt())
+
+# Three things `decimal` does not have.
+import decimo
+decimo.pi(1000)                          # Chudnovsky with binary splitting
+decimo.e(50)
+Decimal(2).sqrt(rounding=ROUND_FLOOR)    # and exp, ln, log10, correctly rounded
+
+# The fixed-width type for money: 16 bytes that own nothing.
+price = Decimal128("19.99")
+(price * 3).quantize(Decimal128("0.01"))  # 59.97
+```
+
+A mixed expression settles in the wider type — `Decimal128 + Decimal` is a
+`Decimal`, either way round — and the hashes of `Decimal`, `Decimal128`,
+`int`, `float` and `decimal.Decimal` all agree, so the five are
+interchangeable as dictionary keys.
+
+What decimo refuses rather than answering differently: NaN and infinity,
+`ROUND_05UP`, signals and traps, and one context per process rather than per
+thread. The full list, with the reasoning, is in
+[python/README.md](./python/README.md).
+
 ## Objective
 
 Financial calculations and data analysis require precise decimal arithmetic that
@@ -504,8 +624,9 @@ Rome wasn't built in a day. Decimo is currently under active development. It has
 successfully progressed through the **"make it work"** phase and the
 **"make it right"**, and is now well into the **"make it fast"** phase.
 
-The `BigInt` type is fully implemented and optimized. It has been benchmarked
-against Python's `int` and demonstrates superior performance in most cases.
+The `BigInt` type is fully implemented and optimized. It is measured against
+GMP, timed in C, rather than against CPython's `int`, which is reached through
+the interpreter and so loses on call overhead before the arithmetic starts.
 
 Bug reports and feature requests are welcome! If you encounter issues, please
 [file them here](https://github.com/forfudan/decimo/issues).
@@ -537,6 +658,10 @@ decimo/
 │       ├── main.mojo             #   Entry point (ArgMojo CLI)
 │       ├── limo/                 #   Line editor used by the REPL
 │       └── calculator/           #   Presentation layer (display, io, repl, settings)
+├── python/                       # The library packaged for Python (PyPI: decimo)
+│   ├── decimo_module.mojo        #   The Python extension, written in Mojo
+│   ├── src/decimo/               #   The `decimo` Python package around it
+│   └── tests/                    #   Checked against the standard library's `decimal`
 ├── tests/                        # Unit tests (one subfolder per module)
 │   ├── bigdecimal/
 │   ├── bigint/
@@ -555,7 +680,9 @@ decimo/
 be imported by external projects. The expression engine (`decimo.expression`),
 the numeral systems (`decimo.numerals`), and the TOML parser (`decimo.toml`) are
 included as subpackages. `src/cli/` is an application that consumes the `decimo`
-package and compiles to a standalone binary via `mojo build`.
+package and compiles to a standalone binary via `mojo build`. `python/` compiles
+the same package into a CPython extension and wraps it in a Python package, and
+is what `pip install decimo` fetches.
 
 </details>
 
@@ -566,6 +693,8 @@ After cloning the repo onto your local disk, you can:
 - Use `pixi run test` to run all tests, or `pixi run test <suite>` for one suite
   (`pixi run test --list` shows them).
 - Use `pixi run testcli` to run CLI calculator tests.
+- Use `pixi run testpy` to build the Python extension and run its tests against
+  the standard library's `decimal`.
 - Use `pixi run bench` to run benchmarks.
 - Use `pixi run benchdoc` to regenerate [docs/benchmarks.md](docs/benchmarks.md)
   against libmpdec, GMP, CPython and MPFR. Needs `mpdecimal` and `gmp`
@@ -594,7 +723,7 @@ If you find Decimo useful, consider listing it in your citations.
     year         = {2026},
     title        = {Decimo: An arbitrary-precision integer and decimal library for Mojo},
     url          = {https://github.com/forfudan/decimo},
-    version      = {0.13.0},
+    version      = {0.14.0},
     note         = {Computer Software}
 }
 ```

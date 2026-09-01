@@ -291,6 +291,16 @@ Nothing to do here until Mojo grows the feature.
 
 ## Features, not yet started
 
+- [ ] Expose the trigonometric functions on `decimo.Decimal` in Python. The
+      Mojo `BigDecimal` has `sin`, `cos`, `tan`, `cot`, `csc`, `sec` and
+      `arctan`, each with the `_rounded` variant that v0.14.0 added, and the
+      Python `Decimal128` exposes its own set -- but `decimo.Decimal` has
+      none of them, which is backwards: the arbitrary-precision type is the
+      one a caller would reach for. `sqrt`, `exp`, `ln` and `log10` already
+      go through `def_py_c_method` to take `rounding=`, so this is six
+      wrappers on that pattern plus their registrations. Found while writing
+      the v0.14.0 README; nothing tracked it before.
+
 - [ ] Implement a complex number class `BigComplex` that uses `Decimal` for the
       real and imaginary parts. This will allow users to perform high-precision
       complex number arithmetic.
