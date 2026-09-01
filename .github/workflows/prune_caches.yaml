@@ -1,0 +1,97 @@
+name: Prune stale caches
+
+# Every test run saves a cache entry per job, keyed by the commit, so a day of
+# pushes leaves a few hundred entries behind. Only the newest entry under each
+# key prefix is ever restored -- that is what `restore-keys` matches -- and the
+# rest sit there until GitHub's 10 GB per-repository limit starts evicting.
+#
+# It reached that limit: 9.95 GB across 177 entries, of which 155 were dead.
+# Once the limit is hit the eviction is LRU and indiscriminate, so a cache a
+# job had just written could be gone before the next run read it, and the Mojo
+# compilation cache stopped being reliable on either platform.
+#
+# This deletes everything but the newest entry under each prefix, after every
+# test run. It never deletes an entry a run is about to restore, because that
+# entry is by definition the newest one.
+
+on:
+  workflow_run:
+    workflows: ["Decimo Unit Tests"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  prune:
+    name: Prune stale caches
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Delete all but the newest cache under each key prefix
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PYEOF'
+          import json
+          import os
+          import subprocess
+
+          repo = os.environ["REPO"]
+
+
+          def api(*args: str) -> str:
+              """The response body, or an empty string if the call failed."""
+              done = subprocess.run(
+                  ["gh", "api", *args], capture_output=True, text=True
+              )
+              return done.stdout if done.returncode == 0 else ""
+
+
+          def delete(cache_id: int) -> bool:
+              """A successful DELETE returns 204 with no body, so check the code."""
+              done = subprocess.run(
+                  ["gh", "api", "-X", "DELETE",
+                   f"repos/{repo}/actions/caches/{cache_id}"],
+                  capture_output=True,
+                  text=True,
+              )
+              return done.returncode == 0
+
+
+          entries = []
+          for page in range(1, 21):
+              body = api(f"repos/{repo}/actions/caches?per_page=100&page={page}")
+              batch = json.loads(body)["actions_caches"] if body.strip() else []
+              if not batch:
+                  break
+              entries += batch
+
+          # The prefix is the key without its trailing commit sha, which is what
+          # `restore-keys` falls back to.
+          newest: dict[str, dict] = {}
+          for entry in entries:
+              prefix = entry["key"].rsplit("-", 1)[0]
+              current = newest.get(prefix)
+              if current is None or entry["last_accessed_at"] > current["last_accessed_at"]:
+                  newest[prefix] = entry
+
+          keep = {id(entry) for entry in newest.values()}
+          stale = [entry for entry in entries if id(entry) not in keep]
+
+          freed = 0
+          failed = 0
+          for entry in stale:
+              if delete(entry["id"]):
+                  freed += entry["size_in_bytes"]
+              else:
+                  failed += 1
+
+          total = sum(entry["size_in_bytes"] for entry in entries)
+          print(f"{len(entries)} entries, {total / 1024**3:.2f} GB")
+          print(f"kept {len(newest)}, deleted {len(stale) - failed}, freed {freed / 1024**3:.2f} GB")
+          if failed:
+              print(f"{failed} deletion(s) failed")
+          PYEOF

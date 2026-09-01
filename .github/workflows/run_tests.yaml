@@ -20,6 +20,21 @@ defaults:
 # (saves ~30s of `mojo precompile` per job × 10 jobs). The pixi environment
 # is cached by `prefix-dev/setup-pixi@v0.10.2`, so test jobs no longer
 # `curl | sh` and `pixi install` from scratch.
+#
+# The suites `tests/test.sh decimo` covers run on Linux as well as macOS, as
+# a matrix on each suite's own job rather than as one job running all of
+# them. That single job took 20 minutes where each macOS suite took under
+# one, and almost all of it was compiling test files: it had no Mojo
+# compilation cache, because the cache lives in `setup-decimo` alongside the
+# artifact download that only macOS could use, and `tests/test.sh` runs
+# sequentially under CI on the grounds that each suite is already its own
+# job -- which was true of every job except that one.
+#
+# `build-linux` exists so that the Linux legs share one package the way the
+# macOS legs do. Letting each build its own looked equivalent and was not:
+# the compilation cache keys on the package a test file imports, so two
+# independently built `.mojoc` files miss it, and every Linux test compiled
+# cold at 11 s a file against 1 s on macOS.
 
 jobs:
   # ── Gate: Format + Doc + Build package ───────────────────────────────────────
@@ -100,25 +115,24 @@ jobs:
       - name: Upload decimo.mojoc artifact
         uses: actions/upload-artifact@v7
         with:
-          name: decimo-mojoc
+          name: decimo-mojoc-${{ runner.os }}
           path: decimo.mojoc
           retention-days: 1
           if-no-files-found: error
 
-  # ── The library on Linux ─────────────────────────────────────────────────────
+  # ── Gate: build the package for Linux ────────────────────────────────────────
   #
-  # Everything else in this file runs on macOS, and the wheels now go out for
-  # Linux as well, so the library is compiled and its suites are run there
-  # too. One job rather than twelve: the point is that the platform works at
-  # all, not to parallelise it.
-  #
-  # It builds its own package instead of taking the artifact the macOS job
-  # uploads -- a `.mojoc` is compiled code and does not cross platforms --
-  # and so it does not use the shared setup action either.
-  test-linux:
-    name: Test on Linux
+  # A `.mojoc` is compiled code and does not cross platforms, so Linux cannot
+  # use the artifact the macOS job uploads. Building it once here rather than
+  # in every Linux test job is not about the eleven seconds it costs: the Mojo
+  # compilation cache keys on the package the test file imports, and two
+  # independently built `.mojoc` files are not reliably identical. Each job
+  # building its own meant every test compile missed the cache -- 11 s a file
+  # against 1 s on macOS, which downloads one shared artifact.
+  build-linux:
+    name: Build package (Linux)
     runs-on: ubuntu-22.04
-    timeout-minutes: 45
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: prefix-dev/setup-pixi@v0.10.2
@@ -129,7 +143,7 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             echo "=== build attempt $attempt ==="
-            if pixi run mojo precompile src/decimo -o tests/decimo.mojoc; then
+            if pixi run mojo precompile src/decimo -o decimo.mojoc; then
               echo "=== build succeeded on attempt $attempt ==="
               break
             fi
@@ -140,19 +154,23 @@ jobs:
             echo "=== build crashed, retrying in 5s... ==="
             sleep 5
           done
-      - name: Run the core suites
-        run: bash tests/test.sh decimo
-      - name: Build the Python extension and run its tests
-        run: |
-          pixi run mojo build python/decimo_module.mojo --emit shared-lib \
-            -I tests -o python/src/decimo/_decimo.so
-          pixi run python python/tests/test_decimo.py
+      - name: Upload decimo.mojoc artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: decimo-mojoc-${{ runner.os }}
+          path: decimo.mojoc
+          retention-days: 1
+          if-no-files-found: error
 
   # ── Test: BigDecimal ─────────────────────────────────────────────────────────
   test-bigdecimal:
-    name: Test BigDecimal
-    needs: build
-    runs-on: macos-latest
+    name: Test BigDecimal (${{ matrix.os }})
+    needs: [build, build-linux]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -175,9 +193,13 @@ jobs:
 
   # ── Test: BigInt ─────────────────────────────────────────────────────────────
   test-bigint:
-    name: Test BigInt
-    needs: build
-    runs-on: macos-latest
+    name: Test BigInt (${{ matrix.os }})
+    needs: [build, build-linux]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -200,9 +222,13 @@ jobs:
 
   # ── Test: BigUint ────────────────────────────────────────────────────────────
   test-biguint:
-    name: Test BigUint
-    needs: build
-    runs-on: macos-latest
+    name: Test BigUint (${{ matrix.os }})
+    needs: [build, build-linux]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -225,9 +251,13 @@ jobs:
 
   # ── Test: BigInt10 ───────────────────────────────────────────────────────────
   test-bigint10:
-    name: Test BigInt10
-    needs: build
-    runs-on: macos-latest
+    name: Test BigInt10 (${{ matrix.os }})
+    needs: [build, build-linux]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -250,9 +280,13 @@ jobs:
 
   # ── Test: Decimal128 ─────────────────────────────────────────────────────────
   test-decimal128:
-    name: Test Decimal128
-    needs: build
-    runs-on: macos-latest
+    name: Test Decimal128 (${{ matrix.os }})
+    needs: [build, build-linux]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -275,9 +309,13 @@ jobs:
 
   # ── Test: Rational ──────────────────────────────────────────────────────────
   test-rational:
-    name: Test Rational
-    needs: build
-    runs-on: macos-latest
+    name: Test Rational (${{ matrix.os }})
+    needs: [build, build-linux]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -300,9 +338,13 @@ jobs:
 
   # ── Test: Expression engine ───────────────────────────────────────────────
   test-expression:
-    name: Test Expression
-    needs: build
-    runs-on: macos-latest
+    name: Test Expression (${{ matrix.os }})
+    needs: [build, build-linux]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -353,9 +395,13 @@ jobs:
   # conformance that no longer holds is a compile error rather than a failed
   # assertion, and only a job that builds them catches it.
   test-traits:
-    name: Test Traits
-    needs: build
-    runs-on: macos-latest
+    name: Test Traits (${{ matrix.os }})
+    needs: [build, build-linux]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -483,9 +529,13 @@ jobs:
 
   # ── Test: Python bindings ────────────────────────────────────────────────────
   test-python:
-    name: Test Python bindings
+    name: Test Python bindings (${{ matrix.os }})
     needs: build
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7

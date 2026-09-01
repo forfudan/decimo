@@ -1,5 +1,5 @@
 name: Setup Decimo with Pixi
-description: Install pixi (cached), activate the Mojo environment, restore the Mojo compilation cache, and download the prebuilt decimo.mojoc artifact into tests/.
+description: Install pixi (cached), activate the Mojo environment, restore the Mojo compilation cache, and put a decimo.mojoc into tests/ -- the prebuilt artifact on macOS, a freshly compiled one on Linux.
 
 runs:
   using: composite
@@ -56,10 +56,14 @@ runs:
         echo "compiler reports: $(pixi run mojo --print-cache-location 2>&1 | tail -1)"
         echo "we cache        : $PWD/.pixi/envs/default/share/max/cache/.mojo_cache"
 
+    # Each platform's own package: a `.mojoc` is compiled code and does not
+    # cross platforms. It matters that this is a shared artifact rather than a
+    # per-job build -- the compilation cache keys on the package the test file
+    # imports, so two independently built `.mojoc` files miss it.
     - name: Download decimo.mojoc artifact
       uses: actions/download-artifact@v8
       with:
-        name: decimo-mojoc
+        name: decimo-mojoc-${{ runner.os }}
         path: .
     - name: Stage package next to tests
       shell: bash
