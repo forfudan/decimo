@@ -1,29 +1,86 @@
 name: Build CLI release tarball
 
-# Manually-triggered build of the `decimo` CLI binary, packaged as a
-# release tarball that the Homebrew formula in
-# https://github.com/forfudan/homebrew-tap can download.
+# Builds the `decimo` CLI binary for every platform we ship it on, packaged
+# as release tarballs that the Homebrew formula in
+# https://github.com/forfudan/homebrew-tap downloads.
 #
-# Trigger from the Actions tab → "Build CLI release tarball" → Run
-# workflow → enter the version (e.g. 0.10.0).
-#
-# Two artifacts are produced (one per target platform):
-#   - decimo-<version>-linux-x86_64.tar.gz
+# Three tarballs, one per target:
 #   - decimo-<version>-darwin-arm64.tar.gz
+#   - decimo-<version>-linux-x86_64.tar.gz
+#   - decimo-<version>-linux-aarch64.tar.gz
 #
-# Download each artifact, verify its SHA-256 against the value printed
-# in the corresponding job log, and attach both to the GitHub Release.
+# Two ways in:
+#
+#   * publish a GitHub Release, and the version is its tag without the `v`.
+#     The tarballs and their SHA-256 files are attached to that release
+#     automatically. This is how a real release goes out. The tag has to
+#     match the library version in `pixi.toml`, or the run stops -- the same
+#     check `release_python.yaml` makes, and for the same reason.
+#   * by hand from the Actions tab -> "Build CLI release tarball" -> Run
+#     workflow, where the version may be given and otherwise comes from
+#     `pixi.toml`. A manual run keeps the tarballs as artifacts and attaches
+#     nothing, since there may be no release to attach them to.
+#
+# This used to be `workflow_dispatch` alone, with a comment asking whoever
+# released to download each artifact and attach it by hand. That step was
+# missed for v0.11.0, v0.12.0 and v0.13.0 -- all three shipped with only
+# `decimo.mojoc` attached -- which left Homebrew on v0.10.0 for four months.
 
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       version:
-        description: "Version (without the leading v), e.g. 0.10.0"
-        required: true
+        description: "Version without the leading v, e.g. 0.14.0 (empty: pixi.toml)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
+  # One version for the whole run, resolved once, so the three build jobs
+  # cannot disagree about what they are packaging.
+  version:
+    name: Pick the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.pick.outputs.version }}
+      tag: ${{ steps.pick.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: pick
+        run: |
+          library=$(sed -n 's/^version = "\(.*\)"/\1/p' pixi.toml | head -1)
+          if [[ -z "$library" ]]; then
+            echo "no version in pixi.toml" >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == "release" ]]; then
+            version="${RELEASE_TAG#v}"
+            if [[ "$version" != "$library" ]]; then
+              echo "release $RELEASE_TAG and pixi.toml $library disagree" >&2
+              exit 1
+            fi
+          elif [[ -n "${{ inputs.version || '' }}" ]]; then
+            version="${{ inputs.version }}"
+          else
+            version="$library"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "packaging $version"
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+
   build:
     name: Build ${{ matrix.target }} tarball
+    needs: version
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -32,6 +89,11 @@ jobs:
         include:
           - os: ubuntu-22.04
             target: linux-x86_64
+          # 22.04 on both Linux rows, so the tarballs run against the same
+          # glibc the wheels are built for (2.35). A newer runner would raise
+          # the floor for no gain.
+          - os: ubuntu-22.04-arm
+            target: linux-aarch64
           - os: macos-14          # Apple Silicon (arm64)
             target: darwin-arm64
     steps:
@@ -90,7 +152,7 @@ jobs:
         #      install_name_tool surgery on Apple Silicon).
         run: |
           set -euo pipefail
-          VERSION="${{ inputs.version }}"
+          VERSION="${{ needs.version.outputs.version }}"
           PKG="decimo-${VERSION}-${{ matrix.target }}"
           STAGE="dist/${PKG}"
           mkdir -p "${STAGE}/bin" "${STAGE}/lib" "${STAGE}/THIRD_PARTY_LICENSES"
@@ -213,7 +275,7 @@ jobs:
         # binary really is relocatable.
         run: |
           set -euo pipefail
-          VERSION="${{ inputs.version }}"
+          VERSION="${{ needs.version.outputs.version }}"
           PKG="decimo-${VERSION}-${{ matrix.target }}"
           mkdir -p "$RUNNER_TEMP/relocation_test"
           cp -R "dist/${PKG}" "$RUNNER_TEMP/relocation_test/"
@@ -221,7 +283,7 @@ jobs:
 
       - name: Package tarball
         run: |
-          VERSION="${{ inputs.version }}"
+          VERSION="${{ needs.version.outputs.version }}"
           PKG="decimo-${VERSION}-${{ matrix.target }}"
           ( cd dist && tar -czf "${PKG}.tar.gz" "${PKG}" )
           echo "--- SHA-256 ---"
@@ -230,7 +292,36 @@ jobs:
       - name: Upload tarball artifact
         uses: actions/upload-artifact@v7
         with:
-          name: decimo-${{ inputs.version }}-${{ matrix.target }}
-          path: dist/decimo-${{ inputs.version }}-${{ matrix.target }}.tar.gz*
+          name: decimo-${{ needs.version.outputs.version }}-${{ matrix.target }}
+          path: dist/decimo-${{ needs.version.outputs.version }}-${{ matrix.target }}.tar.gz*
           if-no-files-found: error
           retention-days: 14
+
+  # The step that kept being forgotten. `--clobber` so that re-running a
+  # release replaces the assets rather than failing on the second attempt.
+  attach:
+    name: Attach the tarballs to the release
+    if: github.event_name == 'release'
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: decimo-*
+          path: dist
+          merge-multiple: true
+      - run: ls -l dist
+      - name: Upload to the release
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" \
+            dist/*.tar.gz dist/*.tar.gz.sha256 \
+            --clobber --repo "$GITHUB_REPOSITORY"
+          echo "attached to $TAG:"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json assets -q '.assets[].name'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
