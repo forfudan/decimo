@@ -404,6 +404,35 @@ def add_inplace(
     Raises:
         Error: If an arithmetic error occurs during computation.
     """
+    add_inplace_signed(x1, x2, x2.sign, precision, rounding_mode)
+
+
+def add_inplace_signed(
+    mut x1: BigDecimal,
+    x2: BigDecimal,
+    x2_sign: Bool,
+    precision: Int = 0,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) raises:
+    """Adds `x2` to `x1` in place, reading `x2`'s sign from `x2_sign`.
+
+    The sign is an argument so that subtraction does not have to build a
+    negated `x2` to get one. `subtract_inplace()` used to copy the whole
+    coefficient for that, which costs an allocation as soon as it outgrows
+    the inline words: `x -= y` was 3.5x `x += y` at a hundred digits, where
+    the two do the same arithmetic.
+
+    Args:
+        x1: The accumulator, modified in place.
+        x2: The value to add. Its own `sign` field is ignored.
+        x2_sign: The sign to treat `x2` as having.
+        precision: Optional target significant-digit precision. When `0`
+            the in-place sum is exact; when `>0` it is rounded in place.
+        rounding_mode: How to round when `precision > 0`.
+
+    Raises:
+        Error: If an arithmetic error occurs during computation.
+    """
     var max_scale = max(x1.scale, x2.scale)
     var scale_factor1 = (max_scale - x1.scale) if x1.scale < max_scale else 0
     var scale_factor2 = (max_scale - x2.scale) if x2.scale < max_scale else 0
@@ -418,7 +447,7 @@ def add_inplace(
                 scale_factor2
             )
             x1.scale = max_scale
-            x1.sign = x2.sign
+            x1.sign = x2_sign
     elif x2.coefficient.is_zero():
         if scale_factor1 > 0:
             x1.coefficient.multiply_by_power_of_ten_inplace(scale_factor1)
@@ -428,7 +457,7 @@ def add_inplace(
         if scale_factor1 > 0:
             x1.coefficient.multiply_by_power_of_ten_inplace(scale_factor1)
 
-        if x1.sign == x2.sign:
+        if x1.sign == x2_sign:
             # Same sign: add magnitudes (use inplace add on x1's coefficient)
             if scale_factor2 == 0:
                 biguint_arithmetics.add_inplace(x1.coefficient, x2.coefficient)
@@ -454,7 +483,7 @@ def add_inplace(
                 biguint_arithmetics.subtract_inplace(coef2, x1.coefficient)
                 x1.coefficient = coef2^
                 x1.scale = max_scale
-                x1.sign = x2.sign
+                x1.sign = x2_sign
             else:
                 x1.coefficient = BigUInt.zero()
                 x1.scale = max_scale
@@ -494,13 +523,9 @@ def subtract_inplace(
     Raises:
         Error: If an arithmetic error occurs during computation.
     """
-    # Create a negated view of x2 and use add_inplace
-    var neg_x2 = BigDecimal(
-        coefficient=x2.coefficient.copy(),
-        scale=x2.scale,
-        sign=not x2.sign,
-    )
-    add_inplace(x1, neg_x2, precision, rounding_mode)
+    # Subtracting is adding with the other sign, and the sign travels as an
+    # argument rather than as a negated copy of `x2`.
+    add_inplace_signed(x1, x2, not x2.sign, precision, rounding_mode)
 
 
 def true_divide(

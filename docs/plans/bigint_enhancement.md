@@ -196,8 +196,15 @@ base case is cheaper. The 2n-by-n / 4n-by-n / 8n-by-n slowdown already
 noted for `BigUInt` in `todo.md` may share this root and should be checked
 together.
 
-**T-D4 — reciprocal / Barrett divide. Deferred.** Not worth it before
-Toom-3 (Lesson 9).
+**T-D4 — reciprocal / Barrett divide. Dropped (20260902).** The condition
+Lesson 9 set was met -- the transform landed and division rose to 4.9x a
+same-size multiply -- but everything since has undone it. Base 2^64, base
+10^18, the Knuth D multiply-subtract and the block pool bring a 2n-by-n
+division to 1.64x a same-size multiply at 10 000 digits and 3.25x at a
+million. A Barrett divide is a Newton reciprocal (~3 M(n) with precision
+doubling) plus two multiplications, so 4 to 5 M(n) unless the divisor is
+reused, which binary splitting never does. We are already under that. See
+`docs/internal/todo.md`, item 4.
 
 ### to_string, 50–1000 digits (3.4× py)
 
@@ -479,4 +486,4 @@ and fix the base-conversion and SIMD fallout behind the test suite.
 | T-E1  | `reciprocal_sqrt_fixed_point()` binary recip. sqrt | DONE 2026-08-24 — enables T-PI4        |
 | T-M5  | NTT multiply over `2^64 - 2^32 + 1`                | DONE 2026-08-25 — 2.3× at 104 200w     |
 | T-M6  | Share the transform with base-10^9                 | DONE 2026-08-26 — `biguint/ntt.mojo`   |
-| T-D4  | Reciprocal-Newton divide                           | NEXT — NTT landed; B-Z now 4.9× mul    |
+| T-D4  | Reciprocal-Newton divide                           | DROPPED 20260902 — divide now 3.25× mul|

@@ -235,10 +235,11 @@ kernels (parse/render are precision-insensitive ops).
 |     | with debug asserts                            | outside the package opens these modules, so the prefix buys   |
 |     |                                               | nothing and the house style avoids it. Replacing raises with  |
 |     |                                               | debug asserts on hot paths stays OPEN.                        |
-| 21  | More inplace variants for `BigUInt`           | OPEN — and one concrete instance measured (20260826):         |
-|     | and `BigDecimal`                              | `subtract_inplace()` builds a whole negated copy of its right |
-|     |                                               | operand to flip a sign, so `x -= y` is 5.2× slower than       |
-|     |                                               | libmpdec in place, where `x += y` is 1.3× *faster*.           |
+| 21  | More inplace variants for `BigUInt`           | OPEN — the measured instance is FIXED (20260902):             |
+|     | and `BigDecimal`                              | `subtract_inplace()` copied the whole coefficient to flip a   |
+|     |                                               | sign. The sign is an argument now (`add_inplace_signed()`),   |
+|     |                                               | and `x -= y` costs what `x += y` costs at every size; it was  |
+|     |                                               | 3.3× at a hundred digits, where the copy reached the heap.    |
 | 22  | Zero-copy scale alignment via word-offset     | DISPROVEN — see T-API2                                        |
 |     | add/sub                                       |                                                               |
 | 23  | Drop multiply pre-scaling; adjust scale       | OPEN — see T-API2.M                                           |
