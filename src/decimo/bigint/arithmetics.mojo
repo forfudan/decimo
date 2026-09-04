@@ -118,6 +118,34 @@ comptime CUTOFF_BURNIKEL_ZIEGLER: Int = 96
 # ===----------------------------------------------------------------------=== #
 
 
+comptime _ADD_SEGMENT_MIN: Int = 32
+"""Words below which `_add_words()` keeps its single carry chain.
+
+Under this the four-way split costs more in setup and stitching than the
+shorter dependency chain buys back.
+"""
+
+
+@always_inline
+def _propagate_carry[
+    o: Origin[mut=True]
+](rp: Pointer[UInt64, o], start: Int, end: Int, carry: UInt64) -> UInt64:
+    """Adds `carry` at `start`, rippling while it meets words of all ones.
+
+    Returns what leaves `end`. A word that is not all ones absorbs the carry,
+    so this reads one word in almost every call.
+    """
+    if carry == 0:
+        return 0
+    for i in range(start, end):
+        var word = rp[unsafe_offset=i]
+        if word != UInt64.MAX:
+            rp[unsafe_offset=i] = word + 1
+            return 0
+        rp[unsafe_offset=i] = 0
+    return 1
+
+
 @always_inline
 def _add_words[
     o: Origin[mut=True],
@@ -146,6 +174,70 @@ def _add_words[
     Returns:
         The carry out of the highest word, 0 or 1.
     """
+    # One carry chain is a loop-carried dependency of add, compare and or,
+    # which measured 1.7 cycles a word where GMP's `ADCS` chain runs at 1.0.
+    # Four chains break it: the array is cut into four segments that add with
+    # no carry in, so nothing in the loop body depends on anything else in
+    # it, and the carries between segments are stitched afterwards. The
+    # stitch is cheap because an incoming carry only travels while it meets
+    # words of all ones.
+    #
+    # The four are interleaved in one loop rather than run as four loops:
+    # separate loops are independent on paper, but the reorder window does
+    # not span a segment, so the core would never overlap them.
+    if n >= _ADD_SEGMENT_MIN:
+        var size = n >> 2
+        var o1 = size
+        var o2 = size * 2
+        var o3 = size * 3
+        var c0 = UInt64(0)
+        var c1 = UInt64(0)
+        var c2 = UInt64(0)
+        var c3 = UInt64(0)
+
+        for i in range(size):
+            var x0 = ap[unsafe_offset=i]
+            var s0 = x0 + bp[unsafe_offset=i]
+            var t0 = s0 + c0
+            rp[unsafe_offset=i] = t0
+            c0 = UInt64(s0 < x0) | UInt64(t0 < s0)
+
+            var x1 = ap[unsafe_offset=o1 + i]
+            var s1 = x1 + bp[unsafe_offset=o1 + i]
+            var t1 = s1 + c1
+            rp[unsafe_offset=o1 + i] = t1
+            c1 = UInt64(s1 < x1) | UInt64(t1 < s1)
+
+            var x2 = ap[unsafe_offset=o2 + i]
+            var s2 = x2 + bp[unsafe_offset=o2 + i]
+            var t2 = s2 + c2
+            rp[unsafe_offset=o2 + i] = t2
+            c2 = UInt64(s2 < x2) | UInt64(t2 < s2)
+
+            var x3 = ap[unsafe_offset=o3 + i]
+            var s3 = x3 + bp[unsafe_offset=o3 + i]
+            var t3 = s3 + c3
+            rp[unsafe_offset=o3 + i] = t3
+            c3 = UInt64(s3 < x3) | UInt64(t3 < s3)
+
+        # The last segment carries whatever `n` did not divide by four.
+        for i in range(o3 + size, n):
+            var x = ap[unsafe_offset=i]
+            var y = bp[unsafe_offset=i]
+            var sum_xy = x + y
+            var total = sum_xy + c3
+            rp[unsafe_offset=i] = total
+            c3 = UInt64(sum_xy < x) | UInt64(total < sum_xy)
+
+        # Stitch. `_propagate_carry()` walks only while it meets all-ones
+        # words, which is why four chains cost about four extra words of
+        # work rather than four extra passes.
+        var carry = carry_in
+        carry = c0 | _propagate_carry(rp, 0, o1, carry)
+        carry = c1 | _propagate_carry(rp, o1, o2, carry)
+        carry = c2 | _propagate_carry(rp, o2, o3, carry)
+        return c3 | _propagate_carry(rp, o3, n, carry)
+
     var carry = carry_in
     for i in range(n):
         var x = ap[unsafe_offset=i]
