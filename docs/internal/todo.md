@@ -159,13 +159,46 @@ Ordered by what actually moves:
    Which leaves lazy reduction -- keeping residues in `[0, 2^64)` and
    canonicalizing rarely -- as the only cheap idea left, worth maybe 1.15x,
    and Schonhage-Strassen as the only one that would actually close the gap.
-3. **Break the carry chain in add and subtract.** We are latency-bound on it,
-   not throughput-bound: 1038 words at 10 000 digits is 519 limbs and 271 ns,
-   which is 1.8 cycles a limb, where GMP's `ADCS` chain runs at 1.0. Widen the
-   words into 64-bit SIMD lanes to manufacture the slack that base 10^9 gives
-   `BigUInt` for free, sum ignoring carry, then propagate. A lane only
-   propagates when its digit is all ones, so the second pass can be a mask
-   test that almost never fires rather than `BigUInt`'s serial walk.
+3. **Break the carry chain in add and subtract.** **Addition done 20260902;
+   `_subtract_words()` still runs one borrow chain.** `_add_words()` cuts the
+   array into four segments
+   that add with no carry in, interleaved in one loop so the core can
+   actually overlap them, and stitches the segment carries afterwards. The
+   stitch is cheap because a carry only travels while it meets words of all
+   ones. Four loops rather than one interleaved loop would not have worked:
+   the reorder window does not span a segment.
+
+   `BigInt` addition, ns per word, four chains against one:
+
+   | words | one chain | four | |
+   | ----: | --------: | ---: | --- |
+   |    26 |     1.142 | 1.115 | below the cutoff, same path |
+   |    37 |     0.927 | 0.828 | 1.12x |
+   |    63 |     0.696 | 0.601 | 1.16x |
+   |   125 |     0.664 | 0.443 | 1.50x |
+   |   260 |     0.578 | 0.362 | 1.60x |
+   |  5 191 |    0.499 | 0.319 | 1.56x |
+
+   That is 1.75 cycles a word down to about 1.05, which is where GMP's
+   `ADCS` chain runs. `_ADD_SEGMENT_MIN` is 32 words; under it the setup and
+   the stitch cost more than the shorter chain buys.
+
+   **Subtraction is the same shape and has not been done.**
+   `_subtract_words()` carries the borrow the same way and should take the
+   same treatment; the stitch is a borrow that travels while it meets words
+   of zero rather than of all ones.
+
+   **The gain does not reach multiplication or division.** Measured with the
+   path on and off and the package rebuilt between: multiply and divide move
+   by at most 3% at every size, which is noise. Additions are simply a small
+   share of what those spend, and at a million digits multiplication is the
+   transform, which does no bignum addition at all. Worth knowing before
+   anyone prices the next carry-chain idea by what the recursion might
+   inherit.
+
+   Checked over 1 196 adversarial cases -- `2^(64k) - 1` for every `k` from
+   1 to 299, where the carry has to ripple across every possible segment
+   boundary and out of the top -- plus the full suite.
 4. **Multiplication thresholds.** `CUTOFF_KARATSUBA` is 64 words, which is
    1233 decimal digits; GMP switches around 500. Our Comba is good enough that
    schoolbook at 104 words is only 1.91x of GMP's Karatsuba, so this is worth
@@ -214,33 +247,153 @@ Three things measured the wrong way round here, so they are not retried:
 
 ## Now
 
-Ordered by value. Division from Python is the only operation still behind
-CPython's `decimal`, and it is the first item.
+Ordered by value. The Python package is where the library is still behind
+CPython's `decimal`, and the first item is why: the extension build runs the
+same code at about 2.8x. The Mojo library itself is ahead of libmpdec on
+every operation but division and parsing, where it is 1.16x and 1.23x.
 
-1. **`divide`, 1.24x at 9 digits and 1.38x at 28.** The only operator still
-   outside 1.2x. 138.8 ns against 100.3, of which ~109 is Mojo and ~30 the
-   call. Inside the Mojo half: 4.6 ns padding, 15.7 normalizing, ~60 in
-   Knuth D over five quotient words, ~15 rounding and construction. Four
-   things were tried and did not help -- calling Knuth D without the second
-   dispatch (neutral; the compiler had already inlined it), padding by digits
-   instead of whole words (worse, because `multiply_by_power_of_base` only
-   prepends zero words while `multiply_by_power_of_ten` walks the number),
-   hoisting the estimator's invariants (neutral), and raising the inline
-   capacity past ten (no gain). Base 10^18 has since landed, so what is left
-   is Newton reciprocal division.
-2. **`parse`, 1.28x slower than libmpdec at 9 digits.** The digit-list detour
-   is gone: a plain string goes straight into the words through
-   `_from_plain_string()`. What is left has not been taken apart.
+1. **The extension build runs the same Mojo code at about 2.8x (20260902).**
+   Not a `divide` problem or a `parse` problem, and not interop per call.
+   The same source, the same loop, no Python inside it, parsing ten-byte
+   decimals:
 
-3. **Newton reciprocal division**, worth ~115 ms of `pi(10^6)` as well as
-   item 1. See `bigint_enhancement.md` T-D4.
-4. **`subtract_inplace()`** builds a negated copy of its right operand to flip
-   a sign: `x -= y` is 5.2x slower than libmpdec in place, where `x += y` is
-   1.3x *faster*. See `bigdecimal_enhancement.md` H#21.
-5. **A cheaper NTT butterfly** -- precomputed (Shoup) twiddles and radix-4.
-   Needed for goal 1: `pi(10^6)` at 1.2x of mpmath+GMP wants roughly 2.5x here
-   on top of item 5.
-6. **Audit the remaining `UInt128` and `UInt256` uses.** Three of the day's
+   | where                                | ns   |
+   | ------------------------------------ | ---- |
+   | `mojo run`                           | 21.4 |
+   | `mojo build`, executable             | 25.0 |
+   | plain `.so`, called through `ctypes` | 20.6 |
+   | `_decimo.so`, the Python extension   | 58.5 |
+
+   Both `.so` files are loaded into a CPython process, so the host and its
+   allocator are the same in the two bottom rows. A plain shared library is
+   as fast as an executable, so this is not shared-library codegen either.
+
+   **It lands on memory, not on instructions.** A loop of integer arithmetic
+   that never touches the heap is 1.365 ns in the plain library and 1.749 in
+   the extension -- 1.28x. The parse, which allocates, is 2.84x. The
+   extension is 1.48 MB against the plain library's 108 KB for the same
+   parse code, which points at code layout and instruction cache rather than
+   at the arithmetic.
+
+   Ruled out: optimization level (`mojo build` defaults to `-O3`); the
+   `decimo.mojoc` boundary (`-I src` against the sources gives 44.07 against
+   43.75, so no cross-module inlining is lost); the per-call binding (~8 ns
+   between the in-library loop and one `Decimal("...")`); reading the
+   `_Global`; the `PythonObject` subscript in the constructor
+   (`PyObject_Length` plus `PyTuple_GetItem` measured neutral); the
+   `try`/`except` around the parse (~3 ns); the block pool (keeping the
+   parsed values rather than dropping them costs 2.3 ns); and a wrong
+   constructor overload (`__init__` takes a `StringSlice`, and there is no
+   `String` overload to fall into).
+
+   Next: a minimal repro for upstream -- one `.so` built plain and one built
+   as an extension from the same file. 2.8x across everything the package
+   does dwarfs what the individual operations have left, so it is worth
+   asking before spending more here.
+
+2. **`Decimal(x)` where `x` is already a `Decimal`: 71.1 ns against 35.0
+   (20260902).** The widest single gap left in the Python package, and the
+   one place where CPython's constructor is *faster* than its own no-argument
+   one. Ours costs 18.1 ns over `Decimal()`; theirs costs less than nothing.
+   Not taken apart yet.
+
+   For scale, the rest of the constructor, decimo against `decimal`:
+   `Decimal()` 53.0 against 74.4 and `Decimal(0)` 59.4 against 84.4 -- both
+   ahead -- while `Decimal("1.99999999")` is 124.5 against 107.6. The
+   marginal cost per digit is already even (14.1 ns against 15.2 from `"0"`
+   to nine digits); it is the fixed cost of the string path that is behind,
+   and item 1 is most of it.
+
+3. **`true_divide` keeps 90 digits to answer 28 (20260902).** At 100-digit
+   operands and a precision of 28, division from Python is 2.15x `decimal`
+   where 28 digits is 1.05x. The truncation path does fire -- 6 divisor words
+   against a `needed_divisor_words` of 5 -- but `ceildiv(p, 18) + 2 + G` with
+   `G = 1` still keeps five base-10^18 words, which is 90 digits. The error
+   bound in the comment above `TRUNCATION_GUARD` justifies the `+2`, and `G`
+   has already come down from 4, so anything further has to be argued against
+   the tie-detection fallback rather than guessed.
+
+4. ~~**Newton reciprocal division.**~~ **Dropped 20260902: our division is
+   already cheaper than the replacement.** The case for it was that division
+   cost 4.9 same-size multiplications, measured just after the transform
+   landed. Base 2^64, base 10^18, the Knuth D work and the block pool have
+   all landed since, and a 2n-by-n division now costs:
+
+   | digits    | multiply | divide  | div/mul |
+   | --------- | -------- | ------- | ------- |
+   | 1 000     | 1.06 us  | 1.80 us | 1.70    |
+   | 10 000    | 46.6 us  | 76.7 us | 1.64    |
+   | 100 000   | 1.23 ms  | 3.12 ms | 2.53    |
+   | 1 000 000 | 25.0 ms  | 81.3 ms | 3.25    |
+
+   A Barrett divide is a Newton reciprocal, about 3 M(n) with precision
+   doubling, plus two multiplications for the quotient and remainder: 4 to 5
+   M(n) for a one-shot division, and only amortised to ~2 M(n) when the same
+   divisor is reused, which the binary splitting in `pi()` never does. At
+   3.25 M(n) we are already under that, and under GMP's own 2.6 ratio at the
+   small end.
+
+   This is what the `BigInt` against GMP section above already concluded from
+   the other direction -- "neither needs a new division algorithm" -- and
+   `internal_notes.md`'s "worth about 20% now" is the stale half of the
+   record. The lever for division is item 6: it is built out of
+   multiplications and inherits whatever they gain.
+5. ~~**`subtract_inplace()`** builds a negated copy of its right operand.~~
+   **Done 20260902.** It built a whole `BigDecimal` with a copied coefficient
+   just to flip one sign bit, and the copy costs an allocation as soon as the
+   coefficient outgrows the inline words. The sign is an argument now:
+   `add_inplace_signed()` carries the body and both `add_inplace()` and
+   `subtract_inplace()` delegate to it.
+
+   | digits | `x += y` | `x -= y` before | after | ratio to add |
+   | -----: | -------: | --------------: | ----: | -----------: |
+   |      9 |  4.45 ns |         5.85 ns | 4.40  |         0.99 |
+   |     28 |  5.68    |         6.82    | 5.73  |         1.01 |
+   |    100 |  8.16    |        27.03    | 8.18  |         1.00 |
+   |  1 000 | 27.45    |        46.65    | 27.45 |         1.00 |
+
+   Subtraction costs what addition costs now, which is what it should: they
+   do the same arithmetic. The hundred-digit row is 3.3x because that is
+   where the coefficient stops fitting inline -- six base-10^18 words -- so
+   the copy was reaching the allocator. Checked against the out-of-place
+   `subtract()` and `add()` over 196 pairs covering both signs, zero, unequal
+   scales and both magnitude orders.
+6. ~~**Radix-4 for the NTT.**~~ **Dropped 20260902: the multiply it was
+   meant to remove is not expensive.** The case rested on two legs. The first
+   was already weak in our own notes -- the butterfly is not memory-bound
+   (2^15 costs 1.29 ns and 2^19 costs 1.40, a 9% spread over 16x the working
+   set), so halving the passes buys little. The second was that radix-4 turns
+   a quarter of the twiddle multiplies into a shift, because `2^96 = -1` for
+   this prime makes the fourth root of unity `2^48`.
+
+   The arithmetic checks out -- `2^96 mod P = P - 1`, `(2^48)^2 = -1`,
+   `(2^48)^4 = 1` -- and a shift-based `x * 2^48 mod P` written from
+   `2^64 = 2^32 - 1` and `2^96 = -1` agrees with `mod_mul` on every value
+   tried. It is just not faster:
+
+   | | latency (serial) | throughput (4 chains) |
+   | ----------------- | ------- | ------- |
+   | `mod_mul(x, w4)`  | 2.18 ns | 0.703 ns |
+   | shift-based `w4`  | 2.61 ns | 0.749 ns |
+
+   Both ways round it loses. `mul` and `umulh` are pipelined and the shift
+   path has more dependent operations, so replacing a general modular
+   multiply with the "cheap" one makes the butterfly slower, not faster.
+   Radix-4 would therefore remove no multiplies at all, leaving only the
+   pass-count saving that leg one already priced at a few percent.
+
+   The deeper reason to stop: `mod_mul` is 0.70 ns of throughput, about two
+   cycles. A 64-bit modular multiply has nothing left in it. **Shoup
+   twiddles are separately impossible here** -- `2P` does not fit a `UInt64`
+   for a prime this close to `2^64`, and overflows on a measured 25% of
+   values.
+
+   What is left for the transform is lazy reduction (~1.15x) and, to actually
+   close the gap to GMP, Schonhage-Strassen, which multiplies by a root of
+   unity with a bit shift because its modulus is chosen so that this is free.
+   Ours is not.
+
+7. **Audit the remaining `UInt128` and `UInt256` uses.** Three of the day's
    biggest wins were removing one. The rule: 128-bit as an *accumulator* is
    fine, because a 64x64 multiply is one instruction; 128-bit or 256-bit as
    the *left side of a divide by a variable* is a call to a software helper,
@@ -261,13 +414,13 @@ CPython's `decimal`, and it is the first item.
 
    The hand-rolled reciprocal is *slower* than what the compiler emits for a
    constant. Reach for it only when the divisor is a runtime value.
-7. ~~**Base 10^18 for `BigUInt`.**~~ **Done 20260828 (#288).** A 28-digit
+8. ~~**Base 10^18 for `BigUInt`.**~~ **Done 20260828 (#288).** A 28-digit
    value is two words where it used to be four, the same as libmpdec.
    Measured on the same operands, base 10^9 over base 10^18: add 1.06x to
    1.54x, multiply up to 2.91x, divide up to 2.16x. The traps the type
    checker could not see are recorded in `docs/plans/bigint_enhancement.md`
    under T-W1.
-8. ~~**`floor_divide()` 2n-by-n scaling** in `BigUInt`~~ -- answered below.
+9. ~~**`floor_divide()` 2n-by-n scaling** in `BigUInt`~~ -- answered below.
 
 ## Blocked on the language
 
@@ -291,6 +444,33 @@ Nothing to do here until Mojo grows the feature.
 
 ## Features, not yet started
 
+- [ ] Finish `BigDecimal`'s `decimal` method surface. Issue #175 tracked this
+      and is closed; what its list still showed as missing has mostly landed,
+      much of it in v0.14.0's `bigdecimal/spec.mojo`. What is left, sorted by
+      whether it is work:
+
+      *Real work.* `__hash__` -- the Python binding has a `tp_hash` slot but
+      the Mojo type has none, so `BigDecimal` cannot be a dictionary key in
+      Mojo. `as_integer_ratio`. `to_integral_value` and `to_integral_exact`:
+      `rounding.mojo` has `quantize`, `round` and `round_to_precision_inplace`
+      and nothing that rounds to an integer under the context.
+
+      *One line each*, because decimo has no NaN or infinity and one canonical
+      form: `canonical`, `is_canonical`, `is_finite` (always true), `is_nan`,
+      `is_snan`, `is_qnan` (always false), `radix` (always 10).
+
+      *Blocked on a decision.* `is_normal` and `is_subnormal` need a smallest
+      exponent, and decimo's exponents are unbounded. The Python layer answers
+      them with an `Emin` it keeps itself; Mojo would need the same or an
+      argument.
+
+      *Not applicable.* `__complex__` and `conjugate` -- Mojo has no complex
+      type.
+
+      Renamed rather than missing, in case the old names are wanted as
+      aliases: `max_mag` is `max_absolute`, `min_mag` is `min_absolute`,
+      `is_signed` is `is_negative`.
+
 - [ ] Expose the trigonometric functions on `decimo.Decimal` in Python. The
       Mojo `BigDecimal` has `sin`, `cos`, `tan`, `cot`, `csc`, `sec` and
       `arctan`, each with the `_rounded` variant that v0.14.0 added, and the
@@ -309,6 +489,22 @@ Nothing to do here until Mojo grows the feature.
       that an implicit conversion is not required.
 
 ## Investigations
+
+- [ ] (20260902) conda-forge, once Mojo is on it. `mojo`, `max`, `modular` and
+      `mojo-compiler` are all 404 on conda-forge; Mojo ships only from
+      Modular's own channel. A conda-forge package may depend only on
+      conda-forge, so their CI cannot build the extension, and repackaging the
+      wheel is not something they take for a compiled extension. Not a
+      difficulty, a wall.
+
+      Answered for now: **do not**. The Mojo library is already a conda
+      package -- `modular-community` is a conda channel -- and `pip install
+      decimo` works inside a conda environment, since the wheel carries its
+      own Mojo runtime. A private channel on anaconda.org would add a release
+      step that nothing discovers, and every extra channel is another place
+      that quietly falls behind: Homebrew sat four months and three releases
+      out of date. Revisit if Mojo reaches conda-forge, where the feedstock
+      bot would carry the maintenance.
 
 - [x] (20260826) Check the `floor_divide()` function of `BigUInt`: 2n-by-n,
       4n-by-n and 8n-by-n divisions looked as though they slowed down
