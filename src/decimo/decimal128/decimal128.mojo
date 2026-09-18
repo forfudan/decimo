@@ -2234,9 +2234,9 @@ struct Decimal128(
         # Decimal128 inputs converge to the same hash. For non-zero values
         # equal under `==`, normalize() yields identical (coef, scale, sign)
         # triples by construction.
-        hasher.update(UInt8(n.is_negative()))
-        hasher.update(n.coefficient())
-        hasher.update(UInt8(n.scale()))
+        UInt8(n.is_negative()).__hash__(hasher)
+        n.coefficient().__hash__(hasher)
+        UInt8(n.scale()).__hash__(hasher)
 
     # ===------------------------------------------------------------------=== #
     # Mathematical methods that do not implement a trait (not a dunder)

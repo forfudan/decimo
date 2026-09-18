@@ -138,18 +138,18 @@ holds at once, and bounds what the pool keeps at about 500 KB."""
 struct _BlockPool(Defaultable, Movable):
     """Released blocks, by size class, waiting to be handed out again."""
 
-    var blocks: InlineArray[Int, _POOL_CLASSES * _POOL_DEPTH]
-    var counts: InlineArray[Int, _POOL_CLASSES]
-    var busy: Atomic[DType.int64]
+    var blocks: Array[Int, _POOL_CLASSES * _POOL_DEPTH]
+    var counts: Array[Int, _POOL_CLASSES]
+    var busy: Atomic[Int64]
 
     def __init__(out self):
-        self.blocks = InlineArray[Int, _POOL_CLASSES * _POOL_DEPTH](
+        self.blocks = Array[Int, _POOL_CLASSES * _POOL_DEPTH](
             uninitialized=True
         )
-        self.counts = InlineArray[Int, _POOL_CLASSES](uninitialized=True)
+        self.counts = Array[Int, _POOL_CLASSES](uninitialized=True)
         for index in range(_POOL_CLASSES):
             self.counts[index] = 0
-        self.busy = Atomic[DType.int64](0)
+        self.busy = Atomic[Int64](0)
 
 
 def _make_pool() -> _BlockPool:
@@ -275,7 +275,7 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
     """Allocated storage. Only meaningful when `_capacity > INLINE`."""
     var _len: Int
     var _capacity: Int
-    var _inline: InlineArray[Scalar[Self.dtype], Self.INLINE]
+    var _inline: Array[Scalar[Self.dtype], Self.INLINE]
 
     # ===------------------------------------------------------------------=== #
     # Life cycle
@@ -352,7 +352,7 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
         self._heap = Self._PointerType.unsafe_dangling()
         self._len = 0
         self._capacity = Self.INLINE
-        self._inline = InlineArray[Scalar[Self.dtype], Self.INLINE](
+        self._inline = Array[Scalar[Self.dtype], Self.INLINE](
             uninitialized=True
         )
 
@@ -364,7 +364,7 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
             capacity: How many words to make room for.
         """
         self._len = 0
-        self._inline = InlineArray[Scalar[Self.dtype], Self.INLINE](
+        self._inline = Array[Scalar[Self.dtype], Self.INLINE](
             uninitialized=True
         )
         if capacity > Self.INLINE:
@@ -460,7 +460,7 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
         self._heap = move._heap
         self._len = move._len
         self._capacity = move._capacity
-        self._inline = InlineArray[Scalar[Self.dtype], Self.INLINE](
+        self._inline = Array[Scalar[Self.dtype], Self.INLINE](
             uninitialized=True
         )
         # Only the inline case has anything worth carrying over, and it is a

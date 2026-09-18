@@ -390,7 +390,7 @@ def test_as_tuple_reconstruct() raises:
         var t = d.as_tuple()
         # Rebuild coefficient string from digit list
         # One character per digit, so the final length is known up front.
-        var coef_str = String(capacity=len(t[1]))
+        var coef_str = String(capacity_bytes=len(t[1]))
         for i in range(len(t[1])):
             coef_str += String(Int(t[1][i]))
         # exponent = -scale  =>  scale = -exponent

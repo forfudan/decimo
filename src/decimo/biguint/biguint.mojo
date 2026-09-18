@@ -25,7 +25,7 @@ mathematical methods that do not implement a trait.
 
 from std import math
 from std.builtin.globals import global_constant
-from std.memory import Pointer, memcmp, unsafe_memcpy
+from std.memory import Pointer, unsafe_memcpy
 from std.sys import size_of
 
 import decimo.biguint.arithmetics as biguint_arithmetics

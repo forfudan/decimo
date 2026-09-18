@@ -32,7 +32,7 @@ def run_case(
     var t0 = perf_counter_ns()
     for _ in range(iterations):
         _ = decimo.biguint.arithmetics.multiply_by_power_of_ten(m_a, power)
-    var tm = (perf_counter_ns() - t0) / UInt(iterations)
+    var tm = (perf_counter_ns() - t0) // iterations
     times.append(Float64(tm))
 
     log_print("BigUInt:         " + String(tm) + " ns/iter", log_file)

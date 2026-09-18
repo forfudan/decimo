@@ -38,7 +38,7 @@ inside 34 digits and the exponent range. Coming the other way needs rounding,
 and can be out of range entirely, so the conversion is allowed to fail.
 """
 
-from std.builtin.simd import SIMD
+from std.simd import SIMD
 
 from decimo.errors import OverflowError, ValueError
 
@@ -265,7 +265,7 @@ def decimal128_quiet_nan(sign: Bool = False) -> UInt128:
 
 def decimal128_to_bytes[
     little_endian: Bool = True
-](bits: UInt128) -> InlineArray[UInt8, 16]:
+](bits: UInt128) -> Array[UInt8, 16]:
     """Returns a decimal128 as sixteen bytes.
 
     Parameters:
@@ -278,7 +278,7 @@ def decimal128_to_bytes[
     Returns:
         The bytes.
     """
-    var result = InlineArray[UInt8, 16](uninitialized=True)
+    var result = Array[UInt8, 16](uninitialized=True)
     for index in range(16):
         var byte = UInt8((bits >> UInt128(8 * index)) & UInt128(0xFF))
         result[index if little_endian else 15 - index] = byte
@@ -287,7 +287,7 @@ def decimal128_to_bytes[
 
 def decimal128_from_bytes[
     little_endian: Bool = True
-](bytes: InlineArray[UInt8, 16]) -> UInt128:
+](bytes: Array[UInt8, 16]) -> UInt128:
     """Returns sixteen bytes as a decimal128.
 
     Parameters:

@@ -903,7 +903,7 @@ def power_of_10_unsafe[
         alignment=1](n)`. Mojo 1.0.0b1 changed `StringLiteral` to
         always-UTF-8-encode arbitrary byte literals (e.g. `\\x9a` became
         the 2-byte sequence `[0xC2, 0x9A]`), corrupting the blob. Mojo
-        1.1 then renamed `InlineArray` to `Array` and dropped its
+        1.1 then renamed `Array` to `Array` and dropped its
         `ImplicitlyCopyable` conformance, forcing a `materialize` /
         `comptime for` workaround until `global_constant` arrived and
         restored the original single-load-from-rodata behaviour.
@@ -1197,7 +1197,7 @@ def udiv_u256_by_u128(n: UInt256, d: UInt128) -> Tuple[UInt256, UInt128]:
     if shift > 0:
         carried = UInt64(n >> UInt256(256 - shift))
 
-    var words = InlineArray[UInt64, 5](uninitialized=True)
+    var words = Array[UInt64, 5](uninitialized=True)
     words[0] = UInt64(shifted & UInt256(0xFFFF_FFFF_FFFF_FFFF))
     words[1] = UInt64((shifted >> UInt256(64)) & UInt256(0xFFFF_FFFF_FFFF_FFFF))
     words[2] = UInt64(
