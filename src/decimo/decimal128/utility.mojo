@@ -903,7 +903,7 @@ def power_of_10_unsafe[
         alignment=1](n)`. Mojo 1.0.0b1 changed `StringLiteral` to
         always-UTF-8-encode arbitrary byte literals (e.g. `\\x9a` became
         the 2-byte sequence `[0xC2, 0x9A]`), corrupting the blob. Mojo
-        1.1 then renamed `Array` to `Array` and dropped its
+        1.1 then renamed `InlineArray` to `Array` and dropped its
         `ImplicitlyCopyable` conformance, forcing a `materialize` /
         `comptime for` workaround until `global_constant` arrived and
         restored the original single-load-from-rodata behaviour.

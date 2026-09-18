@@ -773,8 +773,9 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
                 function="BigFloat.root()",
             )
         # The degree reaches MPFR as a `UInt32`. Without this bound a larger
-        # `n` would wrap and quietly compute a different root.
-        if n > Int(UInt32.MAX):
+        # `n` would wrap and quietly compute a different root. The bound is a
+        # literal because Mojo 1.1 can miscompile `Int(UInt32.MAX)` to -1.
+        if n > 4_294_967_295:
             raise ValueError(
                 message="Root degree is too large.",
                 function="BigFloat.root()",
