@@ -195,9 +195,10 @@ def test_power_and_root() raises:
     if not raised:
         raise Error("FAIL test_power_and_root: root(0) did not raise")
     # One past `UInt32.MAX`, which would wrap to 0 if it reached the cast.
+    # A literal, because Mojo 1.1 can miscompile `Int(UInt32.MAX)` to -1.
     raised = False
     try:
-        _ = x.root(Int(UInt32.MAX) + 1)
+        _ = x.root(4_294_967_296)
     except:
         raised = True
     if not raised:

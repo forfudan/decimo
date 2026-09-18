@@ -1197,7 +1197,7 @@ def udiv_u256_by_u128(n: UInt256, d: UInt128) -> Tuple[UInt256, UInt128]:
     if shift > 0:
         carried = UInt64(n >> UInt256(256 - shift))
 
-    var words = InlineArray[UInt64, 5](uninitialized=True)
+    var words = Array[UInt64, 5](uninitialized=True)
     words[0] = UInt64(shifted & UInt256(0xFFFF_FFFF_FFFF_FFFF))
     words[1] = UInt64((shifted >> UInt256(64)) & UInt256(0xFFFF_FFFF_FFFF_FFFF))
     words[2] = UInt64(

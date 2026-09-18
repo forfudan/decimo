@@ -79,6 +79,13 @@ def mod_add(a: UInt64, b: UInt64) -> UInt64:
     fixup adds `_P_COMPLEMENT` rather than subtracting `P`. That add cannot
     itself wrap: the true sum is below `2 * P`, so the wrapped value is below
     `2 * P - 2^64 = 2^64 - 2^33 + 2`.
+
+    Args:
+        a: The first residue.
+        b: The second residue.
+
+    Returns:
+        The sum modulo `NTT_PRIME`, in `[0, P)`.
     """
     var total = a + b
     if total < a:
@@ -90,7 +97,15 @@ def mod_add(a: UInt64, b: UInt64) -> UInt64:
 
 @always_inline
 def mod_sub(a: UInt64, b: UInt64) -> UInt64:
-    """Subtracts two residues already reduced into `[0, P)`."""
+    """Subtracts two residues already reduced into `[0, P)`.
+
+    Args:
+        a: The first residue.
+        b: The second residue.
+
+    Returns:
+        The difference `a - b` modulo `NTT_PRIME`, in `[0, P)`.
+    """
     if a >= b:
         return a - b
     return NTT_PRIME - (b - a)
@@ -110,6 +125,13 @@ def mod_mul(a: UInt64, b: UInt64) -> UInt64:
       arithmetic: `h0 < 2^32` makes the shift exact, and the subtract cannot
       go negative. Its value is at most `(2^32 - 1)^2 = 2^64 - 2^33 + 1`,
       which is below `P`, so it is reduced already.
+
+    Args:
+        a: The first residue.
+        b: The second residue.
+
+    Returns:
+        The product modulo `NTT_PRIME`, in `[0, P)`.
     """
     var product = UInt128(a) * UInt128(b)
     var lo = UInt64(product & 0xFFFF_FFFF_FFFF_FFFF)
@@ -121,7 +143,15 @@ def mod_mul(a: UInt64, b: UInt64) -> UInt64:
 
 
 def mod_power(base: UInt64, exponent: UInt64) -> UInt64:
-    """Raises `base` to `exponent` modulo `NTT_PRIME`."""
+    """Raises `base` to `exponent` modulo `NTT_PRIME`.
+
+    Args:
+        base: The base, a residue in `[0, P)`.
+        exponent: The exponent.
+
+    Returns:
+        `base^exponent` modulo `NTT_PRIME`.
+    """
     var result: UInt64 = 1
     var current = base
     var remaining = exponent
@@ -329,6 +359,15 @@ def transform_forward[
 
     The last level is peeled off because its only twiddle is `1`, and a
     multiplication by one over `length / 2` butterflies is not free.
+
+    Parameters:
+        o: The origin of the mutable pointer.
+
+    Args:
+        values: The `length` points, transformed in place.
+        length: The transform length, a power of two.
+        log_length: Base-two logarithm of `length`.
+        twiddles: The forward table from `build_twiddles()`.
     """
     var block = length
     var level = 0
@@ -372,6 +411,15 @@ def transform_inverse[
     forward-then-inverse pair leaves behind, which the final scaling removes.
     The first level is peeled off for the same reason the forward transform
     peels its last: the twiddle there is `1`.
+
+    Parameters:
+        o: The origin of the mutable pointer.
+
+    Args:
+        values: The `length` points, transformed in place.
+        length: The transform length, a power of two.
+        log_length: Base-two logarithm of `length`.
+        twiddles: The inverse table from `build_twiddles()`.
     """
     if length >= 2:
         var start = 0

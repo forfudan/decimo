@@ -245,7 +245,9 @@ the 112-word row, is the one being tuned for.
 # 36 nanoseconds whatever the length, so the kernel is not where the next
 # gain is.
 comptime WORDS_PER_VECTOR = 8
+"""Words loaded into one SIMD vector by the addition and subtraction kernels."""
 comptime WORDS_PER_CARRY_BLOCK = 64
+"""Words handled per block before the carries of the block are resolved."""
 
 comptime WORDS_PER_SHORT_DIVISOR = 4
 """Below this many divisor words, Knuth D's multiply-subtract stays in one
@@ -310,7 +312,7 @@ def _add_words_vectorized[
     Returns:
         The carry out of the highest word, 0 or 1.
     """
-    var generated = InlineArray[BigUInt.Word, WORDS_PER_CARRY_BLOCK](
+    var generated = Array[BigUInt.Word, WORDS_PER_CARRY_BLOCK](
         uninitialized=True
     )
     var gp = generated.unsafe_ptr()
@@ -453,7 +455,7 @@ def _subtract_words_vectorized[
     Returns:
         The borrow out of the highest word, 0 or 1.
     """
-    var borrowed_flags = InlineArray[BigUInt.Word, WORDS_PER_CARRY_BLOCK](
+    var borrowed_flags = Array[BigUInt.Word, WORDS_PER_CARRY_BLOCK](
         uninitialized=True
     )
     var gp = borrowed_flags.unsafe_ptr()
@@ -619,12 +621,8 @@ def _multiply_subtract_words[
             rp[unsafe_offset=i] = biased - BASE_WORD + short_borrow * BASE_WORD
         return short_pending + short_borrow
 
-    var highs = InlineArray[BigUInt.Word, WORDS_PER_CARRY_BLOCK](
-        uninitialized=True
-    )
-    var lows = InlineArray[BigUInt.Word, WORDS_PER_CARRY_BLOCK](
-        uninitialized=True
-    )
+    var highs = Array[BigUInt.Word, WORDS_PER_CARRY_BLOCK](uninitialized=True)
+    var lows = Array[BigUInt.Word, WORDS_PER_CARRY_BLOCK](uninitialized=True)
     var hp = highs.unsafe_ptr()
     var lp = lows.unsafe_ptr()
 
@@ -2175,7 +2173,6 @@ def multiply_slices_toom3(
     var result = BigUInt(unsafe_uninit_length=result_len)
     unsafe_memset_zero(ptr=result.words.unsafe_ptr(), count=result_len)
 
-    @parameter
     def _add_at_offset(mut result: BigUInt, value: BigUInt, offset: Int):
         """Adds value into result starting at the given word offset."""
         if value.is_zero():
@@ -4558,6 +4555,10 @@ def overwrite_with_word(mut x: BigUInt, value: BigUInt.Word):
     `BigUInt` to it would free that buffer and allocate another one, which on
     a short division is most of the cost of the division. Resizing to one word
     keeps the capacity, so this is a store.
+
+    Args:
+        x: The number to overwrite.
+        value: The new value, a single word below `BigUInt.BASE`.
     """
     x.words.resize(1, BigUInt.Word(0))
     x.words[0] = value

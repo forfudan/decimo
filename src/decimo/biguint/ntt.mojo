@@ -108,6 +108,9 @@ def pack_words[
         c1 = (w / 10^6) % 10^6
         c2 = w / 10^12
 
+    Parameters:
+        o: The origin of the mutable pointer.
+
     Args:
         coefficients: Destination, zeroed and long enough.
         words: The magnitude that the slice belongs to.

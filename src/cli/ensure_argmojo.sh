@@ -42,11 +42,14 @@ STAMP="temp/.argmojo.commit"
 # Compile a two-line probe *without* `-I temp`, so only a package provided by
 # the environment (i.e. the conda one) can satisfy the import.
 env_has_argmojo() {
-    local probe="temp/.argmojo_probe.mojo"
-    printf 'from argmojo import Command\n\nfn main():\n    pass\n' >"$probe"
+    # The probe lives in its own directory: Mojo also searches the source
+    # file's directory, so a probe in temp/ would find temp/argmojo.mojoc.
+    local dir
+    dir="$(mktemp -d)"
+    printf 'from argmojo import Command\n\ndef main():\n    pass\n' >"$dir/probe.mojo"
     local ok=0
-    pixi run mojo build -o temp/.argmojo_probe "$probe" >/dev/null 2>&1 || ok=1
-    rm -f "$probe" temp/.argmojo_probe
+    pixi run mojo build -o "$dir/probe" "$dir/probe.mojo" >/dev/null 2>&1 || ok=1
+    rm -rf "$dir"
     return $ok
 }
 
@@ -65,7 +68,10 @@ if [[ "$MODE" != "git" ]]; then
 fi
 
 # --- 2. Fallback: pinned git checkout -------------------------------------- #
-if [[ -f "$PKG" && -f "$STAMP" && "$(cat "$STAMP")" == "$ARGMOJO_COMMIT" ]]; then
+# The stamp holds the commit and the compiler version, so a compiler upgrade
+# rebuilds the package instead of reusing an incompatible one.
+STAMP_VALUE="$ARGMOJO_COMMIT $(pixi run mojo --version)"
+if [[ -f "$PKG" && -f "$STAMP" && "$(cat "$STAMP")" == "$STAMP_VALUE" ]]; then
     echo "argmojo: reusing $PKG (commit ${ARGMOJO_COMMIT:0:8})."
     exit 0
 fi
@@ -83,5 +89,5 @@ fi
 git -C "$CLONE_DIR" checkout --quiet --detach "$ARGMOJO_COMMIT"
 
 pixi run mojo precompile "$CLONE_DIR/src/argmojo" -o "$PKG"
-echo "$ARGMOJO_COMMIT" >"$STAMP"
+echo "$STAMP_VALUE" >"$STAMP"
 echo "argmojo: built $PKG from ${ARGMOJO_COMMIT:0:8}."

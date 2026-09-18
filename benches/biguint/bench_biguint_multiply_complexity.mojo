@@ -17,13 +17,13 @@ from decimo.tests import log_print, open_log_file, print_header
 def create_test_biguint(num_words: Int) raises -> BigUInt:
     """Creates a BigUInt with the specified number of words filled with test
     values."""
-    var words = List[UInt32](capacity=num_words)
+    var words = List[BigUInt.Word](capacity=num_words)
     for i in range(num_words):
         if i == num_words - 1:
-            words.append(UInt32(100_000_000 + (i % 800_000_000)))
+            words.append(BigUInt.Word(100_000_000 + (i % 800_000_000)))
         else:
-            words.append(UInt32(123_456_789 + (i % 876_543_210)))
-    return BigUInt(words=words^)
+            words.append(BigUInt.Word(123_456_789 + (i % 876_543_210)))
+    return BigUInt(raw_words=words^)
 
 
 def benchmark_multiply_at_size(

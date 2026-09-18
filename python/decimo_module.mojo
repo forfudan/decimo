@@ -104,7 +104,7 @@ struct _State(Defaultable, Movable):
     """`builtins.float`, kept because `float(x)` has to hand CPython the text
     -- Mojo's own parser refuses a long one -- and importing `builtins` for it
     on every call was most of what the conversion cost."""
-    var free_list: InlineArray[PyObjectPtr, FREE_LIST_SIZE]
+    var free_list: Array[PyObjectPtr, FREE_LIST_SIZE]
     """Decimal objects that have been released and can be filled in again."""
     var free_count: Int
 
@@ -114,9 +114,7 @@ struct _State(Defaultable, Movable):
         self.decimal_type = PyTypeObjectPtr()
         self.decimal128_type = PyTypeObjectPtr()
         self.float_function = PythonObject(None)
-        self.free_list = InlineArray[PyObjectPtr, FREE_LIST_SIZE](
-            uninitialized=True
-        )
+        self.free_list = Array[PyObjectPtr, FREE_LIST_SIZE](uninitialized=True)
         self.free_count = 0
 
 
@@ -1633,7 +1631,7 @@ def bigdecimal_components(py_self: PythonObject) raises -> PythonObject:
     """
     var self_ptr = py_self.unchecked_downcast_value_ptr[BigDecimal]()
     var parts = self_ptr[].as_tuple()
-    var text = String(capacity=len(parts[1]) + 1)
+    var text = String(capacity_bytes=len(parts[1]) + 1)
     for digit in parts[1]:
         text += String(digit)
     return Python.tuple(

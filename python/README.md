@@ -92,9 +92,9 @@ Everything a `decimal` program normally touches:
 ### Three things `decimal` does not have
 
 ```python
-decimo.pi(1000)   # 1000 digits of pi, by Chudnovsky with binary splitting
-decimo.e(50)      # 50 digits of e
-Decimal(2).sqrt(rounding=ROUND_FLOOR)   # and exp, ln, log10 too
+decimo.pi(1000)  # 1000 digits of pi, by Chudnovsky with binary splitting
+decimo.e(50)  # 50 digits of e
+Decimal(2).sqrt(rounding=ROUND_FLOOR)  # and exp, ln, log10 too
 ```
 
 `pi()` and `e()` use the context precision when given no argument; `decimal`
@@ -118,12 +118,12 @@ coefficient and a scale from 0 to 28, in sixteen bytes that own nothing --
 the layout .NET's `System.Decimal` and Rust's `rust_decimal` use.
 
 ```python
-from decimo import Decimal128        # Dec128 is the same type
+from decimo import Decimal128  # Dec128 is the same type
 
 price = Decimal128("19.99")
-line = (price * 3).quantize(Decimal128("0.01"))     # 59.97
-Decimal128(2).sqrt()                                # and exp, ln, log10, sin, cos, tan
-Decimal128("1").to_ieee754()                        # the IEEE 754 interchange bytes
+line = (price * 3).quantize(Decimal128("0.01"))  # 59.97
+Decimal128(2).sqrt()  # and exp, ln, log10, sin, cos, tan
+Decimal128("1").to_ieee754()  # the IEEE 754 interchange bytes
 ```
 
 It does arithmetic, compares, hashes and rounds like `Decimal`, mixes with

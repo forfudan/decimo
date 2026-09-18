@@ -47,14 +47,14 @@ def run_case(
         var t0 = perf_counter_ns()
         for _ in range(iterations):
             _ = String(decimo.biguint.exponential.sqrt(m_a))
-        var tm = (perf_counter_ns() - t0) / UInt(iterations)
+        var tm = (perf_counter_ns() - t0) // iterations
         if tm == 0:
             tm = 1
 
         t0 = perf_counter_ns()
         for _ in range(iterations):
             _ = py.str(math.isqrt(pa))
-        var tp = (perf_counter_ns() - t0) / UInt(iterations)
+        var tp = (perf_counter_ns() - t0) // iterations
 
         var s = Float64(tp) / Float64(tm)
         sf.append(s)

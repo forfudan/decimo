@@ -157,35 +157,35 @@ def _run_case(
     var per: Float64
     if op == "add":
 
-        @parameter
+        @__parameter
         def _f_add(x: Decimal128, y: Decimal128) raises -> UInt64:
             return UInt64((x + y).coefficient() & 0xFFFF_FFFF_FFFF_FFFF)
 
         per = _bench_one[_f_add](a, b, iters)
     elif op == "subtract":
 
-        @parameter
+        @__parameter
         def _f_sub(x: Decimal128, y: Decimal128) raises -> UInt64:
             return UInt64((x - y).coefficient() & 0xFFFF_FFFF_FFFF_FFFF)
 
         per = _bench_one[_f_sub](a, b, iters)
     elif op == "multiply":
 
-        @parameter
+        @__parameter
         def _f_mul(x: Decimal128, y: Decimal128) raises -> UInt64:
             return UInt64((x * y).coefficient() & 0xFFFF_FFFF_FFFF_FFFF)
 
         per = _bench_one[_f_mul](a, b, iters)
     elif op == "divide":
 
-        @parameter
+        @__parameter
         def _f_div(x: Decimal128, y: Decimal128) raises -> UInt64:
             return UInt64((x / y).coefficient() & 0xFFFF_FFFF_FFFF_FFFF)
 
         per = _bench_one[_f_div](a, b, iters)
     elif op == "comparison":
 
-        @parameter
+        @__parameter
         def _f_cmp(x: Decimal128, y: Decimal128) raises -> UInt64:
             return UInt64(1) if x < y else UInt64(0)
 
@@ -196,21 +196,21 @@ def _run_case(
         per = _bench_to_str(a, iters)
     elif op == "ln":
 
-        @parameter
+        @__parameter
         def _f_ln(x: Decimal128, y: Decimal128) raises -> UInt64:
             return UInt64(x.ln().coefficient() & 0xFFFF_FFFF_FFFF_FFFF)
 
         per = _bench_one[_f_ln](a, b, iters)
     elif op == "log10":
 
-        @parameter
+        @__parameter
         def _f_log10(x: Decimal128, y: Decimal128) raises -> UInt64:
             return UInt64(x.log10().coefficient() & 0xFFFF_FFFF_FFFF_FFFF)
 
         per = _bench_one[_f_log10](a, b, iters)
     elif op == "exp":
 
-        @parameter
+        @__parameter
         def _f_exp(x: Decimal128, y: Decimal128) raises -> UInt64:
             return UInt64(x.exp().coefficient() & 0xFFFF_FFFF_FFFF_FFFF)
 
@@ -218,7 +218,7 @@ def _run_case(
     elif op == "fma":
         # Capture the third operand `c` so the kernel runs the true
         # ternary fused multiply-add per iteration.
-        @parameter
+        @__parameter
         def _f_fma(x: Decimal128, y: Decimal128) raises -> UInt64:
             return UInt64(x.fma(y, c).coefficient() & 0xFFFF_FFFF_FFFF_FFFF)
 
