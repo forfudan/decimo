@@ -48,7 +48,7 @@ import decimo.numerals.chinese as decimo_chinese
 import decimo.str as decimo_str
 from decimo.traits import Numeric, Parsable, Rootable
 from decimo.utility import unsigned_counterpart
-from decimo.wordlist import WordList
+from decimo.word_list import WordList
 
 comptime INLINE_WORDS = 7
 """How many words a `BigInt` keeps inside itself before it allocates.
