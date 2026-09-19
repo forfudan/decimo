@@ -10,7 +10,7 @@ least as large as the request it comes back for.
 
 from std import testing
 
-from decimo.wordlist import WordList
+from decimo.word_list import WordList
 
 comptime Words = WordList[DType.uint64, 5]
 

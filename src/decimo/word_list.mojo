@@ -27,8 +27,8 @@ and the cost of `add` barely moves with size -- 36.7 ns at one word against
 67.2 ns at sixty-four -- because what it is paying for is one call to the
 allocator, not the addition.
 
-`List[UInt32]` always goes to the heap. `WordList` keeps up to
-`INLINE_WORDS` words in the struct itself and only allocates beyond that,
+`List` always goes to the heap. `WordList` keeps up to `INLINE` words in
+the struct itself and only allocates beyond that,
 which is what CPython's `decimal` does: `PyDecObject` carries four 64-bit
 words inline, so at the default precision of 28 digits libmpdec never calls
 the allocator at all.
@@ -45,25 +45,25 @@ same way, so the eight hundred-odd `.words` sites did not have to change.
 
 from std.atomic import Atomic
 from std.bit import bit_width
+from std.collections.check_bounds import check_bounds
 from std.ffi import _Global
 from std.memory import Layout, ThinAllocation, alloc, dealloc, unsafe_memcpy
 from std.os import abort
 from std.sys import size_of
 
 comptime INLINE_WORDS = 10
-"""How many words live in a `BigUInt` before the heap is involved.
+"""The default `INLINE` of a `WordList`.
 
-Also the default for `WordList`; `BigInt` passes its own.
+Neither number type uses it: `BigUInt` passes `INLINE_WORDS_BIGUINT` and
+`BigInt` passes its own `INLINE_WORDS`, each tuned to its word size.
 
-It has to cover *results*, not operands. A 28-digit value is four words, but
-adding two of them carries into a fifth and multiplying gives eight, so at
-four this allocated on every operation and was slower than the plain `List` it
-replaced -- the fatter struct with none of the benefit.
+The lesson behind the number still holds for both. `INLINE` has to cover
+*results*, not operands: adding two values carries into one more word and
+multiplying doubles the length, so a size that only fits the operands
+allocates on every operation and is slower than a plain `List`.
 
-Ten, because that is what a division needs. A 28-digit division pads the
-dividend out for the guard digits, normalizes it, and copies it with a guard
-word on top: nine or ten words, every one of which allocated at eight.
-Measured from Python at 28 digits, best of three runs (ns):
+Ten was measured when `BigUInt` used base-10^9 words, where a 28-digit division
+needs nine or ten of them. From Python at 28 digits, best of three runs (ns):
 
     inline words        8     10     12
     a + b            51.5   51.9   53.0
@@ -123,7 +123,8 @@ ten is within noise of a plain `List` everywhere.
 # ===----------------------------------------------------------------------=== #
 
 comptime _POOL_MIN_SHIFT = 3
-"""The smallest class, `2^3` words. Below this a list is inline anyway."""
+"""The smallest class, `2^3` words. A list with `INLINE` below eight, like
+`BigUInt`'s five, takes its first heap blocks from this class."""
 
 comptime _POOL_MAX_SHIFT = 12
 """The largest class, `2^12` words -- 4096 of them, 32 KB."""
@@ -156,7 +157,7 @@ def _make_pool() -> _BlockPool:
     return _BlockPool()
 
 
-comptime _POOL = _Global["decimo_wordlist_block_pool", _make_pool]
+comptime _POOL = _Global["decimo_word_list_block_pool", _make_pool]
 
 
 @always_inline
@@ -248,17 +249,28 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
     """A list of unsigned words that keeps small ones inside itself.
 
     What the words mean is the number type's business: `BigUInt` reads them as
-    base-billion digits in `uint32` and `BigInt` as a base-2^64 magnitude in
-    `uint64`. The container only knows how wide a word is, how many there are,
-    and where they live.
+    base-10^18 digits and `BigInt` as a base-2^64 magnitude, both in `uint64`.
+    The container only knows how wide a word is, how many there are, and where
+    they live.
 
     Only the `List` surface that the number types actually use is provided:
     `len()`, indexing, iteration, `unsafe_ptr()`, `append`, `resize`,
-    `shrink`, `clear`, `reserve`, `copy` and `capacity`.
+    `shrink`, `clear`, `reserve`, `copy` and `capacity`. Bounds are checked
+    the way `List` checks them: `x[i]` by default, `unsafe_get` and
+    `unsafe_set` only under `-D ASSERT=all`. Negative sizes are refused in
+    every build but `-D ASSERT=none`: a length of -1 would pass every bounds
+    check, since the check compares as unsigned.
 
-    Invariant: `_capacity >= INLINE` always, and the words live in `_inline`
-    exactly when `_capacity == INLINE`. So there is one test for "where is the
-    data", and it is on a field already in cache.
+    Invariant: `0 <= _len <= _capacity`, `_capacity >= INLINE` always, and the
+    words live in `_inline` exactly when `_capacity == INLINE`. So there is one
+    test for "where is the data", and it is on a field already in cache. Under
+    `-D ASSERT=all`, `unsafe_ptr()` checks this on every call.
+
+    Safety: unlike `List`, a short `WordList` keeps its words inside the
+    struct, so **moving it moves the words**. A pointer from `unsafe_ptr()` is
+    only good until the list is moved (`x^`, returned, assigned, swapped) or
+    grows (`append`, `reserve`, `resize`). Take the pointer after the last such
+    step, and never keep it across one. `List` forgave the move; this does not.
 
     Parameters:
         dtype: The word type. Both number types use `uint64`: `BigInt`
@@ -363,6 +375,9 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
         Args:
             capacity: How many words to make room for.
         """
+        debug_assert[assert_mode="safe"](
+            capacity >= 0, "WordList: negative capacity ", capacity
+        )
         self._len = 0
         self._inline = Array[Scalar[Self.dtype], Self.INLINE](
             uninitialized=True
@@ -382,6 +397,11 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
         Args:
             unsafe_uninit_length: The length to claim.
         """
+        debug_assert[assert_mode="safe"](
+            unsafe_uninit_length >= 0,
+            "WordList: negative length ",
+            unsafe_uninit_length,
+        )
         self = Self(capacity=unsafe_uninit_length)
         self._len = unsafe_uninit_length
 
@@ -501,12 +521,25 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
         loop that stays one side of the threshold, and callers hoist this out
         of their loops anyway.
 
+        The pointer is only good until the list is moved or grows: a short
+        list's words live inside the struct and travel with it. See the
+        struct's "Safety" note.
+
         Parameters:
             origin: The origin of `self`.
 
         Returns:
             A pointer to the first word.
         """
+        debug_assert(
+            self._capacity >= Self.INLINE
+            and 0 <= self._len
+            and self._len <= self._capacity,
+            "WordList: broken invariant, length ",
+            self._len,
+            ", capacity ",
+            self._capacity,
+        )
         if self._capacity == Self.INLINE:
             return (
                 Pointer(to=self._inline)
@@ -546,6 +579,7 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
         Returns:
             A reference to the word.
         """
+        check_bounds(index, self._len)
         return self.unsafe_ptr().unsafe_offset(index)[]
 
     @always_inline
@@ -556,6 +590,7 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
             idx: Which word.
             value: The value to write.
         """
+        check_bounds[cpu_default=False](idx, self._len)
         self.unsafe_ptr().unsafe_offset(idx).unsafe_store(value)
 
     @always_inline
@@ -568,6 +603,7 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
         Returns:
             The word.
         """
+        check_bounds[cpu_default=False](idx, self._len)
         return self.unsafe_ptr().unsafe_offset(idx).unsafe_load()
 
     def __iter__[
@@ -650,6 +686,9 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
         """
         if new_length > self._len:
             abort("WordList.shrink() cannot make the list longer")
+        debug_assert[assert_mode="safe"](
+            new_length >= 0, "WordList: negative length ", new_length
+        )
         self._len = new_length
 
     @always_inline
@@ -660,6 +699,9 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
             length: The new length.
             fill: The value for any words added.
         """
+        debug_assert[assert_mode="safe"](
+            length >= 0, "WordList: negative length ", length
+        )
         if length <= self._len:
             self._len = length
             return
@@ -677,6 +719,11 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
         Args:
             unsafe_uninit_length: The new length.
         """
+        debug_assert[assert_mode="safe"](
+            unsafe_uninit_length >= 0,
+            "WordList: negative length ",
+            unsafe_uninit_length,
+        )
         self.reserve(unsafe_uninit_length)
         self._len = unsafe_uninit_length
 
