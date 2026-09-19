@@ -42,7 +42,7 @@ from decimo.rounding_mode import RoundingMode
 import decimo.str as decimo_str
 from decimo.traits import Rootable
 from decimo.utility import unsigned_counterpart
-from decimo.word_list import INLINE_WORDS, WordList
+from decimo.word_list import WordList
 
 # Type aliases
 comptime BUInt = BigUInt

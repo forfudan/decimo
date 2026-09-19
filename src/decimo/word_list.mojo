@@ -257,7 +257,9 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
     `len()`, indexing, iteration, `unsafe_ptr()`, `append`, `resize`,
     `shrink`, `clear`, `reserve`, `copy` and `capacity`. Bounds are checked
     the way `List` checks them: `x[i]` by default, `unsafe_get` and
-    `unsafe_set` only under `-D ASSERT=all`.
+    `unsafe_set` only under `-D ASSERT=all`. Negative sizes are refused in
+    every build but `-D ASSERT=none`: a length of -1 would pass every bounds
+    check, since the check compares as unsigned.
 
     Invariant: `0 <= _len <= _capacity`, `_capacity >= INLINE` always, and the
     words live in `_inline` exactly when `_capacity == INLINE`. So there is one
@@ -373,7 +375,9 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
         Args:
             capacity: How many words to make room for.
         """
-        debug_assert(capacity >= 0, "WordList: negative capacity ", capacity)
+        debug_assert[assert_mode="safe"](
+            capacity >= 0, "WordList: negative capacity ", capacity
+        )
         self._len = 0
         self._inline = Array[Scalar[Self.dtype], Self.INLINE](
             uninitialized=True
@@ -393,7 +397,7 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
         Args:
             unsafe_uninit_length: The length to claim.
         """
-        debug_assert(
+        debug_assert[assert_mode="safe"](
             unsafe_uninit_length >= 0,
             "WordList: negative length ",
             unsafe_uninit_length,
@@ -682,7 +686,9 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
         """
         if new_length > self._len:
             abort("WordList.shrink() cannot make the list longer")
-        debug_assert(new_length >= 0, "WordList: negative length ", new_length)
+        debug_assert[assert_mode="safe"](
+            new_length >= 0, "WordList: negative length ", new_length
+        )
         self._len = new_length
 
     @always_inline
@@ -693,7 +699,9 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
             length: The new length.
             fill: The value for any words added.
         """
-        debug_assert(length >= 0, "WordList: negative length ", length)
+        debug_assert[assert_mode="safe"](
+            length >= 0, "WordList: negative length ", length
+        )
         if length <= self._len:
             self._len = length
             return
@@ -711,7 +719,7 @@ struct WordList[dtype: DType = DType.uint32, INLINE: Int = INLINE_WORDS](
         Args:
             unsafe_uninit_length: The new length.
         """
-        debug_assert(
+        debug_assert[assert_mode="safe"](
             unsafe_uninit_length >= 0,
             "WordList: negative length ",
             unsafe_uninit_length,
