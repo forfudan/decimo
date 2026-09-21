@@ -32,7 +32,7 @@ from decimo.errors import (
 )
 from decimo.rounding_mode import RoundingMode
 from decimo.utility import alias_as_immutable_source
-from decimo.wordlist import WordList
+from decimo.word_list import WordList
 
 comptime CUTOFF_KARATSUBA = 128
 """The cutoff number of words for using Karatsuba multiplication.
