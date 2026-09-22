@@ -9,7 +9,7 @@
 #      provides argmojo, nothing else is done.
 #
 #   2. Fallback: the upstream git repository, pinned at $ARGMOJO_COMMIT
-#      (= release v0.8.0).  The sources are cloned into temp/argmojo and
+#      (= release v0.9.0).  The sources are cloned into temp/argmojo and
 #      precompiled to temp/argmojo.mojoc, which the CLI build picks up
 #      through its `-I temp` include path.
 #
@@ -26,8 +26,8 @@
 set -euo pipefail
 
 ARGMOJO_REPO="${ARGMOJO_REPO:-https://github.com/forfudan/argmojo.git}"
-# https://github.com/forfudan/argmojo/releases#release-v0.8.0
-ARGMOJO_COMMIT="${ARGMOJO_COMMIT:-2ba77c1be364e49fe7db88c724dd0f9a25ed3a44}"
+# https://github.com/forfudan/argmojo/releases#release-v0.9.0
+ARGMOJO_COMMIT="${ARGMOJO_COMMIT:-1d0054987cb47136cdf16d64cfe7db3fcdfefc97}"
 MODE="${DECIMO_ARGMOJO:-auto}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
