@@ -14,8 +14,8 @@ library's `decimal`, and a superset of it: the whole of its method surface,
 plus `pi()`, `e()` and a 128-bit decimal type. Install it with
 `pip install decimo`.
 
-[![Version](https://img.shields.io/badge/version-v0.14.0-blue)](https://github.com/forfudan/decimo/releases/tag/v0.14.0)
-[![Mojo](https://img.shields.io/badge/mojo-1.0.0-orange)](https://docs.modular.com/mojo/manual/)
+[![Version](https://img.shields.io/badge/version-v0.15.0-blue)](https://github.com/forfudan/decimo/releases/tag/v0.15.0)
+[![Mojo](https://img.shields.io/badge/mojo-1.1.0-orange)](https://docs.modular.com/mojo/manual/)
 [![CI](https://img.shields.io/github/actions/workflow/status/forfudan/decimo/run_tests.yaml?branch=main&label=tests)](https://github.com/forfudan/decimo/actions/workflows/run_tests.yaml)
 [![License](https://img.shields.io/github/license/forfudan/decimo)](https://github.com/forfudan/decimo/blob/main/LICENSE)
 
@@ -170,7 +170,7 @@ Then, you can install Decimo using any of these methods:
 1. In the `mojoproject.toml` file of your project, add the following dependency:
 
     ```toml
-    decimo = ">=0.14.0, <0.15.0"
+    decimo = ">=0.15.0, <0.16.0"
     ```
 
     Then run `pixi install` to download and install the package.
@@ -204,6 +204,7 @@ versions:
 | `decimo`   | v0.12.0 | >=1.0.0, <1.1.0 | pixi            |
 | `decimo`   | v0.13.0 | >=1.0.0, <1.1.0 | pixi            |
 | `decimo`   | v0.14.0 | >=1.0.0, <1.1.0 | pixi            |
+| `decimo`   | v0.15.0 | >=1.1.0, <1.2.0 | pixi            |
 
 </details>
 
@@ -723,7 +724,7 @@ If you find Decimo useful, consider listing it in your citations.
     year         = {2026},
     title        = {Decimo: An arbitrary-precision integer and decimal library for Mojo},
     url          = {https://github.com/forfudan/decimo},
-    version      = {0.14.0},
+    version      = {0.15.0},
     note         = {Computer Software}
 }
 ```

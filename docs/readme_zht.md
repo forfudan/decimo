@@ -135,7 +135,7 @@ channels = ["https://conda.modular.com/max", "https://repo.prefix.dev/modular-co
 1. 在您項目的 `mojoproject.toml` 文件中，添加以下依賴：
 
     ```toml
-    decimo = ">=0.14.0, <0.15.0"
+    decimo = ">=0.15.0, <0.16.0"
     ```
 
     然後運行 `pixi install` 來下載並安裝包。
@@ -163,6 +163,7 @@ channels = ["https://conda.modular.com/max", "https://repo.prefix.dev/modular-co
 | `decimo`   | v0.12.0 | ==1.0.0       | pixi     |
 | `decimo`   | v0.13.0 | ==1.0.0       | pixi     |
 | `decimo`   | v0.14.0 | ==1.0.0       | pixi     |
+| `decimo`   | v0.15.0 | ==1.1.0       | pixi     |
 
 ### 安裝命令行計算器
 
@@ -521,7 +522,7 @@ Python 遷移到 Mojo 時，我需要一個可靠的、能够正確捨入的、�
     year         = {2026},
     title        = {Decimo: An arbitrary-precision integer and decimal library for Mojo},
     url          = {https://github.com/forfudan/decimo},
-    version      = {0.14.0},
+    version      = {0.15.0},
     note         = {Computer Software}
 }
 ```

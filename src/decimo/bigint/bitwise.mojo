@@ -85,10 +85,12 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
             var min_len = min(len(a.words), len(b.words))
             var result_words = Magnitude(capacity=min_len)
             for i in range(min_len):
-                result_words.append(a.words[i] & b.words[i])
+                result_words.append(
+                    a.words.unsafe_get(i) & b.words.unsafe_get(i)
+                )
             while (
                 len(result_words) > 1
-                and result_words[len(result_words) - 1] == 0
+                and result_words.unsafe_get(len(result_words) - 1) == 0
             ):
                 result_words.shrink(len(result_words) - 1)
             return BigInt(raw_words=result_words^, sign=False)
@@ -96,12 +98,16 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
             var max_len = max(len(a.words), len(b.words))
             var result_words = Magnitude(capacity=max_len)
             for i in range(max_len):
-                var wa = UInt64(0) if i >= len(a.words) else a.words[i]
-                var wb = UInt64(0) if i >= len(b.words) else b.words[i]
+                var wa = UInt64(0) if i >= len(a.words) else a.words.unsafe_get(
+                    i
+                )
+                var wb = UInt64(0) if i >= len(b.words) else b.words.unsafe_get(
+                    i
+                )
                 result_words.append(wa | wb)
             while (
                 len(result_words) > 1
-                and result_words[len(result_words) - 1] == 0
+                and result_words.unsafe_get(len(result_words) - 1) == 0
             ):
                 result_words.shrink(len(result_words) - 1)
             return BigInt(raw_words=result_words^, sign=False)
@@ -109,12 +115,16 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
             var max_len = max(len(a.words), len(b.words))
             var result_words = Magnitude(capacity=max_len)
             for i in range(max_len):
-                var wa = UInt64(0) if i >= len(a.words) else a.words[i]
-                var wb = UInt64(0) if i >= len(b.words) else b.words[i]
+                var wa = UInt64(0) if i >= len(a.words) else a.words.unsafe_get(
+                    i
+                )
+                var wb = UInt64(0) if i >= len(b.words) else b.words.unsafe_get(
+                    i
+                )
                 result_words.append(wa ^ wb)
             while (
                 len(result_words) > 1
-                and result_words[len(result_words) - 1] == 0
+                and result_words.unsafe_get(len(result_words) - 1) == 0
             ):
                 result_words.shrink(len(result_words) - 1)
             return BigInt(raw_words=result_words^, sign=False)
@@ -132,24 +142,24 @@ def _binary_bitwise_op[op: StringLiteral](a: BigInt, b: BigInt) -> BigInt:
     if a.sign:
         var borrow: UInt64 = 1
         for i in range(a_n):
-            var word = a.words[i]
+            var word = a.words.unsafe_get(i)
             a_tc.append(~(word - borrow))
             borrow = UInt64(word < borrow)
     else:
         for i in range(a_n):
-            a_tc.append(a.words[i])
+            a_tc.append(a.words.unsafe_get(i))
 
     # Pre-compute b's TC words
     var b_tc = Magnitude(capacity=b_n)
     if b.sign:
         var borrow: UInt64 = 1
         for i in range(b_n):
-            var word = b.words[i]
+            var word = b.words.unsafe_get(i)
             b_tc.append(~(word - borrow))
             borrow = UInt64(word < borrow)
     else:
         for i in range(b_n):
-            b_tc.append(b.words[i])
+            b_tc.append(b.words.unsafe_get(i))
 
     # Perform the operation word-by-word
     var result_tc = Magnitude(capacity=max_len)
@@ -234,7 +244,9 @@ def _binary_bitwise_op_inplace[op: StringLiteral](mut a: BigInt, imm b: BigInt):
             var min_len = min(len(a.words), len(b.words))
             # We can modify a.words in-place for AND (result <= min_len)
             for i in range(min_len):
-                a.words[i] = a.words[i] & b.words[i]
+                a.words.unsafe_set(
+                    i, a.words.unsafe_get(i) & b.words.unsafe_get(i)
+                )
             # Truncate to min_len in a single shrink call
             if len(a.words) > min_len:
                 a.words.shrink(min_len)
@@ -248,7 +260,9 @@ def _binary_bitwise_op_inplace[op: StringLiteral](mut a: BigInt, imm b: BigInt):
             while len(a.words) < b_len:
                 a.words.append(UInt64(0))
             for i in range(b_len):
-                a.words[i] = a.words[i] | b.words[i]
+                a.words.unsafe_set(
+                    i, a.words.unsafe_get(i) | b.words.unsafe_get(i)
+                )
             # Words beyond b_len remain as-is (OR with 0)
             while len(a.words) > 1 and a.words[len(a.words) - 1] == 0:
                 a.words.shrink(len(a.words) - 1)
@@ -258,7 +272,9 @@ def _binary_bitwise_op_inplace[op: StringLiteral](mut a: BigInt, imm b: BigInt):
             while len(a.words) < b_len:
                 a.words.append(UInt64(0))
             for i in range(b_len):
-                a.words[i] = a.words[i] ^ b.words[i]
+                a.words.unsafe_set(
+                    i, a.words.unsafe_get(i) ^ b.words.unsafe_get(i)
+                )
             # Words beyond b_len remain as-is (XOR with 0)
             while len(a.words) > 1 and a.words[len(a.words) - 1] == 0:
                 a.words.shrink(len(a.words) - 1)
@@ -276,24 +292,24 @@ def _binary_bitwise_op_inplace[op: StringLiteral](mut a: BigInt, imm b: BigInt):
     if a.sign:
         var borrow: UInt64 = 1
         for i in range(a_n):
-            var word = a.words[i]
+            var word = a.words.unsafe_get(i)
             a_tc.append(~(word - borrow))
             borrow = UInt64(word < borrow)
     else:
         for i in range(a_n):
-            a_tc.append(a.words[i])
+            a_tc.append(a.words.unsafe_get(i))
 
     # Pre-compute b's TC words
     var b_tc = Magnitude(capacity=b_n)
     if b.sign:
         var borrow: UInt64 = 1
         for i in range(b_n):
-            var word = b.words[i]
+            var word = b.words.unsafe_get(i)
             b_tc.append(~(word - borrow))
             borrow = UInt64(word < borrow)
     else:
         for i in range(b_n):
-            b_tc.append(b.words[i])
+            b_tc.append(b.words.unsafe_get(i))
 
     # Perform the operation word-by-word into a new list
     var result_tc = Magnitude(capacity=max_len)
@@ -408,7 +424,7 @@ def bitwise_not(x: BigInt) -> BigInt:
         var result_words = Magnitude(capacity=n + 1)
         var carry: UInt64 = 1
         for i in range(n):
-            var s = UInt64(x.words[i]) + carry
+            var s = UInt64(x.words.unsafe_get(i)) + carry
             result_words.append(s)
             carry = UInt64(s < carry)
         if carry > 0:
@@ -420,12 +436,13 @@ def bitwise_not(x: BigInt) -> BigInt:
         var result_words = Magnitude(capacity=n)
         var borrow: UInt64 = 1
         for i in range(n):
-            var word = x.words[i]
+            var word = x.words.unsafe_get(i)
             result_words.append(word - borrow)
             borrow = UInt64(word < borrow)
         # Strip leading zeros
         while (
-            len(result_words) > 1 and result_words[len(result_words) - 1] == 0
+            len(result_words) > 1
+            and result_words.unsafe_get(len(result_words) - 1) == 0
         ):
             result_words.shrink(len(result_words) - 1)
         if len(result_words) == 1 and result_words[0] == 0:

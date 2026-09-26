@@ -1327,7 +1327,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
                 raise OverflowError(
                     function="BigUInt.to_int()", message=overflow_msg
                 )
-            value = value * UInt128(Self.BASE) + UInt128(self.words[i])
+            value = value * UInt128(Self.BASE) + UInt128(
+                self.words.unsafe_get(i)
+            )
             if value > LIMIT:
                 raise OverflowError(
                     function="BigUInt.to_int()", message=overflow_msg
@@ -1367,7 +1369,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
 
         var result = UInt64(0)
         for i in range(len(self.words) - 1, -1, -1):
-            result = result * UInt64(Self.BASE) + UInt64(self.words[i])
+            result = result * UInt64(Self.BASE) + UInt64(
+                self.words.unsafe_get(i)
+            )
         return result
 
     def to_uint128_with_first_2_words(self) -> UInt128:
@@ -1413,7 +1417,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         # to the caller. Restore it when that is fixed.
         var result = UInt128(0)
         for i in range(len(self.words) - 1, -1, -1):
-            result = result * UInt128(Self.BASE) + UInt128(self.words[i])
+            result = result * UInt128(Self.BASE) + UInt128(
+                self.words.unsafe_get(i)
+            )
         return result
 
     def write_digits_into(
@@ -1440,7 +1446,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         var position = total_length
         var word_count = len(self.words)
         for index in range(word_count - 1):
-            var value = self.words[index]
+            var value = self.words.unsafe_get(index)
             # `DIGITS_PER_WORD` is even, so the word is exactly that many
             # digits in pairs.
             for _ in range(Self.DIGITS_PER_WORD // 2):
@@ -2383,7 +2389,9 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             result += label + String(" ") * (col - label.byte_length())
             result += (
                 decimo_str.rjust(
-                    String(self.words[i]), Self.DIGITS_PER_WORD, fillchar="0"
+                    String(self.words.unsafe_get(i)),
+                    Self.DIGITS_PER_WORD,
+                    fillchar="0",
                 )
                 + "\n"
             )
@@ -2426,6 +2434,8 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         Returns:
             True if the slice of this BigUInt represents zero, False otherwise.
         """
+        # Checked indexing on purpose: the bounds come from the caller, and
+        # this method does not clamp them the way `from_slice()` does.
         for i in range(bounds[0], bounds[1]):
             if self.words[i] != 0:
                 return False
@@ -2448,7 +2458,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             # Least significant word is 1 and there are other words
             # Check if all other words are zero
             for index in range(1, len(self.words)):
-                if self.words[index] != 0:
+                if self.words.unsafe_get(index) != 0:
                     return False
             return True
 
@@ -2472,7 +2482,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
             `True` if the value is a power of 10, `False` otherwise.
         """
         for i in range(len(x.words) - 1):
-            if x.words[i] != 0:
+            if x.words.unsafe_get(i) != 0:
                 return False
         # Divide the tens out and see whether 1 is what is left. This used to
         # enumerate `10^0` through `10^8` -- the nine values a nine-digit word
@@ -2617,10 +2627,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         """
         var result: Int = 0
         for i in range(len(self.words)):
-            if self.words[i] == 0:
+            if self.words.unsafe_get(i) == 0:
                 result += Self.DIGITS_PER_WORD
             else:
-                var word = self.words[i]
+                var word = self.words.unsafe_get(i)
                 while word % 10 == 0:
                     result += 1
                     word = word // 10
@@ -2709,7 +2719,7 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         else:
             var n_empty_words: Int = 0
             for i in range(len(self.words) - 1, 0, -1):
-                if self.words[i] == 0:
+                if self.words.unsafe_get(i) == 0:
                     n_empty_words += 1
                 else:
                     break

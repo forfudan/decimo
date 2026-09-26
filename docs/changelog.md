@@ -2,6 +2,47 @@
 
 This is a list of changes for the Decimo package (formerly DeciMojo).
 
+## 20260926 (v0.15.0)
+
+Decimo v0.15.0 targets the codebase to **Mojo v1.1.0**, which removed a set
+of names that v1.0.0 had deprecated, and gives `WordList` the bounds checks.
+
+### ⭐️ New in v0.15.0
+
+1. **`WordList` checks its bounds as `List` does.** It checked nothing when
+   it replaced `List` in v0.14.0. Now `x[i]` is checked in every build but
+   `-D ASSERT=none`, and `unsafe_get()` and `unsafe_set()` under
+   `-D ASSERT=all`. A negative length is refused as well, since the check
+   compares as unsigned and a length of -1 would let every index through.
+   Costs between nothing and 7% of an operation (PR #319).
+
+### 🦋 Changed in v0.15.0
+
+1. **Mojo v1.1.0 migration** (PR #318). `InlineArray` is `Array`, `SIMD` comes
+   from `std.simd`, `Atomic` takes a value type rather than a `DType`,
+   `Hasher.update()` takes bytes, `String(capacity=)` is
+   `String(capacity_bytes=)`, `memcmp()` is `unsafe_memcmp()`, and a capturing
+   `@parameter` closure is `@__parameter`. Pixi pins `mojo >=1.1.0,<1.2.0` and
+   `argmojo 0.9.0` (PR #320).
+1. `decimo.wordlist` is `decimo.word_list`. It is internal: the package
+   exports `Magnitude`, not `WordList` (PR #319).
+
+### 🩹 Fixed in v0.15.0
+
+1. **`BigFloat.root()` raised "Root degree is too large" for every degree** on
+   Mojo v1.1.0, `root(3)` included. Its guard read `n > Int(UInt32.MAX)`, and
+   v1.1 folds that constant to -1
+   ([modular/modular#7154](https://github.com/modular/modular/issues/7154)), so
+   the guard refused everything. The bound is thus written as a literal now 
+   (PR #318).
+1. The CLI build never took argmojo from the environment: its probe program
+   used `fn main()`, which v1.1 rejects, so it failed even where the package
+   was installed (PR #318).
+
+### 💥 Breaking in v0.15.0
+
+1. **Decimo requires Mojo v1.1.0**, pinned `>=1.1.0,<1.2.0`.
+
 ## 20260901 (v0.14.0)
 
 Decimo v0.14.0 is a **Python and optimization** release, on top of a base

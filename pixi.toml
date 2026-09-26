@@ -6,13 +6,13 @@ license = "Apache-2.0"
 name = "decimo"
 platforms = ["osx-arm64", "linux-64", "linux-aarch64"]
 readme = "README.md"
-version = "0.14.0"
+version = "0.15.0"
 
 [dependencies]
 # CLI argument parsing for the Decimo calculator. `pixi run buildcli`
 # falls back to the pinned upstream commit (see src/cli/ensure_argmojo.sh)
 # if the following line is commented out.
-# argmojo = ">=0.8.0,<0.9.0"
+argmojo = ">=0.9.0,<0.10.0"
 mojo = ">=1.1.0,<1.2.0" # Mojo language compiler and runtime
 python = ">=3.13" # For Python bindings and tests
 ruff = ">=0.15.0" # Python code formatter
@@ -102,7 +102,7 @@ dec_debug = """clear && pixi run package && cd benches/decimal128 \
 
 # Resolve argmojo for the CLI calculator: use the conda package if the
 # environment provides one, otherwise clone + precompile the pinned upstream
-# commit (release v0.8.0) into temp/argmojo.mojoc.
+# commit (release v0.9.0) into temp/argmojo.mojoc.
 # Overrides: DECIMO_ARGMOJO=conda|git, ARGMOJO_COMMIT=<sha>
 argmojo = "bash src/cli/ensure_argmojo.sh"
 
