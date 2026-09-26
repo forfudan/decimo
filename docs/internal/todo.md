@@ -481,9 +481,17 @@ Nothing to do here until Mojo grows the feature.
       wrappers on that pattern plus their registrations. Found while writing
       the v0.14.0 README; nothing tracked it before.
 
+- [ ] Close the elementary function set on `BigDecimal`: `arcsin`, `arccos`,
+      `arctan2`, the six hyperbolic functions, `expm1`, `log1p` and `hypot`.
+      Only `arctan` exists today, and there are no hyperbolic functions at
+      all. Cheap, and independent of everything below. Phase 0 of
+      `docs/plans/math_functions.md`.
+
 - [ ] Implement a complex number class `BigComplex` that uses `Decimal` for the
       real and imaginary parts. This will allow users to perform high-precision
-      complex number arithmetic.
+      complex number arithmetic. It gates the gamma and zeta families, which
+      are worth having mostly off the real line -- see
+      `docs/plans/math_functions.md`.
 
 - [ ] Implement different methods for adding decimo types with `Int` types so
       that an implicit conversion is not required.

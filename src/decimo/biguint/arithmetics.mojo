@@ -1062,12 +1062,12 @@ def add_by_word_inplace(mut x: BigUInt, y: BigUInt.Word) -> None:
     """
     var carry: BigUInt.Word = y
     for i in range(len(x.words)):
-        x.words[i] += carry
-        if x.words[i] <= BigUInt.BASE_MAX:
+        x.words.unsafe_set(i, x.words.unsafe_get(i) + carry)
+        if x.words.unsafe_get(i) <= BigUInt.BASE_MAX:
             return  # No carry, we can stop early
         else:
             carry = 1  # Cannot be more than 1
-            x.words[i] -= BigUInt.BASE
+            x.words.unsafe_set(i, x.words.unsafe_get(i) - BigUInt.BASE)
     else:
         x.words.append(BigUInt.Word(1))
 
@@ -1144,11 +1144,18 @@ def subtract_schoolbook(x: BigUInt, y: BigUInt) raises -> BigUInt:
     var borrow: BigUInt.Word = 0  # Can either be 0 or 1
 
     for i in range(len(y.words)):
-        if x.words[i] < borrow + y.words[i]:
-            result.words.append(x.words[i] + BigUInt.BASE - borrow - y.words[i])
+        if x.words.unsafe_get(i) < borrow + y.words.unsafe_get(i):
+            result.words.append(
+                x.words.unsafe_get(i)
+                + BigUInt.BASE
+                - borrow
+                - y.words.unsafe_get(i)
+            )
             borrow = 1  # Set borrow for the next word
         else:
-            result.words.append(x.words[i] - borrow - y.words[i])
+            result.words.append(
+                x.words.unsafe_get(i) - borrow - y.words.unsafe_get(i)
+            )
             borrow = 0  # No borrow for the next word
 
     # If x has more words than y, we need to handle the remaining words
@@ -1156,21 +1163,23 @@ def subtract_schoolbook(x: BigUInt, y: BigUInt) raises -> BigUInt:
     if borrow == 0:
         # If there is no borrow, we can just copy the remaining words
         for i in range(len(y.words), len(x.words)):
-            result.words.append(x.words[i])
+            result.words.append(x.words.unsafe_get(i))
 
     else:
         var no_borrow_idx: Int = 0
         # At this stage, borrow can only be 0 or 1
         for i in range(len(y.words), len(x.words)):
-            if x.words[i] >= borrow:
-                result.words.append(x.words[i] - borrow)
+            if x.words.unsafe_get(i) >= borrow:
+                result.words.append(x.words.unsafe_get(i) - borrow)
                 no_borrow_idx = i + 1
                 break  # No more borrow, we can stop early
-            else:  # x.words[i] == 0, borrow == 1
+            else:  # x.words.unsafe_get(i) == 0, borrow == 1
                 result.words.append(BigUInt.BASE - borrow)
 
         for i in range(no_borrow_idx, len(x.words)):
-            result.words.append(x.words[i])  # Copy the remaining words
+            result.words.append(
+                x.words.unsafe_get(i)
+            )  # Copy the remaining words
 
     result.remove_leading_empty_words()
     return result^
@@ -2182,14 +2191,18 @@ def multiply_slices_toom3(
             var pos = offset + i
             if pos >= len(result.words):
                 break
-            var s = UInt64(result.words[pos]) + UInt64(value.words[i]) + carry
-            result.words[pos] = BigUInt.Word(s % UInt64(BigUInt.BASE))
+            var s = (
+                UInt64(result.words.unsafe_get(pos))
+                + UInt64(value.words.unsafe_get(i))
+                + carry
+            )
+            result.words.unsafe_set(pos, BigUInt.Word(s % UInt64(BigUInt.BASE)))
             carry = s // UInt64(BigUInt.BASE)
         # Propagate remaining carry
         var pos = offset + len(value.words)
         while carry > 0 and pos < len(result.words):
-            var s = UInt64(result.words[pos]) + carry
-            result.words[pos] = BigUInt.Word(s % UInt64(BigUInt.BASE))
+            var s = UInt64(result.words.unsafe_get(pos)) + carry
+            result.words.unsafe_set(pos, BigUInt.Word(s % UInt64(BigUInt.BASE)))
             carry = s // UInt64(BigUInt.BASE)
             pos += 1
 
@@ -2222,8 +2235,8 @@ def multiply_by_word_inplace(mut x: BigUInt, y: BigUInt.Word):
     var carry = UInt128(0)
 
     for i in range(len(x.words)):
-        product = UInt128(x.words[i]) * y_wide + carry
-        x.words[i] = BigUInt.Word(product % BASE_WIDE)
+        product = UInt128(x.words.unsafe_get(i)) * y_wide + carry
+        x.words.unsafe_set(i, BigUInt.Word(product % BASE_WIDE))
         carry = product // BASE_WIDE
 
     if carry > 0:
@@ -2318,7 +2331,7 @@ def multiply_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
     # Add the original words times 10^number_of_remaining_digits
     if number_of_remaining_digits == 0:
         for i in range(len(x.words)):
-            result.words.append(x.words[i])
+            result.words.append(x.words.unsafe_get(i))
     else:  # number_of_remaining_digits > 0
         # `number_of_remaining_digits` runs from 1 to `DIGITS_PER_WORD - 1`,
         # so this is a lookup rather than the `if` chain it used to be: that
@@ -2331,7 +2344,9 @@ def multiply_by_power_of_ten(x: BigUInt, n: Int) -> BigUInt:
             multiplier *= 10
 
         for i in range(len(x.words)):
-            product = UInt128(x.words[i]) * UInt128(multiplier) + carry
+            product = (
+                UInt128(x.words.unsafe_get(i)) * UInt128(multiplier) + carry
+            )
             result.words.append(BigUInt.Word(product % UInt128(BigUInt.BASE)))
             carry = product // UInt128(BigUInt.BASE)
         # Add the last carry if it exists
@@ -2402,8 +2417,10 @@ def multiply_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
             multiplier *= 10
 
         for i in range(x_original_length):
-            product = UInt128(x.words[i]) * UInt128(multiplier) + carry
-            x.words[i] = BigUInt.Word(product % UInt128(BigUInt.BASE))
+            product = (
+                UInt128(x.words.unsafe_get(i)) * UInt128(multiplier) + carry
+            )
+            x.words.unsafe_set(i, BigUInt.Word(product % UInt128(BigUInt.BASE)))
             carry = product // UInt128(BigUInt.BASE)
 
         # Write the last carry, whether or not it is zero
@@ -2411,11 +2428,11 @@ def multiply_by_power_of_ten_inplace(mut x: BigUInt, n: Int):
 
         # Now we shift the words to the right by number_of_zero_words
         for i in range(len(x.words) - 1, number_of_zero_words - 1, -1):
-            x.words[i] = x.words[i - number_of_zero_words]
+            x.words.unsafe_set(i, x.words.unsafe_get(i - number_of_zero_words))
 
         # Fill the first number_of_zero_words with zeros
         for i in range(number_of_zero_words):
-            x.words[i] = BigUInt.Word(0)
+            x.words.unsafe_set(i, BigUInt.Word(0))
 
         # Remove the most significant zero word
         x.remove_leading_empty_words()
@@ -2508,10 +2525,10 @@ def multiply_by_power_of_base_inplace(mut x: BigUInt, n: Int):
     # Move the existing words to the right by n positions
     # x1, x2, x3, x4, _, _, _ -> 0, 0, 0, x1, x2, x3, x4
     for i in range(len(x.words) - 1, n - 1, -1):
-        x.words[i] = x.words[i - n]
+        x.words.unsafe_set(i, x.words.unsafe_get(i - n))
     # Fill the first n words with zeros
     for i in range(n):
-        x.words[i] = BigUInt.Word(0)
+        x.words.unsafe_set(i, BigUInt.Word(0))
 
     x.remove_leading_empty_words()
     return
@@ -2528,10 +2545,10 @@ def exact_divide_by_2_inplace(mut x: BigUInt):
     """
     var carry: BigUInt.Word = 0
     for i in range(len(x.words) - 1, -1, -1):
-        # carry is 0 or 1; carry * BASE + words[i] fits in BigUInt.Word
+        # carry is 0 or 1; carry * BASE + words.unsafe_get(i) fits in BigUInt.Word
         # because max = 1 * 10^18 + (10^18 - 1) = 1_999_999_999_999_999_999 < 2^64
-        var val = carry * BigUInt.Word(BigUInt.BASE) + x.words[i]
-        x.words[i] = val // 2
+        var val = carry * BigUInt.Word(BigUInt.BASE) + x.words.unsafe_get(i)
+        x.words.unsafe_set(i, val // 2)
         carry = val % 2
     x.remove_leading_empty_words()
 
@@ -2927,7 +2944,7 @@ def floor_divide_modulo_schoolbook(
             top_value += add_carry
         r_ptr[unsafe_offset=top] = BigUInt.Word(top_value - carry)
 
-        result.words[index_of_word] = quotient
+        result.words.unsafe_set(index_of_word, quotient)
 
     # Every quotient word has been subtracted out, so what is left of the
     # dividend below the divisor's width is the remainder. The words above it
@@ -3104,8 +3121,10 @@ def floor_divide_modulo_by_word(
     # never surfaces behind them. The indexed form is kept because it is also
     # bounds-checked under `-D ASSERT=all`.
     for i in range(len(x.words) - 2, -1, -1):
-        dividend = carry * UInt128(BigUInt.BASE) + UInt128(x.words[i])
-        result.words[i] = BigUInt.Word(dividend // y_wide)
+        dividend = carry * UInt128(BigUInt.BASE) + UInt128(
+            x.words.unsafe_get(i)
+        )
+        result.words.unsafe_set(i, BigUInt.Word(dividend // y_wide))
         carry = dividend % y_wide
 
     # `carry` is what is left of the dividend once every word has been
@@ -3161,8 +3180,10 @@ def floor_divide_by_word_inplace(mut x: BigUInt, y: BigUInt.Word) -> None:
 
     # Process the rest of the words
     for i in range(top - 1, -1, -1):
-        dividend = carry * UInt128(BigUInt.BASE) + UInt128(x.words[i])
-        x.words[i] = BigUInt.Word(dividend // y_wide)
+        dividend = carry * UInt128(BigUInt.BASE) + UInt128(
+            x.words.unsafe_get(i)
+        )
+        x.words.unsafe_set(i, BigUInt.Word(dividend // y_wide))
         carry = dividend % y_wide
 
 
@@ -3234,12 +3255,12 @@ def floor_divide_by_2_inplace(mut x: BigUInt) -> None:
     var is_carry: Bool = False
     for ith in range(len(x.words) - 1, -1, -1):
         if is_carry:
-            x.words[ith] += base
-        if x.words[ith] & 1:
+            x.words.unsafe_set(ith, x.words.unsafe_get(ith) + base)
+        if x.words.unsafe_get(ith) & 1:
             is_carry = True
         else:
             is_carry = False
-        x.words[ith] >>= 1
+        x.words.unsafe_set(ith, x.words.unsafe_get(ith) >> 1)
     x.remove_leading_empty_words()
 
 
@@ -3526,7 +3547,7 @@ def floor_divide_by_power_of_base_inplace(mut x: BigUInt, n: Int):
     # Forward shift is safe: dst index < src index, dst[i] is written
     # before src[i+1] is read.
     for i in range(keep):
-        x.words[i] = x.words[i + n]
+        x.words.unsafe_set(i, x.words.unsafe_get(i + n))
     x.words.shrink(keep)
 
 

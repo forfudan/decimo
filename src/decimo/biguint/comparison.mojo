@@ -55,9 +55,9 @@ def compare(x1: BigUInt, x2: BigUInt) -> Int8:
     # compare the words from the most significant to the least significant.
     var ith = min(len(x1.words), len(x2.words)) - 1
     while ith >= 0:
-        if x1.words[ith] > x2.words[ith]:
+        if x1.words.unsafe_get(ith) > x2.words.unsafe_get(ith):
             return Int8(1)
-        if x1.words[ith] < x2.words[ith]:
+        if x1.words.unsafe_get(ith) < x2.words.unsafe_get(ith):
             return Int8(-1)
         ith -= 1
 

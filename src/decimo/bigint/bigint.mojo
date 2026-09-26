@@ -476,9 +476,9 @@ struct BigInt(
             var remainder = UInt128(0)
             for i in range(len(div_words) - 1, -1, -1):
                 var temp = remainder * UInt128(BigUInt.BASE) + UInt128(
-                    div_words[i]
+                    div_words.unsafe_get(i)
                 )
-                div_words[i] = UInt64(temp >> 64)
+                div_words.unsafe_set(i, UInt64(temp >> 64))
                 remainder = temp & UInt128(~UInt64(0))
 
             # Remove leading zeros from dividend
@@ -794,7 +794,7 @@ struct BigInt(
 
         var first_word = True
         for i in range(len(self.words) - 1, -1, -1):
-            var word = self.words[i]
+            var word = self.words.unsafe_get(i)
             if first_word:
                 if word != 0:
                     result += hex(word)[byte=2:]
@@ -829,7 +829,7 @@ struct BigInt(
 
         var first_word = True
         for i in range(len(self.words) - 1, -1, -1):
-            var word = self.words[i]
+            var word = self.words.unsafe_get(i)
             if first_word:
                 if word != 0:
                     result += bin(word)[byte=2:]
@@ -1955,7 +1955,7 @@ struct BigInt(
         # this O(words) instead of O(set bits).
         var count = 0
         for i in range(len(self.words)):
-            count += Int(pop_count(self.words[i]))
+            count += Int(pop_count(self.words.unsafe_get(i)))
         return count
 
     def number_of_words(self) -> Int:
@@ -2071,9 +2071,9 @@ struct BigInt(
             var label = "word " + String(i) + ":"
             result += label + String(" ") * (col - label.byte_length())
             result += "0x" + decimo_str.rjust(
-                String(hex(self.words[i])[byte=2:]), 8, fillchar="0"
+                String(hex(self.words.unsafe_get(i))[byte=2:]), 8, fillchar="0"
             )
-            result += "  (" + String(self.words[i]) + ")\n"
+            result += "  (" + String(self.words.unsafe_get(i)) + ")\n"
 
         result += sep_line
         return result^
@@ -2467,7 +2467,7 @@ def _magnitude_to_chunks_simple(
     # Allocate dividend buffer and get raw pointer for fast inner loop.
     var dividend = Magnitude(capacity=eff_words)
     for i in range(eff_words):
-        dividend.append(words[i])
+        dividend.append(words.unsafe_get(i))
     var dp = dividend.unsafe_ptr()
 
     # Estimate the chunk count: ceil(bits * log10(2) / 18) + 1, with 78/259
@@ -2574,7 +2574,7 @@ def _magnitude_to_chunks_dc(
 
     var trimmed = Magnitude(capacity=eff_words)
     for i in range(eff_words):
-        trimmed.append(words[i])
+        trimmed.append(words.unsafe_get(i))
     var n = BigInt(raw_words=trimmed^, sign=False)
 
     # `2^max_level` words is an upper bound on the output length, so every
@@ -2702,7 +2702,7 @@ def _magnitude_to_decimal_dc(words: Magnitude, eff_words: Int) raises -> String:
     # Create unsigned BigInt from the magnitude words
     var trimmed = Magnitude(capacity=eff_words)
     for i in range(eff_words):
-        trimmed.append(words[i])
+        trimmed.append(words.unsafe_get(i))
     var n = BigInt(raw_words=trimmed^, sign=False)
 
     # Run the recursive D&C conversion

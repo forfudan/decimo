@@ -47,8 +47,10 @@ def compare_magnitudes(x1: BigInt, x2: BigInt) -> Int8:
 
     # Same number of words: compare from most-significant to least-significant
     for i in range(n1 - 1, -1, -1):
-        if x1.words[i] != x2.words[i]:
-            return Int8(1) if x1.words[i] > x2.words[i] else Int8(-1)
+        if x1.words.unsafe_get(i) != x2.words.unsafe_get(i):
+            return Int8(1) if x1.words.unsafe_get(i) > x2.words.unsafe_get(
+                i
+            ) else Int8(-1)
 
     return 0
 

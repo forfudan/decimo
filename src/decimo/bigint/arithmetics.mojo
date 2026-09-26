@@ -2697,8 +2697,10 @@ def multiply_by_word_inplace(mut x: BigInt, word: UInt64):
     var multiplier = UInt128(word)
     var carry: UInt64 = 0
     for j in range(len(x.words)):
-        var product = UInt128(x.words[j]) * multiplier + UInt128(carry)
-        x.words[j] = UInt64(product)
+        var product = UInt128(x.words.unsafe_get(j)) * multiplier + UInt128(
+            carry
+        )
+        x.words.unsafe_set(j, UInt64(product))
         carry = UInt64(product >> 64)
     if carry != 0:
         x.words.append(UInt64(carry))
@@ -2753,12 +2755,12 @@ def left_shift_inplace(mut x: BigInt, shift: Int):
     # Shift existing words (low to high, with carry propagation)
     if bit_shift == 0:
         for i in range(n):
-            new_words.append(x.words[i])
+            new_words.append(x.words.unsafe_get(i))
     else:
         var carry: UInt64 = 0
         var carry_shift = UInt64(64 - bit_shift)
         for i in range(n):
-            var word = x.words[i]
+            var word = x.words.unsafe_get(i)
             new_words.append((word << UInt64(bit_shift)) | carry)
             carry = word >> carry_shift
         if carry > 0:
@@ -2812,7 +2814,7 @@ def right_shift_inplace(mut x: BigInt, shift: Int):
         # Check fully-shifted-out words
         if not any_bits_lost:
             for i in range(min(word_shift, n)):
-                if x.words[i] != 0:
+                if x.words.unsafe_get(i) != 0:
                     any_bits_lost = True
                     break
 
@@ -2820,14 +2822,16 @@ def right_shift_inplace(mut x: BigInt, shift: Int):
     var new_len = n - word_shift
     if bit_shift == 0:
         for i in range(new_len):
-            x.words[i] = x.words[i + word_shift]
+            x.words.unsafe_set(i, x.words.unsafe_get(i + word_shift))
     else:
         for i in range(new_len):
-            var lo = x.words[i + word_shift] >> UInt64(bit_shift)
+            var lo = x.words.unsafe_get(i + word_shift) >> UInt64(bit_shift)
             var hi: UInt64 = 0
             if i + word_shift + 1 < n:
-                hi = x.words[i + word_shift + 1] << UInt64(64 - bit_shift)
-            x.words[i] = UInt64(lo | hi)
+                hi = x.words.unsafe_get(i + word_shift + 1) << UInt64(
+                    64 - bit_shift
+                )
+            x.words.unsafe_set(i, UInt64(lo | hi))
 
     # Truncate to new length in a single shrink call
     if len(x.words) > new_len:
@@ -2840,8 +2844,8 @@ def right_shift_inplace(mut x: BigInt, shift: Int):
     if x.sign and any_bits_lost:
         var carry: UInt64 = 1
         for i in range(len(x.words)):
-            var s = x.words[i] + carry
-            x.words[i] = s
+            var s = x.words.unsafe_get(i) + carry
+            x.words.unsafe_set(i, s)
             carry = UInt64(s < carry)
             if carry == 0:
                 break
@@ -3250,12 +3254,12 @@ def left_shift(x: BigInt, shift: Int) -> BigInt:
     # Shift the existing words
     if bit_shift == 0:
         for i in range(n):
-            result.append(x.words[i])
+            result.append(x.words.unsafe_get(i))
     else:
         var carry: UInt64 = 0
         var carry_shift = UInt64(64 - bit_shift)
         for i in range(n):
-            var word = x.words[i]
+            var word = x.words.unsafe_get(i)
             result.append((word << UInt64(bit_shift)) | carry)
             carry = word >> carry_shift
         if carry > 0:
@@ -3300,13 +3304,13 @@ def right_shift(x: BigInt, shift: Int) -> BigInt:
 
     if bit_shift == 0:
         for i in range(word_shift, n):
-            result.append(x.words[i])
+            result.append(x.words.unsafe_get(i))
     else:
         for i in range(word_shift, n):
-            var lo = x.words[i] >> UInt64(bit_shift)
+            var lo = x.words.unsafe_get(i) >> UInt64(bit_shift)
             var hi: UInt64 = 0
             if i + 1 < n:
-                hi = x.words[i + 1] << UInt64(64 - bit_shift)
+                hi = x.words.unsafe_get(i + 1) << UInt64(64 - bit_shift)
             result.append(lo | hi)
 
     # Leading zero words are left for the `_normalize()` below.
@@ -3325,7 +3329,7 @@ def right_shift(x: BigInt, shift: Int) -> BigInt:
         # Check fully-shifted-out words
         if not any_bits_lost:
             for i in range(min(word_shift, n)):
-                if x.words[i] != 0:
+                if x.words.unsafe_get(i) != 0:
                     any_bits_lost = True
                     break
 
@@ -3333,8 +3337,8 @@ def right_shift(x: BigInt, shift: Int) -> BigInt:
             # Round toward negative infinity by adding 1 to the magnitude
             var carry: UInt64 = 1
             for i in range(len(shifted.words)):
-                var s = shifted.words[i] + carry
-                shifted.words[i] = s
+                var s = shifted.words.unsafe_get(i) + carry
+                shifted.words.unsafe_set(i, s)
                 carry = UInt64(s < carry)
                 if carry == 0:
                     break
