@@ -2434,8 +2434,10 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         Returns:
             True if the slice of this BigUInt represents zero, False otherwise.
         """
+        # Checked indexing on purpose: the bounds come from the caller, and
+        # this method does not clamp them the way `from_slice()` does.
         for i in range(bounds[0], bounds[1]):
-            if self.words.unsafe_get(i) != 0:
+            if self.words[i] != 0:
                 return False
         return True
 
