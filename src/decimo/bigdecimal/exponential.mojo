@@ -114,6 +114,9 @@ def _reciprocal_sqrt_seed_f64(c: Float64) raises -> Float64:
 # - log(x: BigDecimal, precision: Int) -> BigDecimal
 # - log10(x: BigDecimal, precision: Int) -> BigDecimal
 # - ln_series_expansion(x: BigDecimal, precision: Int) -> BigDecimal
+# - expm1(x: BigDecimal, precision: Int) -> BigDecimal
+# - log1p(x: BigDecimal, precision: Int) -> BigDecimal
+# - hypot(x: BigDecimal, y: BigDecimal, precision: Int) -> BigDecimal
 # - compute_ln2(precision: Int) -> BigDecimal
 # - compute_ln1d25(precision: Int) -> BigDecimal
 # ===----------------------------------------------------------------------=== #
@@ -3042,3 +3045,333 @@ def compute_ln1d25(precision: Int) raises -> BigDecimal:
         fill_zeros_to_precision=False,
     )
     return result^
+
+
+# ===----------------------------------------------------------------------=== #
+# The small-argument forms, and the hypotenuse
+#
+# `expm1()` and `log1p()` exist because `exp(x) - 1` and `ln(1 + x)` lose their
+# answer near zero, each in its own way. `exp(x)` there is `1.000...0abc`, and
+# subtracting the one throws away the leading digits the answer was carried in.
+# `ln(1 + x)` loses it one step earlier: `1 + x` rounds to `1` as soon as `x`
+# falls below the working precision, and the logarithm of that is zero.
+#
+# Both are what the hyperbolic functions and their inverses are built from, so
+# the accuracy they keep here is the accuracy those inherit.
+# ===----------------------------------------------------------------------=== #
+
+
+comptime EXPM1_SLACK = 4
+"""Units in the last place `expm1()` may be off at the width it was asked for.
+
+Small arguments go through a series summed with its own guard digits; the rest
+is one `exp()` and an exact subtraction. `exp()` states four.
+"""
+
+comptime LOG1P_SLACK = 4
+"""Units in the last place `log1p()` may be off at the width it was asked for.
+
+Small arguments reach `ln_series_expansion()`, which is what `ln()` itself sums
+and what its own four is stated for; the rest is one `ln()` of an exact sum.
+"""
+
+comptime HYPOT_SLACK = 2
+"""Units in the last place `hypot()` may be off at the width it was asked for.
+
+The sum of squares is exact, so the only rounding is the square root's.
+"""
+
+
+def expm1(x: BigDecimal, precision: Int) raises -> BigDecimal:
+    """Calculates `exp(x) - 1` without losing the answer near zero.
+
+    Args:
+        x: The exponent.
+        precision: The number of significant digits for the result.
+
+    Returns:
+        `exp(x) - 1`, to `precision` significant digits of the difference
+        itself rather than of `exp(x)`.
+
+    Raises:
+        Error: Propagated from underlying arithmetic operations.
+
+    Notes:
+
+    For `|x| <= 1` the series `x + x^2/2! + x^3/3! + ...` is summed directly.
+    It has no constant term to cancel against, so a tiny argument keeps every
+    digit it came with: `expm1(1E-60)` is `1E-60` and not zero.
+
+    Above that, `exp(x) - 1` is taken as it reads. `exp(x)` is then at least
+    `e` or at most `1/e`, so the subtraction cannot discard more than the one
+    leading digit, and the exactness of the subtraction keeps the rest.
+    """
+    comptime BUFFER_DIGITS = 9  # guard digits, not a word width
+    var working_precision = precision + BUFFER_DIGITS
+
+    var bdec_1 = BigDecimal.from_raw_components(
+        BigUInt.Word(1), scale=0, sign=False
+    )
+
+    if x.is_zero():
+        # `expm1(0)` is exactly zero, which is the whole point of having it.
+        return BigDecimal.zero()
+
+    var result: BigDecimal
+    if x.compare_absolute(bdec_1) <= 0:
+        result = _expm1_series(x, working_precision)
+    else:
+        result = exp(x, working_precision).subtract(bdec_1)
+
+    result.round_to_precision_inplace(
+        precision,
+        RoundingMode.half_even(),
+        remove_extra_digit_due_to_rounding=True,
+        fill_zeros_to_precision=False,
+    )
+    return result^
+
+
+def _expm1_series(x: BigDecimal, working_precision: Int) raises -> BigDecimal:
+    """Sums `x + x^2/2! + x^3/3! + ...`, which is `exp(x) - 1`.
+
+    Args:
+        x: The exponent, with `|x| <= 1` so that the series converges.
+        working_precision: The precision to carry the terms at.
+
+    Returns:
+        The sum, accurate to `working_precision` less the last few digits.
+
+    Raises:
+        Error: Propagated from underlying arithmetic operations.
+
+    Notes:
+
+    The same recurrence `exp_taylor_series()` uses -- each term is the one
+    before it times `x/n` -- started at the linear term instead of at one. A
+    term beyond the working precision of the running sum cannot change it, and
+    that, rather than a term count, is what ends the loop.
+    """
+    var result = x.copy()
+    var term = x.copy()
+    var n: BigUInt.Word = 2
+
+    var max_number_of_terms = Int(Float64(working_precision) * 2.5) + 1
+    for _ in range(1, max_number_of_terms):
+        var factor = x.true_divide_inexact_by_word(n, working_precision)
+        bigdecimal_arithmetics.multiply_inplace(term, factor)
+        term.round_to_precision_inplace(
+            precision=working_precision,
+            rounding_mode=RoundingMode.half_up(),
+            remove_extra_digit_due_to_rounding=False,
+            fill_zeros_to_precision=False,
+        )
+        n += 1
+        result.add_inplace(term)
+        if term.is_zero() or (
+            term.adjusted() < result.adjusted() - working_precision
+        ):
+            break
+
+    result.round_to_precision_inplace(
+        precision=working_precision,
+        rounding_mode=RoundingMode.half_up(),
+        remove_extra_digit_due_to_rounding=False,
+        fill_zeros_to_precision=False,
+    )
+    return result^
+
+
+def log1p(x: BigDecimal, precision: Int) raises -> BigDecimal:
+    """Calculates `ln(1 + x)` without losing the answer near zero.
+
+    Args:
+        x: The value to add to one, greater than `-1`.
+        precision: The number of significant digits for the result.
+
+    Returns:
+        `ln(1 + x)`, to `precision` significant digits of the logarithm itself.
+
+    Raises:
+        ValueError: If `x <= -1`, where the logarithm is not real.
+        Error: Propagated from underlying arithmetic operations.
+
+    Notes:
+
+    For `|x| <= 1/2` this is `ln_series_expansion()`, which sums `ln(1 + z)`
+    from `z` rather than forming `1 + z` first. Nothing rounds the argument
+    away, so `log1p(1E-60)` is `1E-60` and not zero.
+
+    Above that, `1 + x` is formed exactly and handed to `ln()`. The sum is at
+    least `3/2` there, far enough from one that its logarithm keeps its digits.
+    """
+    comptime BUFFER_DIGITS = 9  # guard digits, not a word width
+    var working_precision = precision + BUFFER_DIGITS
+
+    var bdec_1 = BigDecimal.from_raw_components(
+        BigUInt.Word(1), scale=0, sign=False
+    )
+    var bdec_0d5 = BigDecimal.from_raw_components(
+        BigUInt.Word(5), scale=1, sign=False
+    )
+
+    var one_plus_x = bdec_1.add(x)
+    if one_plus_x.is_zero() or one_plus_x.sign:
+        raise ValueError(
+            message="log1p() is defined for x > -1.",
+            function="log1p()",
+        )
+
+    if x.is_zero():
+        # `log1p(0)` is exactly zero.
+        return BigDecimal.zero()
+
+    var result: BigDecimal
+    if x.compare_absolute(bdec_0d5) <= 0:
+        result = ln_series_expansion(x, working_precision)
+    else:
+        result = ln(one_plus_x, working_precision)
+
+    result.round_to_precision_inplace(
+        precision,
+        RoundingMode.half_even(),
+        remove_extra_digit_due_to_rounding=True,
+        fill_zeros_to_precision=False,
+    )
+    return result^
+
+
+def _rounded_magnitude(x: BigDecimal, precision: Int) raises -> BigDecimal:
+    """Returns `|x|` rounded half-even to `precision` digits."""
+    var result = abs(x)
+    result.round_to_precision_inplace(
+        precision,
+        RoundingMode.half_even(),
+        remove_extra_digit_due_to_rounding=True,
+        fill_zeros_to_precision=False,
+    )
+    return result^
+
+
+def hypot(x: BigDecimal, y: BigDecimal, precision: Int) raises -> BigDecimal:
+    """Calculates `sqrt(x^2 + y^2)`, the hypotenuse of the two legs.
+
+    Args:
+        x: One leg.
+        y: The other leg.
+        precision: The number of significant digits for the result.
+
+    Returns:
+        The hypotenuse, which is never negative.
+
+    Raises:
+        Error: Propagated from underlying arithmetic operations.
+
+    Notes:
+
+    In fixed-width floating point this function earns its place by avoiding an
+    intermediate `x^2` that overflows where the hypotenuse would not. Here the
+    exponent is unbounded and there is nothing to overflow, so the sum of
+    squares is simply taken exactly and rooted once. What it does carry is the
+    shortcut below: when one leg is negligible against the other, its square
+    cannot reach the digits asked for, and the answer is the larger leg.
+    """
+    if y.is_zero():
+        return _rounded_magnitude(x, precision)
+    if x.is_zero():
+        return _rounded_magnitude(y, precision)
+
+    # A leg whose square sits entirely below the last digit of the other's
+    # square contributes nothing. The squares differ by twice the difference
+    # of the adjusted exponents, so two digits of margin is a whole guard
+    # digit on the squares.
+    var larger = abs(x)
+    var smaller = abs(y)
+    if larger.compare_absolute(smaller) < 0:
+        swap(larger, smaller)
+    if 2 * (smaller.adjusted() - larger.adjusted()) < -(precision + 2):
+        return _rounded_magnitude(larger, precision)
+
+    return sqrt(
+        larger.multiply(larger).add(smaller.multiply(smaller)), precision
+    )
+
+
+def expm1_rounded(
+    x: BigDecimal, precision: Int, rounding_mode: RoundingMode
+) raises -> BigDecimal:
+    """Returns `expm1(x)` rounded to `precision` digits, decided not assumed.
+
+    Args:
+        x: The exponent.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The correctly rounded value.
+
+    Raises:
+        Error: Propagated from `expm1()`.
+    """
+    if x.is_zero():
+        # `expm1(0)` is exactly zero.
+        return expm1(x, precision)
+    return _round_by_deciding[expm1, EXPM1_SLACK](x, precision, rounding_mode)
+
+
+def log1p_rounded(
+    x: BigDecimal, precision: Int, rounding_mode: RoundingMode
+) raises -> BigDecimal:
+    """Returns `log1p(x)` rounded to `precision` digits, decided not assumed.
+
+    Args:
+        x: The value to add to one.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The correctly rounded value.
+
+    Raises:
+        Error: Propagated from `log1p()`.
+    """
+    if x.is_zero():
+        # `log1p(0)` is exactly zero.
+        return log1p(x, precision)
+    return _round_by_deciding[log1p, LOG1P_SLACK](x, precision, rounding_mode)
+
+
+def hypot_rounded(
+    x: BigDecimal,
+    y: BigDecimal,
+    precision: Int,
+    rounding_mode: RoundingMode,
+) raises -> BigDecimal:
+    """Returns `hypot(x, y)` rounded to `precision` digits, decided.
+
+    Args:
+        x: One leg.
+        y: The other leg.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The correctly rounded value.
+
+    Raises:
+        Error: Propagated from `hypot()`, and if the width doubles
+            `_ZIV_LIMIT` times without settling.
+
+    Notes:
+
+    There is no Ziv loop here and none is needed. The sum of squares is exact,
+    so the whole of the rounding belongs to `sqrt()`, which already decides its
+    own last digit and takes the mode. A hypotenuse that is exact -- the legs 3
+    and 4 give 5 -- sits on a boundary rather than beside one, and `sqrt()` is
+    where that is detected.
+    """
+    return sqrt(
+        abs(x).multiply(abs(x)).add(abs(y).multiply(abs(y))),
+        precision,
+        rounding_mode,
+    )
