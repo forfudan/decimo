@@ -341,3 +341,250 @@ a = "100"
 b = ""
 description = "Arctan of 100 (very large value, should approach π/2)"
 expected = "1.5607966601082313810249815754304718935372153471432"
+
+[[arcsin_tests]]
+a = "0"
+b = ""
+description = "Arcsin of 0"
+expected = "0.0"
+
+[[arcsin_tests]]
+a = "1"
+b = ""
+description = "Arcsin of 1 = pi/2"
+expected = "1.5707963267948966192313216916397514420985846996876"
+
+[[arcsin_tests]]
+a = "-1"
+b = ""
+description = "Arcsin of -1 = -pi/2"
+expected = "-1.5707963267948966192313216916397514420985846996876"
+
+[[arcsin_tests]]
+a = "0.5"
+b = ""
+description = "Arcsin of 0.5 = pi/6"
+expected = "0.52359877559829887307710723054658381403286156656252"
+
+[[arcsin_tests]]
+a = "-0.5"
+b = ""
+description = "Arcsin of -0.5"
+expected = "-0.52359877559829887307710723054658381403286156656252"
+
+[[arcsin_tests]]
+a = "0.25"
+b = ""
+description = "Arcsin of 0.25"
+expected = "0.25268025514207865348565743699371097225219373309684"
+
+[[arcsin_tests]]
+a = "0.1"
+b = ""
+description = "Arcsin of 0.1"
+expected = "0.10016742116155979634552317945269331856867597222963"
+
+[[arcsin_tests]]
+a = "0.9"
+b = ""
+description = "Arcsin of 0.9"
+expected = "1.1197695149986341866866770558453996158951621864033"
+
+[[arcsin_tests]]
+a = "0.99"
+b = ""
+description = "Arcsin of 0.99"
+expected = "1.4292568534704694004855323346647244271046017691478"
+
+[[arcsin_tests]]
+a = "0.9999999"
+b = ""
+description = "Arcsin near one"
+expected = "1.5703491131956698812456876557601361168371323572706"
+
+[[arcsin_tests]]
+a = "-0.9999999"
+b = ""
+description = "Arcsin near minus one"
+expected = "-1.5703491131956698812456876557601361168371323572706"
+
+[[arcsin_tests]]
+a = "0.99999999999999999999"
+b = ""
+description = "Arcsin very near one"
+expected = "1.5707963266534752629940121867594647185474171339099"
+
+[[arcsin_tests]]
+a = "0.0000000000000000000001"
+b = ""
+description = "Arcsin of a tiny value"
+expected = "1.0000000000000000000000000000000000000000000016667e-22"
+
+[[arcsin_tests]]
+a = "0.70710678118654752440084436210484903928483593768847"
+b = ""
+description = "Arcsin of 1/sqrt(2) = pi/4"
+expected = "0.78539816339744830961566084581987572104929234984377"
+
+[[arcsin_tests]]
+a = "0.86602540378443864676372317075293618347140262690519"
+b = ""
+description = "Arcsin of sqrt(3)/2 = pi/3"
+expected = "1.0471975511965977461542144610931676280657231331250"
+
+[[arccos_tests]]
+a = "1"
+b = ""
+description = "Arccos of 1 = 0"
+expected = "0.0"
+
+[[arccos_tests]]
+a = "-1"
+b = ""
+description = "Arccos of -1 = pi"
+expected = "3.1415926535897932384626433832795028841971693993751"
+
+[[arccos_tests]]
+a = "0"
+b = ""
+description = "Arccos of 0 = pi/2"
+expected = "1.5707963267948966192313216916397514420985846996876"
+
+[[arccos_tests]]
+a = "0.5"
+b = ""
+description = "Arccos of 0.5 = pi/3"
+expected = "1.0471975511965977461542144610931676280657231331250"
+
+[[arccos_tests]]
+a = "-0.5"
+b = ""
+description = "Arccos of -0.5 = 2pi/3"
+expected = "2.0943951023931954923084289221863352561314462662501"
+
+[[arccos_tests]]
+a = "0.25"
+b = ""
+description = "Arccos of 0.25"
+expected = "1.3181160716528179657456642546460404698463909665907"
+
+[[arccos_tests]]
+a = "0.9"
+b = ""
+description = "Arccos of 0.9"
+expected = "0.45102681179626243254464463579435182620342251328425"
+
+[[arccos_tests]]
+a = "-0.9"
+b = ""
+description = "Arccos of -0.9"
+expected = "2.6905658417935308059179987474851510579937468860909"
+
+[[arccos_tests]]
+a = "0.9999999"
+b = ""
+description = "Arccos near one"
+expected = "0.00044721359922673798563403587961532526145234241692909"
+
+[[arccos_tests]]
+a = "-0.9999999"
+b = ""
+description = "Arccos near minus one"
+expected = "3.1411454399905665004770093473998875589357170569582"
+
+[[arccos_tests]]
+a = "0.99999999999999999999"
+b = ""
+description = "Arccos very near one"
+expected = "0.00000000014142135623730950488028672355116756577770092676309"
+
+[[arccos_tests]]
+a = "0.0000000000000000000001"
+b = ""
+description = "Arccos of a tiny value"
+expected = "1.5707963267948966192312216916397514420985846996876"
+
+[[arccos_tests]]
+a = "0.70710678118654752440084436210484903928483593768847"
+b = ""
+description = "Arccos of 1/sqrt(2) = pi/4"
+expected = "0.78539816339744830961566084581987572104929234984378"
+
+[[arctan2_tests]]
+a = "1"
+b = "1"
+description = "Atan2 in the first quadrant = pi/4"
+expected = "0.78539816339744830961566084581987572104929234984378"
+
+[[arctan2_tests]]
+a = "1"
+b = "-1"
+description = "Atan2 in the second quadrant = 3pi/4"
+expected = "2.3561944901923449288469825374596271631478770495313"
+
+[[arctan2_tests]]
+a = "-1"
+b = "-1"
+description = "Atan2 in the third quadrant = -3pi/4"
+expected = "-2.3561944901923449288469825374596271631478770495313"
+
+[[arctan2_tests]]
+a = "-1"
+b = "1"
+description = "Atan2 in the fourth quadrant = -pi/4"
+expected = "-0.78539816339744830961566084581987572104929234984378"
+
+[[arctan2_tests]]
+a = "0"
+b = "2"
+description = "Atan2 on the positive x-axis = 0"
+expected = "0.0"
+
+[[arctan2_tests]]
+a = "0"
+b = "-2"
+description = "Atan2 on the negative x-axis = pi"
+expected = "3.1415926535897932384626433832795028841971693993751"
+
+[[arctan2_tests]]
+a = "3"
+b = "0"
+description = "Atan2 on the positive y-axis = pi/2"
+expected = "1.5707963267948966192313216916397514420985846996876"
+
+[[arctan2_tests]]
+a = "-3"
+b = "0"
+description = "Atan2 on the negative y-axis = -pi/2"
+expected = "-1.5707963267948966192313216916397514420985846996876"
+
+[[arctan2_tests]]
+a = "2"
+b = "3"
+description = "Atan2 of 2 over 3"
+expected = "0.58800260354756755124561108062508542760170724605592"
+
+[[arctan2_tests]]
+a = "-5"
+b = "0.5"
+description = "Atan2 of a steep negative slope"
+expected = "-1.4711276743037345918528755717617308518553063771832"
+
+[[arctan2_tests]]
+a = "0.0000000000000000000001"
+b = "-1"
+description = "Atan2 just above the negative x-axis"
+expected = "3.1415926535897932384625433832795028841971693993751"
+
+[[arctan2_tests]]
+a = "-0.0000000000000000000001"
+b = "-1"
+description = "Atan2 just below the negative x-axis"
+expected = "-3.1415926535897932384625433832795028841971693993751"
+
+[[arctan2_tests]]
+a = "1"
+b = "0.0000000000000000000001"
+description = "Atan2 just right of the positive y-axis"
+expected = "1.5707963267948966192312216916397514420985846996876"
+

@@ -25,7 +25,12 @@ from std import time
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
 import decimo.bigdecimal.constants as bigdecimal_constants
-from decimo.bigdecimal.exponential import _round_by_deciding
+from decimo.bigdecimal.exponential import (
+    _ZIV_LIMIT,
+    _ZIV_START,
+    _round_by_deciding,
+    _settled_answer,
+)
 import decimo.bigdecimal.exponential as bigdecimal_exponential
 from decimo.biguint.biguint import BigUInt
 from decimo.errors import ValueError
@@ -996,3 +1001,298 @@ def arctan_taylor_series(
         )
 
     return result^
+
+
+comptime INVERSE_TRIG_SLACK = 4
+"""Units in the last place `arcsin()`, `arccos()` and `arctan2()` may be off at
+the width they were asked for.
+
+Each reaches `arctan()` through a division and at most one square root, every
+step rounded once at twelve guard digits, so the error that survives the final
+rounding is the rounding itself. Four is what `arctan()` states, and none of
+these is further off than the `arctan()` inside it.
+"""
+
+
+def arcsin(x: BigDecimal, precision: Int) raises -> BigDecimal:
+    """Calculates the arcsine (inverse sine) of the number.
+
+    Args:
+        x: The value to take the arcsine of, in `[-1, 1]`.
+        precision: The number of significant digits for the result.
+
+    Returns:
+        The arcsine of x in radians, in the range `[-π/2, π/2]`.
+
+    Raises:
+        ValueError: If `|x| > 1`, where the result would not be real.
+        Error: Propagated from underlying arithmetic operations.
+
+    Notes:
+
+    `arcsin(x) = arctan(x / sqrt(1 - x^2))`, with `|x| = 1` taken separately
+    because the quotient there is unbounded.
+
+    The usual objection to this identity is that `1 - x^2` cancels as `|x|`
+    approaches one. It does not cost anything here: both the square and the
+    subtraction are exact, so the small difference that comes out is the exact
+    difference, and only the square root that follows rounds at all.
+    """
+    comptime BUFFER_DIGITS = 12  # guard digits, not a word width
+    var working_precision = precision + BUFFER_DIGITS
+
+    var bdec_1 = BigDecimal.from_raw_components(
+        BigUInt.Word(1), scale=0, sign=False
+    )
+    var bdec_2 = BigDecimal.from_raw_components(
+        BigUInt.Word(2), scale=0, sign=False
+    )
+
+    var against_one = x.compare_absolute(bdec_1)
+    if against_one > 0:
+        raise ValueError(
+            message="arcsin() is defined on [-1, 1].",
+            function="arcsin()",
+        )
+
+    if x.is_zero():
+        # `arcsin(0)` is exactly zero.
+        return BigDecimal.zero()
+
+    var result: BigDecimal
+    if against_one == 0:
+        # `arcsin(1) = π/2`, the one argument the identity cannot take.
+        result = bigdecimal_constants.pi(
+            precision=working_precision
+        ).true_divide(bdec_2, precision=working_precision)
+        if x.sign:
+            result = -result
+    else:
+        var one_minus_square = bdec_1.subtract(x.multiply(x))
+        var cosine = bigdecimal_exponential.sqrt_via_reciprocal_iteration(
+            one_minus_square, working_precision
+        )
+        result = arctan(
+            x.true_divide(cosine, precision=working_precision),
+            working_precision,
+        )
+
+    result.round_to_precision_inplace(
+        precision,
+        RoundingMode.half_even(),
+        remove_extra_digit_due_to_rounding=True,
+        fill_zeros_to_precision=False,
+    )
+    return result^
+
+
+def arccos(x: BigDecimal, precision: Int) raises -> BigDecimal:
+    """Calculates the arccosine (inverse cosine) of the number.
+
+    Args:
+        x: The value to take the arccosine of, in `[-1, 1]`.
+        precision: The number of significant digits for the result.
+
+    Returns:
+        The arccosine of x in radians, in the range `[0, π]`.
+
+    Raises:
+        ValueError: If `|x| > 1`, where the result would not be real.
+        Error: Propagated from underlying arithmetic operations.
+
+    Notes:
+
+    `arccos(x) = 2 * arctan(sqrt((1 - x) / (1 + x)))`, rather than the shorter
+    `π/2 - arcsin(x)`. Near `x = 1` the answer is small, and the shorter form
+    reaches it as the difference of two values that nearly cancel, which costs
+    as many digits as the answer is small. This form computes it directly: the
+    quotient is near zero there, and so is the arctangent of its square root.
+
+    Both ends are taken separately: at `x = 1` the quotient is zero and at
+    `x = -1` its divisor is.
+    """
+    comptime BUFFER_DIGITS = 12  # guard digits, not a word width
+    var working_precision = precision + BUFFER_DIGITS
+
+    var bdec_1 = BigDecimal.from_raw_components(
+        BigUInt.Word(1), scale=0, sign=False
+    )
+    var bdec_2 = BigDecimal.from_raw_components(
+        BigUInt.Word(2), scale=0, sign=False
+    )
+
+    var against_one = x.compare_absolute(bdec_1)
+    if against_one > 0:
+        raise ValueError(
+            message="arccos() is defined on [-1, 1].",
+            function="arccos()",
+        )
+
+    var result: BigDecimal
+    if against_one == 0:
+        # `arccos(1)` is exactly zero and `arccos(-1)` is π.
+        if x.sign:
+            result = bigdecimal_constants.pi(precision=working_precision)
+        else:
+            return BigDecimal.zero()
+    else:
+        var ratio = bdec_1.subtract(x).true_divide(
+            bdec_1.add(x), precision=working_precision
+        )
+        var tangent = bigdecimal_exponential.sqrt_via_reciprocal_iteration(
+            ratio, working_precision
+        )
+        result = bdec_2.multiply(arctan(tangent, working_precision))
+
+    result.round_to_precision_inplace(
+        precision,
+        RoundingMode.half_even(),
+        remove_extra_digit_due_to_rounding=True,
+        fill_zeros_to_precision=False,
+    )
+    return result^
+
+
+def arctan2(y: BigDecimal, x: BigDecimal, precision: Int) raises -> BigDecimal:
+    """Calculates the angle of the point `(x, y)` from the positive x-axis.
+
+    Args:
+        y: The ordinate of the point.
+        x: The abscissa of the point.
+        precision: The number of significant digits for the result.
+
+    Returns:
+        The angle in radians, in the range `(-π, π]`. It is the quadrant the
+        two signs put the point in, which `arctan(y / x)` on its own cannot
+        tell: that quotient loses the signs.
+
+    Raises:
+        Error: Propagated from underlying arithmetic operations.
+
+    Notes:
+
+    `arctan2(0, 0)` is zero. The pair carries no angle at all, and zero is
+    what `math.atan2` answers; decimo has no signed zero to distinguish the
+    four answers CPython gives there.
+    """
+    comptime BUFFER_DIGITS = 12  # guard digits, not a word width
+    var working_precision = precision + BUFFER_DIGITS
+
+    var bdec_2 = BigDecimal.from_raw_components(
+        BigUInt.Word(2), scale=0, sign=False
+    )
+
+    var result: BigDecimal
+    if x.is_zero():
+        if y.is_zero():
+            return BigDecimal.zero()
+        # On the y-axis the angle is a right angle either way.
+        result = bigdecimal_constants.pi(
+            precision=working_precision
+        ).true_divide(bdec_2, precision=working_precision)
+        if y.sign:
+            result = -result
+    else:
+        result = arctan(
+            y.true_divide(x, precision=working_precision), working_precision
+        )
+        if x.sign:
+            # Left of the y-axis the quotient's arctangent lands a half turn
+            # away, on the side the ordinate's sign chooses.
+            var half_turn = bigdecimal_constants.pi(precision=working_precision)
+            if y.sign:
+                result = result.subtract(half_turn)
+            else:
+                result = result.add(half_turn)
+
+    result.round_to_precision_inplace(
+        precision,
+        RoundingMode.half_even(),
+        remove_extra_digit_due_to_rounding=True,
+        fill_zeros_to_precision=False,
+    )
+    return result^
+
+
+def arcsin_rounded(
+    x: BigDecimal, precision: Int, rounding_mode: RoundingMode
+) raises -> BigDecimal:
+    """Returns `arcsin(x)` rounded to `precision` digits, decided not assumed.
+
+    Args:
+        x: The value to take the arcsine of.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The correctly rounded value.
+
+    Raises:
+        Error: Propagated from `arcsin()`.
+    """
+    if x.is_zero():
+        # `arcsin(0)` is exactly zero.
+        return arcsin(x, precision)
+    return _round_by_deciding[arcsin, INVERSE_TRIG_SLACK](
+        x, precision, rounding_mode
+    )
+
+
+def arccos_rounded(
+    x: BigDecimal, precision: Int, rounding_mode: RoundingMode
+) raises -> BigDecimal:
+    """Returns `arccos(x)` rounded to `precision` digits, decided not assumed.
+
+    Args:
+        x: The value to take the arccosine of.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The correctly rounded value.
+
+    Raises:
+        Error: Propagated from `arccos()`.
+    """
+    return _round_by_deciding[arccos, INVERSE_TRIG_SLACK](
+        x, precision, rounding_mode
+    )
+
+
+def arctan2_rounded(
+    y: BigDecimal,
+    x: BigDecimal,
+    precision: Int,
+    rounding_mode: RoundingMode,
+) raises -> BigDecimal:
+    """Returns `arctan2(y, x)` rounded to `precision` digits, decided.
+
+    Args:
+        y: The ordinate of the point.
+        x: The abscissa of the point.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The correctly rounded value.
+
+    Raises:
+        Error: Propagated from `arctan2()`, and if the width doubles
+            `_ZIV_LIMIT` times without settling.
+    """
+    var width = precision + _ZIV_START
+    for _ in range(_ZIV_LIMIT):
+        var settled = _settled_answer(
+            arctan2(y, x, width),
+            width,
+            INVERSE_TRIG_SLACK,
+            precision,
+            rounding_mode,
+        )
+        if settled:
+            return settled.take()
+        width += width - precision
+    raise Error(
+        "the rounding of this angle could not be decided; the kernel is"
+        " further from the true value than its stated bound allows"
+    )
