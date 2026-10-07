@@ -2323,6 +2323,21 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
         """
         return biguint_exponential.sqrt(self)
 
+    def root(self, n: Int) raises -> Self:
+        """Returns the integer `n`-th root of this BigUInt.
+        See `root()` for more information.
+
+        Args:
+            n: The degree of the root, which must be positive.
+
+        Returns:
+            The largest `s` with `s^n` at most this value.
+
+        Raises:
+            ValueError: If `n` is not positive.
+        """
+        return biguint_exponential.root(self, n)
+
     def isqrt(self) -> Self:
         """Returns the square root of this number.
         It is equal to `sqrt()`.

@@ -1472,6 +1472,22 @@ struct BigInt(
         return bigint_arithmetics.truncate_divide(self, other)
 
     @always_inline
+    def ceil_divide(self, other: Self) raises -> Self:
+        """Divides this number by `other`, rounding the quotient up.
+        See `ceil_divide()` for more information.
+
+        Args:
+            other: The divisor.
+
+        Returns:
+            The quotient, rounded toward positive infinity.
+
+        Raises:
+            ZeroDivisionError: If the divisor is zero.
+        """
+        return bigint_arithmetics.ceil_divide(self, other)
+
+    @always_inline
     def floor_modulo(self, other: Self) raises -> Self:
         """Performs a floor modulo of two BigInt numbers.
         See `floor_modulo()` for more information.
@@ -1571,6 +1587,51 @@ struct BigInt(
             Error: If the value is negative.
         """
         return bigint_exponential.sqrt(self)
+
+    def root(self, n: Int) raises -> Self:
+        """Returns the integer `n`-th root of this BigInt.
+        See `root()` for more information.
+
+        Args:
+            n: The degree of the root, which must be positive.
+
+        Returns:
+            The root, truncated toward zero and carrying the sign of this
+            value: `BigInt("-9").root(3)` is `-2`.
+
+        Raises:
+            ValueError: If `n` is not positive, or if this value is negative
+                and `n` is even.
+        """
+        return bigint_exponential.root(self, n)
+
+    def sqrt_rem(self) raises -> Tuple[Self, Self]:
+        """Returns the integer square root of this BigInt and the remainder.
+        See `sqrt_rem()` for more information.
+
+        Returns:
+            A tuple `(s, r)` with `s * s + r` equal to this value.
+
+        Raises:
+            ValueError: If the value is negative.
+        """
+        return bigint_exponential.sqrt_rem(self)
+
+    def binomial(self, k: Int) raises -> Self:
+        """Returns the number of `k`-combinations of this many items.
+        See `binomial()` for more information.
+
+        Args:
+            k: The number of items to choose.
+
+        Returns:
+            `C(n, k)`, which is zero when `k` is larger than this value.
+
+        Raises:
+            ValueError: If this value or `k` is negative, or either is too
+                large to compute.
+        """
+        return bigint_special.binomial(self, k)
 
     def factorial(self) raises -> Self:
         """Returns the factorial of this value.

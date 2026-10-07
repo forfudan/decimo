@@ -27,6 +27,7 @@ from std import math
 
 import decimo.bigint.arithmetics as bigint_arithmetics
 from decimo.bigint.bigint import BigInt, Magnitude
+import decimo.biguint.exponential as biguint_exponential
 from decimo.errors import ValueError
 from decimo.utility import isqrt_uint128, isqrt_uint64
 
@@ -457,6 +458,81 @@ in the shift that rescales `r` - so the doubling of correct bits falls a little
 short of exact. Four bits per step covers that with room to spare, and costs
 four bits of width on operands tens of thousands of bits wide.
 """
+
+
+def sqrt_rem(x: BigInt) raises -> Tuple[BigInt, BigInt]:
+    """Returns the integer square root of `x` and what it leaves behind.
+
+    Args:
+        x: The value to take the root of. Must be non-negative.
+
+    Returns:
+        A tuple `(s, r)` with `s * s + r == x` and `0 <= r <= 2 * s`, which
+        is the pair GMP calls `mpz_sqrtrem`.
+
+    Raises:
+        ValueError: If `x` is negative.
+        Error: Propagated from the square root.
+
+    Notes:
+
+    The remainder is not recovered afterwards by squaring the root. The
+    Karatsuba recursion in `_sqrtrem()` already carries it, so asking for
+    both costs no more than asking for the root alone.
+    """
+    if x.sign:
+        raise ValueError(
+            message="Square root of a negative number is not real.",
+            function="sqrt_rem()",
+        )
+    if x.is_zero():
+        return (BigInt.zero(), BigInt.zero())
+
+    var remainder = Magnitude()
+    var root = _sqrtrem(x.words.as_span(), remainder)
+    return (
+        BigInt(raw_words=root^, sign=False),
+        BigInt(raw_words=remainder^, sign=False),
+    )
+
+
+def root(x: BigInt, n: Int) raises -> BigInt:
+    """Returns the integer `n`-th root of `x`, truncated toward zero.
+
+    Args:
+        x: The value to take the root of.
+        n: The degree of the root, which must be positive.
+
+    Returns:
+        The root with the sign of `x`, truncated toward zero: the cube root
+        of -9 is -2, since -2 cubed is -8 and -3 cubed is past -9.
+
+    Raises:
+        ValueError: If `n` is not positive, or if `x` is negative and `n` is
+            even, where no real root exists.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    Truncation toward zero rather than downward is what makes the sign a
+    matter of taking the root of the magnitude and putting the sign back. The
+    magnitude's root is `BigUInt`'s.
+    """
+    if n <= 0:
+        raise ValueError(
+            message="The degree of a root must be positive.",
+            function="root()",
+        )
+    if x.sign and n % 2 == 0:
+        raise ValueError(
+            message=(
+                "An even root of a negative number is not real; use an odd"
+                " degree or a non-negative value."
+            ),
+            function="root()",
+        )
+    var magnitude = biguint_exponential.root(x.to_biguint(), n)
+    return BigInt.from_biguint(magnitude^, sign=x.sign)
 
 
 def isqrt(x: BigInt) raises -> BigInt:
