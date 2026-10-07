@@ -31,6 +31,7 @@ import decimo.bigdecimal.comparison as bigdecimal_comparison
 import decimo.bigdecimal.constants as bigdecimal_constants
 from decimo.bigdecimal.exponential import MathCache
 import decimo.bigdecimal.exponential as bigdecimal_exponential
+import decimo.bigdecimal.hyperbolic as bigdecimal_hyperbolic
 import decimo.bigdecimal.rounding as bigdecimal_rounding
 import decimo.bigdecimal.special as bigdecimal_special
 import decimo.bigdecimal.trigonometric as bigdecimal_trigonometric
@@ -2835,6 +2836,143 @@ struct BigDecimal(
         """
         return bigdecimal_exponential.hypot_rounded(
             self, other, precision, rounding_mode
+        )
+
+    def sinh(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the hyperbolic sine of the BigDecimal number.
+
+        Args:
+            precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Decided rather than
+                approximated; see `_round_by_deciding()`.
+
+        Returns:
+            The hyperbolic sine of this value.
+
+        Raises:
+            Error: If the underlying computation fails.
+        """
+        return bigdecimal_hyperbolic.sinh_rounded(
+            self, precision, rounding_mode
+        )
+
+    def cosh(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the hyperbolic cosine of the BigDecimal number.
+
+        Args:
+            precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Decided rather than
+                approximated; see `_round_by_deciding()`.
+
+        Returns:
+            The hyperbolic cosine of this value, never below one.
+
+        Raises:
+            Error: If the underlying computation fails.
+        """
+        return bigdecimal_hyperbolic.cosh_rounded(
+            self, precision, rounding_mode
+        )
+
+    def tanh(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the hyperbolic tangent of the BigDecimal number.
+
+        Args:
+            precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Decided rather than
+                approximated; see `_round_by_deciding()`.
+
+        Returns:
+            The hyperbolic tangent of this value. Mathematically this lies
+            in `(-1, 1)`; at a finite precision an argument large enough that
+            the shortfall falls below the last digit returns exactly one,
+            except under the modes that round toward zero.
+
+        Raises:
+            Error: If the underlying computation fails.
+        """
+        return bigdecimal_hyperbolic.tanh_rounded(
+            self, precision, rounding_mode
+        )
+
+    def arcsinh(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the inverse hyperbolic sine of the BigDecimal number.
+
+        Args:
+            precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Decided rather than
+                approximated; see `_round_by_deciding()`.
+
+        Returns:
+            The inverse hyperbolic sine of this value.
+
+        Raises:
+            Error: If the underlying computation fails.
+        """
+        return bigdecimal_hyperbolic.arcsinh_rounded(
+            self, precision, rounding_mode
+        )
+
+    def arccosh(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the inverse hyperbolic cosine of the BigDecimal number.
+
+        Args:
+            precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Decided rather than
+                approximated; see `_round_by_deciding()`.
+
+        Returns:
+            The inverse hyperbolic cosine of this value, never negative.
+
+        Raises:
+            ValueError: If the value is below one.
+            Error: If the underlying computation fails.
+        """
+        return bigdecimal_hyperbolic.arccosh_rounded(
+            self, precision, rounding_mode
+        )
+
+    def arctanh(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the inverse hyperbolic tangent of the BigDecimal number.
+
+        Args:
+            precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Decided rather than
+                approximated; see `_round_by_deciding()`.
+
+        Returns:
+            The inverse hyperbolic tangent of this value.
+
+        Raises:
+            ValueError: If the value is outside `(-1, 1)`.
+            Error: If the underlying computation fails.
+        """
+        return bigdecimal_hyperbolic.arctanh_rounded(
+            self, precision, rounding_mode
         )
 
     # === Arithmetic operations === #
