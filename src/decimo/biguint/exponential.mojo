@@ -225,6 +225,15 @@ def root(x: BigUInt, n: Int) raises -> BigUInt:
         return x.copy()
 
     var digits = x.number_of_digits()
+
+    # A degree past the value's size can only answer one: `x < 10^digits` and
+    # `10^digits <= 2^(4 * digits)`, so `2^n > x` once `n >= 4 * digits` and
+    # even two is too large a root. The test also keeps `n` away from the
+    # arithmetic below, where `power()` refuses an exponent of a billion or
+    # more and `digits + n` would overflow for an `n` near `Int.MAX`.
+    if n >= 4 * digits:
+        return BigUInt.one()
+
     var guess_digits = (digits + n - 1) // n
     var s = BigUInt.power_of_10(guess_digits)
 

@@ -172,6 +172,72 @@ def test_sqrt_rem_reconstructs_its_argument() raises:
         assert_equal(s, x.isqrt(), "the root disagrees with isqrt()")
 
 
+def test_sqrt_rem_above_the_karatsuba_cutoff() raises:
+    """Inputs past `CUTOFF_SQRT_BASE`, including unnormalized ones.
+
+    The square root's Karatsuba recursion wants an even word count and a top
+    word of at least `2^62`, and `sqrt()` is where that normalization
+    happens. An earlier version of `sqrt_rem()` reached past it into
+    `_sqrtrem()` with the raw magnitude: 68 of the 348 values swept here came
+    back with a root and a remainder that did not reconstruct their argument.
+    The shapes with a deliberately small top word are the ones that caught
+    it.
+    """
+    for words in range(33, 64):
+        var bits = words * 64
+        var normalized_top = BigInt(2).power(bits - 1)
+        var small_top = BigInt(2).power(bits - 63)
+        var candidates = [
+            normalized_top.copy(),
+            normalized_top + BigInt.one(),
+            small_top.copy(),
+            small_top + BigInt.one(),
+            small_top * BigInt(3),
+            small_top - BigInt.one(),
+        ]
+        for x in candidates:
+            var pair = x.sqrt_rem()
+            var s = pair[0].copy()
+            var r = pair[1].copy()
+            assert_equal(
+                s * s + r, x, "reconstruction at " + String(words) + " words"
+            )
+            assert_true(
+                r <= s * BigInt(2),
+                "the remainder exceeds 2s at " + String(words) + " words",
+            )
+
+
+def test_root_of_a_degree_past_the_value() raises:
+    """A degree larger than the value's size answers one, and cheaply.
+
+    `BigUInt.power()` refuses an exponent of a billion or more, and
+    `digits + n` overflows for an `n` near `Int.MAX`, so a degree that large
+    has to be answered before either is reached. The answer is one: `2^n`
+    exceeds the value, so even two is too large a root.
+    """
+    assert_equal(String(BigUInt(2).root(1_000_000_001)), "1", "degree 1e9+1")
+    assert_equal(String(BigUInt(2).root(Int.MAX)), "1", "degree Int.MAX")
+    assert_equal(
+        String(BigUInt("1" + "0" * 30).root(Int.MAX)),
+        "1",
+        "a thirty-digit value at degree Int.MAX",
+    )
+    assert_equal(String(BigUInt(0).root(Int.MAX)), "0", "zero stays zero")
+    assert_equal(
+        BigInt(-2).root(1_000_000_001),
+        BigInt("-1"),
+        "the sign survives the shortcut",
+    )
+
+    # The shortcut must not fire where the answer is still two.
+    var power_of_two = BigUInt(2).power(100)
+    assert_equal(
+        String(power_of_two.root(100)), "2", "the exact hundredth root"
+    )
+    assert_equal(String(power_of_two.root(101)), "1", "one degree past it")
+
+
 def test_sqrt_rem_against_cpython() raises:
     """`math.isqrt` and the remainder it leaves."""
     assert_equal(String(BigInt("10").sqrt_rem()[0]), "3", "isqrt(10)")

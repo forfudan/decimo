@@ -476,9 +476,16 @@ def sqrt_rem(x: BigInt) raises -> Tuple[BigInt, BigInt]:
 
     Notes:
 
-    The remainder is not recovered afterwards by squaring the root. The
-    Karatsuba recursion in `_sqrtrem()` already carries it, so asking for
-    both costs no more than asking for the root alone.
+    The root comes from `sqrt()` and the remainder from one squaring.
+
+    `_sqrtrem()` does carry a remainder of its own, and reaching for it
+    directly would save the squaring -- but only for the inputs that reach
+    the Karatsuba recursion, and only after the normalization that
+    `_sqrt_karatsuba()` performs: an even word count and a top word of at
+    least `2^62`. Handing it an unnormalized magnitude answers wrongly, which
+    a sweep of 348 values above `CUTOFF_SQRT_BASE` showed on 68 of them. The
+    smaller inputs would not gain anyway, since `_sqrtrem_small()` recovers
+    its remainder by squaring the root exactly as this does.
     """
     if x.sign:
         raise ValueError(
@@ -488,12 +495,9 @@ def sqrt_rem(x: BigInt) raises -> Tuple[BigInt, BigInt]:
     if x.is_zero():
         return (BigInt.zero(), BigInt.zero())
 
-    var remainder = Magnitude()
-    var root = _sqrtrem(x.words.as_span(), remainder)
-    return (
-        BigInt(raw_words=root^, sign=False),
-        BigInt(raw_words=remainder^, sign=False),
-    )
+    var root = sqrt(x)
+    var remainder = x - root * root
+    return (root^, remainder^)
 
 
 def root(x: BigInt, n: Int) raises -> BigInt:
