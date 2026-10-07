@@ -16,7 +16,7 @@ means:
   platform, rebuilding with `mpfr.h` included would provide a compile-time size
   check.
 - **Runtime**: If MPFR is installed, `mpfrw_available()` returns 1 and all
-  operations work. If not installed, it returns 0 and BigFloat raises a clear
+  operations work. If not installed, it returns 0 and MPF raises a clear
   error.
 
 ## Build
@@ -110,4 +110,4 @@ with the length Mojo believed it had sent.
 ## Environment Variables
 
 - `DECIMO_NOGMP=1` — Force-disable MPFR loading even if installed. Useful for
-  testing the error `BigFloat` raises when MPFR is not there.
+  testing the error `MPF` raises when MPFR is not there.

@@ -1,10 +1,10 @@
 #!/bin/bash
-# examples/run_bigfloat.sh — Quick build & run for a single BigFloat-using Mojo file.
+# examples/run_mpf.sh — Quick build & run for a single MPF-using Mojo file.
 #
 # Usage (via pixi):
 #   pixi run bf <file.mojo>
 # Or directly:
-#   bash examples/run_bigfloat.sh <file.mojo>
+#   bash examples/run_mpf.sh <file.mojo>
 #
 # What it does:
 #   1. Ensures the GMP/MPFR C wrapper (libdecimo_gmp_wrapper) is built.

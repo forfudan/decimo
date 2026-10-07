@@ -14,15 +14,15 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-"""Implements the BigFloat type: arbitrary-precision binary floating-point.
+"""Implements the MPF type: arbitrary-precision binary floating-point.
 
-BigFloat wraps a single MPFR handle via a C wrapper. Every arithmetic and
+MPF wraps a single MPFR handle via a C wrapper. Every arithmetic and
 transcendental operation is a single MPFR call. Requires MPFR at runtime.
 
 Usage:
-    from decimo.bigfloat.bigfloat import BigFloat
+    from decimo.mpf.mpf import MPF
 
-    var x = BigFloat("3.14159", precision=1000)
+    var x = MPF("3.14159", precision=1000)
     var r = x.sqrt()
     var bd = r.to_bigdecimal(1000)
 
@@ -38,7 +38,9 @@ from std.ffi import c_char, external_call
 from std.memory import Pointer
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
-from decimo.bigfloat.mpfr_wrapper import (
+from decimo.biguint.biguint import BigUInt
+from decimo.errors import ConversionError, RuntimeError, ValueError
+from decimo.mpf.mpfr_wrapper import (
     mpfrw_abs,
     mpfrw_add,
     mpfrw_available,
@@ -64,8 +66,6 @@ from decimo.bigfloat.mpfr_wrapper import (
     mpfrw_sub,
     mpfrw_tan,
 )
-from decimo.biguint.biguint import BigUInt
-from decimo.errors import ConversionError, RuntimeError, ValueError
 from decimo.traits import Rootable
 
 # Guard bits added to user-requested precision to absorb binary↔decimal rounding.
@@ -76,16 +76,11 @@ comptime _BITS_PER_DIGIT: Int = 4
 
 # Default precision in decimal digits, same as BigDecimal.
 comptime PRECISION: Int = 28
-"""Default precision in decimal digits for BigFloat."""
+"""Default precision in decimal digits for MPF."""
 
-# Short alias, like BDec for BigDecimal.
-comptime BFlt = BigFloat
-"""Alias for `BigFloat`."""
-# Short alias, like Decimal for BigDecimal.
-# Mojo's built-in floating-point types are all with number suffixes
-# (e.g., `Float32`, `Float64`), so `Float` is available for BigFloat.
-comptime Float = BigFloat
-"""Alias for `BigFloat`."""
+# The short aliases `BFlt` and `Float` that this type used to carry are
+# deliberately not here. They belong to the name `BigFloat`, which is being
+# kept for a float written in Mojo rather than borrowed from MPFR.
 
 
 def _dps_to_bits(precision: Int) -> Int:
@@ -113,20 +108,20 @@ def _read_c_string(address: Int) -> String:
 
 
 # ===----------------------------------------------------------------------=== #
-# BigFloat
+# MPF
 # ===----------------------------------------------------------------------=== #
 
 
-struct BigFloat(Comparable, Movable, Rootable, Writable):
+struct MPF(Comparable, Movable, Rootable, Writable):
     """Arbitrary-precision binary floating-point type backed by MPFR.
 
-    Each BigFloat owns a single MPFR handle (index into the C wrapper's pool).
+    Each MPF owns a single MPFR handle (index into the C wrapper's pool).
     Precision is specified in decimal digits and converted to bits internally.
     Arithmetic and transcendental operations are single MPFR calls.
 
-    BigFloat is Movable but not Copyable. Transfer ownership with `^`:
+    MPF is Movable but not Copyable. Transfer ownership with `^`:
 
-        var a = BigFloat("2.0", 100)
+        var a = MPF("2.0", 100)
         var b = a^  # moves a into b; a is consumed
     """
 
@@ -140,7 +135,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
     # ===------------------------------------------------------------------=== #
 
     def __init__(out self, value: String, precision: Int = PRECISION) raises:
-        """Creates a BigFloat from a decimal string.
+        """Creates a MPF from a decimal string.
 
         Args:
             value: A decimal number string (e.g. "3.14159", "-1.5e10").
@@ -154,22 +149,22 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         if precision < 0:
             raise ValueError(
                 message="Precision must be non-negative",
-                function="BigFloat.__init__()",
+                function="MPF.__init__()",
             )
         if not mpfrw_available():
             raise RuntimeError(
                 message=(
-                    "BigFloat requires MPFR (brew install mpfr / apt"
+                    "MPF requires MPFR (brew install mpfr / apt"
                     " install libmpfr-dev)"
                 ),
-                function="BigFloat.__init__()",
+                function="MPF.__init__()",
             )
         var bits = _dps_to_bits(precision)
         self.handle = mpfrw_init(bits)
         if self.handle < 0:
             raise RuntimeError(
                 message="MPFR handle pool exhausted",
-                function="BigFloat.__init__()",
+                function="MPF.__init__()",
             )
         self.precision = precision
         var s_bytes = value.as_bytes()
@@ -182,32 +177,32 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
             mpfrw_clear(self.handle)
             raise ConversionError(
                 message="Invalid number string: " + value,
-                function="BigFloat.__init__()",
+                function="MPF.__init__()",
             )
 
     def __init__(out self, value: Int, precision: Int = PRECISION) raises:
-        """Creates a BigFloat from an integer.
+        """Creates a MPF from an integer.
 
         Args:
             value: The integer to convert.
             precision: The number of significant decimal digits.
 
         Raises:
-            ConversionError: If the integer cannot be represented as a BigFloat.
+            ConversionError: If the integer cannot be represented as a MPF.
         """
         self = Self(String(value), precision)
 
     def __init__(
         out self, decimal: BigDecimal, precision: Int = PRECISION
     ) raises:
-        """Creates a BigFloat from a BigDecimal.
+        """Creates a MPF from a BigDecimal.
 
         Args:
             decimal: The `BigDecimal` to convert.
             precision: The number of significant decimal digits.
 
         Raises:
-            ConversionError: If the BigDecimal string cannot be parsed as a BigFloat.
+            ConversionError: If the BigDecimal string cannot be parsed as a MPF.
         """
         self = Self(decimal.to_string(), precision)
 
@@ -226,7 +221,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
     # ===------------------------------------------------------------------=== #
 
     def __init__(out self, *, deinit move: Self):
-        """Moves a BigFloat, transferring handle ownership.
+        """Moves a MPF, transferring handle ownership.
 
         Args:
             move: The instance to move from.
@@ -247,7 +242,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         """Exports the value as a decimal string.
 
         Args:
-            digits: Number of significant digits. Defaults to the BigFloat's
+            digits: Number of significant digits. Defaults to the MPF's
                 precision.
 
         Returns:
@@ -261,7 +256,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         if address == 0:
             raise ConversionError(
                 message="Failed to export string",
-                function="BigFloat.to_string()",
+                function="MPF.to_string()",
             )
         var result = _read_c_string(address)
         mpfrw_free_str(address)
@@ -277,11 +272,11 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
             writer: The writer instance.
         """
         if self.handle < 0:
-            writer.write("BigFloat(<moved>)")
+            writer.write("MPF(<moved>)")
             return
         var address = mpfrw_get_str(self.handle, Int32(self.precision))
         if address == 0:
-            writer.write("BigFloat(<error>)")
+            writer.write("MPF(<error>)")
             return
         var s = _read_c_string(address)
         mpfrw_free_str(address)
@@ -297,22 +292,22 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
             writer: The writer instance.
         """
         if self.handle < 0:
-            writer.write('BigFloat("<moved>")')
+            writer.write('MPF("<moved>")')
             return
         var address = mpfrw_get_str(self.handle, Int32(self.precision))
         if address == 0:
-            writer.write('BigFloat("<error>")')
+            writer.write('MPF("<error>")')
             return
         var s = _read_c_string(address)
         mpfrw_free_str(address)
-        writer.write('BigFloat("', s, '")')
+        writer.write('MPF("', s, '")')
 
     # ===------------------------------------------------------------------=== #
     # Conversion
     # ===------------------------------------------------------------------=== #
 
     def to_bigdecimal(self, precision: Int = -1) raises -> BigDecimal:
-        """Converts this BigFloat to a BigDecimal.
+        """Converts this MPF to a BigDecimal.
 
         Uses MPFR's raw digit export to build a BigDecimal directly,
         bypassing full string parsing for efficiency.
@@ -324,7 +319,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
 
         Args:
             precision: Number of significant decimal digits for the conversion.
-                Defaults to the BigFloat's own precision.
+                Defaults to the MPF's own precision.
 
         Returns:
             A BigDecimal with the requested number of significant digits.
@@ -347,7 +342,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         if address == 0:
             raise ConversionError(
                 message="mpfr_get_str failed",
-                function="BigFloat.to_bigdecimal()",
+                function="MPF.to_bigdecimal()",
             )
 
         # 2. Single memcpy into a Mojo-owned buffer
@@ -403,7 +398,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
     # ===------------------------------------------------------------------=== #
 
     def __eq__(self, other: Self) -> Bool:
-        """Checks whether two BigFloat values are equal.
+        """Checks whether two MPF values are equal.
 
         Args:
             other: The value to compare against.
@@ -414,7 +409,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         return mpfrw_cmp(self.handle, other.handle) == 0
 
     def __ne__(self, other: Self) -> Bool:
-        """Checks whether two BigFloat values are not equal.
+        """Checks whether two MPF values are not equal.
 
         Args:
             other: The value to compare against.
@@ -489,7 +484,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
-                function="BigFloat.__neg__()",
+                function="MPF.__neg__()",
             )
         mpfrw_neg(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
@@ -507,7 +502,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
-                function="BigFloat.__abs__()",
+                function="MPF.__abs__()",
             )
         mpfrw_abs(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
@@ -517,7 +512,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
     # ===------------------------------------------------------------------=== #
 
     def __add__(self, other: Self) raises -> Self:
-        """Adds two BigFloat values.
+        """Adds two MPF values.
 
         Args:
             other: The right-hand side operand.
@@ -533,13 +528,13 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
-                function="BigFloat.__add__()",
+                function="MPF.__add__()",
             )
         mpfrw_add(h, self.handle, other.handle)
         return Self(_handle=h, _precision=prec)
 
     def __sub__(self, other: Self) raises -> Self:
-        """Subtracts two BigFloat values.
+        """Subtracts two MPF values.
 
         Args:
             other: The right-hand side operand.
@@ -555,13 +550,13 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
-                function="BigFloat.__sub__()",
+                function="MPF.__sub__()",
             )
         mpfrw_sub(h, self.handle, other.handle)
         return Self(_handle=h, _precision=prec)
 
     def __mul__(self, other: Self) raises -> Self:
-        """Multiplies two BigFloat values.
+        """Multiplies two MPF values.
 
         Args:
             other: The right-hand side operand.
@@ -577,13 +572,13 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
-                function="BigFloat.__mul__()",
+                function="MPF.__mul__()",
             )
         mpfrw_mul(h, self.handle, other.handle)
         return Self(_handle=h, _precision=prec)
 
     def __truediv__(self, other: Self) raises -> Self:
-        """Divides two BigFloat values.
+        """Divides two MPF values.
 
         Args:
             other: The right-hand side operand.
@@ -599,7 +594,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
-                function="BigFloat.__truediv__()",
+                function="MPF.__truediv__()",
             )
         mpfrw_div(h, self.handle, other.handle)
         return Self(_handle=h, _precision=prec)
@@ -635,7 +630,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
-                function="BigFloat.sqrt()",
+                function="MPF.sqrt()",
             )
         mpfrw_sqrt(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
@@ -653,7 +648,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
-                function="BigFloat.exp()",
+                function="MPF.exp()",
             )
         mpfrw_exp(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
@@ -671,7 +666,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
-                function="BigFloat.ln()",
+                function="MPF.ln()",
             )
         mpfrw_log(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
@@ -689,7 +684,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
-                function="BigFloat.sin()",
+                function="MPF.sin()",
             )
         mpfrw_sin(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
@@ -707,7 +702,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
-                function="BigFloat.cos()",
+                function="MPF.cos()",
             )
         mpfrw_cos(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
@@ -725,7 +720,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
-                function="BigFloat.tan()",
+                function="MPF.tan()",
             )
         mpfrw_tan(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
@@ -747,7 +742,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
-                function="BigFloat.power()",
+                function="MPF.power()",
             )
         mpfrw_pow(h, self.handle, exponent.handle)
         return Self(_handle=h, _precision=prec)
@@ -770,7 +765,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         if n <= 0:
             raise ValueError(
                 message="Cannot compute non-positive root.",
-                function="BigFloat.root()",
+                function="MPF.root()",
             )
         # The degree reaches MPFR as a `UInt32`. Without this bound a larger
         # `n` would wrap and quietly compute a different root. The bound is a
@@ -778,7 +773,7 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         if n > 4_294_967_295:
             raise ValueError(
                 message="Root degree is too large.",
-                function="BigFloat.root()",
+                function="MPF.root()",
             )
         return self.root(UInt32(n))
 
@@ -798,20 +793,20 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
-                function="BigFloat.root()",
+                function="MPF.root()",
             )
         mpfrw_rootn_ui(h, self.handle, n)
         return Self(_handle=h, _precision=self.precision)
 
     @staticmethod
-    def pi(precision: Int = PRECISION) raises -> BigFloat:
+    def pi(precision: Int = PRECISION) raises -> MPF:
         """Returns π to the specified number of decimal digits.
 
         Args:
             precision: The number of significant decimal digits.
 
         Returns:
-            A `BigFloat` containing π at the requested precision.
+            A `MPF` containing π at the requested precision.
 
         Raises:
             ValueError: If the precision is negative.
@@ -820,21 +815,21 @@ struct BigFloat(Comparable, Movable, Rootable, Writable):
         if precision < 0:
             raise ValueError(
                 message="Precision must be non-negative",
-                function="BigFloat.pi()",
+                function="MPF.pi()",
             )
         if not mpfrw_available():
             raise RuntimeError(
                 message=(
-                    "BigFloat requires MPFR (brew install mpfr / apt"
+                    "MPF requires MPFR (brew install mpfr / apt"
                     " install libmpfr-dev)"
                 ),
-                function="BigFloat.pi()",
+                function="MPF.pi()",
             )
         var h = mpfrw_init(_dps_to_bits(precision))
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
-                function="BigFloat.pi()",
+                function="MPF.pi()",
             )
         mpfrw_const_pi(h)
-        return BigFloat(_handle=h, _precision=precision)
+        return MPF(_handle=h, _precision=precision)

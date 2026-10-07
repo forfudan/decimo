@@ -1,15 +1,15 @@
-from decimo import BigFloat
+from decimo import MPF
 
 
 def main() raises:
-    var a = BigFloat("123456789.123456789", precision=28)
-    var b = BigFloat("1234.56789", precision=28)
+    var a = MPF("123456789.123456789", precision=28)
+    var b = MPF("1234.56789", precision=28)
 
     # === Basic Arithmetic === #
     print(a + b)  # 123458023.691346789
     print(a - b)  # 123455554.555566789
     print(a * b)  # 152415787654.32099750190521
-    print(a / (b + BigFloat("1")))  # 99919.0656560820708357913866
+    print(a / (b + MPF("1")))  # 99919.0656560820708357913866
 
     # === Exponential Functions === #
     print(a.sqrt())  # 11111.11106611111096943055498

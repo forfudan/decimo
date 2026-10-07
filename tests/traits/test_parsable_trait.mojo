@@ -28,7 +28,7 @@ def _parse_all[
 
     The bound is `Movable` rather than `Copyable` because nothing here
     copies, and because `Parsable` is meant to reach types like
-    `BigFloat` that move without copying.
+    `MPF` that move without copying.
     """
     var out = List[T](capacity=len(tokens))
     for token in tokens:

@@ -30,12 +30,12 @@ own `Int` understands it: `/` truncates toward zero and stays in the type, and
 separate operator that this trait does not require.
 
 `Parsable` is separate from `Numeric` because the two capabilities are
-independent. `BigFloat` parses but is `Movable` without being `Copyable`, so it
+independent. `MPF` parses but is `Movable` without being `Copyable`, so it
 can never be `Numeric`; a numeric type with no decimal spelling is equally
 imaginable. Splitting them lets each consumer ask for what it actually uses.
 
 `Rootable` is separate for the same reason, and the evidence is sharper. Two
-types here have a square root and can never be `Numeric`: `BigFloat`, again for
+types here have a square root and can never be `Numeric`: `MPF`, again for
 want of `Copyable`, and `BigUInt`, which is unsigned and so has no `__neg__`.
 Folding `sqrt` into `Numeric` would leave both unable to advertise a capability
 they demonstrably have, and would oblige every future numeric type to grow one.
@@ -50,7 +50,7 @@ conforms too.
 here hands back an owned `Self`. A caller that stores such a result, or returns
 it onward, moves it; without the bound each consumer would have to spell
 `T: Numeric & Movable` to do the obvious thing with a result. The two are
-separate capabilities in this codebase (`BigFloat` is `Movable` but not
+separate capabilities in this codebase (`MPF` is `Movable` but not
 `Copyable`) so requiring both is a real statement, and one all three
 conforming types already satisfy.
 """
@@ -162,7 +162,7 @@ trait Rootable(Deinitable, Movable):
     What the root means is the implementing type's business. On an integral
     type it truncates -- `BigInt("10").sqrt()` is `3` -- exactly as
     `Numeric.__truediv__` truncates there. A negative value is the type's
-    business too: four of the five implementations raise, and `BigFloat`
+    business too: four of the five implementations raise, and `MPF`
     returns `nan`, because it has a `nan` and every other function it offers
     returns one there as well. A caller that cannot accept either should bound
     on a type that does not do it.
@@ -170,7 +170,7 @@ trait Rootable(Deinitable, Movable):
     The supertraits are `Deinitable` and `Movable`, and no more. `sqrt` hands
     back an owned `Self`, so a caller that stores or returns that result moves
     it, and something has to destroy it. `Copyable` is pointedly absent:
-    `BigFloat` is `Movable` without it, and requiring it would exclude a type
+    `MPF` is `Movable` without it, and requiring it would exclude a type
     that has had a square root all along.
     """
 
@@ -187,7 +187,7 @@ trait Rootable(Deinitable, Movable):
             Error: If `self` is negative and the type has no value standing
                 for a root it cannot give, or if the root is not
                 representable. A type that has such a value returns it
-                instead -- `BigFloat("-4").sqrt()` is `nan` -- so generic
+                instead -- `MPF("-4").sqrt()` is `nan` -- so generic
                 code must tolerate either outcome.
         """
         ...

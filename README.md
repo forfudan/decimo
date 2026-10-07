@@ -28,7 +28,7 @@ plus `pi()`, `e()` and a 128-bit decimal type. Install it with
 | `BigInt`     | `BInt`            | Equivalent to Python's `int`             | Base-2^64    |
 | `BigDecimal` | `BDec`, `Decimal` | Equivalent to Python's `decimal.Decimal` | Base-10^18   |
 | `Decimal128` | `Dec128`          | 128-bit fixed-precision decimal type     | 32-bit words |
-| `BigFloat`   | `Float`           | Arbitrary-precision floating-point type  | MPFR/GMP     |
+| `MPF`   | `Float`           | Arbitrary-precision floating-point type  | MPFR/GMP     |
 
 <!--
 [![Stars](https://img.shields.io/github/stars/forfudan/decimo?style=flat)](https://github.com/forfudan/decimo/stargazers)
@@ -74,10 +74,10 @@ The core types are[^auxiliary]:
   supporting up to 29 significant digits with a maximum of 28 decimal
   places[^fixed], which is a Mojo-native equivalent of C#'s `System.Decimal` or
   Rust's `rust_decimal`.
-- An arbitrary-precision floating-point implementation (`BigFloat`) backed by
+- An arbitrary-precision floating-point implementation (`MPF`) backed by
   the GNU MPFR library, supporting computations with configurable precision and
   a wide exponent range. Unlike `BigDecimal`, which uses base-10 arithmetic,
-  `BigFloat` uses binary floating-point internally. This type is optional and
+  `MPF` uses binary floating-point internally. This type is optional and
   requires MPFR/GMP to be installed on the user's system.
 <!-- - An arbitrary-precision exact rational number type (`Rational`) represented as a reduced fraction of two `BigInt`s (numerator and denominator). It supports exact arithmetic and comparisons without any loss of precision, making it ideal for applications that require precise fractional calculations. -->
 
@@ -645,7 +645,7 @@ decimo/
 │   │   ├── bigint/               #   Arbitrary-precision signed integer (BigInt)
 │   │   ├── bigint10/             #   Base-10 signed integer (BigInt10)
 │   │   ├── biguint/              #   Base-10 unsigned integer (BigUInt)
-│   │   ├── bigfloat/             #   Arbitrary-precision binary float (MPFR)
+│   │   ├── mpf/             #   Arbitrary-precision binary float (MPFR)
 │   │   ├── rational/             #   Exact rational number (Rational)
 │   │   ├── decimal128/           #   128-bit fixed-precision decimal (Dec128)
 │   │   ├── expression/           #   Expression engine behind `decimo.eval()`
@@ -734,7 +734,7 @@ If you find Decimo useful, consider listing it in your citations.
 This repository and its contributions are licensed under the Apache License
 v2.0.
 
-The `BigFloat` type optionally uses the
+The `MPF` type optionally uses the
 [GNU MPFR Library](https://www.mpfr.org/) (LGPLv3+) and
 [GMP](https://gmplib.org/) (LGPLv3+ or GPLv2+) at runtime. Decimo does not
 include or distribute any MPFR/GMP source code or binaries — they are loaded via

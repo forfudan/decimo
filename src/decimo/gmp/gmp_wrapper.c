@@ -274,7 +274,7 @@ void mpfrw_free_str(char *s) {
 }
 
 /* ===----------------------------------------------------------------------=== *
- * Raw digit export via mpfr_get_str (for fast BigFloat → BigDecimal)
+ * Raw digit export via mpfr_get_str (for fast MPF → BigDecimal)
  *
  * p_get_str is mpfr_get_str resolved at runtime via dlsym.  It returns a
  * pure digit string plus a separate base-10 exponent:

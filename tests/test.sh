@@ -22,7 +22,7 @@
 #   numerals    numeral chinese → Numeral system tests
 #   traits      numeric num     → Trait conformance tests (`Numeric`,
 #                                 `Parsable`, `Rootable`)
-#   bigfloat    bfloat float    → BigFloat tests (requires MPFR)
+#   mpf         mpfr        → MPF tests (requires MPFR)
 #   toml                        → TOML parser tests
 #   cli                         → CLI calculator tests
 #   python      py              → Python binding tests
@@ -263,8 +263,8 @@ run_numerals()    { run_mojo_suite numerals; }
 run_traits()      { run_mojo_suite traits; }
 run_toml()        { run_mojo_suite toml; }
 
-run_bigfloat() {
-    # BigFloat tests require the C wrapper (libdecimo_gmp_wrapper) and MPFR.
+run_mpf() {
+    # MPF tests require the C wrapper (libdecimo_gmp_wrapper) and MPFR.
     ensure_decimo_package
     local WRAPPER_DIR="src/decimo/gmp"
     local WRAPPER_LIB
@@ -283,9 +283,9 @@ run_bigfloat() {
     cleanup() { rm -f "$TMPBIN"; }
     trap cleanup EXIT
 
-    for f in tests/bigfloat/*.mojo; do
+    for f in tests/mpf/*.mojo; do
         echo "=== $f ==="
-        TMPBIN=$(mktemp /tmp/decimo_test_bigfloat_XXXXXX)
+        TMPBIN=$(mktemp /tmp/decimo_test_mpf_XXXXXX)
         pixi run mojo build -I tests --debug-level=line-tables \
             -Xlinker -L./"$WRAPPER_DIR" -Xlinker -ldecimo_gmp_wrapper \
             -o "$TMPBIN" "$f"
@@ -540,7 +540,7 @@ resolve() {
         expression|expr|eval)     echo "run_expression" ;;
         numerals|numeral|chinese) echo "run_numerals" ;;
         traits|numeric|num)      echo "run_traits" ;;
-        bigfloat|bfloat|float)    echo "run_bigfloat" ;;
+        mpf|mpfr)                echo "run_mpf" ;;
         toml)                     echo "run_toml" ;;
         cli)                      echo "run_cli" ;;
         python|py)                echo "run_python" ;;
@@ -564,7 +564,7 @@ list_suites() {
     printf "  %-28s %s\n" "expression, expr, eval"      "Expression engine tests"
     printf "  %-28s %s\n" "numerals, numeral, chinese"  "Numeral system tests"
     printf "  %-28s %s\n" "traits, numeric, num"        "Trait conformance tests"
-    printf "  %-28s %s\n" "bigfloat, bfloat, float"     "BigFloat tests (requires MPFR)"
+    printf "  %-28s %s\n" "mpf, mpfr"               "MPF tests (requires MPFR)"
     printf "  %-28s %s\n" "toml"                        "TOML parser tests"
     printf "  %-28s %s\n" "cli"                         "CLI calculator tests"
     printf "  %-28s %s\n" "python, py"                  "Python binding tests"

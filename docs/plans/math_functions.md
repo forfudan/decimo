@@ -61,7 +61,7 @@ Getting the order wrong means writing the same functions twice.
    summation allocates per term — inline storage in `WordList` covers short
    values, not a thousand-digit accumulator. Either an internal mutable
    scratch type, or run the kernels in binary and convert at the boundary.
-   Binary is faster for transcendentals, but `BigFloat` needs MPFR on the
+   Binary is faster for transcendentals, but `MPF` needs MPFR on the
    system, which the main package cannot require. **This gates phase 3 and is
    decided in phase 1.**
 
@@ -125,7 +125,7 @@ for first. Nothing here needs complex numbers.
 
 Two independent references, both already available:
 
-- **MPFR**, through decimo's own `BigFloat`, for the elementary functions it
+- **MPFR**, through decimo's own `MPF`, for the elementary functions it
   implements. MPFR is correctly rounded, so this checks the last digit rather
   than the value alone.
 - **mpmath**, at a precision well above the one under test, for everything
