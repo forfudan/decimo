@@ -202,7 +202,10 @@ def tanh(x: BigDecimal, precision: Int) raises -> BigDecimal:
         precision: The number of significant digits for the result.
 
     Returns:
-        The hyperbolic tangent of x, in `(-1, 1)`.
+        The hyperbolic tangent of x. Mathematically this lies in `(-1, 1)`;
+        at a finite precision an argument past `_saturation_magnitude()`
+        falls short of one by less than the last digit, and the value
+        returned there is exactly one.
 
     Raises:
         Error: Propagated from underlying arithmetic operations.
@@ -448,6 +451,72 @@ def arctanh(x: BigDecimal, precision: Int) raises -> BigDecimal:
     return result^
 
 
+def _saturated_tanh(
+    precision: Int, rounding_mode: RoundingMode, negative: Bool
+) raises -> BigDecimal:
+    """Returns `tanh` for an argument past `_saturation_magnitude(precision)`.
+
+    Args:
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+        negative: Whether the argument was negative.
+
+    Returns:
+        The correctly rounded value, which is one only for the modes that
+        round that way.
+
+    Raises:
+        Error: Propagated from the construction of the result.
+
+    Notes:
+
+    `tanh` never reaches one: it falls short by `2e^-2|x|`, and past the bound
+    that shortfall is below `10^-(precision + 2)`, which is well under half a
+    unit in the last place. So the true value sits strictly between the
+    largest representable value below one and one itself, and which of the two
+    is the answer is decided by the mode alone:
+
+    - the three nearest modes take one, the shortfall being under half a unit;
+    - `UP` rounds away from zero, so it takes one as well;
+    - `CEILING` takes one above zero and the value below one under it;
+    - `FLOOR` is the mirror of `CEILING`;
+    - `DOWN` rounds toward zero, so it always takes the value below one.
+
+    Returning one for every mode, as reading a half-even kernel result would,
+    is wrong for `DOWN` and for one side of each directed mode.
+    """
+    var one = BigDecimal.from_raw_components(
+        BigUInt.Word(1), scale=0, sign=False
+    )
+    # The largest value below one at this precision: `0.99...9`, which is
+    # `1 - 10^-precision`, formed exactly.
+    var below_one = one.subtract(
+        BigDecimal.from_raw_components(
+            BigUInt.Word(1), scale=precision, sign=False
+        )
+    )
+
+    var takes_one: Bool
+    if (
+        rounding_mode == RoundingMode.ROUND_HALF_EVEN
+        or rounding_mode == RoundingMode.ROUND_HALF_UP
+        or rounding_mode == RoundingMode.ROUND_HALF_DOWN
+        or rounding_mode == RoundingMode.ROUND_UP
+    ):
+        takes_one = True
+    elif rounding_mode == RoundingMode.ROUND_CEILING:
+        takes_one = not negative
+    elif rounding_mode == RoundingMode.ROUND_FLOOR:
+        takes_one = negative
+    else:  # ROUND_DOWN, toward zero
+        takes_one = False
+
+    var result = one^ if takes_one else below_one^
+    if negative:
+        result = -result
+    return result^
+
+
 def sinh_rounded(
     x: BigDecimal, precision: Int, rounding_mode: RoundingMode
 ) raises -> BigDecimal:
@@ -513,19 +582,17 @@ def tanh_rounded(
 
     Notes:
 
-    A saturated argument returns exactly one, which sits on a boundary rather
-    than beside one, so it is answered by the kernel directly.
+    Saturation is a property of the argument, not of what the kernel returns.
+    `tanh(12)` is `0.99999999992...`, which rounds half-even to one at nine
+    digits while still being visibly short of it, and an inward-directed mode
+    has to keep that. Reading the kernel's output would conflate the two, so
+    the argument is tested instead and the saturated answer is derived from
+    the mode; see `_saturated_tanh()`.
     """
     if x.is_zero():
         return tanh(x, precision)
-    var saturated = tanh(x, precision)
-    if (
-        saturated.compare_absolute(
-            BigDecimal.from_raw_components(BigUInt.Word(1), scale=0, sign=False)
-        )
-        == 0
-    ):
-        return saturated^
+    if x.compare_absolute(_saturation_magnitude(precision)) > 0:
+        return _saturated_tanh(precision, rounding_mode, x.sign)
     return _round_by_deciding[tanh, HYPERBOLIC_SLACK](
         x, precision, rounding_mode
     )

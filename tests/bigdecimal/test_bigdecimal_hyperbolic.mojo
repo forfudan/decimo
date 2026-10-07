@@ -310,7 +310,11 @@ def test_the_small_arguments_survive() raises:
 
 
 def test_the_even_and_odd_symmetries() raises:
-    """`cosh` is even, the other five are odd."""
+    """`cosh` is even and four of the rest are odd.
+
+    `arccosh` is neither: its real domain is `[1, inf)`, so it has nothing to
+    say about `-x`. The four tested here are the ones that do.
+    """
     for x in [BDec("1E-30"), BDec("0.5"), BDec("1"), BDec("4")]:
         assert_equal(
             cosh(x, WIDTH), cosh(-x, WIDTH), "cosh is even at " + String(x)
@@ -359,6 +363,71 @@ def test_tanh_saturates_instead_of_computing_a_huge_exponential() raises:
         tanh(BDec("50"), WIDTH) < BDec("1"),
         "tanh(50) at fifty digits should still be under one",
     )
+
+
+def test_tanh_saturation_respects_the_rounding_mode() raises:
+    """A saturated `tanh` is one only for the modes that round that way.
+
+    `tanh` never reaches one, so an inward-directed mode has to return the
+    largest value below it. Two arguments are checked, because they take
+    different routes: `12` is inside the saturation bound and goes through the
+    Ziv loop, while `1E6` is past it and is answered analytically. Both have
+    to agree about what each mode does.
+
+    This is the case an earlier version got wrong. It read the kernel's
+    half-even output, saw one, and returned it for every mode -- which is the
+    right answer for four of the seven and wrong for the rest.
+    """
+    var below = BDec("0.999999999")
+    var one = BDec("1")
+    for argument in [BDec("12"), BDec("1E6")]:
+        assert_equal(
+            tanh_rounded(argument, 9, RoundingMode.ROUND_HALF_EVEN),
+            one,
+            "half-even at " + String(argument),
+        )
+        assert_equal(
+            tanh_rounded(argument, 9, RoundingMode.ROUND_UP),
+            one,
+            "up at " + String(argument),
+        )
+        assert_equal(
+            tanh_rounded(argument, 9, RoundingMode.ROUND_CEILING),
+            one,
+            "ceiling at " + String(argument),
+        )
+        assert_equal(
+            tanh_rounded(argument, 9, RoundingMode.ROUND_DOWN),
+            below,
+            "down at " + String(argument),
+        )
+        assert_equal(
+            tanh_rounded(argument, 9, RoundingMode.ROUND_FLOOR),
+            below,
+            "floor at " + String(argument),
+        )
+
+        # Below the axis the two directed modes swap sides.
+        assert_equal(
+            tanh_rounded(-argument, 9, RoundingMode.ROUND_HALF_EVEN),
+            -one,
+            "half-even at -" + String(argument),
+        )
+        assert_equal(
+            tanh_rounded(-argument, 9, RoundingMode.ROUND_FLOOR),
+            -one,
+            "floor at -" + String(argument),
+        )
+        assert_equal(
+            tanh_rounded(-argument, 9, RoundingMode.ROUND_DOWN),
+            -below,
+            "down at -" + String(argument),
+        )
+        assert_equal(
+            tanh_rounded(-argument, 9, RoundingMode.ROUND_CEILING),
+            -below,
+            "ceiling at -" + String(argument),
+        )
 
 
 def test_outside_the_domains_raises() raises:

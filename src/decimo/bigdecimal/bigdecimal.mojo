@@ -2895,7 +2895,10 @@ struct BigDecimal(
                 approximated; see `_round_by_deciding()`.
 
         Returns:
-            The hyperbolic tangent of this value, in `(-1, 1)`.
+            The hyperbolic tangent of this value. Mathematically this lies
+            in `(-1, 1)`; at a finite precision an argument large enough that
+            the shortfall falls below the last digit returns exactly one,
+            except under the modes that round toward zero.
 
         Raises:
             Error: If the underlying computation fails.
