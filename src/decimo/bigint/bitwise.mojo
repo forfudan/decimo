@@ -44,6 +44,8 @@ two's complement conversion is needed — just word-by-word operation.
 """
 
 from decimo.bigint.bigint import BigInt, Magnitude
+from decimo.bigint.number_theory import _count_trailing_zeros
+from decimo.errors import ValueError
 
 
 # ===----------------------------------------------------------------------=== #
@@ -483,3 +485,270 @@ def bitwise_xor_inplace(mut a: BigInt, imm b: BigInt):
         b: The right-hand side operand.
     """
     _binary_bitwise_op_inplace["xor"](a, b)
+
+
+# ===----------------------------------------------------------------------=== #
+# Bit-level access
+#
+# A negative value is read as an infinite-width two's complement, which is the
+# view the operators above already present and the one Python, GMP and Java
+# share. The alternative -- reading the magnitude and keeping the sign aside --
+# would make `test_bit(-3, 1)` disagree with `-3 & 2` on the same type.
+#
+# `set_bit`, `clear_bit` and `flip_bit` are written as the operators they
+# correspond to rather than by reaching into the words. That is slower by one
+# temporary, and it is how they are guaranteed to agree with `&`, `|` and `^`
+# instead of merely intended to.
+# ===----------------------------------------------------------------------=== #
+
+
+def _magnitude_bit(words: Magnitude, index: Int) -> Int:
+    """Returns bit `index` of a magnitude, or zero past its top."""
+    var word = index // 64
+    if word >= len(words):
+        return 0
+    return Int((words[word] >> UInt64(index % 64)) & 1)
+
+
+def test_bit(x: BigInt, index: Int) raises -> Bool:
+    """Returns whether bit `index` of `x` is set.
+
+    Args:
+        x: The value to read.
+        index: Which bit, counted from zero at the least significant end.
+
+    Returns:
+        The bit, with a negative `x` read as an infinite-width two's
+        complement: every bit of `-1` is set, and the bits of `-8` above the
+        third are too.
+
+    Raises:
+        ValueError: If `index` is negative.
+
+    Notes:
+
+    For a negative value the bits come from `-m = ~(m - 1)`, which says bit
+    `k` of the result is the complement of bit `k` of `m - 1`. Rather than
+    form `m - 1`, the same thing is read off the trailing zeros `t` of `m`:
+    below `t` the borrow leaves zeros, at `t` it leaves a one, and above it
+    the bits are the complement of the magnitude's own.
+    """
+    if index < 0:
+        raise ValueError(
+            message="A bit index cannot be negative.",
+            function="test_bit()",
+        )
+    if not x.sign:
+        return _magnitude_bit(x.words, index) == 1
+
+    var trailing = _count_trailing_zeros(x.words)
+    if index < trailing:
+        return False
+    if index == trailing:
+        return True
+    return _magnitude_bit(x.words, index) == 0
+
+
+def set_bit(x: BigInt, index: Int) raises -> BigInt:
+    """Returns `x` with bit `index` set.
+
+    Args:
+        x: The value.
+        index: Which bit to set.
+
+    Returns:
+        `x | (1 << index)`, which is what the operator gives and therefore
+        what this does.
+
+    Raises:
+        ValueError: If `index` is negative.
+
+    Notes:
+
+    A bit that is already set makes this a copy, and the mask is not formed.
+    Every bit of a negative value above its magnitude is set, so without that
+    test `set_bit(-1, 10**9)` would build a mask of a billion bits -- 125
+    megabytes -- to answer `-1`.
+    """
+    if index < 0:
+        raise ValueError(
+            message="A bit index cannot be negative.",
+            function="set_bit()",
+        )
+    if test_bit(x, index):
+        return x.copy()
+    return x | (BigInt.one() << index)
+
+
+def clear_bit(x: BigInt, index: Int) raises -> BigInt:
+    """Returns `x` with bit `index` cleared.
+
+    Args:
+        x: The value.
+        index: Which bit to clear.
+
+    Returns:
+        `x & ~(1 << index)`.
+
+    Raises:
+        ValueError: If `index` is negative.
+
+    Notes:
+
+    A bit that is already clear makes this a copy, for the same reason
+    `set_bit()` tests first: every bit of a non-negative value above its
+    magnitude is clear.
+    """
+    if index < 0:
+        raise ValueError(
+            message="A bit index cannot be negative.",
+            function="clear_bit()",
+        )
+    if not test_bit(x, index):
+        return x.copy()
+    return x & ~(BigInt.one() << index)
+
+
+def flip_bit(x: BigInt, index: Int) raises -> BigInt:
+    """Returns `x` with bit `index` inverted.
+
+    Args:
+        x: The value.
+        index: Which bit to invert.
+
+    Returns:
+        `x ^ (1 << index)`.
+
+    Raises:
+        ValueError: If `index` is negative.
+    """
+    if index < 0:
+        raise ValueError(
+            message="A bit index cannot be negative.",
+            function="flip_bit()",
+        )
+    return x ^ (BigInt.one() << index)
+
+
+def trailing_zeros(x: BigInt) -> Int:
+    """Returns the number of trailing zero bits of `x`.
+
+    Args:
+        x: The value.
+
+    Returns:
+        The index of the lowest set bit, or -1 when `x` is zero, which is
+        what Java's `getLowestSetBit` answers there.
+
+    Notes:
+
+    The sign does not enter: `-m` has as many trailing zeros as `m`, since
+    the borrow that forms it stops at the lowest set bit.
+    """
+    if x.is_zero():
+        return -1
+    return _count_trailing_zeros(x.words)
+
+
+def bit_scan1(x: BigInt, start: Int) raises -> Int:
+    """Returns the index of the first set bit at or above `start`.
+
+    Args:
+        x: The value to scan.
+        start: Where to start looking.
+
+    Returns:
+        The index, or -1 when there is none, which can only happen for a
+        non-negative `x`: above the magnitude every bit of a negative value
+        is set.
+
+    Raises:
+        ValueError: If `start` is negative.
+    """
+    return _bit_scan(x, start, True, "bit_scan1()")
+
+
+def bit_scan0(x: BigInt, start: Int) raises -> Int:
+    """Returns the index of the first clear bit at or above `start`.
+
+    Args:
+        x: The value to scan.
+        start: Where to start looking.
+
+    Returns:
+        The index, or -1 when there is none, which can only happen for a
+        negative `x`: above the magnitude every bit of a non-negative value
+        is clear.
+
+    Raises:
+        ValueError: If `start` is negative.
+    """
+    return _bit_scan(x, start, False, "bit_scan0()")
+
+
+def _bit_scan(
+    x: BigInt, start: Int, wanted: Bool, function: String
+) raises -> Int:
+    """Scans upwards from `start` for a bit equal to `wanted`.
+
+    Args:
+        x: The value to scan.
+        start: Where to start looking.
+        wanted: The bit value to stop at.
+        function: The name to report in an error.
+
+    Returns:
+        The index, or -1 when the scan runs past the point where every
+        remaining bit is the sign's.
+
+    Raises:
+        ValueError: If `start` is negative.
+
+    Notes:
+
+    At and above `bit_length()` every bit is the sign's, so the scan only
+    has to walk the bits below it. Past that the answer is read off the sign
+    instead of searched for, which is also what keeps `start` out of any
+    arithmetic: `bit_scan1(-1, Int.MAX)` is `Int.MAX`, and computing a bound
+    as `start + 1` would overflow to a negative one and report that there is
+    no answer.
+    """
+    if start < 0:
+        raise ValueError(
+            message="A bit index cannot be negative.",
+            function=function,
+        )
+    var top = x.bit_length()
+    if start >= top:
+        return start if x.sign == wanted else -1
+    for index in range(start, top):
+        if test_bit(x, index) == wanted:
+            return index
+    return top if x.sign == wanted else -1
+
+
+def hamming_distance(x: BigInt, y: BigInt) raises -> Int:
+    """Returns the number of bit positions where `x` and `y` differ.
+
+    Args:
+        x: One value.
+        y: The other.
+
+    Returns:
+        The count, which is `popcount(x ^ y)`.
+
+    Raises:
+        ValueError: If the signs differ, where the two agree on no bit above
+            their magnitudes and the distance is therefore unbounded. GMP
+            calls the same case undefined.
+    """
+    if x.sign != y.sign:
+        raise ValueError(
+            message=(
+                "The Hamming distance between a negative and a non-negative"
+                " value is unbounded: they differ in every bit above their"
+                " magnitudes."
+            ),
+            function="hamming_distance()",
+        )
+    return (x ^ y).bit_count()
