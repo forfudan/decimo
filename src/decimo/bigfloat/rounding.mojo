@@ -52,14 +52,19 @@ def round_to_precision(
         rounding_mode: Which way to round.
         inexact_below: Whether something non-zero was already discarded below
             `magnitude`, as a conversion from decimal discards a remainder.
-            It only ever makes the result rounder, never the other way.
+            Only meaningful when the magnitude has more bits than `precision`,
+            since the flag says where the discarded part sits relative to the
+            bits being dropped and nothing else; passing it without those
+            guard bits is refused.
 
     Returns:
         A normalized `(magnitude, exponent)`: the magnitude holds exactly
         `precision` bits, with its top bit set, or is zero.
 
     Raises:
-        ValueError: If `precision` is not positive or `magnitude` is negative.
+        ValueError: If `precision` is not positive, if `magnitude` is
+            negative, or if `inexact_below` is set while the magnitude has no
+            bits to drop.
         Error: Propagated from the arithmetic.
 
     Notes:
@@ -68,6 +73,14 @@ def round_to_precision(
     left short, so that "exactly `precision` bits" holds for every finite
     non-zero value and nothing downstream has to ask how many bits are really
     there. The shift is exact; only the other direction rounds.
+
+    A caller with something still to discard must hand over the bits to drop
+    along with it. `inexact_below` says only that the remainder is non-zero,
+    which places it below the lowest dropped bit; without a dropped bit there
+    is nothing to place it under, and the flag cannot say whether the value is
+    a hair above the significand or most of the way to the next one. A
+    conversion from decimal has those bits by construction: it computes a
+    couple more than it keeps and then rounds here.
 
     Rounding reads two things about what is dropped: the leading dropped bit,
     and whether anything below that is set. The seven modes are then what
@@ -95,15 +108,18 @@ def round_to_precision(
             function="round_to_precision()",
         )
 
-    if magnitude.is_zero():
-        if inexact_below:
-            # Everything the value had sat below what was kept, so it is the
-            # smallest step away from zero in the direction the mode allows.
-            if _rounds_away_from_zero(rounding_mode, negative, True, True):
-                return (BigInt.one() << (precision - 1), exponent)
-        return (BigInt.zero(), 0)
-
     var bits = magnitude.bit_length()
+    if inexact_below and bits <= precision:
+        raise ValueError(
+            message=(
+                "A discarded remainder needs the bits it was discarded below:"
+                " supply a magnitude wider than the precision."
+            ),
+            function="round_to_precision()",
+        )
+
+    if magnitude.is_zero():
+        return (BigInt.zero(), 0)
 
     if bits <= precision:
         # Exact: shift into the normalized form and move the exponent to

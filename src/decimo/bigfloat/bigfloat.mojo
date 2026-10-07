@@ -407,8 +407,21 @@ struct BigFloat(Absable, Copyable, Movable, Writable):
         #
         # The value is `significand * 2^exponent` with the significand
         # holding `precision` bits, so its leading bit sits at
-        # `precision - 1 + exponent`.
+        # `precision - 1 + exponent`. That sum is formed only after the range
+        # is checked, because an exponent near the ends of `Int` overflows it:
+        # the comparison below subtracts instead, which cannot, and once it
+        # holds the sum is bounded above by 1024.
+        if self.exponent > 1024 - self.precision:
+            var past = Float64(1) / Float64(0)
+            return -past if self.sign else past
+
         var leading = self.precision - 1 + self.exponent
+        if leading < -1080:
+            # Below half the smallest subnormal by a wide margin, so the
+            # answer is a zero whatever the bits are, and the subnormal path's
+            # own arithmetic is kept away from an exponent that would
+            # underflow it.
+            return Float64(-0.0) if self.sign else Float64(0.0)
         var biased = leading + 1023
         var sign_bit = UInt64(1) << 63 if self.sign else UInt64(0)
 

@@ -115,23 +115,69 @@ def test_rounding_a_zero_stays_zero() raises:
     assert_equal(rounded[1], 0, "and its exponent is zero")
 
 
-def test_rounding_a_value_entirely_below_the_kept_bits() raises:
-    """A conversion can discard everything it had; the mode decides.
+def test_a_remainder_needs_the_bits_it_sits_under() raises:
+    """`inexact_below` without bits to drop is refused, not guessed at.
 
-    `inexact_below` says the value is not zero even though the significand
-    is. Rounding toward zero keeps the zero; rounding away from it has to
-    produce the smallest value the precision can hold.
+    The flag says the remainder is non-zero and therefore below the lowest
+    dropped bit. With nothing dropped there is no such place: the same flag
+    would have to stand for a hair above the significand and for most of the
+    way to the next one.
+
+    An earlier version answered anyway, and both answers were wrong. With a
+    significand of 8 at precision 4 it returned 8 under `ROUND_UP` where the
+    value is above 8 and the answer is 9. With a zero significand it invented
+    the smallest step the precision allows, which the precision does not
+    decide: a remainder of `2^-42` is exactly `(128, -49)` at eight bits, and
+    it answered `(128, -40)`, too large by a factor of 512.
     """
-    var down = round_to_precision(
-        BigInt.zero(), -40, 8, False, RoundingMode.ROUND_DOWN, True
-    )
-    assert_true(down[0].is_zero(), "toward zero stays at zero")
+    for mode in [
+        RoundingMode.ROUND_UP,
+        RoundingMode.ROUND_DOWN,
+        RoundingMode.ROUND_HALF_EVEN,
+    ]:
+        var raised = False
+        try:
+            _ = round_to_precision(BigInt(8), 0, 4, False, mode, True)
+        except:
+            raised = True
+        assert_true(raised, "a significand with no bits to drop was accepted")
 
-    var up = round_to_precision(
-        BigInt.zero(), -40, 8, False, RoundingMode.ROUND_UP, True
+        raised = False
+        try:
+            _ = round_to_precision(BigInt.zero(), -40, 8, False, mode, True)
+        except:
+            raised = True
+        assert_true(raised, "a zero significand was accepted")
+
+
+def test_a_remainder_rounds_where_there_are_bits_to_drop() raises:
+    """With guard bits the flag is exactly the sticky bit, and is read.
+
+    `0b10001` at four bits drops a single set bit, which is the half exactly.
+    Half-even keeps the even significand there; the same value with a
+    remainder underneath is past the half and goes up.
+    """
+    var without = round_to_precision(
+        BigInt(0b10001), 0, 4, False, RoundingMode.ROUND_HALF_EVEN, False
     )
-    assert_equal(String(up[0]), "128", "away from zero takes the lowest step")
-    assert_equal(up[1], -40, "at the exponent it was given")
+    assert_equal(String(without[0]), "8", "an exact half keeps the even bits")
+
+    var with_remainder = round_to_precision(
+        BigInt(0b10001), 0, 4, False, RoundingMode.ROUND_HALF_EVEN, True
+    )
+    assert_equal(String(with_remainder[0]), "9", "past the half it rounds up")
+
+    # The directed modes do not read the half at all, so the remainder
+    # changes nothing for them.
+    assert_equal(
+        String(
+            round_to_precision(
+                BigInt(0b10001), 0, 4, False, RoundingMode.ROUND_DOWN, True
+            )[0]
+        ),
+        "8",
+        "toward zero is unmoved",
+    )
 
 
 def test_rounding_refuses_what_it_cannot_do() raises:
@@ -334,6 +380,61 @@ def test_the_subnormal_quantum_rounds_once() raises:
         expected,
         "a half-even tie between one quantum and two",
     )
+
+
+def test_float64_at_an_exponent_near_the_limits_of_int() raises:
+    """The exponent is unbounded, so its arithmetic has to be bounded.
+
+    `precision - 1 + exponent` overflows for an exponent near either end of
+    `Int`, and an earlier version formed it before testing the range: a value
+    at `Int.MAX` converted to zero instead of an infinity.
+    """
+    var infinity = Float64(1) / Float64(0)
+    for exponent in [Int.MAX, Int.MAX - 100, 1024]:
+        var high = BigFloat(
+            significand=BigInt.one() << 52,
+            exponent=exponent,
+            precision=53,
+            sign=False,
+        )
+        assert_equal(
+            high.to_float64(), infinity, "too high at " + String(exponent)
+        )
+        assert_equal(
+            (-high).to_float64(),
+            -infinity,
+            "and its negation at " + String(exponent),
+        )
+
+    for exponent in [Int.MIN, Int.MIN + 100, -3000]:
+        var low = BigFloat(
+            significand=BigInt.one() << 52,
+            exponent=exponent,
+            precision=53,
+            sign=False,
+        )
+        assert_equal(
+            low.to_float64(), Float64(0.0), "too low at " + String(exponent)
+        )
+
+    # The two sides of the boundary itself: 2^971 * 2^52 is the largest
+    # finite double, and one more is past the top.
+    var largest = BigFloat(
+        significand=BigInt.one() << 52,
+        exponent=1024 - 53,
+        precision=53,
+        sign=False,
+    )
+    assert_true(
+        largest.to_float64() < infinity, "the largest finite double is finite"
+    )
+    var past = BigFloat(
+        significand=BigInt.one() << 52,
+        exponent=1024 - 52,
+        precision=53,
+        sign=False,
+    )
+    assert_equal(past.to_float64(), infinity, "one step past it is an infinity")
 
 
 def test_the_representation_is_what_it_prints() raises:
