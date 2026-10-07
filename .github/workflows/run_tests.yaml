@@ -422,9 +422,9 @@ jobs:
             sleep 5
           done
 
-  # ── Test: BigFloat ─────────────────────────────────────────────────────────
-  test-bigfloat:
-    name: Test BigFloat
+  # ── Test: MPF ─────────────────────────────────────────────────────────
+  test-mpf:
+    name: Test MPF
     needs: build
     runs-on: macos-latest
     timeout-minutes: 30
@@ -437,7 +437,7 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             echo "=== test attempt $attempt ==="
-            if bash tests/test.sh bigfloat; then
+            if bash tests/test.sh mpf; then
               echo "=== tests passed on attempt $attempt ==="
               break
             fi
@@ -505,7 +505,7 @@ jobs:
             sleep 5
           done
       - name: Stage decimo.mojoc next to tests
-        # `tests/test.sh run_cli` and `run_bigfloat` use `-I tests` to load
+        # `tests/test.sh run_cli` and `run_mpf` use `-I tests` to load
         # the prebuilt `decimo.mojoc` (Mojo's `mojo run/build`
         # cannot resolve `decimo.X.Y.foo` qualified references when
         # re-traversing source via `-I src`). `pixi run buildcli` produces

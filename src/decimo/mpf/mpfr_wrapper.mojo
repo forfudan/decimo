@@ -23,7 +23,7 @@ at runtime, so this code compiles and links without MPFR headers or libraries.
 The C wrapper manages a pool of `mpfr_t` handles. Each handle is identified
 by an `Int32` index. The Mojo side never touches raw `mpfr_t` pointers.
 
-All functions here are internal — users interact with `BigFloat`, not these.
+All functions here are internal — users interact with `MPF`, not these.
 """
 
 from std.ffi import c_char, c_int, external_call
@@ -119,7 +119,7 @@ def mpfrw_free_str(addr: Int):
 
 
 # ===----------------------------------------------------------------------=== #
-# Raw digit export (fast BigFloat → BigDecimal)
+# Raw digit export (fast MPF → BigDecimal)
 # ===----------------------------------------------------------------------=== #
 
 

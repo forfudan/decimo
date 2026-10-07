@@ -10,8 +10,8 @@ type's own root is the one that runs.
 
 `BigUInt` is here because it is the case that justifies the trait being
 separate from `Numeric`: it has had a square root all along and, being
-unsigned, has no `__neg__`, so it can never be `Numeric`. `BigFloat` is the
-other such case and is exercised in the `bigfloat` suite, which is separate
+unsigned, has no `__neg__`, so it can never be `Numeric`. `MPF` is the
+other such case and is exercised in the `mpf` suite, which is separate
 because it needs MPFR at runtime.
 """
 
@@ -91,8 +91,8 @@ def test_integral_root_truncates() raises:
 def test_negative_root_raises() raises:
     """A negative value raises rather than returning a wrong root.
 
-    The four exact types only. `BigFloat` has a `nan` and returns one, which
-    `Rootable` permits; the BigFloat suite pins that half.
+    The four exact types only. `MPF` has a `nan` and returns one, which
+    `Rootable` permits; the MPF suite pins that half.
     """
     var raised = False
     try:

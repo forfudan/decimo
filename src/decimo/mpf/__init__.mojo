@@ -16,17 +16,17 @@
 
 """Sub-package for arbitrary-precision binary floating-point type.
 
-BigFloat is an MPFR-backed binary float type. It requires MPFR to be installed
+MPF is an MPFR-backed binary float type. It requires MPFR to be installed
 on the system (`brew install mpfr` on macOS, `apt install libmpfr-dev` on Linux).
 
-BigFloat is the fast path for scientific computing at high precision. Every
+MPF is the fast path for scientific computing at high precision. Every
 operation (sqrt, exp, ln, sin, cos, tan, pi, divide) is a single MPFR call.
 
 For exact decimal arithmetic without external dependencies, use BigDecimal instead.
 
 Modules:
-- bigfloat: Core BigFloat struct with constructors, arithmetic, transcendentals
+- mpf: Core MPF struct with constructors, arithmetic, transcendentals
 - mpfr_wrapper: Low-level FFI bindings to the MPFR C wrapper
 """
 
-from .bigfloat import PRECISION as BIGFLOAT_PRECISION, BFlt, BigFloat, Float
+from .mpf import MPF, PRECISION as MPF_PRECISION

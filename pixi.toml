@@ -71,15 +71,15 @@ buildgmp = "bash src/decimo/gmp/build_gmp_wrapper.sh"
 
 # tests (use the mojo testing tool)
 test = "bash tests/test.sh"
-# bigfloat (build test binary linking the C wrapper, then run it)
-testfloat = "pixi run buildgmp && bash tests/test.sh bigfloat"
+# mpf (build test binary linking the C wrapper, then run it)
+testmpf = "pixi run buildgmp && bash tests/test.sh mpf"
 # shortcut for tests
 t = "clear && pixi run test"
 tf = "clear && pixi run testfloat"
 
-# quick build & run for a single BigFloat-using .mojo file
+# quick build & run for a single MPF-using .mojo file
 # Usage: pixi run bf path/to/file.mojo
-bf = {cmd = "bash examples/run_bigfloat.sh", description = "Build & run a single BigFloat .mojo file (output binary in temp/)"}
+mpf = {cmd = "bash examples/run_mpf.sh", description = "Build & run a single MPF .mojo file (output binary in temp/)"}
 
 # bench
 bench = "pixi run package && bash benches/run_bench.sh"

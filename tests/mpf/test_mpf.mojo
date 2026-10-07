@@ -14,10 +14,10 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-"""Smoke tests for BigFloat: verify MPFR pipeline works end-to-end."""
+"""Smoke tests for MPF: verify MPFR pipeline works end-to-end."""
 
-from decimo.bigfloat.bigfloat import PRECISION, BigFloat
-from decimo.bigfloat.mpfr_wrapper import mpfrw_available
+from decimo.mpf.mpf import MPF, PRECISION
+from decimo.mpf.mpfr_wrapper import mpfrw_available
 from decimo.traits import Rootable
 
 
@@ -34,7 +34,7 @@ def test_construct_from_string() raises:
     if not mpfrw_available():
         print("SKIPPED")
         return
-    var x = BigFloat("3.14159")
+    var x = MPF("3.14159")
     print("OK  value =", x)
 
 
@@ -43,7 +43,7 @@ def test_construct_from_int() raises:
     if not mpfrw_available():
         print("SKIPPED")
         return
-    var x = BigFloat(42)
+    var x = MPF(42)
     print("OK  value =", x)
 
 
@@ -52,7 +52,7 @@ def test_sqrt() raises:
     if not mpfrw_available():
         print("SKIPPED")
         return
-    var x = BigFloat("2.0", precision=50)
+    var x = MPF("2.0", precision=50)
     var s = x.sqrt()
     var result = s.to_string(50)
     # sqrt(2) ≈ 1.4142135623730950488...
@@ -66,7 +66,7 @@ def test_exp() raises:
     if not mpfrw_available():
         print("SKIPPED")
         return
-    var x = BigFloat("1.0", precision=50)
+    var x = MPF("1.0", precision=50)
     var e = x.exp()
     var result = e.to_string(50)
     # exp(1) ≈ 2.71828182845904523536...
@@ -80,7 +80,7 @@ def test_ln() raises:
     if not mpfrw_available():
         print("SKIPPED")
         return
-    var x = BigFloat("2.0", precision=30)
+    var x = MPF("2.0", precision=30)
     var result = x.ln()
     var s = result.to_string(15)
     # ln(2) ≈ 0.693147180559945...
@@ -94,7 +94,7 @@ def test_trig() raises:
     if not mpfrw_available():
         print("SKIPPED")
         return
-    var pi = BigFloat.pi(50)
+    var pi = MPF.pi(50)
     var s = pi.sin()
     var c = pi.cos()
     var sin_s = s.to_string(20)
@@ -108,8 +108,8 @@ def test_arithmetic() raises:
     if not mpfrw_available():
         print("SKIPPED")
         return
-    var a = BigFloat("10.0")
-    var b = BigFloat("3.0")
+    var a = MPF("10.0")
+    var b = MPF("3.0")
     var sum_ = a + b
     var diff = a - b
     var prod = a * b
@@ -122,9 +122,9 @@ def test_comparison() raises:
     if not mpfrw_available():
         print("SKIPPED")
         return
-    var a = BigFloat("1.0")
-    var b = BigFloat("2.0")
-    var c = BigFloat("1.0")
+    var a = MPF("1.0")
+    var b = MPF("2.0")
+    var c = MPF("1.0")
     var ok = True
     if not (a < b):
         ok = False
@@ -149,7 +149,7 @@ def test_pi() raises:
     if not mpfrw_available():
         print("SKIPPED")
         return
-    var pi = BigFloat.pi(100)
+    var pi = MPF.pi(100)
     var s = pi.to_string(50)
     # π ≈ 3.14159265358979323846...
     if not s.startswith("3.14159265358979"):
@@ -162,7 +162,7 @@ def test_to_bigdecimal() raises:
     if not mpfrw_available():
         print("SKIPPED")
         return
-    var x = BigFloat("2.0", precision=50)
+    var x = MPF("2.0", precision=50)
     var s = x.sqrt()
     var bd = s.to_bigdecimal(30)
     var bd_s = String(bd)
@@ -177,8 +177,8 @@ def test_power_and_root() raises:
     if not mpfrw_available():
         print("SKIPPED")
         return
-    var x = BigFloat("8.0", precision=30)
-    var third = BigFloat("0.333333333333333333", precision=30)
+    var x = MPF("8.0", precision=30)
+    var third = MPF("0.333333333333333333", precision=30)
     var cube_root = x.root(UInt32(3))
     # The `Int` spelling `BigDecimal` and `Decimal128` share.
     var cube_root_int = x.root(3)
@@ -211,7 +211,7 @@ def test_neg_and_abs() raises:
     if not mpfrw_available():
         print("SKIPPED")
         return
-    var x = BigFloat("-5.0")
+    var x = MPF("-5.0")
     var neg_x = -x
     var abs_x = x.__abs__()
     print("OK  -(-5) =", neg_x, " |(-5)| =", abs_x)
@@ -222,7 +222,7 @@ def test_high_precision_sqrt() raises:
     if not mpfrw_available():
         print("SKIPPED")
         return
-    var x = BigFloat("2.0", precision=1000)
+    var x = MPF("2.0", precision=1000)
     var s = x.sqrt()
     var result = s.to_string(100)
     # Verify many digits of sqrt(2)
@@ -237,7 +237,7 @@ def _root_of[T: Rootable](var x: T) raises -> T:
     """Returns `x.sqrt()` through the trait alone.
 
     `Rootable` carries `Deinitable` and `Movable` and nothing else, which is
-    what lets it reach `BigFloat`: a type that moves without copying.
+    what lets it reach `MPF`: a type that moves without copying.
     """
     return x^.sqrt()
 
@@ -247,14 +247,14 @@ def test_rootable_conformance() raises:
     if not mpfrw_available():
         print("SKIPPED")
         return
-    var s = _root_of(BigFloat("2.0", precision=50))
+    var s = _root_of(MPF("2.0", precision=50))
     var result = s.to_string(50)
     if not result.startswith("1.4142"):
         raise Error("FAIL test_rootable_conformance got: " + result)
     # `Rootable` lets a type with a `nan` return one where the four exact
-    # types raise. `BigFloat` has one, and every function of it outside its
+    # types raise. `MPF` has one, and every function of it outside its
     # domain gives one, so `sqrt` does too.
-    var negative = _root_of(BigFloat("-4.0", precision=50))
+    var negative = _root_of(MPF("-4.0", precision=50))
     if String(negative) != "nan":
         raise Error(
             "FAIL test_rootable_conformance: sqrt(-4) gave " + String(negative)
@@ -265,7 +265,7 @@ def test_rootable_conformance() raises:
 def test_negative_precision_is_refused() raises:
     """A negative precision is an error here as it is on `BigDecimal`.
 
-    It used to be accepted and stored: `BigFloat("2", precision=-1)` gave a
+    It used to be accepted and stored: `MPF("2", precision=-1)` gave a
     value that printed and computed as if the precision were 1, because the
     bit conversion floors at MPFR's minimum and `mpfr_get_str` treats a
     non-positive digit count as "choose for me". No wrong result came of it,
@@ -278,17 +278,17 @@ def test_negative_precision_is_refused() raises:
     # count as a pass.
     var messages = List[String]()
     try:
-        _ = BigFloat("2", precision=-1)
+        _ = MPF("2", precision=-1)
         messages.append(String("no error"))
     except e:
         messages.append(String(e))
     try:
-        _ = BigFloat(2, precision=-1)
+        _ = MPF(2, precision=-1)
         messages.append(String("no error"))
     except e:
         messages.append(String(e))
     try:
-        _ = BigFloat.pi(-1)
+        _ = MPF.pi(-1)
         messages.append(String("no error"))
     except e:
         messages.append(String(e))
@@ -297,7 +297,7 @@ def test_negative_precision_is_refused() raises:
             raise Error(
                 "FAIL test_negative_precision_is_refused: got '" + message + "'"
             )
-    _ = BigFloat("2", precision=0)
+    _ = MPF("2", precision=0)
     print("OK")
 
 
@@ -318,4 +318,4 @@ def main() raises:
     test_high_precision_sqrt()
     test_rootable_conformance()
     test_negative_precision_is_refused()
-    print("\nAll BigFloat smoke tests completed.")
+    print("\nAll MPF smoke tests completed.")

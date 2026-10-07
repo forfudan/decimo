@@ -1298,20 +1298,20 @@ routine — a matrix or polynomial library, say — can be written once against
 
 `Parsable` requires the static `from_string(value)`, so the same generic
 routine can also fill itself from text. The two are separate because the
-capabilities are: `BigFloat` parses but is `Movable` without being `Copyable`,
+capabilities are: `MPF` parses but is `Movable` without being `Copyable`,
 so it can never be `Numeric`. Ask for `T: Numeric & Parsable` to get both.
 
 `Rootable` requires `sqrt()`, the one operation a Cholesky or QR factorisation
 needs beyond arithmetic. It is separate for the same reason, and here the
 evidence is sharper: `BigUInt` has a square root but is unsigned, so it has no
 `__neg__` and can never be `Numeric` either. Its supertraits are `Deinitable`
-and `Movable` and no more — `Copyable` is pointedly absent, so that `BigFloat`
+and `Movable` and no more — `Copyable` is pointedly absent, so that `MPF`
 can conform.
-`BigFloat` and `BigUInt` therefore conform to `Rootable` as well, five types
+`MPF` and `BigUInt` therefore conform to `Rootable` as well, five types
 in all. Ask for `T: Numeric & Rootable` in a routine that needs both. What the
 root means stays the implementing type's business: on an integral type it
 truncates, so `BigInt("10").sqrt()` is `3`, exactly as `/` truncates there. So
-does what a negative value does — the four exact types raise, and `BigFloat`
+does what a negative value does — the four exact types raise, and `MPF`
 returns `nan`, as it does for every other function outside its domain.
 
 #### BigInt <!-- omit from toc -->

@@ -2318,7 +2318,7 @@ struct BigDecimal(
         """Returns the nth root of the BigDecimal number with default
         precision.
 
-        This is the spelling `Decimal128.root` and `BigFloat.root` share.
+        This is the spelling `Decimal128.root` and `MPF.root` share.
 
         Args:
             n: The degree of the root (e.g. 2 for square root, 3 for cube
