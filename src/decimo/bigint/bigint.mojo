@@ -1995,6 +1995,121 @@ struct BigInt(
         # bit-at-a-time probe loop.
         return (n_words - 1) * 64 + Int(bit_width(msw))
 
+    def test_bit(self, index: Int) raises -> Bool:
+        """Returns whether bit `index` of this BigInt is set.
+        See `test_bit()` for more information.
+
+        Args:
+            index: Which bit, counted from zero at the least significant end.
+
+        Returns:
+            The bit, with a negative value read as an infinite-width two's
+            complement, the same view the bitwise operators present.
+
+        Raises:
+            ValueError: If `index` is negative.
+        """
+        return bigint_bitwise.test_bit(self, index)
+
+    def set_bit(self, index: Int) raises -> Self:
+        """Returns this BigInt with bit `index` set.
+        See `set_bit()` for more information.
+
+        Args:
+            index: Which bit to set.
+
+        Returns:
+            The value with that bit set.
+
+        Raises:
+            ValueError: If `index` is negative.
+        """
+        return bigint_bitwise.set_bit(self, index)
+
+    def clear_bit(self, index: Int) raises -> Self:
+        """Returns this BigInt with bit `index` cleared.
+        See `clear_bit()` for more information.
+
+        Args:
+            index: Which bit to clear.
+
+        Returns:
+            The value with that bit cleared.
+
+        Raises:
+            ValueError: If `index` is negative.
+        """
+        return bigint_bitwise.clear_bit(self, index)
+
+    def flip_bit(self, index: Int) raises -> Self:
+        """Returns this BigInt with bit `index` inverted.
+        See `flip_bit()` for more information.
+
+        Args:
+            index: Which bit to invert.
+
+        Returns:
+            The value with that bit inverted.
+
+        Raises:
+            ValueError: If `index` is negative.
+        """
+        return bigint_bitwise.flip_bit(self, index)
+
+    def trailing_zeros(self) -> Int:
+        """Returns the number of trailing zero bits of this BigInt.
+        See `trailing_zeros()` for more information.
+
+        Returns:
+            The index of the lowest set bit, or -1 for zero.
+        """
+        return bigint_bitwise.trailing_zeros(self)
+
+    def bit_scan1(self, start: Int = 0) raises -> Int:
+        """Returns the index of the first set bit at or above `start`.
+        See `bit_scan1()` for more information.
+
+        Args:
+            start: Where to start looking.
+
+        Returns:
+            The index, or -1 when there is none.
+
+        Raises:
+            ValueError: If `start` is negative.
+        """
+        return bigint_bitwise.bit_scan1(self, start)
+
+    def bit_scan0(self, start: Int = 0) raises -> Int:
+        """Returns the index of the first clear bit at or above `start`.
+        See `bit_scan0()` for more information.
+
+        Args:
+            start: Where to start looking.
+
+        Returns:
+            The index, or -1 when there is none.
+
+        Raises:
+            ValueError: If `start` is negative.
+        """
+        return bigint_bitwise.bit_scan0(self, start)
+
+    def hamming_distance(self, other: Self) raises -> Int:
+        """Returns the number of bits where this BigInt and `other` differ.
+        See `hamming_distance()` for more information.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            The count of differing bit positions.
+
+        Raises:
+            ValueError: If the signs differ, where the distance is unbounded.
+        """
+        return bigint_bitwise.hamming_distance(self, other)
+
     def bit_count(self) -> Int:
         """Returns the number of ones in the binary representation of the
         absolute value (population count).
