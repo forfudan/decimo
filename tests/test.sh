@@ -256,6 +256,7 @@ run_bigdecimal()  { run_mojo_suite bigdecimal; }
 run_bigint()      { run_mojo_suite bigint; }
 run_biguint()     { run_mojo_suite biguint; }
 run_bigint10()    { run_mojo_suite bigint10; }
+run_bigfloat()    { run_mojo_suite bigfloat; }
 run_decimal128()  { run_mojo_suite decimal128; }
 run_rational()    { run_mojo_suite rational; }
 run_expression()  { run_mojo_suite expression; }
@@ -512,6 +513,7 @@ run_decimo() {
         tests/bigint/*.mojo \
         tests/biguint/*.mojo \
         tests/bigint10/*.mojo \
+        tests/bigfloat/*.mojo \
         tests/decimal128/*.mojo \
         tests/rational/*.mojo \
         tests/expression/*.mojo \
@@ -541,6 +543,7 @@ resolve() {
         numerals|numeral|chinese) echo "run_numerals" ;;
         traits|numeric|num)      echo "run_traits" ;;
         mpf|mpfr)                echo "run_mpf" ;;
+        bigfloat|bflt)           echo "run_bigfloat" ;;
         toml)                     echo "run_toml" ;;
         cli)                      echo "run_cli" ;;
         python|py)                echo "run_python" ;;
@@ -565,6 +568,7 @@ list_suites() {
     printf "  %-28s %s\n" "numerals, numeral, chinese"  "Numeral system tests"
     printf "  %-28s %s\n" "traits, numeric, num"        "Trait conformance tests"
     printf "  %-28s %s\n" "mpf, mpfr"               "MPF tests (requires MPFR)"
+    printf "  %-28s %s\n" "bigfloat, bflt"          "BigFloat tests"
     printf "  %-28s %s\n" "toml"                        "TOML parser tests"
     printf "  %-28s %s\n" "cli"                         "CLI calculator tests"
     printf "  %-28s %s\n" "python, py"                  "Python binding tests"
