@@ -183,3 +183,72 @@ def permutation(x: BigInt, k: Int) raises -> BigInt:
     if k > n:
         return BigInt.zero()
     return product_range(n - k + 1, n)
+
+
+def binomial(x: BigInt, k: Int) raises -> BigInt:
+    """Calculates the number of `k`-combinations of `n = x` items.
+
+    `C(n, k) = n! / (k! * (n - k)!)`, the count that `permutation()` gives
+    divided by the `k!` orderings of each selection.
+
+    Args:
+        x: The number of items `n` (non-negative).
+        k: The number of items to choose (non-negative).
+
+    Returns:
+        `C(n, k)`. Returns 0 when `k > n`, as `math.comb` does; `C(n, 0)` and
+        `C(n, n)` are 1.
+
+    Raises:
+        ValueError: If `x` or `k` is negative, if the smaller of `k` and
+            `n - k` is larger than `FACTORIAL_MAX_INPUT` (10^6, the cap on
+            the number of factors), or if `n` does not fit an `Int`.
+
+    Notes:
+
+    `k` is folded to `min(k, n - k)` first, which is the same answer by
+    symmetry and the cheaper one to reach: `C(1000, 999)` then costs one
+    factor rather than nine hundred and ninety-nine.
+
+    The quotient of the two products is exact, so the division truncates
+    nothing. It is a single division of two numbers built by binary
+    splitting, rather than the three factorials the formula reads as.
+    """
+    if x < BigInt.zero():
+        raise ValueError(
+            message="Binomial coefficient is not defined for a negative n.",
+            function="binomial()",
+        )
+    if k < 0:
+        raise ValueError(
+            message="Binomial coefficient is not defined for a negative k.",
+            function="binomial()",
+        )
+    if x > BigInt(Int.MAX):
+        raise ValueError(
+            message=(
+                "Binomial coefficient n is too large to compute (must be <="
+                " 2^63 - 1)."
+            ),
+            function="binomial()",
+        )
+
+    var n = Int(x)
+    if k > n:
+        return BigInt.zero()
+
+    var chosen = min(k, n - k)
+    if chosen == 0:
+        return BigInt.one()
+    if chosen > FACTORIAL_MAX_INPUT:
+        raise ValueError(
+            message=(
+                "Binomial coefficient k is too large to compute (min(k, n - k)"
+                " must be <= 10^6)."
+            ),
+            function="binomial()",
+        )
+
+    var numerator = product_range(n - chosen + 1, n)
+    var denominator = product_range(1, chosen)
+    return numerator.truncate_divide(denominator)

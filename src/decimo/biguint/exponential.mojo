@@ -21,6 +21,7 @@ from std.memory import unsafe_memset_zero
 
 import decimo.biguint.arithmetics as biguint_arithmetics
 from decimo.biguint.biguint import BigUInt
+from decimo.errors import ValueError
 from decimo.utility import isqrt_uint128, isqrt_uint64
 
 # ===----------------------------------------------------------------------=== #
@@ -184,3 +185,74 @@ def sqrt_initial_guess(x: BigUInt) -> BigUInt:
     )  # Set the next significant word contribution
 
     return result^
+
+
+def root(x: BigUInt, n: Int) raises -> BigUInt:
+    """Returns the integer `n`-th root of `x`, truncated toward zero.
+
+    Args:
+        x: The value to take the root of.
+        n: The degree of the root, which must be positive.
+
+    Returns:
+        The largest `s` with `s^n <= x`, which is what GMP's `mpz_root`
+        answers and what an integral type should: the root of 10 is 3.
+
+    Raises:
+        ValueError: If `n` is not positive.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    Newton's iteration on integers, `s <- ((n - 1) * s + x / s^(n-1)) / n`,
+    started from an upper bound so that the sequence decreases to the answer
+    and stops when it would rise. A value of `d` decimal digits has a root of
+    at most `ceil(d / n)` digits, which makes `10^ceil(d/n)` the bound to
+    start from and costs nothing to form in a base-10^18 representation.
+
+    The two adjustments at the end are a safety net rather than part of the
+    method: the iteration lands on the answer, and they cost one comparison
+    each to say so.
+    """
+    if n <= 0:
+        raise ValueError(
+            message="The degree of a root must be positive.",
+            function="root()",
+        )
+    if n == 1:
+        return x.copy()
+    if x.is_zero() or x.is_one():
+        return x.copy()
+
+    var digits = x.number_of_digits()
+
+    # A degree past the value's size can only answer one: `x < 10^digits` and
+    # `10^digits <= 2^(4 * digits)`, so `2^n > x` once `n >= 4 * digits` and
+    # even two is too large a root. The test also keeps `n` away from the
+    # arithmetic below, where `power()` refuses an exponent of a billion or
+    # more and `digits + n` would overflow for an `n` near `Int.MAX`.
+    if n >= 4 * digits:
+        return BigUInt.one()
+
+    var guess_digits = (digits + n - 1) // n
+    var s = BigUInt.power_of_10(guess_digits)
+
+    while True:
+        var previous = s.power(n - 1)
+        var candidate = biguint_arithmetics.floor_divide(
+            (s * BigUInt(UInt64(n - 1)))
+            + biguint_arithmetics.floor_divide(x, previous),
+            BigUInt(UInt64(n)),
+        )
+        if candidate.compare(s) >= 0:
+            break
+        s = candidate^
+
+    # The iteration is exact on integers, so these settle nothing in practice.
+    # They are here because an off-by-one root is silent, and one comparison
+    # is cheaper than trusting that.
+    while s.power(n).compare(x) > 0:
+        s = s - BigUInt.one()
+    while (s + BigUInt.one()).power(n).compare(x) <= 0:
+        s = s + BigUInt.one()
+    return s^

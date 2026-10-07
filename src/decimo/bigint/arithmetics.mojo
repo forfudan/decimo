@@ -2993,6 +2993,29 @@ def floor_divide(x1: BigInt, x2: BigInt) raises -> BigInt:
             return BigInt(raw_words=q_plus_one^, sign=True)
 
 
+def ceil_divide(x1: BigInt, x2: BigInt) raises -> BigInt:
+    """Divides two BigInt numbers, rounding the quotient up.
+
+    Args:
+        x1: The dividend.
+        x2: The divisor.
+
+    Returns:
+        The quotient, rounded toward positive infinity.
+
+    Raises:
+        ZeroDivisionError: If the divisor is zero.
+
+    Notes:
+
+    `ceil(a / b) = -floor(-a / b)`, which is where this goes rather than
+    adjusting a truncated quotient by hand: the identity is right for every
+    combination of signs, and the sign analysis is the part that gets
+    written wrong.
+    """
+    return -floor_divide(-x1, x2)
+
+
 def truncate_divide(x1: BigInt, x2: BigInt) raises -> BigInt:
     """Returns the quotient of two BigInt numbers, truncating toward zero.
 
