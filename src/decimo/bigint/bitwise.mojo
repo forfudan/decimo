@@ -562,12 +562,21 @@ def set_bit(x: BigInt, index: Int) raises -> BigInt:
 
     Raises:
         ValueError: If `index` is negative.
+
+    Notes:
+
+    A bit that is already set makes this a copy, and the mask is not formed.
+    Every bit of a negative value above its magnitude is set, so without that
+    test `set_bit(-1, 10**9)` would build a mask of a billion bits -- 125
+    megabytes -- to answer `-1`.
     """
     if index < 0:
         raise ValueError(
             message="A bit index cannot be negative.",
             function="set_bit()",
         )
+    if test_bit(x, index):
+        return x.copy()
     return x | (BigInt.one() << index)
 
 
@@ -583,12 +592,20 @@ def clear_bit(x: BigInt, index: Int) raises -> BigInt:
 
     Raises:
         ValueError: If `index` is negative.
+
+    Notes:
+
+    A bit that is already clear makes this a copy, for the same reason
+    `set_bit()` tests first: every bit of a non-negative value above its
+    magnitude is clear.
     """
     if index < 0:
         raise ValueError(
             message="A bit index cannot be negative.",
             function="clear_bit()",
         )
+    if not test_bit(x, index):
+        return x.copy()
     return x & ~(BigInt.one() << index)
 
 
@@ -689,22 +706,25 @@ def _bit_scan(
 
     Notes:
 
-    Past `bit_length()` every bit is the sign bit, so the scan is bounded:
-    when `wanted` is that bit the answer is at or below the bound, and when
-    it is not, there is no answer at all.
+    At and above `bit_length()` every bit is the sign's, so the scan only
+    has to walk the bits below it. Past that the answer is read off the sign
+    instead of searched for, which is also what keeps `start` out of any
+    arithmetic: `bit_scan1(-1, Int.MAX)` is `Int.MAX`, and computing a bound
+    as `start + 1` would overflow to a negative one and report that there is
+    no answer.
     """
     if start < 0:
         raise ValueError(
             message="A bit index cannot be negative.",
             function=function,
         )
-    var bound = x.bit_length() + 1
-    if start > bound:
-        bound = start
-    for index in range(start, bound + 1):
+    var top = x.bit_length()
+    if start >= top:
+        return start if x.sign == wanted else -1
+    for index in range(start, top):
         if test_bit(x, index) == wanted:
             return index
-    return -1
+    return top if x.sign == wanted else -1
 
 
 def hamming_distance(x: BigInt, y: BigInt) raises -> Int:

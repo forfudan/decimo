@@ -186,6 +186,55 @@ def test_the_scans_find_nothing_only_where_they_cannot() raises:
     assert_true(bit_scan1(BigInt("-255"), 0) >= 0, "a negative value has a one")
 
 
+def test_the_scans_at_the_largest_index() raises:
+    """A scan that starts at `Int.MAX` still answers from the sign.
+
+    Above the magnitude every bit is the sign's, so the answer there is
+    `start` itself or nothing at all. An earlier version computed its loop
+    bound as `start + 1`, which overflowed to a negative number and reported
+    that `-1` -- whose every bit is set -- had no set bit at `Int.MAX`.
+    """
+    assert_equal(
+        bit_scan1(BigInt("-1"), Int.MAX), Int.MAX, "every bit of -1 is set"
+    )
+    assert_equal(
+        bit_scan0(BigInt("255"), Int.MAX),
+        Int.MAX,
+        "every bit above 255 is clear",
+    )
+    assert_equal(
+        bit_scan1(BigInt("255"), Int.MAX), -1, "255 has no set bit up there"
+    )
+    assert_equal(
+        bit_scan0(BigInt("-1"), Int.MAX), -1, "-1 has no clear bit anywhere"
+    )
+
+
+def test_a_redundant_write_does_not_build_a_mask() raises:
+    """Setting a bit that is already set is a copy, however high it is.
+
+    Every bit of a negative value above its magnitude is set, so this is a
+    no-op -- but an earlier version formed `1 << index` first, which at a
+    billion would be 125 megabytes to answer `-1`. The index here is large
+    enough to be slow if the mask came back, and the test is that it returns
+    at all.
+    """
+    assert_equal(
+        set_bit(BigInt("-1"), 10_000_000), BigInt("-1"), "a set bit stays set"
+    )
+    assert_equal(
+        clear_bit(BigInt("255"), 10_000_000),
+        BigInt("255"),
+        "a clear bit stays clear",
+    )
+    assert_equal(
+        set_bit(BigInt("-8"), 10_000_000), BigInt("-8"), "above a negative top"
+    )
+    assert_equal(
+        clear_bit(BigInt.zero(), 10_000_000), BigInt.zero(), "zero stays zero"
+    )
+
+
 def test_the_scans_agree_with_reading_bit_by_bit() raises:
     """The scans are a loop over `test_bit`, and must stay equal to one."""
     var values = [
