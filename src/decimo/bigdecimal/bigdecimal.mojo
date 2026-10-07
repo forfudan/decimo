@@ -2690,6 +2690,79 @@ struct BigDecimal(
             self, precision, rounding_mode
         )
 
+    def arcsin(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the arcsine of the BigDecimal number.
+
+        Args:
+            precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Decided rather than
+                approximated; see `_round_by_deciding()`.
+
+        Returns:
+            The arcsine of this value in radians, in `[-π/2, π/2]`.
+
+        Raises:
+            ValueError: If the value is outside `[-1, 1]`.
+            Error: If the underlying computation fails.
+        """
+        return bigdecimal_trigonometric.arcsin_rounded(
+            self, precision, rounding_mode
+        )
+
+    def arccos(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the arccosine of the BigDecimal number.
+
+        Args:
+            precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Decided rather than
+                approximated; see `_round_by_deciding()`.
+
+        Returns:
+            The arccosine of this value in radians, in `[0, π]`.
+
+        Raises:
+            ValueError: If the value is outside `[-1, 1]`.
+            Error: If the underlying computation fails.
+        """
+        return bigdecimal_trigonometric.arccos_rounded(
+            self, precision, rounding_mode
+        )
+
+    def arctan2(
+        self,
+        other: Self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the angle of the point `(other, self)` from the x-axis.
+
+        `self` is the ordinate and `other` the abscissa, which is the order
+        `atan2(y, x)` has everywhere else.
+
+        Args:
+            other: The abscissa of the point.
+            precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Decided rather than
+                approximated; see `_round_by_deciding()`.
+
+        Returns:
+            The angle in radians, in `(-π, π]`.
+
+        Raises:
+            Error: If the underlying computation fails.
+        """
+        return bigdecimal_trigonometric.arctan2_rounded(
+            self, other, precision, rounding_mode
+        )
+
     # === Arithmetic operations === #
 
     @always_inline
