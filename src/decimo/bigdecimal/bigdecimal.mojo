@@ -2763,6 +2763,80 @@ struct BigDecimal(
             self, other, precision, rounding_mode
         )
 
+    def expm1(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns `exp(self) - 1`, keeping the digits near zero.
+
+        `exp(x) - 1` written out loses its answer for a small `x`: `exp(x)` is
+        `1.000...` there, and subtracting the one discards the leading digits.
+
+        Args:
+            precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Decided rather than
+                approximated; see `_round_by_deciding()`.
+
+        Returns:
+            `exp(self) - 1`.
+
+        Raises:
+            Error: If the underlying computation fails.
+        """
+        return bigdecimal_exponential.expm1_rounded(
+            self, precision, rounding_mode
+        )
+
+    def log1p(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns `ln(1 + self)`, keeping the digits near zero.
+
+        `ln(1 + x)` written out loses its answer for a small `x`: `1 + x`
+        rounds to one before the logarithm is reached.
+
+        Args:
+            precision: The number of significant digits for the result.
+            rounding_mode: How to round the result. Decided rather than
+                approximated; see `_round_by_deciding()`.
+
+        Returns:
+            `ln(1 + self)`.
+
+        Raises:
+            ValueError: If `self <= -1`.
+            Error: If the underlying computation fails.
+        """
+        return bigdecimal_exponential.log1p_rounded(
+            self, precision, rounding_mode
+        )
+
+    def hypot(
+        self,
+        other: Self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns `sqrt(self*self + other*other)`, the hypotenuse.
+
+        Args:
+            other: The other leg.
+            precision: The number of significant digits for the result.
+            rounding_mode: How to round the result.
+
+        Returns:
+            The hypotenuse, which is never negative.
+
+        Raises:
+            Error: If the underlying computation fails.
+        """
+        return bigdecimal_exponential.hypot_rounded(
+            self, other, precision, rounding_mode
+        )
+
     # === Arithmetic operations === #
 
     @always_inline
