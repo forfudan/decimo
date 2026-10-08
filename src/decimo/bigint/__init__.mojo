@@ -32,5 +32,6 @@ Modules:
 - comparison: compare, greater, less, equal
 - exponential: sqrt, isqrt
 - number_theory: gcd, extended_gcd, lcm, mod_pow, mod_inverse
+- primality: is_prime, next_prime, prev_prime, primes_below
 - special: factorial (and future special functions)
 """
