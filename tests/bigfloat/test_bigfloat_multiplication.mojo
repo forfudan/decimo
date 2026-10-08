@@ -1061,6 +1061,70 @@ def test_an_exponent_outside_int_is_refused() raises:
     )
 
 
+def test_a_result_the_normalization_brings_back_is_not_refused() raises:
+    """The exponents can leave the range while the answer does not.
+
+    `2^(Int.MAX)` times two has an exponent a step above the top, and in two
+    bits that same value is `2 * 2^(Int.MAX)`, which is inside it. So the
+    exponent has to be formed after the significand is normalized, not
+    before: the sum of the two exponents is not the answer's exponent.
+    """
+    var top = BigFloat(
+        significand=BigInt.one(),
+        exponent=Int.MAX,
+        precision=1,
+        sign=False,
+    )
+    var two = BigFloat(
+        significand=BigInt.one(), exponent=1, precision=1, sign=False
+    )
+    assert_equal(
+        multiply(top, two, 2).internal_representation(),
+        "2p" + String(Int.MAX) + "@2",
+        "two bits hold what one bit cannot",
+    )
+    assert_equal(
+        multiply(top, two, 4).internal_representation(),
+        "8p" + String(Int.MAX - 2) + "@4",
+        "and four bits hold it further down",
+    )
+
+    # One bit has nowhere to put it, so there the refusal is right.
+    var raised = False
+    try:
+        _ = multiply(top, two, 1)
+    except:
+        raised = True
+    assert_true(raised, "one bit cannot hold it and said so")
+
+    # The same for a quotient, where the difference of the exponents leaves
+    # the range and the normalized result does not.
+    var half = BigFloat(
+        significand=BigInt.one(), exponent=-1, precision=1, sign=False
+    )
+    assert_equal(
+        divide(top, half, 2).internal_representation(),
+        "2p" + String(Int.MAX) + "@2",
+        "a quotient the normalization brings back",
+    )
+
+    # And at the bottom: a value at `Int.MIN` halved is below the range in
+    # one bit, and a narrower destination cannot rescue it, since widening is
+    # what moves an exponent down.
+    var bottom = BigFloat(
+        significand=BigInt.one(),
+        exponent=Int.MIN,
+        precision=1,
+        sign=False,
+    )
+    raised = False
+    try:
+        _ = divide(bottom, two, 1)
+    except:
+        raised = True
+    assert_true(raised, "an exponent below Int.MIN was invented")
+
+
 def test_the_operators_take_the_wider_precision() raises:
     """`*` and `/` assume the same two things `+` and `-` do."""
     var narrow = BigFloat.from_string("1", 53)
