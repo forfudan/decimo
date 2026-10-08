@@ -201,6 +201,43 @@ def test_rounding_refuses_what_it_cannot_do() raises:
     assert_true(raised, "a negative significand was accepted")
 
 
+def test_rounding_refuses_an_exponent_outside_int() raises:
+    """Normalizing moves the exponent, and the range it moves in is an `Int`.
+
+    Widening lowers it by the bits added and dropping bits raises it by the
+    bits taken away, so a value at either end of the range can be asked for
+    an exponent a step beyond it. Both ends refuse, since wrapping round
+    would answer the largest value with the smallest.
+    """
+    var raised = False
+    try:
+        _ = round_to_precision(
+            BigInt.one(), Int.MIN, 53, False, RoundingMode.ROUND_HALF_EVEN
+        )
+    except:
+        raised = True
+    assert_true(raised, "widening below Int.MIN was accepted")
+
+    raised = False
+    try:
+        _ = round_to_precision(
+            (BigInt.one() << 53) - BigInt.one(),
+            Int.MAX,
+            4,
+            False,
+            RoundingMode.ROUND_HALF_EVEN,
+        )
+    except:
+        raised = True
+    assert_true(raised, "raising above Int.MAX was accepted")
+
+    # One step inside the range, the same shapes are answers.
+    var widened = round_to_precision(
+        BigInt.one(), Int.MIN + 52, 53, False, RoundingMode.ROUND_HALF_EVEN
+    )
+    assert_equal(widened[1], Int.MIN, "widening down to the bottom is fine")
+
+
 def test_the_three_kinds() raises:
     """Finite, infinite and NaN, and what each says about itself."""
     var finite = BigFloat.from_int(5)
