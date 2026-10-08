@@ -15,7 +15,7 @@
 # ===----------------------------------------------------------------------=== #
 
 
-"""Addition and subtraction of binary floats.
+"""The four arithmetic operations on binary floats.
 
 The sum of two floats is usually not a float, so the answer is the correctly
 rounded one: the exact sum is decided to the destination's precision in a
@@ -44,12 +44,19 @@ overflow is written to answer without doing so. Making room for guard bits
 lowers an exponent, and that cannot leave the range either: the case that
 does it is only reached when the exponent is already above the bottom by more
 than the room it needs, which the code asserts and says why.
+
+Multiplying and dividing are the two that can genuinely leave the range,
+since they add and subtract whole exponents rather than adjusting one, and
+there they refuse the answer rather than wrapping round to the other end of
+it. That is the one place this type's unbounded exponent meets a bound, and
+the bound is an `Int`.
 """
 
 from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigfloat.comparison import compare_absolute
 from decimo.bigfloat.rounding import round_to_precision
 from decimo.bigint.bigint import BigInt
+from decimo.errors import ValueError
 from decimo.rounding_mode import RoundingMode
 
 
@@ -79,6 +86,65 @@ def _difference_at_most(left: Int, right: Int, bound: Int) -> Bool:
     if left < 0 and right > Int.MAX + left:
         return True
     return left - right <= bound
+
+
+def _exponent_sum(left: Int, right: Int) raises -> Int:
+    """`left + right`, refusing the answer rather than wrapping it.
+
+    Args:
+        left: The first exponent.
+        right: The second one.
+
+    Returns:
+        The sum.
+
+    Raises:
+        ValueError: If the sum is outside `Int`.
+
+    Notes:
+
+    The exponent is held in an `Int`, so the values this type reaches are the
+    ones whose exponent an `Int` holds. A product of two values near the top
+    of that range has an exponent above it, and saying so is better than
+    wrapping round to the bottom and answering with a tiny number.
+    """
+    if right > 0 and left > Int.MAX - right:
+        raise ValueError(
+            message="The exponent of the product is above what an Int holds.",
+            function="_exponent_sum()",
+        )
+    if right < 0 and left < Int.MIN - right:
+        raise ValueError(
+            message="The exponent of the product is below what an Int holds.",
+            function="_exponent_sum()",
+        )
+    return left + right
+
+
+def _exponent_difference(left: Int, right: Int) raises -> Int:
+    """`left - right`, refusing the answer rather than wrapping it.
+
+    Args:
+        left: The exponent subtracted from.
+        right: What is taken away.
+
+    Returns:
+        The difference.
+
+    Raises:
+        ValueError: If the difference is outside `Int`.
+    """
+    if right < 0 and left > Int.MAX + right:
+        raise ValueError(
+            message="The exponent of the quotient is above what an Int holds.",
+            function="_exponent_difference()",
+        )
+    if right > 0 and left < Int.MIN + right:
+        raise ValueError(
+            message="The exponent of the quotient is below what an Int holds.",
+            function="_exponent_difference()",
+        )
+    return left - right
 
 
 def _fitted(
@@ -334,3 +400,142 @@ def subtract(
     restating any of them.
     """
     return add(x1, -x2, precision, rounding_mode)
+
+
+def multiply(
+    x1: BigFloat,
+    x2: BigFloat,
+    precision: Int,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) raises -> BigFloat:
+    """The product of two values, correctly rounded.
+
+    Args:
+        x1: The first operand.
+        x2: The second operand.
+        precision: How many bits the result keeps. Must be positive.
+        rounding_mode: Which way to round.
+
+    Returns:
+        The float of `precision` bits nearest the exact product.
+
+    Raises:
+        ValueError: If `precision` is not positive, or the product's exponent
+            is outside `Int`.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    This is the easy one of the four. The product of two significands is an
+    integer, so it is computed exactly and rounded once, and the exponents
+    simply add. Nothing has to decide how much of an operand matters, which
+    is what makes addition hard.
+
+    The special values follow IEEE 754. An infinity times a zero is a NaN,
+    since the two pull the product in opposite directions and neither wins.
+    Everything else keeps the sign the two operands give it, including the
+    zeros: `-0` times a positive value is `-0`.
+    """
+    var negative = x1.sign != x2.sign
+
+    if x1.is_nan() or x2.is_nan():
+        return BigFloat.nan(precision)
+
+    if x1.is_infinite() or x2.is_infinite():
+        if x1.is_zero() or x2.is_zero():
+            return BigFloat.nan(precision)
+        return BigFloat.infinity(precision, negative)
+
+    if x1.is_zero() or x2.is_zero():
+        return BigFloat.zero(precision, negative)
+
+    return _fitted(
+        x1.significand * x2.significand,
+        _exponent_sum(x1.exponent, x2.exponent),
+        precision,
+        negative,
+        rounding_mode,
+    )
+
+
+def divide(
+    x1: BigFloat,
+    x2: BigFloat,
+    precision: Int,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) raises -> BigFloat:
+    """The quotient of two values, correctly rounded.
+
+    Args:
+        x1: The value divided.
+        x2: The value divided by.
+        precision: How many bits the result keeps. Must be positive.
+        rounding_mode: Which way to round.
+
+    Returns:
+        The float of `precision` bits nearest `x1 / x2`.
+
+    Raises:
+        ValueError: If `precision` is not positive, or the quotient's
+            exponent is outside `Int`.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    A quotient is almost never exact, so the division is taken with more bits
+    than are kept and the division's own remainder is the sticky bit. That is
+    the same shape the conversion from decimal has, and for the same reason:
+    a quotient that stops just short of a half cannot be told from one that
+    sits exactly on it without knowing whether anything is left below.
+
+    The shift is chosen so that the quotient has a few bits past the
+    precision and then checked, because a numerator much smaller than the
+    denominator can leave it short. If it does, the shift grows and the
+    division is taken again.
+
+    Dividing by zero gives an infinity rather than raising, which is what a
+    float does: IEEE 754 calls it an exception and flags it, and this type
+    has no flags to raise, so the value it specifies is the whole of the
+    answer. Zero over zero and an infinity over an infinity are NaNs, having
+    no value either way, and a finite value over an infinity is a signed zero.
+    """
+    var negative = x1.sign != x2.sign
+
+    if x1.is_nan() or x2.is_nan():
+        return BigFloat.nan(precision)
+
+    if x1.is_infinite():
+        if x2.is_infinite():
+            return BigFloat.nan(precision)
+        return BigFloat.infinity(precision, negative)
+    if x2.is_infinite():
+        return BigFloat.zero(precision, negative)
+
+    if x2.is_zero():
+        if x1.is_zero():
+            return BigFloat.nan(precision)
+        return BigFloat.infinity(precision, negative)
+    if x1.is_zero():
+        return BigFloat.zero(precision, negative)
+
+    # The quotient of the significands has about `p1 - p2 + shift` bits, so
+    # this aims a few past the precision; the loop covers the rest.
+    var shift = precision + 3 + x2.precision - x1.precision
+    if shift < 0:
+        shift = 0
+    while True:
+        var scaled = x1.significand << shift
+        var quotient = scaled.truncate_divide(x2.significand)
+        if quotient.bit_length() > precision:
+            var remainder = scaled - quotient * x2.significand
+            return _fitted(
+                quotient,
+                _exponent_difference(
+                    _exponent_difference(x1.exponent, x2.exponent), shift
+                ),
+                precision,
+                negative,
+                rounding_mode,
+                not remainder.is_zero(),
+            )
+        shift += precision + 64
