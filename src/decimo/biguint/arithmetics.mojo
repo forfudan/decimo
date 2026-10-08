@@ -4658,8 +4658,11 @@ def power_of_10(n: Int) raises -> BigUInt:
 
     var result = BigUInt.zero()
 
-    # Add leading zeros for the whole words below the highest one
-    for _ in range(words):
+    # Add leading zeros for the whole words below the highest one. `zero()`
+    # already carries one of them, so this adds the rest: appending `words` of
+    # them left every power from `10^18` up a whole word too large, which made
+    # `power_of_10(18)` answer `10^36`.
+    for _ in range(words - 1):
         result.words.append(0)
 
     # Calculate partial power for the highest word
