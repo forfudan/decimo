@@ -229,7 +229,12 @@ def test_the_two_zeros_are_different_values() raises:
     var negative = BigFloat.zero(53, True)
     assert_true(not positive.sign, "positive zero is not signed")
     assert_true(negative.sign, "negative zero is signed")
-    assert_equal(String(negative), "-0p0@53", "and prints its sign")
+    assert_equal(
+        negative.internal_representation(),
+        "-0p0@53",
+        "and carries its sign in the parts",
+    )
+    assert_equal(String(negative), "-0", "and prints its sign")
 
 
 def test_negation_and_magnitude() raises:
@@ -273,17 +278,23 @@ def test_from_int_is_exact_where_it_fits() raises:
 def test_from_int_rounds_by_the_mode() raises:
     """Eleven in three bits is the same half the primitive is tested on."""
     assert_equal(
-        String(BigFloat.from_int(11, 3, RoundingMode.ROUND_HALF_EVEN)),
+        BigFloat.from_int(
+            11, 3, RoundingMode.ROUND_HALF_EVEN
+        ).internal_representation(),
         "6p1@3",
         "half-even",
     )
     assert_equal(
-        String(BigFloat.from_int(11, 3, RoundingMode.ROUND_DOWN)),
+        BigFloat.from_int(
+            11, 3, RoundingMode.ROUND_DOWN
+        ).internal_representation(),
         "5p1@3",
         "toward zero",
     )
     assert_equal(
-        String(BigFloat.from_int(-11, 3, RoundingMode.ROUND_CEILING)),
+        BigFloat.from_int(
+            -11, 3, RoundingMode.ROUND_CEILING
+        ).internal_representation(),
         "-5p1@3",
         "toward positive infinity, from below",
     )
@@ -437,14 +448,27 @@ def test_float64_at_an_exponent_near_the_limits_of_int() raises:
     assert_equal(past.to_float64(), infinity, "one step past it is an infinity")
 
 
-def test_the_representation_is_what_it_prints() raises:
-    """The text is the parts, not a decimal rendering."""
-    assert_equal(String(BigFloat.from_int(1)), "4503599627370496p-52@53")
-    assert_equal(String(BigFloat.from_int(11, 3)), "6p1@3")
+def test_the_representation_is_the_parts() raises:
+    """The parts have their own method; the text is a decimal.
+
+    `4503599627370496p-52@53` is one: that significand, times two to that
+    exponent, in that many bits.
+    """
+    assert_equal(
+        BigFloat.from_int(1).internal_representation(),
+        "4503599627370496p-52@53",
+    )
+    assert_equal(BigFloat.from_int(11, 3).internal_representation(), "6p1@3")
+    assert_equal(BigFloat.zero().internal_representation(), "0p0@53")
+    assert_equal(BigFloat.nan().internal_representation(), "NaN")
+    assert_equal(BigFloat.infinity().internal_representation(), "Infinity")
+    assert_equal((-BigFloat.infinity()).internal_representation(), "-Infinity")
+
+    # The printed text is the number, which the decimal tests cover.
+    assert_equal(String(BigFloat.from_int(1)), "1")
     assert_equal(String(BigFloat.nan()), "NaN")
     assert_equal(String(BigFloat.infinity()), "Infinity")
     assert_equal(String(-BigFloat.infinity()), "-Infinity")
-    assert_equal(String(BigFloat.zero()), "0p0@53")
 
 
 def test_the_constructor_refuses_a_bad_shape() raises:

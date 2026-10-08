@@ -38,6 +38,11 @@ brings along is one byte that this type does not read.
 
 from std.memory import bitcast
 
+from decimo.bigdecimal.bigdecimal import BigDecimal
+from decimo.bigfloat.conversion import (
+    from_decimal_parts,
+    to_exact_bigdecimal,
+)
 from decimo.bigfloat.rounding import round_to_precision
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.bitwise import test_bit, trailing_zeros
@@ -528,11 +533,223 @@ struct BigFloat(Absable, Copyable, Movable, Writable):
         return result^
 
     # ===------------------------------------------------------------------=== #
+    # Decimal
+    # ===------------------------------------------------------------------=== #
+
+    @staticmethod
+    def from_bigdecimal(
+        value: BigDecimal,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Builds the nearest float to a decimal value.
+
+        Args:
+            value: The decimal.
+            precision: The number of bits to keep.
+            rounding_mode: How to round, since almost no decimal is a binary
+                float.
+
+        Returns:
+            The float nearest the decimal, in the direction the mode asks for.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the conversion.
+        """
+        var parts = from_decimal_parts(
+            BigInt.from_biguint(value.coefficient),
+            -value.scale,
+            precision,
+            value.sign,
+            rounding_mode,
+        )
+        return Self(
+            significand=parts[0],
+            exponent=parts[1],
+            precision=precision,
+            sign=value.sign,
+        )
+
+    @staticmethod
+    def from_string(
+        text: StringSlice,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Parses decimal text, or one of the three names.
+
+        Args:
+            text: The text, as `BigDecimal` accepts it -- digits, an optional
+                point and an optional exponent -- or `nan`, `inf`,
+                `infinity`, with an optional sign on the last two. The names
+                are matched without regard to case.
+            precision: The number of bits to keep.
+            rounding_mode: How to round the digits.
+
+        Returns:
+            The float.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: If the text is not a number, propagated from `BigDecimal`.
+
+        Notes:
+
+        The digits go to `BigDecimal`'s parser rather than to one written
+        here: it already settles the point, the exponent and every way the
+        text can be malformed, and a second parser would be a second set of
+        answers to the same questions.
+        """
+        var lowered = String(text).lower()
+        if lowered == "nan":
+            return Self.nan(precision)
+        if (
+            lowered == "inf"
+            or lowered == "infinity"
+            or lowered == "+inf"
+            or lowered == "+infinity"
+        ):
+            return Self.infinity(precision, False)
+        if lowered == "-inf" or lowered == "-infinity":
+            return Self.infinity(precision, True)
+        return Self.from_bigdecimal(BigDecimal(text), precision, rounding_mode)
+
+    def to_bigdecimal(self) raises -> BigDecimal:
+        """This value as an exact decimal.
+
+        Returns:
+            The same number, with no rounding: a binary float always has a
+            finite decimal expansion, because `2^-k` is `5^k / 10^k`.
+
+        Raises:
+            ValueError: If the value is infinite or a NaN, neither of which a
+                `BigDecimal` can hold.
+            Error: Propagated from the conversion.
+
+        Notes:
+
+        The digit count is whatever the value needs, which for a small
+        exponent is a lot: the smallest double is 751 significant digits and
+        1074 decimal places. Ask `to_bigdecimal_rounded()` for a shorter
+        answer.
+        """
+        if self.is_nan():
+            raise ValueError(
+                message="A NaN is not a decimal value.",
+                function="BigFloat.to_bigdecimal()",
+            )
+        if self.is_infinite():
+            raise ValueError(
+                message="An infinity is not a decimal value.",
+                function="BigFloat.to_bigdecimal()",
+            )
+        return to_exact_bigdecimal(self.significand, self.exponent, self.sign)
+
+    def to_bigdecimal_rounded(
+        self,
+        digits: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> BigDecimal:
+        """This value as a decimal of `digits` significant digits.
+
+        Args:
+            digits: How many significant digits to keep. Must be positive.
+            rounding_mode: How to round them.
+
+        Returns:
+            The rounded decimal.
+
+        Raises:
+            ValueError: If `digits` is not positive, or the value is infinite
+                or a NaN.
+            Error: Propagated from the conversion.
+
+        Notes:
+
+        The exact expansion is taken first and rounded once. That is more
+        digits than are asked for, and it is why the rounding is a single one:
+        rounding during the conversion and again to the digit count would be
+        two, and two roundings can land a step away from the one.
+        """
+        if digits <= 0:
+            raise ValueError(
+                message="A digit count must be positive.",
+                function="BigFloat.to_bigdecimal_rounded()",
+            )
+        var exact = self.to_bigdecimal()
+        exact.round_to_precision_inplace(
+            precision=digits,
+            rounding_mode=rounding_mode,
+            remove_extra_digit_due_to_rounding=True,
+            fill_zeros_to_precision=False,
+        )
+        return exact^
+
+    def decimal_digits(self) -> Int:
+        """How many decimal digits this precision is worth.
+
+        Returns:
+            The digit count that holds the value's bits and no more than one
+            digit beyond them, which is `ceil(precision * log10(2)) + 1`.
+        """
+        return Int(Float64(self.precision) * 0.30103) + 2
+
+    def to_string(
+        self,
+        digits: Int = 0,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> String:
+        """This value as decimal text.
+
+        Args:
+            digits: How many significant digits. Zero asks for as many as the
+                precision is worth, which is what `decimal_digits()` returns.
+            rounding_mode: How to round them.
+
+        Returns:
+            The text, with `NaN`, `Infinity` and `-Infinity` spelled out.
+
+        Raises:
+            Error: Propagated from the conversion.
+        """
+        if self.is_nan():
+            return String("NaN")
+        if self.is_infinite():
+            return String("-Infinity") if self.sign else String("Infinity")
+        var wanted = digits if digits > 0 else self.decimal_digits()
+        return String(self.to_bigdecimal_rounded(wanted, rounding_mode))
+
+    def internal_representation(self) raises -> String:
+        """The parts, for looking at what a value really holds.
+
+        Returns:
+            The significand, the power of two and the precision, as
+            `significand p exponent @ precision`.
+
+        Raises:
+            Error: Propagated from the formatting.
+        """
+        if self.is_nan():
+            return String("NaN")
+        if self.is_infinite():
+            return String("-Infinity") if self.sign else String("Infinity")
+        var text = String("-") if self.sign else String("")
+        return (
+            text
+            + String(self.significand)
+            + "p"
+            + String(self.exponent)
+            + "@"
+            + String(self.precision)
+        )
+
+    # ===------------------------------------------------------------------=== #
     # Text
     # ===------------------------------------------------------------------=== #
 
     def write_to[W: Writer](self, mut writer: W):
-        """Writes the value as its parts.
+        """Writes the value as decimal text.
 
         Parameters:
             W: The writer type.
@@ -542,21 +759,16 @@ struct BigFloat(Absable, Copyable, Movable, Writable):
 
         Notes:
 
-        This is the representation, not a decimal rendering: the decimal
-        conversion is a separate piece of work and lands with the parsing it
-        belongs to. What it prints is enough to see what a value is -- the
-        significand, the power of two and the precision.
+        Decimal, not the parts: a float prints as a number. `2^-52` is a
+        value, not `4503599627370496p-104@53`, and the parts are available
+        from `internal_representation()` for when they are what is wanted --
+        the same split `BigInt` and `BigDecimal` have.
+
+        The digit count is what the precision is worth. A writer cannot
+        answer a failure, so a conversion that raises -- which only an
+        allocation failure can do here -- falls back to the parts.
         """
-        if self.is_nan():
-            writer.write("NaN")
-            return
-        if self.is_infinite():
-            writer.write("-Infinity" if self.sign else "Infinity")
-            return
-        if self.sign:
-            writer.write("-")
-        writer.write(self.significand)
-        writer.write("p")
-        writer.write(self.exponent)
-        writer.write("@")
-        writer.write(self.precision)
+        try:
+            writer.write(self.to_string())
+        except:
+            writer.write("<BigFloat: unprintable>")
