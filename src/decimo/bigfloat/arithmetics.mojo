@@ -49,7 +49,9 @@ Multiplying and dividing are the two that can genuinely leave the range,
 since they add and subtract whole exponents rather than adjusting one, and
 there they refuse the answer rather than wrapping round to the other end of
 it. That is the one place this type's unbounded exponent meets a bound, and
-the bound is an `Int`.
+the bound is an `Int`. Both normalize the significand before forming the
+exponent, because the exponents can add to a value outside the range while
+the normalized result sits inside it.
 """
 
 from decimo.bigfloat.bigfloat import BigFloat
@@ -88,40 +90,77 @@ def _difference_at_most(left: Int, right: Int, bound: Int) -> Bool:
     return left - right <= bound
 
 
-def _exponent_sum(left: Int, right: Int) raises -> Int:
+def _checked_sum(left: Int, right: Int, what: String) raises -> Int:
     """`left + right`, refusing the answer rather than wrapping it.
 
     Args:
-        left: The first exponent.
+        left: The first term.
         right: The second one.
+        what: The name of the result, for the message.
 
     Returns:
         The sum.
 
     Raises:
         OverflowError: If the sum is outside `Int`.
-
-    Notes:
-
-    The exponent is held in an `Int`, so the values this type reaches are the
-    ones whose exponent an `Int` holds. A product of two values near the top
-    of that range has an exponent above it, and saying so is better than
-    wrapping round to the bottom and answering with a tiny number.
     """
     if right > 0 and left > Int.MAX - right:
         raise OverflowError(
-            message="The exponent of the product is above what an Int holds.",
-            function="_exponent_sum()",
+            message=(
+                "The exponent of the " + what + " is above what an Int holds."
+            ),
+            function="_checked_sum()",
         )
     if right < 0 and left < Int.MIN - right:
         raise OverflowError(
-            message="The exponent of the product is below what an Int holds.",
-            function="_exponent_sum()",
+            message=(
+                "The exponent of the " + what + " is below what an Int holds."
+            ),
+            function="_checked_sum()",
         )
     return left + right
 
 
-def _exponent_difference(left: Int, right: Int) raises -> Int:
+def _exponent_sum(left: Int, right: Int, adjust: Int) raises -> Int:
+    """`left + right + adjust`, refusing only if the total is out of range.
+
+    Args:
+        left: The first exponent.
+        right: The second exponent.
+        adjust: What normalizing the significand moved the exponent by, which
+            is a difference of two bit counts and so a small number.
+
+    Returns:
+        The total.
+
+    Raises:
+        OverflowError: If the total is outside `Int`.
+
+    Notes:
+
+    The order of the three additions matters, because a partial sum can leave
+    the range while the total sits inside it. Two values at the top of the
+    exponent range have a product whose exponent is above it, and widening
+    the significand to a larger precision brings it back: `2^(Int.MAX)` times
+    two is representable in two bits as `2 * 2^(Int.MAX)`, though the
+    exponents add to `Int.MAX + 1`.
+
+    Adding two numbers of opposite signs can never overflow, so the
+    adjustment goes onto whichever exponent it moves toward zero and the
+    exponents are added after. When the adjustment shares its sign with both
+    exponents no order helps, and none is needed: the total is then further
+    from zero than the two exponents alone, so a sum of those that leaves the
+    range means the total does too.
+    """
+    if adjust != 0:
+        if (adjust < 0) != (left < 0):
+            return _checked_sum(left + adjust, right, "product")
+        if (adjust < 0) != (right < 0):
+            return _checked_sum(right + adjust, left, "product")
+    return _checked_sum(_checked_sum(left, right, "product"), adjust, "product")
+
+
+def _checked_difference(left: Int, right: Int) raises -> Int:
     """`left - right`, refusing the answer rather than wrapping it.
 
     Args:
@@ -137,14 +176,45 @@ def _exponent_difference(left: Int, right: Int) raises -> Int:
     if right < 0 and left > Int.MAX + right:
         raise OverflowError(
             message="The exponent of the quotient is above what an Int holds.",
-            function="_exponent_difference()",
+            function="_checked_difference()",
         )
     if right > 0 and left < Int.MIN + right:
         raise OverflowError(
             message="The exponent of the quotient is below what an Int holds.",
-            function="_exponent_difference()",
+            function="_checked_difference()",
         )
     return left - right
+
+
+def _exponent_difference(left: Int, right: Int, adjust: Int) raises -> Int:
+    """`left - right + adjust`, refusing only if the total is out of range.
+
+    Args:
+        left: The exponent divided.
+        right: The exponent divided by.
+        adjust: What the scaling and the normalization moved the exponent by,
+            a small number.
+
+    Returns:
+        The total.
+
+    Raises:
+        OverflowError: If the total is outside `Int`.
+
+    Notes:
+
+    This is the sum's argument with one sign flipped. The adjustment goes
+    onto `left` when it moves that toward zero, or onto `right` when it moves
+    the amount taken away toward zero, since neither addition can overflow.
+    In what remains the adjustment pushes the same way as the difference, so
+    a difference that leaves the range means the total does.
+    """
+    if adjust != 0:
+        if (adjust < 0) != (left < 0):
+            return _checked_difference(left + adjust, right)
+        if (adjust < 0) == (right < 0):
+            return _checked_difference(left, right - adjust)
+    return _checked_sum(_checked_difference(left, right), adjust, "quotient")
 
 
 def _fitted(
@@ -451,12 +521,22 @@ def multiply(
     if x1.is_zero() or x2.is_zero():
         return BigFloat.zero(precision, negative)
 
-    return _fitted(
+    # The significand is normalized before the exponent is formed, because
+    # the exponents can add to a value outside `Int` while the normalized
+    # result sits inside it. The rounding is handed an exponent of nought, so
+    # what comes back is the adjustment alone.
+    var fitted = round_to_precision(
         x1.significand * x2.significand,
-        _exponent_sum(x1.exponent, x2.exponent),
+        0,
         precision,
         negative,
         rounding_mode,
+    )
+    return BigFloat(
+        significand=fitted[0],
+        exponent=_exponent_sum(x1.exponent, x2.exponent, fitted[1]),
+        precision=precision,
+        sign=negative,
     )
 
 
@@ -530,14 +610,23 @@ def divide(
         var quotient = scaled.truncate_divide(x2.significand)
         if quotient.bit_length() > precision:
             var remainder = scaled - quotient * x2.significand
-            return _fitted(
+            # As in the product: normalize first, then form the exponent,
+            # since the difference of the two exponents can leave `Int`
+            # while the normalized quotient does not.
+            var fitted = round_to_precision(
                 quotient,
-                _exponent_difference(
-                    _exponent_difference(x1.exponent, x2.exponent), shift
-                ),
+                0,
                 precision,
                 negative,
                 rounding_mode,
                 not remainder.is_zero(),
+            )
+            return BigFloat(
+                significand=fitted[0],
+                exponent=_exponent_difference(
+                    x1.exponent, x2.exponent, fitted[1] - shift
+                ),
+                precision=precision,
+                sign=negative,
             )
         shift += precision + 64
