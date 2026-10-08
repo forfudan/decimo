@@ -380,6 +380,44 @@ def test_the_exponents_can_sit_at_the_ends_of_int() raises:
     )
 
 
+def test_the_bottom_of_the_exponent_range_still_adds() raises:
+    """Two values at `Int.MIN` add, and nothing has to reach below it.
+
+    Making room for the bits a rounding reads lowers an exponent by two, so
+    a value at the very bottom of the range looks like a problem. It is not:
+    the case that lowers the exponent is only taken when the other operand
+    sits below the first one's last bit, which already puts the first one
+    above the bottom by more than the room it needs. A value at `Int.MIN` is
+    therefore always the smaller of the two, and the smaller one is never the
+    one that gets widened.
+    """
+    var floor_value = BigFloat(
+        significand=BigInt.one() << 52,
+        exponent=Int.MIN,
+        precision=53,
+        sign=False,
+    )
+    assert_true(
+        add(floor_value, -floor_value, 53).is_zero(),
+        "a value and its negation cancel at the bottom of the range",
+    )
+    assert_equal(
+        add(floor_value, floor_value, 53).exponent,
+        Int.MIN + 1,
+        "doubling it moves the exponent up, not down",
+    )
+    assert_equal(
+        add(floor_value, BigFloat.from_int(1), 53).internal_representation(),
+        BigFloat.from_int(1).internal_representation(),
+        "and against one it is the one that becomes a sticky bit",
+    )
+    assert_true(
+        add(floor_value, BigFloat.from_int(1), 53, RoundingMode.ROUND_UP)
+        > BigFloat.from_int(1),
+        "which away from zero is still a whole unit",
+    )
+
+
 def test_a_zero_operand_still_rounds_the_other() raises:
     """Adding nothing is not always the identity, because of the destination.
 

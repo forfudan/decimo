@@ -40,7 +40,10 @@ themselves carry, which is the work a subtraction genuinely needs.
 Every exponent here is handled by subtraction and never by addition. An
 exponent sits anywhere in `Int`, so `exponent + precision` can overflow where
 the difference of two exponents does not, and the one comparison that could
-overflow is written to answer without doing so.
+overflow is written to answer without doing so. Making room for guard bits
+lowers an exponent, and that cannot leave the range either: the case that
+does it is only reached when the exponent is already above the bottom by more
+than the room it needs, which the code asserts and says why.
 """
 
 from decimo.bigfloat.bigfloat import BigFloat
@@ -191,6 +194,17 @@ def _combine(
         var widened = big.significand << stretch
         if subtracting:
             widened = widened - BigInt.one()
+        # Lowering the exponent by `stretch` cannot leave the range. The
+        # condition just tested rearranges to
+        #
+        #     big.exponent >= small.exponent + small.precision + stretch
+        #
+        # and `small.exponent` is at least `Int.MIN` with a precision of at
+        # least one bit, so `big.exponent` is above `Int.MIN + stretch`.
+        debug_assert(
+            big.exponent > Int.MIN + stretch,
+            "the far case lowered an exponent below Int.MIN",
+        )
         return _fitted(
             widened,
             big.exponent - stretch,
