@@ -39,6 +39,7 @@ brings along is one byte that this type does not read.
 from std.memory import bitcast
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
+import decimo.bigfloat.arithmetics as bigfloat_arithmetics
 import decimo.bigfloat.comparison as bigfloat_comparison
 from decimo.bigfloat.conversion import (
     from_decimal_parts,
@@ -539,6 +540,51 @@ struct BigFloat(Absable, Comparable, Copyable, Movable, Writable):
         var result = self.copy()
         result.sign = False
         return result^
+
+    # ===------------------------------------------------------------------=== #
+    # Arithmetic
+    # ===------------------------------------------------------------------=== #
+
+    def __add__(self, other: Self) raises -> Self:
+        """The sum, correctly rounded.
+
+        Args:
+            other: The value to add.
+
+        Returns:
+            The sum at the wider of the two precisions, rounded half to even.
+            Those two choices are what an operator has to assume; `add()`
+            takes both as arguments.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_arithmetics.add(
+            self,
+            other,
+            self.precision if self.precision
+            > other.precision else (other.precision),
+        )
+
+    def __sub__(self, other: Self) raises -> Self:
+        """The difference, correctly rounded.
+
+        Args:
+            other: The value to take away.
+
+        Returns:
+            The difference at the wider of the two precisions, rounded half
+            to even.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_arithmetics.subtract(
+            self,
+            other,
+            self.precision if self.precision
+            > other.precision else (other.precision),
+        )
 
     # ===------------------------------------------------------------------=== #
     # Comparison
