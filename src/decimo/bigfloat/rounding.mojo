@@ -29,8 +29,70 @@ The contract both ways is `(magnitude, exponent)` with the value being
 
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.bitwise import test_bit, trailing_zeros
-from decimo.errors import ValueError
+from decimo.errors import OverflowError, ValueError
 from decimo.rounding_mode import RoundingMode
+
+
+def _lowered(exponent: Int, by: Int) raises -> Int:
+    """`exponent - by` for a non-negative `by`, refusing to wrap.
+
+    Args:
+        exponent: The exponent to lower.
+        by: How far to lower it, never negative.
+
+    Returns:
+        The lowered exponent.
+
+    Raises:
+        OverflowError: If the result is below `Int.MIN`.
+
+    Notes:
+
+    Widening a significand to the precision asked for lowers the exponent by
+    the same amount, and a value already at the bottom of the range has
+    nowhere to go. Wrapping round would answer with the largest exponent
+    there is, so the answer is a refusal instead.
+    """
+    if exponent < Int.MIN + by:
+        raise OverflowError(
+            message=(
+                "Normalizing to this precision needs an exponent below what"
+                " an Int holds."
+            ),
+            function="round_to_precision()",
+        )
+    return exponent - by
+
+
+def _raised(exponent: Int, by: Int) raises -> Int:
+    """`exponent + by` for a non-negative `by`, refusing to wrap.
+
+    Args:
+        exponent: The exponent to raise.
+        by: How far to raise it, never negative.
+
+    Returns:
+        The raised exponent.
+
+    Raises:
+        OverflowError: If the result is above `Int.MAX`.
+
+    Notes:
+
+    Dropping bits raises the exponent by the number dropped, and an
+    increment that carries past the top raises it once more. Two values at
+    the top of the range sum to one whose exponent is a step above it, and a
+    step above the top is a refusal rather than the bottom.
+    """
+    if exponent > Int.MAX - by:
+        raise OverflowError(
+            message=(
+                "Normalizing to this precision needs an exponent above what"
+                " an Int holds."
+            ),
+            function="round_to_precision()",
+        )
+    return exponent + by
 
 
 def round_to_precision(
@@ -65,6 +127,10 @@ def round_to_precision(
         ValueError: If `precision` is not positive, if `magnitude` is
             negative, or if `inexact_below` is set while the magnitude has no
             bits to drop.
+        OverflowError: If normalizing to `precision` needs an exponent
+            outside `Int`. Widening lowers the exponent and dropping bits
+            raises it, so a value at either end of the range can be asked
+            for one a step beyond it.
         Error: Propagated from the arithmetic.
 
     Notes:
@@ -127,7 +193,7 @@ def round_to_precision(
         # decides whether the value is on a boundary for a later rounding, so
         # a caller that cares passes it down rather than relying on this.
         var shift = precision - bits
-        return (magnitude << shift, exponent - shift)
+        return (magnitude << shift, _lowered(exponent, shift))
 
     var dropped = bits - precision
     var kept = magnitude >> dropped
@@ -147,9 +213,9 @@ def round_to_precision(
             # `0b111 + 1` is `0b1000`: one bit wider, and exactly a power of
             # two, so the shift is exact and the exponent takes the carry.
             kept = kept >> 1
-            return (kept^, exponent + dropped + 1)
+            return (kept^, _raised(exponent, dropped + 1))
 
-    return (kept^, exponent + dropped)
+    return (kept^, _raised(exponent, dropped))
 
 
 def _rounds_away_from_zero(
