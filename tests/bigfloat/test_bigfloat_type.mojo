@@ -528,6 +528,25 @@ def test_the_constructor_refuses_a_bad_shape() raises:
         raised = True
     assert_true(raised, "a negative significand was accepted")
 
+    # The bit count has to match the precision, since everything downstream
+    # reads the leading bit's position off the pair without asking the
+    # significand how many bits it really has.
+    raised = False
+    try:
+        _ = BigFloat(significand=BigInt(2), exponent=0, precision=4, sign=False)
+    except:
+        raised = True
+    assert_true(raised, "a significand of the wrong width was accepted")
+
+    # A zero carries no bits, and neither does an infinity or a NaN, so the
+    # check leaves those alone.
+    assert_true(
+        BigFloat(
+            significand=BigInt.zero(), exponent=0, precision=53, sign=True
+        ).is_zero(),
+        "a negative zero is still a value",
+    )
+
 
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()

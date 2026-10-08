@@ -15,9 +15,10 @@ other such case and is exercised in the `mpf` suite, which is separate
 because it needs MPFR at runtime.
 """
 
-from std import testing
+from std import math, testing
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
+from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigint.bigint import BigInt
 from decimo.biguint.biguint import BigUInt
 from decimo.decimal128.decimal128 import Decimal128
@@ -67,6 +68,29 @@ def test_bigdecimal_through_rootable() raises:
         _root_of(BigDecimal("2")),
         BigDecimal("1.414213562373095048801688724"),
         "sqrt(2) to the 28 significant digits `PRECISION` names",
+    )
+
+
+def test_bigfloat_through_rootable() raises:
+    """`BigFloat` rooted through the trait, at the value's own precision.
+
+    The bound is `Rootable` alone, since this type is not `Numeric` yet. The
+    reference is the hardware's own square root, which IEEE 754 requires to
+    be correctly rounded, so at 53 bits the two have to agree on the bits.
+    """
+    var root = _root_of(BigFloat.from_string("2", 53))
+    testing.assert_equal(
+        root.to_float64(),
+        math.sqrt(Float64(2)),
+        "sqrt(2) at 53 bits is the double the hardware gives",
+    )
+    testing.assert_equal(root.precision, 53, "and keeps its precision")
+
+    # A negative value gives a NaN rather than raising, which is what the
+    # trait allows and what `MPF` does.
+    testing.assert_true(
+        BigFloat.from_int(-4).sqrt().is_nan(),
+        "a negative value has no root and says so with a NaN",
     )
 
 

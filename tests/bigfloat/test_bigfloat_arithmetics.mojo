@@ -577,14 +577,32 @@ def test_the_operators_take_the_wider_precision() raises:
     )
 
 
-def test_a_precision_must_be_positive() raises:
-    for precision in [0, -1]:
-        var raised = False
-        try:
-            _ = add(BigFloat.from_int(1), BigFloat.from_int(2), precision)
-        except:
-            raised = True
-        assert_true(raised, "a precision of nought was accepted")
+def test_a_precision_must_fit_the_guard_bits() raises:
+    """A precision has to be positive, and has to leave room for guard bits.
+
+    Every operation widens before it rounds, so a precision near `Int.MAX`
+    makes that widening wrap and turns a value too large to allocate into a
+    loop that cannot finish. The bound is a quarter of `Int.MAX`, which no
+    real precision approaches.
+    """
+    for precision in [0, -1, Int.MAX, Int.MAX // 4 + 1]:
+        for which in [0, 1]:
+            var raised = False
+            try:
+                if which == 0:
+                    _ = add(
+                        BigFloat.from_int(1), BigFloat.from_int(2), precision
+                    )
+                else:
+                    _ = subtract(
+                        BigFloat.from_int(1), BigFloat.from_int(2), precision
+                    )
+            except:
+                raised = True
+            assert_true(
+                raised,
+                String("a precision of ") + String(precision) + " was accepted",
+            )
 
 
 def main() raises:
