@@ -39,6 +39,7 @@ brings along is one byte that this type does not read.
 from std.memory import bitcast
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
+import decimo.bigfloat.comparison as bigfloat_comparison
 from decimo.bigfloat.conversion import (
     from_decimal_parts,
     to_exact_bigdecimal,
@@ -62,7 +63,7 @@ comptime _KIND_INFINITY: UInt8 = 1
 comptime _KIND_NAN: UInt8 = 2
 
 
-struct BigFloat(Absable, Copyable, Movable, Writable):
+struct BigFloat(Absable, Comparable, Copyable, Movable, Writable):
     """An arbitrary-precision binary floating-point number.
 
     The value is `(-1)^sign * significand * 2^exponent`. For a finite
@@ -538,6 +539,92 @@ struct BigFloat(Absable, Copyable, Movable, Writable):
         var result = self.copy()
         result.sign = False
         return result^
+
+    # ===------------------------------------------------------------------=== #
+    # Comparison
+    # ===------------------------------------------------------------------=== #
+    #
+    # A NaN is unordered, so `__eq__` is False and `__ne__` is True for it
+    # while the four order operators are all False. That breaks the law a
+    # `Comparable` would like -- that exactly one of `<`, `==` and `>` holds
+    # -- and it is what IEEE 754 asks for, so a float says so rather than
+    # inventing an answer. `comparison.compare_total()` is the one to sort by.
+
+    def __eq__(self, other: Self) -> Bool:
+        """Returns whether the two are the same number.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            True if they are equal. A NaN is equal to nothing, itself
+            included, and the two zeros are equal to each other.
+
+        """
+        return bigfloat_comparison.equal(self, other)
+
+    def __ne__(self, other: Self) -> Bool:
+        """Returns whether the two are different numbers.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            True unless they are equal, which makes this the one comparison a
+            NaN answers yes to.
+
+        """
+        return bigfloat_comparison.not_equal(self, other)
+
+    def __lt__(self, other: Self) -> Bool:
+        """Returns whether self is less than other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            True if self is below other, and False if either is a NaN.
+
+        """
+        return bigfloat_comparison.less(self, other)
+
+    def __le__(self, other: Self) -> Bool:
+        """Returns whether self is less than or equal to other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            True if self is below or level with other, and False if either is
+            a NaN.
+
+        """
+        return bigfloat_comparison.less_equal(self, other)
+
+    def __gt__(self, other: Self) -> Bool:
+        """Returns whether self is greater than other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            True if self is above other, and False if either is a NaN.
+
+        """
+        return bigfloat_comparison.greater(self, other)
+
+    def __ge__(self, other: Self) -> Bool:
+        """Returns whether self is greater than or equal to other.
+
+        Args:
+            other: The value to compare against.
+
+        Returns:
+            True if self is above or level with other, and False if either is
+            a NaN.
+
+        """
+        return bigfloat_comparison.greater_equal(self, other)
 
     # ===------------------------------------------------------------------=== #
     # Decimal
