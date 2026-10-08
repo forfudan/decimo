@@ -586,6 +586,47 @@ struct BigFloat(Absable, Comparable, Copyable, Movable, Writable):
             > other.precision else (other.precision),
         )
 
+    def __mul__(self, other: Self) raises -> Self:
+        """The product, correctly rounded.
+
+        Args:
+            other: The value to multiply by.
+
+        Returns:
+            The product at the wider of the two precisions, rounded half to
+            even.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_arithmetics.multiply(
+            self,
+            other,
+            self.precision if self.precision
+            > other.precision else (other.precision),
+        )
+
+    def __truediv__(self, other: Self) raises -> Self:
+        """The quotient, correctly rounded.
+
+        Args:
+            other: The value to divide by.
+
+        Returns:
+            The quotient at the wider of the two precisions, rounded half to
+            even. Dividing by zero gives an infinity, as it does for any
+            float.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_arithmetics.divide(
+            self,
+            other,
+            self.precision if self.precision
+            > other.precision else (other.precision),
+        )
+
     # ===------------------------------------------------------------------=== #
     # Comparison
     # ===------------------------------------------------------------------=== #
