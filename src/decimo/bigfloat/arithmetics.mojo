@@ -217,46 +217,6 @@ def _exponent_difference(left: Int, right: Int, adjust: Int) raises -> Int:
     return _checked_sum(_checked_difference(left, right), adjust, "quotient")
 
 
-def _fitted(
-    magnitude: BigInt,
-    exponent: Int,
-    precision: Int,
-    negative: Bool,
-    rounding_mode: RoundingMode,
-    inexact_below: Bool = False,
-) raises -> BigFloat:
-    """Rounds a magnitude and exponent into a float.
-
-    Args:
-        magnitude: The significand, which must not be negative.
-        exponent: The power of two it is scaled by.
-        precision: How many bits the result keeps.
-        negative: The sign of the result.
-        rounding_mode: Which way to round.
-        inexact_below: Whether something non-zero sits below the magnitude.
-
-    Returns:
-        The value, normalized to `precision` bits.
-
-    Raises:
-        Error: Propagated from the rounding.
-    """
-    var fitted = round_to_precision(
-        magnitude,
-        exponent,
-        precision,
-        negative,
-        rounding_mode,
-        inexact_below,
-    )
-    return BigFloat(
-        significand=fitted[0],
-        exponent=fitted[1],
-        precision=precision,
-        sign=negative,
-    )
-
-
 def _cancelled_zero(
     precision: Int, rounding_mode: RoundingMode
 ) raises -> BigFloat:
@@ -341,7 +301,7 @@ def _combine(
             big.exponent > Int.MIN + stretch,
             "the far case lowered an exponent below Int.MIN",
         )
-        return _fitted(
+        return BigFloat.from_rounded_parts(
             widened,
             big.exponent - stretch,
             precision,
@@ -361,7 +321,7 @@ def _combine(
     var aligned_small = small.significand << (small.exponent - exponent)
 
     if not subtracting:
-        return _fitted(
+        return BigFloat.from_rounded_parts(
             aligned_big + aligned_small,
             exponent,
             precision,
@@ -372,7 +332,9 @@ def _combine(
     var total = aligned_big - aligned_small
     if total.is_zero():
         return _cancelled_zero(precision, rounding_mode)
-    return _fitted(total, exponent, precision, big.sign, rounding_mode)
+    return BigFloat.from_rounded_parts(
+        total, exponent, precision, big.sign, rounding_mode
+    )
 
 
 def add(
@@ -428,11 +390,11 @@ def add(
             return BigFloat.zero(precision, x1.sign)
         return _cancelled_zero(precision, rounding_mode)
     if x1.is_zero():
-        return _fitted(
+        return BigFloat.from_rounded_parts(
             x2.significand, x2.exponent, precision, x2.sign, rounding_mode
         )
     if x2.is_zero():
-        return _fitted(
+        return BigFloat.from_rounded_parts(
             x1.significand, x1.exponent, precision, x1.sign, rounding_mode
         )
 

@@ -45,11 +45,13 @@ from decimo.bigfloat.conversion import (
     from_decimal_parts,
     to_exact_bigdecimal,
 )
+import decimo.bigfloat.exponential as bigfloat_exponential
 from decimo.bigfloat.rounding import round_to_precision
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.bitwise import test_bit, trailing_zeros
 from decimo.errors import ValueError
 from decimo.rounding_mode import RoundingMode
+from decimo.traits import Rootable
 
 comptime PRECISION: Int = 53
 """Bits a `BigFloat` keeps when no precision is given.
@@ -64,7 +66,7 @@ comptime _KIND_INFINITY: UInt8 = 1
 comptime _KIND_NAN: UInt8 = 2
 
 
-struct BigFloat(Absable, Comparable, Copyable, Movable, Writable):
+struct BigFloat(Absable, Comparable, Copyable, Movable, Rootable, Writable):
     """An arbitrary-precision binary floating-point number.
 
     The value is `(-1)^sign * significand * 2^exponent`. For a finite
@@ -121,8 +123,19 @@ struct BigFloat(Absable, Comparable, Copyable, Movable, Writable):
             kind: Finite, infinite or NaN.
 
         Raises:
-            ValueError: If `precision` is not positive, or the significand is
-                negative.
+            ValueError: If `precision` is not positive, if the significand is
+                negative, or if a finite non-zero significand does not hold
+                exactly `precision` bits.
+
+        Notes:
+
+        The bit count is checked rather than assumed, because everything
+        downstream reads the leading bit's position as
+        `exponent + precision - 1` and never asks the significand how many
+        bits it really has. A value built with the two disagreeing compares
+        and rounds as though it were a different number, which is a quiet
+        wrong answer rather than a loud one. `from_rounded_parts()` is the
+        way in for parts that are not normalized yet.
         """
         if precision <= 0:
             raise ValueError(
@@ -132,6 +145,19 @@ struct BigFloat(Absable, Comparable, Copyable, Movable, Writable):
         if significand.sign:
             raise ValueError(
                 message="A significand cannot be negative.",
+                function="BigFloat()",
+            )
+        if (
+            kind == _KIND_FINITE
+            and not significand.is_zero()
+            and significand.bit_length() != precision
+        ):
+            raise ValueError(
+                message=(
+                    "A finite non-zero significand must hold exactly"
+                    " `precision` bits with its top bit set. Pass the parts"
+                    " through `from_rounded_parts()` to normalize them."
+                ),
                 function="BigFloat()",
             )
         self.significand = significand.copy()
@@ -545,6 +571,55 @@ struct BigFloat(Absable, Comparable, Copyable, Movable, Writable):
     # Arithmetic
     # ===------------------------------------------------------------------=== #
 
+    @staticmethod
+    def from_rounded_parts(
+        magnitude: BigInt,
+        exponent: Int,
+        precision: Int,
+        negative: Bool,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+        inexact_below: Bool = False,
+    ) raises -> Self:
+        """Rounds a magnitude and an exponent into a value.
+
+        Args:
+            magnitude: The significand, which must not be negative and need
+                not be normalized.
+            exponent: The power of two it is scaled by.
+            precision: How many bits the result keeps.
+            negative: The sign of the result.
+            rounding_mode: Which way to round.
+            inexact_below: Whether something non-zero sits below the
+                magnitude, as a division's remainder does.
+
+        Returns:
+            The value, normalized to `precision` bits.
+
+        Raises:
+            Error: Propagated from the rounding.
+
+        Notes:
+
+        This is how every operation finishes. Each one computes a magnitude
+        with more bits than it keeps, says whether anything was left under
+        them, and hands both here, so that the rounding happens once and in
+        one place rather than once per operation.
+        """
+        var fitted = round_to_precision(
+            magnitude,
+            exponent,
+            precision,
+            negative,
+            rounding_mode,
+            inexact_below,
+        )
+        return Self(
+            significand=fitted[0],
+            exponent=fitted[1],
+            precision=precision,
+            sign=negative,
+        )
+
     def __add__(self, other: Self) raises -> Self:
         """The sum, correctly rounded.
 
@@ -605,6 +680,19 @@ struct BigFloat(Absable, Comparable, Copyable, Movable, Writable):
             self.precision if self.precision
             > other.precision else (other.precision),
         )
+
+    def sqrt(self) raises -> Self:
+        """The square root, correctly rounded.
+
+        Returns:
+            The root at this value's own precision, rounded half to even. A
+            negative value gives a NaN rather than raising, which is what
+            `Rootable` allows and what `MPF` does.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.sqrt(self, self.precision)
 
     def __truediv__(self, other: Self) raises -> Self:
         """The quotient, correctly rounded.
