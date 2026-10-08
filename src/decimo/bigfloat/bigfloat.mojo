@@ -46,7 +46,10 @@ from decimo.bigfloat.conversion import (
     to_exact_bigdecimal,
 )
 import decimo.bigfloat.exponential as bigfloat_exponential
-from decimo.bigfloat.rounding import round_to_precision
+from decimo.bigfloat.rounding import (
+    checked_precision,
+    round_to_precision,
+)
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.bitwise import test_bit, trailing_zeros
 from decimo.errors import ValueError
@@ -137,11 +140,7 @@ struct BigFloat(Absable, Comparable, Copyable, Movable, Rootable, Writable):
         wrong answer rather than a loud one. `from_rounded_parts()` is the
         way in for parts that are not normalized yet.
         """
-        if precision <= 0:
-            raise ValueError(
-                message="A precision must be at least one bit.",
-                function="BigFloat()",
-            )
+        _ = checked_precision(precision, "BigFloat()")
         if significand.sign:
             raise ValueError(
                 message="A significand cannot be negative.",

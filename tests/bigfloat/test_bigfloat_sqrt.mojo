@@ -973,14 +973,21 @@ def test_the_method_is_the_rootable_one() raises:
     )
 
 
-def test_a_precision_must_be_positive() raises:
-    for precision in [0, -1]:
+def test_a_precision_must_fit_the_guard_bits() raises:
+    """A precision has to be positive, and has to leave room for guard bits.
+
+    Every operation widens before it rounds, so a precision near `Int.MAX`
+    makes that widening wrap and turns a value too large to allocate into a
+    loop that cannot finish. The bound is a quarter of `Int.MAX`, which no
+    real precision approaches.
+    """
+    for precision in [0, -1, Int.MAX, Int.MAX // 4 + 1]:
         var raised = False
         try:
             _ = sqrt(BigFloat.from_int(2), precision)
         except:
             raised = True
-        assert_true(raised, "a root of no bits was accepted")
+        assert_true(raised, "a root at that precision was accepted")
 
 
 def main() raises:

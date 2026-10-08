@@ -26,7 +26,10 @@ handing the rest to `round_to_precision()` as the remainder it is.
 """
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
-from decimo.bigfloat.rounding import round_to_precision
+from decimo.bigfloat.rounding import (
+    checked_precision,
+    round_to_precision,
+)
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.bitwise import trailing_zeros
 from decimo.biguint.biguint import BigUInt
@@ -87,11 +90,7 @@ def from_decimal_parts(
     decimo has, and bounding it needs a correctly-rounded approximate power
     of five, which is its own piece of work.
     """
-    if precision <= 0:
-        raise ValueError(
-            message="A precision must be at least one bit.",
-            function="from_decimal_parts()",
-        )
+    _ = checked_precision(precision, "from_decimal_parts()")
     if magnitude.is_zero():
         return (BigInt.zero(), 0)
 

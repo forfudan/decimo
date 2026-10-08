@@ -56,7 +56,10 @@ the normalized result sits inside it.
 
 from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigfloat.comparison import compare_absolute
-from decimo.bigfloat.rounding import round_to_precision
+from decimo.bigfloat.rounding import (
+    checked_precision,
+    round_to_precision,
+)
 from decimo.bigint.bigint import BigInt
 from decimo.errors import OverflowError, ValueError
 from decimo.rounding_mode import RoundingMode
@@ -373,6 +376,8 @@ def add(
     operand. Two zeros of the same sign keep it, and of opposite signs give
     what an exact cancellation gives.
     """
+    _ = checked_precision(precision, "add()")
+
     if x1.is_nan() or x2.is_nan():
         return BigFloat.nan(precision)
 
@@ -472,6 +477,8 @@ def multiply(
     """
     var negative = x1.sign != x2.sign
 
+    _ = checked_precision(precision, "multiply()")
+
     if x1.is_nan() or x2.is_nan():
         return BigFloat.nan(precision)
 
@@ -544,6 +551,8 @@ def divide(
     no value either way, and a finite value over an infinity is a signed zero.
     """
     var negative = x1.sign != x2.sign
+
+    _ = checked_precision(precision, "divide()")
 
     if x1.is_nan() or x2.is_nan():
         return BigFloat.nan(precision)

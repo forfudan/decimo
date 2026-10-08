@@ -31,6 +31,7 @@ make room for the precision asked for.
 """
 
 from decimo.bigfloat.bigfloat import BigFloat
+from decimo.bigfloat.rounding import checked_precision
 from decimo.bigint.exponential import sqrt_rem
 from decimo.rounding_mode import RoundingMode
 
@@ -67,6 +68,8 @@ def sqrt(
     shift is chosen so the root comes out a couple of bits past the precision
     and then checked, since a narrow significand can leave it short.
     """
+    _ = checked_precision(precision, "sqrt()")
+
     if x.is_nan():
         return BigFloat.nan(precision)
     if x.sign:

@@ -33,6 +33,50 @@ from decimo.errors import OverflowError, ValueError
 from decimo.rounding_mode import RoundingMode
 
 
+comptime MAX_PRECISION: Int = Int.MAX // 4
+"""The widest precision this layer accepts.
+
+Every operation adds guard bits before it rounds -- two for an addition, a
+few more for a division, twice the width for a square root -- and a precision
+near `Int.MAX` makes those additions wrap, which turns a value too large to
+allocate into a loop that cannot finish. A quarter of `Int.MAX` leaves room
+for all of them.
+
+The bound is arithmetic and not a judgement about memory: a significand this
+wide is `2^58` bytes, so nothing reaches it. It is here so that an absurd
+precision is refused in one line rather than discovered as a hang.
+"""
+
+
+def checked_precision(precision: Int, function: String) raises -> Int:
+    """Returns `precision`, or refuses it.
+
+    Args:
+        precision: The number of bits asked for.
+        function: The caller, for the message.
+
+    Returns:
+        The precision, unchanged.
+
+    Raises:
+        ValueError: If it is not positive, or above `MAX_PRECISION`.
+    """
+    if precision <= 0:
+        raise ValueError(
+            message="A precision must be at least one bit.",
+            function=function,
+        )
+    if precision > MAX_PRECISION:
+        raise ValueError(
+            message=(
+                "A precision must leave room for the guard bits an operation"
+                " adds, so it cannot be above a quarter of Int.MAX."
+            ),
+            function=function,
+        )
+    return precision
+
+
 def _lowered(exponent: Int, by: Int) raises -> Int:
     """`exponent - by` for a non-negative `by`, refusing to wrap.
 
@@ -163,11 +207,7 @@ def round_to_precision(
     An increment can carry past the top -- `0b111` becoming `0b1000` -- and
     that is the one case where the exponent moves on the way out.
     """
-    if precision <= 0:
-        raise ValueError(
-            message="A precision must be at least one bit.",
-            function="round_to_precision()",
-        )
+    _ = checked_precision(precision, "round_to_precision()")
     if magnitude.sign:
         raise ValueError(
             message="A significand cannot be negative.",
