@@ -915,3 +915,163 @@ def _sqrt_karatsuba(x: BigInt) raises -> BigInt:
     if back > 0:
         bigint_arithmetics._shift_right_words_inplace(root, back, len(root))
     return BigInt(raw_words=root^, sign=False)
+
+
+comptime _SQUARE_RESIDUES_MOD_64: UInt64 = 144_680_414_395_695_635
+"""Bit `r` is set when `r` is a square modulo 64.
+
+The twelve residues are 0, 1, 4, 9, 16, 17, 25, 33, 36, 41, 49 and 57. A
+value whose low six bits land anywhere else cannot be a square, which rejects
+about five non-squares in six for the cost of one shift and one mask.
+"""
+
+
+def is_perfect_square(x: BigInt) raises -> Bool:
+    """Returns whether `x` is the square of an integer.
+
+    Args:
+        x: The value to test.
+
+    Returns:
+        True if some integer squared gives `x`. Zero and one are squares; a
+        negative value is not, since no integer squares to it.
+
+    Raises:
+        Error: Propagated from the square root.
+
+    Notes:
+
+    The answer comes from `sqrt_rem()`: the root leaves nothing behind exactly
+    when the value is a square. The root is the expensive part, so the low six
+    bits are checked first against the squares modulo 64, which turns away
+    most of the values that would have gone on to fail.
+    """
+    if x.sign:
+        return False
+    if x.is_zero():
+        return True
+    if not ((_SQUARE_RESIDUES_MOD_64 >> (x.words[0] & 63)) & 1):
+        return False
+    var root_and_remainder = sqrt_rem(x)
+    return root_and_remainder[1].is_zero()
+
+
+def _is_small_prime(n: Int) -> Bool:
+    """Returns whether a small positive `Int` is prime, by trial division.
+
+    Args:
+        n: The number to test.
+
+    Returns:
+        True if `n` is prime.
+
+    Notes:
+
+    This screens candidate exponents in `perfect_power()` and nothing else.
+    The exponents there are bounded by a bit length, and the division it saves
+    -- an `n`-th root of a big integer -- costs orders of magnitude more than
+    the screening, so trial division is the right tool at this size. A public
+    sieve belongs on the type, not here.
+    """
+    if n < 2:
+        return False
+    if n < 4:
+        return True
+    if n % 2 == 0:
+        return False
+    var divisor = 3
+    while divisor * divisor <= n:
+        if n % divisor == 0:
+            return False
+        divisor += 2
+    return True
+
+
+def perfect_power(x: BigInt) raises -> Tuple[BigInt, Int]:
+    """Writes `x` as `base ** exponent` with the exponent as large as it goes.
+
+    Args:
+        x: The value to decompose.
+
+    Returns:
+        A pair `(base, exponent)` with `base ** exponent == x` and the
+        exponent the largest one possible. A value that is no integer's power
+        comes back as `(x, 1)`, since every value is itself to the first.
+
+    Raises:
+        Error: Propagated from the roots.
+
+    Notes:
+
+    The base and the exponent come out together because finding the exponent
+    means computing the base: a predicate that threw the base away would make
+    every caller that wants it take the roots a second time. `is_perfect_power()`
+    is the predicate, and it asks this.
+
+    Zero, one and minus one are every exponent's power, so there is no largest
+    one and the pair reports the smallest that works -- `2` for the first two
+    and `3` for minus one, an even power of a negative value being positive.
+
+    Candidate exponents run upward from two, and each one is divided out as
+    far as it goes before the next is tried. That is what makes the exponent
+    maximal and also what makes a composite candidate free of charge: by the
+    time `6` comes round, the `2`s and the `3`s are gone, so no sixth power
+    remains for it to find. The exponents are screened for primality anyway,
+    since skipping five candidates in six is worth a handful of divisions
+    against the `n`-th root each one would otherwise cost.
+
+    The work is one `n`-th root per prime up to `x`'s bit length, so it grows
+    with the size of the value and not with the size of the answer. That is
+    comfortable for the integers anyone writes down and slow for one with a
+    million digits; it is not a tuned implementation.
+    """
+    if x.is_zero():
+        return (BigInt.zero(), 2)
+    if x.is_one():
+        return (BigInt.one(), 2)
+    if x.is_one_or_minus_one():
+        # Minus one, the only remaining value of magnitude one. An even power
+        # cannot be negative, so three is the smallest exponent that works.
+        return (BigInt(-1), 3)
+
+    var remaining = x.copy()
+    var exponent = 1
+    var limit = x.bit_length()
+    var candidate = 2
+    while candidate <= limit:
+        if _is_small_prime(candidate) and not (
+            remaining.sign and candidate % 2 == 0
+        ):
+            while True:
+                var base = root(remaining, candidate)
+                if base.power(candidate) != remaining:
+                    break
+                remaining = base^
+                exponent *= candidate
+                limit = remaining.bit_length()
+                if limit < 2:
+                    break
+        candidate += 1
+    return (remaining^, exponent)
+
+
+def is_perfect_power(x: BigInt) raises -> Bool:
+    """Returns whether `x` is `base ** exponent` for some exponent above one.
+
+    Args:
+        x: The value to test.
+
+    Returns:
+        True if `x` is an integer power with an exponent of at least two.
+        Zero, one and minus one are, every exponent over.
+
+    Raises:
+        Error: Propagated from the roots.
+
+    Notes:
+
+    This is `perfect_power()` asked for its exponent. Use that one when the
+    base is wanted too, which it usually is.
+    """
+    var decomposition = perfect_power(x)
+    return decomposition[1] > 1

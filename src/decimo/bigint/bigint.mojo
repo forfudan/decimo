@@ -1617,6 +1617,46 @@ struct BigInt(
         """
         return bigint_exponential.sqrt_rem(self)
 
+    def is_perfect_square(self) raises -> Bool:
+        """Returns whether this value is the square of an integer.
+        See `is_perfect_square()` for more information.
+
+        Returns:
+            True if some integer squared gives this value. A negative value
+            is not a square.
+
+        Raises:
+            Error: Propagated from the square root.
+        """
+        return bigint_exponential.is_perfect_square(self)
+
+    def is_perfect_power(self) raises -> Bool:
+        """Returns whether this value is an integer power above the first.
+        See `is_perfect_power()` for more information.
+
+        Returns:
+            True if the value is `base ** exponent` for some exponent of at
+            least two.
+
+        Raises:
+            Error: Propagated from the roots.
+        """
+        return bigint_exponential.is_perfect_power(self)
+
+    def perfect_power(self) raises -> Tuple[Self, Int]:
+        """Writes this value as a power with the largest exponent it has.
+        See `perfect_power()` for more information.
+
+        Returns:
+            A pair `(base, exponent)` whose power is this value, with the
+            exponent as large as possible and `(self, 1)` when there is no
+            exponent above one.
+
+        Raises:
+            Error: Propagated from the roots.
+        """
+        return bigint_exponential.perfect_power(self)
+
     def binomial(self, k: Int) raises -> Self:
         """Returns the number of `k`-combinations of this many items.
         See `binomial()` for more information.
@@ -1643,6 +1683,43 @@ struct BigInt(
             ValueError: If `self` is negative or larger than 10^6.
         """
         return bigint_special.factorial(self)
+
+    def double_factorial(self) raises -> Self:
+        """Returns the double factorial of this value.
+        See `double_factorial()` for more information.
+
+        Returns:
+            `self!!`, the product of this value and every other integer below
+            it, down to 1 or 2.
+
+        Raises:
+            ValueError: If `self` is below -1 or larger than 10^6.
+        """
+        return bigint_special.double_factorial(self)
+
+    def fibonacci(self) raises -> Self:
+        """Returns the Fibonacci number at this index.
+        See `fibonacci()` for more information.
+
+        Returns:
+            `F(self)`, which alternates in sign for a negative index.
+
+        Raises:
+            ValueError: If the magnitude of `self` is larger than 10^7.
+        """
+        return bigint_special.fibonacci(self)
+
+    def lucas(self) raises -> Self:
+        """Returns the Lucas number at this index.
+        See `lucas()` for more information.
+
+        Returns:
+            `L(self)`, which alternates in sign for a negative index.
+
+        Raises:
+            ValueError: If the magnitude of `self` is larger than 10^7.
+        """
+        return bigint_special.lucas(self)
 
     def permutation(self, k: Int) raises -> Self:
         """Returns the number of `k`-permutations of `self` items.
@@ -1971,6 +2048,38 @@ struct BigInt(
             Error: Propagated from underlying arithmetic operations.
         """
         return bigint_number_theory.sqrt_mod(self, modulus)
+
+    def divisible_by(self, divisor: Self) raises -> Bool:
+        """Returns whether `divisor` divides this value exactly.
+        See `divisible_by()` for more information.
+
+        Args:
+            divisor: The value to divide by.
+
+        Returns:
+            True if this value is a multiple of `divisor`. A divisor of zero
+            divides zero alone.
+
+        Raises:
+            Error: Propagated from the division.
+        """
+        return bigint_number_theory.divisible_by(self, divisor)
+
+    def congruent(self, other: Self, modulus: Self) raises -> Bool:
+        """Returns whether this value and `other` agree modulo `modulus`.
+        See `congruent()` for more information.
+
+        Args:
+            other: The value to compare against.
+            modulus: The modulus. Zero asks for plain equality.
+
+        Returns:
+            True if the modulus divides the difference of the two.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigint_number_theory.congruent(self, other, modulus)
 
     # ===------------------------------------------------------------------=== #
     # Instance query methods
