@@ -4,10 +4,12 @@ Tests the decimal conversions of `BigFloat`.
 One direction is exact and the other rounds, so they are checked differently.
 
 Coming in, the reference is CPython's own `float(text)`, which is correctly
-rounded: at 53 bits the two have to agree on the bit pattern for every input.
-The comparison is of bits rather than of printed text on purpose -- a
-formatter that prints one digit fewer is not a conversion error, and two of
-these cases differ in exactly that way.
+rounded: at 53 bits the two agree on the bit pattern whenever the answer is a
+normal double, because then one rounding happens and both make the same one.
+A subnormal answer is the exception and has a test of its own. The comparison
+is of bits rather than of printed text on purpose -- a formatter that prints
+one digit fewer is not a conversion error, and two of these cases differ in
+exactly that way.
 
 Going out, the expansion is exact and can be checked against itself: a value
 built from a decimal that fits the precision has to come back as that
@@ -95,6 +97,92 @@ def test_parsing_agrees_with_cpython_at_53_bits() raises:
             bitcast[DType.uint64](parsed.to_float64()),
             expected[i],
             "the bits of " + texts[i],
+        )
+
+
+def test_a_subnormal_answer_rounds_a_second_time() raises:
+    """Parsing to 53 bits and then to a subnormal double rounds twice.
+
+    A normal double is 53 bits, so a 53-bit `BigFloat` holds it exactly and
+    `to_float64()` only reads it off. A subnormal double has fewer bits than
+    that, so the second conversion rounds again, and two roundings can land a
+    step away from the one: here the exact value is nearer the lower
+    neighbour, but rounding it to 53 bits of precision first pushes it past
+    the midpoint of the subnormal grid and the second rounding goes up.
+
+    The value is not lost -- asking for a precision that leaves the grid room
+    gives CPython's answer -- so this is a property of rounding to a
+    precision rather than into an exponent range. Rounding into the range is
+    what MPFR's `subnormalize` does, and this type cannot express a range yet.
+    """
+    var text = String("763178886372074e-323")
+    assert_equal(
+        bitcast[DType.uint64](BigFloat.from_string(text).to_float64()),
+        1544691262782718,
+        "53 bits, then the subnormal grid: two roundings",
+    )
+    assert_equal(
+        bitcast[DType.uint64](BigFloat.from_string(text, 60).to_float64()),
+        1544691262782717,
+        "enough bits that only the second rounding decides, as in CPython",
+    )
+
+
+def test_a_tie_goes_the_way_the_mode_says() raises:
+    """A decimal exactly between two binary floats, in every half mode.
+
+    `9007199254740993` is the midpoint of `2^53` and `2^53 + 2`, the first
+    place 53 bits run out, so nothing below the tie breaks it. Half-even
+    takes the even one, half-up the one away from zero, half-down the one
+    toward it, and the signs mirror.
+    """
+    var tie = String("9007199254740993")
+    for negative in [False, True]:
+        var text = String("-") + tie if negative else tie.copy()
+        var sign = String("-") if negative else String("")
+        var lower = BigDecimal(sign + "9007199254740992")
+        var upper = BigDecimal(sign + "9007199254740994")
+        assert_equal(
+            BigFloat.from_string(
+                text, 53, RoundingMode.ROUND_HALF_EVEN
+            ).to_bigdecimal(),
+            lower,
+            "half-even takes the even significand",
+        )
+        assert_equal(
+            BigFloat.from_string(
+                text, 53, RoundingMode.ROUND_HALF_UP
+            ).to_bigdecimal(),
+            upper,
+            "half-up goes away from zero",
+        )
+        assert_equal(
+            BigFloat.from_string(
+                text, 53, RoundingMode.ROUND_HALF_DOWN
+            ).to_bigdecimal(),
+            lower,
+            "half-down goes toward zero",
+        )
+
+    # Just off the tie, the modes have nothing left to decide and agree.
+    for mode in [
+        RoundingMode.ROUND_HALF_EVEN,
+        RoundingMode.ROUND_HALF_UP,
+        RoundingMode.ROUND_HALF_DOWN,
+    ]:
+        assert_equal(
+            BigFloat.from_string(
+                "9007199254740993.1", 53, mode
+            ).to_bigdecimal(),
+            BigDecimal("9007199254740994"),
+            "above the tie, every half mode rounds up",
+        )
+        assert_equal(
+            BigFloat.from_string(
+                "9007199254740992.9", 53, mode
+            ).to_bigdecimal(),
+            BigDecimal("9007199254740992"),
+            "below the tie, every half mode rounds down",
         )
 
 

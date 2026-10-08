@@ -394,6 +394,13 @@ struct BigFloat(Absable, Copyable, Movable, Writable):
 
         A value too large for a double becomes an infinity and one too small
         becomes a zero, which is what a double has to say about them.
+
+        A normal double is 53 bits, so a 53-bit value is read off rather than
+        rounded and the answer is exact. A subnormal double has fewer bits
+        than that, so a value already rounded to a precision is rounded a
+        second time on the way in, and two roundings can land one step from
+        what rounding the original exactly would give. Converting from a
+        wider precision removes it, since then only this rounding decides.
         """
         if self.is_nan():
             return Float64(0) / Float64(0)
@@ -671,6 +678,14 @@ struct BigFloat(Absable, Copyable, Movable, Writable):
         digits than are asked for, and it is why the rounding is a single one:
         rounding during the conversion and again to the digit count would be
         two, and two roundings can land a step away from the one.
+
+        The cost therefore follows the exponent and not `digits`: a value with
+        a very large negative exponent builds every digit it has before
+        keeping a few. For the exponents a `Float64` can hold that is at most
+        1074 decimal places, but the exponent here is unbounded. Bounding the
+        work needs a correctly-rounded approximate power of ten and a Ziv
+        loop over it, which is the same machinery the binary `exp` and `ln`
+        will need, so it is written with them rather than guessed at here.
         """
         if digits <= 0:
             raise ValueError(
@@ -765,8 +780,10 @@ struct BigFloat(Absable, Copyable, Movable, Writable):
         the same split `BigInt` and `BigDecimal` have.
 
         The digit count is what the precision is worth. A writer cannot
-        answer a failure, so a conversion that raises -- which only an
-        allocation failure can do here -- falls back to the parts.
+        answer a failure, so a conversion that raises falls back to a marker.
+        It is a marker rather than the parts because the only thing that
+        raises here is the allocation the conversion needs, and formatting
+        the parts would ask for one too.
         """
         try:
             writer.write(self.to_string())

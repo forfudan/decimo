@@ -63,19 +63,29 @@ def from_decimal_parts(
     A non-negative power of ten is exact: the product is an integer and the
     only rounding is the one that fits it to the precision.
 
-    A negative power is a division, and this is where the care goes. The
-    quotient is taken with enough bits below the precision for the rounding
-    to have something to read, and the division's own remainder says whether
-    anything is left under them. That remainder is the sticky bit: without it
-    a quotient that stops just short of a half is indistinguishable from one
-    that sits exactly on it, and half the modes would answer differently.
+    A negative power is a division, and this is where the care goes. Only
+    part of it is a division: `10^-k` is `5^-k * 2^-k`, and the power of two
+    is the exponent, so the divisor built here is `5^k` rather than `10^k` --
+    two thirds of the bits, and the shift above it shrinks to match.
 
-    The shift is chosen rather than guessed, and then checked: `10^k` is below
-    `2^(4k)`, so `4k` bits recover what the division consumes, and the
+    The quotient is taken with enough bits below the precision for the
+    rounding to have something to read, and the division's own remainder says
+    whether anything is left under them. That remainder is the sticky bit:
+    without it a quotient that stops just short of a half is indistinguishable
+    from one that sits exactly on it, and half the modes would answer
+    differently.
+
+    The shift is chosen rather than guessed, and then checked: `5^k` is below
+    `2^(7k/3)`, so that many bits recover what the division consumes, and the
     precision plus two more give the rounding its room. If the quotient still
-    comes back too narrow -- a magnitude far smaller than the power of ten can
-    do that -- the shift grows and the division is taken again, which is the
-    one loop here and runs at most twice in practice.
+    comes back too narrow -- a magnitude far smaller than the power can do
+    that -- the shift grows and the division is taken again, which is the one
+    loop here and runs at most twice in practice.
+
+    The cost is proportional to `k`, not to the precision asked for, because
+    the divisor is exact. That is the same property every exact power in
+    decimo has, and bounding it needs a correctly-rounded approximate power
+    of five, which is its own piece of work.
     """
     if precision <= 0:
         raise ValueError(
@@ -91,8 +101,9 @@ def from_decimal_parts(
         )
         return round_to_precision(exact, 0, precision, negative, rounding_mode)
 
-    var power = BigInt.from_biguint(BigUInt.power_of_10(-decimal_exponent))
-    var shift = 4 * (-decimal_exponent) + precision + 2
+    var k = -decimal_exponent
+    var power = BigInt.from_biguint(BigUInt(5).power(k))
+    var shift = (7 * k + 2) // 3 + precision + 2
     while True:
         var scaled = magnitude << shift
         var quotient = scaled.truncate_divide(power)
@@ -100,7 +111,7 @@ def from_decimal_parts(
             var remainder = scaled - quotient * power
             return round_to_precision(
                 quotient,
-                -shift,
+                -shift - k,
                 precision,
                 negative,
                 rounding_mode,
