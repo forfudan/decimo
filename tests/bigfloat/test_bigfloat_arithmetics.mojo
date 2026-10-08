@@ -418,6 +418,64 @@ def test_the_bottom_of_the_exponent_range_still_adds() raises:
     )
 
 
+def test_the_top_of_the_exponent_range_is_refused() raises:
+    """A sum whose normalized exponent is a step past the top has no answer.
+
+    Two values at `Int.MAX` add to one whose leading bit is a place higher,
+    and normalizing that to the same precision asks for `Int.MAX + 1`. The
+    other direction is a value of one bit at `Int.MIN` widened to a
+    destination of fifty-three, which lowers the exponent by fifty-two. Both
+    refuse, because wrapping round would answer the largest number with the
+    smallest.
+    """
+    var top = BigFloat(
+        significand=BigInt.one() << 52,
+        exponent=Int.MAX,
+        precision=53,
+        sign=False,
+    )
+    var raised = False
+    try:
+        _ = add(top, top, 53)
+    except:
+        raised = True
+    assert_true(raised, "an exponent above Int.MAX was invented")
+
+    # One step down and the same sum is fine, which is what says the refusal
+    # is about the range and not about the operands.
+    var below = BigFloat(
+        significand=BigInt.one() << 52,
+        exponent=Int.MAX - 1,
+        precision=53,
+        sign=False,
+    )
+    assert_equal(
+        add(below, below, 53).exponent,
+        Int.MAX,
+        "a sum that lands exactly on the top is still an answer",
+    )
+
+    var narrow = BigFloat(
+        significand=BigInt.one(),
+        exponent=Int.MIN,
+        precision=1,
+        sign=False,
+    )
+    raised = False
+    try:
+        _ = add(narrow, BigFloat.zero(), 53)
+    except:
+        raised = True
+    assert_true(raised, "widening below Int.MIN was invented")
+
+    # At its own precision it needs no widening and comes back unchanged.
+    assert_equal(
+        add(narrow, BigFloat.zero(), 1).internal_representation(),
+        narrow.internal_representation(),
+        "and with nothing to widen there is nothing to refuse",
+    )
+
+
 def test_a_zero_operand_still_rounds_the_other() raises:
     """Adding nothing is not always the identity, because of the destination.
 
