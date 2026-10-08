@@ -384,13 +384,15 @@ def compare_total(x1: BigFloat, x2: BigFloat) -> Int8:
         by their precisions. This is what to sort by, since `compare()` has
         nothing to say about a NaN.
 
-
     Notes:
 
-    Among equal numbers the one with more precision comes first, because for
-    the same value more bits mean a smaller exponent -- the order is by
-    exponent, as `BigDecimal`'s total order is by scale. Negative values take
-    the reverse, so that negating a sorted sequence reverses it.
+    Among equal numbers the one with more precision comes first, the way
+    `BigDecimal`'s total order puts the larger scale first. The tie is broken
+    on the precision rather than on the exponent, and for a non-zero value
+    those are the same rule read two ways -- the same number in more bits is
+    the same leading bit over a smaller exponent -- but a zero carries no
+    exponent to tell them apart and the precision still does. Negative values
+    take the reverse, so that negating a sorted sequence reverses it.
     """
     # The NaN first, and without reading its sign: there is one NaN in this
     # type, not a pair of them, so it has no side to be on and goes last.
@@ -405,9 +407,9 @@ def compare_total(x1: BigFloat, x2: BigFloat) -> Int8:
     var order = _compare_ordered(x1, x2)
     if order != 0:
         return order
-    if x1.exponent == x2.exponent:
+    if x1.precision == x2.precision:
         return Int8(0)
-    var left_first = x1.exponent < x2.exponent
+    var left_first = x1.precision > x2.precision
     if x1.sign:
         return Int8(1) if left_first else Int8(-1)
     return Int8(-1) if left_first else Int8(1)

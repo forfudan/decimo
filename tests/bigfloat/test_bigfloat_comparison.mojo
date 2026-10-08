@@ -287,18 +287,29 @@ def test_the_total_order_covers_every_value() raises:
     `compare()` has nothing to say about a NaN, so sorting needs an order
     that does. This one runs from `-Infinity` up to the NaN, which goes last
     because the type has one NaN rather than a signed pair, puts `-0` before
-    `+0`, and separates equal numbers by their precision.
+    `+0`, and separates equal numbers by their precision -- the zeros and the
+    infinities included, which an order broken on the exponent would miss
+    since those carry no exponent to tell apart.
+
+    The precision runs one way among the positive values and the other way
+    among the negative ones, which is not an inconsistency but what makes
+    negating the sequence reverse it: if `+x` in more bits comes before `+x`
+    in fewer, then `-x` in fewer has to come before `-x` in more.
     """
     var ordered = [
-        -BigFloat.infinity(),
+        BigFloat.infinity(53, True),
+        BigFloat.infinity(200, True),
         BigFloat.from_int(-2),
         BigFloat.from_int(-1),
         BigFloat.zero(53, True),
+        BigFloat.zero(200, True),
+        BigFloat.zero(200, False),
         BigFloat.zero(53, False),
         BigFloat.from_string("1", 200),
         BigFloat.from_string("1", 53),
         BigFloat.from_int(2),
-        BigFloat.infinity(),
+        BigFloat.infinity(200, False),
+        BigFloat.infinity(53, False),
         BigFloat.nan(),
     ]
     for i in range(len(ordered)):
