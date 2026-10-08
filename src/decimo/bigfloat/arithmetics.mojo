@@ -56,7 +56,7 @@ from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigfloat.comparison import compare_absolute
 from decimo.bigfloat.rounding import round_to_precision
 from decimo.bigint.bigint import BigInt
-from decimo.errors import ValueError
+from decimo.errors import OverflowError, ValueError
 from decimo.rounding_mode import RoundingMode
 
 
@@ -99,7 +99,7 @@ def _exponent_sum(left: Int, right: Int) raises -> Int:
         The sum.
 
     Raises:
-        ValueError: If the sum is outside `Int`.
+        OverflowError: If the sum is outside `Int`.
 
     Notes:
 
@@ -109,12 +109,12 @@ def _exponent_sum(left: Int, right: Int) raises -> Int:
     wrapping round to the bottom and answering with a tiny number.
     """
     if right > 0 and left > Int.MAX - right:
-        raise ValueError(
+        raise OverflowError(
             message="The exponent of the product is above what an Int holds.",
             function="_exponent_sum()",
         )
     if right < 0 and left < Int.MIN - right:
-        raise ValueError(
+        raise OverflowError(
             message="The exponent of the product is below what an Int holds.",
             function="_exponent_sum()",
         )
@@ -132,15 +132,15 @@ def _exponent_difference(left: Int, right: Int) raises -> Int:
         The difference.
 
     Raises:
-        ValueError: If the difference is outside `Int`.
+        OverflowError: If the difference is outside `Int`.
     """
     if right < 0 and left > Int.MAX + right:
-        raise ValueError(
+        raise OverflowError(
             message="The exponent of the quotient is above what an Int holds.",
             function="_exponent_difference()",
         )
     if right > 0 and left < Int.MIN + right:
-        raise ValueError(
+        raise OverflowError(
             message="The exponent of the quotient is below what an Int holds.",
             function="_exponent_difference()",
         )
@@ -325,6 +325,8 @@ def add(
 
     Raises:
         ValueError: If `precision` is not positive.
+        OverflowError: If normalizing the sum needs an exponent outside
+            `Int`, which two values at the top of the range can ask for.
         Error: Propagated from the arithmetic.
 
     Notes:
@@ -420,8 +422,8 @@ def multiply(
         The float of `precision` bits nearest the exact product.
 
     Raises:
-        ValueError: If `precision` is not positive, or the product's exponent
-            is outside `Int`.
+        ValueError: If `precision` is not positive.
+        OverflowError: If the product's exponent is outside `Int`.
         Error: Propagated from the arithmetic.
 
     Notes:
@@ -476,8 +478,8 @@ def divide(
         The float of `precision` bits nearest `x1 / x2`.
 
     Raises:
-        ValueError: If `precision` is not positive, or the quotient's
-            exponent is outside `Int`.
+        ValueError: If `precision` is not positive.
+        OverflowError: If the quotient's exponent is outside `Int`.
         Error: Propagated from the arithmetic.
 
     Notes:
