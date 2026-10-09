@@ -18,6 +18,23 @@
 
 Provides greatest common divisor (GCD), extended GCD, least common multiple
 (LCM), modular exponentiation, and modular multiplicative inverse.
+
+It also provides the quadratic residue symbols -- Jacobi, Legendre and
+Kronecker -- along with square roots modulo a prime and the Chinese remainder
+theorem. Those four sit here rather than in `primality` because they are
+ordinary modular arithmetic that happens to be what a primality test is built
+from, not the other way round: `primality` imports the Jacobi symbol for its
+Lucas test, so the symbol cannot live there without the dependency pointing
+backwards.
+
+Two conventions are worth stating once, because the three symbols differ only
+in where they are defined and not in what they compute. `legendre` and
+`jacobi` do not verify that the modulus is prime, and say so in their own
+documentation; `kronecker` is total over the integers and needs no
+precondition at all. Where an answer may genuinely not exist -- a non-residue
+has no square root, an over-determined congruence system has no solution --
+the function returns nothing rather than raising, since neither case is a
+caller error.
 """
 
 from std.bit import count_trailing_zeros
@@ -394,3 +411,416 @@ def mod_inverse(a: BigInt, modulus: BigInt) raises -> BigInt:
 
     # Ensure result is in [0, modulus)
     return floor_modulo(x, modulus)
+
+
+# ===----------------------------------------------------------------------=== #
+# Quadratic Residue Symbols
+# ===----------------------------------------------------------------------=== #
+
+
+def jacobi(a: BigInt, n: BigInt) raises -> Int:
+    """Computes the Jacobi symbol of `a` over `n`.
+
+    Args:
+        a: The numerator, of either sign.
+        n: The denominator, which must be odd and positive.
+
+    Returns:
+        `0` when `a` and `n` share a factor, and otherwise `1` or `-1`.
+
+    Raises:
+        ValueError: If `n` is not odd and positive.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    The symbol is the product of the Legendre symbols over the prime factors
+    of `n`, counted with multiplicity, but it is computed here without
+    factoring: pulling the factors of two out of the numerator and then
+    applying quadratic reciprocity reduces the pair the way a Euclidean GCD
+    does, in the same number of steps.
+
+    A `1` does not mean `a` is a square modulo a composite `n`. It means the
+    product of the Legendre symbols is `1`, which an even number of
+    non-residues also achieves. Only for a prime `n` -- the `legendre` case --
+    does `1` mean a square.
+
+    A negative numerator needs no separate treatment, because the symbol only
+    depends on `a` modulo `n` and the reduction here is a floor modulo, which
+    lands on a non-negative residue.
+
+    The parity and low-bit reads below go through `words[0]` rather than
+    `bitwise.test_bit`, and the count of twos through the local
+    `_count_trailing_zeros`, because `bitwise` imports from this module and
+    importing it back would close a cycle. Both operands are non-negative
+    throughout the loop, so the low word of the magnitude is the value modulo
+    `2^64` and masking it is the value modulo 8 or 4.
+    """
+    if not n.is_positive() or (n.words[0] & 1) == 0:
+        raise ValueError(
+            message=(
+                "The denominator of a Jacobi symbol must be odd and positive."
+            ),
+            function="jacobi()",
+        )
+
+    var numerator = floor_modulo(a, n)
+    var denominator = n.copy()
+    var result = 1
+
+    while not numerator.is_zero():
+        # Pull out the factors of two. Two is a quadratic residue modulo an
+        # odd number exactly when that number is one or seven modulo eight,
+        # so each factor flips the sign for the other two cases.
+        var twos = _count_trailing_zeros(numerator.words)
+        if twos > 0:
+            numerator = numerator >> twos
+            if twos & 1 != 0:
+                var residue = Int(denominator.words[0] & 7)
+                if residue == 3 or residue == 5:
+                    result = -result
+
+        # Reciprocity. Both arguments are odd here, and the sign flips only
+        # when both are three modulo four.
+        if (numerator.words[0] & 3) == 3 and (denominator.words[0] & 3) == 3:
+            result = -result
+        var previous = numerator.copy()
+        numerator = floor_modulo(denominator, previous)
+        denominator = previous^
+
+    return result if denominator.is_one() else 0
+
+
+def legendre(a: BigInt, p: BigInt) raises -> Int:
+    """Computes the Legendre symbol of `a` over an odd prime `p`.
+
+    Args:
+        a: The numerator, of either sign.
+        p: The denominator, which must be an odd prime. Primality is a
+            precondition and is not checked; see the notes.
+
+    Returns:
+        `0` when `p` divides `a`, `1` when `a` is a non-zero square modulo
+        `p`, and `-1` when it is not a square.
+
+    Raises:
+        ValueError: If `p` is not odd and greater than two. That much is
+            cheap to check and rules out the mistakes a caller is most likely
+            to make, including passing `2`, for which the symbol is undefined.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    For a prime modulus the Jacobi symbol is the Legendre symbol, so this
+    shares that implementation rather than repeating it. The function exists
+    for the name and for the stronger reading its result carries: over a
+    prime, and only over a prime, `1` means `a` really is a square.
+
+    Primality is not verified. Deciding it costs a Baillie-PSW test, which is
+    several modular exponentiations and so orders of magnitude more than the
+    symbol itself -- the symbol runs in Euclidean time, with no exponentiation
+    at all. Charging every caller for a test that a caller working in a fixed
+    prime field already knows the answer to would make the cheap operation the
+    expensive one. A caller who does not know should call `is_prime` once,
+    outside the loop.
+
+    Passing a composite `p` is therefore not an error here; it returns the
+    Jacobi symbol, whose `1` carries the weaker meaning described in `jacobi`.
+    """
+    if p <= BigInt(2) or (p.words[0] & 1) == 0:
+        raise ValueError(
+            message=(
+                "The denominator of a Legendre symbol must be an odd prime,"
+                " so it must at least be odd and greater than two."
+            ),
+            function="legendre()",
+        )
+    return jacobi(a, p)
+
+
+def kronecker(a: BigInt, n: BigInt) raises -> Int:
+    """Computes the Kronecker symbol of `a` over any integer `n`.
+
+    Args:
+        a: The numerator, of either sign.
+        n: The denominator, of either sign, and possibly even or zero.
+
+    Returns:
+        `0`, `1` or `-1`.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    This extends `jacobi` to every integer denominator, so it never raises on
+    its arguments: there is no `n` it is undefined for.
+
+    The extension is forced by asking that the symbol stay multiplicative in
+    `n`. Writing `n` as `u * 2^k * m` with `u` either `1` or `-1` and `m` odd
+    and positive, the symbol is the product of the symbol over each part:
+
+    - `(a/u)` is `-1` exactly when both `u` and `a` are negative. This is the
+      convention that makes the symbol a real character, and it is the one
+      Pari/GP's `kronecker` uses.
+    - `(a/2)` is `0` for even `a`, `1` when `a` is one or seven modulo eight,
+      and `-1` when it is three or five. That is the reciprocity rule
+      `jacobi` already applies to a factor of two, read in the other
+      direction.
+    - `(a/m)` is the Jacobi symbol.
+
+    The zero denominator falls out of the empty product: `(a/0)` is `1` when
+    `a` is `1` or `-1` and `0` otherwise.
+    """
+    if n.is_zero():
+        return 1 if absolute(a).is_one() else 0
+
+    var result = 1
+    var denominator = absolute(n)
+    if n.is_negative() and a.is_negative():
+        result = -result
+
+    var twos = _count_trailing_zeros(denominator.words)
+    if twos > 0:
+        denominator = denominator >> twos
+        var residue = Int(floor_modulo(a, BigInt(8)))
+        var symbol_of_two = 0
+        if residue == 1 or residue == 7:
+            symbol_of_two = 1
+        elif residue == 3 or residue == 5:
+            symbol_of_two = -1
+        # An even `a` makes the whole product zero; otherwise only the parity
+        # of the exponent matters, since the symbol is `1` or `-1`.
+        if symbol_of_two == 0:
+            return 0
+        if symbol_of_two == -1 and (twos & 1) != 0:
+            result = -result
+
+    return result * jacobi(a, denominator)
+
+
+# ===----------------------------------------------------------------------=== #
+# Modular Square Root
+# ===----------------------------------------------------------------------=== #
+
+
+def sqrt_mod(a: BigInt, modulus: BigInt) raises -> Optional[BigInt]:
+    """Computes a square root of `a` modulo a prime.
+
+    Args:
+        a: The value to take the root of, of either sign.
+        modulus: The modulus, which must be a prime. Primality is a
+            precondition and is not checked, for the reason given in
+            `legendre`.
+
+    Returns:
+        The smaller of the two roots when `a` is a square modulo `modulus`,
+        and nothing when it is not. Zero has the single root zero.
+
+    Raises:
+        ValueError: If `modulus` is less than two.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    A non-residue is not an error. Half of the non-zero residues modulo an odd
+    prime are squares and half are not, so "no root" is an ordinary answer
+    about an ordinary input, and a caller sweeping a range would otherwise
+    have to put its normal path inside an exception handler. That is why this
+    returns nothing instead of raising, unlike `mod_inverse`, where a missing
+    inverse means the caller chose a modulus that does not match the value.
+
+    The two roots are `x` and `modulus - x`. The smaller is returned so that
+    the answer is a function of the arguments alone. Tonelli-Shanks below
+    starts from the first quadratic non-residue it finds by counting upwards,
+    and which of the two roots the ladder lands on depends on that search, so
+    without this the result would be reproducible but arbitrary.
+
+    Three cases are separated out because they need no search. Modulo two,
+    squaring is the identity. When the modulus is three modulo four, the
+    exponent `(modulus + 1) / 4` is an integer and a single modular
+    exponentiation gives the root, since then
+    `(a^((p+1)/4))^2 = a^((p+1)/2) = a * a^((p-1)/2) = a` for a residue `a`.
+    Only a modulus of one modulo four needs the full algorithm.
+    """
+    if modulus < BigInt(2):
+        raise ValueError(
+            message="The modulus of a modular square root must be prime.",
+            function="sqrt_mod()",
+        )
+
+    var one = BigInt.one()
+    var two = BigInt(2)
+    if modulus == two:
+        # Squaring is the identity modulo two, so `a` is its own root.
+        return floor_modulo(a, two)
+
+    var residue = floor_modulo(a, modulus)
+    if residue.is_zero():
+        return BigInt(0)
+    if jacobi(residue, modulus) != 1:
+        return None
+
+    var four = BigInt(4)
+    if floor_modulo(modulus, four) == BigInt(3):
+        var direct = mod_pow(residue, (modulus + one) // four, modulus)
+        return _nearer_root(direct^, modulus)
+
+    # Tonelli-Shanks. Write `modulus - 1 = odd_part * 2^shift`, with
+    # `shift >= 2` because the modulus is one modulo four.
+    var even_part = modulus - one
+    var shift = _count_trailing_zeros(even_part.words)
+    var odd_part = even_part >> shift
+
+    # Any non-residue will do, and the smallest is found by counting up.
+    # Half the residues are non-residues, so this stops almost at once.
+    var non_residue = two.copy()
+    while jacobi(non_residue, modulus) != -1:
+        non_residue = non_residue + one
+
+    var ladder = mod_pow(non_residue, odd_part, modulus)
+    var root = mod_pow(residue, (odd_part + one) >> 1, modulus)
+    var remainder = mod_pow(residue, odd_part, modulus)
+    var order = shift
+
+    # `remainder` has order dividing `2^order`. Each pass finds its exact
+    # order `2^i`, kills the top factor of two with a matching power of the
+    # non-residue, and so strictly lowers `order`. It reaches one in at most
+    # `shift` passes.
+    while not remainder.is_one():
+        var i = 0
+        var square = remainder.copy()
+        while not square.is_one():
+            square = floor_modulo(multiply(square, square), modulus)
+            i += 1
+
+        var factor = ladder.copy()
+        for _ in range(order - i - 1):
+            factor = floor_modulo(multiply(factor, factor), modulus)
+
+        root = floor_modulo(multiply(root, factor), modulus)
+        ladder = floor_modulo(multiply(factor, factor), modulus)
+        remainder = floor_modulo(multiply(remainder, ladder), modulus)
+        order = i
+
+    return _nearer_root(root^, modulus)
+
+
+def _nearer_root(root: BigInt, modulus: BigInt) raises -> BigInt:
+    """Picks the smaller of the two square roots `root` and `modulus - root`.
+
+    Args:
+        root: One root, in `[0, modulus)`.
+        modulus: The modulus.
+
+    Returns:
+        Whichever of the pair is smaller.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+    """
+    var other = subtract(modulus, root)
+    return root.copy() if compare_magnitudes(root, other) <= 0 else other^
+
+
+# ===----------------------------------------------------------------------=== #
+# Chinese Remainder Theorem
+# ===----------------------------------------------------------------------=== #
+
+
+def crt(
+    residues: List[BigInt], moduli: List[BigInt]
+) raises -> Optional[Tuple[BigInt, BigInt]]:
+    """Solves a system of simultaneous congruences.
+
+    Args:
+        residues: The right-hand sides, of either sign.
+        moduli: The moduli, each of which must be positive. They need not be
+            pairwise coprime.
+
+    Returns:
+        A pair `(x, m)` where `m` is the least common multiple of the moduli
+        and `x` is the unique solution in `[0, m)`, so that `x` is congruent
+        to `residues[i]` modulo `moduli[i]` for every `i`. Nothing when the
+        system has no solution.
+
+    Raises:
+        ValueError: If the two lists differ in length, or if any modulus is
+            not positive.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    Coprime moduli are not required. The congruences are merged one at a
+    time: given a solution `x` modulo `m`, the next congruence asks for a `k`
+    with `x + m * k` congruent to `r` modulo `n`, which is the linear
+    congruence `m * k = r - x` modulo `n`. With `g` the GCD of `m` and `n`
+    that has a solution exactly when `g` divides `r - x`, and then `k` is
+    determined modulo `n / g`, which makes the merged modulus
+    `m * (n / g)` -- the least common multiple, as claimed above. Coprime
+    moduli are only the case where `g` is always one and nothing can fail.
+
+    An inconsistent system returns nothing rather than raising. `x = 1 mod 2`
+    together with `x = 2 mod 4` is not a malformed request; it is a
+    well-formed question whose answer is that no such `x` exists, and a caller
+    intersecting congruences it did not choose needs that answer as a value.
+    A modulus of zero, by contrast, is malformed and raises: it describes no
+    congruence.
+
+    The empty system returns `(0, 1)`. Every integer is congruent modulo one,
+    so the empty intersection is all of them, represented by the one residue
+    class modulo one. That also makes the function foldable: starting from
+    `(0, 1)` and merging is what the loop below does.
+    """
+    if len(residues) != len(moduli):
+        raise ValueError(
+            message=(
+                "A congruence system needs one modulus for every residue, but"
+                " got "
+                + String(len(residues))
+                + " residues and "
+                + String(len(moduli))
+                + " moduli."
+            ),
+            function="crt()",
+        )
+
+    var solution = BigInt(0)
+    var modulus = BigInt.one()
+
+    for index in range(len(moduli)):
+        var next_modulus = moduli[index].copy()
+        if not next_modulus.is_positive():
+            raise ValueError(
+                message=(
+                    "Every modulus of a congruence system must be positive,"
+                    " but the one at index "
+                    + String(index)
+                    + " is not."
+                ),
+                function="crt()",
+            )
+
+        var difference = subtract(residues[index], solution)
+        var common = gcd(modulus, next_modulus)
+        var split = floor_divmod(difference, common)
+        if not split[1].is_zero():
+            # `common` does not divide `r - x`, so the two congruences
+            # disagree on a residue class they share.
+            return None
+
+        # `k = ((r - x) / g) * (m / g)^-1 mod (n / g)`. The inverse exists
+        # because dividing out the GCD leaves the two parts coprime.
+        var reduced = floor_divide(next_modulus, common)
+        var step = floor_modulo(
+            multiply(
+                split[0], mod_inverse(floor_divide(modulus, common), reduced)
+            ),
+            reduced,
+        )
+
+        solution = solution + multiply(modulus, step)
+        modulus = multiply(modulus, reduced)
+        solution = floor_modulo(solution, modulus)
+
+    return Optional(Tuple(solution^, modulus^))

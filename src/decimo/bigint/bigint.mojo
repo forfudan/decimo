@@ -1905,6 +1905,73 @@ struct BigInt(
         """
         return bigint_number_theory.mod_inverse(self, modulus)
 
+    @always_inline
+    def jacobi(self, denominator: Self) raises -> Int:
+        """Returns the Jacobi symbol of self over denominator.
+
+        Args:
+            denominator: The denominator, which must be odd and positive.
+
+        Returns:
+            `0`, `1` or `-1`.
+
+        Raises:
+            ValueError: If the denominator is not odd and positive.
+            Error: Propagated from underlying arithmetic operations.
+        """
+        return bigint_number_theory.jacobi(self, denominator)
+
+    @always_inline
+    def legendre(self, denominator: Self) raises -> Int:
+        """Returns the Legendre symbol of self over an odd prime denominator.
+
+        Args:
+            denominator: The denominator, which must be an odd prime.
+                Primality is a precondition and is not checked.
+
+        Returns:
+            `0`, `1` or `-1`.
+
+        Raises:
+            ValueError: If the denominator is not odd and greater than two.
+            Error: Propagated from underlying arithmetic operations.
+        """
+        return bigint_number_theory.legendre(self, denominator)
+
+    @always_inline
+    def kronecker(self, denominator: Self) raises -> Int:
+        """Returns the Kronecker symbol of self over any integer denominator.
+
+        Args:
+            denominator: The denominator, of either sign, and possibly even
+                or zero.
+
+        Returns:
+            `0`, `1` or `-1`.
+
+        Raises:
+            Error: Propagated from underlying arithmetic operations.
+        """
+        return bigint_number_theory.kronecker(self, denominator)
+
+    @always_inline
+    def sqrt_mod(self, modulus: Self) raises -> Optional[Self]:
+        """Returns a square root of self modulo a prime.
+
+        Args:
+            modulus: The modulus, which must be prime. Primality is a
+                precondition and is not checked.
+
+        Returns:
+            The smaller of the two roots, or nothing when self is not a
+            square modulo the modulus.
+
+        Raises:
+            ValueError: If the modulus is less than two.
+            Error: Propagated from underlying arithmetic operations.
+        """
+        return bigint_number_theory.sqrt_mod(self, modulus)
+
     # ===------------------------------------------------------------------=== #
     # Instance query methods
     # ===------------------------------------------------------------------=== #
