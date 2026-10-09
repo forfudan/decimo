@@ -33,5 +33,7 @@ Modules:
 - exponential: sqrt, isqrt
 - number_theory: gcd, extended_gcd, lcm, mod_pow, mod_inverse
 - primality: is_prime, next_prime, prev_prime, primes_below
+- factorization: factor, divisors, divisor_count, divisor_sum, euler_phi,
+  moebius, multiplicative_order
 - special: factorial (and future special functions)
 """

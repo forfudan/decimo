@@ -61,6 +61,16 @@ from .rounding_mode import (
 # Core functions
 from .bigint.number_theory import gcd, lcm, extended_gcd, mod_inverse, mod_pow
 from .bigint.primality import is_prime, next_prime, prev_prime, primes_below
+from .bigint.factorization import (
+    Factorization,
+    divisor_count,
+    divisor_sum,
+    divisors,
+    euler_phi,
+    factor,
+    moebius,
+    multiplicative_order,
+)
 
 # Numeral systems (high-level: the `to_chinese()` methods; mid-level:
 # `decimo.numerals`)
