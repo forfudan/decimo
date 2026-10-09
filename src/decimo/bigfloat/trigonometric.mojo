@@ -1,0 +1,790 @@
+# ===----------------------------------------------------------------------=== #
+# Copyright 2025-2026 Yuhao Zhu
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ===----------------------------------------------------------------------=== #
+
+
+"""The circular functions of a binary float.
+
+Everything here turns on one reduction. The series for a sine or a cosine
+only converges while its argument is small, so the argument is first written
+as `k * (pi/2) + r` with `|r|` at most `pi/4`, and which of the four
+quadrants `k` lands in says whether the answer is the sine or the cosine of
+`r`, and with which sign.
+
+That reduction is the whole difficulty, and the reason is that pi is
+irrational. Subtracting `k * (pi/2)` from a large argument cancels the
+leading bits, so as many bits of pi are needed as the argument has, plus the
+bits the answer wants. An argument of `2^1000` needs a thousand bits of pi
+before the first bit of the answer is right, and this asks for them: the
+count is derived from the argument's own leading bit rather than fixed, and
+`k` is a `BigInt` because it can be far larger than an `Int`.
+
+The cosine's series computes `cos(r) - 1` for the same reason the
+exponential's computes `exp(x) - 1`: a leading one would swamp a small
+argument, while adding it back through the addition turns what would vanish
+into the sticky bit it is.
+"""
+
+from std.bit import bit_width
+
+import decimo.bigfloat.arithmetics as bigfloat_arithmetics
+from decimo.bigfloat.bigfloat import BigFloat
+from decimo.bigfloat.comparison import compare_absolute
+from decimo.bigfloat.constants import pi
+from decimo.bigfloat.exponential import round_by_deciding_at
+from decimo.bigfloat.rounding import (
+    MAX_PRECISION,
+    checked_precision,
+    round_to_precision,
+)
+from decimo.bigint.bigint import BigInt
+from decimo.errors import OverflowError
+from decimo.rounding_mode import RoundingMode
+
+
+comptime _SINE_SLACK = 4
+"""Units in the last place the sine's and cosine's kernels may be off by.
+
+The reduction, the series and the one addition that puts the leading one back
+each cost a unit or two of the working width, and the working width carries
+`bit_width(terms) + 8` bits beyond what the kernel returns.
+"""
+
+comptime _TANGENT_SLACK = 8
+"""Units in the last place the tangent's kernel may be off by.
+
+It is a sine over a cosine, so both of their bounds compound and the division
+rounds once more.
+"""
+
+
+def _truncated_to_bigint(value: BigFloat) raises -> BigInt:
+    """The integer part of a finite value, toward zero.
+
+    Args:
+        value: The value.
+
+    Returns:
+        The integer part, which can be far larger than an `Int`.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+    """
+    if value.is_zero() or value.exponent + value.precision <= 0:
+        return BigInt.zero()
+    var magnitude = value.significand.copy()
+    if value.exponent >= 0:
+        magnitude = magnitude << value.exponent
+    else:
+        magnitude = magnitude >> -value.exponent
+    if value.sign:
+        magnitude = -magnitude
+    return magnitude^
+
+
+def _leading_bit_position(x: BigFloat) raises -> BigInt:
+    """Where the top bit of a finite non-zero value sits.
+
+    Args:
+        x: The value.
+
+    Returns:
+        `exponent + precision - 1`, as a `BigInt` because that sum can leave
+        an `Int` while the value itself is ordinary.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+    """
+    return BigInt(x.exponent) + BigInt(x.precision) - BigInt.one()
+
+
+def _reduction_width(x: BigFloat, width: Int) raises -> Int:
+    """How many bits of pi the reduction of `x` needs.
+
+    Args:
+        x: The argument.
+        width: The bits wanted in the answer.
+
+    Returns:
+        The width to ask pi for.
+
+    Raises:
+        OverflowError: If that is more than a precision may be.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    Subtracting `k * (pi/2)` cancels the leading bits of `x`, so the answer's
+    first bit needs as many bits of pi as `x` has above the binary point,
+    plus the width wanted and room for the series. An argument whose leading
+    bit sits beyond what a precision may be would need more bits of pi than
+    this layer accepts, and that is said rather than attempted.
+    """
+    var leading = _leading_bit_position(x)
+    var above = 0
+    if leading > BigInt.zero():
+        if leading > BigInt(MAX_PRECISION):
+            raise OverflowError(
+                message=(
+                    "Reducing an argument this large needs more bits of pi"
+                    " than a precision may be."
+                ),
+                function="_reduction_width()",
+            )
+        above = leading.to_int()
+    var total = width + above + Int(bit_width(UInt(width))) + 16
+    if total > MAX_PRECISION:
+        raise OverflowError(
+            message=(
+                "Reducing an argument this large needs more bits of pi than a"
+                " precision may be."
+            ),
+            function="_reduction_width()",
+        )
+    return total
+
+
+def _nearest_to_bigint(value: BigFloat, width: Int) raises -> BigInt:
+    """The integer nearest a finite value.
+
+    Args:
+        value: The value.
+        width: A precision wide enough to hold its integer part and a bit
+            more, so that adding a half is exact.
+
+    Returns:
+        The nearest integer, ties going away from zero.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+    """
+    var half = _power_of_two(-1)
+    if value.sign:
+        half = -half
+    return _truncated_to_bigint(bigfloat_arithmetics.add(value, half, width))
+
+
+def _reduced(x: BigFloat, width: Int) raises -> Tuple[BigFloat, Int]:
+    """Writes `x` as `k * (pi/2) + r` and returns `r` with `k mod 4`.
+
+    Args:
+        x: The argument, finite and not zero.
+        width: The bits wanted in the answer.
+
+    Returns:
+        The remainder, whose magnitude is at most `pi/4`, and which quadrant
+        `k` lands in, from zero to three.
+
+    Raises:
+        OverflowError: If the reduction needs more bits of pi than a
+            precision may be, or cannot resolve the remainder in eight tries.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    `k` is the nearest multiple and not the one toward zero. Toward zero
+    leaves `r` anywhere in `[0, pi/2)`, and a remainder near `pi/2` is where
+    the cosine's series is worst: `cos(r)` is then near nought, so putting
+    the leading one back cancels it away and the kernel's error bound stops
+    holding. The nearest multiple leaves `|r| <= pi/4`, where `cos(r)` is at
+    least `0.707` and nothing cancels.
+
+    The remainder is then checked rather than trusted. Pi is irrational and
+    the pi used here is rounded, so subtracting `k * (pi/2)` cancels the
+    argument's leading bits against a value that is itself only approximate:
+    the error in `r` is about `|x| * 2^-scale`, and `r` has to stand well
+    above that to mean anything. An argument that happens to agree with the
+    rounded `pi/2` to the working width -- `pi(88)/2` itself, say -- leaves a
+    remainder of exactly nought, which would make the cosine nought and the
+    tangent an infinity, though no binary float is a pole. So when `r` is too
+    small for its own error the scale grows and the reduction runs again.
+    """
+    var leading = _leading_bit_position(x)
+    var scale = _reduction_width(x, width)
+    for _ in range(8):
+        var half_pi = bigfloat_arithmetics.multiply(
+            pi(scale), _power_of_two(-1), scale
+        )
+        var quotient = bigfloat_arithmetics.divide(x, half_pi, scale)
+        var multiple = _nearest_to_bigint(quotient, scale + 4)
+        var remainder = x.copy()
+        if not multiple.is_zero():
+            remainder = bigfloat_arithmetics.subtract(
+                x,
+                bigfloat_arithmetics.multiply(
+                    BigFloat.from_bigint(multiple, scale), half_pi, scale
+                ),
+                scale,
+            )
+        # The error in the remainder is about `|x| * 2^-scale`, so its
+        # leading bit has to sit at least `width` places above that.
+        var floor_position = leading - BigInt(scale) + BigInt(width) + BigInt(8)
+        if not remainder.is_zero():
+            if _leading_bit_position(remainder) >= floor_position:
+                var quadrant = (multiple % BigInt(4)).to_int()
+                if quadrant < 0:
+                    quadrant += 4
+                return (remainder^, quadrant)
+        scale = _widened_reduction(scale, width)
+    raise OverflowError(
+        message=(
+            "The reduction of this argument could not be resolved: its"
+            " remainder cancels against pi further than eight widenings"
+            " reach."
+        ),
+        function="_reduced()",
+    )
+
+
+def _widened_reduction(scale: Int, width: Int) raises -> Int:
+    """The next scale to try when a remainder cancelled too far.
+
+    Args:
+        scale: The scale that was not enough.
+        width: The bits wanted in the answer.
+
+    Returns:
+        A wider scale.
+
+    Raises:
+        OverflowError: If that is more than a precision may be.
+    """
+    if scale > MAX_PRECISION - width - 16:
+        raise OverflowError(
+            message=(
+                "Resolving this reduction needs more bits of pi than a"
+                " precision may be."
+            ),
+            function="_reduced()",
+        )
+    return scale + width + 16
+
+
+def _power_of_two(exponent: Int) raises -> BigFloat:
+    """`2^exponent` held in a single bit.
+
+    Args:
+        exponent: The power.
+
+    Returns:
+        The value, which multiplying by is exact at any precision.
+
+    Raises:
+        Error: Propagated from the construction.
+    """
+    return BigFloat(
+        significand=BigInt.one(), exponent=exponent, precision=1, sign=False
+    )
+
+
+def _cubic_term_is_below_a_guard_unit(x: BigFloat, guard: Int) raises -> Bool:
+    """Whether `x^3` is small enough for a guard unit to stand in for it.
+
+    Args:
+        x: The argument, finite and not zero.
+        guard: How many guard bits the rounding will be given.
+
+    Returns:
+        True when the cubic correction is below one guard unit of `x`, which
+        is what makes moving `x` by a guard unit land on the same side of
+        every rounding boundary as the true value does.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    The test is on the leading bits, in a `BigInt` because those positions
+    can be far outside an `Int`. With `L` the leading bit's position,
+    `|x^3/3|` is below `2^(3L+2)` and a guard unit is `2^(L - p + 1 - g)`
+    for a significand of `p` bits, so the condition is
+
+        2L < -p - g - 1
+
+    which is a real restriction and not a formality: at one bit of
+    destination and `x = 3065/32768`, the cubic term is nine times `x`'s own
+    last place, and the earlier gate -- `|x|` below `2^-((precision+4)/2)` --
+    let it through. The tangent then answered `1/16` where the truth is above
+    the midpoint and the answer is `1/8`.
+    """
+    var leading = _leading_bit_position(x)
+    return (leading + leading) < BigInt(-(x.precision + guard + 1))
+
+
+def _guard_bits(x: BigFloat, precision: Int) -> Int:
+    """How many bits to widen `x` by before rounding it to `precision`.
+
+    Args:
+        x: The value.
+        precision: The bits the answer keeps.
+
+    Returns:
+        At least two, and enough that the widened significand has more bits
+        than the answer keeps, which is what the rounding needs to read a
+        discarded remainder.
+    """
+    var guard = 2
+    if precision + 2 - x.precision > guard:
+        guard = precision + 2 - x.precision
+    return guard
+
+
+def _moved_off_x(
+    x: BigFloat,
+    precision: Int,
+    rounding_mode: RoundingMode,
+    toward_zero: Bool,
+) raises -> BigFloat:
+    """Rounds the value a hair to one side of `x`, by one guard unit.
+
+    Args:
+        x: The value the answer sits beside, finite and not zero.
+        precision: The bits the answer keeps.
+        rounding_mode: Which way to round.
+        toward_zero: Whether the answer is below `x` in magnitude or above.
+
+    Returns:
+        `x` moved by less than a quarter of its own last place, rounded.
+
+    Raises:
+        OverflowError: If `x` sits so low in the exponent range that there is
+            no room for the guard bits.
+        Error: Propagated from the rounding.
+
+    Notes:
+
+    This is for an argument whose correction term is real but far too small
+    to compute: `sin(x)` is `x - x^3/6` and the tangent is `x + x^3/3`, and
+    at `x = 2^-100000` neither correction has an exponent an `Int` can hold.
+    What the rounding needs is not the correction's size but its side, and
+    one guard unit stands in for it exactly.
+
+    Exactly, because a guard unit is at most a quarter of `x`'s own last
+    place, while the distance from `x` to any rounding boundary it does not
+    sit on is at least a whole one: so moving by a guard unit cannot cross a
+    boundary that the true correction does not. And where `x` sits on a
+    boundary -- a tie, or a value the destination holds exactly -- moving off
+    it is the whole point, since the truth is not on it.
+
+    An earlier version moved by `x * 2^-(precision+8)` instead, which is
+    larger than the correction for a small `x` rather than smaller. At one
+    bit of precision and `x = 3077/32768`, just above the midpoint `3/32`,
+    that crossed the midpoint and answered `1/16` where the sine is above it
+    and the answer is `1/8`.
+    """
+    var guard = _guard_bits(x, precision)
+    if x.exponent < Int.MIN + guard:
+        raise OverflowError(
+            message=(
+                "This argument sits too low in the exponent range to leave"
+                " room for the bits its rounding needs."
+            ),
+            function="_moved_off_x()",
+        )
+    var magnitude = x.significand << guard
+    if toward_zero:
+        magnitude = magnitude - BigInt.one()
+    return BigFloat.from_rounded_parts(
+        magnitude,
+        x.exponent - guard,
+        precision,
+        x.sign,
+        rounding_mode,
+        True,
+    )
+
+
+def _sine_series(x: BigFloat, width: Int) raises -> BigFloat:
+    """`sin(x)` for a small `x`, as a sum of its terms.
+
+    Args:
+        x: The argument, whose magnitude should be at most `pi/4`.
+        width: The bits to work in.
+
+    Returns:
+        The sum.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    The series is `x - x^3/3! + x^5/5! - ...`, each term the one before it
+    times `-x^2` over the two integers that follow. There is no leading
+    constant to swamp a small argument, so the sum needs no help from the
+    addition the way the cosine's does.
+    """
+    if x.is_zero():
+        return BigFloat.zero(width, x.sign)
+    var square = bigfloat_arithmetics.multiply(x, x, width)
+    var term = BigFloat.from_rounded_parts(
+        x.significand, x.exponent, width, x.sign
+    )
+    var total = term.copy()
+    var index = 2
+    while True:
+        term = bigfloat_arithmetics.divide(
+            bigfloat_arithmetics.multiply(term, square, width),
+            BigFloat.from_int(index * (index + 1), width),
+            width,
+        )
+        term = -term
+        if term.is_zero():
+            return total^
+        if (
+            compare_absolute(
+                term,
+                bigfloat_arithmetics.multiply(
+                    total, _power_of_two(-width - 2), width
+                ),
+            )
+            < 0
+        ):
+            return total^
+        total = bigfloat_arithmetics.add(total, term, width)
+        index += 2
+
+
+def _cosine_minus_one_series(x: BigFloat, width: Int) raises -> BigFloat:
+    """`cos(x) - 1` for a small `x`, as a sum of its terms.
+
+    Args:
+        x: The argument, whose magnitude should be at most `pi/4`.
+        width: The bits to work in.
+
+    Returns:
+        The sum, which is negative for every argument but zero.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    The series is `-x^2/2! + x^4/4! - ...`. The leading one is left for the
+    caller to add, because adding it here would swamp a small argument: a
+    term below the last place would vanish, while the addition turns it into
+    the sticky bit it is.
+    """
+    if x.is_zero():
+        return BigFloat.zero(width, False)
+    var square = bigfloat_arithmetics.multiply(x, x, width)
+    var term = bigfloat_arithmetics.divide(
+        square, BigFloat.from_int(2, width), width
+    )
+    term = -term
+    var total = term.copy()
+    var index = 3
+    while True:
+        term = bigfloat_arithmetics.divide(
+            bigfloat_arithmetics.multiply(term, square, width),
+            BigFloat.from_int(index * (index + 1), width),
+            width,
+        )
+        term = -term
+        if term.is_zero():
+            return total^
+        if (
+            compare_absolute(
+                term,
+                bigfloat_arithmetics.multiply(
+                    total, _power_of_two(-width - 2), width
+                ),
+            )
+            < 0
+        ):
+            return total^
+        total = bigfloat_arithmetics.add(total, term, width)
+        index += 2
+
+
+def _sin_kernel(x: BigFloat, width: Int) raises -> BigFloat:
+    """`sin(x)` to `width` bits.
+
+    Args:
+        x: The argument.
+        width: The bits wanted.
+
+    Returns:
+        The value, within `_SINE_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    The quadrant decides which series answers. In the first and third the
+    sine of the remainder is the sine of the argument, up to sign; in the
+    second and fourth it is the cosine of the remainder, which is where the
+    leading one has to be put back.
+    """
+    if x.is_nan() or x.is_infinite():
+        return BigFloat.nan(width)
+    if x.is_zero():
+        return BigFloat.zero(width, x.sign)
+
+    var scale = width + Int(bit_width(UInt(width))) + 12
+    var parts = _reduced(x, width)
+    var remainder = BigFloat.from_rounded_parts(
+        parts[0].significand, parts[0].exponent, scale, parts[0].sign
+    )
+    var quadrant = parts[1]
+
+    var answer = _sine_series(remainder, scale)
+    if quadrant == 1 or quadrant == 3:
+        answer = bigfloat_arithmetics.add(
+            BigFloat.from_int(1, scale),
+            _cosine_minus_one_series(remainder, scale),
+            scale,
+        )
+    if quadrant >= 2:
+        answer = -answer
+    return BigFloat.from_rounded_parts(
+        answer.significand, answer.exponent, width, answer.sign
+    )
+
+
+def _cos_kernel(x: BigFloat, width: Int) raises -> BigFloat:
+    """`cos(x)` to `width` bits.
+
+    Args:
+        x: The argument.
+        width: The bits wanted.
+
+    Returns:
+        The value, within `_SINE_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    The cosine is the sine a quadrant along, so this is the same work with
+    the cases rotated: the first and third quadrants want the cosine of the
+    remainder and the second and fourth its sine.
+    """
+    if x.is_nan() or x.is_infinite():
+        return BigFloat.nan(width)
+    if x.is_zero():
+        return BigFloat.from_int(1, width)
+
+    var scale = width + Int(bit_width(UInt(width))) + 12
+    var parts = _reduced(x, width)
+    var remainder = BigFloat.from_rounded_parts(
+        parts[0].significand, parts[0].exponent, scale, parts[0].sign
+    )
+    var quadrant = parts[1]
+
+    var answer = bigfloat_arithmetics.add(
+        BigFloat.from_int(1, scale),
+        _cosine_minus_one_series(remainder, scale),
+        scale,
+    )
+    if quadrant == 1 or quadrant == 3:
+        answer = _sine_series(remainder, scale)
+        answer = -answer
+    if quadrant == 2 or quadrant == 3:
+        answer = -answer
+    return BigFloat.from_rounded_parts(
+        answer.significand, answer.exponent, width, answer.sign
+    )
+
+
+def _tan_kernel(x: BigFloat, width: Int) raises -> BigFloat:
+    """`tan(x)` to `width` bits.
+
+    Args:
+        x: The argument.
+        width: The bits wanted.
+
+    Returns:
+        The value, within `_TANGENT_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    A sine over a cosine, both at the working width. Near a pole the answer
+    is enormous but its relative accuracy is not in doubt: the remainder is
+    at most `pi/4` from a multiple of `pi/2`, so whichever of the two series
+    is small is small because its own argument is, and a series knows a small
+    argument exactly. There is no pole to land on, since every one of them is
+    an irrational multiple of a half and no binary float is one.
+    """
+    if x.is_nan() or x.is_infinite():
+        return BigFloat.nan(width)
+    if x.is_zero():
+        return BigFloat.zero(width, x.sign)
+
+    var scale = width + Int(bit_width(UInt(width))) + 16
+    var parts = _reduced(x, width)
+    var remainder = BigFloat.from_rounded_parts(
+        parts[0].significand, parts[0].exponent, scale, parts[0].sign
+    )
+    var quadrant = parts[1]
+
+    var sine = _sine_series(remainder, scale)
+    var cosine = bigfloat_arithmetics.add(
+        BigFloat.from_int(1, scale),
+        _cosine_minus_one_series(remainder, scale),
+        scale,
+    )
+    # In an odd quadrant the two swap places, and the sign goes with them.
+    var answer = bigfloat_arithmetics.divide(sine, cosine, scale)
+    if quadrant == 1 or quadrant == 3:
+        answer = bigfloat_arithmetics.divide(cosine, sine, scale)
+        answer = -answer
+    return BigFloat.from_rounded_parts(
+        answer.significand, answer.exponent, width, answer.sign
+    )
+
+
+def sin(
+    x: BigFloat,
+    precision: Int,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) raises -> BigFloat:
+    """The sine of a value, correctly rounded.
+
+    Args:
+        x: The argument, in radians.
+        precision: How many bits the result keeps. Must be positive.
+        rounding_mode: Which way to round.
+
+    Returns:
+        The float of `precision` bits nearest `sin(x)`.
+
+    Raises:
+        ValueError: If `precision` is not positive.
+        OverflowError: If reducing the argument would need more bits of pi
+            than a precision may be.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    An infinity has no sine, since the value does not settle anywhere, so the
+    answer there is a NaN. The sine of a zero is that zero, sign and all.
+
+    An argument below the last place of the answer does not reach the series:
+    `sin(x)` is `x` less a cubic term there, and that is a subtraction the
+    addition already rounds correctly. Answering it directly also keeps the
+    deciding loop from widening after a bit it cannot reach.
+    """
+    _ = checked_precision(precision, "sin()")
+    if (
+        x.is_finite()
+        and not x.is_zero()
+        and _cubic_term_is_below_a_guard_unit(x, _guard_bits(x, precision))
+    ):
+        # `sin(x) = x - x^3/6 + ...`, so the answer is `x` moved toward zero.
+        return _moved_off_x(x, precision, rounding_mode, True)
+    return round_by_deciding_at[_sin_kernel, _SINE_SLACK](
+        x, precision, rounding_mode
+    )
+
+
+def cos(
+    x: BigFloat,
+    precision: Int,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) raises -> BigFloat:
+    """The cosine of a value, correctly rounded.
+
+    Args:
+        x: The argument, in radians.
+        precision: How many bits the result keeps. Must be positive.
+        rounding_mode: Which way to round.
+
+    Returns:
+        The float of `precision` bits nearest `cos(x)`.
+
+    Raises:
+        ValueError: If `precision` is not positive.
+        OverflowError: If reducing the argument would need more bits of pi
+            than a precision may be.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    An infinity has no cosine and gives a NaN. The cosine of a zero is one,
+    of either sign of zero.
+
+    An argument small enough that `cos(x)` is one to within a rounding is
+    answered by `1 - x^2/2` through the subtraction, which gets the directed
+    modes right: toward zero the answer is the value below one, not one.
+    """
+    _ = checked_precision(precision, "cos()")
+    if (
+        x.is_finite()
+        and not x.is_zero()
+        and compare_absolute(x, _power_of_two(-(precision + 8) // 2)) < 0
+    ):
+        var square = bigfloat_arithmetics.multiply(x, x, precision + 8)
+        var half_square = bigfloat_arithmetics.multiply(
+            square, _power_of_two(-1), precision + 8
+        )
+        return bigfloat_arithmetics.subtract(
+            BigFloat.from_int(1, precision),
+            half_square,
+            precision,
+            rounding_mode,
+        )
+    return round_by_deciding_at[_cos_kernel, _SINE_SLACK](
+        x, precision, rounding_mode
+    )
+
+
+def tan(
+    x: BigFloat,
+    precision: Int,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) raises -> BigFloat:
+    """The tangent of a value, correctly rounded.
+
+    Args:
+        x: The argument, in radians.
+        precision: How many bits the result keeps. Must be positive.
+        rounding_mode: Which way to round.
+
+    Returns:
+        The float of `precision` bits nearest `tan(x)`.
+
+    Raises:
+        ValueError: If `precision` is not positive.
+        OverflowError: If reducing the argument would need more bits of pi
+            than a precision may be.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    An infinity gives a NaN. No argument is a pole, because every pole is an
+    irrational multiple of a half and no binary float is one, so the answer
+    is always a number -- however large.
+
+    A small argument goes the other way from the sine's: `tan(x)` is
+    `x + x^3/3`, away from zero rather than toward it. That the two differ in
+    direction is the whole reason neither can simply return `x`.
+    """
+    _ = checked_precision(precision, "tan()")
+    if (
+        x.is_finite()
+        and not x.is_zero()
+        and _cubic_term_is_below_a_guard_unit(x, _guard_bits(x, precision))
+    ):
+        # `tan(x) = x + x^3/3 + ...`, away from zero.
+        return _moved_off_x(x, precision, rounding_mode, False)
+    return round_by_deciding_at[_tan_kernel, _TANGENT_SLACK](
+        x, precision, rounding_mode
+    )
