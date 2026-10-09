@@ -725,6 +725,37 @@ struct BigFloat(
         """
         return bigfloat_exponential.sqrt(self, self.precision)
 
+    def root(self, degree: Int) raises -> Self:
+        """The `degree`-th root, correctly rounded.
+
+        Args:
+            degree: Which root to take. Must be positive.
+
+        Returns:
+            The root at this value's own precision, rounded half to even. An
+            exact root is exact, so `BFlt(8).root(3)` is two. A negative
+            value has a real root only at an odd degree and gives a NaN at an
+            even one, which is what `sqrt` does.
+
+        Raises:
+            ValueError: If `degree` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.root(self, degree, self.precision)
+
+    def cbrt(self) raises -> Self:
+        """The cube root, correctly rounded.
+
+        Returns:
+            The root at this value's own precision, rounded half to even. A
+            negative value has one, unlike a square root, because an odd
+            power keeps its sign.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.cbrt(self, self.precision)
+
     # ===------------------------------------------------------------------=== #
     # The exponentials and the logarithms
     # ===------------------------------------------------------------------=== #

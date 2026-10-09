@@ -1357,6 +1357,7 @@ tried again. This is Ziv's method, and it is why the last bit can be trusted.
 | --------------------------------------- | ------------------------------- |
 | `add`, `subtract`, `multiply`, `divide`  | `decimo.bigfloat.arithmetics`   |
 | `sqrt`, `exp`, `ln`                      | `decimo.bigfloat.exponential`   |
+| `root`, `cbrt`                           | `decimo.bigfloat.exponential`   |
 | `exp2`, `exp10`, `log2`, `log10`, `log`  | `decimo.bigfloat.exponential`   |
 | `expm1`, `log1p`                         | `decimo.bigfloat.exponential`   |
 | `power`                                  | `decimo.bigfloat.power`         |
@@ -1438,6 +1439,30 @@ knowing:
   it.
 - `expm1` and `log1p` are exact only at zero, where both are zero with the
   sign of the argument, and `expm1(-Infinity)` which is exactly minus one.
+
+### Roots of Any Degree — BigFloat
+
+`root(x, degree, precision, mode)` and `cbrt(x, precision, mode)`, also
+`x.root(n)` and `x.cbrt()`, take any positive degree.
+
+They need no series and no deciding loop, because a root is algebraic. The
+integer `degree`-th root of a scaled significand brackets the true root
+between two consecutive integers, and whether it landed on the lower one
+exactly is the sticky bit; one rounding then finishes the job in each of the
+seven modes. So an exact root comes out exact — `root(8, 3)` is `2` in every
+mode, including the directed ones, where a function that evaluated and then
+rounded would have to pick a side and both sides would be wrong.
+
+Dividing the exponent is the whole of the scaling. `x` is
+`s * 2^(q * degree + r)` with `r` below the degree, so the factor of `2^r`
+moves into the significand and the root sits at `2^q`. The product is never
+formed again, which is what keeps a value near the bottom of the exponent
+range from leaving it.
+
+A negative value has a real root only at an odd degree, and gives a NaN at an
+even one, the way `sqrt` does. A nought keeps its sign at an odd degree and
+loses it at an even one. A degree of nought or less is refused rather than
+answered.
 
 ### The Power — BigFloat
 
@@ -1662,6 +1687,7 @@ from decimo import gcd, lcm, extended_gcd, mod_pow, mod_inverse
 from decimo.bigfloat import exp, exp2, exp10, expm1, ln, ln10, log
 from decimo.bigfloat import log1p, log2, log10, sqrt
 from decimo.bigfloat import power
+from decimo.bigfloat import cbrt, root
 from decimo.bigfloat import ceil, floor, number_class, truncate
 from decimo.bigfloat import fma, logb, next_plus, remainder, scaleb
 from decimo.bigfloat.trigonometric import cos, sin, tan
@@ -1787,6 +1813,7 @@ the float of that precision nearest the true value.
 | `add`, `subtract`                 | `decimo.bigfloat.arithmetics`   |
 | `multiply`, `divide`              | `decimo.bigfloat.arithmetics`   |
 | `sqrt`                            | `decimo.bigfloat.exponential`   |
+| `root`, `cbrt`                    | `decimo.bigfloat.exponential`   |
 | `exp`, `ln`                       | `decimo.bigfloat.exponential`   |
 | `exp2`, `exp10`                   | `decimo.bigfloat.exponential`   |
 | `log2`, `log10`, `log`            | `decimo.bigfloat.exponential`   |

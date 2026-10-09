@@ -6,7 +6,8 @@ Modules:
 - comparison: compare, compare_total, the six operators, min, max
 - constants: pi, ln2, ln10, e
 - conversion: the bridge to and from the decimal side
-- exponential: sqrt, exp, ln, and the other bases -- exp2, exp10, log2,
+- exponential: sqrt, root, cbrt, exp, ln, and the other bases -- exp2,
+  exp10, log2,
   log10, log, expm1, log1p -- with the loop that decides a rounding
 - hyperbolic: sinh, cosh, tanh, arcsinh, arccosh, arctanh
 - ieee: the IEEE 754 companion operations -- the neighbours, logb, scaleb,
@@ -23,6 +24,7 @@ without naming the module they live in.
 
 from .constants import ln10, ln2
 from .exponential import (
+    cbrt,
     exp,
     exp10,
     exp2,
@@ -32,6 +34,7 @@ from .exponential import (
     log10,
     log1p,
     log2,
+    root,
     sqrt,
 )
 from .ieee import (
