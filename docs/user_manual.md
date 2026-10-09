@@ -1358,11 +1358,13 @@ tried again. This is Ziv's method, and it is why the last bit can be trusted.
 | `add`, `subtract`, `multiply`, `divide`  | `decimo.bigfloat.arithmetics`   |
 | `sqrt`, `exp`, `ln`                      | `decimo.bigfloat.exponential`   |
 | `root`, `cbrt`                           | `decimo.bigfloat.exponential`   |
+| `hypot`                                  | `decimo.bigfloat.exponential`   |
 | `exp2`, `exp10`, `log2`, `log10`, `log`  | `decimo.bigfloat.exponential`   |
 | `expm1`, `log1p`                         | `decimo.bigfloat.exponential`   |
 | `power`                                  | `decimo.bigfloat.power`         |
 | `sin`, `cos`, `tan`                      | `decimo.bigfloat.trigonometric` |
 | `arcsin`, `arccos`, `arctan`             | `decimo.bigfloat.trigonometric` |
+| `arctan2`                                | `decimo.bigfloat.trigonometric` |
 | `sinh`, `cosh`, `tanh`                   | `decimo.bigfloat.hyperbolic`    |
 | `arcsinh`, `arccosh`, `arctanh`          | `decimo.bigfloat.hyperbolic`    |
 | `pi`, `ln2`, `ln10`, `e`                 | `decimo.bigfloat.constants`     |
@@ -1439,6 +1441,43 @@ knowing:
   it.
 - `expm1` and `log1p` are exact only at zero, where both are zero with the
   sign of the argument, and `expm1(-Infinity)` which is exactly minus one.
+
+### A Point in the Plane — BigFloat
+
+`hypot(x, y, precision, mode)` is the length of the point and
+`arctan2(y, x, precision, mode)` is its angle, with `x.hypot(y)` and
+`y.arctan2(x)` over them. Together they turn a pair of coordinates into polar
+form.
+
+`hypot` forms `x*x + y*y` exactly, in integers, and never as two roundings
+that could each be wrong. Both squares are integers — a significand is one —
+so the sum over their common exponent is an integer too, and the integer
+square root of it brackets the answer with its remainder as the sticky bit.
+So `hypot(3, 4)` is `5`, in every mode, which a pair of rounded squares and a
+rounded root could not promise.
+
+A leg far below the other contributes nothing but a sticky bit, and the
+answer is then the larger leg moved by a hair — not the larger leg itself,
+which is the mistake that would make `hypot(x, tiny)` wrong in the directed
+modes.
+
+`arctan2` is where signed zeros earn their keep. `arctan2(0, -1)` is `pi` and
+`arctan2(-0, -1)` is `-pi`: the two zeros lie on opposite shores of the cut
+along the negative axis, and the sign is the only thing that says which one a
+point on the cut came from. The argument order is the one every other
+language uses — the second coordinate first, because the function inverts a
+tangent and a tangent is a rise over a run.
+
+```mojo
+from decimo.bigfloat import arctan2, hypot
+from decimo.bigfloat.bigfloat import BigFloat
+
+def main() raises:
+    var x = BigFloat.from_int(3, 53)
+    var y = BigFloat.from_int(4, 53)
+    print(hypot(x, y, 53))            # 5
+    print(arctan2(y, x, 53))          # 0.9272952180016122
+```
 
 ### Roots of Any Degree — BigFloat
 
@@ -1688,6 +1727,7 @@ from decimo.bigfloat import exp, exp2, exp10, expm1, ln, ln10, log
 from decimo.bigfloat import log1p, log2, log10, sqrt
 from decimo.bigfloat import power
 from decimo.bigfloat import cbrt, root
+from decimo.bigfloat import arctan2, hypot
 from decimo.bigfloat import ceil, floor, number_class, truncate
 from decimo.bigfloat import fma, logb, next_plus, remainder, scaleb
 from decimo.bigfloat.trigonometric import cos, sin, tan
@@ -1814,6 +1854,7 @@ the float of that precision nearest the true value.
 | `multiply`, `divide`              | `decimo.bigfloat.arithmetics`   |
 | `sqrt`                            | `decimo.bigfloat.exponential`   |
 | `root`, `cbrt`                    | `decimo.bigfloat.exponential`   |
+| `hypot`                           | `decimo.bigfloat.exponential`   |
 | `exp`, `ln`                       | `decimo.bigfloat.exponential`   |
 | `exp2`, `exp10`                   | `decimo.bigfloat.exponential`   |
 | `log2`, `log10`, `log`            | `decimo.bigfloat.exponential`   |
@@ -1821,6 +1862,7 @@ the float of that precision nearest the true value.
 | `power`                           | `decimo.bigfloat.power`         |
 | `sin`, `cos`, `tan`               | `decimo.bigfloat.trigonometric` |
 | `arcsin`, `arccos`, `arctan`      | `decimo.bigfloat.trigonometric` |
+| `arctan2`                         | `decimo.bigfloat.trigonometric` |
 | `sinh`, `cosh`, `tanh`            | `decimo.bigfloat.hyperbolic`    |
 | `arcsinh`, `arccosh`, `arctanh`   | `decimo.bigfloat.hyperbolic`    |
 | `pi`, `ln2`, `ln10`, `e`          | `decimo.bigfloat.constants`     |

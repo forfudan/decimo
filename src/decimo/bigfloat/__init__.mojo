@@ -6,7 +6,7 @@ Modules:
 - comparison: compare, compare_total, the six operators, min, max
 - constants: pi, ln2, ln10, e
 - conversion: the bridge to and from the decimal side
-- exponential: sqrt, root, cbrt, exp, ln, and the other bases -- exp2,
+- exponential: sqrt, root, cbrt, hypot, exp, ln, and the other bases -- exp2,
   exp10, log2,
   log10, log, expm1, log1p -- with the loop that decides a rounding
 - hyperbolic: sinh, cosh, tanh, arcsinh, arccosh, arctanh
@@ -15,7 +15,7 @@ Modules:
   the two remainders
 - power: x ** y, with the exact answers found before the series runs
 - rounding: round_to_precision and the fixed-point helpers the series use
-- trigonometric: sin, cos, tan, arcsin, arccos, arctan
+- trigonometric: sin, cos, tan, arcsin, arccos, arctan, arctan2
 
 The exponentials, the logarithms and the IEEE companions are re-exported
 here, so that the functions whose names say what they do can be reached
@@ -29,6 +29,7 @@ from .exponential import (
     exp10,
     exp2,
     expm1,
+    hypot,
     ln,
     log,
     log10,
@@ -57,3 +58,4 @@ from .ieee import (
     truncate,
 )
 from .power import power
+from .trigonometric import arctan2

@@ -52,6 +52,7 @@ from decimo.bigfloat.rounding import (
     checked_precision,
     round_to_precision,
 )
+import decimo.bigfloat.trigonometric as bigfloat_trigonometric
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.bitwise import test_bit, trailing_zeros
 from decimo.errors import ValueError
@@ -755,6 +756,48 @@ struct BigFloat(
             Error: Propagated from the arithmetic.
         """
         return bigfloat_exponential.cbrt(self, self.precision)
+
+    def hypot(self, other: Self) raises -> Self:
+        """The hypotenuse of this value and another, correctly rounded.
+
+        Args:
+            other: The other leg.
+
+        Returns:
+            The hypotenuse at the wider of the two precisions, rounded half
+            to even. The sum of the squares is formed exactly, so an answer
+            that is exact is exact: `BFlt(3).hypot(BFlt(4))` is five.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.hypot(
+            self,
+            other,
+            self.precision if self.precision
+            > other.precision else (other.precision),
+        )
+
+    def arctan2(self, other: Self) raises -> Self:
+        """The angle of the point whose coordinates are `other` and `self`.
+
+        Args:
+            other: The first coordinate, the one along the axis.
+
+        Returns:
+            The angle in `(-pi, pi]` at the wider of the two precisions,
+            rounded half to even. The receiver is the second coordinate, so
+            that `y.arctan2(x)` reads in the order the function is named for.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_trigonometric.arctan2(
+            self,
+            other,
+            self.precision if self.precision
+            > other.precision else (other.precision),
+        )
 
     # ===------------------------------------------------------------------=== #
     # The exponentials and the logarithms
