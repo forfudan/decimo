@@ -20,6 +20,7 @@ Implements rounding and quantization for BigDecimal objects.
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.biguint.biguint import BigUInt
+from decimo.errors import ValueError
 from decimo.rounding_mode import RoundingMode
 
 # ===------------------------------------------------------------------------===#
@@ -139,8 +140,27 @@ def round_to_precision_inplace(
         fill_zeros_to_precision: If True, fill trailing zeros to the precision.
 
     Raises:
+        ValueError: If `precision` is not positive.
         Error: If an arithmetic error occurs during computation.
+
+    Notes:
+
+    A precision of nought or less is refused rather than honoured. Every digit
+    would be removed and the answer would be a nought: `BigDecimal("2").sqrt(0)`
+    used to come back as `0E+2`, which is not a square root of anything. The
+    functions that take `precision = 0` to mean "exact" -- `add`, `subtract`,
+    `multiply`, `factorial` and `permutation` -- never reach here with it,
+    because they test `precision > 0` before asking for a rounding at all.
     """
+    if precision <= 0:
+        raise ValueError(
+            message=(
+                "A precision must be at least one digit, and "
+                + String(precision)
+                + " was asked for."
+            ),
+            function="round_to_precision_inplace()",
+        )
 
     var ndigits_coefficient = number.coefficient.number_of_digits()
     var ndigits_to_remove = ndigits_coefficient - precision
