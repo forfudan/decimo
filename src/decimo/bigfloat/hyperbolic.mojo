@@ -61,6 +61,7 @@ from std.bit import bit_width
 import decimo.bigfloat.arithmetics as bigfloat_arithmetics
 from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigfloat.comparison import compare_absolute
+from decimo.bigfloat.constants import ln2
 from decimo.bigfloat.exponential import (
     atanh_at_width,
     exp_at_width,
@@ -69,7 +70,14 @@ from decimo.bigfloat.exponential import (
     round_by_deciding_at,
     sqrt,
 )
-from decimo.bigfloat.rounding import checked_precision
+from decimo.bigfloat.rounding import (
+    MAX_PRECISION,
+    checked_precision,
+    cubic_term_is_below_a_guard_unit,
+    guard_bits,
+    leading_bit_position,
+    rounded_beside,
+)
 from decimo.bigint.bigint import BigInt
 from decimo.rounding_mode import RoundingMode
 
@@ -121,10 +129,19 @@ def _saturation_magnitude(width: Int) raises -> BigFloat:
     `tanh` falls short of one by `2e^-2|x|/(1 + e^-2|x|)`, which is below
     `2e^-2|x|`, and that is below `2^-width` -- half a unit in the last place
     of one at `width` bits -- once `2|x| > (width + 1) ln 2`. So the bound is
-    `(width + 1) * 0.3466`, taken with room to spare. This is the binary twin
-    of the decimal layer's bound, which has `ln 10` where this has `ln 2`.
+    `(width + 4) ln 2 / 2`, from above.
+
+    It is computed in integers against `3466/10000`, which is above
+    `ln 2 / 2 = 0.3465735902...`, rather than as a `Float64` multiply by a
+    constant written out in decimal. A constant a hair below the true one is
+    not conservative, and no fixed cushion rescues it, because the shortfall
+    grows with the width: at ten billion bits a cushion of four is already
+    too small. The division comes before the multiplication so that the
+    product cannot leave an `Int` at the widest precision this layer takes.
     """
-    var bound = Int(Float64(width + 4) * 0.34657359) + 1
+    var whole = (width + 4) // 10000
+    var rest = (width + 4) % 10000
+    var bound = whole * 3466 + (rest * 3466) // 10000 + 1
     return BigFloat.from_int(bound, Int(bit_width(UInt(bound))) + 1)
 
 
@@ -365,6 +382,32 @@ def _tanh_kernel(x: BigFloat, width: Int) raises -> BigFloat:
     )
 
 
+def _is_far_above_one(x: BigFloat, width: Int) raises -> Bool:
+    """Whether `x` is large enough that `ln(2|x|)` is the whole answer.
+
+    Args:
+        x: The argument, finite and not zero.
+        width: The bits wanted in the answer.
+
+    Returns:
+        True when `|x|` is at least `2^(width/2 + 2)`.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    Both inverse functions are `ln(2x)` plus a tail in `1/(4x^2)`, and past
+    this point that tail is below `2^-(width+4)` while the answer is above
+    one, so it cannot reach the last place. The test is on the leading bit's
+    position and in a `BigInt`, which is the point: deciding the branch by
+    forming `x^2` first would overflow the exponent for an argument near the
+    top of the range, and refuse an answer that is perfectly representable.
+    `arcsinh(2^(Int.MAX-1))` is about `Int.MAX * ln 2`, an ordinary number.
+    """
+    return leading_bit_position(x) >= BigInt(width // 2 + 2)
+
+
 def _arcsinh_kernel(x: BigFloat, width: Int) raises -> BigFloat:
     """`arcsinh(x)` to `width` bits.
 
@@ -401,6 +444,18 @@ def _arcsinh_kernel(x: BigFloat, width: Int) raises -> BigFloat:
     var working = _working_width(width)
     var one = BigFloat.from_int(1, working)
     var magnitude = abs(x)
+
+    # Far above one the answer is `ln|x| + ln 2`, which forms no square and
+    # so reaches the top of the exponent range.
+    if _is_far_above_one(x, width):
+        return _at_width(
+            bigfloat_arithmetics.add(
+                ln_at_width(magnitude, working), ln2(working), working
+            ),
+            width,
+            x.sign,
+        )
+
     var square = bigfloat_arithmetics.multiply(magnitude, magnitude, working)
     var root = sqrt(bigfloat_arithmetics.add(one, square, working), working)
 
@@ -465,6 +520,17 @@ def _arccosh_kernel(x: BigFloat, width: Int) raises -> BigFloat:
     var t = bigfloat_arithmetics.subtract(x, one, working)
     if t.is_zero():
         return BigFloat.zero(width, False)
+
+    # Far above one the answer is `ln x + ln 2`, which forms no square and so
+    # reaches the top of the exponent range.
+    if _is_far_above_one(x, width):
+        return _at_width(
+            bigfloat_arithmetics.add(
+                ln_at_width(x, working), ln2(working), working
+            ),
+            width,
+            False,
+        )
 
     var result: BigFloat
     if compare_absolute(x, two) <= 0:
@@ -660,6 +726,19 @@ def sinh(
     a signed zero, since the function is odd.
     """
     _ = checked_precision(precision, "sinh()")
+    # Near zero the answer is `x + x^3/6`, which is `x` moved by less
+    # than it takes to compute: at `2^-100000` the cubic term's own
+    # exponent is outside an `Int`, and the loop that decides a
+    # rounding would run out of widenings before it could tell which
+    # side of `x` the answer is on. The side is all the rounding
+    # needs, and one guard unit stands in for it.
+    if (
+        x.is_finite()
+        and not x.is_zero()
+        and cubic_term_is_below_a_guard_unit(x, guard_bits(x, precision))
+    ):
+        return rounded_beside(x, precision, rounding_mode, False)
+
     return round_by_deciding_at[_sinh_kernel, _HYPERBOLIC_SLACK](
         x, precision, rounding_mode
     )
@@ -704,23 +783,18 @@ def cosh(
     _ = checked_precision(precision, "cosh()")
 
     if x.is_finite() and not x.is_zero():
-        var narrow = precision + 8
-        var half_square = bigfloat_arithmetics.divide(
-            bigfloat_arithmetics.multiply(x, x, narrow),
-            BigFloat.from_int(2, narrow),
-            narrow,
-        )
-        if (
-            compare_absolute(
-                half_square, BigFloat.power_of_two(-(precision + 4))
-            )
-            < 0
-        ):
-            return bigfloat_arithmetics.add(
-                BigFloat.from_int(1, precision),
-                half_square,
-                precision,
-                rounding_mode,
+        # Whether `x^2/2` can reach the last place is a question about `x`'s
+        # leading bit, so it is asked that way. Forming the square to ask it
+        # would underflow the exponent for an argument near the bottom of the
+        # range -- `2^(Int.MIN + 52)` squared has no exponent -- and refuse an
+        # answer that is simply one.
+        var leading = leading_bit_position(x)
+        if (leading + leading) < BigInt(-(precision + 5)):
+            # One, moved away from zero by a hair: that is what `1 + x^2/2`
+            # is here, and the side is all the rounding needs. Toward zero it
+            # is one, away from it the value above.
+            return rounded_beside(
+                BigFloat.from_int(1, 1), precision, rounding_mode, False
             )
 
     return round_by_deciding_at[_cosh_kernel, _HYPERBOLIC_SLACK](
@@ -778,6 +852,19 @@ def tanh(
     ):
         return _saturated_tanh(precision, rounding_mode, x.sign)
 
+    # Near zero the answer is `x - x^3/3`, which is `x` moved by less
+    # than it takes to compute: at `2^-100000` the cubic term's own
+    # exponent is outside an `Int`, and the loop that decides a
+    # rounding would run out of widenings before it could tell which
+    # side of `x` the answer is on. The side is all the rounding
+    # needs, and one guard unit stands in for it.
+    if (
+        x.is_finite()
+        and not x.is_zero()
+        and cubic_term_is_below_a_guard_unit(x, guard_bits(x, precision))
+    ):
+        return rounded_beside(x, precision, rounding_mode, True)
+
     return round_by_deciding_at[_tanh_kernel, _HYPERBOLIC_SLACK](
         x, precision, rounding_mode
     )
@@ -807,6 +894,19 @@ def arcsinh(
     `arcsinh` of an infinity is that infinity, and of a NaN a NaN.
     """
     _ = checked_precision(precision, "arcsinh()")
+    # Near zero the answer is `x - x^3/6`, which is `x` moved by less
+    # than it takes to compute: at `2^-100000` the cubic term's own
+    # exponent is outside an `Int`, and the loop that decides a
+    # rounding would run out of widenings before it could tell which
+    # side of `x` the answer is on. The side is all the rounding
+    # needs, and one guard unit stands in for it.
+    if (
+        x.is_finite()
+        and not x.is_zero()
+        and cubic_term_is_below_a_guard_unit(x, guard_bits(x, precision))
+    ):
+        return rounded_beside(x, precision, rounding_mode, True)
+
     return round_by_deciding_at[_arcsinh_kernel, _HYPERBOLIC_SLACK](
         x, precision, rounding_mode
     )
@@ -871,6 +971,19 @@ def arctanh(
     with. Past them there is no real value and the answer is a NaN.
     """
     _ = checked_precision(precision, "arctanh()")
+    # Near zero the answer is `x + x^3/3`, which is `x` moved by less
+    # than it takes to compute: at `2^-100000` the cubic term's own
+    # exponent is outside an `Int`, and the loop that decides a
+    # rounding would run out of widenings before it could tell which
+    # side of `x` the answer is on. The side is all the rounding
+    # needs, and one guard unit stands in for it.
+    if (
+        x.is_finite()
+        and not x.is_zero()
+        and cubic_term_is_below_a_guard_unit(x, guard_bits(x, precision))
+    ):
+        return rounded_beside(x, precision, rounding_mode, False)
+
     return round_by_deciding_at[_arctanh_kernel, _HYPERBOLIC_SLACK](
         x, precision, rounding_mode
     )

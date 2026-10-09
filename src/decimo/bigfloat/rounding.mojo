@@ -27,6 +27,7 @@ The contract both ways is `(magnitude, exponent)` with the value being
 `precision` bits unless it is zero.
 """
 
+from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.bitwise import test_bit, trailing_zeros
 from decimo.errors import OverflowError, ValueError
@@ -298,3 +299,147 @@ def _rounds_away_from_zero(
         return leading_dropped and rest_below
     # ROUND_HALF_EVEN
     return leading_dropped and (rest_below or lowest_kept)
+
+
+# ===----------------------------------------------------------------------=== #
+# Values beside a value
+# ===----------------------------------------------------------------------=== #
+#
+# Several functions have an argument so small that their answer is the
+# argument moved a hair to one side -- the sine toward zero, the tangent
+# away from it -- and the move cannot be computed, only placed. These are
+# what place it, and they are here rather than in one of the function
+# modules because three of them need the same ones.
+
+
+def leading_bit_position(x: BigFloat) raises -> BigInt:
+    """Where the top bit of a finite non-zero value sits.
+
+    Args:
+        x: The value.
+
+    Returns:
+        `exponent + precision - 1`, as a `BigInt` because that sum can leave
+        an `Int` while the value itself is ordinary.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+    """
+    return BigInt(x.exponent) + BigInt(x.precision) - BigInt.one()
+
+
+def cubic_term_is_below_a_guard_unit(x: BigFloat, guard: Int) raises -> Bool:
+    """Whether `x^3` is small enough for a guard unit to stand in for it.
+
+    Args:
+        x: The argument, finite and not zero.
+        guard: How many guard bits the rounding will be given.
+
+    Returns:
+        True when the cubic correction is below one guard unit of `x`, which
+        is what makes moving `x` by a guard unit land on the same side of
+        every rounding boundary as the true value does.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    The test is on the leading bits, in a `BigInt` because those positions
+    can be far outside an `Int`. With `L` the leading bit's position,
+    `|x^3/3|` is below `2^(3L+2)` and a guard unit is `2^(L - p + 1 - g)`
+    for a significand of `p` bits, so the condition is
+
+        2L < -p - g - 1
+
+    which is a real restriction and not a formality: at one bit of
+    destination and `x = 3065/32768`, the cubic term is nine times `x`'s own
+    last place, and the earlier gate -- `|x|` below `2^-((precision+4)/2)` --
+    let it through. The tangent then answered `1/16` where the truth is above
+    the midpoint and the answer is `1/8`.
+    """
+    var leading = leading_bit_position(x)
+    return (leading + leading) < BigInt(-(x.precision + guard + 1))
+
+
+def guard_bits(x: BigFloat, precision: Int) -> Int:
+    """How many bits to widen `x` by before rounding it to `precision`.
+
+    Args:
+        x: The value.
+        precision: The bits the answer keeps.
+
+    Returns:
+        At least two, and enough that the widened significand has more bits
+        than the answer keeps, which is what the rounding needs to read a
+        discarded remainder.
+    """
+    var guard = 2
+    if precision + 2 - x.precision > guard:
+        guard = precision + 2 - x.precision
+    return guard
+
+
+def rounded_beside(
+    x: BigFloat,
+    precision: Int,
+    rounding_mode: RoundingMode,
+    toward_zero: Bool,
+) raises -> BigFloat:
+    """Rounds the value a hair to one side of `x`, by one guard unit.
+
+    Args:
+        x: The value the answer sits beside, finite and not zero.
+        precision: The bits the answer keeps.
+        rounding_mode: Which way to round.
+        toward_zero: Whether the answer is below `x` in magnitude or above.
+
+    Returns:
+        `x` moved by less than a quarter of its own last place, rounded.
+
+    Raises:
+        OverflowError: If `x` sits so low in the exponent range that there is
+            no room for the guard bits.
+        Error: Propagated from the rounding.
+
+    Notes:
+
+    This is for an argument whose correction term is real but far too small
+    to compute: `sin(x)` is `x - x^3/6` and the tangent is `x + x^3/3`, and
+    at `x = 2^-100000` neither correction has an exponent an `Int` can hold.
+    What the rounding needs is not the correction's size but its side, and
+    one guard unit stands in for it exactly.
+
+    Exactly, because a guard unit is at most a quarter of `x`'s own last
+    place, while the distance from `x` to any rounding boundary it does not
+    sit on is at least a whole one: so moving by a guard unit cannot cross a
+    boundary that the true correction does not. And where `x` sits on a
+    boundary -- a tie, or a value the destination holds exactly -- moving off
+    it is the whole point, since the truth is not on it.
+
+    An earlier version moved by `x * 2^-(precision+8)` instead, which is
+    larger than the correction for a small `x` rather than smaller. At one
+    bit of precision and `x = 3077/32768`, just above the midpoint `3/32`,
+    that crossed the midpoint and answered `1/16` where the sine is above it
+    and the answer is `1/8`.
+    """
+    var guard = guard_bits(x, precision)
+    if x.exponent < Int.MIN + guard:
+        raise OverflowError(
+            message=(
+                "This argument sits too low in the exponent range to leave"
+                " room for the bits its rounding needs."
+            ),
+            function="rounded_beside()",
+        )
+    var magnitude = x.significand << guard
+    if toward_zero:
+        magnitude = magnitude - BigInt.one()
+    return BigFloat.from_rounded_parts(
+        magnitude,
+        x.exponent - guard,
+        precision,
+        x.sign,
+        rounding_mode,
+        True,
+    )

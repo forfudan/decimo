@@ -47,7 +47,11 @@ from decimo.bigfloat.exponential import round_by_deciding_at
 from decimo.bigfloat.rounding import (
     MAX_PRECISION,
     checked_precision,
+    cubic_term_is_below_a_guard_unit,
+    guard_bits,
+    leading_bit_position,
     round_to_precision,
+    rounded_beside,
 )
 from decimo.bigint.bigint import BigInt
 from decimo.errors import OverflowError
@@ -94,22 +98,6 @@ def _truncated_to_bigint(value: BigFloat) raises -> BigInt:
     return magnitude^
 
 
-def _leading_bit_position(x: BigFloat) raises -> BigInt:
-    """Where the top bit of a finite non-zero value sits.
-
-    Args:
-        x: The value.
-
-    Returns:
-        `exponent + precision - 1`, as a `BigInt` because that sum can leave
-        an `Int` while the value itself is ordinary.
-
-    Raises:
-        Error: Propagated from the arithmetic.
-    """
-    return BigInt(x.exponent) + BigInt(x.precision) - BigInt.one()
-
-
 def _reduction_width(x: BigFloat, width: Int) raises -> Int:
     """How many bits of pi the reduction of `x` needs.
 
@@ -132,7 +120,7 @@ def _reduction_width(x: BigFloat, width: Int) raises -> Int:
     bit sits beyond what a precision may be would need more bits of pi than
     this layer accepts, and that is said rather than attempted.
     """
-    var leading = _leading_bit_position(x)
+    var leading = leading_bit_position(x)
     var above = 0
     if leading > BigInt.zero():
         if leading > BigInt(MAX_PRECISION):
@@ -211,7 +199,7 @@ def _reduced(x: BigFloat, width: Int) raises -> Tuple[BigFloat, Int]:
     tangent an infinity, though no binary float is a pole. So when `r` is too
     small for its own error the scale grows and the reduction runs again.
     """
-    var leading = _leading_bit_position(x)
+    var leading = leading_bit_position(x)
     var scale = _reduction_width(x, width)
     for _ in range(8):
         var half_pi = bigfloat_arithmetics.multiply(
@@ -232,7 +220,7 @@ def _reduced(x: BigFloat, width: Int) raises -> Tuple[BigFloat, Int]:
         # leading bit has to sit at least `width` places above that.
         var floor_position = leading - BigInt(scale) + BigInt(width) + BigInt(8)
         if not remainder.is_zero():
-            if _leading_bit_position(remainder) >= floor_position:
+            if leading_bit_position(remainder) >= floor_position:
                 var quadrant = (multiple % BigInt(4)).to_int()
                 if quadrant < 0:
                     quadrant += 4
@@ -270,123 +258,6 @@ def _widened_reduction(scale: Int, width: Int) raises -> Int:
             function="_reduced()",
         )
     return scale + width + 16
-
-
-def _cubic_term_is_below_a_guard_unit(x: BigFloat, guard: Int) raises -> Bool:
-    """Whether `x^3` is small enough for a guard unit to stand in for it.
-
-    Args:
-        x: The argument, finite and not zero.
-        guard: How many guard bits the rounding will be given.
-
-    Returns:
-        True when the cubic correction is below one guard unit of `x`, which
-        is what makes moving `x` by a guard unit land on the same side of
-        every rounding boundary as the true value does.
-
-    Raises:
-        Error: Propagated from the arithmetic.
-
-    Notes:
-
-    The test is on the leading bits, in a `BigInt` because those positions
-    can be far outside an `Int`. With `L` the leading bit's position,
-    `|x^3/3|` is below `2^(3L+2)` and a guard unit is `2^(L - p + 1 - g)`
-    for a significand of `p` bits, so the condition is
-
-        2L < -p - g - 1
-
-    which is a real restriction and not a formality: at one bit of
-    destination and `x = 3065/32768`, the cubic term is nine times `x`'s own
-    last place, and the earlier gate -- `|x|` below `2^-((precision+4)/2)` --
-    let it through. The tangent then answered `1/16` where the truth is above
-    the midpoint and the answer is `1/8`.
-    """
-    var leading = _leading_bit_position(x)
-    return (leading + leading) < BigInt(-(x.precision + guard + 1))
-
-
-def _guard_bits(x: BigFloat, precision: Int) -> Int:
-    """How many bits to widen `x` by before rounding it to `precision`.
-
-    Args:
-        x: The value.
-        precision: The bits the answer keeps.
-
-    Returns:
-        At least two, and enough that the widened significand has more bits
-        than the answer keeps, which is what the rounding needs to read a
-        discarded remainder.
-    """
-    var guard = 2
-    if precision + 2 - x.precision > guard:
-        guard = precision + 2 - x.precision
-    return guard
-
-
-def _moved_off_x(
-    x: BigFloat,
-    precision: Int,
-    rounding_mode: RoundingMode,
-    toward_zero: Bool,
-) raises -> BigFloat:
-    """Rounds the value a hair to one side of `x`, by one guard unit.
-
-    Args:
-        x: The value the answer sits beside, finite and not zero.
-        precision: The bits the answer keeps.
-        rounding_mode: Which way to round.
-        toward_zero: Whether the answer is below `x` in magnitude or above.
-
-    Returns:
-        `x` moved by less than a quarter of its own last place, rounded.
-
-    Raises:
-        OverflowError: If `x` sits so low in the exponent range that there is
-            no room for the guard bits.
-        Error: Propagated from the rounding.
-
-    Notes:
-
-    This is for an argument whose correction term is real but far too small
-    to compute: `sin(x)` is `x - x^3/6` and the tangent is `x + x^3/3`, and
-    at `x = 2^-100000` neither correction has an exponent an `Int` can hold.
-    What the rounding needs is not the correction's size but its side, and
-    one guard unit stands in for it exactly.
-
-    Exactly, because a guard unit is at most a quarter of `x`'s own last
-    place, while the distance from `x` to any rounding boundary it does not
-    sit on is at least a whole one: so moving by a guard unit cannot cross a
-    boundary that the true correction does not. And where `x` sits on a
-    boundary -- a tie, or a value the destination holds exactly -- moving off
-    it is the whole point, since the truth is not on it.
-
-    An earlier version moved by `x * 2^-(precision+8)` instead, which is
-    larger than the correction for a small `x` rather than smaller. At one
-    bit of precision and `x = 3077/32768`, just above the midpoint `3/32`,
-    that crossed the midpoint and answered `1/16` where the sine is above it
-    and the answer is `1/8`.
-    """
-    var guard = _guard_bits(x, precision)
-    if x.exponent < Int.MIN + guard:
-        raise OverflowError(
-            message=(
-                "This argument sits too low in the exponent range to leave"
-                " room for the bits its rounding needs."
-            ),
-            function="_moved_off_x()",
-        )
-    var magnitude = x.significand << guard
-    if toward_zero:
-        magnitude = magnitude - BigInt.one()
-    return BigFloat.from_rounded_parts(
-        magnitude,
-        x.exponent - guard,
-        precision,
-        x.sign,
-        rounding_mode,
-        True,
-    )
 
 
 def _sine_series(x: BigFloat, width: Int) raises -> BigFloat:
@@ -669,10 +540,10 @@ def sin(
     if (
         x.is_finite()
         and not x.is_zero()
-        and _cubic_term_is_below_a_guard_unit(x, _guard_bits(x, precision))
+        and cubic_term_is_below_a_guard_unit(x, guard_bits(x, precision))
     ):
         # `sin(x) = x - x^3/6 + ...`, so the answer is `x` moved toward zero.
-        return _moved_off_x(x, precision, rounding_mode, True)
+        return rounded_beside(x, precision, rounding_mode, True)
     return round_by_deciding_at[_sin_kernel, _SINE_SLACK](
         x, precision, rounding_mode
     )
@@ -765,10 +636,10 @@ def tan(
     if (
         x.is_finite()
         and not x.is_zero()
-        and _cubic_term_is_below_a_guard_unit(x, _guard_bits(x, precision))
+        and cubic_term_is_below_a_guard_unit(x, guard_bits(x, precision))
     ):
         # `tan(x) = x + x^3/3 + ...`, away from zero.
-        return _moved_off_x(x, precision, rounding_mode, False)
+        return rounded_beside(x, precision, rounding_mode, False)
     return round_by_deciding_at[_tan_kernel, _TANGENT_SLACK](
         x, precision, rounding_mode
     )

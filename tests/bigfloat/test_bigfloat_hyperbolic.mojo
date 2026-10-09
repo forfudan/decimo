@@ -1045,6 +1045,98 @@ def test_a_tiny_argument_comes_back_as_itself() raises:
             )
 
 
+def test_the_edges_of_the_exponent_range_are_answered() raises:
+    """Four arguments where the answer is representable and the route was not.
+
+    An argument at `2^-100000` has a correction too small to compute, and the
+    loop that decides a rounding widens geometrically, so it would run out of
+    widenings before it could tell which side of `x` the answer is on. The
+    four functions whose answer is `x` moved a hair now say which way, and
+    the two directions have to differ: the hyperbolic sine and the inverse
+    tangent sit above `x`, the hyperbolic tangent and the inverse sine below.
+
+    At the other end, an argument at `2^(Int.MAX-1)` has an inverse
+    hyperbolic sine of about `Int.MAX ln 2`, an ordinary number -- but
+    forming `x^2` to get there has no exponent. And `2^(Int.MIN+52)` has a
+    hyperbolic cosine of one, where squaring underflows instead.
+    """
+    var tiny = BigFloat(
+        significand=BigInt.one(), exponent=-100000, precision=1, sign=False
+    )
+    # The successor is one unit in the last place above; the predecessor is
+    # half a unit below, since `x` is a power of two and the binade changes.
+    var above = BigFloat.from_rounded_parts(
+        (BigInt.one() << 52) + BigInt.one(), -100052, 53, False
+    )
+    var below = BigFloat.from_rounded_parts(
+        (BigInt.one() << 53) - BigInt.one(), -100053, 53, False
+    )
+    var exactly = BigFloat.from_rounded_parts(BigInt.one(), -100000, 53, False)
+    assert_equal(
+        sinh(tiny, 53, RoundingMode.ROUND_UP).internal_representation(),
+        above.internal_representation(),
+        "the hyperbolic sine of a tiny argument is above it",
+    )
+    assert_equal(
+        arctanh(tiny, 53, RoundingMode.ROUND_UP).internal_representation(),
+        above.internal_representation(),
+        "and so is the inverse hyperbolic tangent",
+    )
+    assert_equal(
+        tanh(tiny, 53, RoundingMode.ROUND_DOWN).internal_representation(),
+        below.internal_representation(),
+        "the hyperbolic tangent is below it",
+    )
+    assert_equal(
+        arcsinh(tiny, 53, RoundingMode.ROUND_DOWN).internal_representation(),
+        below.internal_representation(),
+        "and so is the inverse hyperbolic sine",
+    )
+    for mode in _modes():
+        assert_equal(
+            sinh(tiny, 53, mode).is_zero(),
+            False,
+            "none of them collapses to nought",
+        )
+    assert_equal(
+        sinh(tiny, 53, RoundingMode.ROUND_DOWN).internal_representation(),
+        exactly.internal_representation(),
+        "and toward zero the sine is the argument itself",
+    )
+
+    # The top of the range: the answer is `Int.MAX ln 2`, near 6.39e18.
+    var huge = BigFloat(
+        significand=BigInt.one(),
+        exponent=Int.MAX - 1,
+        precision=1,
+        sign=False,
+    )
+    var at_the_top = arcsinh(huge, 53)
+    assert_true(at_the_top.is_finite(), "the inverse sine of a huge argument")
+    assert_true(
+        at_the_top.exponent > 0, "is an ordinary number with a large exponent"
+    )
+    assert_true(arccosh(huge, 53).is_finite(), "and so is the inverse cosine")
+
+    # The bottom: the cosine is one, and above it, so toward zero it is one.
+    var bottom = BigFloat(
+        significand=BigInt.one() << 52,
+        exponent=Int.MIN + 52,
+        precision=53,
+        sign=False,
+    )
+    assert_equal(
+        cosh(bottom, 53).internal_representation(),
+        BigFloat.from_int(1, 53).internal_representation(),
+        "the hyperbolic cosine at the bottom of the range is one",
+    )
+    assert_equal(
+        cosh(bottom, 53, RoundingMode.ROUND_DOWN).internal_representation(),
+        BigFloat.from_int(1, 53).internal_representation(),
+        "and toward zero it is still one, since the truth is above it",
+    )
+
+
 def test_a_precision_must_fit_the_guard_bits() raises:
     """A precision has to be positive, and to leave room for guard bits."""
     for precision in [0, -1, Int.MAX, Int.MAX // 4 + 1]:
