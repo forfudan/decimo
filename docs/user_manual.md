@@ -43,6 +43,14 @@ from decimo.prelude import *
   - [A note on result exponents (`Decimal` and `Dec128`)](#a-note-on-result-exponents-decimal-and-dec128)
   - [Chinese Numerals](#chinese-numerals)
   - [Expression Engine](#expression-engine)
+- [Part III — BigFloat (`BFlt`)](#part-iii--bigfloat-bflt)
+  - [Overview — BigFloat](#overview--bigfloat)
+  - [Construction — BigFloat](#construction--bigfloat)
+  - [How Rounding Works — BigFloat](#how-rounding-works--bigfloat)
+  - [Mathematical Functions — BigFloat](#mathematical-functions--bigfloat)
+  - [Special Values — BigFloat](#special-values--bigfloat)
+  - [Decimal In, Decimal Out — BigFloat](#decimal-in-decimal-out--bigfloat)
+  - [BigFloat, Decimal, or MPF](#bigfloat-decimal-or-mpf)
   - [Appendix A — Import Paths](#appendix-a--import-paths)
   - [Appendix B — Traits Implemented](#appendix-b--traits-implemented)
   - [Appendix C — Complete API Tables](#appendix-c--complete-api-tables)
@@ -66,7 +74,7 @@ pixi add decimo
 Or add it manually to `pixi.toml`:
 
 ```toml
-decimo = ">=0.15.0, <0.16.0"
+decimo = ">=0.16.0, <0.17.0"
 ```
 
 Then run `pixi install`.
@@ -1253,6 +1261,179 @@ print(evaluate_rpn(rpn^, precision=50))         # 7
 
 `evaluate()` is an alias of `eval()`.
 
+## Part III — BigFloat (`BFlt`)
+
+### Overview — BigFloat
+
+`BigFloat` is an arbitrary-precision binary floating-point type, written in
+Mojo with nothing to install. Where `Decimal` keeps digits and a scale,
+`BigFloat` keeps a significand and a power of two, which is what makes it the
+right type for scientific work: a square root, an exponential or a sine has
+no exact decimal answer, so the question is not whether it rounds but whether
+it rounds correctly. Every function here does.
+
+| Property        | Value                                                |
+| --------------- | ---------------------------------------------------- |
+| Name            | `BigFloat`                                           |
+| Alias           | `BFlt`                                               |
+| Value           | `(-1)^sign * significand * 2^exponent`               |
+| Significand     | A `BigInt`, exactly `precision` bits when non-zero   |
+| Exponent        | An `Int`, so from `Int.MIN` to `Int.MAX`             |
+| Precision       | A field on the value, in bits, chosen per call       |
+| Special values  | `NaN`, `+Infinity`, `-Infinity`, `+0` and `-0`       |
+| Rounding        | All seven of decimo's modes, correctly               |
+| Dependencies    | None                                                 |
+
+The precision is a field on the value rather than a global context. Two values
+of different precisions can be added, and the destination's precision is an
+argument to the operation, not a setting somewhere else:
+
+```mojo
+from decimo import BigFloat
+from decimo.bigfloat.arithmetics import add
+
+var a = BigFloat.from_string("0.1", 53)      # 53 bits
+var b = BigFloat.from_string("0.1", 200)     # 200 bits
+print(a == b)                                 # False: b holds more of a tenth
+print(add(a, b, 300).precision)               # 300: the caller says
+print((a + b).precision)                      # 200: an operator takes the wider
+```
+
+### Construction — BigFloat
+
+```mojo
+from decimo import BigFloat
+from decimo.bigdecimal.bigdecimal import BigDecimal
+
+var from_text = BigFloat.from_string("3.14159", 120)   # rounds, 120 bits
+var from_int = BigFloat.from_int(42)                   # exact where it fits
+var from_double = BigFloat.from_float64(0.1)           # exact: a double is one
+var from_decimal = BigFloat.from_bigdecimal(BigDecimal("0.1"), 53)
+
+var zero = BigFloat.zero(53, False)                    # a signed zero
+var infinity = BigFloat.infinity(53, True)             # -Infinity
+var nan = BigFloat.nan(53)
+```
+
+`from_float64` is exact in both directions where there is room for it: a
+`Float64` is a binary float of 53 bits, so at 53 bits or more nothing is lost
+either way and every double round-trips bit for bit. Two things qualify that.
+Asking for fewer bits rounds, like any other conversion -- `from_float64(0.1,
+24)` is not `0.1`. And a NaN does not survive: this type keeps one canonical
+NaN, so a sign or a payload goes in and does not come out.
+
+`from_string` and `from_bigdecimal` round, because almost no decimal is a
+binary float, and they round correctly in whichever mode is asked for.
+
+### How Rounding Works — BigFloat
+
+Every function takes a precision and a rounding mode, and returns the float of
+that precision nearest the true value, with the mode settling which side when
+the true value sits between two. That is a stronger promise than "accurate to
+the last bit or so", and the difference shows in the directed modes:
+
+```mojo
+from decimo.bigfloat.exponential import sqrt
+from decimo import RoundingMode
+
+var two = BigFloat.from_int(2, 53)
+print(sqrt(two, 53, RoundingMode.ROUND_DOWN))      # toward zero
+print(sqrt(two, 53, RoundingMode.ROUND_UP))        # away from zero
+print(sqrt(two, 53, RoundingMode.ROUND_HALF_EVEN)) # the default
+```
+
+For a transcendental function the true value cannot be computed, only
+approached, so the answer is decided rather than assumed: the function is
+evaluated wider than asked, and the rounding is only returned when every value
+the error allows rounds the same way. If they do not, the width grows and it is
+tried again. This is Ziv's method, and it is why the last bit can be trusted.
+
+### Mathematical Functions — BigFloat
+
+| Function                              | Where                            |
+| ------------------------------------- | -------------------------------- |
+| `add`, `subtract`, `multiply`, `divide` | `decimo.bigfloat.arithmetics`  |
+| `sqrt`, `exp`, `ln`                   | `decimo.bigfloat.exponential`    |
+| `sin`, `cos`, `tan`                   | `decimo.bigfloat.trigonometric`  |
+| `arcsin`, `arccos`, `arctan`          | `decimo.bigfloat.trigonometric`  |
+| `sinh`, `cosh`, `tanh`                | `decimo.bigfloat.hyperbolic`     |
+| `arcsinh`, `arccosh`, `arctanh`       | `decimo.bigfloat.hyperbolic`     |
+| `pi`, `ln2`, `e`                      | `decimo.bigfloat.constants`      |
+
+```mojo
+from decimo.bigfloat.constants import pi
+from decimo.bigfloat.exponential import exp, ln
+from decimo.bigfloat.trigonometric import sin
+
+print(pi(200).to_bigdecimal_rounded(60))
+print(exp(BigFloat.from_int(1), 120))
+print(ln(BigFloat.from_int(2), 120))
+print(sin(BigFloat.from_string("1e10", 60), 53))
+```
+
+That last one is worth a word. Reducing an argument of `10^10` by `pi/2` has
+to cancel its leading bits against pi, so the number of bits of pi needed is
+counted from the argument rather than fixed — `sin(2^300)` fetches three
+hundred bits of pi before the first bit of its answer is right. An argument
+whose leading bit sits beyond what a precision may be is refused rather than
+answered badly.
+
+### Special Values — BigFloat
+
+The special values follow IEEE 754 rather than `Decimal`'s rules, because this
+is a float:
+
+```mojo
+from decimo.bigfloat.trigonometric import arctan
+
+print(sqrt(BigFloat.from_int(-4), 53).is_nan())      # True, not an error
+print(ln(BigFloat.zero(), 53))                        # -Infinity
+print(sin(BigFloat.infinity(), 53).is_nan())          # True: it settles nowhere
+print(arctan(BigFloat.infinity(), 53))                # pi/2: this one settles
+```
+
+A NaN is unordered, so every comparison with it is False except `!=`, and that
+holds for a NaN against itself. The two zeros compare equal. Sorting therefore
+needs an order that covers them, and `compare_total()` is it: it runs from
+`-Infinity` up to the NaN and separates values that are numerically equal by
+their precision.
+
+There is no overflow to an infinity for a finite argument. The exponent is as
+wide as an `Int`, so an operation that asks for more — `exp` of anything from
+about `6.4e18` up — raises rather than returning an infinity it did not earn.
+
+### Decimal In, Decimal Out — BigFloat
+
+Every binary float is exactly a decimal, because `2^-k` is `5^k / 10^k`, so
+the conversion out loses nothing and only the number of digits is a choice:
+
+```mojo
+var tenth = BigFloat.from_float64(0.1)
+print(tenth.to_bigdecimal())            # all 55 digits of the double
+print(tenth.to_bigdecimal_rounded(17))  # 0.10000000000000001
+print(tenth)                            # as many digits as 53 bits are worth
+print(tenth.internal_representation())  # the significand, exponent, precision
+```
+
+Going the other way rounds. `to_float64()` is exact for a normal double but
+rounds a second time when the answer is subnormal, since a subnormal has fewer
+bits than 53: converting from a wider precision avoids it.
+
+### BigFloat, Decimal, or MPF
+
+Use `Decimal` when the arithmetic has to be decimal — money, anything whose
+digits are the point, anything that has to agree with Python's
+`decimal.Decimal`. Use `BigFloat` for scientific computation at a chosen
+precision, where binary is the natural base and the question is whether the
+last bit is right.
+
+`MPF`, the MPFR-backed float that used to carry the name `BigFloat`, is still
+in the source at `decimo.mpf.mpf.MPF`. It is not exported and carries no
+promise of a stable interface, and using it means installing MPFR and linking
+a C wrapper. It is kept as a second implementation to test the traits against,
+as the baseline the Mojo one is measured against, and for anyone who was
+relying on it.
+
 ### Appendix A — Import Paths
 
 ```mojo
@@ -1265,7 +1446,13 @@ from decimo.prelude import *
 # Or import specific types
 from decimo import BInt, BigInt
 from decimo import Decimal  # also available as BigDecimal or BDec
+from decimo import BigFloat, BFlt
 from decimo import RoundingMode
+
+# The MPFR-backed float is in the source but not exported, and carries no
+# promise of a stable interface. It also needs its C wrapper linked; see
+# `src/decimo/mpf/__init__.mojo`.
+from decimo.mpf.mpf import MPF
 
 # Number-theory free functions
 from decimo import gcd, lcm, extended_gcd, mod_pow, mod_inverse
@@ -1298,8 +1485,9 @@ routine — a matrix or polynomial library, say — can be written once against
 
 `Parsable` requires the static `from_string(value)`, so the same generic
 routine can also fill itself from text. The two are separate because the
-capabilities are: `MPF` parses but is `Movable` without being `Copyable`,
-so it can never be `Numeric`. Ask for `T: Numeric & Parsable` to get both.
+capabilities are: the MPFR-backed `MPF`, which is in the source but outside
+the public interface, parses but is `Movable` without being `Copyable`, so it
+can never be `Numeric`. Ask for `T: Numeric & Parsable` to get both.
 
 `Rootable` requires `sqrt()`, the one operation a Cholesky or QR factorisation
 needs beyond arithmetic. It is separate for the same reason, and here the
@@ -1307,12 +1495,13 @@ evidence is sharper: `BigUInt` has a square root but is unsigned, so it has no
 `__neg__` and can never be `Numeric` either. Its supertraits are `Deinitable`
 and `Movable` and no more — `Copyable` is pointedly absent, so that `MPF`
 can conform.
-`MPF` and `BigUInt` therefore conform to `Rootable` as well, five types
-in all. Ask for `T: Numeric & Rootable` in a routine that needs both. What the
+`BigFloat`, `MPF` and `BigUInt` therefore conform to `Rootable` as well, six
+types in all. Ask for `T: Numeric & Rootable` in a routine that needs both. What the
 root means stays the implementing type's business: on an integral type it
 truncates, so `BigInt("10").sqrt()` is `3`, exactly as `/` truncates there. So
-does what a negative value does — the four exact types raise, and `MPF`
-returns `nan`, as it does for every other function outside its domain.
+does what a negative value does — the four exact types raise, while
+`BigFloat` and `MPF` return a NaN, as they do for every other function
+outside their domain.
 
 #### BigInt <!-- omit from toc -->
 
@@ -1349,7 +1538,64 @@ returns `nan`, as it does for every other function outside its domain.
 | `Stringable`       | `String(x)`                           |
 | `Writable`         | `print(x)`, writer protocol           |
 
+#### BigFloat <!-- omit from toc -->
+
+| Trait              | What it enables                       |
+| ------------------ | ------------------------------------- |
+| `Absable`          | `abs(x)`                              |
+| `Comparable`       | `<`, `<=`, `>`, `>=`, `==`, `!=`      |
+| `Copyable`         | Value-semantic copy                   |
+| `Movable`          | Move semantics                        |
+| `Parsable`         | `T.from_string(text)` in generic code |
+| `Rootable`         | `x.sqrt()` in generic code            |
+| `Writable`         | `print(x)`, `String(x)`               |
+
+`Parsable` asks for a `from_string(text)` of one argument, and a binary float
+has to be told how many bits to keep, so there are two: the one the trait
+needs, which lands at the default precision of fifty-three bits, and
+`from_string(text, precision, rounding_mode)` for everything else. Generic
+code bounded on `T: Parsable` therefore gets a float at a double's precision,
+which is the only precision it could have asked for without saying so.
+
+`Comparable` is conformed to with the one reservation IEEE 754 asks for: a
+NaN is unordered, so `<`, `<=`, `>`, `>=` and `==` are all False for it and
+`!=` is True, which breaks the law that exactly one of less, equal and
+greater holds. `compare_total()` is there for code that needs a total order.
+
+`Numeric` is absent for now: it asks for operators that round, and this
+type's operators have to be told a precision to round to. The free functions
+in `decimo.bigfloat.arithmetics` take one.
+
 ### Appendix C — Complete API Tables
+
+#### BigFloat — All Functions <!-- omit from toc -->
+
+Every one of these takes a precision in bits and a rounding mode, and returns
+the float of that precision nearest the true value.
+
+| Function                          | Module                          |
+| --------------------------------- | ------------------------------- |
+| `add`, `subtract`                 | `decimo.bigfloat.arithmetics`   |
+| `multiply`, `divide`              | `decimo.bigfloat.arithmetics`   |
+| `sqrt`                            | `decimo.bigfloat.exponential`   |
+| `exp`, `ln`                       | `decimo.bigfloat.exponential`   |
+| `sin`, `cos`, `tan`               | `decimo.bigfloat.trigonometric` |
+| `arcsin`, `arccos`, `arctan`      | `decimo.bigfloat.trigonometric` |
+| `sinh`, `cosh`, `tanh`            | `decimo.bigfloat.hyperbolic`    |
+| `arcsinh`, `arccosh`, `arctanh`   | `decimo.bigfloat.hyperbolic`    |
+| `pi`, `ln2`, `e`                  | `decimo.bigfloat.constants`     |
+
+| Operator / Method              | Description                              |
+| ------------------------------ | ---------------------------------------- |
+| `a + b`, `a - b`               | At the wider precision, half to even     |
+| `a * b`, `a / b`               | The same                                 |
+| `-a`, `abs(a)`                 | Exact                                    |
+| `a == b`, `a < b`, and the rest | False for a NaN, both zeros equal       |
+| `a.sqrt()`                     | At `a`'s own precision, half to even     |
+| `a.to_bigdecimal()`            | The exact decimal expansion              |
+| `a.to_bigdecimal_rounded(n)`   | `n` significant digits                   |
+| `a.to_float64()`               | The nearest double                       |
+| `a.internal_representation()`  | The significand, exponent and precision  |
 
 #### BigInt — All Operators <!-- omit from toc -->
 
