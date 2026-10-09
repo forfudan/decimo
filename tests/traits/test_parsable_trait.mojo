@@ -1,5 +1,5 @@
 """
-Test that `BigInt`, `BigDecimal` and `Decimal128` are usable *through* the
+Test that `BigInt`, `BigDecimal`, `Decimal128` and `BigFloat` are usable *through* the
 `Parsable` trait, not merely declared to conform to it.
 
 `_parse_all` is written once, against the trait alone, and is the shape every

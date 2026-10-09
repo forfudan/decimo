@@ -43,6 +43,14 @@ from decimo.prelude import *
   - [A note on result exponents (`Decimal` and `Dec128`)](#a-note-on-result-exponents-decimal-and-dec128)
   - [Chinese Numerals](#chinese-numerals)
   - [Expression Engine](#expression-engine)
+- [Part III — BigFloat (`BFlt`)](#part-iii--bigfloat-bflt)
+  - [Overview — BigFloat](#overview--bigfloat)
+  - [Construction — BigFloat](#construction--bigfloat)
+  - [How Rounding Works — BigFloat](#how-rounding-works--bigfloat)
+  - [Mathematical Functions — BigFloat](#mathematical-functions--bigfloat)
+  - [Special Values — BigFloat](#special-values--bigfloat)
+  - [Decimal In, Decimal Out — BigFloat](#decimal-in-decimal-out--bigfloat)
+  - [BigFloat, Decimal, or MPF](#bigfloat-decimal-or-mpf)
   - [Appendix A — Import Paths](#appendix-a--import-paths)
   - [Appendix B — Traits Implemented](#appendix-b--traits-implemented)
   - [Appendix C — Complete API Tables](#appendix-c--complete-api-tables)
@@ -1307,9 +1315,14 @@ var infinity = BigFloat.infinity(53, True)             # -Infinity
 var nan = BigFloat.nan(53)
 ```
 
-`from_float64` is exact in both directions: a `Float64` is a binary float of
-53 bits, so nothing is lost either way, and every double round-trips bit for
-bit. `from_string` and `from_bigdecimal` round, because almost no decimal is a
+`from_float64` is exact in both directions where there is room for it: a
+`Float64` is a binary float of 53 bits, so at 53 bits or more nothing is lost
+either way and every double round-trips bit for bit. Two things qualify that.
+Asking for fewer bits rounds, like any other conversion -- `from_float64(0.1,
+24)` is not `0.1`. And a NaN does not survive: this type keeps one canonical
+NaN, so a sign or a payload goes in and does not come out.
+
+`from_string` and `from_bigdecimal` round, because almost no decimal is a
 binary float, and they round correctly in whichever mode is asked for.
 
 ### How Rounding Works — BigFloat

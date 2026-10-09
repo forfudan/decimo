@@ -14,10 +14,12 @@ operations is correctly rounded in all seven rounding modes.
 1. **`BigFloat`, an arbitrary-precision binary float in Mojo.** The value is
    `(-1)^sign * significand * 2^exponent`, with the significand a `BigInt` of
    exactly `precision` bits and the exponent as wide as an `Int`. The
-   precision is a field on the value and an argument to every operation
-   rather than a global context, so one call can be answered at a precision
-   another does not share. NaN, both infinities and both zeros are carried
-   (PR #327).
+   precision is a field on the value rather than a global context, and the
+   rounded free functions in `decimo.bigfloat` take it as an argument, so one
+   call can be answered at a precision another does not share. The operators
+   have to assume something and take the wider of their operands; negating,
+   comparing and the exact conversions take no precision at all. NaN, both
+   infinities and both zeros are carried (PR #327).
 1. **Correct rounding, decided rather than assumed.** The four arithmetic
    operations (PR #331, #334), the square root (PR #336), the exponential and
    the logarithm (PR #339), the sine, cosine and tangent (PR #340), their
@@ -28,7 +30,10 @@ operations is correctly rounded in all seven rounding modes.
    evaluate wider than asked, return the rounding only when every value the
    error allows rounds the same way, and widen again when they do not.
 1. **Decimal and `Float64` conversions, exact where exactness is possible.**
-   Every `Float64` round-trips bit for bit, since a double is a binary float.
+   Every `Float64` but a NaN round-trips bit for bit at 53 bits or more,
+   since a double is a binary float. A NaN does not: this type keeps one
+   canonical NaN, so a sign or a payload on the way in is not on the way
+   out.
    Every `BigFloat` has an exact decimal expansion, because `2^-k` is
    `5^k / 10^k`, so `to_bigdecimal()` loses nothing and only the digit count
    is a choice. Parsing a decimal rounds, correctly, in every mode: 924

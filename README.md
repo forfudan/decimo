@@ -76,7 +76,8 @@ The core types are[^auxiliary]:
   Rust's `rust_decimal`.
 - An arbitrary-precision binary floating-point implementation (`BigFloat`)
   written in Mojo, with no dependency to install. The significand is a
-  `BigInt`, the exponent is unbounded, and every operation is correctly
+  `BigInt`, the exponent is as wide as an `Int`, and every operation is
+  correctly
   rounded in all seven of decimo's rounding modes: the four arithmetic ones,
   the square root, the exponential and the logarithm, the circular functions
   and their inverses, and the hyperbolic ones and theirs. An MPFR-backed type
