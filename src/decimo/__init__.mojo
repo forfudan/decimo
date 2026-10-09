@@ -60,6 +60,7 @@ from .rounding_mode import (
 
 # Core functions
 from .bigint.number_theory import gcd, lcm, extended_gcd, mod_inverse, mod_pow
+from .bigint.primality import is_prime, next_prime, prev_prime, primes_below
 
 # Numeral systems (high-level: the `to_chinese()` methods; mid-level:
 # `decimo.numerals`)
