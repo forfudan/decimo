@@ -54,7 +54,7 @@ from decimo.bigint.bigint import BigInt
 from decimo.bigint.bitwise import test_bit, trailing_zeros
 from decimo.errors import ValueError
 from decimo.rounding_mode import RoundingMode
-from decimo.traits import Rootable
+from decimo.traits import Parsable, Rootable
 
 comptime PRECISION: Int = 53
 """Bits a `BigFloat` keeps when no precision is given.
@@ -69,7 +69,9 @@ comptime _KIND_INFINITY: UInt8 = 1
 comptime _KIND_NAN: UInt8 = 2
 
 
-struct BigFloat(Absable, Comparable, Copyable, Movable, Rootable, Writable):
+struct BigFloat(
+    Absable, Comparable, Copyable, Movable, Parsable, Rootable, Writable
+):
     """An arbitrary-precision binary floating-point number.
 
     The value is `(-1)^sign * significand * 2^exponent`. For a finite
@@ -868,9 +870,31 @@ struct BigFloat(Absable, Comparable, Copyable, Movable, Rootable, Writable):
         )
 
     @staticmethod
+    def from_string(value: StringSlice) raises -> Self:
+        """Parses decimal text at the default precision.
+
+        Args:
+            value: The text to parse.
+
+        Returns:
+            The value, at `PRECISION` bits.
+
+        Raises:
+            Error: Propagated from the parsing.
+
+        Notes:
+
+        This exists in the shape `Parsable` asks for -- one argument and no
+        more -- so that generic code bounded on that trait can fill itself
+        from text. The precision it lands on is the default one, which is
+        what a double holds.
+        """
+        return Self.from_string(value, PRECISION, RoundingMode.ROUND_HALF_EVEN)
+
+    @staticmethod
     def from_string(
         text: StringSlice,
-        precision: Int = PRECISION,
+        precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
         """Parses decimal text, or one of the three names.
@@ -1078,3 +1102,11 @@ struct BigFloat(Absable, Comparable, Copyable, Movable, Rootable, Writable):
             writer.write(self.to_string())
         except:
             writer.write("<BigFloat: unprintable>")
+
+
+comptime BFlt = BigFloat
+"""A short name for `BigFloat`, as `BInt` is for `BigInt`.
+
+There is deliberately no `Float`: a name that short, in a language whose
+machine floats are `Float64` and `Float32`, would be read as one of those.
+"""

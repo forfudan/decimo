@@ -28,7 +28,7 @@ plus `pi()`, `e()` and a 128-bit decimal type. Install it with
 | `BigInt`     | `BInt`            | Equivalent to Python's `int`             | Base-2^64    |
 | `BigDecimal` | `BDec`, `Decimal` | Equivalent to Python's `decimal.Decimal` | Base-10^18   |
 | `Decimal128` | `Dec128`          | 128-bit fixed-precision decimal type     | 32-bit words |
-| `MPF`   | `Float`           | Arbitrary-precision floating-point type  | MPFR/GMP     |
+| `BigFloat`   | `BFlt`            | Arbitrary-precision binary float         | Base-2^64    |
 
 <!--
 [![Stars](https://img.shields.io/github/stars/forfudan/decimo?style=flat)](https://github.com/forfudan/decimo/stargazers)
@@ -74,12 +74,14 @@ The core types are[^auxiliary]:
   supporting up to 29 significant digits with a maximum of 28 decimal
   places[^fixed], which is a Mojo-native equivalent of C#'s `System.Decimal` or
   Rust's `rust_decimal`.
-- An arbitrary-precision floating-point implementation (`MPF`) backed by
-  the GNU MPFR library, supporting computations with configurable precision and
-  a wide exponent range. Unlike `BigDecimal`, which uses base-10 arithmetic,
-  `MPF` uses binary floating-point internally. This type is optional and
-  requires MPFR/GMP to be installed on the user's system.
-<!-- - An arbitrary-precision exact rational number type (`Rational`) represented as a reduced fraction of two `BigInt`s (numerator and denominator). It supports exact arithmetic and comparisons without any loss of precision, making it ideal for applications that require precise fractional calculations. -->
+- An arbitrary-precision binary floating-point implementation (`BigFloat`)
+  written in Mojo, with no dependency to install. The significand is a
+  `BigInt`, the exponent is unbounded, and every operation is correctly
+  rounded in all seven of decimo's rounding modes: the four arithmetic ones,
+  the square root, the exponential and the logarithm, the circular functions
+  and their inverses, and the hyperbolic ones and theirs. An MPFR-backed type
+  is still in the source as `decimo.mpf.mpf.MPF`, outside the public
+  interface, for anyone who wants it.
 
 Decimo is fast: at a million digits `pi()` is nearly twelve times quicker than
 pure-Python mpmath, `BigInt` multiplication is fifteen times quicker than
@@ -645,7 +647,8 @@ decimo/
 │   │   ├── bigint/               #   Arbitrary-precision signed integer (BigInt)
 │   │   ├── bigint10/             #   Base-10 signed integer (BigInt10)
 │   │   ├── biguint/              #   Base-10 unsigned integer (BigUInt)
-│   │   ├── mpf/             #   Arbitrary-precision binary float (MPFR)
+│   │   ├── bigfloat/        #   Arbitrary-precision binary float
+│   │   ├── mpf/             #   The same in MPFR, outside the public API
 │   │   ├── rational/             #   Exact rational number (Rational)
 │   │   ├── decimal128/           #   128-bit fixed-precision decimal (Dec128)
 │   │   ├── expression/           #   Expression engine behind `decimo.eval()`

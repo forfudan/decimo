@@ -16,13 +16,31 @@
 
 """Sub-package for arbitrary-precision binary floating-point type.
 
-MPF is an MPFR-backed binary float type. It requires MPFR to be installed
-on the system (`brew install mpfr` on macOS, `apt install libmpfr-dev` on Linux).
+MPF is an MPFR-backed binary float type, and it is not part of the package's
+public interface: `decimo` does not export it, so reaching it means naming
+this module, `from decimo.mpf.mpf import MPF`. Nothing here is covered by the
+package's promises about its API, and it can change without a major version.
+It is kept because it is a second implementation to test the traits against,
+the baseline the pure-Mojo float is measured against, and the way anyone
+relying on the old MPFR-backed `BigFloat` can go on doing so.
 
-MPF is the fast path for scientific computing at high precision. Every
-operation (sqrt, exp, ln, sin, cos, tan, pi, divide) is a single MPFR call.
+What a user wants instead, in almost every case, is `BigFloat`: a binary
+float of the same kind written in Mojo, with no dependency to install, and
+correctly rounded in all seven of decimo's rounding modes. `BigDecimal` is
+the choice where the arithmetic has to be decimal.
 
-For exact decimal arithmetic without external dependencies, use BigDecimal instead.
+Using MPF takes two things that `BigFloat` does not. MPFR has to be on the
+system at run time (`brew install mpfr`, or `apt install libmpfr-dev`), and
+the C wrapper that loads it has to be compiled and linked into the program:
+
+    pixi run buildgmp
+
+and then the wrapper object passed to the linker. Without it a program that
+calls MPF fails to build with `ld: symbol(s) not found` and no explanation,
+which is the one sharp edge of reaching past the public interface. Nothing
+that leaves MPF alone needs either: a program that never calls it links
+without the wrapper, and MPFR itself is loaded through `dlopen` at the first
+call rather than at build time.
 
 Modules:
 - mpf: Core MPF struct with constructors, arithmetic, transcendentals

@@ -2,6 +2,73 @@
 
 This is a list of changes for the Decimo package (formerly DeciMojo).
 
+## 20261009 (v0.16.0)
+
+Decimo v0.16.0 has an arbitrary-precision binary float written in Mojo.
+`BigFloat` was the name of a wrapper over the GNU MPFR library; it is now a
+type of decimo's own, with no dependency to install, and every one of its
+operations is correctly rounded in all seven rounding modes.
+
+### ⭐️ New in v0.16.0
+
+1. **`BigFloat`, an arbitrary-precision binary float in Mojo.** The value is
+   `(-1)^sign * significand * 2^exponent`, with the significand a `BigInt` of
+   exactly `precision` bits and the exponent as wide as an `Int`. The
+   precision is a field on the value and an argument to every operation
+   rather than a global context, so one call can be answered at a precision
+   another does not share. NaN, both infinities and both zeros are carried
+   (PR #327).
+1. **Correct rounding, decided rather than assumed.** The four arithmetic
+   operations (PR #331, #334), the square root (PR #336), the exponential and
+   the logarithm (PR #339), the sine, cosine and tangent (PR #340), their
+   inverses (PR #342), the six hyperbolic functions (PR #341) and the
+   constants pi, `ln 2` and `e` (PR #338) each return the float of the
+   precision asked for nearest the true value, in whichever of the seven
+   modes is asked for. For the transcendental functions that is Ziv's method:
+   evaluate wider than asked, return the rounding only when every value the
+   error allows rounds the same way, and widen again when they do not.
+1. **Decimal and `Float64` conversions, exact where exactness is possible.**
+   Every `Float64` round-trips bit for bit, since a double is a binary float.
+   Every `BigFloat` has an exact decimal expansion, because `2^-k` is
+   `5^k / 10^k`, so `to_bigdecimal()` loses nothing and only the digit count
+   is a choice. Parsing a decimal rounds, correctly, in every mode: 924
+   strings agree with CPython's own `float()` bit for bit (PR #329).
+1. **Comparison, with the two kinds of answer a float needs.** The six
+   operators answer a NaN rather than refusing it -- every order question is
+   False and `!=` is True -- so the type conforms to `Comparable`. The
+   three-way `compare()` refuses it, and `compare_total()` gives the total
+   order to sort by (PR #330).
+
+### 🦋 Changed in v0.16.0
+
+1. **`BigFloat` no longer means the MPFR wrapper, and this is a breaking
+   change.** The wrapper is still in the source, as `MPF`, at
+   `decimo.mpf.mpf.MPF`. It is no longer exported by the package and carries
+   no promise of a stable interface. Code that used `BigFloat` for the
+   MPFR-backed type keeps its old behaviour by importing `MPF` from that
+   module; code that wants a float with no dependency to install should use
+   the new `BigFloat`, whose interface is not the old one's.
+1. `MPF` is kept rather than removed for three reasons: it is a second
+   implementation to test the traits against, it is the baseline the Mojo
+   float is measured against, and it is the migration path above. Using it
+   needs MPFR on the system and its C wrapper compiled and linked
+   (`pixi run buildgmp`); a program that leaves it alone needs neither, and
+   MPFR is loaded through `dlopen` at the first call rather than at build
+   time.
+1. `BigFloat` and `BFlt` are exported from the package and from
+   `decimo.prelude`. There is deliberately no `Float` alias: that name, in a
+   language whose machine floats are `Float64` and `Float32`, would be read
+   as one of those.
+
+### 🩹 Fixed in v0.16.0
+
+1. `BigUInt.power_of_10` returned ten to twice the power asked for, above the
+   first word (PR #328).
+1. A product's or quotient's exponent is formed after the significand is
+   normalized, not before. The two exponents can add to a value outside an
+   `Int` while the normalized result sits inside it, and that answer was
+   refused (PR #335).
+
 ## 20260926 (v0.15.0)
 
 Decimo v0.15.0 targets the codebase to **Mojo v1.1.0**, which removed a set

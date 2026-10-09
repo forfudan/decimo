@@ -16,6 +16,7 @@ sum below rather than merely lose a digit somewhere invisible.
 from std import testing
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
+from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigint.bigint import BigInt
 from decimo.decimal128.decimal128 import Decimal128
 from decimo.traits import Parsable
@@ -52,6 +53,22 @@ def test_bigint_through_parsable() raises:
         BigInt(2) ** BigInt(127),
         "2^127, one past what a 128-bit signed integer holds",
     )
+
+
+def test_bigfloat_through_parsable() raises:
+    """`BigFloat` filled from text through the trait alone.
+
+    A float has to be told how many bits to keep, and the trait's call has no
+    way to say, so the one-argument overload lands at the default precision --
+    the fifty-three bits a double holds.
+    """
+    var tokens: List[String] = ["0.5", "-2.5", "1024", "1e300"]
+    var values = _parse_all[BigFloat](tokens)
+    testing.assert_equal(len(values), 4, "all four parsed")
+    testing.assert_equal(
+        String(values[1]), "-2.5", "and the signs came through"
+    )
+    testing.assert_equal(values[0].precision, 53, "at the default precision")
 
 
 def test_bigdecimal_through_parsable() raises:
