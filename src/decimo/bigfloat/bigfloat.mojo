@@ -47,6 +47,7 @@ from decimo.bigfloat.conversion import (
 )
 import decimo.bigfloat.exponential as bigfloat_exponential
 import decimo.bigfloat.ieee as bigfloat_ieee
+import decimo.bigfloat.power as bigfloat_power
 from decimo.bigfloat.rounding import (
     checked_precision,
     round_to_precision,
@@ -852,6 +853,48 @@ struct BigFloat(
             Error: Propagated from the arithmetic.
         """
         return bigfloat_exponential.log1p(self, self.precision)
+
+    # ===------------------------------------------------------------------=== #
+    # The power
+    # ===------------------------------------------------------------------=== #
+
+    def power(self, exponent: Self) raises -> Self:
+        """This value raised to a power, correctly rounded.
+
+        Args:
+            exponent: The exponent.
+
+        Returns:
+            The power at the wider of the two precisions, rounded half to
+            even. An exactly representable answer is exact, which is what
+            makes `BFlt(2).power(BFlt(10))` a thousand and twenty-four and not
+            a value near it.
+
+        Raises:
+            OverflowError: If the answer's exponent would not fit an `Int`.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_power.power(
+            self,
+            exponent,
+            self.precision if self.precision
+            > exponent.precision else (exponent.precision),
+        )
+
+    def __pow__(self, exponent: Self) raises -> Self:
+        """This value raised to a power, correctly rounded.
+
+        Args:
+            exponent: The exponent.
+
+        Returns:
+            What `power()` returns, which is where the reasoning is.
+
+        Raises:
+            OverflowError: If the answer's exponent would not fit an `Int`.
+            Error: Propagated from the arithmetic.
+        """
+        return self.power(exponent)
 
     def __truediv__(self, other: Self) raises -> Self:
         """The quotient, correctly rounded.

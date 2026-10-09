@@ -1,7 +1,7 @@
 # Decimo (formerly DeciMojo) <!-- omit from toc -->
 
 An arbitrary-precision integer, decimal, and binary floating-point library for
-[Mojo](https://www.modular.com/mojo), written in pure Mojo, with a 128-bit
+[Mojo](https://www.modular.com/mojo), written in **pure Mojo**, with a 128-bit
 fixed-point decimal type as well. Inspired by Python's `int` and `Decimal`,
 MPFR, and C#/.NET's `System.Decimal`. Install it with `pixi add decimo`.
 
@@ -23,12 +23,12 @@ plus `pi()`, `e()` and a 128-bit decimal type. Install it with
 [![PyPI](https://img.shields.io/badge/pip%20install-decimo-blue)](https://pypi.org/project/decimo/)
 [![Homebrew](https://img.shields.io/badge/brew%20install-forfudan%2Ftap%2Fdecimo-orange)](https://github.com/forfudan/homebrew-tap)
 
-| Type         | Alias             | Information                              | Layout       |
-| ------------ | ----------------- | ---------------------------------------- | ------------ |
-| `BigInt`     | `BInt`            | Equivalent to Python's `int`             | Base-2^64    |
-| `BigDecimal` | `BDec`, `Decimal` | Equivalent to Python's `decimal.Decimal` | Base-10^18   |
-| `Decimal128` | `Dec128`          | 128-bit fixed-precision decimal type     | 32-bit words |
-| `BigFloat`   | `BFlt`            | Arbitrary-precision binary float         | Base-2^64    |
+| Type         | Alias             | Information                                                                                    | Layout       |
+| ------------ | ----------------- | ---------------------------------------------------------------------------------------------- | ------------ |
+| `BigInt`     | `BInt`            | Arbitrary-precision binary integer type, equivalent to Python's `int` and GMP's `mpz`           | Base-2^64    |
+| `BigDecimal` | `BDec`, `Decimal` | Arbitrary-precision decimal type, equivalent to Python's `decimal.Decimal` and libmpdec         | Base-10^18   |
+| `BigFloat`   | `BFlt`            | Arbitrary-precision binary float type, equivalent to MPFR's `mpfr_t`                            | Base-2^64    |
+| `Decimal128` | `Dec128`          | 128-bit fixed-precision decimal type, equivalent to C#/.NET's `System.Decimal`                  | 32-bit words |
 
 <!--
 [![Stars](https://img.shields.io/github/stars/forfudan/decimo?style=flat)](https://github.com/forfudan/decimo/stargazers)
