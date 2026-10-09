@@ -54,16 +54,20 @@ p = "clear && pixi run package"
 package = """pixi run format \
 &&pixi run package_decimo \
 &&pixi run doc"""
-package_decimo = """pixi run mojo precompile src/decimo -o decimo.mojoc \
-&&cp decimo.mojoc tests/ \
-&&cp decimo.mojoc benches/ \
-&&rm decimo.mojoc"""
+# Written straight into `tests/`, not into the repository root and copied.
+# A package in the root is on the import path of every one-off file run from
+# there, ahead of `-I src`, so an interrupted build that left one behind
+# would quietly stand in for the working tree.
+package_decimo = """pixi run mojo precompile src/decimo -o tests/decimo.mojoc \
+&&cp tests/decimo.mojoc benches/"""
 
 # clean the package files in tests folder
 c = "clear && pixi run clean"
 # `-f`: `clean` runs first inside `format` (and hence `all`), so it must not
 # fail when the artifacts are absent (fresh checkout, or after a previous run).
-clean = "rm -f tests/decimo.mojoc benches/decimo.mojoc"
+# The root one is not written any more, but an older checkout may still have
+# it, and it is the one that shadows the working tree.
+clean = "rm -f decimo.mojoc tests/decimo.mojoc benches/decimo.mojoc"
 
 # gmp/mpfr wrapper (compile C wrapper — no MPFR needed at build time)
 bgmp = "clear && pixi run buildgmp"
@@ -80,6 +84,10 @@ tf = "clear && pixi run testfloat"
 # quick build & run for a single MPF-using .mojo file
 # Usage: pixi run bf path/to/file.mojo
 mpf = {cmd = "bash examples/run_mpf.sh", description = "Build & run a single MPF .mojo file (output binary in temp/)"}
+
+# run one off-tree .mojo file against src/, with no package able to shadow it
+# Usage: pixi run one path/to/file.mojo [mojo flags]
+one = {cmd = "bash scripts/run_one_file.sh", description = "Run a single .mojo file against src/, clearing any package beside it"}
 
 # bench
 bench = "pixi run package && bash benches/run_bench.sh"
