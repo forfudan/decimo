@@ -1,9 +1,9 @@
 # Decimo (formerly DeciMojo) <!-- omit from toc -->
 
-An arbitrary-precision integer and decimal library for
-[Mojo](https://www.modular.com/mojo), also with a 128-bit fixed-point decimal
-type, inspired by Python's `int` and `Decimal`. Install it with
-`pixi add decimo`.
+An arbitrary-precision integer, decimal, and binary floating-point library for
+[Mojo](https://www.modular.com/mojo), written in pure Mojo, with a 128-bit
+fixed-point decimal type as well. Inspired by Python's `int` and `Decimal`,
+MPFR, and C#/.NET's `System.Decimal`. Install it with `pixi add decimo`.
 
 Comes with an interactive arbitrary-precision calculator (REPL + one-shot mode)
 powered by [ArgMojo](https://github.com/forfudan/argmojo). Install it with

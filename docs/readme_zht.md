@@ -1,7 +1,8 @@
 # Decimo（原名 DeciMojo） <!-- omit from toc -->
 
-由 [Mojo 程序設計語言 🔥](https://www.modular.com/mojo)
-實現的任意精度整數和小數運算庫，靈感來源自 Python 的 `int` 和 `Decimal`。
+以純 Mojo 寫成、由 [Mojo 程序設計語言 🔥](https://www.modular.com/mojo)
+實現的任意精度整數、小數與二進制浮點運算庫，另有 128 位定點小數類型。靈感來源自
+Python 的 `int` 和 `Decimal`、MPFR，以及 C#/.NET 的 `System.Decimal`。
 
 **[English](https://zhuyuhao.com/decimo/)**　|　**[更新日誌](https://github.com/forfudan/decimo/blob/main/docs/changelog.md)**　|　**[GitHub 倉庫»](https://github.com/forfudan/decimo)**　|　**[Discord 頻道»](https://discord.gg/3rGH87uZTk)**
 
