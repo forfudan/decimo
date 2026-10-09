@@ -44,6 +44,7 @@ from decimo.bigfloat.rounding import (
     to_fixed_point,
 )
 from decimo.bigint.bigint import BigInt
+from decimo.bigint.bitwise import test_bit
 from decimo.bigint.exponential import sqrt_rem
 from decimo.errors import OverflowError
 from decimo.rounding_mode import RoundingMode
@@ -620,6 +621,82 @@ def exp_at_width(x: BigFloat, width: Int) raises -> BigFloat:
     )
 
 
+def _agreement_with_one(value: BigFloat, limit: Int) raises -> Int:
+    """How many bits a value between a half and two shares with one.
+
+    Args:
+        value: The value, finite, positive, and in `[1/2, 2)`.
+        limit: How far to count. The answer is never above this.
+
+    Returns:
+        The number of bits the value agrees with one in, counted no further
+        than `limit`.
+
+    Raises:
+        Error: Propagated from reading a bit of the significand.
+
+    Notes:
+
+    Above one the leading bit is followed by noughts for as long as the value
+    agrees with one, and below one by ones, so the count is a run of bits in
+    the significand and the first bit that breaks the run ends it. Below one
+    it can come out one short, which only ever asks for one root more than
+    the balance wanted and is covered by the working width.
+
+    Nothing is allocated and no float arithmetic happens. That matters because
+    the answer is wanted on every call, including the calls that go on to take
+    no roots at all, where forming `significand - 2^-exponent` as a `BigInt`
+    cost a sixth of the whole logarithm at a thousand bits.
+    """
+    var top = value.precision - 1
+    var continues = value.exponent < -top
+    for offset in range(1, limit + 1):
+        if top - offset < 0:
+            # Nothing left below the leading bit. Above one that makes the
+            # value exactly one; below one it makes it `1 - 2^-precision`.
+            if continues:
+                return value.precision
+            return limit
+        if test_bit(value.significand, top - offset) != continues:
+            return offset
+    return limit
+
+
+def _root_reductions(scale: Int, value: BigFloat) raises -> Tuple[Int, Int]:
+    """How many square roots to take before summing the logarithm's series.
+
+    Args:
+        scale: The bits the sum is taken to.
+        value: The argument the series will run on, in `[1/2, 2)`.
+
+    Returns:
+        The number of roots worth taking, and how many bits the argument
+        already shares with one. Both are nought when no root is worth it.
+
+    Raises:
+        Error: Propagated from measuring the argument.
+
+    Notes:
+
+    `ln(m)` is `2^k ln(m^(1/2^k))`, and each root halves the distance from
+    one. A root costs three to five multiplies, while the series gains
+    `2(d + 1)` bits a term for an argument `d` bits from one, so `k` roots cut
+    the terms from `scale/2d` to `scale/2(d + k)`. The two costs balance near
+    `k = sqrt(scale)/3`, and a `d` already past that leaves nothing to buy.
+
+    Below a few hundred bits the series is short enough that the roots cost
+    more than the terms they save, so none are taken -- and the argument is
+    not measured either, which at 53 bits is itself worth a few per cent.
+    """
+    var wanted = _halvings(scale) // 3
+    if wanted < 4:
+        return (0, 0)
+    var agreement = _agreement_with_one(value, wanted)
+    if agreement >= wanted:
+        return (0, 0)
+    return (wanted - agreement, agreement)
+
+
 def ln_at_width(x: BigFloat, width: Int) raises -> BigFloat:
     """`ln(x)` to `width` bits.
 
@@ -645,6 +722,20 @@ def ln_at_width(x: BigFloat, width: Int) raises -> BigFloat:
     the series runs on `x` itself, where its argument is still at most a
     third. Beyond that binade `|e ln 2|` is at least 1.38 while `|ln m|` is at
     most 0.7, so the sum loses at most a bit.
+
+    A third of `m` gains the series only three bits a term, which at a
+    thousand bits is three hundred terms, so `m` is first brought closer to
+    one by square roots: `ln(m)` is `2^k ln(m^(1/2^k))`, and the scaling back
+    is a power of two and therefore exact. The series then gains `2k` bits a
+    term instead of three.
+
+    What the roots cost is bits, not just time. A root is correctly rounded
+    and so lands within a unit of the last place of a value near one, while
+    the series is handed `root - 1`, which is `2^-(d+k)` for an argument `d`
+    bits from one. That subtraction is exact -- both sides lie between a half
+    and two -- but it leaves `d + k` fewer bits than the root has, so the
+    working width carries them. The count is bounded by the choice of `k`:
+    a `d` already past what the roots would buy leaves `k` at nought.
 
     The leading bit's position is formed as a `BigInt`, because
     `exponent + precision` can leave an `Int` while the logarithm of such a
@@ -676,22 +767,40 @@ def ln_at_width(x: BigFloat, width: Int) raises -> BigFloat:
         )
         whole_binades = leading.copy()
 
-    var one = BigFloat.from_int(1, scale)
+    var choice = _root_reductions(scale, mantissa)
+    var reductions = choice[0]
+    var work = scale
+    if reductions > 0:
+        # The subtraction below loses the bits the root shares with one,
+        # which is what the argument already shared plus one per root -- the
+        # `k` the balance asked for, and a bit for a count that came out
+        # short. The width does not otherwise depend on which of the two the
+        # bits came from.
+        var lost = choice[0] + choice[1]
+        work = scale + lost + Int(bit_width(UInt(lost))) + 4
+
+    var root = mantissa.copy()
+    for _ in range(reductions):
+        root = sqrt(root, work)
+
+    var one = BigFloat.from_int(1, work)
     var ratio = bigfloat_arithmetics.divide(
-        bigfloat_arithmetics.subtract(mantissa, one, scale),
-        bigfloat_arithmetics.add(mantissa, one, scale),
-        scale,
+        bigfloat_arithmetics.subtract(root, one, work),
+        bigfloat_arithmetics.add(root, one, work),
+        work,
     )
     var total = bigfloat_arithmetics.multiply(
-        atanh_at_width(ratio, scale), BigFloat.power_of_two(1), scale
+        atanh_at_width(ratio, work),
+        BigFloat.power_of_two(reductions + 1),
+        work,
     )
     if not whole_binades.is_zero():
         total = bigfloat_arithmetics.add(
             bigfloat_arithmetics.multiply(
-                BigFloat.from_bigint(whole_binades, scale), ln2(scale), scale
+                BigFloat.from_bigint(whole_binades, work), ln2(work), work
             ),
             total,
-            scale,
+            work,
         )
     return BigFloat.from_rounded_parts(
         total.significand, total.exponent, width, total.sign
