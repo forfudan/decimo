@@ -2270,6 +2270,145 @@ def _exact_integer_power(
     return BigDecimal(stripped**degree, scale * degree, negative)
 
 
+comptime _MAX_FRACTIONAL_SCALE = 9
+"""How many decimal places an exponent may have and still be searched.
+
+A fractional exponent `p / q` has an exact answer only when the base is a
+perfect `q`-th power, and `q` divides `10^scale`. A perfect `q`-th power above
+one has at least `q` bits, so past this scale only a base of hundreds of
+thousands of digits could qualify -- and no answer that long sits on a
+boundary of a short one, so the deciding loop settles on it anyway.
+"""
+
+
+def _fractional_denominator(exponent: BigDecimal) raises -> Int:
+    """The smallest `q` that makes `q * exponent` a whole number.
+
+    Args:
+        exponent: The exponent, which must not already be whole.
+
+    Returns:
+        The `q` of `exponent = p / q` in lowest terms, or nought when the
+        exponent carries more decimal places than are worth searching.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    `q` divides `10^scale`, so it is `2^i 5^j`, and at the scales this accepts
+    there are at most a hundred of those to try. Each is tried by multiplying
+    and counting trailing zeros rather than by dividing, which keeps the whole
+    search in whole numbers and needs no greatest common divisor.
+    """
+    var trailing = exponent.coefficient.number_of_trailing_zeros()
+    var scale = exponent.scale - trailing
+    if scale <= 0 or scale > _MAX_FRACTIONAL_SCALE:
+        return 0
+    var magnitude = exponent.coefficient.copy()
+    if trailing > 0:
+        magnitude = magnitude.floor_divide_by_power_of_ten(trailing)
+
+    var best = 0
+    var twos = 1
+    for _ in range(scale + 1):
+        var candidate = twos
+        for _ in range(scale + 1):
+            if best == 0 or candidate < best:
+                var scaled = magnitude * BigUInt(UInt64(candidate))
+                if scaled.number_of_trailing_zeros() >= scale:
+                    best = candidate
+            candidate *= 5
+        twos *= 2
+    return best
+
+
+def _exact_fractional_power(
+    base: BigDecimal,
+    exponent: BigDecimal,
+    precision: Int,
+    rounding_mode: RoundingMode,
+) raises -> Optional[BigDecimal]:
+    """`base ** exponent` for a fractional exponent, when the answer is exact.
+
+    Args:
+        base: The base, positive and not nought.
+        exponent: The exponent, not whole.
+        precision: The digits the answer keeps.
+        rounding_mode: Which way to round, which an exact answer consults
+            only when it is longer than the precision.
+
+    Returns:
+        The correctly rounded answer when `base ** exponent` is exact, and
+        nothing when it is not.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    `4 ** 0.5` is exactly two, and the loop that decides a rounding can never
+    settle on a value that sits on a boundary, so without this the directed
+    modes widened to the limit and raised on an answer the caller could have
+    written down.
+
+    The exponent is `p / q` in lowest terms, so the answer is the `q`-th root
+    of the base raised to `p`. The root has to be exact for the answer to be,
+    and that is a question about whole numbers: `base` is `c * 10^-s`, and
+    lifting the scale to a multiple of `q` makes the root of the value the
+    root of the coefficient, which `root()` answers and a power back
+    confirms.
+
+    What is left is a whole power, so it goes back through this function's
+    own caller, where the exact whole powers already live.
+    """
+    if base.sign:
+        return None
+    var denominator = _fractional_denominator(exponent)
+    if denominator == 0:
+        return None
+
+    # The scale is lifted to a multiple of the denominator. `extra` is what
+    # that costs in digits, and it is below the denominator either way the
+    # scale is signed.
+    var extra = (-base.scale) % denominator
+    var coefficient = base.coefficient.multiply_by_power_of_ten(extra)
+    var root_scale = (base.scale + extra) // denominator
+
+    if not coefficient.is_one():
+        # A perfect `q`-th power above one holds at least `q` bits, so a
+        # longer root than this cannot divide the coefficient -- and asking
+        # for one would raise the root to a power nothing could hold.
+        if denominator > 4 * coefficient.number_of_digits() + 8:
+            return None
+    var root = biguint_exponential.root(coefficient, denominator)
+    if root**denominator != coefficient:
+        return None
+
+    var whole = exponent.multiply(
+        BigDecimal(BigUInt(UInt64(denominator)), 0, False)
+    )
+    var answer = power_rounded(
+        BigDecimal(root^, root_scale, False),
+        whole,
+        precision,
+        rounding_mode,
+    )
+
+    # A power with a fractional exponent carries the full precision, even
+    # when the value turns out to be short. That is what the specification
+    # asks of an operation defined as inexact, and what the decimal module
+    # gives: `Decimal(4) ** Decimal("0.5")` is `2.000...0`, to the context's
+    # digits, while `Decimal(2) ** 10` is `1024`. Being exact here is a
+    # discovery about the arguments, not a change to the operation, so it
+    # does not change the shape of the answer -- only the fact that there is
+    # one, where every directed mode used to raise.
+    var digits = answer.coefficient.number_of_digits()
+    if not answer.coefficient.is_zero() and digits < precision:
+        answer = answer.extend_precision(precision - digits)
+    return answer^
+
+
 def power_rounded(
     base: BigDecimal,
     exponent: BigDecimal,
@@ -2354,6 +2493,14 @@ def power_rounded(
             " exact value was too long to form and the series is further from"
             " it than its stated bound allows"
         )
+
+    # A fractional exponent can still land on an exact answer -- `4 ** 0.5`
+    # is two -- and the loop below could not settle on one.
+    var exact = _exact_fractional_power(
+        base, exponent, precision, rounding_mode
+    )
+    if exact:
+        return exact.take()
 
     var width = precision + _ZIV_START
     for _ in range(_ZIV_LIMIT):
