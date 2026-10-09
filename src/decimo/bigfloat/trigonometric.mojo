@@ -785,32 +785,48 @@ def _arctan_kernel(x: BigFloat, width: Int) raises -> BigFloat:
     """
     if x.is_nan():
         return BigFloat.nan(width)
+    if x.is_zero():
+        return BigFloat.zero(width, x.sign)
+
     var scale = width + Int(bit_width(UInt(width))) + 16
+
+    # Pi is built only where it is used. Below one the series is the whole
+    # answer and pi never appears, and asking for it there would make every
+    # ordinary call pay for the constant -- at high precision that is most of
+    # the work.
+    if x.is_finite() and compare_absolute(x, BigFloat.from_int(1, 1)) <= 0:
+        var series = _arctangent_of_small(x, scale)
+        return BigFloat.from_rounded_parts(
+            series.significand, series.exponent, width, series.sign
+        )
+
     var half_pi = bigfloat_arithmetics.multiply(
         pi(scale), BigFloat.power_of_two(-1), scale
     )
-    if x.is_infinite():
+    if x.is_infinite() or leading_bit_position(x) >= BigInt(width + 2):
+        # An infinity settles at a right angle, and so does an argument so
+        # large that the correction `1/x` falls below half a unit in the last
+        # place of the answer. Taking that branch rather than forming `1/x`
+        # is not only a saving: at the top of the exponent range the
+        # reciprocal has no exponent, and an argument whose inverse tangent
+        # is an ordinary number would be refused. Nothing can widen its way
+        # out of this branch either, since `width` cannot reach the leading
+        # bit of such an argument.
         var answer = half_pi.copy()
         if x.sign:
             answer = -answer
         return BigFloat.from_rounded_parts(
             answer.significand, answer.exponent, width, answer.sign
         )
-    if x.is_zero():
-        return BigFloat.zero(width, x.sign)
 
-    var total: BigFloat
-    if compare_absolute(x, BigFloat.from_int(1, 1)) > 0:
-        var reciprocal = bigfloat_arithmetics.divide(
-            BigFloat.from_int(1, scale), x, scale
-        )
-        total = bigfloat_arithmetics.subtract(
-            half_pi, _arctangent_of_small(abs(reciprocal), scale), scale
-        )
-        if x.sign:
-            total = -total
-    else:
-        total = _arctangent_of_small(x, scale)
+    var reciprocal = bigfloat_arithmetics.divide(
+        BigFloat.from_int(1, scale), x, scale
+    )
+    var total = bigfloat_arithmetics.subtract(
+        half_pi, _arctangent_of_small(abs(reciprocal), scale), scale
+    )
+    if x.sign:
+        total = -total
     return BigFloat.from_rounded_parts(
         total.significand, total.exponent, width, total.sign
     )
