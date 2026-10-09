@@ -12,6 +12,7 @@ Modules:
 - ieee: the IEEE 754 companion operations -- the neighbours, logb, scaleb,
   the sign copies, number_class, the roundings to a whole number, fma and
   the two remainders
+- power: x ** y, with the exact answers found before the series runs
 - rounding: round_to_precision and the fixed-point helpers the series use
 - trigonometric: sin, cos, tan, arcsin, arccos, arctan
 
@@ -52,3 +53,4 @@ from .ieee import (
     scaleb,
     truncate,
 )
+from .power import power

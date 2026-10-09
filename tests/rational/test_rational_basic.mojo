@@ -502,22 +502,4 @@ def test_constants() raises:
 
 
 def main() raises:
-    test_from_int()
-    test_from_bigint()
-    test_from_two_ints()
-    test_zero_denominator_raises()
-    test_str_and_repr()
-    test_equality()
-    test_ordering()
-    test_neg()
-    test_abs()
-    test_add()
-    test_sub()
-    test_add_sub_reduction_paths()
-    test_mul()
-    test_truediv()
-    test_truediv_by_zero_raises()
-    test_query_methods()
-    test_reciprocal()
-    test_normalization()
-    test_constants()
+    testing.TestSuite.discover_tests[__functions_in_module()]().run()

@@ -1359,6 +1359,7 @@ tried again. This is Ziv's method, and it is why the last bit can be trusted.
 | `sqrt`, `exp`, `ln`                      | `decimo.bigfloat.exponential`   |
 | `exp2`, `exp10`, `log2`, `log10`, `log`  | `decimo.bigfloat.exponential`   |
 | `expm1`, `log1p`                         | `decimo.bigfloat.exponential`   |
+| `power`                                  | `decimo.bigfloat.power`         |
 | `sin`, `cos`, `tan`                      | `decimo.bigfloat.trigonometric` |
 | `arcsin`, `arccos`, `arctan`             | `decimo.bigfloat.trigonometric` |
 | `sinh`, `cosh`, `tanh`                   | `decimo.bigfloat.hyperbolic`    |
@@ -1437,6 +1438,60 @@ knowing:
   it.
 - `expm1` and `log1p` are exact only at zero, where both are zero with the
   sign of the argument, and `expm1(-Infinity)` which is exactly minus one.
+
+### The Power — BigFloat
+
+`power(x, y, precision, mode)`, also `x.power(y)` and `x ** y`, raises one
+value to another. It ends in `exp(y ln x)`, and almost nothing about it is
+that line.
+
+The reason is the same one the other bases have, only more so. A power sits
+on an exactly representable answer constantly: `2 ** 10` is `1024`, which
+every directed mode has to return and no bracket around it can prove. What
+is less obvious is that a *fractional* exponent does it too — `4 ** 0.5` is
+exactly `2`, and `16 ** 0.25` is as well — so recognizing the whole
+exponents is not enough.
+
+Three kinds of exact answer are found before any series runs.
+
+A whole exponent is a power of the significand. `x` is `s * 2^e`, so `x^n` is
+`s^n * 2^(en)`, and `s^n` is an integer however large; it is formed while it
+is short enough to be worth forming, and one rounding finishes it. A
+negative whole exponent is one correctly rounded division of exact operands.
+
+A base that is a power of two answers any exponent leaving a whole result:
+`2^m` to the `a / 2^b` is `2^(ma / 2^b)`, exact exactly when `2^b` divides
+`m`.
+
+Anything else with a fractional exponent — and every binary float is `a / 2^b`
+for some `a` and `b` — is `b` square roots followed by a whole power. A
+square root is exact only when the significand is a perfect square, and each
+exact root halves the bits, so the question answers itself within a few steps
+or not at all.
+
+What reaches the series is therefore known to be irrational, where the loop
+settles.
+
+```mojo
+from decimo.bigfloat import power
+from decimo.bigfloat.bigfloat import BigFloat
+from decimo.rounding_mode import RoundingMode
+
+def main() raises:
+    var two = BigFloat.from_int(2, 53)
+    print(two ** BigFloat.from_int(10, 53))      # 1024, in every mode
+    print(BigFloat.from_int(4, 53) ** BigFloat.from_string("0.5", 53))  # 2
+    print(power(two, BigFloat.from_string("0.5", 53), 53,
+                RoundingMode.ROUND_DOWN))        # 1.4142135623730951
+```
+
+The special values follow IEEE 754's `pow`, which answers two cases before it
+looks at anything else: a nought exponent gives one for every base, a NaN
+included, and a base of one gives one for every exponent, a NaN included.
+A negative base with a fractional exponent gives a NaN, there being no real
+answer. There is no overflow to an infinity for finite arguments — this
+type's exponent is as wide as an `Int`, and an answer asking for more is
+refused rather than answered with an infinity it did not earn.
 
 ### Holding On Near Zero — BigFloat
 
@@ -1606,6 +1661,7 @@ from decimo import gcd, lcm, extended_gcd, mod_pow, mod_inverse
 # level exports the type and not its functions
 from decimo.bigfloat import exp, exp2, exp10, expm1, ln, ln10, log
 from decimo.bigfloat import log1p, log2, log10, sqrt
+from decimo.bigfloat import power
 from decimo.bigfloat import ceil, floor, number_class, truncate
 from decimo.bigfloat import fma, logb, next_plus, remainder, scaleb
 from decimo.bigfloat.trigonometric import cos, sin, tan
@@ -1735,6 +1791,7 @@ the float of that precision nearest the true value.
 | `exp2`, `exp10`                   | `decimo.bigfloat.exponential`   |
 | `log2`, `log10`, `log`            | `decimo.bigfloat.exponential`   |
 | `expm1`, `log1p`                  | `decimo.bigfloat.exponential`   |
+| `power`                           | `decimo.bigfloat.power`         |
 | `sin`, `cos`, `tan`               | `decimo.bigfloat.trigonometric` |
 | `arcsin`, `arccos`, `arctan`      | `decimo.bigfloat.trigonometric` |
 | `sinh`, `cosh`, `tanh`            | `decimo.bigfloat.hyperbolic`    |
