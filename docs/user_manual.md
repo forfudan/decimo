@@ -49,6 +49,7 @@ from decimo.prelude import *
   - [How Rounding Works — BigFloat](#how-rounding-works--bigfloat)
   - [Mathematical Functions — BigFloat](#mathematical-functions--bigfloat)
   - [Special Values — BigFloat](#special-values--bigfloat)
+  - [The IEEE 754 Companions — BigFloat](#the-ieee-754-companions--bigfloat)
   - [Decimal In, Decimal Out — BigFloat](#decimal-in-decimal-out--bigfloat)
   - [BigFloat, Decimal, or MPF](#bigfloat-decimal-or-mpf)
   - [Appendix A — Import Paths](#appendix-a--import-paths)
@@ -1359,6 +1360,7 @@ tried again. This is Ziv's method, and it is why the last bit can be trusted.
 | `sinh`, `cosh`, `tanh`                | `decimo.bigfloat.hyperbolic`     |
 | `arcsinh`, `arccosh`, `arctanh`       | `decimo.bigfloat.hyperbolic`     |
 | `pi`, `ln2`, `e`                      | `decimo.bigfloat.constants`      |
+| `fma`, `remainder`, `fmod`            | `decimo.bigfloat.ieee`           |
 
 ```mojo
 from decimo.bigfloat.constants import pi
@@ -1401,6 +1403,72 @@ their precision.
 There is no overflow to an infinity for a finite argument. The exponent is as
 wide as an `Int`, so an operation that asks for more — `exp` of anything from
 about `6.4e18` up — raises rather than returning an infinity it did not earn.
+
+### The IEEE 754 Companions — BigFloat
+
+Beyond the arithmetic and the functions, IEEE 754 asks a format for a set of
+small operations that numerical code reaches for constantly. They are in
+`decimo.bigfloat.ieee`, they are re-exported at the top level, and each one is
+also a method on the value:
+
+| Function                            | What it gives                           |
+| ----------------------------------- | --------------------------------------- |
+| `next_plus(x, p)`                   | The smallest value above `x` at `p` bits |
+| `next_minus(x, p)`                  | The largest value below it              |
+| `next_toward(x, y, p)`              | One step from `x` in the direction of `y` |
+| `logb(x)`                           | `floor(log2(abs(x)))`, as a `BigInt`    |
+| `scaleb(x, n)`                      | `x * 2^n`, exactly                      |
+| `copy_sign(x, y)`                   | `x` with the sign of `y`                |
+| `copy_abs(x)`, `copy_negate(x)`     | The sign dropped, the sign flipped      |
+| `number_class(x)`                   | `+Normal`, `-Zero`, `NaN`, and so on    |
+| `is_integer(x)`                     | Whether `x` is a whole number           |
+| `truncate(x)`, `floor(x)`, `ceil(x)` | The three named roundings to a whole number |
+| `round_to_integer(x, mode)`         | The same in any of the seven modes      |
+| `fma(x, y, z, p, mode)`             | `x * y + z` with a single rounding      |
+| `remainder(x, y, p)`                | `x - y*n`, `n` the nearest integer      |
+| `fmod(x, y, p)`                     | `x - y*n`, `n` the quotient truncated   |
+
+```mojo
+from decimo import BigFloat
+from decimo.bigfloat.ieee import fma, next_plus, remainder
+
+var one = BigFloat.from_float64(1.0)
+print(next_plus(one, 53))                     # 1 + 2^-52
+print(one.next_minus(53))                     # 1 - 2^-53, half a step away
+print(String(BigFloat.from_float64(12.0).logb()))   # 3
+print(one.scaleb(10))                          # 1024, nothing computed
+print(BigFloat.from_string("-1.5", 53).ceil()) # -0, the sign surviving
+print(remainder(BigFloat.from_float64(5.0), BigFloat.from_float64(3.0), 53))
+# -1: six is nearer to five than three is. `fmod` of the same pair is 2.
+```
+
+`fma` is the one with substance. `x * y + z` written out rounds the product
+before the addition sees it, and a product that nearly cancels with `z` loses
+exactly the bits the answer is made of. Here the product is formed exactly —
+it is an integer times a power of two, so there is nothing to round — and only
+the sum is rounded:
+
+```mojo
+var above = next_plus(one, 53)             # 1 + 2^-52
+var product = above * above                 # rounded: 1 + 2^-51
+print(product + (-product))                 # 0: the two-step answer
+print(fma(above, above, -product, 53))      # 2^-104: what the rounding dropped
+```
+
+Two of these differ from a double, and both follow from the type rather than
+from a choice. `number_class` never answers `+Subnormal` or `-Subnormal`: a
+significand here always holds its full precision, so every finite non-zero
+value is normal. And `next_plus` and `next_minus` step through an exponent
+range as wide as an `Int`, so the ends they reach are not a double's —
+`next_plus(BigFloat.zero(), 53)` is `2^(Int.MIN + 52)` where a double answers
+`2^-1074`. Within that range the two agree bit for bit, which is how these are
+tested.
+
+`logb` returns a `BigInt` rather than an `Int` because the position of the
+leading bit is `exponent + precision - 1`, and that sum can be outside an
+`Int` while the value itself is an ordinary one. It has no answer for a zero,
+an infinity or a NaN, where the standard's answers are infinities and a NaN,
+and raises instead — as the decimal `logb()` does.
 
 ### Decimal In, Decimal Out — BigFloat
 
@@ -1456,6 +1524,10 @@ from decimo.mpf.mpf import MPF
 
 # Number-theory free functions
 from decimo import gcd, lcm, extended_gcd, mod_pow, mod_inverse
+
+# BigFloat's IEEE 754 companions, also methods on the value
+from decimo import fma, logb, next_plus, remainder, scaleb
+from decimo.bigfloat import ceil, floor, number_class, truncate
 
 # Chinese numerals: the style presets are re-exported at the top level, the
 # string-level engine lives in the `decimo.numerals` sub-package
@@ -1584,6 +1656,23 @@ the float of that precision nearest the true value.
 | `sinh`, `cosh`, `tanh`            | `decimo.bigfloat.hyperbolic`    |
 | `arcsinh`, `arccosh`, `arctanh`   | `decimo.bigfloat.hyperbolic`    |
 | `pi`, `ln2`, `e`                  | `decimo.bigfloat.constants`     |
+| `fma`, `remainder`, `fmod`        | `decimo.bigfloat.ieee`          |
+
+These take no rounding mode, or no precision, because their answers are exact
+or carry the argument's own precision. All of them are in
+`decimo.bigfloat.ieee`, and all of them are methods as well.
+
+| Function                             | Description                             |
+| ------------------------------------ | --------------------------------------- |
+| `next_plus`, `next_minus`            | The neighbour at a given precision      |
+| `next_toward`                        | The neighbour in another value's direction |
+| `logb`                               | The leading bit's position, as a `BigInt` |
+| `scaleb`                             | Times a power of two, exactly           |
+| `copy_sign`, `copy_abs`, `copy_negate` | The sign, never raising                |
+| `number_class`                       | The specification's name for the value   |
+| `is_integer`                         | Whether there is a fractional part      |
+| `truncate`, `floor`, `ceil`          | The three named roundings to a whole number |
+| `round_to_integer`                   | The same in any of the seven modes      |
 
 | Operator / Method              | Description                              |
 | ------------------------------ | ---------------------------------------- |
@@ -1592,6 +1681,13 @@ the float of that precision nearest the true value.
 | `-a`, `abs(a)`                 | Exact                                    |
 | `a == b`, `a < b`, and the rest | False for a NaN, both zeros equal       |
 | `a.sqrt()`                     | At `a`'s own precision, half to even     |
+| `a.fma(b, c, p)`               | `a * b + c`, the product formed exactly  |
+| `a.remainder(b, p)`, `a.fmod(b, p)` | The two remainders                  |
+| `a.next_plus(p)`, `a.next_minus(p)` | The neighbours                      |
+| `a.logb()`, `a.scaleb(n)`      | The exponent, read and written           |
+| `a.truncate()`, `a.floor()`, `a.ceil()` | Rounded to a whole number       |
+| `a.round_to_integer(mode)`     | The same in any mode                     |
+| `a.number_class()`, `a.is_integer()` | What kind of value it is           |
 | `a.to_bigdecimal()`            | The exact decimal expansion              |
 | `a.to_bigdecimal_rounded(n)`   | `n` significant digits                   |
 | `a.to_float64()`               | The nearest double                       |
