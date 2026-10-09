@@ -89,16 +89,26 @@ Everything a `decimal` program normally touches:
 - `ZeroDivisionError` where you expect it, and hashes that agree with `int`,
   `float` and `decimal.Decimal`
 
-### Three things `decimal` does not have
+### Four things `decimal` does not have
 
 ```python
 decimo.pi(1000)  # 1000 digits of pi, by Chudnovsky with binary splitting
 decimo.e(50)  # 50 digits of e
 Decimal(2).sqrt(rounding=ROUND_FLOOR)  # and exp, ln, log10 too
+Decimal(1).sinh()  # and fifteen more, listed below
 ```
 
 `pi()` and `e()` use the context precision when given no argument; `decimal`
 has neither, and its documentation gives a recipe to write your own.
+
+The mathematics is `sin`, `cos`, `tan`, `arctan`, `arcsin`, `arccos`,
+`arctan2`, `expm1`, `log1p`, `hypot`, `sinh`, `cosh`, `tanh`, `arcsinh`,
+`arccosh` and `arctanh`. Each takes the context precision and an optional
+`rounding=`, like the four above, and each is correctly rounded. `arctan2`
+and `hypot` take the second value first: `y.arctan2(x)` is `atan2(y, x)`, and
+`x.hypot(y)` is the hypotenuse. `expm1` and `log1p` are there for the same
+reason `math` has them -- near zero they keep the digits that `exp(x) - 1`
+and `ln(1 + x)` lose.
 
 `rounding=` on `sqrt`, `exp`, `ln` and `log10` is decimo's own: `decimal`
 ignores the context mode for these and always rounds half to even. And the

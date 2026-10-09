@@ -1128,6 +1128,23 @@ def PyInit__decimo() abi("C") -> PythonObject:
             .def_py_c_method[static_method=False](method_exp, "exp")
             .def_py_c_method[static_method=False](method_ln, "ln")
             .def_py_c_method[static_method=False](method_log10, "log10")
+            # --- the mathematics `decimal` does not have ----------------
+            .def_py_c_method[static_method=False](method_sin, "sin")
+            .def_py_c_method[static_method=False](method_cos, "cos")
+            .def_py_c_method[static_method=False](method_tan, "tan")
+            .def_py_c_method[static_method=False](method_arctan, "arctan")
+            .def_py_c_method[static_method=False](method_arcsin, "arcsin")
+            .def_py_c_method[static_method=False](method_arccos, "arccos")
+            .def_py_c_method[static_method=False](method_expm1, "expm1")
+            .def_py_c_method[static_method=False](method_log1p, "log1p")
+            .def_py_c_method[static_method=False](method_sinh, "sinh")
+            .def_py_c_method[static_method=False](method_cosh, "cosh")
+            .def_py_c_method[static_method=False](method_tanh, "tanh")
+            .def_py_c_method[static_method=False](method_arcsinh, "arcsinh")
+            .def_py_c_method[static_method=False](method_arccosh, "arccosh")
+            .def_py_c_method[static_method=False](method_arctanh, "arctanh")
+            .def_py_c_method[static_method=False](method_arctan2, "arctan2")
+            .def_py_c_method[static_method=False](method_hypot, "hypot")
             .def_py_c_method[static_method=False](
                 method_to_integral, "to_integral_value"
             )
@@ -3301,6 +3318,347 @@ def method_log10(
     return _method_to_precision[_do_log10, "log10() needs a positive value"](
         py_self, py_args, py_kwargs
     )
+
+
+# --- The mathematics `decimal` does not have -------------------------------
+#
+# `decimal` offers `sqrt`, `exp`, `ln` and `log10` and stops there. The
+# sixteen below are decimo's own, and they are exposed exactly as those four
+# are: the context precision, an optional context that is accepted and
+# ignored, and an optional `rounding` which is decimo's addition and defaults
+# to half to even. Each answer is decided rather than approximated, because
+# the methods underneath are the `_rounded` forms.
+#
+# `sin`, `cos`, `tan` and `arctan` are not new to the library -- only to
+# Python, where `Decimal128` has had the first three all along while
+# `Decimal` had none of them. Leaving them out while adding `arcsin` would
+# have been the odd surface.
+
+
+def _do_sin(
+    value: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return value.sin(digits, mode)
+
+
+def _do_cos(
+    value: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return value.cos(digits, mode)
+
+
+def _do_tan(
+    value: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return value.tan(digits, mode)
+
+
+def _do_arctan(
+    value: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return value.arctan(digits, mode)
+
+
+def _do_arcsin(
+    value: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return value.arcsin(digits, mode)
+
+
+def _do_arccos(
+    value: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return value.arccos(digits, mode)
+
+
+def _do_expm1(
+    value: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return value.expm1(digits, mode)
+
+
+def _do_log1p(
+    value: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return value.log1p(digits, mode)
+
+
+def _do_sinh(
+    value: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return value.sinh(digits, mode)
+
+
+def _do_cosh(
+    value: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return value.cosh(digits, mode)
+
+
+def _do_tanh(
+    value: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return value.tanh(digits, mode)
+
+
+def _do_arcsinh(
+    value: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return value.arcsinh(digits, mode)
+
+
+def _do_arccosh(
+    value: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return value.arccosh(digits, mode)
+
+
+def _do_arctanh(
+    value: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return value.arctanh(digits, mode)
+
+
+def method_sin(
+    py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`sin(context=None, rounding=None)`, to the context precision."""
+    return _method_to_precision[_do_sin, "sin() is undefined for this value"](
+        py_self, py_args, py_kwargs
+    )
+
+
+def method_cos(
+    py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`cos(context=None, rounding=None)`, to the context precision."""
+    return _method_to_precision[_do_cos, "cos() is undefined for this value"](
+        py_self, py_args, py_kwargs
+    )
+
+
+def method_tan(
+    py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`tan(context=None, rounding=None)`, to the context precision."""
+    return _method_to_precision[_do_tan, "tan() is undefined for this value"](
+        py_self, py_args, py_kwargs
+    )
+
+
+def method_arctan(
+    py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`arctan(context=None, rounding=None)`, to the context precision."""
+    return _method_to_precision[
+        _do_arctan, "arctan() is undefined for this value"
+    ](py_self, py_args, py_kwargs)
+
+
+def method_arcsin(
+    py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`arcsin(context=None, rounding=None)`, to the context precision."""
+    return _method_to_precision[
+        _do_arcsin, "arcsin() needs a value between minus one and one"
+    ](py_self, py_args, py_kwargs)
+
+
+def method_arccos(
+    py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`arccos(context=None, rounding=None)`, to the context precision."""
+    return _method_to_precision[
+        _do_arccos, "arccos() needs a value between minus one and one"
+    ](py_self, py_args, py_kwargs)
+
+
+def method_expm1(
+    py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`expm1(context=None, rounding=None)`, to the context precision."""
+    return _method_to_precision[
+        _do_expm1, "expm1() is undefined for this value"
+    ](py_self, py_args, py_kwargs)
+
+
+def method_log1p(
+    py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`log1p(context=None, rounding=None)`, to the context precision."""
+    return _method_to_precision[
+        _do_log1p, "log1p() needs a value above minus one"
+    ](py_self, py_args, py_kwargs)
+
+
+def method_sinh(
+    py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`sinh(context=None, rounding=None)`, to the context precision."""
+    return _method_to_precision[_do_sinh, "sinh() is undefined for this value"](
+        py_self, py_args, py_kwargs
+    )
+
+
+def method_cosh(
+    py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`cosh(context=None, rounding=None)`, to the context precision."""
+    return _method_to_precision[_do_cosh, "cosh() is undefined for this value"](
+        py_self, py_args, py_kwargs
+    )
+
+
+def method_tanh(
+    py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`tanh(context=None, rounding=None)`, to the context precision."""
+    return _method_to_precision[_do_tanh, "tanh() is undefined for this value"](
+        py_self, py_args, py_kwargs
+    )
+
+
+def method_arcsinh(
+    py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`arcsinh(context=None, rounding=None)`, to the context precision."""
+    return _method_to_precision[
+        _do_arcsinh, "arcsinh() is undefined for this value"
+    ](py_self, py_args, py_kwargs)
+
+
+def method_arccosh(
+    py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`arccosh(context=None, rounding=None)`, to the context precision."""
+    return _method_to_precision[
+        _do_arccosh, "arccosh() needs a value of at least one"
+    ](py_self, py_args, py_kwargs)
+
+
+def method_arctanh(
+    py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`arctanh(context=None, rounding=None)`, to the context precision."""
+    return _method_to_precision[
+        _do_arctanh,
+        "arctanh() needs a value strictly between minus one and one",
+    ](py_self, py_args, py_kwargs)
+
+
+def _method_pair_to_precision[
+    operation: def(
+        BigDecimal, BigDecimal, Int, RoundingMode
+    ) thin raises -> BigDecimal,
+    name: StaticString,
+    message: StaticString,
+](py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr) abi(
+    "C"
+) -> PyObjectPtr:
+    """The shared body of `arctan2` and `hypot`, which take a second value.
+
+    The shape is `quantize`'s rather than `sqrt`'s, because the first
+    argument is a value and not a context: `other` is positional and
+    required, with `context` and `rounding` after it. The second operand
+    converts the way every other binary method's does, so an `int` or a `str`
+    works where a decimal does.
+    """
+    try:
+        ref cell = state()[]
+        ref cpython = Python().cpython()
+        var rounding = PyObjectPtr()
+        try:
+            var count = Int(cpython.PyObject_Length(py_args))
+            if count < 1:
+                raise Error(
+                    String(name) + "() takes exactly 1 argument (0 given)"
+                )
+            if not py_kwargs:
+                # Positionally, `rounding` follows the ignored context.
+                if count > 2:
+                    rounding = cpython.PyTuple_GetItem(py_args, 2)
+            else:
+                var args = PythonObject(from_borrowed=py_args)
+                var taken = 0
+                var named: PythonObject
+                (_, taken) = _keyword_argument(
+                    args, py_kwargs, 1, "context", taken
+                )
+                (named, taken) = _keyword_argument(
+                    args, py_kwargs, 2, "rounding", taken
+                )
+                _no_other_keywords(py_kwargs, taken)
+                if named is not PythonObject(None):
+                    rounding = named._obj_ptr
+        except e:
+            return _raise_type_error(e)
+
+        var given = cpython.PyTuple_GetItem(py_args, 0)
+        var other: BigDecimal
+        try:
+            if cpython.Py_TYPE(given) == decimal_type_ptr(cell):
+                other = _value_of(given)[].copy()
+            else:
+                other = convert_operand(PythonObject(from_borrowed=given))
+        except e:
+            return _raise_type_error(e)
+
+        var mode = RoundingMode.ROUND_HALF_EVEN
+        if rounding:
+            var named = PythonObject(from_borrowed=rounding)
+            if named is not PythonObject(None):
+                try:
+                    _ = _mode_or_none(named)
+                except:
+                    return _raise_not_implemented(
+                        "decimo does not implement ROUND_05UP"
+                    )
+                mode = rounding_from(named)
+
+        var result: BigDecimal
+        try:
+            result = operation(
+                _value_of(py_self)[], other, cell.precision, mode
+            )
+        except:
+            return _raise_value_error(message)
+        return new_decimal(cell, result^).steal_data()
+    except e:
+        return raise_python_exception(e)
+
+
+def _do_arctan2(
+    value: BigDecimal, other: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return value.arctan2(other, digits, mode)
+
+
+def _do_hypot(
+    value: BigDecimal, other: BigDecimal, digits: Int, mode: RoundingMode
+) raises -> BigDecimal:
+    return value.hypot(other, digits, mode)
+
+
+def method_arctan2(
+    py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`arctan2(other, context=None, rounding=None)`.
+
+    `self` is the ordinate and `other` the abscissa, so the call reads in the
+    order `atan2(y, x)` has everywhere else.
+    """
+    return _method_pair_to_precision[
+        _do_arctan2, "arctan2", "arctan2() is undefined for this pair"
+    ](py_self, py_args, py_kwargs)
+
+
+def method_hypot(
+    py_self: PyObjectPtr, py_args: PyObjectPtr, py_kwargs: PyObjectPtr
+) abi("C") -> PyObjectPtr:
+    """`hypot(other, context=None, rounding=None)`, the other leg's length."""
+    return _method_pair_to_precision[
+        _do_hypot, "hypot", "hypot() is undefined for this pair"
+    ](py_self, py_args, py_kwargs)
 
 
 def method_to_integral(

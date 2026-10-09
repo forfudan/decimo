@@ -923,6 +923,206 @@ with decimo.localcontext(prec=9):
 print("[PASS] exp, ln and log10 decide their rounding under every mode")
 
 
+# --- The sixteen functions `decimal` does not have ------------------------
+#
+# `decimal` stops at `sqrt`, `exp`, `ln` and `log10`, so there is nothing to
+# compare against directly. Two references instead. `math` answers all of
+# them at float precision, which settles the shape and the quadrant. And for
+# the nine that an identity reaches, `decimal`'s own `exp`, `ln` and `sqrt`
+# give a reference at full precision -- computed here, never typed in.
+
+
+def _reference(name, text, prec=45):
+    """The expected value from `decimal` alone, through an identity."""
+    with decimal.localcontext() as wide:
+        wide.prec = prec
+        x = decimal.Decimal(text)
+        if name == "sinh":
+            return (x.exp() - (-x).exp()) / 2
+        if name == "cosh":
+            return (x.exp() + (-x).exp()) / 2
+        if name == "tanh":
+            e = (2 * x).exp()
+            return (e - 1) / (e + 1)
+        if name == "arcsinh":
+            return (x + (x * x + 1).sqrt()).ln()
+        if name == "arccosh":
+            return (x + (x * x - 1).sqrt()).ln()
+        if name == "arctanh":
+            return ((1 + x) / (1 - x)).ln() / 2
+        if name == "expm1":
+            return x.exp() - 1
+        if name == "log1p":
+            return (1 + x).ln()
+        raise AssertionError(name)
+
+
+for _name, _text in [
+    ("sinh", "1.25"),
+    ("cosh", "1.25"),
+    ("tanh", "0.75"),
+    ("arcsinh", "2.5"),
+    ("arccosh", "3.5"),
+    ("arctanh", "0.625"),
+    ("expm1", "0.5"),
+    ("log1p", "0.5"),
+    ("sinh", "-0.0625"),
+    ("expm1", "-0.5"),
+    ("log1p", "-0.25"),
+]:
+    for _prec in (10, 28, 34):
+        _true = _reference(_name, _text)
+        with decimal.localcontext() as _narrow:
+            _narrow.prec = _prec
+            _want = str(+_true)
+        with decimo.localcontext(prec=_prec):
+            _got = str(getattr(decimo.Decimal(_text), _name)())
+        assert _want == _got, (_name, _text, _prec, _want, _got)
+print("[PASS] the hyperbolics and the small-argument forms, to the last digit")
+
+# `hypot` the same way, from Pythagoras in `decimal`.
+for _a, _b in [("3", "4"), ("3.5", "7.25"), ("-0.5", "0.125"), ("1e-20", "1")]:
+    with decimal.localcontext() as _wide:
+        _wide.prec = 45
+        _true = (decimal.Decimal(_a) ** 2 + decimal.Decimal(_b) ** 2).sqrt()
+    for _prec in (10, 28):
+        with decimal.localcontext() as _narrow:
+            _narrow.prec = _prec
+            _want = str(+_true)
+        with decimo.localcontext(prec=_prec):
+            _got = str(decimo.Decimal(_a).hypot(decimo.Decimal(_b)))
+        assert _want == _got, (_a, _b, _prec, _want, _got)
+assert str(decimo.Decimal(3).hypot(decimo.Decimal(4))) == "5", "3-4-5"
+print("[PASS] hypot agrees with Pythagoras in decimal")
+
+# The inverse trigonometric three have no identity in `decimal`, which has no
+# arctangent, so they are checked by the relations between them: the two
+# inverses add to a right angle, the sine undoes the arcsine, and `arctan2`
+# is the arctangent of the ratio where the abscissa is positive. One unit in
+# the last place is allowed, since each side is rounded on its own.
+with decimo.localcontext(prec=34):
+    _half_pi = decimo.pi(34) / 2
+    _ulp = decimo.Decimal("1e-32")
+    for _text in ["0.5", "-0.75", "0", "1", "-1", "0.9999", "1e-20"]:
+        _sum = decimo.Decimal(_text).arcsin() + decimo.Decimal(_text).arccos()
+        assert abs(_sum - _half_pi) <= _ulp, (_text, str(_sum))
+    for _text in ["0.5", "-0.75", "0.9999", "1e-20"]:
+        _back = decimo.Decimal(_text).arcsin().sin()
+        assert abs(_back - decimo.Decimal(_text)) <= _ulp, (_text, str(_back))
+    _ratio = decimo.Decimal(1) / decimo.Decimal(2)
+    assert abs(decimo.Decimal(1).arctan2(decimo.Decimal(2)) - _ratio.arctan()) <= _ulp
+
+# Every quadrant, against `math.atan2`, which fixes the sign conventions.
+for _y, _x in [(1, 1), (1, -1), (-1, -1), (-1, 1), (0, -1), (1, 0), (-1, 0)]:
+    with decimo.localcontext(prec=25):
+        _ours = float(decimo.Decimal(_y).arctan2(decimo.Decimal(_x)))
+    assert math.isclose(_ours, math.atan2(_y, _x), rel_tol=1e-15), (_y, _x)
+print("[PASS] arcsin, arccos and arctan2 by identity and quadrant")
+
+# All sixteen against `math` at float precision, which is the cheapest check
+# that none of them is wired to the wrong function.
+for _name, _stdlib, _text in [
+    ("sin", math.sin, "1.25"),
+    ("cos", math.cos, "1.25"),
+    ("tan", math.tan, "1.25"),
+    ("arctan", math.atan, "1.25"),
+    ("arcsin", math.asin, "0.625"),
+    ("arccos", math.acos, "0.625"),
+    ("expm1", math.expm1, "0.00390625"),
+    ("log1p", math.log1p, "0.00390625"),
+    ("sinh", math.sinh, "1.25"),
+    ("cosh", math.cosh, "1.25"),
+    ("tanh", math.tanh, "1.25"),
+    ("arcsinh", math.asinh, "1.25"),
+    ("arccosh", math.acosh, "1.25"),
+    ("arctanh", math.atanh, "0.625"),
+]:
+    with decimo.localcontext(prec=28):
+        _ours = float(getattr(decimo.Decimal(_text), _name)())
+    assert math.isclose(_ours, _stdlib(float(_text)), rel_tol=1e-15), (
+        _name,
+        _text,
+        _ours,
+        _stdlib(float(_text)),
+    )
+with decimo.localcontext(prec=28):
+    assert math.isclose(
+        float(decimo.Decimal("3.5").hypot(decimo.Decimal("7.25"))),
+        math.hypot(3.5, 7.25),
+        rel_tol=1e-15,
+    )
+print("[PASS] all sixteen agree with math at float precision")
+
+# `rounding=` is decimo's own here too, and the two directed modes have to
+# bracket the default rather than merely differ from it.
+with decimo.localcontext(prec=20):
+    for _call in [
+        lambda x, **kw: x.sinh(**kw),
+        lambda x, **kw: x.tanh(**kw),
+        lambda x, **kw: x.arcsin(**kw),
+        lambda x, **kw: x.log1p(**kw),
+        lambda x, **kw: x.arctan2(decimo.Decimal(3), **kw),
+        lambda x, **kw: x.hypot(decimo.Decimal(3), **kw),
+    ]:
+        _value = decimo.Decimal("0.625")
+        _low = _call(_value, rounding=decimo.ROUND_FLOOR)
+        _high = _call(_value, rounding=decimo.ROUND_CEILING)
+        _mid = _call(_value)
+        assert _low <= _mid <= _high, (str(_low), str(_mid), str(_high))
+        assert _high - _low <= decimo.Decimal("1e-18"), (
+            str(_low),
+            str(_high),
+        )
+    # Positionally the rounding follows the ignored context, as `quantize`'s
+    # does, and a keyword says the same thing.
+    _pair = decimo.Decimal(2).hypot(decimo.Decimal(3), None, decimo.ROUND_FLOOR)
+    assert str(_pair) == str(
+        decimo.Decimal(2).hypot(decimo.Decimal(3), rounding=decimo.ROUND_FLOOR)
+    )
+    # And an `int` converts on the right of the binary two, as it does in an
+    # expression.
+    assert str(decimo.Decimal(3).hypot(4)) == "5"
+    assert str(decimo.Decimal(1).arctan2(1)) == str(
+        decimo.Decimal(1).arctan2(decimo.Decimal(1))
+    )
+print("[PASS] rounding= brackets the answer for the new functions")
+
+# Outside the domain is a ValueError, as it is for sqrt, ln and log10.
+for _text, _name in [
+    ("2", "arcsin"),
+    ("-2", "arccos"),
+    ("0.5", "arccosh"),
+    ("1", "arctanh"),
+    ("-2", "log1p"),
+]:
+    try:
+        getattr(decimo.Decimal(_text), _name)()
+    except ValueError:
+        pass
+    else:
+        raise AssertionError(f"{_name}({_text}) should raise")
+# A missing operand is a TypeError, and so is a keyword the method lacks.
+for _bad in [
+    lambda: decimo.Decimal(1).hypot(),
+    lambda: decimo.Decimal(1).arctan2(),
+    lambda: decimo.Decimal(1).sinh(precision=5),
+    lambda: decimo.Decimal(1).hypot(decimo.Decimal(1), digits=5),
+]:
+    try:
+        _bad()
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("a bad argument list should raise TypeError")
+try:
+    decimo.Decimal(1).sinh(rounding=decimo.ROUND_05UP)
+except NotImplementedError:
+    pass
+else:
+    raise AssertionError("ROUND_05UP should be refused here too")
+print("[PASS] the new functions refuse what they cannot answer")
+
+
 # --- The one program that has to work: the same source, both libraries ---
 def average(mod, values):
     total = mod.Decimal(0)
