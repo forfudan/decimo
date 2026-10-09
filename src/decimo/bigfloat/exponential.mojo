@@ -346,20 +346,110 @@ def expm1_at_width(x: BigFloat, width: Int) raises -> BigFloat:
     if x.is_zero():
         return BigFloat.zero(width, x.sign)
     var scale = fixed_point_scale(x, width)
-    var magnitude = to_fixed_point(x, scale)
+    var total = _expm1_in_fixed_point(to_fixed_point(x, scale), x.sign, scale)
+    return from_fixed_point(abs(total), scale, width, total.sign)
 
+
+def _expm1_in_fixed_point(
+    magnitude: BigInt, negative: Bool, scale: Int
+) raises -> BigInt:
+    """`exp(x) - 1` for `x = (-1)^negative * magnitude * 2^-scale`.
+
+    Args:
+        magnitude: The argument's magnitude, scaled by `2^scale`.
+        negative: The argument's sign.
+        scale: The power of two the argument is scaled by.
+
+    Returns:
+        The sum, scaled by the same power of two, signed, and within as many
+        units of the true value as the series took terms.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+    """
     var total = BigInt.zero()
     var term = magnitude.copy()
     var index = 1
     while True:
-        if x.sign and index % 2 == 1:
+        if negative and index % 2 == 1:
             total -= term
         else:
             total += term
         term = ((term * magnitude) >> scale).truncate_divide(BigInt(index + 1))
         if term.is_zero():
-            return from_fixed_point(abs(total), scale, width, total.sign)
+            return total^
         index += 1
+
+
+def _halvings(scale: Int) -> Int:
+    """How many times to halve an argument before summing its series.
+
+    Args:
+        scale: The bits the sum is taken to. Must not be negative.
+
+    Returns:
+        The integer square root of `scale`, which is where the two costs
+        balance.
+
+    Notes:
+
+    Halving the argument `m` times costs `m` squarings on the way back, and
+    buys a factor of `2^m` in every term, so the series needs about `scale/m`
+    of them instead of `scale`. The two together are smallest at
+    `m = sqrt(scale)`, which turns a cost linear in the precision into one
+    that goes as its square root.
+
+    The root is taken in `Int` by Newton's method rather than through
+    `sqrt_rem()`, because every call makes this choice and a `BigInt` root of
+    a number that fits a machine word costs more than the whole exponential
+    does at 53 bits.
+    """
+    if scale < 2:
+        return 0
+    # `2^ceil(b/2)` is at or above the root of any value of `b` bits, which
+    # is what Newton's method needs to descend to the floor of it.
+    var root = 1 << ((Int(bit_width(UInt(scale))) + 1) // 2)
+    while True:
+        var lowered = (root + scale // root) // 2
+        if lowered >= root:
+            return root
+        root = lowered
+
+
+def _exponential_of_small(x: BigFloat, width: Int) raises -> BigFloat:
+    """`exp(x) - 1` for an `x` below one, by halving, summing and squaring.
+
+    Args:
+        x: The argument, finite, not nought, and below one in magnitude.
+        width: The bits the answer keeps.
+
+    Returns:
+        `exp(x) - 1`, within a couple of units of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    `exp(x)` is `exp(x / 2^m)` squared `m` times, and the halving is exact in
+    a binary float. The series on the halved argument converges `m` bits a
+    term quicker, and `m` squarings put the answer back.
+
+    The squaring is done on `exp(y) - 1` rather than on `exp(y)`, by
+    `u -> 2u + u^2`, for the same reason the series computes a difference
+    from one: a `u` of `2^-m` added to one would lose its last `m` bits
+    before the first squaring ever happened. Each squaring doubles the
+    relative error, so `m` of them cost `m` bits, and the fixed point carries
+    them.
+    """
+    var halvings = _halvings(width)
+    var scale = fixed_point_scale(x, width + halvings + 2)
+    var total = _expm1_in_fixed_point(
+        to_fixed_point(x, scale) >> halvings, x.sign, scale
+    )
+    for _ in range(halvings):
+        total = (total << 1) + ((total * total) >> scale)
+    return from_fixed_point(abs(total), scale, width, total.sign)
 
 
 def atanh_at_width(x: BigFloat, width: Int) raises -> BigFloat:
@@ -500,21 +590,27 @@ def exp_at_width(x: BigFloat, width: Int) raises -> BigFloat:
     var scale = (
         width + Int(bit_width(UInt(width))) + Int(bit_width(UInt(abs(k)))) + 12
     )
-    var logarithm = ln2(scale)
     var reduced = x.copy()
     if k != 0:
+        # The logarithm of two is asked for only here. An argument already
+        # below it needs no reduction, and computing a constant it will not
+        # use costs more than everything else this function does.
         reduced = bigfloat_arithmetics.subtract(
             x,
             bigfloat_arithmetics.multiply(
-                BigFloat.from_int(k, scale), logarithm, scale
+                BigFloat.from_int(k, scale), ln2(scale), scale
             ),
             scale,
         )
 
-    var series = expm1_at_width(reduced, scale)
-    var total = bigfloat_arithmetics.add(
-        BigFloat.from_int(1, scale), series, scale
-    )
+    var total = BigFloat.from_int(1, scale)
+    if not reduced.is_zero():
+        # The series is summed on an argument halved `sqrt(scale)` times and
+        # squared back, which is what makes the cost grow as the square root
+        # of the precision rather than with it. The squarings cost a bit
+        # each, and that is the width they are given.
+        var series = _exponential_of_small(reduced, scale)
+        total = bigfloat_arithmetics.add(total, series, scale)
     if k != 0:
         total = bigfloat_arithmetics.multiply(
             total, BigFloat.power_of_two(k), scale
