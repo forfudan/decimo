@@ -44,7 +44,7 @@ cheaper than a modular exponentiation.
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.bitwise import test_bit, trailing_zeros
 from decimo.bigint.exponential import sqrt_rem
-from decimo.bigint.number_theory import mod_pow
+from decimo.bigint.number_theory import jacobi, mod_pow
 from decimo.biguint.biguint import BigUInt
 from decimo.errors import ValueError
 
@@ -208,65 +208,6 @@ def _miller_rabin(x: BigInt, bases: List[Int]) raises -> Bool:
 # ===----------------------------------------------------------------------=== #
 
 
-def _jacobi_symbol(a: BigInt, n: BigInt) raises -> Int:
-    """The Jacobi symbol of `a` over `n`.
-
-    Args:
-        a: The numerator, of either sign.
-        n: The denominator, which must be odd and positive.
-
-    Returns:
-        `0`, `1` or `-1`.
-
-    Raises:
-        ValueError: If `n` is not odd and positive.
-        Error: Propagated from the arithmetic.
-
-    Notes:
-
-    A negative numerator needs no separate treatment, because the symbol only
-    depends on `a` modulo `n` and the reduction here is a floor modulo, which
-    lands on a non-negative residue.
-
-    This is private because `jacobi`, `legendre` and `kronecker` are a planned
-    piece of work of their own; when they arrive they should take this over
-    rather than repeat it.
-    """
-    if not n.is_positive() or not test_bit(n, 0):
-        raise ValueError(
-            message=(
-                "The denominator of a Jacobi symbol must be odd and positive."
-            ),
-            function="_jacobi_symbol()",
-        )
-
-    var numerator = a % n
-    var denominator = n.copy()
-    var result = 1
-
-    while not numerator.is_zero():
-        # Pull out the factors of two. Two is a quadratic residue modulo an
-        # odd number exactly when that number is one or seven modulo eight,
-        # so each factor flips the sign for the other two cases.
-        var twos = trailing_zeros(numerator)
-        if twos > 0:
-            numerator = numerator >> twos
-            if twos & 1 != 0:
-                var residue = Int(denominator.words[0] & 7)
-                if residue == 3 or residue == 5:
-                    result = -result
-
-        # Reciprocity. Both arguments are odd here, and the sign flips only
-        # when both are three modulo four.
-        if (numerator.words[0] & 3) == 3 and (denominator.words[0] & 3) == 3:
-            result = -result
-        var previous = numerator.copy()
-        numerator = denominator % previous
-        denominator = previous^
-
-    return result if denominator.is_one() else 0
-
-
 def _half_modulo(x: BigInt, n: BigInt) raises -> BigInt:
     """Halves `x` modulo an odd `n`.
 
@@ -344,7 +285,7 @@ def _strong_lucas_probable_prime(x: BigInt) raises -> Bool:
     var discriminant = BigInt(5)
     var found = False
     for attempt in range(_LUCAS_DISCRIMINANT_TRIES):
-        var symbol = _jacobi_symbol(discriminant, x)
+        var symbol = jacobi(discriminant, x)
         if symbol == -1:
             found = True
             break

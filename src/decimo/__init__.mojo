@@ -59,7 +59,18 @@ from .rounding_mode import (
 )
 
 # Core functions
-from .bigint.number_theory import gcd, lcm, extended_gcd, mod_inverse, mod_pow
+from .bigint.number_theory import (
+    crt,
+    extended_gcd,
+    gcd,
+    jacobi,
+    kronecker,
+    lcm,
+    legendre,
+    mod_inverse,
+    mod_pow,
+    sqrt_mod,
+)
 from .bigint.primality import is_prime, next_prime, prev_prime, primes_below
 from .bigint.factorization import (
     Factorization,

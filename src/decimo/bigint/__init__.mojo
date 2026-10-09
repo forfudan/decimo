@@ -31,7 +31,8 @@ Modules:
 - bitwise: AND, OR, XOR, NOT (Python two's complement semantics)
 - comparison: compare, greater, less, equal
 - exponential: sqrt, isqrt
-- number_theory: gcd, extended_gcd, lcm, mod_pow, mod_inverse
+- number_theory: gcd, extended_gcd, lcm, mod_pow, mod_inverse, jacobi,
+  legendre, kronecker, sqrt_mod, crt
 - primality: is_prime, next_prime, prev_prime, primes_below
 - factorization: factor, divisors, divisor_count, divisor_sum, euler_phi,
   moebius, multiplicative_order
