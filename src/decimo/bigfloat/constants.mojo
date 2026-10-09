@@ -15,7 +15,7 @@
 # ===----------------------------------------------------------------------=== #
 
 
-"""Pi, the natural logarithm of two, and Euler's number, in binary.
+"""Pi, the natural logarithms of two and of ten, and Euler's number, in binary.
 
 Each is computed rather than quoted, by a series whose terms are integers in
 a fixed-point scale of two. Working in integers is what makes the error
@@ -26,14 +26,17 @@ what is asked for to leave the total well under a unit of that.
 The series are the classical ones. Pi is Machin's, sixteen arctangents of a
 fifth less four of a two-hundred-and-thirty-ninth, which costs about a term
 for every five bits. The logarithm of two is twice the inverse hyperbolic
-tangent of a third, about a term for every three. Euler's number is the sum
-of the reciprocal factorials, which costs fewer terms than either because the
-terms fall away faster.
+tangent of a third, about a term for every three. The logarithm of ten is
+`3 ln 2 + 2 atanh(1/9)`, since `10` is `8 * 5/4` and `atanh(1/9)` is half the
+logarithm of `5/4`; the second series costs a term for every six bits, so the
+whole constant costs little more than the logarithm of two does. Euler's
+number is the sum of the reciprocal factorials, which costs fewer terms than
+either because the terms fall away faster.
 
-None of the three is cached. Each call recomputes, which matters once the
-exponential and the logarithm start asking for the logarithm of two on every
-call, and a cache is the obvious next thing. It is left out here because a
-process-wide one is shared mutable state and deserves its own change.
+Each is cached process-wide at the widest width it has been asked for, which
+is what keeps the exponential and the logarithm from recomputing the
+logarithm of two on every call and at every step of the loop that decides a
+rounding.
 """
 
 from std.atomic import Atomic
@@ -200,6 +203,44 @@ def _ln2_computed(width: Int) raises -> BigFloat:
     return BigFloat.from_rounded_parts(total, -scale, width, False)
 
 
+def _ln10_computed(width: Int) raises -> BigFloat:
+    """The natural logarithm of ten to `width` bits.
+
+    Args:
+        width: The bits wanted.
+
+    Returns:
+        The logarithm, within `_CONSTANT_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    `ln 10` is `3 ln 2 + ln(5/4)`, because ten is eight times five quarters,
+    and both logarithms are inverse hyperbolic tangents of a reciprocal:
+    `ln 2` is `2 atanh(1/3)` and `ln(5/4)` is `2 atanh(1/9)`. So the whole
+    constant is `6 atanh(1/3) + 2 atanh(1/9)`.
+
+    Writing it that way rather than as `ln 2 + ln 5` is what keeps the
+    denominators large. A series on a reciprocal of `d` gains `2 log2(d)`
+    bits a term, so the ninth costs a term for every six bits where `ln 5`
+    taken directly would need an argument of `2/3` and no series at all.
+
+    The two kernels each come in below the true value by less than two units
+    of the working scale, so the combination is below by less than sixteen,
+    and the scale carries `bit_width(width) + 8` bits beyond what is returned
+    -- so those sixteen units are at most a sixteenth of one unit of the last
+    place here, and the one rounding on the way out is what the stated bound
+    is really for.
+    """
+    var scale = _working_width(width)
+    var total = BigInt(6) * _arctangent_hyperbolic_of_reciprocal(
+        3, scale
+    ) + BigInt(2) * _arctangent_hyperbolic_of_reciprocal(9, scale)
+    return BigFloat.from_rounded_parts(total, -scale, width, False)
+
+
 def _e_computed(width: Int) raises -> BigFloat:
     """Euler's number to `width` bits, as the sum of the reciprocal factorials.
 
@@ -240,7 +281,7 @@ floor and a doubling it would recompute the constant at every step.
 
 
 struct _ConstantCache(Movable):
-    """The three constants at the widest width each has been asked for.
+    """The four constants at the widest width each has been asked for.
 
     A value held at `w` bits answers any request for `w` or fewer: truncating
     it costs less than a unit in the last place of the narrower width, and a
@@ -250,7 +291,10 @@ struct _ConstantCache(Movable):
     var busy: Atomic[Int64]
     """Nought when no thread is inside the cache."""
     var value: List[BigFloat]
-    """Pi, the logarithm of two, and the number, in that order.
+    """Pi, the logarithm of two, the number, and the logarithm of ten.
+
+    The logarithm of ten sits last rather than beside the logarithm of two,
+    so that the three slots that were here before keep the indices they had.
 
     Empty until the first constant is stored, because building a `BigFloat`
     to hold a place can raise and the global's factory cannot.
@@ -262,7 +306,7 @@ struct _ConstantCache(Movable):
         """An empty cache."""
         self.busy = Atomic[Int64](0)
         self.value = List[BigFloat]()
-        self.width = [0, 0, 0]
+        self.width = [0, 0, 0, 0]
 
 
 def _make_constant_cache() -> _ConstantCache:
@@ -291,10 +335,11 @@ which documents itself as unsafe to use from two threads at once.
 
 
 def _computed(which: Int, width: Int) raises -> BigFloat:
-    """One of the three constants, computed rather than remembered.
+    """One of the four constants, computed rather than remembered.
 
     Args:
-        which: Nought for pi, one for the logarithm of two, two for the number.
+        which: Nought for pi, one for the logarithm of two, two for the
+            number, three for the logarithm of ten.
         width: The bits wanted.
 
     Returns:
@@ -307,14 +352,17 @@ def _computed(which: Int, width: Int) raises -> BigFloat:
         return _pi_computed(width)
     if which == 1:
         return _ln2_computed(width)
-    return _e_computed(width)
+    if which == 2:
+        return _e_computed(width)
+    return _ln10_computed(width)
 
 
 def _cached(which: Int, width: Int) raises -> BigFloat:
-    """One of the three constants, from the cache where the cache has it.
+    """One of the four constants, from the cache where the cache has it.
 
     Args:
-        which: Nought for pi, one for the logarithm of two, two for the number.
+        which: Nought for pi, one for the logarithm of two, two for the
+            number, three for the logarithm of ten.
         width: The bits wanted.
 
     Returns:
@@ -350,11 +398,10 @@ def _cached(which: Int, width: Int) raises -> BigFloat:
     try:
         var fresh = _computed(which, target)
         if len(cache[].value) == 0:
-            # The three slots are filled on the first store, since the cache
+            # The four slots are filled on the first store, since the cache
             # cannot build a placeholder without a precision to build it at.
-            cache[].value.append(fresh.copy())
-            cache[].value.append(fresh.copy())
-            cache[].value.append(fresh.copy())
+            for _ in range(len(cache[].width)):
+                cache[].value.append(fresh.copy())
         cache[].value[which] = fresh.copy()
         cache[].width[which] = target
         _ = cache[].busy.fetch_sub(1)
@@ -398,6 +445,21 @@ def _ln2_kernel(width: Int) raises -> BigFloat:
         Error: Propagated from the arithmetic.
     """
     return _cached(1, width)
+
+
+def _ln10_kernel(width: Int) raises -> BigFloat:
+    """The natural logarithm of ten to `width` bits, from the cache.
+
+    Args:
+        width: The bits wanted.
+
+    Returns:
+        The value, within `_CONSTANT_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+    """
+    return _cached(3, width)
 
 
 def _e_kernel(width: Int) raises -> BigFloat:
@@ -488,5 +550,35 @@ def e(
     """
     _ = checked_precision(precision, "e()")
     return round_by_deciding[_e_kernel, _CONSTANT_SLACK](
+        precision, rounding_mode
+    )
+
+
+def ln10(
+    precision: Int,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) raises -> BigFloat:
+    """The natural logarithm of ten, correctly rounded.
+
+    Args:
+        precision: The number of bits wanted. Must be positive.
+        rounding_mode: How to round.
+
+    Returns:
+        The float of `precision` bits nearest the logarithm.
+
+    Raises:
+        ValueError: If `precision` is not positive, or above
+            `MAX_PRECISION`.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    This is what `log10()` divides by, as `ln2()` is what `log2()` divides
+    by. It is here rather than computed inside that function so that it is
+    cached with the others and so that it can be asked for on its own.
+    """
+    _ = checked_precision(precision, "ln10()")
+    return round_by_deciding[_ln10_kernel, _CONSTANT_SLACK](
         precision, rounding_mode
     )

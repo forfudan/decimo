@@ -724,6 +724,135 @@ struct BigFloat(
         """
         return bigfloat_exponential.sqrt(self, self.precision)
 
+    # ===------------------------------------------------------------------=== #
+    # The exponentials and the logarithms
+    # ===------------------------------------------------------------------=== #
+    #
+    # Each of these is the free function in `decimo.bigfloat.exponential` asked
+    # for this value's own precision and for the default rounding. A caller who
+    # wants another precision or another mode calls the free function, which is
+    # where every argument lives; these are here so that the common case reads
+    # as a method, the way `sqrt` does.
+
+    def exp(self) raises -> Self:
+        """`e` to the power of this value, correctly rounded.
+
+        Returns:
+            The value at this value's own precision, rounded half to even.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.exp(self, self.precision)
+
+    def exp2(self) raises -> Self:
+        """Two to the power of this value, correctly rounded.
+
+        Returns:
+            The value at this value's own precision, rounded half to even. A
+            whole exponent gives an exact answer.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.exp2(self, self.precision)
+
+    def exp10(self) raises -> Self:
+        """Ten to the power of this value, correctly rounded.
+
+        Returns:
+            The value at this value's own precision, rounded half to even. A
+            whole exponent at nought or above gives an exact answer.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.exp10(self, self.precision)
+
+    def expm1(self) raises -> Self:
+        """`exp(x) - 1`, correctly rounded, without the cancellation.
+
+        Returns:
+            The value at this value's own precision, rounded half to even.
+            This keeps every bit of a small argument, where `exp(x) - 1`
+            computed as it reads keeps none.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.expm1(self, self.precision)
+
+    def ln(self) raises -> Self:
+        """The natural logarithm of this value, correctly rounded.
+
+        Returns:
+            The logarithm at this value's own precision, rounded half to even.
+            A negative value gives a NaN and a zero a negative infinity,
+            rather than raising.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.ln(self, self.precision)
+
+    def log2(self) raises -> Self:
+        """The base-two logarithm of this value, correctly rounded.
+
+        Returns:
+            The logarithm at this value's own precision, rounded half to even.
+            A power of two gives an exact answer.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.log2(self, self.precision)
+
+    def log10(self) raises -> Self:
+        """The base-ten logarithm of this value, correctly rounded.
+
+        Returns:
+            The logarithm at this value's own precision, rounded half to even.
+            A power of ten gives an exact answer.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.log10(self, self.precision)
+
+    def log(self, base: Self) raises -> Self:
+        """The logarithm of this value in an arbitrary base, correctly rounded.
+
+        Args:
+            base: The base, which must be finite, positive and not one.
+
+        Returns:
+            The logarithm at the wider of the two precisions, rounded half to
+            even. An exactly representable answer is exact. A base that is
+            not a base gives a NaN rather than raising.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.log(
+            self,
+            base,
+            self.precision if self.precision
+            > base.precision else (base.precision),
+        )
+
+    def log1p(self) raises -> Self:
+        """`ln(1 + x)`, correctly rounded, without the cancellation.
+
+        Returns:
+            The logarithm at this value's own precision, rounded half to even.
+            This keeps every bit of a small argument, where `ln(1 + x)`
+            computed as it reads keeps none.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.log1p(self, self.precision)
+
     def __truediv__(self, other: Self) raises -> Self:
         """The quotient, correctly rounded.
 
