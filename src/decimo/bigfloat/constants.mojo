@@ -87,7 +87,7 @@ def _arctangent_of_reciprocal(denominator: Int, width: Int) raises -> BigInt:
         width: The scale, in bits.
 
     Returns:
-        The scaled value, below the true one by less than two units.
+        The scaled value, within a few units of the true one on either side.
 
     Raises:
         Error: Propagated from the arithmetic.
@@ -99,6 +99,13 @@ def _arctangent_of_reciprocal(denominator: Int, width: Int) raises -> BigInt:
     odd number so that the two errors do not compound: the power's own error
     is divided by `d^2` at every step and so stays below one unit, and each
     term adds at most one more of its own.
+
+    The bound is two-sided, unlike the hyperbolic one next door. These terms
+    alternate, so stopping between two of them can leave the sum above the
+    true value as easily as below: at a width of two bits and a denominator
+    of two the sum stops after its first term and is above. The callers ask
+    for a scale far wider than the answer they keep, so a unit here is
+    nothing there, but the claim has to say which way it can go.
     """
     var square = BigInt(denominator * denominator)
     var power = (BigInt.one() << width).truncate_divide(BigInt(denominator))
@@ -136,7 +143,9 @@ def _arctangent_hyperbolic_of_reciprocal(
     Notes:
 
     The same series as the arctangent with every sign positive, which is what
-    the hyperbolic one is.
+    the hyperbolic one is. Here the bound really is one-sided: every term
+    left out is positive and every division truncates, so both errors pull
+    the sum the same way, down.
     """
     var square = BigInt(denominator * denominator)
     var power = (BigInt.one() << width).truncate_divide(BigInt(denominator))
