@@ -15,7 +15,7 @@
 # ===----------------------------------------------------------------------=== #
 
 
-"""The square root of a binary float.
+"""The square root of a binary float, and the loop that decides a rounding.
 
 A square root is algebraic, so unlike the transcendental functions it needs
 no loop that computes more digits until the answer settles: the integer
@@ -32,6 +32,7 @@ make room for the precision asked for.
 
 from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigfloat.rounding import checked_precision
+from decimo.bigint.bigint import BigInt
 from decimo.bigint.exponential import sqrt_rem
 from decimo.rounding_mode import RoundingMode
 
@@ -115,3 +116,122 @@ def sqrt(
                 not parts[1].is_zero(),
             )
         scale += precision + 32
+
+
+# ===----------------------------------------------------------------------=== #
+# Deciding a rounding
+# ===----------------------------------------------------------------------=== #
+#
+# A square root is exact and needs none of this. A transcendental value is
+# not: it can only be computed to some width with some error, and rounding
+# what comes back is a guess unless the error is accounted for. The way out is
+# Ziv's: compute wider than asked, ask whether every value the error allows
+# rounds the same way, and widen again if they do not.
+
+
+comptime _ZIV_START = 12
+"""Bits asked for beyond the caller's precision on the first attempt.
+
+With a kernel good to two units in the last place of the width it is given,
+the interval to check spans four of them, so the check fails only when a
+rounding boundary lies within `4 * 2^-start` of the answer -- about one call
+in a thousand here. Twelve bits of extra work is nothing next to a retry, and
+a retry is what fewer bits would buy more often.
+"""
+
+comptime _ZIV_LIMIT = 8
+"""How many times the width may grow before giving up.
+
+The loop always ends long before this. It is here so that a kernel whose
+error is larger than it claims ends in an error rather than in a hang.
+"""
+
+
+def _settled(
+    wide: BigFloat,
+    width: Int,
+    slack: Int,
+    precision: Int,
+    rounding_mode: RoundingMode,
+) raises -> Optional[BigFloat]:
+    """The answer, if every value the kernel's error allows rounds to it.
+
+    Args:
+        wide: What the kernel returned, of `width` bits.
+        width: The number of bits it was asked for.
+        slack: Units in the last place of `width` the kernel may be off by.
+        precision: The number of bits wanted.
+        rounding_mode: How to round.
+
+    Returns:
+        The rounded value when both ends of `wide +/- slack` round to it, and
+        nothing when the interval straddles a boundary, where the answer is
+        not yet decided.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    The two ends are magnitudes, and rounding is monotonic in the magnitude
+    for a fixed sign, so agreeing at the ends means agreeing throughout. They
+    are built in one bit more than `width` because adding the slack can carry
+    and taking it away can borrow, and neither is to be rounded here.
+    """
+    var reach = BigInt(slack)
+    var low = BigFloat.from_rounded_parts(
+        wide.significand - reach, wide.exponent, width + 1, wide.sign
+    )
+    var high = BigFloat.from_rounded_parts(
+        wide.significand + reach, wide.exponent, width + 1, wide.sign
+    )
+    var low_rounded = BigFloat.from_rounded_parts(
+        low.significand, low.exponent, precision, low.sign, rounding_mode
+    )
+    var high_rounded = BigFloat.from_rounded_parts(
+        high.significand, high.exponent, precision, high.sign, rounding_mode
+    )
+    if (
+        low_rounded.significand == high_rounded.significand
+        and low_rounded.exponent == high_rounded.exponent
+    ):
+        return low_rounded^
+    return None
+
+
+def round_by_deciding[
+    kernel: def(Int) thin raises -> BigFloat, slack: Int
+](precision: Int, rounding_mode: RoundingMode) raises -> BigFloat:
+    """`kernel`'s value rounded to `precision` bits, decided and not assumed.
+
+    Parameters:
+        kernel: What to evaluate. It takes a width in bits and returns a
+            value of that many bits, within `slack` units of the last place
+            of the true one.
+        slack: The bound the kernel keeps to.
+
+    Args:
+        precision: The number of bits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The correctly rounded value.
+
+    Raises:
+        Error: If the kernel raises, or if the width grows `_ZIV_LIMIT` times
+            without the rounding settling, which would mean the kernel is
+            further off than `slack` allows.
+    """
+    _ = checked_precision(precision, "round_by_deciding()")
+    var width = precision + _ZIV_START
+    for _ in range(_ZIV_LIMIT):
+        var settled = _settled(
+            kernel(width), width, slack, precision, rounding_mode
+        )
+        if settled:
+            return settled.take()
+        width += width - precision
+    raise Error(
+        "the rounding of this value could not be decided; the kernel is"
+        " further from the true value than its stated bound allows"
+    )
