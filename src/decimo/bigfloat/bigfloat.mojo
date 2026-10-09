@@ -46,6 +46,7 @@ from decimo.bigfloat.conversion import (
     to_exact_bigdecimal,
 )
 import decimo.bigfloat.exponential as bigfloat_exponential
+import decimo.bigfloat.ieee as bigfloat_ieee
 from decimo.bigfloat.rounding import (
     checked_precision,
     round_to_precision,
@@ -829,6 +830,283 @@ struct BigFloat(
 
         """
         return bigfloat_comparison.greater_equal(self, other)
+
+    # ===------------------------------------------------------------------=== #
+    # The IEEE 754 companion operations
+    # ===------------------------------------------------------------------=== #
+    #
+    # Every one of these is a line of delegation to `decimo.bigfloat.ieee`,
+    # where the reasoning lives. They are here because a caller holding a
+    # value reaches for `x.logb()` before reaching for a module.
+
+    def next_plus(self, precision: Int) raises -> Self:
+        """The smallest representable value above this one.
+
+        Args:
+            precision: The bits a value may hold.
+
+        Returns:
+            The next value toward positive infinity, at `precision` bits.
+
+        Raises:
+            Error: Propagated from `ieee.next_plus()`.
+        """
+        return bigfloat_ieee.next_plus(self, precision)
+
+    def next_minus(self, precision: Int) raises -> Self:
+        """The largest representable value below this one.
+
+        Args:
+            precision: The bits a value may hold.
+
+        Returns:
+            The next value toward negative infinity, at `precision` bits.
+
+        Raises:
+            Error: Propagated from `ieee.next_minus()`.
+        """
+        return bigfloat_ieee.next_minus(self, precision)
+
+    def next_toward(self, other: Self, precision: Int) raises -> Self:
+        """The value next to this one in the direction of `other`.
+
+        Args:
+            other: The value that gives the direction.
+            precision: The bits a value may hold.
+
+        Returns:
+            This value stepped one place toward `other`, or itself with
+            `other`'s sign when the two are numerically equal.
+
+        Raises:
+            Error: Propagated from `ieee.next_toward()`.
+        """
+        return bigfloat_ieee.next_toward(self, other, precision)
+
+    def logb(self) raises -> BigInt:
+        """Where this value's leading bit sits, which is `floor(log2(|x|))`.
+
+        Returns:
+            The position as a power of two, in a `BigInt` because the sum
+            that gives it can leave an `Int`.
+
+        Raises:
+            Error: Propagated from `ieee.logb()`, which refuses a zero, an
+                infinity and a NaN.
+        """
+        return bigfloat_ieee.logb(self)
+
+    def scaleb(self, n: Int) raises -> Self:
+        """This value times `2^n`, exactly.
+
+        Args:
+            n: The power of two to scale by.
+
+        Returns:
+            The scaled value, at this one's own precision.
+
+        Raises:
+            Error: Propagated from `ieee.scaleb()`.
+        """
+        return bigfloat_ieee.scaleb(self, n)
+
+    def copy_sign(self, other: Self) -> Self:
+        """This value with the sign of `other`.
+
+        Args:
+            other: The value whose sign is taken.
+
+        Returns:
+            A copy carrying `other`'s sign.
+        """
+        return bigfloat_ieee.copy_sign(self, other)
+
+    def copy_abs(self) -> Self:
+        """This value without its sign.
+
+        Returns:
+            A copy with a positive sign, which is `abs(self)`.
+        """
+        return bigfloat_ieee.copy_abs(self)
+
+    def copy_negate(self) -> Self:
+        """This value with its sign flipped.
+
+        Returns:
+            A copy with the other sign, which is `-self`.
+        """
+        return bigfloat_ieee.copy_negate(self)
+
+    def number_class(self) -> String:
+        """The specification's name for what kind of number this is.
+
+        Returns:
+            One of `NaN`, `-Infinity`, `-Normal`, `-Zero`, `+Zero`,
+            `+Normal` and `+Infinity`.
+        """
+        return bigfloat_ieee.number_class(self)
+
+    def is_integer(self) -> Bool:
+        """Whether this value is a whole number.
+
+        Returns:
+            True when it is finite and has no fractional part.
+        """
+        return bigfloat_ieee.is_integer(self)
+
+    def truncate(self) raises -> Self:
+        """This value with its fractional part removed.
+
+        Returns:
+            The whole number nearest it in the direction of zero, at its own
+            precision.
+
+        Raises:
+            Error: Propagated from `ieee.truncate()`.
+        """
+        return bigfloat_ieee.truncate(self)
+
+    def floor(self) raises -> Self:
+        """The largest whole number at or below this value.
+
+        Returns:
+            The floor, at this value's own precision.
+
+        Raises:
+            Error: Propagated from `ieee.floor()`.
+        """
+        return bigfloat_ieee.floor(self)
+
+    def ceil(self) raises -> Self:
+        """The smallest whole number at or above this value.
+
+        Returns:
+            The ceiling, at this value's own precision.
+
+        Raises:
+            Error: Propagated from `ieee.ceil()`.
+        """
+        return bigfloat_ieee.ceil(self)
+
+    def round_to_integer(
+        self, rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN
+    ) raises -> Self:
+        """This value rounded to a whole number in any of the seven modes.
+
+        Args:
+            rounding_mode: Which way to round.
+
+        Returns:
+            The whole number the mode asks for, at this value's own
+            precision.
+
+        Raises:
+            Error: Propagated from `ieee.round_to_integer()`.
+        """
+        return bigfloat_ieee.round_to_integer(self, rounding_mode)
+
+    def __trunc__(self) raises -> Self:
+        """This value truncated toward zero.
+
+        Returns:
+            What `truncate()` returns, under the name `math.trunc()` asks
+            for.
+
+        Raises:
+            Error: Propagated from `truncate()`.
+        """
+        return self.truncate()
+
+    def __floor__(self) raises -> Self:
+        """The largest whole number at or below this value.
+
+        Returns:
+            What `floor()` returns, under the name `math.floor()` asks for.
+
+        Raises:
+            Error: Propagated from `floor()`.
+        """
+        return self.floor()
+
+    def __ceil__(self) raises -> Self:
+        """The smallest whole number at or above this value.
+
+        Returns:
+            What `ceil()` returns, under the name `math.ceil()` asks for.
+
+        Raises:
+            Error: Propagated from `ceil()`.
+        """
+        return self.ceil()
+
+    def fma(
+        self,
+        other: Self,
+        third: Self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """`self * other + third` with a single rounding.
+
+        Args:
+            other: The value to multiply by.
+            third: The value to add to the product.
+            precision: How many bits the result keeps.
+            rounding_mode: Which way to round, once.
+
+        Returns:
+            The float of `precision` bits nearest the exact value, the
+            product having been formed without rounding.
+
+        Raises:
+            Error: Propagated from `ieee.fma()`.
+        """
+        return bigfloat_ieee.fma(self, other, third, precision, rounding_mode)
+
+    def remainder(
+        self,
+        other: Self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """IEEE 754's remainder: `self - other * n`, `n` the nearest integer.
+
+        Args:
+            other: The divisor.
+            precision: How many bits the result keeps.
+            rounding_mode: Which way to round, which only a destination too
+                narrow to hold the answer ever consults.
+
+        Returns:
+            The remainder, at most half of `other` in magnitude.
+
+        Raises:
+            Error: Propagated from `ieee.remainder()`.
+        """
+        return bigfloat_ieee.remainder(self, other, precision, rounding_mode)
+
+    def fmod(
+        self,
+        other: Self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """C's `fmod`: `self - other * n`, `n` the quotient truncated.
+
+        Args:
+            other: The divisor.
+            precision: How many bits the result keeps.
+            rounding_mode: Which way to round, which only a destination too
+                narrow to hold the answer ever consults.
+
+        Returns:
+            The remainder, with this value's sign and a magnitude below
+            `other`'s.
+
+        Raises:
+            Error: Propagated from `ieee.fmod()`.
+        """
+        return bigfloat_ieee.fmod(self, other, precision, rounding_mode)
 
     # ===------------------------------------------------------------------=== #
     # Decimal
