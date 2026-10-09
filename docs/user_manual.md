@@ -48,6 +48,8 @@ from decimo.prelude import *
   - [Construction — BigFloat](#construction--bigfloat)
   - [How Rounding Works — BigFloat](#how-rounding-works--bigfloat)
   - [Mathematical Functions — BigFloat](#mathematical-functions--bigfloat)
+  - [The Other Bases, and the Exact Answers — BigFloat](#the-other-bases-and-the-exact-answers--bigfloat)
+  - [Holding On Near Zero — BigFloat](#holding-on-near-zero--bigfloat)
   - [Special Values — BigFloat](#special-values--bigfloat)
   - [The IEEE 754 Companions — BigFloat](#the-ieee-754-companions--bigfloat)
   - [Decimal In, Decimal Out — BigFloat](#decimal-in-decimal-out--bigfloat)
@@ -1351,16 +1353,18 @@ tried again. This is Ziv's method, and it is why the last bit can be trusted.
 
 ### Mathematical Functions — BigFloat
 
-| Function                              | Where                            |
-| ------------------------------------- | -------------------------------- |
-| `add`, `subtract`, `multiply`, `divide` | `decimo.bigfloat.arithmetics`  |
-| `sqrt`, `exp`, `ln`                   | `decimo.bigfloat.exponential`    |
-| `sin`, `cos`, `tan`                   | `decimo.bigfloat.trigonometric`  |
-| `arcsin`, `arccos`, `arctan`          | `decimo.bigfloat.trigonometric`  |
-| `sinh`, `cosh`, `tanh`                | `decimo.bigfloat.hyperbolic`     |
-| `arcsinh`, `arccosh`, `arctanh`       | `decimo.bigfloat.hyperbolic`     |
-| `pi`, `ln2`, `e`                      | `decimo.bigfloat.constants`      |
-| `fma`, `remainder`, `fmod`            | `decimo.bigfloat.ieee`           |
+| Function                                | Where                           |
+| --------------------------------------- | ------------------------------- |
+| `add`, `subtract`, `multiply`, `divide`  | `decimo.bigfloat.arithmetics`   |
+| `sqrt`, `exp`, `ln`                      | `decimo.bigfloat.exponential`   |
+| `exp2`, `exp10`, `log2`, `log10`, `log`  | `decimo.bigfloat.exponential`   |
+| `expm1`, `log1p`                         | `decimo.bigfloat.exponential`   |
+| `sin`, `cos`, `tan`                      | `decimo.bigfloat.trigonometric` |
+| `arcsin`, `arccos`, `arctan`             | `decimo.bigfloat.trigonometric` |
+| `sinh`, `cosh`, `tanh`                   | `decimo.bigfloat.hyperbolic`    |
+| `arcsinh`, `arccosh`, `arctanh`          | `decimo.bigfloat.hyperbolic`    |
+| `pi`, `ln2`, `ln10`, `e`                 | `decimo.bigfloat.constants`     |
+| `fma`, `remainder`, `fmod`               | `decimo.bigfloat.ieee`          |
 
 ```mojo
 from decimo.bigfloat.constants import pi
@@ -1379,6 +1383,79 @@ counted from the argument rather than fixed — `sin(2^300)` fetches three
 hundred bits of pi before the first bit of its answer is right. An argument
 whose leading bit sits beyond what a precision may be is refused rather than
 answered badly.
+
+Each function also has a method, which asks for this value's own precision and
+the default rounding; the free function is where the precision and the mode
+live:
+
+```mojo
+print(BigFloat.from_int(8, 53).log2())        # 3
+print(BigFloat.from_int(10, 53).log10())      # 1
+print(BigFloat.from_int(27, 53).log(BigFloat.from_int(3, 53)))  # 3
+```
+
+### The Other Bases, and the Exact Answers — BigFloat
+
+`log2`, `log10`, `log`, `exp2` and `exp10` have something the natural
+exponential and logarithm do not: arguments whose answers a float holds
+exactly. `log2(8)` is three, and three is a float.
+
+That matters because a correctly rounded transcendental function works by
+deciding its rounding rather than assuming it — evaluating wider than asked
+until every value the error allows rounds the same way. An answer sitting
+exactly on a representable value can never be decided that way, however wide
+the evaluation goes, because there are values on both sides of it that round
+differently. So those arguments are recognized first, from the integer
+significand, and answered exactly:
+
+```mojo
+from decimo.bigfloat.exponential import exp2, log, log10, log2
+
+print(log2(BigFloat.power_of_two(-70), 53))        # exactly -70
+print(log10(BigFloat.from_int(1000), 53))          # exactly 3
+print(log(BigFloat.from_int(27), BigFloat.from_int(3), 53))   # exactly 3
+print(log(BigFloat.from_int(3), BigFloat.from_int(9), 53))    # exactly 0.5
+print(exp2(BigFloat.from_int(10), 53))             # exactly 1024
+```
+
+Which arguments those are has an exact answer in each case, and each is worth
+knowing:
+
+- `log2(x)` is exact exactly when `x` is a power of two, which is every
+  argument whose significand is a single bit, at any exponent.
+- `log10(x)` is exact exactly when `x` is `10^k` for a `k` at nought or above.
+  A negative power of ten is not a binary float at all — a fifth is not a
+  dyadic rational — so `log10` of the float nearest a thousandth is
+  irrational and a hair away from `-3`, and it is answered by the series.
+- `log(x, base)` is exact whenever the answer is exactly representable, which
+  includes `log(3, 9) = 0.5` and not only the whole answers. An answer that is
+  exact but not representable, like `log(9, 27) = 2/3`, goes through the
+  series and comes back correctly rounded like any other.
+- `exp2(x)` is exact exactly when `x` is a whole number, and `exp10(x)` when
+  `x` is a whole number at nought or above and `10^x` still fits the precision
+  asked for. Past that `10^x` is not representable, so the series settles on
+  it.
+- `expm1` and `log1p` are exact only at zero, where both are zero with the
+  sign of the argument, and `expm1(-Infinity)` which is exactly minus one.
+
+### Holding On Near Zero — BigFloat
+
+`expm1` is `exp(x) - 1` and `log1p` is `ln(1 + x)`, and both exist because the
+expressions they are named after throw their answers away for a small
+argument. `exp(2^-100)` rounds to one, so the difference is nought where the
+answer is `2^-100`; `1 + 2^-100` rounds to one, so the logarithm is nought
+too. These two compute the difference and the logarithm directly:
+
+```mojo
+from decimo.bigfloat.exponential import expm1, log1p
+
+var tiny = BigFloat.power_of_two(-100000)
+print(expm1(tiny, 53).internal_representation())   # 2^-100000, not nought
+print(log1p(tiny, 53).internal_representation())   # and a hair under it
+```
+
+They are also what the hyperbolic functions are built on, which is why
+`sinh(2^-100000)` is `2^-100000` rather than zero.
 
 ### Special Values — BigFloat
 
@@ -1525,9 +1602,13 @@ from decimo.mpf.mpf import MPF
 # Number-theory free functions
 from decimo import gcd, lcm, extended_gcd, mod_pow, mod_inverse
 
-# BigFloat's IEEE 754 companions, also methods on the value
-from decimo import fma, logb, next_plus, remainder, scaleb
+# The binary float's own functions live in their modules; the top
+# level exports the type and not its functions
+from decimo.bigfloat import exp, exp2, exp10, expm1, ln, ln10, log
+from decimo.bigfloat import log1p, log2, log10, sqrt
 from decimo.bigfloat import ceil, floor, number_class, truncate
+from decimo.bigfloat import fma, logb, next_plus, remainder, scaleb
+from decimo.bigfloat.trigonometric import cos, sin, tan
 
 # Chinese numerals: the style presets are re-exported at the top level, the
 # string-level engine lives in the `decimo.numerals` sub-package
@@ -1651,11 +1732,17 @@ the float of that precision nearest the true value.
 | `multiply`, `divide`              | `decimo.bigfloat.arithmetics`   |
 | `sqrt`                            | `decimo.bigfloat.exponential`   |
 | `exp`, `ln`                       | `decimo.bigfloat.exponential`   |
+| `exp2`, `exp10`                   | `decimo.bigfloat.exponential`   |
+| `log2`, `log10`, `log`            | `decimo.bigfloat.exponential`   |
+| `expm1`, `log1p`                  | `decimo.bigfloat.exponential`   |
 | `sin`, `cos`, `tan`               | `decimo.bigfloat.trigonometric` |
 | `arcsin`, `arccos`, `arctan`      | `decimo.bigfloat.trigonometric` |
 | `sinh`, `cosh`, `tanh`            | `decimo.bigfloat.hyperbolic`    |
 | `arcsinh`, `arccosh`, `arctanh`   | `decimo.bigfloat.hyperbolic`    |
-| `pi`, `ln2`, `e`                  | `decimo.bigfloat.constants`     |
+| `pi`, `ln2`, `ln10`, `e`          | `decimo.bigfloat.constants`     |
+
+`log` takes the base as its second argument, before the precision. Every other
+one takes the argument, the precision and the mode.
 | `fma`, `remainder`, `fmod`        | `decimo.bigfloat.ieee`          |
 
 These take no rounding mode, or no precision, because their answers are exact
@@ -1688,6 +1775,11 @@ or carry the argument's own precision. All of them are in
 | `a.truncate()`, `a.floor()`, `a.ceil()` | Rounded to a whole number       |
 | `a.round_to_integer(mode)`     | The same in any mode                     |
 | `a.number_class()`, `a.is_integer()` | What kind of value it is           |
+| `a.exp()`, `a.ln()`            | The same                                 |
+| `a.exp2()`, `a.exp10()`        | The same; a whole exponent is exact      |
+| `a.log2()`, `a.log10()`        | The same; a whole power of the base is exact |
+| `a.log(base)`                  | At the wider precision, half to even     |
+| `a.expm1()`, `a.log1p()`       | The same; these keep a small argument    |
 | `a.to_bigdecimal()`            | The exact decimal expansion              |
 | `a.to_bigdecimal_rounded(n)`   | `n` significant digits                   |
 | `a.to_float64()`               | The nearest double                       |
