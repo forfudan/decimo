@@ -757,5 +757,60 @@ def test_a_root_is_not_claimed_where_there_is_none() raises:
     )
 
 
+def test_an_exponent_past_a_thousand_million() raises:
+    """Where the squaring's error outgrew the buffer digits.
+
+    `integer_power()` rounds every product down, and a squaring doubles the
+    error it is given, so the cost of `log2(n)` squarings is about `n` units
+    and not `log2(n)`. Nine buffer digits covered an exponent up to a few
+    thousand million and no further; these four were each a unit out in the
+    last digit.
+
+    The expectations come from CPython's `decimal` at 240 digits, where the
+    argument to `exp` carries more than two hundred spare digits, and were
+    confirmed a second way by binary exponentiation of exact `Decimal`
+    multiplies at 120 digits, which touches neither `exp` nor `ln`.
+    """
+    var cases = [
+        [
+            String("7"),
+            String("500000000003"),
+            String("10"),
+            String("4.610090767E+422549020009"),
+        ],
+        [
+            String("7"),
+            String("999999999989"),
+            String("10"),
+            String("9.135919666E+845098040004"),
+        ],
+        [
+            String("11"),
+            String("8765432109871"),
+            String("10"),
+            String("4.858994556E+9128256881470"),
+        ],
+        [
+            String("3"),
+            String("8765432109871"),
+            String("16"),
+            String("4.672339242320086E+4182173966421"),
+        ],
+    ]
+    for row in cases:
+        assert_equal(
+            String(
+                bigdecimal_exponential.power_rounded(
+                    BigDecimal(row[0]),
+                    BigDecimal(row[1]),
+                    Int(row[2]),
+                    RoundingMode.ROUND_HALF_EVEN,
+                )
+            ),
+            row[3],
+            row[0] + " ** " + row[1],
+        )
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()

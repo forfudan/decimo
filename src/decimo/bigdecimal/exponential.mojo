@@ -453,8 +453,20 @@ def integer_power(
     Raises:
         ZeroDivisionError: If the base is zero and the exponent is negative.
         Error: Propagated from arithmetic operations.
+
+    Notes:
+
+    The working precision carries the digits of the exponent on top of its
+    buffer, and that is not a comfort margin. Every product below is rounded
+    down, and a squaring doubles whatever error it is given: squaring
+    `v(1 - d)` gives `v^2(1 - 2d)`, so after the `log2(n)` squarings of a
+    binary exponentiation the error is about `n` units of the working
+    precision, not `log2(n)` of them. Nine buffer digits therefore cover an
+    exponent up to a few thousand million and no further, and the loop in
+    `power_rounded()` that decides a rounding would settle on the wrong
+    answer past that. The digits of the exponent are exactly what the
+    doubling consumes.
     """
-    var working_precision = precision + 9  # Add buffer digits
     var abs_exp = abs(exponent)
     var exp_value: BigUInt
     if abs_exp.scale > 0:
@@ -465,6 +477,8 @@ def integer_power(
         exp_value = abs_exp.coefficient.copy()
     else:
         exp_value = abs_exp.coefficient.multiply_by_power_of_ten(-abs_exp.scale)
+
+    var working_precision = precision + 9 + exp_value.number_of_digits()
 
     var result = BigDecimal(BigUInt.one(), 0, False)
     var current_power = base.copy()
@@ -2146,12 +2160,14 @@ def log10_rounded(
 
 
 comptime INTEGER_POWER_SLACK = 4
-"""Digits in the last place `integer_power()` may be off by.
+"""Units in the last place `integer_power()` may be off by.
 
 It squares and multiplies about `log2(n)` times for an exponent `n`, rounding
-each product down to its working precision, which is nine digits beyond what
-it was asked for. Four units of the asked-for precision is a wide margin on
-that for any exponent an `Int` holds.
+every product down. What that costs is not `log2(n)` units but about `n` of
+them, because a squaring doubles the error it is given -- so `integer_power()`
+carries the digits of `n` in its working precision, on top of its buffer, and
+what reaches here is the final rounding of a value already good to a fraction
+of a unit. Four is a bound on that rounding, not on the squaring.
 """
 
 
