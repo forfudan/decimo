@@ -52,11 +52,15 @@ from decimo.bigfloat.comparison import compare_absolute
 from decimo.bigfloat.constants import ln10, ln2
 from decimo.bigfloat.rounding import (
     MAX_PRECISION,
+    _lowered,
+    _raised,
     checked_precision,
     fixed_point_scale,
     from_fixed_point,
     guard_bits,
     leading_bit_position,
+    leading_bit_position,
+    rounded_beside,
     rounded_beside,
     to_fixed_point,
 )
@@ -254,6 +258,137 @@ def root(
                 x.sign,
                 rounding_mode,
                 candidate**degree != scaled,
+            )
+        scale += precision + 32
+
+
+def hypot(
+    x: BigFloat,
+    y: BigFloat,
+    precision: Int,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) raises -> BigFloat:
+    """The hypotenuse of two legs, correctly rounded.
+
+    Args:
+        x: One leg.
+        y: The other leg.
+        precision: How many bits the result keeps. Must be positive.
+        rounding_mode: Which way to round.
+
+    Returns:
+        The float of `precision` bits nearest `sqrt(x*x + y*y)`.
+
+    Raises:
+        ValueError: If `precision` is not positive.
+        OverflowError: If the answer's exponent would not fit an `Int`.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    `x*x + y*y` is formed exactly, in integers, and never as two roundings
+    that could each be wrong. Both squares are integers -- a significand is
+    one -- so the sum over their common exponent is an integer too, and the
+    integer square root of it brackets the answer between two consecutive
+    values with its remainder as the sticky bit. One rounding then finishes
+    the job in each of the seven modes, as it does for `sqrt`, and an answer
+    that is exact comes out exact: `hypot(3, 4)` is five, which a pair of
+    rounded squares and a rounded root could not promise.
+
+    Scaling is done around the smaller exponent rather than by squaring
+    either of them. A square's exponent is twice the value's and need not fit
+    an `Int` at all, while the hypotenuse's is within a bit of the larger
+    leg's, so the work is done relative to the common exponent and that
+    exponent is added back at the end, where the only overflow that can
+    happen is one the answer really has.
+
+    A leg far below the other contributes nothing but a sticky bit. The
+    answer is then the larger leg moved by a hair, which is what
+    `rounded_beside()` is for: once the ratio's square is below the last
+    place, no width would ever show where the sum sits, and the gap in
+    leading bits says when that is.
+
+    The special values follow IEEE 754's `hypot`, which answers an infinity
+    before it looks at the other leg: `hypot(inf, NaN)` is an infinity,
+    because no value of the second leg could make the first one finite.
+    """
+    _ = checked_precision(precision, "hypot()")
+
+    if x.is_infinite() or y.is_infinite():
+        return BigFloat.infinity(precision, False)
+    if x.is_nan() or y.is_nan():
+        return BigFloat.nan(precision)
+    if x.is_zero() and y.is_zero():
+        return BigFloat.zero(precision, False)
+    if x.is_zero():
+        return BigFloat.from_rounded_parts(
+            y.significand, y.exponent, precision, False, rounding_mode
+        )
+    if y.is_zero():
+        return BigFloat.from_rounded_parts(
+            x.significand, x.exponent, precision, False, rounding_mode
+        )
+
+    # The larger leg decides the answer's size, and the smaller one may not
+    # reach it at all.
+    var larger = x.copy()
+    var smaller = y.copy()
+    if compare_absolute(x, y) < 0:
+        larger = y.copy()
+        smaller = x.copy()
+
+    var gap = leading_bit_position(larger) - leading_bit_position(smaller)
+    if gap > BigInt(precision + 4):
+        # `larger * sqrt(1 + ratio^2)` with `ratio^2` below the last place:
+        # above the larger leg, and by less than a guard unit of it.
+        return rounded_beside(
+            BigFloat(
+                significand=larger.significand,
+                exponent=larger.exponent,
+                precision=larger.precision,
+                sign=False,
+            ),
+            precision,
+            rounding_mode,
+            False,
+        )
+
+    # Both squares over the lower of the two exponents, which is exact.
+    var base = larger.exponent
+    if smaller.exponent < base:
+        base = smaller.exponent
+    var left = larger.significand << (larger.exponent - base)
+    var right = smaller.significand << (smaller.exponent - base)
+    var total = left * left + right * right
+
+    # The root of a `b`-bit value has about `b / 2` bits, so this aims a
+    # couple past the precision, exactly as `sqrt` does.
+    var scale = precision + 2 - (total.bit_length() + 1) // 2
+    if scale < 0:
+        scale = 0
+    while True:
+        var parts = sqrt_rem(total << (2 * scale))
+        if parts[0].bit_length() > precision:
+            var relative = BigFloat.from_rounded_parts(
+                parts[0],
+                -scale,
+                precision,
+                False,
+                rounding_mode,
+                not parts[1].is_zero(),
+            )
+            if relative.is_zero():
+                return relative^
+            # The common exponent goes back on, which is exact, and is the
+            # one place an answer outside the range can show up.
+            var exponent = _raised(
+                relative.exponent, base
+            ) if base >= 0 else _lowered(relative.exponent, -base)
+            return BigFloat(
+                significand=relative.significand,
+                exponent=exponent,
+                precision=relative.precision,
+                sign=False,
             )
         scale += precision + 32
 

@@ -43,7 +43,13 @@ import decimo.bigfloat.arithmetics as bigfloat_arithmetics
 from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigfloat.comparison import compare_absolute
 from decimo.bigfloat.constants import pi
-from decimo.bigfloat.exponential import round_by_deciding_at, sqrt
+from decimo.bigfloat.exponential import (
+    _ZIV_LIMIT,
+    _ZIV_START,
+    _settled,
+    round_by_deciding_at,
+    sqrt,
+)
 from decimo.bigfloat.rounding import (
     MAX_PRECISION,
     checked_precision,
@@ -867,6 +873,206 @@ def arctan(
         return rounded_beside(x, precision, rounding_mode, True)
     return round_by_deciding_at[_arctan_kernel, _INVERSE_SLACK](
         x, precision, rounding_mode
+    )
+
+
+comptime _ARCTAN2_SLACK = 8
+"""Units in the last place the two-argument arctangent's kernel may be off by.
+
+The division, the one-argument arctangent and the addition of pi each cost a
+unit or two of the working width.
+"""
+
+
+def _arctan2_at_width(y: BigFloat, x: BigFloat, width: Int) raises -> BigFloat:
+    """The angle of the point `(x, y)` to `width` bits.
+
+    Args:
+        y: The second coordinate.
+        x: The first coordinate, which must not be nought.
+        width: The bits wanted.
+
+    Returns:
+        The angle, within `_ARCTAN2_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    `arctan(y / x)` gives the angle in the right half plane and is a half
+    turn out in the left one, where pi is added or subtracted according to
+    the sign of `y` so that the answer lands in `(-pi, pi]`.
+
+    Nothing cancels. The answer is near nought only in the right half plane,
+    where no pi is added at all, and in the left half plane `arctan(y / x)`
+    and pi are both about a right angle, so their sum keeps every bit it had.
+    """
+    var work = width + Int(bit_width(UInt(width))) + 12
+    var ratio = bigfloat_arithmetics.divide(y, x, work)
+    var angle = _arctan_kernel(ratio, work)
+    if x.sign:
+        var half_turn = pi(work)
+        if y.sign:
+            angle = bigfloat_arithmetics.subtract(angle, half_turn, work)
+        else:
+            angle = bigfloat_arithmetics.add(angle, half_turn, work)
+    return BigFloat.from_rounded_parts(
+        angle.significand, angle.exponent, width, angle.sign
+    )
+
+
+def arctan2(
+    y: BigFloat,
+    x: BigFloat,
+    precision: Int,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) raises -> BigFloat:
+    """The angle of the point `(x, y)`, correctly rounded.
+
+    Args:
+        y: The second coordinate.
+        x: The first coordinate.
+        precision: How many bits the result keeps. Must be positive.
+        rounding_mode: Which way to round.
+
+    Returns:
+        The angle in `(-pi, pi]` whose tangent is `y / x`, taking the
+        quadrant from the signs of both.
+
+    Raises:
+        ValueError: If `precision` is not positive.
+        Error: If the rounding cannot be decided, or propagated from the
+            arithmetic.
+
+    Notes:
+
+    The argument order is the one every other language uses: the second
+    coordinate first, because the function is the inverse of a tangent and a
+    tangent is a rise over a run.
+
+    This is where signed zeros earn their keep. `arctan2(0, -1)` is pi and
+    `arctan2(-0, -1)` is minus pi: the two zeros are on opposite shores of
+    the cut along the negative axis, and the sign is the only thing that says
+    which. The same goes for the axis itself -- `arctan2(1, 0)` and
+    `arctan2(1, -0)` are both a right angle, because the point is on the
+    positive vertical axis either way.
+
+    The special values follow IEEE 754's `atan2`, including the four
+    diagonals between the infinities, which are the odd multiples of a
+    quarter turn.
+    """
+    _ = checked_precision(precision, "arctan2()")
+
+    if x.is_nan() or y.is_nan():
+        return BigFloat.nan(precision)
+
+    if x.is_infinite():
+        if y.is_infinite():
+            # The diagonals: a quarter turn into the right half plane, three
+            # quarters into the left.
+            var eighth = pi(precision + 8)
+            if x.sign:
+                eighth = bigfloat_arithmetics.multiply(
+                    eighth,
+                    BigFloat.from_rounded_parts(
+                        BigInt(3), -2, precision + 8, False
+                    ),
+                    precision + 8,
+                )
+            else:
+                eighth = bigfloat_arithmetics.multiply(
+                    eighth, BigFloat.power_of_two(-2), precision + 8
+                )
+            return BigFloat.from_rounded_parts(
+                eighth.significand,
+                eighth.exponent,
+                precision,
+                y.sign,
+                rounding_mode,
+            )
+        # A finite second coordinate against an infinite first: the angle is
+        # a nought or a half turn, by the sign of the first.
+        if x.sign:
+            return _half_turn(precision, y.sign, rounding_mode)
+        return BigFloat.zero(precision, y.sign)
+
+    if y.is_infinite():
+        return _quarter_turn(precision, y.sign, rounding_mode)
+
+    if y.is_zero():
+        # On the horizontal axis. The sign of the first coordinate says which
+        # side of the origin, and the sign of the nought which shore of the
+        # cut.
+        if x.sign:
+            return _half_turn(precision, y.sign, rounding_mode)
+        return BigFloat.zero(precision, y.sign)
+
+    if x.is_zero():
+        return _quarter_turn(precision, y.sign, rounding_mode)
+
+    var width = precision + _ZIV_START
+    for _ in range(_ZIV_LIMIT):
+        var wide = _arctan2_at_width(y, x, width)
+        if wide.is_zero():
+            return BigFloat.zero(precision, wide.sign)
+        var settled = _settled(
+            wide, width, _ARCTAN2_SLACK, precision, rounding_mode
+        )
+        if settled:
+            return settled.take()
+        width += width - precision
+    raise Error(
+        "the rounding of this angle could not be decided; the kernel is"
+        " further from the true value than its stated bound allows"
+    )
+
+
+def _quarter_turn(
+    precision: Int, negative: Bool, rounding_mode: RoundingMode
+) raises -> BigFloat:
+    """A right angle, correctly rounded, with the sign asked for.
+
+    Args:
+        precision: The bits the answer keeps.
+        negative: Whether to give the angle below the axis.
+        rounding_mode: Which way to round.
+
+    Returns:
+        `pi / 2` to `precision` bits.
+
+    Raises:
+        Error: Propagated from the constant.
+    """
+    var half = pi(precision + 8)
+    return BigFloat.from_rounded_parts(
+        half.significand,
+        half.exponent - 1,
+        precision,
+        negative,
+        rounding_mode,
+    )
+
+
+def _half_turn(
+    precision: Int, negative: Bool, rounding_mode: RoundingMode
+) raises -> BigFloat:
+    """A half turn, correctly rounded, with the sign asked for.
+
+    Args:
+        precision: The bits the answer keeps.
+        negative: Whether to give the angle below the axis.
+        rounding_mode: Which way to round.
+
+    Returns:
+        `pi` to `precision` bits.
+
+    Raises:
+        Error: Propagated from the constant.
+    """
+    var turn = pi(precision + 8)
+    return BigFloat.from_rounded_parts(
+        turn.significand, turn.exponent, precision, negative, rounding_mode
     )
 
 
