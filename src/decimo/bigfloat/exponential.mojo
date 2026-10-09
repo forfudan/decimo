@@ -261,15 +261,6 @@ kernel returns.
 comptime _LN_SLACK = 2
 """Units in the last place `_ln_kernel` may be off by, for the same reasons."""
 
-comptime _EXPONENT_LIMIT_BITS = 62
-"""Where an argument to `exp` stops having a representable answer.
-
-`exp(x)` is `2^(x / ln 2)`, so an argument at `2^62` asks for an exponent of
-about `2^62 / 0.693`, which is still inside an `Int`, and anything larger is
-not. The limit is on the argument rather than on the answer because it can be
-tested before any work is done.
-"""
-
 
 def _power_of_two(exponent: Int) raises -> BigFloat:
     """`2^exponent` held in a single bit.
@@ -288,11 +279,12 @@ def _power_of_two(exponent: Int) raises -> BigFloat:
     )
 
 
-def _truncated_to_int(value: BigFloat) raises -> Int:
+def _truncated_to_int(value: BigFloat, function: String) raises -> Int:
     """The integer part of a finite value, toward zero.
 
     Args:
-        value: The value, whose magnitude must be below `2^63`.
+        value: The value.
+        function: The caller, for the message if it does not fit.
 
     Returns:
         The integer part, signed.
@@ -300,6 +292,15 @@ def _truncated_to_int(value: BigFloat) raises -> Int:
     Raises:
         OverflowError: If the integer part does not fit in an `Int`.
         Error: Propagated from the arithmetic.
+
+    Notes:
+
+    The sign goes on before the conversion rather than after, so that the
+    bound checked is the signed one: `Int.MIN` is a magnitude of `2^63` and
+    fits, while `2^63` positive does not. `BigInt.to_int()` draws that line
+    exactly, so there is no second check here to draw it less well -- an
+    earlier version compared bit lengths and refused every 63-bit magnitude,
+    which rejected answers that were perfectly representable.
     """
     if value.is_zero():
         return 0
@@ -308,13 +309,18 @@ def _truncated_to_int(value: BigFloat) raises -> Int:
         magnitude = magnitude << value.exponent
     else:
         magnitude = magnitude >> -value.exponent
-    if magnitude.bit_length() > 62:
+    if value.sign:
+        magnitude = -magnitude
+    try:
+        return magnitude.to_int()
+    except:
         raise OverflowError(
-            message="The integer part of this value does not fit in an Int.",
-            function="_truncated_to_int()",
+            message=(
+                "The integer part of this value does not fit in an Int, so"
+                " the answer's exponent would not either."
+            ),
+            function=function,
         )
-    var result = magnitude.to_int()
-    return -result if value.sign else result
 
 
 def _expm1_series(x: BigFloat, width: Int) raises -> BigFloat:
@@ -506,19 +512,17 @@ def _exp_kernel(x: BigFloat, width: Int) raises -> BigFloat:
     if x.is_zero():
         return BigFloat.from_int(1, width)
 
-    if compare_absolute(x, _power_of_two(_EXPONENT_LIMIT_BITS)) >= 0:
-        raise OverflowError(
-            message=(
-                "The exponent of exp() of this argument would not fit in an"
-                " Int."
-            ),
-            function="exp()",
-        )
-
     # `k` only has to be an integer near `x / ln 2`; being one out costs a
     # term of the series and nothing else, so a narrow logarithm will do.
+    #
+    # Where the answer stops being representable is also decided here, and
+    # exactly: `exp(x)` is `2^k` times something near one, so an answer has
+    # an exponent if and only if `k` has an `Int`. There is no separate bound
+    # on the argument, because any bound stated in powers of two is either
+    # stricter than that or looser.
     var k = _truncated_to_int(
-        bigfloat_arithmetics.divide(x, ln2(64), 64, RoundingMode.ROUND_DOWN)
+        bigfloat_arithmetics.divide(x, ln2(64), 64, RoundingMode.ROUND_DOWN),
+        "exp()",
     )
     var scale = (
         width + Int(bit_width(UInt(width))) + Int(bit_width(UInt(abs(k)))) + 12
@@ -641,7 +645,7 @@ def exp(
     Raises:
         ValueError: If `precision` is not positive.
         OverflowError: If the answer's exponent would not fit in an `Int`,
-            which an argument at `2^62` already asks for.
+            which happens exactly when `x / ln 2` does not.
         Error: Propagated from the arithmetic.
 
     Notes:
