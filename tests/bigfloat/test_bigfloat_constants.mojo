@@ -675,6 +675,48 @@ def test_the_loop_gives_up_rather_than_widening_for_ever() raises:
     )
 
 
+def test_the_cache_changes_no_answer() raises:
+    """A constant asked for narrow after wide is the constant.
+
+    The three constants are kept at the widest width each has been asked for,
+    and a narrower request is served by truncating what is held. That is the
+    path worth pinning: the value that comes back has travelled through a
+    rounding the first caller did not ask for, and it still has to be the
+    correctly rounded answer at the narrower width.
+
+    The order is the test. Asking for 400 bits first fills the cache, and the
+    53-bit answers that follow come out of it rather than out of the series.
+    """
+    var modes = _modes()
+
+    # Fill the cache at a width far above what is asked for next.
+    _ = pi(400)
+    _ = ln2(400)
+    _ = e(400)
+
+    for m in range(len(modes)):
+        var mode = modes[m]
+        for precision in [1, 2, 53, 113]:
+            # Recomputing at a wider width and rounding down by hand is what
+            # the cache does, so the two must agree in every mode.
+            assert_equal(
+                pi(precision, mode).internal_representation(),
+                BigFloat.from_rounded_parts(
+                    pi(500).significand,
+                    pi(500).exponent,
+                    precision,
+                    False,
+                    mode,
+                ).internal_representation(),
+                String("pi at ") + String(precision) + " bits, " + String(mode),
+            )
+
+    # And a value asked for wider than the cache holds grows it rather than
+    # returning the narrower answer.
+    assert_equal(pi(2000).precision, 2000, "a wider request is answered wide")
+    assert_true(not pi(2000).is_zero(), "and the wider answer is a value")
+
+
 def test_a_precision_must_fit_the_guard_bits() raises:
     """A precision has to be positive, and to leave room for guard bits.
 
