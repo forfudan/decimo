@@ -36,7 +36,9 @@ call, and a cache is the obvious next thing. It is left out here because a
 process-wide one is shared mutable state and deserves its own change.
 """
 
+from std.atomic import Atomic
 from std.bit import bit_width
+from std.ffi import _Global
 
 from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigfloat.exponential import round_by_deciding
@@ -162,7 +164,7 @@ def _arctangent_hyperbolic_of_reciprocal(
         k += 1
 
 
-def _pi_kernel(width: Int) raises -> BigFloat:
+def _pi_computed(width: Int) raises -> BigFloat:
     """Pi to `width` bits, by Machin's formula.
 
     Args:
@@ -181,7 +183,7 @@ def _pi_kernel(width: Int) raises -> BigFloat:
     return BigFloat.from_rounded_parts(total, -scale, width, False)
 
 
-def _ln2_kernel(width: Int) raises -> BigFloat:
+def _ln2_computed(width: Int) raises -> BigFloat:
     """The natural logarithm of two to `width` bits.
 
     Args:
@@ -198,7 +200,7 @@ def _ln2_kernel(width: Int) raises -> BigFloat:
     return BigFloat.from_rounded_parts(total, -scale, width, False)
 
 
-def _e_kernel(width: Int) raises -> BigFloat:
+def _e_computed(width: Int) raises -> BigFloat:
     """Euler's number to `width` bits, as the sum of the reciprocal factorials.
 
     Args:
@@ -220,6 +222,197 @@ def _e_kernel(width: Int) raises -> BigFloat:
             return BigFloat.from_rounded_parts(total, -scale, width, False)
         total += term
         k += 1
+
+
+# ===----------------------------------------------------------------------=== #
+# Keeping what was computed
+# ===----------------------------------------------------------------------=== #
+
+
+comptime _CACHE_FLOOR = 256
+"""The narrowest width a constant is ever computed at.
+
+A call for 53 bits costs about what a call for 256 costs, and the answer to
+the wider one answers every narrower one as well. The loop that decides a
+rounding walks a width upward -- 65 bits, then 130, then 260 -- so without a
+floor and a doubling it would recompute the constant at every step.
+"""
+
+
+struct _ConstantCache(Movable):
+    """The three constants at the widest width each has been asked for.
+
+    A value held at `w` bits answers any request for `w` or fewer: truncating
+    it costs less than a unit in the last place of the narrower width, and a
+    kernel is allowed two.
+    """
+
+    var busy: Atomic[Int64]
+    """Nought when no thread is inside the cache."""
+    var value: List[BigFloat]
+    """Pi, the logarithm of two, and the number, in that order.
+
+    Empty until the first constant is stored, because building a `BigFloat`
+    to hold a place can raise and the global's factory cannot.
+    """
+    var width: List[Int]
+    """What each was computed at; nought for one never computed."""
+
+    def __init__(out self):
+        """An empty cache."""
+        self.busy = Atomic[Int64](0)
+        self.value = List[BigFloat]()
+        self.width = [0, 0, 0]
+
+
+def _make_constant_cache() -> _ConstantCache:
+    """Builds the process-wide cache.
+
+    Returns:
+        An empty cache.
+    """
+    return _ConstantCache()
+
+
+comptime _SHARED_CONSTANTS = _Global[
+    "decimo_bigfloat_constants", _make_constant_cache
+]
+"""One cache for the whole process.
+
+Mojo has no module-level `var`; `std.ffi._Global` is how this package already
+holds process-wide state, both in the decimal layer's `MathCache` and in the
+word list's block pool.
+
+A thread that finds the cache busy computes its own answer and does not store
+it, which is the block pool's try-lock: correctness never waits on the lock,
+only the saving does. That is a deliberate difference from the decimal cache,
+which documents itself as unsafe to use from two threads at once.
+"""
+
+
+def _computed(which: Int, width: Int) raises -> BigFloat:
+    """One of the three constants, computed rather than remembered.
+
+    Args:
+        which: Nought for pi, one for the logarithm of two, two for the number.
+        width: The bits wanted.
+
+    Returns:
+        The value, within `_CONSTANT_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+    """
+    if which == 0:
+        return _pi_computed(width)
+    if which == 1:
+        return _ln2_computed(width)
+    return _e_computed(width)
+
+
+def _cached(which: Int, width: Int) raises -> BigFloat:
+    """One of the three constants, from the cache where the cache has it.
+
+    Args:
+        which: Nought for pi, one for the logarithm of two, two for the number.
+        width: The bits wanted.
+
+    Returns:
+        The value, within `_CONSTANT_SLACK` units of the last place. A stored
+        value is truncated to `width`, which costs less than one of them,
+        while the stored value's own error is a unit at a width further out
+        and so nothing here.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+    """
+    var cache = _SHARED_CONSTANTS.get_or_create_ptr()
+    if cache[].busy.fetch_add(1) != 0:
+        _ = cache[].busy.fetch_sub(1)
+        return _computed(which, width)
+
+    if cache[].width[which] >= width:
+        var held = cache[].value[which].copy()
+        _ = cache[].busy.fetch_sub(1)
+        return BigFloat.from_rounded_parts(
+            held.significand,
+            held.exponent,
+            width,
+            False,
+            RoundingMode.ROUND_DOWN,
+        )
+
+    var target = width + 64
+    if _CACHE_FLOOR > target:
+        target = _CACHE_FLOOR
+    if cache[].width[which] * 2 > target:
+        target = cache[].width[which] * 2
+    try:
+        var fresh = _computed(which, target)
+        if len(cache[].value) == 0:
+            # The three slots are filled on the first store, since the cache
+            # cannot build a placeholder without a precision to build it at.
+            cache[].value.append(fresh.copy())
+            cache[].value.append(fresh.copy())
+            cache[].value.append(fresh.copy())
+        cache[].value[which] = fresh.copy()
+        cache[].width[which] = target
+        _ = cache[].busy.fetch_sub(1)
+        return BigFloat.from_rounded_parts(
+            fresh.significand,
+            fresh.exponent,
+            width,
+            False,
+            RoundingMode.ROUND_DOWN,
+        )
+    except error:
+        _ = cache[].busy.fetch_sub(1)
+        raise error
+
+
+def _pi_kernel(width: Int) raises -> BigFloat:
+    """Pi to `width` bits, from the cache where it is there.
+
+    Args:
+        width: The bits wanted.
+
+    Returns:
+        The value, within `_CONSTANT_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+    """
+    return _cached(0, width)
+
+
+def _ln2_kernel(width: Int) raises -> BigFloat:
+    """The natural logarithm of two to `width` bits, from the cache.
+
+    Args:
+        width: The bits wanted.
+
+    Returns:
+        The value, within `_CONSTANT_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+    """
+    return _cached(1, width)
+
+
+def _e_kernel(width: Int) raises -> BigFloat:
+    """Euler's number to `width` bits, from the cache.
+
+    Args:
+        width: The bits wanted.
+
+    Returns:
+        The value, within `_CONSTANT_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+    """
+    return _cached(2, width)
 
 
 def pi(
