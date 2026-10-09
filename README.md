@@ -716,6 +716,11 @@ After cloning the repo onto your local disk, you can:
 - Use `pixi run check_import_fixed_point` after changing the organizer or the
   Mojo version: it asserts that the organizer and `mojo format` do not undo
   each other's work.
+- Use `pixi run one <file.mojo>` to run a single file -- a sweep against a
+  reference, a measurement, a probe -- against the working tree. `mojo run`
+  puts the file's own directory on the import path ahead of `-I src`, so a
+  `decimo.mojoc` left beside the file would silently stand in for the source;
+  this clears those first.
 
 ## Citation
 
