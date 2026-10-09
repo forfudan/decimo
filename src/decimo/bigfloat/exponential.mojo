@@ -51,6 +51,7 @@ from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigfloat.comparison import compare_absolute
 from decimo.bigfloat.constants import ln10, ln2
 from decimo.bigfloat.rounding import (
+    MAX_PRECISION,
     checked_precision,
     fixed_point_scale,
     from_fixed_point,
@@ -61,8 +62,8 @@ from decimo.bigfloat.rounding import (
 )
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.bitwise import test_bit, trailing_zeros
-from decimo.bigint.exponential import sqrt_rem
-from decimo.errors import OverflowError
+from decimo.bigint.exponential import root as bigint_root, sqrt_rem
+from decimo.errors import OverflowError, ValueError
 from decimo.rounding_mode import RoundingMode
 
 
@@ -145,6 +146,143 @@ def sqrt(
                 not parts[1].is_zero(),
             )
         scale += precision + 32
+
+
+def root(
+    x: BigFloat,
+    degree: Int,
+    precision: Int,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) raises -> BigFloat:
+    """The `degree`-th root of a value, correctly rounded.
+
+    Args:
+        x: The value to take the root of.
+        degree: Which root to take. Must be positive.
+        precision: How many bits the result keeps. Must be positive.
+        rounding_mode: Which way to round.
+
+    Returns:
+        The float of `precision` bits nearest `x ** (1 / degree)`.
+
+    Raises:
+        ValueError: If `precision` is not positive, or `degree` is not.
+        OverflowError: If the working value would be longer than a precision
+            may be, which takes a degree in the billions.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    A root is algebraic, so unlike the transcendental functions it needs no
+    loop that computes more digits until the answer settles. The integer
+    `degree`-th root of a scaled significand brackets the true root between
+    two consecutive integers, and whether it landed on the lower one exactly
+    is the sticky bit. One rounding then finishes the job in each of the
+    seven modes -- and an exact root comes out exact, which is what makes
+    `root(8, 3)` two rather than a value near it.
+
+    Dividing the exponent is the whole of the scaling. `x` is
+    `s * 2^(q * degree + r)` with `r` below the degree, so the factor of
+    `2^r` moves into the significand and the root sits at `2^q`, less the
+    bits the significand was scaled up by to make room for the precision
+    asked for. The exponent is never multiplied back out, which is what keeps
+    a value near the bottom of the range from leaving it.
+
+    A negative value has a real root only at an odd degree, and gets a NaN at
+    an even one, which is what `sqrt` does for the same reason.
+    """
+    _ = checked_precision(precision, "root()")
+    if degree <= 0:
+        raise ValueError(
+            message="The degree of a root must be positive.",
+            function="root()",
+        )
+    if degree == 1:
+        if not x.is_finite() or x.is_zero():
+            return x.copy()
+        return BigFloat.from_rounded_parts(
+            x.significand, x.exponent, precision, x.sign, rounding_mode
+        )
+    if degree == 2:
+        return sqrt(x, precision, rounding_mode)
+
+    var odd = degree % 2 != 0
+    if x.is_nan():
+        return BigFloat.nan(precision)
+    if x.is_zero():
+        # The root of a nought is a nought, and keeps its sign at an odd
+        # degree because an odd power of a negative nought is one.
+        return BigFloat.zero(precision, x.sign and odd)
+    if x.is_infinite():
+        if x.sign and not odd:
+            return BigFloat.nan(precision)
+        return BigFloat.infinity(precision, x.sign)
+    if x.sign and not odd:
+        return BigFloat.nan(precision)
+
+    # `exponent` is `quotient * degree + remainder` with the remainder below
+    # the degree, and neither product is ever formed.
+    var remainder = x.exponent % degree
+    var quotient = x.exponent // degree
+    var magnitude = x.significand << remainder
+
+    # The root of a `b`-bit value has about `b / degree` bits, so this aims a
+    # couple of bits past the precision.
+    var scale = precision + 2 - (magnitude.bit_length() + degree - 1) // degree
+    if scale < 0:
+        scale = 0
+    while True:
+        if scale > MAX_PRECISION // degree:
+            raise OverflowError(
+                message=(
+                    "Taking this root needs a longer value than a precision"
+                    " may be."
+                ),
+                function="root()",
+            )
+        var scaled = magnitude << (degree * scale)
+        var candidate = bigint_root(scaled, degree)
+        if candidate.bit_length() > precision:
+            debug_assert(
+                quotient - scale < quotient + 1,
+                "dividing an exponent did not keep it in range",
+            )
+            return BigFloat.from_rounded_parts(
+                candidate,
+                quotient - scale,
+                precision,
+                x.sign,
+                rounding_mode,
+                candidate**degree != scaled,
+            )
+        scale += precision + 32
+
+
+def cbrt(
+    x: BigFloat,
+    precision: Int,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) raises -> BigFloat:
+    """The cube root of a value, correctly rounded.
+
+    Args:
+        x: The value to take the root of.
+        precision: How many bits the result keeps. Must be positive.
+        rounding_mode: Which way to round.
+
+    Returns:
+        The float of `precision` bits nearest the cube root of `x`.
+
+    Raises:
+        ValueError: If `precision` is not positive.
+        Error: Propagated from `root()`.
+
+    Notes:
+
+    A cube root takes a negative value, unlike a square root, because an odd
+    power keeps its sign: the cube root of `-8` is `-2`.
+    """
+    return root(x, 3, precision, rounding_mode)
 
 
 # ===----------------------------------------------------------------------=== #
