@@ -1,4 +1,4 @@
-from decimo import MPF
+from decimo.mpf.mpf import MPF
 
 
 def main() raises:

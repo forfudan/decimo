@@ -28,6 +28,7 @@ from decimo.prelude import *
 import decimo
 import decimo as dm
 from decimo.bigdecimal.bigdecimal import BDec, BigDecimal, Decimal
+from decimo.bigfloat.bigfloat import BFlt, BigFloat
 from decimo.bigint.bigint import BigInt, BInt
 from decimo.decimal128.decimal128 import Dec128, Decimal128
 from decimo.rounding_mode import (

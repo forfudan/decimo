@@ -14,7 +14,7 @@ library's `decimal`, and a superset of it: the whole of its method surface,
 plus `pi()`, `e()` and a 128-bit decimal type. Install it with
 `pip install decimo`.
 
-[![Version](https://img.shields.io/badge/version-v0.15.0-blue)](https://github.com/forfudan/decimo/releases/tag/v0.15.0)
+[![Version](https://img.shields.io/badge/version-v0.16.0-blue)](https://github.com/forfudan/decimo/releases/tag/v0.16.0)
 [![Mojo](https://img.shields.io/badge/mojo-1.1.0-orange)](https://docs.modular.com/mojo/manual/)
 [![CI](https://img.shields.io/github/actions/workflow/status/forfudan/decimo/run_tests.yaml?branch=main&label=tests)](https://github.com/forfudan/decimo/actions/workflows/run_tests.yaml)
 [![License](https://img.shields.io/github/license/forfudan/decimo)](https://github.com/forfudan/decimo/blob/main/LICENSE)
@@ -28,7 +28,7 @@ plus `pi()`, `e()` and a 128-bit decimal type. Install it with
 | `BigInt`     | `BInt`            | Equivalent to Python's `int`             | Base-2^64    |
 | `BigDecimal` | `BDec`, `Decimal` | Equivalent to Python's `decimal.Decimal` | Base-10^18   |
 | `Decimal128` | `Dec128`          | 128-bit fixed-precision decimal type     | 32-bit words |
-| `MPF`   | `Float`           | Arbitrary-precision floating-point type  | MPFR/GMP     |
+| `BigFloat`   | `BFlt`            | Arbitrary-precision binary float         | Base-2^64    |
 
 <!--
 [![Stars](https://img.shields.io/github/stars/forfudan/decimo?style=flat)](https://github.com/forfudan/decimo/stargazers)
@@ -74,12 +74,14 @@ The core types are[^auxiliary]:
   supporting up to 29 significant digits with a maximum of 28 decimal
   places[^fixed], which is a Mojo-native equivalent of C#'s `System.Decimal` or
   Rust's `rust_decimal`.
-- An arbitrary-precision floating-point implementation (`MPF`) backed by
-  the GNU MPFR library, supporting computations with configurable precision and
-  a wide exponent range. Unlike `BigDecimal`, which uses base-10 arithmetic,
-  `MPF` uses binary floating-point internally. This type is optional and
-  requires MPFR/GMP to be installed on the user's system.
-<!-- - An arbitrary-precision exact rational number type (`Rational`) represented as a reduced fraction of two `BigInt`s (numerator and denominator). It supports exact arithmetic and comparisons without any loss of precision, making it ideal for applications that require precise fractional calculations. -->
+- An arbitrary-precision binary floating-point implementation (`BigFloat`)
+  written in Mojo, with no dependency to install. The significand is a
+  `BigInt` and the exponent is as wide as an `Int`. The four arithmetic
+  operations, the square root, the exponential and the logarithm, the
+  circular functions and their inverses, and the hyperbolic ones and theirs
+  are each correctly rounded, in each of decimo's seven rounding modes. An
+  MPFR-backed type is still in the source as `decimo.mpf.mpf.MPF`, outside
+  the public interface, for anyone who wants it.
 
 Decimo is fast: at a million digits `pi()` is nearly twelve times quicker than
 pure-Python mpmath, `BigInt` multiplication is fifteen times quicker than
@@ -170,7 +172,7 @@ Then, you can install Decimo using any of these methods:
 1. In the `mojoproject.toml` file of your project, add the following dependency:
 
     ```toml
-    decimo = ">=0.15.0, <0.16.0"
+    decimo = ">=0.16.0, <0.17.0"
     ```
 
     Then run `pixi install` to download and install the package.
@@ -204,7 +206,7 @@ versions:
 | `decimo`   | v0.12.0 | >=1.0.0, <1.1.0 | pixi            |
 | `decimo`   | v0.13.0 | >=1.0.0, <1.1.0 | pixi            |
 | `decimo`   | v0.14.0 | >=1.0.0, <1.1.0 | pixi            |
-| `decimo`   | v0.15.0 | >=1.1.0, <1.2.0 | pixi            |
+| `decimo`   | v0.16.0 | >=1.1.0, <1.2.0 | pixi            |
 
 </details>
 
@@ -645,7 +647,8 @@ decimo/
 │   │   ├── bigint/               #   Arbitrary-precision signed integer (BigInt)
 │   │   ├── bigint10/             #   Base-10 signed integer (BigInt10)
 │   │   ├── biguint/              #   Base-10 unsigned integer (BigUInt)
-│   │   ├── mpf/             #   Arbitrary-precision binary float (MPFR)
+│   │   ├── bigfloat/        #   Arbitrary-precision binary float
+│   │   ├── mpf/             #   The same in MPFR, outside the public API
 │   │   ├── rational/             #   Exact rational number (Rational)
 │   │   ├── decimal128/           #   128-bit fixed-precision decimal (Dec128)
 │   │   ├── expression/           #   Expression engine behind `decimo.eval()`
@@ -724,7 +727,7 @@ If you find Decimo useful, consider listing it in your citations.
     year         = {2026},
     title        = {Decimo: An arbitrary-precision integer and decimal library for Mojo},
     url          = {https://github.com/forfudan/decimo},
-    version      = {0.15.0},
+    version      = {0.16.0},
     note         = {Computer Software}
 }
 ```
