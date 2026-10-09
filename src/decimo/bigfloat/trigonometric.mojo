@@ -170,7 +170,7 @@ def _nearest_to_bigint(value: BigFloat, width: Int) raises -> BigInt:
     Raises:
         Error: Propagated from the arithmetic.
     """
-    var half = _power_of_two(-1)
+    var half = BigFloat.power_of_two(-1)
     if value.sign:
         half = -half
     return _truncated_to_bigint(bigfloat_arithmetics.add(value, half, width))
@@ -215,7 +215,7 @@ def _reduced(x: BigFloat, width: Int) raises -> Tuple[BigFloat, Int]:
     var scale = _reduction_width(x, width)
     for _ in range(8):
         var half_pi = bigfloat_arithmetics.multiply(
-            pi(scale), _power_of_two(-1), scale
+            pi(scale), BigFloat.power_of_two(-1), scale
         )
         var quotient = bigfloat_arithmetics.divide(x, half_pi, scale)
         var multiple = _nearest_to_bigint(quotient, scale + 4)
@@ -270,23 +270,6 @@ def _widened_reduction(scale: Int, width: Int) raises -> Int:
             function="_reduced()",
         )
     return scale + width + 16
-
-
-def _power_of_two(exponent: Int) raises -> BigFloat:
-    """`2^exponent` held in a single bit.
-
-    Args:
-        exponent: The power.
-
-    Returns:
-        The value, which multiplying by is exact at any precision.
-
-    Raises:
-        Error: Propagated from the construction.
-    """
-    return BigFloat(
-        significand=BigInt.one(), exponent=exponent, precision=1, sign=False
-    )
 
 
 def _cubic_term_is_below_a_guard_unit(x: BigFloat, guard: Int) raises -> Bool:
@@ -447,7 +430,7 @@ def _sine_series(x: BigFloat, width: Int) raises -> BigFloat:
             compare_absolute(
                 term,
                 bigfloat_arithmetics.multiply(
-                    total, _power_of_two(-width - 2), width
+                    total, BigFloat.power_of_two(-width - 2), width
                 ),
             )
             < 0
@@ -499,7 +482,7 @@ def _cosine_minus_one_series(x: BigFloat, width: Int) raises -> BigFloat:
             compare_absolute(
                 term,
                 bigfloat_arithmetics.multiply(
-                    total, _power_of_two(-width - 2), width
+                    total, BigFloat.power_of_two(-width - 2), width
                 ),
             )
             < 0
@@ -729,11 +712,12 @@ def cos(
     if (
         x.is_finite()
         and not x.is_zero()
-        and compare_absolute(x, _power_of_two(-(precision + 8) // 2)) < 0
+        and compare_absolute(x, BigFloat.power_of_two(-(precision + 8) // 2))
+        < 0
     ):
         var square = bigfloat_arithmetics.multiply(x, x, precision + 8)
         var half_square = bigfloat_arithmetics.multiply(
-            square, _power_of_two(-1), precision + 8
+            square, BigFloat.power_of_two(-1), precision + 8
         )
         return bigfloat_arithmetics.subtract(
             BigFloat.from_int(1, precision),
