@@ -250,7 +250,7 @@ def round_by_deciding[
 
 
 comptime _EXP_SLACK = 2
-"""Units in the last place `_exp_kernel` may be off by.
+"""Units in the last place `exp_at_width` may be off by.
 
 Every step of the series is one correctly rounded multiply and one correctly
 rounded divide, so a term is off by a couple of units of the working width,
@@ -259,24 +259,7 @@ kernel returns.
 """
 
 comptime _LN_SLACK = 2
-"""Units in the last place `_ln_kernel` may be off by, for the same reasons."""
-
-
-def _power_of_two(exponent: Int) raises -> BigFloat:
-    """`2^exponent` held in a single bit.
-
-    Args:
-        exponent: The power.
-
-    Returns:
-        The value, which multiplying by is exact at any precision.
-
-    Raises:
-        Error: Propagated from the construction.
-    """
-    return BigFloat(
-        significand=BigInt.one(), exponent=exponent, precision=1, sign=False
-    )
+"""Units in the last place `ln_at_width` may be off by, for the same reasons."""
 
 
 def _truncated_to_int(value: BigFloat, function: String) raises -> Int:
@@ -323,7 +306,7 @@ def _truncated_to_int(value: BigFloat, function: String) raises -> Int:
         )
 
 
-def _expm1_series(x: BigFloat, width: Int) raises -> BigFloat:
+def expm1_at_width(x: BigFloat, width: Int) raises -> BigFloat:
     """`exp(x) - 1` for a small `x`, as a sum of its terms.
 
     Args:
@@ -370,7 +353,7 @@ def _expm1_series(x: BigFloat, width: Int) raises -> BigFloat:
             compare_absolute(
                 term,
                 bigfloat_arithmetics.multiply(
-                    total, _power_of_two(-width - 2), width
+                    total, BigFloat.power_of_two(-width - 2), width
                 ),
             )
             < 0
@@ -380,7 +363,7 @@ def _expm1_series(x: BigFloat, width: Int) raises -> BigFloat:
         index += 1
 
 
-def _atanh_series(x: BigFloat, width: Int) raises -> BigFloat:
+def atanh_at_width(x: BigFloat, width: Int) raises -> BigFloat:
     """`atanh(x)` for `|x| < 1/2`, as a sum of its terms.
 
     Args:
@@ -420,7 +403,7 @@ def _atanh_series(x: BigFloat, width: Int) raises -> BigFloat:
             compare_absolute(
                 term,
                 bigfloat_arithmetics.multiply(
-                    total, _power_of_two(-width - 2), width
+                    total, BigFloat.power_of_two(-width - 2), width
                 ),
             )
             < 0
@@ -477,7 +460,7 @@ def round_by_deciding_at[
     )
 
 
-def _exp_kernel(x: BigFloat, width: Int) raises -> BigFloat:
+def exp_at_width(x: BigFloat, width: Int) raises -> BigFloat:
     """`exp(x)` to `width` bits.
 
     Args:
@@ -538,18 +521,20 @@ def _exp_kernel(x: BigFloat, width: Int) raises -> BigFloat:
             scale,
         )
 
-    var series = _expm1_series(reduced, scale)
+    var series = expm1_at_width(reduced, scale)
     var total = bigfloat_arithmetics.add(
         BigFloat.from_int(1, scale), series, scale
     )
     if k != 0:
-        total = bigfloat_arithmetics.multiply(total, _power_of_two(k), scale)
+        total = bigfloat_arithmetics.multiply(
+            total, BigFloat.power_of_two(k), scale
+        )
     return BigFloat.from_rounded_parts(
         total.significand, total.exponent, width, total.sign
     )
 
 
-def _ln_kernel(x: BigFloat, width: Int) raises -> BigFloat:
+def ln_at_width(x: BigFloat, width: Int) raises -> BigFloat:
     """`ln(x)` to `width` bits.
 
     Args:
@@ -612,7 +597,7 @@ def _ln_kernel(x: BigFloat, width: Int) raises -> BigFloat:
         scale,
     )
     var total = bigfloat_arithmetics.multiply(
-        _atanh_series(ratio, scale), _power_of_two(1), scale
+        atanh_at_width(ratio, scale), BigFloat.power_of_two(1), scale
     )
     if not whole_binades.is_zero():
         total = bigfloat_arithmetics.add(
@@ -670,13 +655,13 @@ def exp(
     if (
         x.is_finite()
         and not x.is_zero()
-        and compare_absolute(x, _power_of_two(-(precision + 4))) < 0
+        and compare_absolute(x, BigFloat.power_of_two(-(precision + 4))) < 0
     ):
         return bigfloat_arithmetics.add(
             BigFloat.from_int(1, precision), x, precision, rounding_mode
         )
 
-    return round_by_deciding_at[_exp_kernel, _EXP_SLACK](
+    return round_by_deciding_at[exp_at_width, _EXP_SLACK](
         x, precision, rounding_mode
     )
 
@@ -707,6 +692,6 @@ def ln(
     there. `ln(1)` is a positive zero.
     """
     _ = checked_precision(precision, "ln()")
-    return round_by_deciding_at[_ln_kernel, _LN_SLACK](
+    return round_by_deciding_at[ln_at_width, _LN_SLACK](
         x, precision, rounding_mode
     )

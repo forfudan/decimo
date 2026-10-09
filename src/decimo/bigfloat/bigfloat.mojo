@@ -571,6 +571,34 @@ struct BigFloat(Absable, Comparable, Copyable, Movable, Rootable, Writable):
     # ===------------------------------------------------------------------=== #
 
     @staticmethod
+    def power_of_two(exponent: Int) raises -> Self:
+        """`2^exponent`, held in a single bit.
+
+        Args:
+            exponent: The power.
+
+        Returns:
+            The value, whose significand is one bit, so multiplying or
+            dividing by it is exact at every precision.
+
+        Raises:
+            Error: Propagated from the construction.
+
+        Notes:
+
+        Scaling by a power of two is the one operation a binary float does
+        for nothing, and several of the functions lean on that: an argument
+        reduction, a halving, a doubling back. Having it here rather than
+        once per module is what keeps those from each having their own.
+        """
+        return Self(
+            significand=BigInt.one(),
+            exponent=exponent,
+            precision=1,
+            sign=False,
+        )
+
+    @staticmethod
     def from_rounded_parts(
         magnitude: BigInt,
         exponent: Int,
