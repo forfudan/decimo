@@ -43,7 +43,7 @@ import decimo.bigfloat.arithmetics as bigfloat_arithmetics
 from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigfloat.comparison import compare_absolute
 from decimo.bigfloat.constants import pi
-from decimo.bigfloat.exponential import round_by_deciding_at
+from decimo.bigfloat.exponential import round_by_deciding_at, sqrt
 from decimo.bigfloat.rounding import (
     MAX_PRECISION,
     checked_precision,
@@ -64,6 +64,14 @@ comptime _SINE_SLACK = 4
 The reduction, the series and the one addition that puts the leading one back
 each cost a unit or two of the working width, and the working width carries
 `bit_width(terms) + 8` bits beyond what the kernel returns.
+"""
+
+comptime _INVERSE_SLACK = 8
+"""Units in the last place the inverse functions' kernels may be off by.
+
+Each halving of the argument costs a square root and a division, the series
+costs a unit a term, and the identities that reach the inverse sine and
+cosine add a root and a division of their own.
 """
 
 comptime _TANGENT_SLACK = 8
@@ -641,5 +649,433 @@ def tan(
         # `tan(x) = x + x^3/3 + ...`, away from zero.
         return rounded_beside(x, precision, rounding_mode, False)
     return round_by_deciding_at[_tan_kernel, _TANGENT_SLACK](
+        x, precision, rounding_mode
+    )
+
+
+# ===----------------------------------------------------------------------=== #
+# The inverse functions
+# ===----------------------------------------------------------------------=== #
+
+
+def _arctangent_series(x: BigFloat, width: Int) raises -> BigFloat:
+    """`arctan(x)` for a small `x`, as a sum of its terms.
+
+    Args:
+        x: The argument, whose magnitude should be well below one.
+        width: The bits to work in.
+
+    Returns:
+        The sum.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    The series is `x - x^3/3 + x^5/5 - ...`, which gains `2 log2(1/|x|)` bits
+    a term. That is why the caller halves the argument first: at `|x|` near
+    one the series gains nothing at all.
+    """
+    if x.is_zero():
+        return BigFloat.zero(width, x.sign)
+    var square = bigfloat_arithmetics.multiply(x, x, width)
+    var power = BigFloat.from_rounded_parts(
+        x.significand, x.exponent, width, x.sign
+    )
+    var total = power.copy()
+    var index = 3
+    while True:
+        power = bigfloat_arithmetics.multiply(power, square, width)
+        if power.is_zero():
+            return total^
+        var term = bigfloat_arithmetics.divide(
+            power, BigFloat.from_int(index, width), width
+        )
+        if term.is_zero():
+            return total^
+        if (
+            compare_absolute(
+                term,
+                bigfloat_arithmetics.multiply(
+                    total, BigFloat.power_of_two(-width - 2), width
+                ),
+            )
+            < 0
+        ):
+            return total^
+        if (index // 2) % 2 == 1:
+            total = bigfloat_arithmetics.subtract(total, term, width)
+        else:
+            total = bigfloat_arithmetics.add(total, term, width)
+        index += 2
+
+
+def _arctangent_of_small(x: BigFloat, width: Int) raises -> BigFloat:
+    """`arctan(x)` for `|x| <= 1`, by halving the argument and then summing.
+
+    Args:
+        x: The argument, with magnitude at most one.
+        width: The bits to work in.
+
+    Returns:
+        The value.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    The identity is `arctan(x) = 2 arctan(x / (1 + sqrt(1 + x^2)))`, which
+    roughly halves the argument each time it is applied. The series gains
+    `2 log2(1/|x|)` bits a term, so halving until `|x|` is below `1/width`
+    leaves about `width / (2 log2 width)` terms to sum -- fifty of them at a
+    thousand bits, against a series that would never finish at `|x| = 1`.
+
+    Doubling the answer back does not lose anything: the answer is
+    `2^m` times a value `2^m` smaller, so the relative error is carried
+    through unchanged.
+    """
+    var one = BigFloat.from_int(1, width)
+    var target = BigFloat.power_of_two(-Int(bit_width(UInt(width))) - 1)
+    var reduced = BigFloat.from_rounded_parts(
+        x.significand, x.exponent, width, x.sign
+    )
+    var halvings = 0
+    while not reduced.is_zero() and compare_absolute(reduced, target) >= 0:
+        var root = sqrt(
+            bigfloat_arithmetics.add(
+                one,
+                bigfloat_arithmetics.multiply(reduced, reduced, width),
+                width,
+            ),
+            width,
+        )
+        reduced = bigfloat_arithmetics.divide(
+            reduced, bigfloat_arithmetics.add(one, root, width), width
+        )
+        halvings += 1
+    var total = _arctangent_series(reduced, width)
+    if halvings > 0:
+        total = bigfloat_arithmetics.multiply(
+            total, BigFloat.power_of_two(halvings), width
+        )
+    return total^
+
+
+def _arctan_kernel(x: BigFloat, width: Int) raises -> BigFloat:
+    """`arctan(x)` to `width` bits.
+
+    Args:
+        x: The argument.
+        width: The bits wanted.
+
+    Returns:
+        The value, within `_INVERSE_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    An argument above one is turned over: `arctan(x)` is `pi/2 - arctan(1/x)`
+    for a positive `x`, and the mirror for a negative one. That leaves the
+    halving identity an argument it can shrink, and costs no cancellation,
+    since `arctan(1/x)` is below `pi/4` and `pi/2` is above it.
+    """
+    if x.is_nan():
+        return BigFloat.nan(width)
+    if x.is_zero():
+        return BigFloat.zero(width, x.sign)
+
+    var scale = width + Int(bit_width(UInt(width))) + 16
+
+    # Pi is built only where it is used. Below one the series is the whole
+    # answer and pi never appears, and asking for it there would make every
+    # ordinary call pay for the constant -- at high precision that is most of
+    # the work.
+    if x.is_finite() and compare_absolute(x, BigFloat.from_int(1, 1)) <= 0:
+        var series = _arctangent_of_small(x, scale)
+        return BigFloat.from_rounded_parts(
+            series.significand, series.exponent, width, series.sign
+        )
+
+    var half_pi = bigfloat_arithmetics.multiply(
+        pi(scale), BigFloat.power_of_two(-1), scale
+    )
+    if x.is_infinite() or leading_bit_position(x) >= BigInt(width + 2):
+        # An infinity settles at a right angle, and so does an argument so
+        # large that the correction `1/x` falls below half a unit in the last
+        # place of the answer. Taking that branch rather than forming `1/x`
+        # is not only a saving: at the top of the exponent range the
+        # reciprocal has no exponent, and an argument whose inverse tangent
+        # is an ordinary number would be refused. Nothing can widen its way
+        # out of this branch either, since `width` cannot reach the leading
+        # bit of such an argument.
+        var answer = half_pi.copy()
+        if x.sign:
+            answer = -answer
+        return BigFloat.from_rounded_parts(
+            answer.significand, answer.exponent, width, answer.sign
+        )
+
+    var reciprocal = bigfloat_arithmetics.divide(
+        BigFloat.from_int(1, scale), x, scale
+    )
+    var total = bigfloat_arithmetics.subtract(
+        half_pi, _arctangent_of_small(abs(reciprocal), scale), scale
+    )
+    if x.sign:
+        total = -total
+    return BigFloat.from_rounded_parts(
+        total.significand, total.exponent, width, total.sign
+    )
+
+
+def arctan(
+    x: BigFloat,
+    precision: Int,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) raises -> BigFloat:
+    """The inverse tangent of a value, correctly rounded.
+
+    Args:
+        x: The argument.
+        precision: How many bits the result keeps. Must be positive.
+        rounding_mode: Which way to round.
+
+    Returns:
+        The float of `precision` bits nearest `arctan(x)`, between `-pi/2`
+        and `pi/2`.
+
+    Raises:
+        ValueError: If `precision` is not positive.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    An infinity has an answer here, unlike in the forward functions: the
+    inverse tangent settles at `pi/2`, so that is what it gives.
+
+    A small argument is `x - x^3/3`, toward zero, so it is answered by moving
+    `x` that way rather than by returning it -- and only where the cubic term
+    is small enough for a guard unit to stand in for it, which is the same
+    condition the sine's shortcut keeps to.
+    """
+    _ = checked_precision(precision, "arctan()")
+    if (
+        x.is_finite()
+        and not x.is_zero()
+        and cubic_term_is_below_a_guard_unit(x, guard_bits(x, precision))
+    ):
+        return rounded_beside(x, precision, rounding_mode, True)
+    return round_by_deciding_at[_arctan_kernel, _INVERSE_SLACK](
+        x, precision, rounding_mode
+    )
+
+
+def _arcsin_kernel(x: BigFloat, width: Int) raises -> BigFloat:
+    """`arcsin(x)` to `width` bits.
+
+    Args:
+        x: The argument, whose magnitude must be at most one.
+        width: The bits wanted.
+
+    Returns:
+        The value, within `_INVERSE_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    The identity is `arcsin(x) = arctan(x / sqrt(1 - x^2))`, and the only
+    care it needs is where `1 - x^2` cancels. For `|x|` near one it cancels
+    almost entirely -- at `|x| = 1 - 2^-d` the difference is about `2^(1-d)`
+    -- so the working width carries those `d` bits, counted from how far the
+    argument is from one rather than guessed at. The quotient is then
+    enormous, which is the one case `arctan`'s own reduction is built for.
+    """
+    if x.is_nan():
+        return BigFloat.nan(width)
+    if x.is_infinite():
+        return BigFloat.nan(width)
+    if x.is_zero():
+        return BigFloat.zero(width, x.sign)
+
+    var one = BigFloat.from_int(1, width + 8)
+    var magnitude = abs(x)
+    var order = compare_absolute(x, one)
+    if order > 0:
+        return BigFloat.nan(width)
+
+    var scale = width + Int(bit_width(UInt(width))) + 16
+    if order == 0:
+        var right_angle = bigfloat_arithmetics.multiply(
+            pi(scale), BigFloat.power_of_two(-1), scale
+        )
+        if x.sign:
+            right_angle = -right_angle
+        return BigFloat.from_rounded_parts(
+            right_angle.significand,
+            right_angle.exponent,
+            width,
+            right_angle.sign,
+        )
+
+    # How many bits `1 - x^2` will cancel, from the distance to one.
+    var gap = bigfloat_arithmetics.subtract(
+        BigFloat.from_int(1, width + 8), magnitude, width + 8
+    )
+    if not gap.is_zero():
+        var position = leading_bit_position(gap)
+        if position < BigInt.zero():
+            var lost = -position
+            if lost > BigInt(MAX_PRECISION - scale):
+                raise OverflowError(
+                    message=(
+                        "This argument is so close to one that the identity"
+                        " would need more bits than a precision may be."
+                    ),
+                    function="arcsin()",
+                )
+            scale += lost.to_int()
+
+    var wide_one = BigFloat.from_int(1, scale)
+    var square = bigfloat_arithmetics.multiply(x, x, scale)
+    var root = sqrt(
+        bigfloat_arithmetics.subtract(wide_one, square, scale), scale
+    )
+    var quotient = bigfloat_arithmetics.divide(x, root, scale)
+    var total = _arctan_kernel(quotient, scale)
+    return BigFloat.from_rounded_parts(
+        total.significand, total.exponent, width, total.sign
+    )
+
+
+def _arccos_kernel(x: BigFloat, width: Int) raises -> BigFloat:
+    """`arccos(x)` to `width` bits.
+
+    Args:
+        x: The argument, whose magnitude must be at most one.
+        width: The bits wanted.
+
+    Returns:
+        The value, within `_INVERSE_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    Below a half the answer is `pi/2 - arcsin(x)`, where the two parts are
+    the same size and nothing is lost. Above it that subtraction cancels --
+    the answer runs to nought as the argument runs to one -- so the half
+    angle is used instead: `arccos(x) = 2 arcsin(sqrt((1-x)/2))`, whose
+    argument runs to nought with the answer and cancels nowhere.
+    """
+    if x.is_nan() or x.is_infinite():
+        return BigFloat.nan(width)
+    var one = BigFloat.from_int(1, width + 8)
+    if compare_absolute(x, one) > 0:
+        return BigFloat.nan(width)
+
+    var scale = width + Int(bit_width(UInt(width))) + 16
+    var half = BigFloat.power_of_two(-1)
+    if compare_absolute(x, half) <= 0 or x.sign:
+        var right_angle = bigfloat_arithmetics.multiply(
+            pi(scale), BigFloat.power_of_two(-1), scale
+        )
+        var total = bigfloat_arithmetics.subtract(
+            right_angle, _arcsin_kernel(x, scale), scale
+        )
+        return BigFloat.from_rounded_parts(
+            total.significand, total.exponent, width, total.sign
+        )
+
+    # A positive argument above a half: the half angle avoids the
+    # cancellation that `pi/2 - arcsin(x)` would suffer.
+    var gap = bigfloat_arithmetics.subtract(
+        BigFloat.from_int(1, scale), x, scale
+    )
+    if gap.is_zero():
+        return BigFloat.zero(width, False)
+    var root = sqrt(
+        bigfloat_arithmetics.multiply(gap, BigFloat.power_of_two(-1), scale),
+        scale,
+    )
+    var total = bigfloat_arithmetics.multiply(
+        _arcsin_kernel(root, scale), BigFloat.power_of_two(1), scale
+    )
+    return BigFloat.from_rounded_parts(
+        total.significand, total.exponent, width, total.sign
+    )
+
+
+def arcsin(
+    x: BigFloat,
+    precision: Int,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) raises -> BigFloat:
+    """The inverse sine of a value, correctly rounded.
+
+    Args:
+        x: The argument, whose magnitude must be at most one.
+        precision: How many bits the result keeps. Must be positive.
+        rounding_mode: Which way to round.
+
+    Returns:
+        The float of `precision` bits nearest `arcsin(x)`, between `-pi/2`
+        and `pi/2`. An argument outside `[-1, 1]` gives a NaN, as it has no
+        inverse sine among the reals.
+
+    Raises:
+        ValueError: If `precision` is not positive.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    A small argument is `x + x^3/6`, away from zero, which is the other way
+    from the inverse tangent's.
+    """
+    _ = checked_precision(precision, "arcsin()")
+    if (
+        x.is_finite()
+        and not x.is_zero()
+        and cubic_term_is_below_a_guard_unit(x, guard_bits(x, precision))
+    ):
+        return rounded_beside(x, precision, rounding_mode, False)
+    return round_by_deciding_at[_arcsin_kernel, _INVERSE_SLACK](
+        x, precision, rounding_mode
+    )
+
+
+def arccos(
+    x: BigFloat,
+    precision: Int,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) raises -> BigFloat:
+    """The inverse cosine of a value, correctly rounded.
+
+    Args:
+        x: The argument, whose magnitude must be at most one.
+        precision: How many bits the result keeps. Must be positive.
+        rounding_mode: Which way to round.
+
+    Returns:
+        The float of `precision` bits nearest `arccos(x)`, between nought and
+        `pi`. An argument outside `[-1, 1]` gives a NaN.
+
+    Raises:
+        ValueError: If `precision` is not positive.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    `arccos(1)` is a positive zero, which is the one value of this function
+    that is exact.
+    """
+    _ = checked_precision(precision, "arccos()")
+    return round_by_deciding_at[_arccos_kernel, _INVERSE_SLACK](
         x, precision, rounding_mode
     )
