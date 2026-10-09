@@ -27,6 +27,8 @@ The contract both ways is `(magnitude, exponent)` with the value being
 `precision` bits unless it is zero.
 """
 
+from std.bit import bit_width
+
 from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.bitwise import test_bit, trailing_zeros
@@ -310,6 +312,118 @@ def _rounds_away_from_zero(
 # away from it -- and the move cannot be computed, only placed. These are
 # what place it, and they are here rather than in one of the function
 # modules because three of them need the same ones.
+
+
+def fixed_point_scale(x: BigFloat, width: Int) -> Int:
+    """The power of two to scale a series on `x` by, for `width` good bits.
+
+    Args:
+        x: The argument the series runs on, finite and not nought.
+        width: The bits the sum has to be good to.
+
+    Returns:
+        A `scale` such that `|x| * 2^scale` has `width` bits and a dozen more.
+
+    Notes:
+
+    A series summed in fixed-point integers is quicker than the same series
+    summed in correctly rounded floats by an order of magnitude, because a
+    term costs one shift and one division by a small integer rather than a
+    multiply, a divide and an addition that each allocate and round. The
+    constants have always been summed this way; this is what lets the
+    functions be.
+
+    What a fixed point cannot do is hold a value of unknown size: a scale
+    fixed in advance would leave a tiny `x` with nothing but leading noughts.
+    So the scale is taken from `x` itself, measured down from its leading bit,
+    and the sum is as good relative to its own first term whether that term is
+    near one or near nothing.
+    """
+    # The leading bit sits at `exponent + precision - 1`.
+    var guard = Int(bit_width(UInt(width))) + 12
+    return width + guard - x.exponent - x.precision
+
+
+def square_fixed_point_scale(x: BigFloat, width: Int) -> Int:
+    """The same, for a series whose first term is of the order of `x^2`.
+
+    Args:
+        x: The argument the series runs on, finite and not nought.
+        width: The bits the sum has to be good to.
+
+    Returns:
+        A `scale` such that `x^2 * 2^scale` has `width` bits and a dozen more.
+
+    Notes:
+
+    The cosine's series starts at `x^2/2`, not at `x`, so its fixed point has
+    to be measured down from there. Measured down from `x` instead, a small
+    argument would leave the sum good only in its own leading bits, and what
+    this series is for is exactly the tiny amount by which the cosine falls
+    short of one.
+    """
+    # `x^2` lies in `[2^2L, 2^(2L+2))` for a leading bit at `L`, so this is
+    # within a bit of its leading bit, and a bit is what the guard is for.
+    var guard = Int(bit_width(UInt(width))) + 12
+    return width + guard - 2 * (x.exponent + x.precision - 1)
+
+
+def to_fixed_point(x: BigFloat, scale: Int) -> BigInt:
+    """The magnitude of `x` as an integer scaled by `2^scale`, truncated.
+
+    Args:
+        x: A finite value.
+        scale: The power of two to scale by, from `fixed_point_scale()`.
+
+    Returns:
+        `|x| * 2^scale`, rounded toward zero, which is exact at the scale that
+        function returns.
+    """
+    var shift = scale + x.exponent
+    if shift >= 0:
+        return x.significand << shift
+    return x.significand >> -shift
+
+
+def square_to_fixed_point(x: BigFloat, scale: Int) -> BigInt:
+    """`x^2` as an integer scaled by `2^scale`, truncated.
+
+    Args:
+        x: A finite value.
+        scale: The power of two to scale by.
+
+    Returns:
+        `x^2 * 2^scale`, rounded toward zero. The square of the significand is
+        formed exactly, so this loses only what the scale itself cannot hold,
+        rather than the unit of the last place a rounded multiply would.
+    """
+    var shift = scale + 2 * x.exponent
+    var square = x.significand * x.significand
+    if shift >= 0:
+        return square << shift
+    return square >> -shift
+
+
+def from_fixed_point(
+    total: BigInt, scale: Int, width: Int, negative: Bool
+) raises -> BigFloat:
+    """A fixed-point integer as a float of `width` bits.
+
+    Args:
+        total: The magnitude, scaled by `2^scale`, never negative.
+        scale: The power of two it was scaled by.
+        width: The bits the answer keeps.
+        negative: The sign to give it.
+
+    Returns:
+        The value, normalized and rounded half to even.
+
+    Raises:
+        Error: Propagated from the rounding.
+    """
+    if total.is_zero():
+        return BigFloat.zero(width, negative)
+    return BigFloat.from_rounded_parts(total, -scale, width, negative)
 
 
 def leading_bit_position(x: BigFloat) raises -> BigInt:

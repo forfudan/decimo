@@ -48,10 +48,15 @@ from decimo.bigfloat.rounding import (
     MAX_PRECISION,
     checked_precision,
     cubic_term_is_below_a_guard_unit,
+    fixed_point_scale,
+    from_fixed_point,
     guard_bits,
     leading_bit_position,
     round_to_precision,
     rounded_beside,
+    square_fixed_point_scale,
+    square_to_fixed_point,
+    to_fixed_point,
 )
 from decimo.bigint.bigint import BigInt
 from decimo.errors import OverflowError
@@ -287,35 +292,36 @@ def _sine_series(x: BigFloat, width: Int) raises -> BigFloat:
     times `-x^2` over the two integers that follow. There is no leading
     constant to swamp a small argument, so the sum needs no help from the
     addition the way the cosine's does.
+
+    It is summed in fixed-point integers, whose scale is taken from `x` --
+    the first term -- so that a term costs a shift and a division by a small
+    integer rather than a rounded multiply, divide and add. The magnitudes
+    stay positive and the alternation is applied as they are added, which
+    leaves every division a truncation toward nought. The sum itself is
+    positive for every argument the caller sends, `pi/4` being well short of
+    where the sine turns.
     """
     if x.is_zero():
         return BigFloat.zero(width, x.sign)
-    var square = bigfloat_arithmetics.multiply(x, x, width)
-    var term = BigFloat.from_rounded_parts(
-        x.significand, x.exponent, width, x.sign
-    )
-    var total = term.copy()
+    var scale = fixed_point_scale(x, width)
+    var magnitude = to_fixed_point(x, scale)
+    var square = (magnitude * magnitude) >> scale
+
+    var total = magnitude.copy()
+    var term = magnitude.copy()
     var index = 2
+    var subtract = True
     while True:
-        term = bigfloat_arithmetics.divide(
-            bigfloat_arithmetics.multiply(term, square, width),
-            BigFloat.from_int(index * (index + 1), width),
-            width,
+        term = ((term * square) >> scale).truncate_divide(
+            BigInt(index * (index + 1))
         )
-        term = -term
         if term.is_zero():
-            return total^
-        if (
-            compare_absolute(
-                term,
-                bigfloat_arithmetics.multiply(
-                    total, BigFloat.power_of_two(-width - 2), width
-                ),
-            )
-            < 0
-        ):
-            return total^
-        total = bigfloat_arithmetics.add(total, term, width)
+            return from_fixed_point(total, scale, width, x.sign)
+        if subtract:
+            total -= term
+        else:
+            total += term
+        subtract = not subtract
         index += 2
 
 
@@ -338,36 +344,32 @@ def _cosine_minus_one_series(x: BigFloat, width: Int) raises -> BigFloat:
     caller to add, because adding it here would swamp a small argument: a
     term below the last place would vanish, while the addition turns it into
     the sticky bit it is.
+
+    It is summed in fixed-point integers, like the sine's, but at the scale of
+    `x^2` rather than of `x`, because `x^2/2` is the first term here. The sum
+    is negative for every argument but nought, the first term outweighing all
+    that follow it.
     """
     if x.is_zero():
         return BigFloat.zero(width, False)
-    var square = bigfloat_arithmetics.multiply(x, x, width)
-    var term = bigfloat_arithmetics.divide(
-        square, BigFloat.from_int(2, width), width
-    )
-    term = -term
-    var total = term.copy()
+    var scale = square_fixed_point_scale(x, width)
+    var square = square_to_fixed_point(x, scale)
+
+    var total = BigInt.zero()
+    var term = square >> 1
     var index = 3
+    var subtract = True
     while True:
-        term = bigfloat_arithmetics.divide(
-            bigfloat_arithmetics.multiply(term, square, width),
-            BigFloat.from_int(index * (index + 1), width),
-            width,
+        if subtract:
+            total -= term
+        else:
+            total += term
+        subtract = not subtract
+        term = ((term * square) >> scale).truncate_divide(
+            BigInt(index * (index + 1))
         )
-        term = -term
         if term.is_zero():
-            return total^
-        if (
-            compare_absolute(
-                term,
-                bigfloat_arithmetics.multiply(
-                    total, BigFloat.power_of_two(-width - 2), width
-                ),
-            )
-            < 0
-        ):
-            return total^
-        total = bigfloat_arithmetics.add(total, term, width)
+            return from_fixed_point(abs(total), scale, width, total.sign)
         index += 2
 
 
@@ -676,38 +678,32 @@ def _arctangent_series(x: BigFloat, width: Int) raises -> BigFloat:
     The series is `x - x^3/3 + x^5/5 - ...`, which gains `2 log2(1/|x|)` bits
     a term. That is why the caller halves the argument first: at `|x|` near
     one the series gains nothing at all.
+
+    It is summed in fixed-point integers at the scale of `x`, and the running
+    power of `x^2` is kept apart from the division by the odd number so that
+    the two truncations do not compound. The sum is positive for a positive
+    argument, the arctangent keeping the sign of what it is given.
     """
     if x.is_zero():
         return BigFloat.zero(width, x.sign)
-    var square = bigfloat_arithmetics.multiply(x, x, width)
-    var power = BigFloat.from_rounded_parts(
-        x.significand, x.exponent, width, x.sign
-    )
-    var total = power.copy()
+    var scale = fixed_point_scale(x, width)
+    var magnitude = to_fixed_point(x, scale)
+    var square = (magnitude * magnitude) >> scale
+
+    var total = magnitude.copy()
+    var power = magnitude.copy()
     var index = 3
+    var subtract = True
     while True:
-        power = bigfloat_arithmetics.multiply(power, square, width)
-        if power.is_zero():
-            return total^
-        var term = bigfloat_arithmetics.divide(
-            power, BigFloat.from_int(index, width), width
-        )
+        power = (power * square) >> scale
+        var term = power.truncate_divide(BigInt(index))
         if term.is_zero():
-            return total^
-        if (
-            compare_absolute(
-                term,
-                bigfloat_arithmetics.multiply(
-                    total, BigFloat.power_of_two(-width - 2), width
-                ),
-            )
-            < 0
-        ):
-            return total^
-        if (index // 2) % 2 == 1:
-            total = bigfloat_arithmetics.subtract(total, term, width)
+            return from_fixed_point(total, scale, width, x.sign)
+        if subtract:
+            total -= term
         else:
-            total = bigfloat_arithmetics.add(total, term, width)
+            total += term
+        subtract = not subtract
         index += 2
 
 
