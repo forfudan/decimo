@@ -252,3 +252,222 @@ def binomial(x: BigInt, k: Int) raises -> BigInt:
     var numerator = product_range(n - chosen + 1, n)
     var denominator = product_range(1, chosen)
     return numerator.truncate_divide(denominator)
+
+
+# Largest argument accepted by `fibonacci` and `lucas`. Fast doubling needs
+# only about `log2(n)` multiplications, so time is not what the cap is for:
+# `F(10^7)` is some two million digits, and the limit is there to turn an
+# argument that would exhaust memory into an error. It is larger than
+# `FACTORIAL_MAX_INPUT` because the work here grows with the logarithm of the
+# argument rather than with the argument.
+comptime FIBONACCI_MAX_INPUT = 10_000_000
+"""The largest magnitude accepted by `fibonacci` and `lucas` (10^7)."""
+
+
+def _fibonacci_pair(n: Int) raises -> Tuple[BigInt, BigInt]:
+    """Returns `(F(n), F(n+1))` for a non-negative `n`, by fast doubling.
+
+    Args:
+        n: The index, which must not be negative.
+
+    Returns:
+        The pair of consecutive Fibonacci numbers starting at `n`.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    The doubling identities are
+
+        F(2k)   = F(k) * (2*F(k+1) - F(k))
+        F(2k+1) = F(k)^2 + F(k+1)^2
+
+    so one pass down the bits of `n` from the top reaches `F(n)` in about
+    `log2(n)` steps, each of them two or three multiplications of numbers the
+    size of the answer. The alternative, adding `n` times, is `n` additions of
+    the same size.
+    """
+    var a = BigInt.zero()  # F(0)
+    var b = BigInt.one()  # F(1)
+    var top = 0
+    while (n >> top) != 0:
+        top += 1
+    for position in range(top - 1, -1, -1):
+        var even = a * ((b << 1) - a)  # F(2k)
+        var odd = a * a + b * b  # F(2k+1)
+        if (n >> position) & 1:
+            a = odd^
+            b = even + a
+        else:
+            a = even^
+            b = odd^
+    return (a^, b^)
+
+
+def fibonacci(n: BigInt) raises -> BigInt:
+    """Returns the `n`-th Fibonacci number.
+
+    Args:
+        n: The index, which may be negative.
+
+    Returns:
+        `F(n)`, where `F(0)` is zero, `F(1)` is one and each one after is the
+        sum of the two before.
+
+    Raises:
+        ValueError: If the magnitude of `n` is above `FIBONACCI_MAX_INPUT`
+            (10^7).
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    A negative index is answered rather than refused. The recurrence runs
+    backwards as readily as forwards -- `F(n-1) = F(n+1) - F(n)` -- and gives
+    `F(-n) = (-1)^(n+1) * F(n)`, so the sequence alternates in sign to the
+    left of zero: `F(-1)` is 1, `F(-2)` is -1, `F(-3)` is 2. These are the
+    values the identities hold for, so they are the values returned.
+    """
+    if n > BigInt(FIBONACCI_MAX_INPUT) or n < BigInt(-FIBONACCI_MAX_INPUT):
+        raise ValueError(
+            message=(
+                "Fibonacci index is too large to compute (magnitude must be"
+                " <= 10^7)."
+            ),
+            function="fibonacci()",
+        )
+    var index = Int(n)
+    if index >= 0:
+        var pair = _fibonacci_pair(index)
+        return pair[0].copy()
+    var pair = _fibonacci_pair(-index)
+    var value = pair[0].copy()
+    # F(-n) = (-1)^(n+1) F(n): negative for an even n.
+    if (-index) % 2 == 0:
+        return -value
+    return value^
+
+
+def lucas(n: BigInt) raises -> BigInt:
+    """Returns the `n`-th Lucas number.
+
+    Args:
+        n: The index, which may be negative.
+
+    Returns:
+        `L(n)`, where `L(0)` is two, `L(1)` is one and each one after is the
+        sum of the two before.
+
+    Raises:
+        ValueError: If the magnitude of `n` is above `FIBONACCI_MAX_INPUT`
+            (10^7).
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    `L(n) = 2*F(n+1) - F(n)`, and the fast doubling already returns that pair,
+    so a Lucas number costs a subtraction more than a Fibonacci one and needs
+    no second algorithm.
+
+    A negative index follows the same extension: `L(-n) = (-1)^n * L(n)`, so
+    `L(-1)` is -1 and `L(-2)` is 3.
+    """
+    if n > BigInt(FIBONACCI_MAX_INPUT) or n < BigInt(-FIBONACCI_MAX_INPUT):
+        raise ValueError(
+            message=(
+                "Lucas index is too large to compute (magnitude must be <="
+                " 10^7)."
+            ),
+            function="lucas()",
+        )
+    var signed = Int(n)
+    var index = signed if signed >= 0 else -signed
+    var pair = _fibonacci_pair(index)
+    var value = (pair[1] << 1) - pair[0]
+    if signed < 0 and index % 2 == 1:
+        return -value
+    return value^
+
+
+def _odd_product(low: Int, high: Int) raises -> BigInt:
+    """Returns the product of every other integer in `[low, high]`.
+
+    Args:
+        low: The first factor, which must be odd and non-negative.
+        high: The last factor, odd and at least `low - 2`.
+
+    Returns:
+        `low * (low + 2) * ... * high`, and 1 for an empty range.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    The same shape as `product_range()`: balanced splitting so that every
+    multiplication is between operands of similar size, with the small leaves
+    accumulated by single-word multiplies instead of recursing further.
+    """
+    if low > high:
+        return BigInt.one()
+    var count = (high - low) // 2 + 1
+    if count <= PRODUCT_RANGE_LEAF_CUTOFF:
+        var result = BigInt(low)
+        var factor = low + 2
+        while factor <= high:
+            multiply_by_word_inplace(result, UInt64(factor))
+            factor += 2
+        return result^
+    var middle = low + 2 * (count // 2 - 1)
+    return _odd_product(low, middle) * _odd_product(middle + 2, high)
+
+
+def double_factorial(n: BigInt) raises -> BigInt:
+    """Returns `n!!`, the product of `n` and every other integer below it.
+
+    Args:
+        n: The argument, which must be at least -1.
+
+    Returns:
+        `n * (n-2) * (n-4) * ...` down to 1 or 2, and 1 for `n` of -1 or 0.
+
+    Raises:
+        ValueError: If `n` is below -1 or above `FACTORIAL_MAX_INPUT` (10^6).
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    `(-1)!!` is 1, the empty product, which is the value that makes the
+    recurrence `n!! = n * (n-2)!!` hold at `n = 1`. Below that the extension
+    leaves the integers -- `(-3)!!` is -1 but `(-5)!!` is a third -- so an
+    argument under -1 is refused rather than answered in a type that cannot
+    hold the answer.
+
+    An even argument is not multiplied out one factor at a time: `(2m)!!` is
+    `2^m * m!`, so it is a factorial and a shift. Only the odd arguments need
+    their own product, and that one splits the same way `product_range()`
+    does.
+    """
+    if n < BigInt(-1):
+        raise ValueError(
+            message=(
+                "Double factorial is not an integer below -1; the argument"
+                " must be at least -1."
+            ),
+            function="double_factorial()",
+        )
+    if n > BigInt(FACTORIAL_MAX_INPUT):
+        raise ValueError(
+            message=(
+                "Double factorial argument is too large to compute (must be"
+                " <= 10^6)."
+            ),
+            function="double_factorial()",
+        )
+    var argument = Int(n)
+    if argument <= 0:
+        return BigInt.one()
+    if argument % 2 == 0:
+        var half = argument // 2
+        return product_range(1, half) << half
+    return _odd_product(1, argument)

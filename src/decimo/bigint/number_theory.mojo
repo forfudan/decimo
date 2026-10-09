@@ -50,6 +50,7 @@ from decimo.bigint.arithmetics import (
     right_shift_inplace,
     subtract,
     subtract_inplace,
+    truncate_modulo,
 )
 from decimo.bigint.bigint import BigInt, Magnitude
 from decimo.bigint.comparison import compare_magnitudes
@@ -824,3 +825,61 @@ def crt(
         solution = floor_modulo(solution, modulus)
 
     return Optional(Tuple(solution^, modulus^))
+
+
+# ===----------------------------------------------------------------------=== #
+# Divisibility Predicates
+# ===----------------------------------------------------------------------=== #
+
+
+def divisible_by(x: BigInt, divisor: BigInt) raises -> Bool:
+    """Returns whether `divisor` divides `x` exactly.
+
+    Args:
+        x: The value to test.
+        divisor: The value to divide by.
+
+    Returns:
+        True if `x` is `divisor` times some integer. The sign of either is
+        nothing to the answer.
+
+    Raises:
+        Error: Propagated from the division.
+
+    Notes:
+
+    A divisor of zero divides zero and nothing else, which is what the
+    definition says: `0 == 0 * k` holds for every `k` and `x == 0 * k` holds
+    for no other `x`. The question is answered rather than refused, unlike
+    `mod_pow()` and `mod_inverse()` next door, which need a residue and so
+    have to insist on a positive modulus. Nothing is divided here when the
+    divisor is zero, so there is nothing to fail.
+    """
+    if divisor.is_zero():
+        return x.is_zero()
+    return truncate_modulo(x, divisor).is_zero()
+
+
+def congruent(x: BigInt, other: BigInt, modulus: BigInt) raises -> Bool:
+    """Returns whether `x` and `other` agree modulo `modulus`.
+
+    Args:
+        x: The first value.
+        other: The value to compare it against.
+        modulus: The modulus.
+
+    Returns:
+        True if `modulus` divides `x - other`. A negative modulus behaves as
+        its magnitude, since a number and its negation divide the same values.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    A modulus of zero asks whether the two are equal, because the only
+    multiple of zero is zero. That is the same reading `divisible_by()` takes
+    of a zero divisor, and it keeps the two consistent: `congruent(a, b, m)`
+    is `divisible_by(a - b, m)` for every `m`.
+    """
+    return divisible_by(x - other, modulus)
