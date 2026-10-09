@@ -2145,6 +2145,131 @@ def log10_rounded(
     return _round_by_deciding[log10, LOG10_SLACK](x, precision, rounding_mode)
 
 
+comptime INTEGER_POWER_SLACK = 4
+"""Digits in the last place `integer_power()` may be off by.
+
+It squares and multiplies about `log2(n)` times for an exponent `n`, rounding
+each product down to its working precision, which is nine digits beyond what
+it was asked for. Four units of the asked-for precision is a wide margin on
+that for any exponent an `Int` holds.
+"""
+
+
+def _whole_exponent(exponent: BigDecimal) raises -> Optional[Int]:
+    """The magnitude of a whole exponent as an `Int`.
+
+    Args:
+        exponent: The exponent, which must be a whole number.
+
+    Returns:
+        `|exponent|` as an `Int`, or nothing when it is too large to be one.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    An exponent past eighteen digits is not refused here, only declined: the
+    caller falls back to the loop that decides a rounding, which does not need
+    the exponent in a machine word.
+    """
+    var magnitude = abs(exponent)
+    var value: BigUInt
+    if magnitude.scale > 0:
+        value = magnitude.coefficient.floor_divide_by_power_of_ten(
+            magnitude.scale
+        )
+    elif magnitude.scale == 0:
+        value = magnitude.coefficient.copy()
+    else:
+        value = magnitude.coefficient.multiply_by_power_of_ten(-magnitude.scale)
+    if value.number_of_digits() > 18:
+        return None
+    return value.to_int()
+
+
+def _exact_integer_power(
+    base: BigDecimal, degree: Int, precision: Int
+) raises -> Optional[BigDecimal]:
+    """`base` raised to a whole `degree`, exactly, when that is worth forming.
+
+    Args:
+        base: The base, which must not be nought.
+        degree: The exponent's magnitude, never negative.
+        precision: The digits the answer will be rounded to, which is what
+            decides whether an exact power is worth forming.
+
+    Returns:
+        The exact power, or nothing when it would take more digits than any
+        answer at `precision` could need.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    This exists because the loop that decides a rounding cannot settle on a
+    value it cannot separate from a boundary, and an integer power lands on
+    one often: `2 ** 10` is `1024` exactly, which every directed mode has to
+    return and no interval around it can prove. A tie is the same problem one
+    place over -- `5 ** 3` is `125`, the midpoint of `120` and `130` at two
+    digits -- so both are answered here, from the exact value, rather than
+    decided.
+
+    Which powers are worth forming follows from that. An answer that is
+    representable at `precision` digits, or that sits on a midpoint between
+    two, has at most `precision + 1` digits. A coefficient of two or more
+    digits raised to `n` has at least `n (digits - 1) + 1` of them, and a
+    single-digit coefficient above one at least `0.301 n`, so a coefficient
+    and an exponent whose product passes `4 precision + 24` cannot produce
+    either case. Past that the loop settles by itself and the exact power
+    would cost digits without buying a decision.
+
+    The count has to be of significant digits, which is why the trailing
+    zeros are set aside for it. `10` is two digits and grows no faster than
+    `1` does, and leaving its zero in the count declined `10 ** 400` as too
+    long when it is one digit and a scale. A stripped coefficient of one says
+    the base is a power of ten, whose powers are one digit however large the
+    exponent, and those are never declined.
+
+    What is counted and what is built are two different things. The power is
+    built from the coefficient as it came, so that `10 ** 2` is `100` and not
+    `1E+2`: a scale is part of what a `BigDecimal` is, and an exact answer
+    should not arrive in a different shape than it used to. Only when that
+    form is too long to hold is the stripped one used instead, which happens
+    for powers this function used to decline altogether.
+    """
+    var trailing = base.coefficient.number_of_trailing_zeros()
+    var digits = base.coefficient.number_of_digits()
+    var stripped = base.coefficient.copy()
+    if trailing > 0:
+        stripped = stripped.floor_divide_by_power_of_ten(trailing)
+
+    var affordable = 4 * precision + 24
+    if not stripped.is_one():
+        if degree > 0 and (digits - trailing) * degree > affordable:
+            return None
+
+    var negative = base.sign and degree % 2 == 1
+    if degree != 0 and digits * degree <= affordable + 64:
+        # The scale multiplies by the degree, and a scale is an `Int`.
+        if base.scale != 0 and abs(base.scale) > Int.MAX // degree:
+            return None
+        return BigDecimal(
+            base.coefficient**degree, base.scale * degree, negative
+        )
+    if degree == 0:
+        return BigDecimal(BigUInt.one(), 0, False)
+
+    # Too long as it came, so the zeros move into the scale. What is left is
+    # either one, whose powers are one digit, or short enough by the count
+    # above, so there is nothing more to decline here.
+    var scale = base.scale - trailing
+    if scale != 0 and abs(scale) > Int.MAX // degree:
+        return None
+    return BigDecimal(stripped**degree, scale * degree, negative)
+
+
 def power_rounded(
     base: BigDecimal,
     exponent: BigDecimal,
@@ -2168,20 +2293,67 @@ def power_rounded(
 
     Notes:
 
-    An integer exponent is left to `power()` itself: that path is a chain of
-    exact multiplications with one rounding at the end, so the mode simply
-    applies, and the value can land exactly on a boundary -- `2 ** 10` is
-    `1024` -- which is the one case the loop could not settle.
+    An integer exponent cannot be handed to `power()` and rounded afterwards.
+    `power()` rounds to the precision it was given before returning, and
+    `integer_power()` under it rounds every product of the binary
+    exponentiation down to nine digits beyond that, so by the time the value
+    arrives the digits a mode needs to see are gone -- rounding it again is a
+    rounding of an already rounded value, and every mode gives the same
+    answer. `7 ** 31` at fifteen digits ended in `846` in all seven of them,
+    where truncation has to end in `845`.
+
+    So an integer power is either formed exactly, and rounded once here, or
+    put through the same loop as everything else. Which of the two applies is
+    `_exact_integer_power()`'s decision, and it is made so that every value
+    the loop could not settle on falls on the exact side.
     """
     if exponent.is_integer():
-        var result = power(base, exponent, precision)
-        result.round_to_precision_inplace(
-            precision=precision,
-            rounding_mode=rounding_mode,
-            remove_extra_digit_due_to_rounding=True,
-            fill_zeros_to_precision=False,
+        var one = BigDecimal(BigUInt.one(), 0, False)
+        # The cases `power()` answers outright are exact already, and
+        # rounding an exact value that fits cannot change it.
+        if (
+            base.coefficient.is_zero()
+            or exponent.coefficient.is_zero()
+            or base == one
+        ):
+            return power(base, exponent, precision)
+
+        var degree = _whole_exponent(exponent)
+        if degree:
+            var exact = _exact_integer_power(base, degree.value(), precision)
+            if exact:
+                var value = exact.take()
+                if exponent.sign:
+                    # One correctly rounded division of exact operands, which
+                    # is what `1 / base^n` is.
+                    return bigdecimal_arithmetics.true_divide(
+                        one, value, precision, rounding_mode
+                    )
+                value.round_to_precision_inplace(
+                    precision=precision,
+                    rounding_mode=rounding_mode,
+                    remove_extra_digit_due_to_rounding=True,
+                    fill_zeros_to_precision=False,
+                )
+                return value^
+
+        var integer_width = precision + _ZIV_START
+        for _ in range(_ZIV_LIMIT):
+            var settled = _settled_answer(
+                integer_power(base, exponent, integer_width),
+                integer_width,
+                INTEGER_POWER_SLACK,
+                precision,
+                rounding_mode,
+            )
+            if settled:
+                return settled.take()
+            integer_width += integer_width - precision
+        raise Error(
+            "the rounding of this integer power could not be decided; the"
+            " exact value was too long to form and the series is further from"
+            " it than its stated bound allows"
         )
-        return result^
 
     var width = precision + _ZIV_START
     for _ in range(_ZIV_LIMIT):
