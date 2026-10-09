@@ -37,7 +37,12 @@ import decimo.bigfloat.arithmetics as bigfloat_arithmetics
 from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigfloat.comparison import compare_absolute
 from decimo.bigfloat.constants import ln2
-from decimo.bigfloat.rounding import checked_precision
+from decimo.bigfloat.rounding import (
+    checked_precision,
+    fixed_point_scale,
+    from_fixed_point,
+    to_fixed_point,
+)
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.exponential import sqrt_rem
 from decimo.errors import OverflowError
@@ -328,38 +333,32 @@ def expm1_at_width(x: BigFloat, width: Int) raises -> BigFloat:
     the width's last place would vanish, while `add()` on the way out turns
     it into the sticky bit it is.
 
-    Every step is a correctly rounded multiply and divide, so a term is off by
-    at most a unit of the last place and the sum by at most one per term,
-    which the caller's working width is chosen to absorb.
+    The sum is taken in fixed-point integers, a dozen bits below the last
+    place the caller asked for. Each step truncates twice, by a unit of that
+    scale each time, and there are fewer steps than there are bits in the
+    scale, so what the whole sum loses stays well under the last place.
+
+    Terms are kept as magnitudes and the sign is applied as they are added,
+    which for a negative `x` alternates: `x^n` is negative exactly when `n`
+    is odd. Keeping them positive keeps every division a truncation toward
+    nought, so the error has one direction per term rather than two.
     """
     if x.is_zero():
         return BigFloat.zero(width, x.sign)
-    var term = BigFloat.from_rounded_parts(
-        x.significand, x.exponent, width, x.sign
-    )
-    var total = term.copy()
-    var index = 2
+    var scale = fixed_point_scale(x, width)
+    var magnitude = to_fixed_point(x, scale)
+
+    var total = BigInt.zero()
+    var term = magnitude.copy()
+    var index = 1
     while True:
-        term = bigfloat_arithmetics.divide(
-            bigfloat_arithmetics.multiply(term, x, width),
-            BigFloat.from_int(index, width),
-            width,
-        )
+        if x.sign and index % 2 == 1:
+            total -= term
+        else:
+            total += term
+        term = ((term * magnitude) >> scale).truncate_divide(BigInt(index + 1))
         if term.is_zero():
-            return total^
-        # A term below the last place of the sum cannot move it, and every
-        # term after it is smaller again.
-        if (
-            compare_absolute(
-                term,
-                bigfloat_arithmetics.multiply(
-                    total, BigFloat.power_of_two(-width - 2), width
-                ),
-            )
-            < 0
-        ):
-            return total^
-        total = bigfloat_arithmetics.add(total, term, width)
+            return from_fixed_point(abs(total), scale, width, total.sign)
         index += 1
 
 
@@ -378,38 +377,29 @@ def atanh_at_width(x: BigFloat, width: Int) raises -> BigFloat:
 
     Notes:
 
-    The series is `x + x^3/3 + x^5/5 + ...`. The running power of `x^2` is
-    kept apart from the division by the odd number, as in the constants, so
-    that the two errors do not compound.
+    The series is `x + x^3/3 + x^5/5 + ...`, summed in fixed-point integers
+    at a scale taken from `x`. The running power of `x^2` is kept apart from
+    the division by the odd number, as in the constants, so that the two
+    errors do not compound.
+
+    Every term has the sign of `x`, odd powers being what they are, so the
+    magnitudes add and the sign goes on at the end.
     """
     if x.is_zero():
         return BigFloat.zero(width, x.sign)
-    var square = bigfloat_arithmetics.multiply(x, x, width)
-    var power = BigFloat.from_rounded_parts(
-        x.significand, x.exponent, width, x.sign
-    )
-    var total = power.copy()
+    var scale = fixed_point_scale(x, width)
+    var magnitude = to_fixed_point(x, scale)
+    var square = (magnitude * magnitude) >> scale
+
+    var total = magnitude.copy()
+    var power = magnitude.copy()
     var index = 3
     while True:
-        power = bigfloat_arithmetics.multiply(power, square, width)
-        if power.is_zero():
-            return total^
-        var term = bigfloat_arithmetics.divide(
-            power, BigFloat.from_int(index, width), width
-        )
+        power = (power * square) >> scale
+        var term = power.truncate_divide(BigInt(index))
         if term.is_zero():
-            return total^
-        if (
-            compare_absolute(
-                term,
-                bigfloat_arithmetics.multiply(
-                    total, BigFloat.power_of_two(-width - 2), width
-                ),
-            )
-            < 0
-        ):
-            return total^
-        total = bigfloat_arithmetics.add(total, term, width)
+            return from_fixed_point(total, scale, width, x.sign)
+        total += term
         index += 2
 
 
