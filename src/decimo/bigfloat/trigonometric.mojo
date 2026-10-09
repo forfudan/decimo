@@ -156,45 +156,120 @@ def _reduction_width(x: BigFloat, width: Int) raises -> Int:
     return total
 
 
+def _nearest_to_bigint(value: BigFloat, width: Int) raises -> BigInt:
+    """The integer nearest a finite value.
+
+    Args:
+        value: The value.
+        width: A precision wide enough to hold its integer part and a bit
+            more, so that adding a half is exact.
+
+    Returns:
+        The nearest integer, ties going away from zero.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+    """
+    var half = _power_of_two(-1)
+    if value.sign:
+        half = -half
+    return _truncated_to_bigint(bigfloat_arithmetics.add(value, half, width))
+
+
 def _reduced(x: BigFloat, width: Int) raises -> Tuple[BigFloat, Int]:
     """Writes `x` as `k * (pi/2) + r` and returns `r` with `k mod 4`.
 
     Args:
-        x: The argument, finite.
+        x: The argument, finite and not zero.
         width: The bits wanted in the answer.
 
     Returns:
-        The remainder, whose magnitude is at most `pi/4` and a little, and
-        which quadrant `k` lands in, from zero to three.
+        The remainder, whose magnitude is at most `pi/4`, and which quadrant
+        `k` lands in, from zero to three.
 
     Raises:
         OverflowError: If the reduction needs more bits of pi than a
-            precision may be.
+            precision may be, or cannot resolve the remainder in eight tries.
         Error: Propagated from the arithmetic.
+
+    Notes:
+
+    `k` is the nearest multiple and not the one toward zero. Toward zero
+    leaves `r` anywhere in `[0, pi/2)`, and a remainder near `pi/2` is where
+    the cosine's series is worst: `cos(r)` is then near nought, so putting
+    the leading one back cancels it away and the kernel's error bound stops
+    holding. The nearest multiple leaves `|r| <= pi/4`, where `cos(r)` is at
+    least `0.707` and nothing cancels.
+
+    The remainder is then checked rather than trusted. Pi is irrational and
+    the pi used here is rounded, so subtracting `k * (pi/2)` cancels the
+    argument's leading bits against a value that is itself only approximate:
+    the error in `r` is about `|x| * 2^-scale`, and `r` has to stand well
+    above that to mean anything. An argument that happens to agree with the
+    rounded `pi/2` to the working width -- `pi(88)/2` itself, say -- leaves a
+    remainder of exactly nought, which would make the cosine nought and the
+    tangent an infinity, though no binary float is a pole. So when `r` is too
+    small for its own error the scale grows and the reduction runs again.
     """
+    var leading = _leading_bit_position(x)
     var scale = _reduction_width(x, width)
-    var half_pi = bigfloat_arithmetics.multiply(
-        pi(scale), _power_of_two(-1), scale
-    )
-    var quotient = bigfloat_arithmetics.divide(
-        x, half_pi, scale, RoundingMode.ROUND_DOWN
-    )
-    var multiple = _truncated_to_bigint(quotient)
-    var remainder = x.copy()
-    if not multiple.is_zero():
-        remainder = bigfloat_arithmetics.subtract(
-            x,
-            bigfloat_arithmetics.multiply(
-                BigFloat.from_bigint(multiple, scale), half_pi, scale
-            ),
-            scale,
+    for _ in range(8):
+        var half_pi = bigfloat_arithmetics.multiply(
+            pi(scale), _power_of_two(-1), scale
         )
-    # The quadrant is `k` modulo four, taken toward negative infinity so that
-    # a negative `k` lands in the same four cases as a positive one.
-    var quadrant = (multiple % BigInt(4)).to_int()
-    if quadrant < 0:
-        quadrant += 4
-    return (remainder^, quadrant)
+        var quotient = bigfloat_arithmetics.divide(x, half_pi, scale)
+        var multiple = _nearest_to_bigint(quotient, scale + 4)
+        var remainder = x.copy()
+        if not multiple.is_zero():
+            remainder = bigfloat_arithmetics.subtract(
+                x,
+                bigfloat_arithmetics.multiply(
+                    BigFloat.from_bigint(multiple, scale), half_pi, scale
+                ),
+                scale,
+            )
+        # The error in the remainder is about `|x| * 2^-scale`, so its
+        # leading bit has to sit at least `width` places above that.
+        var floor_position = leading - BigInt(scale) + BigInt(width) + BigInt(8)
+        if not remainder.is_zero():
+            if _leading_bit_position(remainder) >= floor_position:
+                var quadrant = (multiple % BigInt(4)).to_int()
+                if quadrant < 0:
+                    quadrant += 4
+                return (remainder^, quadrant)
+        scale = _widened_reduction(scale, width)
+    raise OverflowError(
+        message=(
+            "The reduction of this argument could not be resolved: its"
+            " remainder cancels against pi further than eight widenings"
+            " reach."
+        ),
+        function="_reduced()",
+    )
+
+
+def _widened_reduction(scale: Int, width: Int) raises -> Int:
+    """The next scale to try when a remainder cancelled too far.
+
+    Args:
+        scale: The scale that was not enough.
+        width: The bits wanted in the answer.
+
+    Returns:
+        A wider scale.
+
+    Raises:
+        OverflowError: If that is more than a precision may be.
+    """
+    if scale > MAX_PRECISION - width - 16:
+        raise OverflowError(
+            message=(
+                "Resolving this reduction needs more bits of pi than a"
+                " precision may be."
+            ),
+            function="_reduced()",
+        )
+    return scale + width + 16
 
 
 def _power_of_two(exponent: Int) raises -> BigFloat:
@@ -211,6 +286,123 @@ def _power_of_two(exponent: Int) raises -> BigFloat:
     """
     return BigFloat(
         significand=BigInt.one(), exponent=exponent, precision=1, sign=False
+    )
+
+
+def _cubic_term_is_below_a_guard_unit(x: BigFloat, guard: Int) raises -> Bool:
+    """Whether `x^3` is small enough for a guard unit to stand in for it.
+
+    Args:
+        x: The argument, finite and not zero.
+        guard: How many guard bits the rounding will be given.
+
+    Returns:
+        True when the cubic correction is below one guard unit of `x`, which
+        is what makes moving `x` by a guard unit land on the same side of
+        every rounding boundary as the true value does.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    The test is on the leading bits, in a `BigInt` because those positions
+    can be far outside an `Int`. With `L` the leading bit's position,
+    `|x^3/3|` is below `2^(3L+2)` and a guard unit is `2^(L - p + 1 - g)`
+    for a significand of `p` bits, so the condition is
+
+        2L < -p - g - 1
+
+    which is a real restriction and not a formality: at one bit of
+    destination and `x = 3065/32768`, the cubic term is nine times `x`'s own
+    last place, and the earlier gate -- `|x|` below `2^-((precision+4)/2)` --
+    let it through. The tangent then answered `1/16` where the truth is above
+    the midpoint and the answer is `1/8`.
+    """
+    var leading = _leading_bit_position(x)
+    return (leading + leading) < BigInt(-(x.precision + guard + 1))
+
+
+def _guard_bits(x: BigFloat, precision: Int) -> Int:
+    """How many bits to widen `x` by before rounding it to `precision`.
+
+    Args:
+        x: The value.
+        precision: The bits the answer keeps.
+
+    Returns:
+        At least two, and enough that the widened significand has more bits
+        than the answer keeps, which is what the rounding needs to read a
+        discarded remainder.
+    """
+    var guard = 2
+    if precision + 2 - x.precision > guard:
+        guard = precision + 2 - x.precision
+    return guard
+
+
+def _moved_off_x(
+    x: BigFloat,
+    precision: Int,
+    rounding_mode: RoundingMode,
+    toward_zero: Bool,
+) raises -> BigFloat:
+    """Rounds the value a hair to one side of `x`, by one guard unit.
+
+    Args:
+        x: The value the answer sits beside, finite and not zero.
+        precision: The bits the answer keeps.
+        rounding_mode: Which way to round.
+        toward_zero: Whether the answer is below `x` in magnitude or above.
+
+    Returns:
+        `x` moved by less than a quarter of its own last place, rounded.
+
+    Raises:
+        OverflowError: If `x` sits so low in the exponent range that there is
+            no room for the guard bits.
+        Error: Propagated from the rounding.
+
+    Notes:
+
+    This is for an argument whose correction term is real but far too small
+    to compute: `sin(x)` is `x - x^3/6` and the tangent is `x + x^3/3`, and
+    at `x = 2^-100000` neither correction has an exponent an `Int` can hold.
+    What the rounding needs is not the correction's size but its side, and
+    one guard unit stands in for it exactly.
+
+    Exactly, because a guard unit is at most a quarter of `x`'s own last
+    place, while the distance from `x` to any rounding boundary it does not
+    sit on is at least a whole one: so moving by a guard unit cannot cross a
+    boundary that the true correction does not. And where `x` sits on a
+    boundary -- a tie, or a value the destination holds exactly -- moving off
+    it is the whole point, since the truth is not on it.
+
+    An earlier version moved by `x * 2^-(precision+8)` instead, which is
+    larger than the correction for a small `x` rather than smaller. At one
+    bit of precision and `x = 3077/32768`, just above the midpoint `3/32`,
+    that crossed the midpoint and answered `1/16` where the sine is above it
+    and the answer is `1/8`.
+    """
+    var guard = _guard_bits(x, precision)
+    if x.exponent < Int.MIN + guard:
+        raise OverflowError(
+            message=(
+                "This argument sits too low in the exponent range to leave"
+                " room for the bits its rounding needs."
+            ),
+            function="_moved_off_x()",
+        )
+    var magnitude = x.significand << guard
+    if toward_zero:
+        magnitude = magnitude - BigInt.one()
+    return BigFloat.from_rounded_parts(
+        magnitude,
+        x.exponent - guard,
+        precision,
+        x.sign,
+        rounding_mode,
+        True,
     )
 
 
@@ -494,23 +686,10 @@ def sin(
     if (
         x.is_finite()
         and not x.is_zero()
-        and compare_absolute(x, _power_of_two(-(precision + 4) // 2)) < 0
+        and _cubic_term_is_below_a_guard_unit(x, _guard_bits(x, precision))
     ):
-        # `sin(x) = x - x^3/6 + ...`, so the answer is `x` moved toward zero
-        # by something positive and far below its last place. Returning `x`
-        # rounded would be wrong for the directed modes: where `x` is itself
-        # representable, toward zero has to give the value below it. So the
-        # move is made rather than assumed, with a subtrahend that is below
-        # half the last place and above nothing -- which is all the rounding
-        # needs to know, since every value in that interval rounds alike.
-        return bigfloat_arithmetics.subtract(
-            x,
-            bigfloat_arithmetics.multiply(
-                x, _power_of_two(-(precision + 8)), 8
-            ),
-            precision,
-            rounding_mode,
-        )
+        # `sin(x) = x - x^3/6 + ...`, so the answer is `x` moved toward zero.
+        return _moved_off_x(x, precision, rounding_mode, True)
     return round_by_deciding_at[_sin_kernel, _SINE_SLACK](
         x, precision, rounding_mode
     )
@@ -602,16 +781,10 @@ def tan(
     if (
         x.is_finite()
         and not x.is_zero()
-        and compare_absolute(x, _power_of_two(-(precision + 4) // 2)) < 0
+        and _cubic_term_is_below_a_guard_unit(x, _guard_bits(x, precision))
     ):
-        return bigfloat_arithmetics.add(
-            x,
-            bigfloat_arithmetics.multiply(
-                x, _power_of_two(-(precision + 8)), 8
-            ),
-            precision,
-            rounding_mode,
-        )
+        # `tan(x) = x + x^3/3 + ...`, away from zero.
+        return _moved_off_x(x, precision, rounding_mode, False)
     return round_by_deciding_at[_tan_kernel, _TANGENT_SLACK](
         x, precision, rounding_mode
     )
