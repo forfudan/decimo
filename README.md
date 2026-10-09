@@ -14,7 +14,7 @@ library's `decimal`, and a superset of it: the whole of its method surface,
 plus `pi()`, `e()` and a 128-bit decimal type. Install it with
 `pip install decimo`.
 
-[![Version](https://img.shields.io/badge/version-v0.15.0-blue)](https://github.com/forfudan/decimo/releases/tag/v0.15.0)
+[![Version](https://img.shields.io/badge/version-v0.16.0-blue)](https://github.com/forfudan/decimo/releases/tag/v0.16.0)
 [![Mojo](https://img.shields.io/badge/mojo-1.1.0-orange)](https://docs.modular.com/mojo/manual/)
 [![CI](https://img.shields.io/github/actions/workflow/status/forfudan/decimo/run_tests.yaml?branch=main&label=tests)](https://github.com/forfudan/decimo/actions/workflows/run_tests.yaml)
 [![License](https://img.shields.io/github/license/forfudan/decimo)](https://github.com/forfudan/decimo/blob/main/LICENSE)
@@ -76,13 +76,12 @@ The core types are[^auxiliary]:
   Rust's `rust_decimal`.
 - An arbitrary-precision binary floating-point implementation (`BigFloat`)
   written in Mojo, with no dependency to install. The significand is a
-  `BigInt`, the exponent is as wide as an `Int`, and every operation is
-  correctly
-  rounded in all seven of decimo's rounding modes: the four arithmetic ones,
-  the square root, the exponential and the logarithm, the circular functions
-  and their inverses, and the hyperbolic ones and theirs. An MPFR-backed type
-  is still in the source as `decimo.mpf.mpf.MPF`, outside the public
-  interface, for anyone who wants it.
+  `BigInt` and the exponent is as wide as an `Int`. The four arithmetic
+  operations, the square root, the exponential and the logarithm, the
+  circular functions and their inverses, and the hyperbolic ones and theirs
+  are each correctly rounded, in each of decimo's seven rounding modes. An
+  MPFR-backed type is still in the source as `decimo.mpf.mpf.MPF`, outside
+  the public interface, for anyone who wants it.
 
 Decimo is fast: at a million digits `pi()` is nearly twelve times quicker than
 pure-Python mpmath, `BigInt` multiplication is fifteen times quicker than
@@ -173,7 +172,7 @@ Then, you can install Decimo using any of these methods:
 1. In the `mojoproject.toml` file of your project, add the following dependency:
 
     ```toml
-    decimo = ">=0.15.0, <0.16.0"
+    decimo = ">=0.16.0, <0.17.0"
     ```
 
     Then run `pixi install` to download and install the package.
@@ -207,7 +206,7 @@ versions:
 | `decimo`   | v0.12.0 | >=1.0.0, <1.1.0 | pixi            |
 | `decimo`   | v0.13.0 | >=1.0.0, <1.1.0 | pixi            |
 | `decimo`   | v0.14.0 | >=1.0.0, <1.1.0 | pixi            |
-| `decimo`   | v0.15.0 | >=1.1.0, <1.2.0 | pixi            |
+| `decimo`   | v0.16.0 | >=1.1.0, <1.2.0 | pixi            |
 
 </details>
 
@@ -728,7 +727,7 @@ If you find Decimo useful, consider listing it in your citations.
     year         = {2026},
     title        = {Decimo: An arbitrary-precision integer and decimal library for Mojo},
     url          = {https://github.com/forfudan/decimo},
-    version      = {0.15.0},
+    version      = {0.16.0},
     note         = {Computer Software}
 }
 ```
