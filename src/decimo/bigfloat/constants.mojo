@@ -281,11 +281,17 @@ floor and a doubling it would recompute the constant at every step.
 
 
 struct _ConstantCache(Movable):
-    """The four constants at the widest width each has been asked for.
+    """The four constants, each held at a wide width and at a narrow one.
 
     A value held at `w` bits answers any request for `w` or fewer: truncating
     it costs less than a unit in the last place of the narrower width, and a
     kernel is allowed two.
+
+    Truncating is cheap only against the held width, though, so a single
+    request for a very wide constant would otherwise make every later narrow
+    request walk that whole width. Each constant therefore keeps a second,
+    narrow copy, cut from the wide one and wide enough for the narrow
+    requests that have come in. Both copies grow and neither shrinks.
     """
 
     var busy: Atomic[Int64]
@@ -301,12 +307,22 @@ struct _ConstantCache(Movable):
     """
     var width: List[Int]
     """What each was computed at; nought for one never computed."""
+    var narrow: List[BigFloat]
+    """The same four, cut down for the narrow requests.
+
+    Empty alongside `value`, and a slot whose `narrow_width` is nought holds
+    a placeholder that is never read.
+    """
+    var narrow_width: List[Int]
+    """What each narrow copy was cut to; nought for one never cut."""
 
     def __init__(out self):
         """An empty cache."""
         self.busy = Atomic[Int64](0)
         self.value = List[BigFloat]()
         self.width = [0, 0, 0, 0]
+        self.narrow = List[BigFloat]()
+        self.narrow_width = [0, 0, 0, 0]
 
 
 def _make_constant_cache() -> _ConstantCache:
@@ -357,6 +373,51 @@ def _computed(which: Int, width: Int) raises -> BigFloat:
     return _ln10_computed(width)
 
 
+def _truncated(value: BigFloat, width: Int) raises -> BigFloat:
+    """A held constant cut down to a narrower width.
+
+    Args:
+        value: The held value, which is positive.
+        width: The bits wanted, no more than the value already has.
+
+    Returns:
+        The value truncated to `width` bits, which costs less than a unit in
+        the last place of that width.
+
+    Raises:
+        Error: Propagated from the rounding.
+
+    Notes:
+
+    Truncating twice -- once into the narrow copy, once out of it -- drops
+    low bits twice and so lands on the same bits as truncating once, which
+    is why a narrow copy answers exactly as the wide one would.
+    """
+    return BigFloat.from_rounded_parts(
+        value.significand,
+        value.exponent,
+        width,
+        False,
+        RoundingMode.ROUND_DOWN,
+    )
+
+
+def _narrow_target(width: Int) -> Int:
+    """How wide a narrow copy that answers `width` should be cut.
+
+    Args:
+        width: The bits asked for.
+
+    Returns:
+        The width to cut to, never under `_CACHE_FLOOR` so that the narrow
+        copy serves the whole band of small requests.
+    """
+    var target = width + 64
+    if _CACHE_FLOOR > target:
+        target = _CACHE_FLOOR
+    return target
+
+
 def _cached(which: Int, width: Int) raises -> BigFloat:
     """One of the four constants, from the cache where the cache has it.
 
@@ -379,39 +440,41 @@ def _cached(which: Int, width: Int) raises -> BigFloat:
         _ = cache[].busy.fetch_sub(1)
         return _computed(which, width)
 
-    if cache[].width[which] >= width:
-        var held = cache[].value[which].copy()
-        _ = cache[].busy.fetch_sub(1)
-        return BigFloat.from_rounded_parts(
-            held.significand,
-            held.exponent,
-            width,
-            False,
-            RoundingMode.ROUND_DOWN,
-        )
-
-    var target = width + 64
-    if _CACHE_FLOOR > target:
-        target = _CACHE_FLOOR
-    if cache[].width[which] * 2 > target:
-        target = cache[].width[which] * 2
     try:
+        if cache[].narrow_width[which] >= width:
+            var answer = _truncated(cache[].narrow[which], width)
+            _ = cache[].busy.fetch_sub(1)
+            return answer^
+
+        if cache[].width[which] >= width:
+            var answer = _truncated(cache[].value[which], width)
+            var target = _narrow_target(width)
+            if target < cache[].width[which]:
+                cache[].narrow[which] = _truncated(cache[].value[which], target)
+                cache[].narrow_width[which] = target
+            _ = cache[].busy.fetch_sub(1)
+            return answer^
+
+        var target = _narrow_target(width)
+        if cache[].width[which] * 2 > target:
+            target = cache[].width[which] * 2
         var fresh = _computed(which, target)
         if len(cache[].value) == 0:
             # The four slots are filled on the first store, since the cache
             # cannot build a placeholder without a precision to build it at.
+            var placeholder = _truncated(fresh, _CACHE_FLOOR)
             for _ in range(len(cache[].width)):
                 cache[].value.append(fresh.copy())
+                cache[].narrow.append(placeholder.copy())
         cache[].value[which] = fresh.copy()
         cache[].width[which] = target
+        var answer = _truncated(fresh, width)
+        var narrow = _narrow_target(width)
+        if narrow < target:
+            cache[].narrow[which] = _truncated(fresh, narrow)
+            cache[].narrow_width[which] = narrow
         _ = cache[].busy.fetch_sub(1)
-        return BigFloat.from_rounded_parts(
-            fresh.significand,
-            fresh.exponent,
-            width,
-            False,
-            RoundingMode.ROUND_DOWN,
-        )
+        return answer^
     except error:
         _ = cache[].busy.fetch_sub(1)
         raise error

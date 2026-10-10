@@ -895,6 +895,60 @@ unit or two of the working width.
 """
 
 
+def _arctangent_of_ratio(
+    y: BigFloat, x: BigFloat, work: Int
+) raises -> BigFloat:
+    """`arctan(y / x)` to `work` bits, for two finite non-zero coordinates.
+
+    Args:
+        y: The second coordinate.
+        x: The first coordinate.
+        work: The bits wanted.
+
+    Returns:
+        The value, within a unit or two of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    The quotient is formed only where it exists. Two coordinates at opposite
+    ends of the exponent range have a ratio that no exponent can hold, and
+    yet the angle between them is an ordinary number -- a right angle, or a
+    half turn, to far more bits than anyone asks for. So the two ends of the
+    range are answered from the identity instead of from the division.
+
+    A ratio whose leading bit sits above the working width makes the angle a
+    right angle: the correction to it is `1/ratio`, below an eighth of the
+    last place here. That is the one-argument arctangent's own shortcut, and
+    this is it taken before the division rather than after.
+
+    The other end only works in the left half plane, where `pi` is about to
+    be added and is the whole answer. There a ratio that small leaves the
+    angle a half turn, so the arctangent can come back as a nought and let
+    the addition carry the value. In the right half plane the ratio is the
+    answer and nothing can stand in for it, which is why the caller turns
+    that case away before reaching here.
+    """
+    var negative = y.sign != x.sign
+    var gap = leading_bit_position(y) - leading_bit_position(x)
+
+    if gap >= BigInt(work + 3):
+        var half_turn = pi(work)
+        return BigFloat(
+            significand=half_turn.significand,
+            exponent=half_turn.exponent - 1,
+            precision=work,
+            sign=negative,
+        )
+
+    if x.sign and gap <= BigInt(-(work + 3)):
+        return BigFloat.zero(work, negative)
+
+    return _arctan_kernel(bigfloat_arithmetics.divide(y, x, work), work)
+
+
 def _arctan2_at_width(y: BigFloat, x: BigFloat, width: Int) raises -> BigFloat:
     """The angle of the point `(x, y)` to `width` bits.
 
@@ -920,8 +974,7 @@ def _arctan2_at_width(y: BigFloat, x: BigFloat, width: Int) raises -> BigFloat:
     and pi are both about a right angle, so their sum keeps every bit it had.
     """
     var work = width + Int(bit_width(UInt(width))) + 12
-    var ratio = bigfloat_arithmetics.divide(y, x, work)
-    var angle = _arctan_kernel(ratio, work)
+    var angle = _arctangent_of_ratio(y, x, work)
     if x.sign:
         var half_turn = pi(work)
         if y.sign:
@@ -953,6 +1006,10 @@ def arctan2(
 
     Raises:
         ValueError: If `precision` is not positive.
+        OverflowError: If the angle lies so near the positive horizontal axis
+            that its own exponent would not fit an `Int`. Every other angle,
+            including the ones whose coordinates have no quotient, is
+            answered.
         Error: If the rounding cannot be decided, or propagated from the
             arithmetic.
 
@@ -1016,7 +1073,22 @@ def arctan2(
     if not x.sign:
         var gap = leading_bit_position(y) - leading_bit_position(x)
         if (gap + gap) < BigInt(-(precision + 10)):
-            var ratio = bigfloat_arithmetics.divide(y, x, precision + 8)
+            # Here the angle is the ratio, and a ratio can be smaller than
+            # any exponent holds -- in which case so is the angle, and there
+            # is no value to return. The division says so, in words about a
+            # quotient the caller never asked for, so the answer is named
+            # here instead.
+            var ratio: BigFloat
+            try:
+                ratio = bigfloat_arithmetics.divide(y, x, precision + 8)
+            except:
+                raise OverflowError(
+                    message=(
+                        "The angle of this point is too near the horizontal"
+                        " axis for its exponent to fit in an Int."
+                    ),
+                    function="arctan2()",
+                )
             return rounded_beside(ratio, precision, rounding_mode, True)
 
     var width = precision + _ZIV_START

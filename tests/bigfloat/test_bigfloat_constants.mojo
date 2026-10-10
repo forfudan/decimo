@@ -36,7 +36,16 @@ from std import testing
 from std.testing import assert_equal, assert_true
 
 from decimo.bigfloat.bigfloat import BigFloat
-from decimo.bigfloat.constants import e, ln2, pi
+from decimo.bigfloat.constants import (
+    _CONSTANT_SLACK,
+    _SHARED_CONSTANTS,
+    _e_computed,
+    _ln2_computed,
+    _pi_computed,
+    e,
+    ln2,
+    pi,
+)
 from decimo.bigfloat.exponential import round_by_deciding
 from decimo.bigint.bigint import BigInt
 from decimo.rounding_mode import RoundingMode
@@ -742,6 +751,74 @@ def test_a_precision_must_fit_the_guard_bits() raises:
                 + String(precision)
                 + " bits was accepted",
             )
+
+
+def test_a_wide_request_does_not_change_a_narrow_one() raises:
+    """The cache answers what the series answers, however wide it has grown.
+
+    A constant is kept at two widths, a wide one and a narrow one, so that a
+    single very wide request does not leave every later narrow request
+    walking that width. The narrow copy is cut from the wide one, and cutting
+    twice has to land where cutting once would.
+
+    Self-consistency is not enough to pin that: a cache that answers every
+    request from one copy, too narrow for the wider ones, is wrong the same
+    way every time. So each answer is checked against the series, evaluated
+    here with the cache out of the way.
+
+    Asking for a width twice is what puts the narrow copy in the path. The
+    first call cuts one, since nothing narrower is held; the second has to
+    read it.
+    """
+    # Wider than anything else in the file asks for, so what follows is
+    # served by cutting this down rather than by the series.
+    _ = pi(2500)
+    _ = ln2(2500)
+    _ = e(2500)
+
+    for _ in range(2):
+        for width in [1, 53, 64, 300, 1100]:
+            assert_equal(
+                pi(width).internal_representation(),
+                round_by_deciding[_pi_computed, _CONSTANT_SLACK](
+                    width, RoundingMode.ROUND_HALF_EVEN
+                ).internal_representation(),
+                String("pi at ") + String(width) + " bits came back changed",
+            )
+            assert_equal(
+                ln2(width).internal_representation(),
+                round_by_deciding[_ln2_computed, _CONSTANT_SLACK](
+                    width, RoundingMode.ROUND_HALF_EVEN
+                ).internal_representation(),
+                String("the logarithm of two at ")
+                + String(width)
+                + " bits came back changed",
+            )
+            assert_equal(
+                e(width).internal_representation(),
+                round_by_deciding[_e_computed, _CONSTANT_SLACK](
+                    width, RoundingMode.ROUND_HALF_EVEN
+                ).internal_representation(),
+                String("the number at ")
+                + String(width)
+                + " bits came back changed",
+            )
+
+    # And a narrow copy never claims more bits than it was cut to, which is
+    # the one way it could answer a request it is too narrow for.
+    var cache = _SHARED_CONSTANTS.get_or_create_ptr()
+    var held = False
+    for which in range(len(cache[].narrow_width)):
+        if cache[].narrow_width[which] == 0:
+            continue
+        held = True
+        assert_true(
+            cache[].narrow[which].precision >= cache[].narrow_width[which],
+            String("the narrow copy in slot ")
+            + String(which)
+            + " is thinner than the cache believes",
+        )
+    assert_true(held, "no narrow copy was ever cut, so nothing was tested")
 
 
 def main() raises:
