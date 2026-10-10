@@ -248,7 +248,7 @@ def round_to_precision(
         var lowest = trailing_zeros(magnitude)
         rest_below = lowest < dropped - 1
 
-    if _rounds_away_from_zero(
+    if rounds_away_from_zero(
         rounding_mode, negative, leading_dropped, rest_below, test_bit(kept, 0)
     ):
         kept = kept + BigInt.one()
@@ -261,7 +261,7 @@ def round_to_precision(
     return (kept^, _raised(exponent, dropped))
 
 
-def _rounds_away_from_zero(
+def rounds_away_from_zero(
     rounding_mode: RoundingMode,
     negative: Bool,
     leading_dropped: Bool,
@@ -273,15 +273,24 @@ def _rounds_away_from_zero(
     Args:
         rounding_mode: Which way to round.
         negative: The sign of the value.
-        leading_dropped: The most significant dropped bit, which is the half.
-        rest_below: Whether anything below that bit is set.
-        lowest_kept: The last bit that survives, which only `HALF_EVEN` reads.
+        leading_dropped: Whether what was dropped reaches a half of the last
+            place kept.
+        rest_below: Whether anything sits below that half.
+        lowest_kept: Whether the last place kept is odd, which only
+            `HALF_EVEN` reads.
 
     Returns:
-        Whether to add one to the kept significand.
+        Whether to add one to the kept value.
 
     Raises:
         Error: Never, but the signature matches its callers.
+
+    Notes:
+
+    The three flags say where the dropped part sits, not what base it was
+    written in, so the decimal conversion asks this the same question the
+    binary rounding does: a dropped decimal tail of `.5` reaches the half
+    with nothing below it, and `.456` sits below the half with nothing at it.
     """
     var any_dropped = leading_dropped or rest_below
     if not any_dropped:

@@ -52,9 +52,9 @@ from decimo.bigfloat.arithmetics import _checked_sum, _exponent_sum, add
 from decimo.bigfloat.bigfloat import BigFloat
 import decimo.bigfloat.comparison as bigfloat_comparison
 from decimo.bigfloat.rounding import (
-    _rounds_away_from_zero,
     checked_precision,
     leading_bit_position,
+    rounds_away_from_zero,
 )
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.bitwise import test_bit, trailing_zeros
@@ -619,7 +619,7 @@ def _to_integral(x: BigFloat, rounding_mode: RoundingMode) raises -> BigFloat:
             trailing_zeros(x.significand)
             < x.precision - 1 if leading_dropped else True
         )
-        if not _rounds_away_from_zero(
+        if not rounds_away_from_zero(
             rounding_mode, x.sign, leading_dropped, rest_below, lowest_kept
         ):
             # A value rounding to nought keeps its sign, as IEEE 754 asks:
@@ -635,7 +635,7 @@ def _to_integral(x: BigFloat, rounding_mode: RoundingMode) raises -> BigFloat:
         rest_below = trailing_zeros(x.significand) < dropped - 1
     lowest_kept = test_bit(kept, 0)
 
-    if _rounds_away_from_zero(
+    if rounds_away_from_zero(
         rounding_mode, x.sign, leading_dropped, rest_below, lowest_kept
     ):
         kept = kept + BigInt.one()

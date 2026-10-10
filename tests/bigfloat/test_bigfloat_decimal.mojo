@@ -23,6 +23,19 @@ from std.testing import assert_equal, assert_true
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.bigfloat.bigfloat import BigFloat
+from decimo.bigfloat.conversion import (
+    _FIVE_POWER_SLACK,
+    _FIXED_POINT_SLACK,
+    _HALF,
+    _NEITHER,
+    _WHOLE,
+    _boundary_kind,
+    _five_power_truncated,
+    _rounded_from_exact,
+    _scaled_to_fixed_point,
+    from_decimal_parts,
+    to_rounded_bigdecimal,
+)
 from decimo.bigint.bigint import BigInt
 from decimo.rounding_mode import RoundingMode
 
@@ -407,6 +420,764 @@ def test_bigdecimal_and_bigfloat_round_trip_at_high_precision() raises:
         through.to_bigdecimal_rounded(81),
         original,
         "eighty-one digits through three hundred bits",
+    )
+
+
+# ===----------------------------------------------------------------------=== #
+# The scaled way out
+# ===----------------------------------------------------------------------=== #
+#
+# A few digits of a value with a deep exponent are taken by scaling it by a
+# power of ten in fixed point, not by expanding it whole. The tests below
+# come in two kinds: the pieces that carry an error bound, checked against
+# exact arithmetic, and the answers, checked against the expansion the
+# conversion used to take and against CPython where the expansion is too
+# long to build.
+
+
+def _both_ways(
+    significand: BigInt,
+    binary_exponent: Int,
+    negative: Bool,
+    digits: Int,
+    rounding_mode: RoundingMode,
+    label: String,
+) raises:
+    """Checks the scaled way to the digits against the expansion.
+
+    Args:
+        significand: The significand, never negative.
+        binary_exponent: The power of two it is scaled by.
+        negative: Whether the value is negative.
+        digits: How many significant digits to keep.
+        rounding_mode: Which way to round them.
+        label: What to say if the two disagree.
+
+    Raises:
+        AssertionError: If the two ways disagree.
+        Error: Propagated from the conversions.
+
+    Notes:
+
+    The text, not the value, because the two have to agree on the place as
+    well as on the digits: `0.5` and `0.500` are the same number and only one
+    of them is the answer.
+    """
+    assert_equal(
+        String(
+            to_rounded_bigdecimal(
+                significand,
+                binary_exponent,
+                negative,
+                digits,
+                rounding_mode,
+                Int.MAX,
+            )
+        ),
+        String(
+            _rounded_from_exact(
+                significand, binary_exponent, negative, digits, rounding_mode
+            )
+        ),
+        label,
+    )
+
+
+def test_the_boundary_rule_matches_exact_arithmetic() raises:
+    """Whether the scaled value is whole, a half, or neither.
+
+    The rule reads the twos and fives of the significand and the two
+    exponents, and never a digit. These hundred and twenty answers come from
+    CPython's `fractions.Fraction`, which builds the value exactly and looks
+    at its denominator. Forty of each outcome, because the one that is hard
+    to reach is the half and a sweep of random values finds almost none.
+    """
+    var cases = [
+        (BigInt("4503599627382841"), -60, 59, _HALF),
+        (BigInt("3"), -1, 1, _WHOLE),
+        (BigInt("2750000000"), 0, -8, _HALF),
+        (BigInt("875"), -3, 3, _WHOLE),
+        (BigInt("4503599627382841"), -7, 4, _NEITHER),
+        (BigInt("7"), -13, 12, _HALF),
+        (BigInt("4000"), -7, 1, _HALF),
+        (BigInt("1000000"), -1, -3, _WHOLE),
+        (BigInt("1"), 7, 21, _WHOLE),
+        (BigInt("875"), -13, 12, _HALF),
+        (BigInt("1000000000000000000000000000000"), 1, 0, _WHOLE),
+        (BigInt("1024"), -13, -1, _NEITHER),
+        (BigInt("9094947017729282379150390625"), 13, -8, _WHOLE),
+        (BigInt("7"), 60, 21, _WHOLE),
+        (BigInt("1000000"), 3, 1, _WHOLE),
+        (BigInt("781250000000000000"), -1, 21, _WHOLE),
+        (BigInt("3"), 13, 1, _WHOLE),
+        (BigInt("875"), 60, -65, _NEITHER),
+        (BigInt("9094947017729282379150390625"), 7, -8, _HALF),
+        (BigInt("9094947017729282379150390625"), 60, -61, _NEITHER),
+        (BigInt("78125"), -3, 2, _HALF),
+        (BigInt("4000"), 7, 3, _WHOLE),
+        (BigInt("2750000000"), -13, 5, _HALF),
+        (BigInt("1024"), 3, 21, _WHOLE),
+        (BigInt("781250000000000000"), -3, -11, _HALF),
+        (BigInt("9007199254740993"), -60, -21, _NEITHER),
+        (BigInt("1000000000000000000000000000000"), -60, 30, _WHOLE),
+        (BigInt("875"), 0, -1, _HALF),
+        (BigInt("1000000"), -1, -6, _HALF),
+        (BigInt("4503599627382841"), -3, 2, _HALF),
+        (BigInt("875"), 60, 3, _WHOLE),
+        (BigInt("7"), 3, -1, _NEITHER),
+        (BigInt("2750000000"), 60, 21, _WHOLE),
+        (BigInt("1000000000000000000000000000000"), -7, -55, _NEITHER),
+        (BigInt("3"), -60, 59, _HALF),
+        (BigInt("1024"), -60, 8, _NEITHER),
+        (BigInt("1024"), 60, -72, _NEITHER),
+        (BigInt("2750000000"), -7, 1, _WHOLE),
+        (BigInt("4503599627382841"), -7, 6, _HALF),
+        (BigInt("2750000000"), -1, -21, _NEITHER),
+        (BigInt("9007199254740993"), -7, 6, _HALF),
+        (BigInt("4503599627382841"), -60, -8, _NEITHER),
+        (BigInt("4000"), 3, -10, _NEITHER),
+        (BigInt("4503599627382841"), 1, -2, _NEITHER),
+        (BigInt("781250000000000000"), 7, 0, _WHOLE),
+        (BigInt("781250000000000000"), -7, -7, _HALF),
+        (BigInt("2750000000"), -3, -5, _HALF),
+        (BigInt("781250000000000000"), 60, -8, _WHOLE),
+        (BigInt("7"), 7, -21, _NEITHER),
+        (BigInt("9094947017729282379150390625"), -3, 2, _HALF),
+        (BigInt("2750000000"), 60, 0, _WHOLE),
+        (BigInt("3"), -7, 4, _NEITHER),
+        (BigInt("1024"), 3, -1, _NEITHER),
+        (BigInt("1000000000000000000000000000000"), -3, -21, _WHOLE),
+        (BigInt("781250000000000000"), 3, -17, _HALF),
+        (BigInt("1000000000000000000000000000000"), 1, -8, _WHOLE),
+        (BigInt("875"), -7, 6, _HALF),
+        (BigInt("78125"), 3, -4, _HALF),
+        (BigInt("4503599627382841"), 7, -8, _NEITHER),
+        (BigInt("7"), 7, 3, _WHOLE),
+        (BigInt("9094947017729282379150390625"), 13, -14, _HALF),
+        (BigInt("2750000000"), 1, -9, _HALF),
+        (BigInt("1000000"), 60, -8, _NEITHER),
+        (BigInt("9094947017729282379150390625"), 3, -8, _NEITHER),
+        (BigInt("1000000000000000000000000000000"), -13, -17, _WHOLE),
+        (BigInt("875"), -7, -21, _NEITHER),
+        (BigInt("7"), 7, 0, _WHOLE),
+        (BigInt("1000000000000000000000000000000"), -13, -18, _HALF),
+        (BigInt("875"), 1, 3, _WHOLE),
+        (BigInt("781250000000000000"), -1, -13, _HALF),
+        (BigInt("9094947017729282379150390625"), -3, 8, _WHOLE),
+        (BigInt("1024"), 1, -21, _NEITHER),
+        (BigInt("1000000000000000000000000000000"), -3, -28, _HALF),
+        (BigInt("2750000000"), -60, 52, _HALF),
+        (BigInt("1000000000000000000000000000000"), 1, 1, _WHOLE),
+        (BigInt("9007199254740993"), -60, -3, _NEITHER),
+        (BigInt("2750000000"), 3, 21, _WHOLE),
+        (BigInt("4000"), 0, -7, _NEITHER),
+        (BigInt("9007199254740993"), 60, -21, _NEITHER),
+        (BigInt("4503599627382841"), -1, 0, _HALF),
+        (BigInt("9007199254740993"), 0, 1, _WHOLE),
+        (BigInt("78125"), 13, -15, _NEITHER),
+        (BigInt("4000"), 3, 8, _WHOLE),
+        (BigInt("78125"), -1, 0, _HALF),
+        (BigInt("1000000"), -13, 6, _HALF),
+        (BigInt("9007199254740993"), -13, 10, _NEITHER),
+        (BigInt("7"), -13, 21, _WHOLE),
+        (BigInt("4503599627382841"), 60, -21, _NEITHER),
+        (BigInt("7"), -7, 6, _HALF),
+        (BigInt("875"), -60, 58, _NEITHER),
+        (BigInt("875"), 0, 21, _WHOLE),
+        (BigInt("1024"), 3, 3, _WHOLE),
+        (BigInt("875"), 1, -2, _HALF),
+        (BigInt("3"), -3, 2, _HALF),
+        (BigInt("4000"), -3, -7, _NEITHER),
+        (BigInt("781250000000000000"), 0, -14, _HALF),
+        (BigInt("7"), -7, 1, _NEITHER),
+        (BigInt("1000000000000000000000000000000"), 13, -45, _NEITHER),
+        (BigInt("1"), 60, 3, _WHOLE),
+        (BigInt("3"), -7, 6, _HALF),
+        (BigInt("9094947017729282379150390625"), 0, 3, _WHOLE),
+        (BigInt("781250000000000000"), 3, -37, _NEITHER),
+        (BigInt("1000000000000000000000000000000"), -60, 29, _HALF),
+        (BigInt("4000"), -7, 21, _WHOLE),
+        (BigInt("875"), -3, 2, _HALF),
+        (BigInt("781250000000000000"), 1, -15, _HALF),
+        (BigInt("7"), -3, -1, _NEITHER),
+        (BigInt("875"), -1, -1, _NEITHER),
+        (BigInt("7"), -60, 1, _NEITHER),
+        (BigInt("2750000000"), 3, -12, _NEITHER),
+        (BigInt("3"), 0, 1, _WHOLE),
+        (BigInt("2750000000"), 0, -17, _NEITHER),
+        (BigInt("1000000"), 13, 3, _WHOLE),
+        (BigInt("78125"), -60, 59, _HALF),
+        (BigInt("3"), 13, 0, _WHOLE),
+        (BigInt("3"), -13, 10, _NEITHER),
+        (BigInt("3"), 7, -9, _NEITHER),
+        (BigInt("2750000000"), -3, -8, _NEITHER),
+        (BigInt("4000"), -60, 54, _HALF),
+        (BigInt("1000000"), 3, 8, _WHOLE),
+    ]
+    for row in cases:
+        assert_equal(
+            _boundary_kind(row[0], row[1], row[2]),
+            row[3],
+            String(row[0]) + " p" + String(row[1]) + " e" + String(row[2]),
+        )
+
+
+def test_the_power_of_five_keeps_within_its_slack() raises:
+    """The truncated power of five is below the true one, and not by much.
+
+    Two claims the scaling rests on. Below, because a quotient taken with a
+    divisor that is too small is too large, which is what puts the whole and
+    half cases on the nose rather than a unit under. Not by much, because
+    `_FIXED_POINT_SLACK` is worked out from `_FIVE_POWER_SLACK`.
+    """
+    for width in [16, 32, 64, 97, 200, 333]:
+        for degree in [0, 1, 2, 7, 13, 40, 41, 100, 255, 256, 1000, 4096]:
+            var pair = _five_power_truncated(degree, width)
+            var exact = BigInt(5).power(degree)
+            var approximated = pair[0] << pair[1] if pair[1] >= 0 else pair[
+                0
+            ] >> (-pair[1])
+            var label = String(degree) + " to " + String(width) + " bits"
+            assert_true(pair[0].bit_length() <= width, label + " is too wide")
+            assert_true(exact >= approximated, label + " is above the power")
+            if pair[1] > 0:
+                var slack = (BigInt.one() << pair[1]) * BigInt(
+                    _FIVE_POWER_SLACK
+                )
+                assert_true(
+                    exact - approximated <= slack, label + " is too far below"
+                )
+            else:
+                assert_equal(exact, approximated, label + " is not exact")
+
+
+def _scaled_exactly(
+    significand: BigInt, binary_exponent: Int, shift: Int, guard: Int
+) raises -> BigInt:
+    """`significand * 2^binary_exponent * 10^shift` in units of `2^-guard`.
+
+    Args:
+        significand: The significand, never negative.
+        binary_exponent: The power of two it is scaled by.
+        shift: The power of ten to scale it by, either sign.
+        guard: The fractional bits to keep.
+
+    Returns:
+        The value, truncated toward nought, with whole powers of five and no
+        approximation anywhere.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+    """
+    var place = binary_exponent + shift + guard
+    if shift >= 0:
+        var value = significand * BigInt(5).power(shift)
+        return value << place if place >= 0 else value >> (-place)
+    var power = BigInt(5).power(-shift)
+    if place >= 0:
+        return (significand << place).truncate_divide(power)
+    return significand.truncate_divide(power << (-place))
+
+
+def test_the_scaled_fixed_point_keeps_within_its_slack() raises:
+    """The scaling is within `_FIXED_POINT_SLACK` units of the true value.
+
+    Every rounding decision rests on this bound: the guard tests read the
+    computed value as the true one give or take that many units of `2^-guard`,
+    and the working width is chosen to make it so. Here the true value is
+    built exactly, with whole powers of five, which is only possible for the
+    shifts a test can afford -- the conversion itself meets shifts of `10^18`.
+
+    The bound holds while the value fits `integer_bits`, which is what the
+    conversion's digit count guarantees, so the fit is asserted too.
+    """
+    for bits in [1, 24, 53, 113]:
+        var significand = (BigInt.one() << (bits - 1)) + BigInt(
+            7 % (1 << (bits - 1))
+        )
+        for shift in [-600, -100, -30, -3, 0, 3, 30, 100, 600]:
+            for integer_bits in [20, 40, 100]:
+                for guard in [32, 64]:
+                    # The value is put near the top of the room it has, which
+                    # is where the bound is tightest.
+                    var exponent = (
+                        integer_bits - 8 - bits - (shift * 10 + 2) // 3
+                    )
+                    var scaled = _scaled_to_fixed_point(
+                        significand, exponent, shift, integer_bits, guard
+                    )
+                    var exact = _scaled_exactly(
+                        significand, exponent, shift, guard
+                    )
+                    var label = (
+                        String(bits)
+                        + " bits by 10^"
+                        + String(shift)
+                        + " at "
+                        + String(integer_bits)
+                        + " and "
+                        + String(guard)
+                    )
+                    assert_true(
+                        (scaled >> guard).bit_length() <= integer_bits,
+                        label + " does not fit the room it was given",
+                    )
+                    var difference = (
+                        scaled - exact if scaled >= exact else exact - scaled
+                    )
+                    assert_true(
+                        difference <= BigInt(_FIXED_POINT_SLACK),
+                        label + " is out by " + String(difference),
+                    )
+
+
+def test_a_boundary_scaling_lands_on_the_nose() raises:
+    """Where the scaled value is whole or a half, the fixed point says so.
+
+    The two cases the Ziv loop could not settle are answered by the rule
+    instead, and that only works if the scaling lands exactly on the whole
+    number or exactly half a unit above it. Nothing below the guard may be
+    left over, at any guard.
+    """
+    var held = False
+    for power in [0, 4, 8, 20, 50, 90, 200]:
+        var five = BigInt(5).power(power)
+        for odd in [BigInt.one(), BigInt(3), BigInt(123456789)]:
+            var significand = five * odd
+            # The value is `10^power * odd`, so its digit count is known and
+            # the shift that puts `digits` of them before the point is too.
+            # The slack in the working width covers a shift one or two out,
+            # which is as far as the chooser's estimate can be.
+            var leading = power + odd.number_of_digits() - 1
+            for digits in [1, 2, 7, 17, 25]:
+                var integer_bits = (digits * 10 + 2) // 3 + 8
+                var wanted = digits - 1 - leading
+                for guard in [32, 64, 128]:
+                    for shift in range(wanted - 2, wanted + 3):
+                        var kind = _boundary_kind(significand, power, shift)
+                        if kind == _NEITHER:
+                            continue
+                        var scaled = _scaled_to_fixed_point(
+                            significand, power, shift, integer_bits, guard
+                        )
+                        var rest = scaled - ((scaled >> guard) << guard)
+                        var expected = (
+                            BigInt.zero() if kind
+                            == _WHOLE else BigInt.one() << (guard - 1)
+                        )
+                        held = True
+                        assert_equal(
+                            rest,
+                            expected,
+                            (
+                                "10^"
+                                + String(power)
+                                + " times "
+                                + String(odd)
+                                + " shifted by "
+                                + String(shift)
+                                + " at guard "
+                                + String(guard)
+                            ),
+                        )
+    assert_true(
+        held, "no whole or half scaling was reached, so nothing was tested"
+    )
+
+
+def test_the_scaling_agrees_with_the_expansion() raises:
+    """The two ways to the digits give the same digits.
+
+    The expansion is the way the conversion used to go, so it is the oracle
+    for the way it goes now. Both are asked directly, with the chooser told
+    to take the scaling, over a spread of significand widths, exponents,
+    digit counts and all seven rounding modes.
+    """
+    var modes = [
+        RoundingMode.ROUND_DOWN,
+        RoundingMode.ROUND_UP,
+        RoundingMode.ROUND_CEILING,
+        RoundingMode.ROUND_FLOOR,
+        RoundingMode.ROUND_HALF_UP,
+        RoundingMode.ROUND_HALF_DOWN,
+        RoundingMode.ROUND_HALF_EVEN,
+    ]
+    # Nought first, which has no digits to scale and still has to come back
+    # the way the expansion gives it, sign and all.
+    for negative in [False, True]:
+        for digits in [1, 7, 25]:
+            _both_ways(
+                BigInt.zero(),
+                0,
+                negative,
+                digits,
+                RoundingMode.ROUND_HALF_EVEN,
+                "nought to " + String(digits) + " digits",
+            )
+
+    var state = UInt64(0x2545F4914F6CDD1D)
+    for bits in [1, 5, 53, 113]:
+        var significand = BigInt.one()
+        while significand.bit_length() < bits:
+            state ^= state << 13
+            state ^= state >> 7
+            state ^= state << 17
+            var take = 32 if bits - significand.bit_length() > 32 else (
+                bits - significand.bit_length()
+            )
+            significand = (significand << take) + BigInt(
+                Int(state % UInt64(1 << take))
+            )
+        for exponent in [0, -bits, 17, -400, 400]:
+            for negative in [False, True]:
+                for digits in [1, 7, 25]:
+                    for mode in modes:
+                        _both_ways(
+                            significand,
+                            exponent,
+                            negative,
+                            digits,
+                            mode,
+                            (
+                                String(bits)
+                                + " bits p"
+                                + String(exponent)
+                                + " to "
+                                + String(digits)
+                                + " digits"
+                            ),
+                        )
+
+
+def test_a_value_beside_a_boundary_rounds_the_same_way() raises:
+    """A float a step from a decimal boundary goes the way the expansion goes.
+
+    These are the values the Ziv loop has to widen for: the nearest float to
+    a decimal tie, and the nearest float to the kept value itself, which sit
+    a unit in the last place from the boundary the rounding is deciding. A
+    sweep of ordinary values almost never produces one.
+    """
+    var modes = [
+        RoundingMode.ROUND_DOWN,
+        RoundingMode.ROUND_UP,
+        RoundingMode.ROUND_HALF_UP,
+        RoundingMode.ROUND_HALF_DOWN,
+        RoundingMode.ROUND_HALF_EVEN,
+    ]
+    for precision in [11, 113]:
+        for digits in [1, 17]:
+            var ten = BigInt(10).power(digits - 1)
+            var leaders = [
+                ten.copy(),
+                ten + BigInt.one(),
+                ten * BigInt(10) - BigInt.one(),
+            ]
+            for leader in leaders:
+                for scale in [0, 40, 400, -40, -400]:
+                    var targets = [
+                        (leader * BigInt(2) + BigInt.one(), -(scale + 1)),
+                        (leader.copy(), -scale),
+                    ]
+                    for target in targets:
+                        var parts = from_decimal_parts(
+                            target[0],
+                            target[1],
+                            precision,
+                            False,
+                            RoundingMode.ROUND_HALF_EVEN,
+                        )
+                        for mode in modes:
+                            _both_ways(
+                                parts[0],
+                                parts[1],
+                                False,
+                                digits,
+                                mode,
+                                (
+                                    String(precision)
+                                    + " bits beside "
+                                    + String(target[0])
+                                    + "e"
+                                    + String(target[1])
+                                ),
+                            )
+
+
+def test_an_exact_decimal_of_many_digits_rounds_the_same_way() raises:
+    """A whole power of ten asked for fewer digits than it has.
+
+    `5^n * 2^n` is `10^n`, and asking for a few digits of it divides by a
+    power of five too wide for the working width. That is the one place the
+    scaling divides rather than multiplies and still has to land exactly on
+    a whole number.
+    """
+    var modes = [
+        RoundingMode.ROUND_DOWN,
+        RoundingMode.ROUND_UP,
+        RoundingMode.ROUND_HALF_EVEN,
+    ]
+    for power in [8, 20, 50, 90, 200, 500]:
+        var five = BigInt(5).power(power)
+        for odd in [BigInt.one(), BigInt(3), BigInt(123456789)]:
+            var significand = five * odd
+            for digits in [1, 2, 7, 17, 25]:
+                for mode in modes:
+                    _both_ways(
+                        significand,
+                        power,
+                        False,
+                        digits,
+                        mode,
+                        (
+                            "10^"
+                            + String(power)
+                            + " to "
+                            + String(digits)
+                            + " digits"
+                        ),
+                    )
+
+
+def test_either_way_to_the_digits_gives_the_same_answer() raises:
+    """The chooser picks on cost, so both of its answers must be the one.
+
+    Asked for the scaling, for the expansion and for whichever it would take
+    by itself, the three agree. The deepest of these values has an expansion
+    of six thousand digits, which is the point: the answer is the same and
+    only the work differs.
+    """
+    var significand = (BigInt.one() << 52) + BigInt(1234567890123)
+    for exponent in [-52, -300, -1074, -20000]:
+        for digits in [1, 17, 40]:
+            var scaling = to_rounded_bigdecimal(
+                significand,
+                exponent,
+                False,
+                digits,
+                RoundingMode.ROUND_HALF_EVEN,
+                Int.MAX,
+            )
+            var expansion = to_rounded_bigdecimal(
+                significand,
+                exponent,
+                False,
+                digits,
+                RoundingMode.ROUND_HALF_EVEN,
+                1,
+            )
+            var chosen = to_rounded_bigdecimal(
+                significand,
+                exponent,
+                False,
+                digits,
+                RoundingMode.ROUND_HALF_EVEN,
+            )
+            var label = String(exponent) + " to " + String(digits) + " digits"
+            assert_equal(
+                String(scaling), String(expansion), label + ", the two ways"
+            )
+            assert_equal(
+                String(scaling), String(chosen), label + ", the chosen way"
+            )
+
+
+def test_a_tie_in_the_digits_goes_the_way_the_mode_says() raises:
+    """Where exactly a half is dropped, and the digit kept is even or odd.
+
+    An odd significand over two is a decimal that ends in five, so asking for
+    one digit fewer than it has drops exactly a half and nothing else. That
+    is the case the boundary rule exists for, and the only one where
+    `HALF_EVEN` reads the last digit kept: every one of these values is a tie
+    and the digit before it is even for half of them.
+    """
+    var modes = [
+        RoundingMode.ROUND_DOWN,
+        RoundingMode.ROUND_UP,
+        RoundingMode.ROUND_CEILING,
+        RoundingMode.ROUND_FLOOR,
+        RoundingMode.ROUND_HALF_UP,
+        RoundingMode.ROUND_HALF_DOWN,
+        RoundingMode.ROUND_HALF_EVEN,
+    ]
+    var odds = [
+        BigInt(5),
+        BigInt(7),
+        BigInt(9),
+        BigInt(11),
+        BigInt(25),
+        BigInt(27),
+        BigInt(12345678901234567),
+        BigInt(5).power(30) * BigInt(2) + BigInt.one(),
+        (BigInt.one() << 113) - BigInt.one(),
+    ]
+    var evens = 0
+    for odd in odds:
+        var kept = odd >> 1
+        var digits = kept.number_of_digits()
+        if (kept >> 1) << 1 == kept:
+            evens += 1
+        for negative in [False, True]:
+            for mode in modes:
+                _both_ways(
+                    odd,
+                    -1,
+                    negative,
+                    digits,
+                    mode,
+                    String(odd) + " halved to " + String(digits) + " digits",
+                )
+    assert_true(evens > 0, "no tie kept an even digit")
+    assert_true(evens < len(odds), "no tie kept an odd digit")
+
+
+def test_a_deep_exponent_gives_the_digits_cpython_computes() raises:
+    """Digits of values whose expansion could never be built.
+
+    `2^-9223372036854775756` has about `2.8 * 10^18` decimal places, so the
+    expansion is not an option and CPython's `decimal` is the reference: its
+    `log10` is correctly rounded, and these answers were taken at two hundred
+    digits of working precision and confirmed at a hundred and thirty. The
+    first of them, `2^-1000000`, was confirmed a third way, against the exact
+    digits of `5^1000000`.
+    """
+    var cases = [
+        (
+            BigInt("1"),
+            -1000000,
+            20,
+            RoundingMode.ROUND_HALF_EVEN,
+            "1.0100340591980302247E-301030",
+        ),
+        (
+            BigInt("1"),
+            -1000000,
+            20,
+            RoundingMode.ROUND_DOWN,
+            "1.0100340591980302247E-301030",
+        ),
+        (
+            BigInt("1"),
+            -1000000,
+            20,
+            RoundingMode.ROUND_UP,
+            "1.0100340591980302248E-301030",
+        ),
+        (
+            BigInt("1"),
+            -1000000000,
+            20,
+            RoundingMode.ROUND_HALF_EVEN,
+            "2.1677979676169340022E-301029996",
+        ),
+        (
+            BigInt("1"),
+            1000000000,
+            20,
+            RoundingMode.ROUND_HALF_EVEN,
+            "4.6129760011690693931E+301029995",
+        ),
+        (
+            BigInt("1"),
+            -1000000000000,
+            25,
+            RoundingMode.ROUND_HALF_EVEN,
+            "1.044250726930468202952437E-301029995664",
+        ),
+        (
+            BigInt("1"),
+            1000000000000000,
+            20,
+            RoundingMode.ROUND_HALF_EVEN,
+            "1.5675223395448293252E+301029995663981",
+        ),
+        (
+            BigInt("1"),
+            -9223372036854775756,
+            17,
+            RoundingMode.ROUND_HALF_EVEN,
+            "3.2612747445751642E-2776511644261678551",
+        ),
+        (
+            BigInt("1"),
+            9223372036854775707,
+            17,
+            RoundingMode.ROUND_HALF_EVEN,
+            "5.4468175131673881E+2776511644261678535",
+        ),
+        (
+            BigInt("4503599627382841"),
+            -9223372036854775708,
+            17,
+            RoundingMode.ROUND_HALF_EVEN,
+            "4.1341568874812047E-2776511644261678521",
+        ),
+        (
+            BigInt("4503599627382841"),
+            9223372036854775707,
+            17,
+            RoundingMode.ROUND_DOWN,
+            "2.4530285322722981E+2776511644261678551",
+        ),
+        (
+            BigInt("9094947017729282379150390625"),
+            -9223372036854775708,
+            25,
+            RoundingMode.ROUND_HALF_EVEN,
+            "8.348863346112420332561934E-2776511644261678509",
+        ),
+        (
+            BigInt("9094947017729282379150390625"),
+            -9223372036854775708,
+            1,
+            RoundingMode.ROUND_HALF_EVEN,
+            "8E-2776511644261678509",
+        ),
+        (
+            BigInt("9007199254740993"),
+            -1234567890123456789,
+            30,
+            RoundingMode.ROUND_HALF_EVEN,
+            "1.32594955715912165603899364826E-371641966610754594",
+        ),
+    ]
+    for row in cases:
+        assert_equal(
+            String(
+                to_rounded_bigdecimal(row[0], row[1], False, row[2], row[3])
+            ),
+            row[4],
+            String(row[1]) + " to " + String(row[2]) + " digits",
+        )
+
+
+def test_the_ends_of_the_exponent_range_print() raises:
+    """A value at either end of the range prints its digits.
+
+    Printing used to expand the value first, so the smallest and largest
+    values a `BigFloat` can hold could not be printed at all: the expansion
+    has more digits than there is memory. The digits are CPython's.
+    """
+    var smallest = BigFloat(
+        significand=BigInt.one() << 52,
+        exponent=Int.MIN + 52,
+        precision=53,
+        sign=False,
+    )
+    var largest = BigFloat(
+        significand=BigInt.one() << 52,
+        exponent=Int.MAX - 52,
+        precision=53,
+        sign=True,
+    )
+    assert_equal(
+        smallest.to_string(17),
+        "1.4687475724421519E-2776511644261678535",
+        "the smallest value there is",
+    )
+    assert_equal(
+        largest.to_string(17),
+        "-6.9046614899002713E+2776511644261678565",
+        "the largest value there is",
     )
 
 
