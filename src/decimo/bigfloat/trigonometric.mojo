@@ -47,6 +47,7 @@ from decimo.bigfloat.exponential import (
     _ZIV_LIMIT,
     _ZIV_START,
     _settled,
+    round_by_deciding,
     round_by_deciding_at,
     sqrt,
 )
@@ -876,6 +877,13 @@ def arctan(
     )
 
 
+comptime _TURN_SLACK = 4
+"""Units in the last place the three-eighths turn's kernel may be off by.
+
+Pi is correctly rounded and three times a significand is exact, so what is
+left is the one rounding to the width asked for.
+"""
+
 comptime _ARCTAN2_SLACK = 8
 """Units in the last place the two-argument arctangent's kernel may be off by.
 
@@ -969,47 +977,30 @@ def arctan2(
 
     if x.is_infinite():
         if y.is_infinite():
-            # The diagonals: a quarter turn into the right half plane, three
-            # quarters into the left.
-            var eighth = pi(precision + 8)
+            # The diagonals: an eighth of a turn into the right half plane,
+            # three eighths into the left.
             if x.sign:
-                eighth = bigfloat_arithmetics.multiply(
-                    eighth,
-                    BigFloat.from_rounded_parts(
-                        BigInt(3), -2, precision + 8, False
-                    ),
-                    precision + 8,
-                )
-            else:
-                eighth = bigfloat_arithmetics.multiply(
-                    eighth, BigFloat.power_of_two(-2), precision + 8
-                )
-            return BigFloat.from_rounded_parts(
-                eighth.significand,
-                eighth.exponent,
-                precision,
-                y.sign,
-                rounding_mode,
-            )
+                return _three_eighth_turn(precision, y.sign, rounding_mode)
+            return _turn(precision, 2, y.sign, rounding_mode)
         # A finite second coordinate against an infinite first: the angle is
         # a nought or a half turn, by the sign of the first.
         if x.sign:
-            return _half_turn(precision, y.sign, rounding_mode)
+            return _turn(precision, 0, y.sign, rounding_mode)
         return BigFloat.zero(precision, y.sign)
 
     if y.is_infinite():
-        return _quarter_turn(precision, y.sign, rounding_mode)
+        return _turn(precision, 1, y.sign, rounding_mode)
 
     if y.is_zero():
         # On the horizontal axis. The sign of the first coordinate says which
         # side of the origin, and the sign of the nought which shore of the
         # cut.
         if x.sign:
-            return _half_turn(precision, y.sign, rounding_mode)
+            return _turn(precision, 0, y.sign, rounding_mode)
         return BigFloat.zero(precision, y.sign)
 
     if x.is_zero():
-        return _quarter_turn(precision, y.sign, rounding_mode)
+        return _turn(precision, 1, y.sign, rounding_mode)
 
     var width = precision + _ZIV_START
     for _ in range(_ZIV_LIMIT):
@@ -1028,36 +1019,106 @@ def arctan2(
     )
 
 
-def _quarter_turn(
-    precision: Int, negative: Bool, rounding_mode: RoundingMode
+def _magnitude_mode(
+    rounding_mode: RoundingMode, negative: Bool
+) -> RoundingMode:
+    """The mode as it applies to a magnitude, once the sign is known.
+
+    Args:
+        rounding_mode: The mode asked for.
+        negative: Whether the answer is below nought.
+
+    Returns:
+        The mode that rounds `|answer|` the way `rounding_mode` rounds the
+        answer.
+
+    Notes:
+
+    Five of the seven modes do not care about the sign. The two that point at
+    an end of the line do: toward positive infinity is away from nought for a
+    positive value and toward it for a negative one, and the other way about
+    for toward negative infinity. The constant below is asked for a
+    magnitude, so the sign has to be folded in before it is.
+    """
+    if rounding_mode == RoundingMode.ROUND_CEILING:
+        return RoundingMode.ROUND_DOWN if negative else RoundingMode.ROUND_UP
+    if rounding_mode == RoundingMode.ROUND_FLOOR:
+        return RoundingMode.ROUND_UP if negative else RoundingMode.ROUND_DOWN
+    return rounding_mode
+
+
+def _turn(
+    precision: Int, halvings: Int, negative: Bool, rounding_mode: RoundingMode
 ) raises -> BigFloat:
-    """A right angle, correctly rounded, with the sign asked for.
+    """Pi over a power of two, correctly rounded, with the sign asked for.
 
     Args:
         precision: The bits the answer keeps.
+        halvings: How many times to halve pi. Nought gives a half turn, one a
+            quarter turn, two an eighth.
         negative: Whether to give the angle below the axis.
         rounding_mode: Which way to round.
 
     Returns:
-        `pi / 2` to `precision` bits.
+        `pi / 2^halvings` to `precision` bits.
 
     Raises:
         Error: Propagated from the constant.
+
+    Notes:
+
+    Pi is asked for at the precision wanted and not at a wider one, because
+    rounding a wider value again is a double rounding, and a double rounding
+    is not a rounding. It goes wrong whenever the bits between the two widths
+    sit on the half-way pattern, which for pi happens at about two precisions
+    in three: with eight guard bits, `arctan2(1, 0)` at 189 bits came back a
+    unit below the correctly rounded right angle.
+
+    Halving is what makes one rounding enough. Dividing by a power of two is
+    exact and rounding to a count of significant bits does not care about the
+    scale, so rounding pi and then halving gives what rounding the half
+    would. No other divisor has that property, which is why the three-eighth
+    turn below cannot be had this way.
     """
-    var half = pi(precision + 8)
-    return BigFloat.from_rounded_parts(
-        half.significand,
-        half.exponent - 1,
-        precision,
-        negative,
-        rounding_mode,
+    var turn = pi(precision, _magnitude_mode(rounding_mode, negative))
+    return BigFloat(
+        significand=turn.significand,
+        exponent=turn.exponent - halvings,
+        precision=precision,
+        sign=negative,
     )
 
 
-def _half_turn(
+def _three_eighth_turn_at_width(width: Int) raises -> BigFloat:
+    """Three quarters of pi to `width` bits.
+
+    Args:
+        width: The bits wanted.
+
+    Returns:
+        The value, within `_TURN_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from the constant.
+
+    Notes:
+
+    Three quarters of a turn is the one diagonal that is not pi over a power
+    of two, so it cannot be had by moving an exponent and has to be decided
+    like any other irrational value. Three times a significand is exact, so
+    the only error is the constant's own and the one rounding here.
+    """
+    var work = width + Int(bit_width(UInt(width))) + 8
+    var turn = pi(work)
+    return BigFloat.from_rounded_parts(
+        turn.significand * BigInt(3), turn.exponent - 2, width, False
+    )
+
+
+def _three_eighth_turn(
     precision: Int, negative: Bool, rounding_mode: RoundingMode
 ) raises -> BigFloat:
-    """A half turn, correctly rounded, with the sign asked for.
+    """Three quarters of pi, correctly rounded, with the sign asked for.
 
     Args:
         precision: The bits the answer keeps.
@@ -1065,14 +1126,20 @@ def _half_turn(
         rounding_mode: Which way to round.
 
     Returns:
-        `pi` to `precision` bits.
+        `3 pi / 4` to `precision` bits.
 
     Raises:
-        Error: Propagated from the constant.
+        Error: Propagated from the constant, or if the rounding cannot be
+            decided.
     """
-    var turn = pi(precision + 8)
-    return BigFloat.from_rounded_parts(
-        turn.significand, turn.exponent, precision, negative, rounding_mode
+    var magnitude = round_by_deciding[_three_eighth_turn_at_width, _TURN_SLACK](
+        precision, _magnitude_mode(rounding_mode, negative)
+    )
+    return BigFloat(
+        significand=magnitude.significand,
+        exponent=magnitude.exponent,
+        precision=precision,
+        sign=negative,
     )
 
 

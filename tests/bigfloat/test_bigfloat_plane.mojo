@@ -48,6 +48,7 @@ from std.testing import assert_equal, assert_true
 from decimo.bigfloat.arithmetics import divide, subtract
 from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigfloat.comparison import compare_absolute
+from decimo.bigfloat.constants import pi
 from decimo.bigfloat.exponential import hypot
 from decimo.bigfloat.trigonometric import arctan2, cos, sin, tan
 from decimo.bigint.bigint import BigInt
@@ -1329,6 +1330,140 @@ def test_the_methods_agree_with_the_functions() raises:
         String(arctan2(three, four, 53).to_float64()),
         "the angle method",
     )
+
+
+def test_the_axis_angles_are_rounded_once() raises:
+    """A right angle is pi rounded once, not pi rounded twice.
+
+    These answers used to come from `pi(precision + 8)` rounded again to the
+    precision asked for, which is a double rounding, and a double rounding is
+    not a rounding: it goes wrong whenever the bits between the two widths
+    sit on the half-way pattern. At 189 bits the right angle came back a unit
+    low. Across a thousand precisions in all seven modes, sixty of the
+    twenty-eight thousand axis and diagonal angles were wrong.
+
+    The test is against `pi` at the same precision, which is where the
+    correctly rounded value comes from. Halving is exact and rounding to a
+    count of significant bits does not care about the scale, so the right
+    angle has to carry pi's own significand with the exponent one lower --
+    and the half turn and the eighth turn likewise.
+    """
+    var modes = _modes()
+    for index in range(7):
+        for precision in [1, 2, 24, 53, 113, 189, 645, 904]:
+            var wanted = pi(precision, modes[index])
+            var angle = arctan2(
+                BigFloat.from_int(1, precision),
+                BigFloat.zero(precision, False),
+                precision,
+                modes[index],
+            )
+            assert_equal(
+                angle.significand == wanted.significand
+                and angle.exponent == wanted.exponent - 1,
+                True,
+                String("the right angle at ")
+                + String(precision)
+                + " bits in mode "
+                + String(index),
+            )
+            var half = arctan2(
+                BigFloat.zero(precision, False),
+                -BigFloat.from_int(1, precision),
+                precision,
+                modes[index],
+            )
+            assert_equal(
+                half.significand == wanted.significand
+                and half.exponent == wanted.exponent,
+                True,
+                String("the half turn at ") + String(precision) + " bits",
+            )
+
+
+def test_a_negative_angle_mirrors_the_two_directed_modes() raises:
+    """Toward an end of the line means the opposite thing below the axis.
+
+    Rounding toward positive infinity is away from nought for a positive
+    value and toward it for a negative one, so the magnitude of a negative
+    right angle has to be rounded by the mirrored mode. Reading the mode
+    straight through would round the wrong way for two of the seven.
+    """
+    for precision in [24, 53, 189]:
+        assert_equal(
+            arctan2(
+                -BigFloat.from_int(1, precision),
+                BigFloat.zero(precision, False),
+                precision,
+                RoundingMode.ROUND_CEILING,
+            ).significand
+            == pi(precision, RoundingMode.ROUND_DOWN).significand,
+            True,
+            String("toward positive infinity, below the axis, at ")
+            + String(precision),
+        )
+        assert_equal(
+            arctan2(
+                -BigFloat.from_int(1, precision),
+                BigFloat.zero(precision, False),
+                precision,
+                RoundingMode.ROUND_FLOOR,
+            ).significand
+            == pi(precision, RoundingMode.ROUND_UP).significand,
+            True,
+            String("toward negative infinity, below the axis, at ")
+            + String(precision),
+        )
+
+
+def test_the_three_eighth_diagonal_is_decided() raises:
+    """Three quarters of pi is the one diagonal no exponent can reach.
+
+    The others are pi over a power of two, which is exact to scale, so one
+    rounding of pi serves. This one is three times a quarter, so it goes
+    through the loop that decides a rounding like any other irrational value.
+    The expectations are exact, from Machin's formula summed in rationals.
+    """
+    var cases = [
+        [String("24"), String("0"), String("9882595"), String("-22")],
+        [String("24"), String("1"), String("9882596"), String("-22")],
+        [String("24"), String("6"), String("9882596"), String("-22")],
+        [String("53"), String("0"), String("5305678314021330"), String("-51")],
+        [String("53"), String("1"), String("5305678314021331"), String("-51")],
+        [String("53"), String("6"), String("5305678314021330"), String("-51")],
+        [
+            String("113"),
+            String("0"),
+            String("6117030624761391150625307311030602"),
+            String("-111"),
+        ],
+        [
+            String("113"),
+            String("1"),
+            String("6117030624761391150625307311030603"),
+            String("-111"),
+        ],
+        [
+            String("113"),
+            String("6"),
+            String("6117030624761391150625307311030602"),
+            String("-111"),
+        ],
+    ]
+    var modes = _modes()
+    for row in cases:
+        var precision = Int(row[0])
+        var got = arctan2(
+            BigFloat.infinity(precision, False),
+            BigFloat.infinity(precision, True),
+            precision,
+            modes[Int(row[1])],
+        )
+        assert_equal(
+            got.internal_representation(),
+            row[2] + "p" + row[3] + "@" + row[0],
+            String("three eighths of a turn at ") + row[0] + " bits",
+        )
 
 
 def main() raises:
