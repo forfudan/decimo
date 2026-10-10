@@ -58,7 +58,11 @@ from decimo.bigfloat.exponential import (
     exp_at_width,
     ln_at_width,
 )
-from decimo.bigfloat.rounding import checked_precision
+from decimo.bigfloat.rounding import (
+    checked_precision,
+    leading_bit_position,
+    rounded_beside,
+)
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.bitwise import trailing_zeros
 from decimo.bigint.exponential import sqrt_rem
@@ -577,6 +581,26 @@ def power(
         var exact = _exact_dyadic_power(x, y, precision, rounding_mode)
         if exact:
             return exact.take()
+
+    # An exponent small enough that `y ln x` cannot reach the last place of
+    # one leaves the answer equal to one, moved by a hair. The loop below
+    # cannot answer that either -- one is exactly representable, so it has
+    # rounding neighbours on both sides and the directed modes widened to the
+    # limit and refused `power(2, 2^-4000)`.
+    #
+    # The bound on `|ln x|` comes from `x`'s leading bit and not from a
+    # logarithm: `x` lies in `[2^L, 2^(L+1))`, so `|ln x|` is below `|L| + 1`.
+    # Forming the product to ask the question would underflow the exponent
+    # for an argument this small, and refuse an answer that is simply one.
+    var leading = leading_bit_position(x)
+    var reach = leading_bit_position(y) + BigInt(leading.bit_length() + 2)
+    if reach < BigInt(-(precision + 4)):
+        # Below one when `y ln x` is negative, which is when exactly one of
+        # the exponent and the logarithm is.
+        var below_one = y.sign != (leading < BigInt.zero())
+        return rounded_beside(
+            BigFloat.from_int(1, 1), precision, rounding_mode, below_one
+        )
 
     # What is left is irrational, where the loop settles.
     var width = precision + _ZIV_START
