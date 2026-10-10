@@ -579,9 +579,25 @@ def _truncated_to_int(value: BigFloat, function: String) raises -> Int:
     exactly, so there is no second check here to draw it less well -- an
     earlier version compared bit lengths and refused every 63-bit magnitude,
     which rejected answers that were perfectly representable.
+
+    The leading bit's position is looked at before the shift, though, and not
+    to draw the line: it is to keep the shift from being attempted at all.
+    Widening a significand by an exponent near the top of the range asks for
+    an integer of some exabits, and that does not fail by raising -- the
+    allocator returns nothing and the process stops, where no caller can
+    catch it. A value whose leading bit is past the first hundred bits has no
+    integer part that fits, so it is refused without being formed.
     """
     if value.is_zero():
         return 0
+    if leading_bit_position(value) > BigInt(128):
+        raise OverflowError(
+            message=(
+                "The integer part of this value does not fit in an Int, so"
+                " the answer's exponent would not either."
+            ),
+            function=function,
+        )
     var magnitude = value.significand.copy()
     if value.exponent >= 0:
         magnitude = magnitude << value.exponent

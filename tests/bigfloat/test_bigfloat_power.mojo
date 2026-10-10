@@ -1213,5 +1213,32 @@ def test_a_large_whole_power_is_correctly_rounded() raises:
         assert_equal(got.internal_representation(), want, String("case ") + row)
 
 
+def test_a_whole_exponent_at_the_top_of_the_range_is_refused() raises:
+    """A colossal whole exponent is turned away, not fatal.
+
+    Reading a whole exponent as a machine integer tested its size with a sum
+    that could itself wrap, and once it wrapped the test passed and the
+    widening it guarded went ahead -- asking for a number far larger than
+    memory, which stops the program instead of raising.
+
+    Like its sibling in the exponential's tests, this one passes by raising
+    and would take the process down rather than fail if the check went away.
+    """
+    var huge = BigFloat(
+        significand=BigInt("1"), exponent=Int.MAX, precision=1, sign=False
+    )
+    var raised = False
+    try:
+        _ = power(BigFloat.from_int(2, 8), huge, 8)
+    except:
+        raised = True
+    assert_true(raised, "a whole exponent of two to the Int.MAX")
+    assert_equal(
+        String(power(BigFloat.from_int(2, 53), BigFloat.from_int(10, 53), 53)),
+        "1024",
+        "and the ordinary powers are untouched",
+    )
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()

@@ -39,7 +39,7 @@ from decimo.bigfloat.arithmetics import add, multiply, subtract
 from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigfloat.comparison import compare_absolute
 from decimo.bigfloat.constants import e, ln2
-from decimo.bigfloat.exponential import exp, ln
+from decimo.bigfloat.exponential import exp, exp10, exp2, expm1, ln
 from decimo.bigint.bigint import BigInt
 from decimo.rounding_mode import RoundingMode
 
@@ -881,6 +881,55 @@ def test_a_precision_must_fit_the_guard_bits() raises:
                 raised,
                 String("a precision of ") + String(precision) + " was taken",
             )
+
+
+def test_an_argument_at_the_top_of_the_range_is_refused() raises:
+    """A huge argument has to be turned away, not crash the program.
+
+    Reducing the exponential's argument needs its whole-number part, and
+    forming that used to widen the significand by the exponent before asking
+    whether the result would fit. For an exponent near the top of the range
+    that asks for a number of some exabits, and running out of memory is not
+    something a caller can catch -- the program stops. The size is now
+    checked before anything is built.
+
+    This test passes by the call raising. If the check is ever removed it
+    will not fail: it will take the test process down with it, which is also
+    a red build.
+    """
+    var huge = BigFloat(
+        significand=BigInt("129"),
+        exponent=Int.MAX - 100,
+        precision=8,
+        sign=False,
+    )
+    var raised = 0
+    try:
+        _ = exp(huge, 8)
+    except:
+        raised += 1
+    try:
+        _ = exp2(huge, 8)
+    except:
+        raised += 1
+    try:
+        _ = exp10(huge, 8)
+    except:
+        raised += 1
+    try:
+        _ = expm1(huge, 8)
+    except:
+        raised += 1
+    assert_equal(raised, 4, "all four turned the argument away")
+    # and the ordinary cases are untouched
+    assert_equal(
+        String(exp(BigFloat.from_int(0, 24), 24)), "1", "exp of a nought"
+    )
+    assert_equal(
+        String(exp2(BigFloat.from_int(10, 24), 24)),
+        "1024",
+        "two to the tenth",
+    )
 
 
 def main() raises:
