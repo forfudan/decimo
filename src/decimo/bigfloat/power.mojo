@@ -141,6 +141,13 @@ def _whole_degree(y: BigFloat) raises -> Optional[Int]:
     refuses it on the way through, with the message that belongs to it.
     """
     var zeros = trailing_zeros(y.significand)
+    if y.exponent > 62:
+        # The sum below would wrap for an exponent near the top of the range,
+        # and the shift it guards would then be attempted: widening a
+        # significand by some exabits does not fail by raising, it stops the
+        # process. A whole exponent this large is declined, which is what the
+        # caller does with anything that will not fit.
+        return None
     var shift = y.exponent + zeros
     if shift < 0:
         return None
