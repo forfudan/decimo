@@ -75,6 +75,16 @@ the answer's own exponent beyond what is returned, which is what the
 multiplication amplifies.
 """
 
+comptime _SQUARING_SLACK = 4
+"""Units in the last place the squaring kernel may be off by.
+
+The kernel widens its own working width by the bits its doublings will
+consume, so what reaches here is the final rounding of a value already good
+to a fraction of a unit. This constant is a bound on that rounding, not on
+the squaring -- the squaring's error is paid for inside, where it is known
+how many doublings there will be.
+"""
+
 comptime _MAX_HALVINGS = 62
 """How deep a dyadic exponent is followed before it is called irrational.
 
@@ -205,7 +215,7 @@ def _integer_power_at_width(
         width: The bits to work in.
 
     Returns:
-        The value, within `2 bit_width(degree) + 4` units of the last place.
+        The value, within `_SQUARING_SLACK` units of the last place.
 
     Raises:
         OverflowError: If the answer's exponent would not fit an `Int`.
@@ -213,28 +223,45 @@ def _integer_power_at_width(
 
     Notes:
 
-    Binary exponentiation, which costs about `log2(degree)` multiplications
-    and so is off by about that many units -- far better than the series
-    path, whose error grows with the answer's exponent rather than with its
-    logarithm. This is why a whole exponent never goes through `exp` and
-    `ln` at all.
+    Binary exponentiation, which costs about `log2(degree)` multiplications.
+    That is the count of operations, and it is not the error: **a squaring
+    doubles whatever relative error it is given**. Squaring `v(1 + d)` gives
+    `v^2 (1 + 2d)`, so the error after `k` squarings is about `2^k` units of
+    the width they were computed in -- about `degree` units, not `log2(degree)`
+    of them. The accumulator's own multiplications double along with it, which
+    costs one more bit.
+
+    So the width is widened by the bits the doubling will consume, and the
+    answer is rounded back down to the width asked for. `exp` does the same
+    thing for the same reason, in `_exponential_of_small()`, which halves its
+    argument and squares the result back: the bits a squaring loses have to be
+    carried, not hoped for.
+
+    Getting this wrong is not slow, it is wrong. With a slack that assumed
+    `log2(degree)` units, `power(5, 50000)` at 53 bits came back a unit above
+    the correctly rounded answer, and 3.5 per cent of degrees between four
+    thousand and sixty thousand did the same.
     """
-    var result = BigFloat.from_int(1, width)
+    var doublings = Int(bit_width(UInt(abs(degree))))
+    var work = width + doublings + 8
+    var result = BigFloat.from_int(1, work)
     var base = BigFloat.from_rounded_parts(
-        x.significand, x.exponent, width, x.sign
+        x.significand, x.exponent, work, x.sign
     )
     var remaining = abs(degree)
     while remaining > 0:
         if remaining % 2 == 1:
-            result = bigfloat_arithmetics.multiply(result, base, width)
+            result = bigfloat_arithmetics.multiply(result, base, work)
         remaining //= 2
         if remaining > 0:
-            base = bigfloat_arithmetics.multiply(base, base, width)
+            base = bigfloat_arithmetics.multiply(base, base, work)
     if degree < 0:
         result = bigfloat_arithmetics.divide(
-            BigFloat.from_int(1, width), result, width
+            BigFloat.from_int(1, work), result, work
         )
-    return result^
+    return BigFloat.from_rounded_parts(
+        result.significand, result.exponent, width, result.sign
+    )
 
 
 def _integer_power(
@@ -321,13 +348,14 @@ def _integer_power(
 
     # Too long to form, so the answer is neither representable nor a
     # midpoint, and the loop below can settle on it.
-    var slack = 2 * Int(bit_width(UInt(magnitude))) + 4
     var width = precision + _ZIV_START
     for _ in range(_ZIV_LIMIT):
         var wide = _integer_power_at_width(x, degree, width)
         if wide.is_zero():
             return BigFloat.zero(precision, wide.sign)
-        var settled = _settled(wide, width, slack, precision, rounding_mode)
+        var settled = _settled(
+            wide, width, _SQUARING_SLACK, precision, rounding_mode
+        )
         if settled:
             return settled.take()
         width += width - precision
