@@ -50,7 +50,8 @@ from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigfloat.comparison import compare_absolute
 from decimo.bigfloat.constants import pi
 from decimo.bigfloat.exponential import hypot
-from decimo.bigfloat.trigonometric import arctan2, cos, sin, tan
+from decimo.bigfloat.rounding import leading_bit_position
+from decimo.bigfloat.trigonometric import arctan, arctan2, cos, sin, tan
 from decimo.bigint.bigint import BigInt
 from decimo.rounding_mode import RoundingMode
 
@@ -1554,6 +1555,258 @@ def test_the_angle_takes_its_coordinates_at_different_widths() raises:
         mixed.internal_representation(),
         both_wide.internal_representation(),
         "one is one at any width, so the angle is the same",
+    )
+
+
+def _at(exponent: Int, precision: Int, negative: Bool) raises -> BigFloat:
+    """Plus or minus a power of two, built from its parts.
+
+    Args:
+        exponent: The stored exponent, which is where the parts go rather
+            than where the leading bit lands.
+        precision: The bits the value holds.
+        negative: The sign.
+
+    Returns:
+        The value.
+
+    Raises:
+        Error: Propagated from the constructor.
+
+    Notes:
+
+    The parts go in as they are so that the two ends of the exponent range
+    can be reached. Asking for a leading bit at `Int.MIN` would have to take
+    the precision off it first, and that subtraction is the thing under test.
+    """
+    return BigFloat(
+        significand=BigInt.one() << (precision - 1),
+        exponent=exponent,
+        precision=precision,
+        sign=negative,
+    )
+
+
+def test_the_angle_of_a_ratio_that_has_no_exponent() raises:
+    """Two coordinates at opposite ends of the range still have an angle.
+
+    The angle came from the quotient of the two, and a quotient of a huge
+    coordinate by a tiny one has an exponent above anything an `Int` holds.
+    So the call failed, reporting an overflow about a quotient the caller had
+    never asked for -- while the angle itself is one of the plainest numbers
+    there is, a right angle or a half turn to as many bits as anyone wants.
+
+    The identities give those two without the division: a ratio whose leading
+    bit is above the working width leaves the angle a right angle, and in the
+    left half plane a ratio that far below the last place leaves it a half
+    turn. Both are checked here against the same angle taken on the axis,
+    which is where the correctly rounded value comes from, in all seven modes
+    and in all four combinations of signs.
+    """
+    var modes = _modes()
+    for index in range(7):
+        var mode = modes[index]
+        for precision in [1, 2, 53, 300]:
+            # The stored exponent that puts the leading bit at nought.
+            var unit = 1 - precision
+            for negative in [False, True]:
+                var vertical = arctan2(
+                    _at(unit, precision, negative),
+                    BigFloat.zero(precision, False),
+                    precision,
+                    mode,
+                )
+                var horizontal = arctan2(
+                    BigFloat.zero(precision, negative),
+                    _at(unit, precision, True),
+                    precision,
+                    mode,
+                )
+                for gap in [
+                    precision + 5,
+                    4 * precision + 100,
+                    Int.MAX // 4,
+                    Int.MAX - 400,
+                ]:
+                    for across in [False, True]:
+                        assert_equal(
+                            arctan2(
+                                _at(unit + gap, precision, negative),
+                                _at(unit, precision, across),
+                                precision,
+                                mode,
+                            ).internal_representation(),
+                            vertical.internal_representation(),
+                            String("a ratio of two to the ")
+                            + String(gap)
+                            + " at "
+                            + String(precision)
+                            + " bits in mode "
+                            + String(index),
+                        )
+                    assert_equal(
+                        arctan2(
+                            _at(unit - gap, precision, negative),
+                            _at(unit, precision, True),
+                            precision,
+                            mode,
+                        ).internal_representation(),
+                        horizontal.internal_representation(),
+                        String("a ratio of two to the minus ")
+                        + String(gap)
+                        + " at "
+                        + String(precision)
+                        + " bits in mode "
+                        + String(index),
+                    )
+
+                # And the pair that cannot be divided at all, one coordinate
+                # at each end of the exponent range. A gap alone does not
+                # reach this: a huge second coordinate over an ordinary first
+                # still has a quotient, and only the two ends together put
+                # the quotient's exponent past what an `Int` holds.
+                var top = Int.MAX - 400 - precision
+                var bottom = Int.MIN + 400
+                for across in [False, True]:
+                    assert_equal(
+                        arctan2(
+                            _at(top, precision, negative),
+                            _at(bottom, precision, across),
+                            precision,
+                            mode,
+                        ).internal_representation(),
+                        vertical.internal_representation(),
+                        String("the two ends of the range at ")
+                        + String(precision)
+                        + " bits in mode "
+                        + String(index),
+                    )
+                assert_equal(
+                    arctan2(
+                        _at(bottom, precision, negative),
+                        _at(top, precision, True),
+                        precision,
+                        mode,
+                    ).internal_representation(),
+                    horizontal.internal_representation(),
+                    String("the two ends of the range, the other way, at ")
+                    + String(precision)
+                    + " bits in mode "
+                    + String(index),
+                )
+
+
+def test_the_angle_beside_the_vertical_axis_is_the_arctangent() raises:
+    """With one for the first coordinate the angle is the plain arctangent.
+
+    This is what keeps the shortcut above honest. Taking a right angle for
+    the answer is only allowed once the correction to it has fallen below the
+    last place of the working width, and a threshold set too low would
+    swallow ratios whose correction is still visible -- answers that would
+    then be wrong in bits the caller asked for, and wrong by far too little
+    for the axis comparison to notice.
+
+    The one-argument arctangent decides its own turnover, so it is an
+    independent witness. The two have to agree at every size of ratio, from
+    one whose correction lands in the middle of the answer to one with no
+    exponent at all.
+    """
+    var modes = _modes()
+    for index in range(7):
+        var mode = modes[index]
+        for precision in [53, 300]:
+            var unit = 1 - precision
+            for negative in [False, True]:
+                for gap in [
+                    10,
+                    precision // 4,
+                    precision - 1,
+                    precision + 5,
+                    4 * precision + 100,
+                    Int.MAX - 400,
+                ]:
+                    var y = _at(unit + gap, precision, negative)
+                    assert_equal(
+                        arctan2(
+                            y,
+                            _at(unit, precision, False),
+                            precision,
+                            mode,
+                        ).internal_representation(),
+                        arctan(y, precision, mode).internal_representation(),
+                        String("a ratio of two to the ")
+                        + String(gap)
+                        + " at "
+                        + String(precision)
+                        + " bits in mode "
+                        + String(index),
+                    )
+
+
+def test_the_angle_beside_the_half_turn_keeps_its_correction() raises:
+    """A point just above the negative axis is not on it.
+
+    The mirror of the test above, for the other shortcut. In the left half
+    plane a ratio below the last place leaves the angle a half turn, and a
+    threshold set too low would take that answer while the ratio is still
+    visible -- an angle reported as exactly a half turn for a point plainly
+    off the axis.
+
+    Comparing against the half turn would not see it, because the answers
+    agree to the last bit either way at the widths where the shortcut is
+    right. So the correction is measured instead: for a ratio of two to a
+    power, the gap between the angle and the half turn is that same power,
+    since the arctangent of a small value is the value less a far smaller
+    cube.
+    """
+    var wide = 400
+    for gap in [100, 300]:
+        for negative in [False, True]:
+            var angle = arctan2(
+                _at(-gap + 1 - wide, wide, negative),
+                _at(1 - wide, wide, True),
+                wide,
+            )
+            var correction = subtract(pi(wide), abs(angle), wide)
+            assert_true(
+                not correction.is_zero(),
+                String("the angle for a ratio of two to the minus ")
+                + String(gap)
+                + " is exactly the half turn",
+            )
+            # The correction is that power of two, less whatever the two
+            # roundings leave behind, so its leading bit is at that power or
+            # one below it.
+            var position = leading_bit_position(correction)
+            assert_true(
+                position == BigInt(-gap) or position == BigInt(-gap - 1),
+                String("the correction to the half turn for a ratio of two")
+                + " to the minus "
+                + String(gap)
+                + " has its leading bit at "
+                + String(position),
+            )
+
+
+def test_an_angle_with_no_exponent_is_named() raises:
+    """And where the angle itself has no exponent, the refusal says so.
+
+    In the right half plane the angle is the ratio, so a ratio below the
+    exponent range leaves nothing to return. That has to be refused, but the
+    words are the caller's: the point, not the quotient inside.
+    """
+    var refused = String("")
+    try:
+        _ = arctan2(_at(Int.MIN, 53, False), _at(Int.MAX - 400, 53, False), 53)
+    except error:
+        refused = String(error)
+    assert_true(
+        refused.find("angle") >= 0,
+        String("the refusal reads: ") + refused,
+    )
+    assert_true(
+        refused.find("quotient") < 0,
+        String("the refusal reads: ") + refused,
     )
 
 
