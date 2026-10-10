@@ -1240,5 +1240,128 @@ def test_a_whole_exponent_at_the_top_of_the_range_is_refused() raises:
     )
 
 
+def test_a_base_or_exponent_at_the_ends_of_the_range() raises:
+    """Values at the ends of the exponent range, where sums wrap round.
+
+    A power is worked out from where the base's odd part sits, which is its
+    exponent plus its trailing zeros -- and that sum can leave a machine
+    integer while the base itself is an ordinary value. `128 * 2^Int.MAX` is
+    a perfectly good float of eight bits. Added in a machine integer the
+    position wrapped to a large negative number, and the square root of such
+    a value came back as its reciprocal.
+
+    The guards written around those sums could not catch it either, because
+    they tested the size with `abs()`, and the most negative machine integer
+    is still negative when its sign is taken away. So it passed every
+    comparison and the wrapped product was used. These four used to give
+    `1`, `1`, `9` and `2`.
+
+    The positions and the products are now worked out in whole numbers of any
+    size, and turned back into an exponent only at the end, where not fitting
+    one means the answer is not representable and is refused.
+    """
+    var eight = 8
+    var top = BigFloat(
+        significand=BigInt("1"), exponent=Int.MIN, precision=1, sign=False
+    )
+    var refused = 0
+    for degree in [2, 4]:
+        try:
+            _ = power(top, BigFloat.from_int(degree, eight), eight)
+        except:
+            refused += 1
+    var six = BigFloat(
+        significand=BigInt("6"), exponent=Int.MAX, precision=3, sign=False
+    )
+    try:
+        _ = power(six, BigFloat.from_int(2, eight), eight)
+    except:
+        refused += 1
+    var huge_exponent = BigFloat(
+        significand=BigInt("2"), exponent=Int.MAX, precision=2, sign=False
+    )
+    try:
+        _ = power(BigFloat.from_int(2, eight), huge_exponent, eight)
+    except:
+        refused += 1
+    assert_equal(refused, 4, "all four are past what an exponent holds")
+
+
+def test_the_first_power_gives_the_base_back() raises:
+    """`x ** 1` is `x`, including where the odd part has no exponent.
+
+    The base's odd part is decomposed before anything else, and for a value
+    near the top of the range that part sits where no exponent reaches. The
+    first power is answered before the decomposition for exactly that reason.
+    """
+    var base = BigFloat(
+        significand=BigInt("128"), exponent=Int.MAX, precision=8, sign=False
+    )
+    assert_equal(
+        power(base, BigFloat.from_int(1, 8), 8).internal_representation(),
+        base.internal_representation(),
+        "the first power of a value at the top of the range",
+    )
+    assert_equal(
+        power(
+            BigFloat.from_string("1.5", 53), BigFloat.from_int(1, 53), 53
+        ).internal_representation(),
+        BigFloat.from_string("1.5", 53).internal_representation(),
+        "and of an ordinary one",
+    )
+
+
+def test_a_half_power_agrees_with_the_root_at_the_ends() raises:
+    """`x ** 0.5` and `sqrt(x)` agree even at the top of the range.
+
+    They are the same number by two different routes, and at the top of the
+    range they disagreed by a factor of two to the sixty-fourth -- the power
+    put the answer at the wrong end of the exponent range entirely.
+    """
+    var top = BigFloat(
+        significand=BigInt("2"), exponent=Int.MAX, precision=2, sign=False
+    )
+    assert_equal(
+        power(top, BigFloat.power_of_two(-1), 8).internal_representation(),
+        sqrt(top, 8).internal_representation(),
+        "the half power at the top of the range",
+    )
+
+
+def test_a_negative_base_with_a_whole_exponent_too_large_to_hold() raises:
+    """The sign is decided from the exponent's bits, not from its value.
+
+    Whether a whole exponent is odd used to be asked by reading it as a
+    machine integer, which declines anything too large -- so a negative base
+    raised to such a power lost its sign, and worse, fell through to the
+    series, where the logarithm of a negative value is not a number and the
+    answer came back as a nought. It is now asked of the exponent's lowest
+    set bit, which needs no machine integer at all.
+    """
+    # Two to the sixty-second is even, so the answer is the positive one.
+    var even = BigFloat.from_string("4611686018427387904", 53)
+    assert_equal(
+        power(
+            BigFloat.from_string("-1.5", 53), even, 53
+        ).internal_representation(),
+        power(
+            BigFloat.from_string("1.5", 53), even, 53
+        ).internal_representation(),
+        "an even exponent past a machine integer keeps the magnitude",
+    )
+    # At sixty-three bits the same figure less one is odd and representable.
+    var odd = BigFloat.from_string("9223372036854775807", 63)
+    assert_equal(
+        power(BigFloat.infinity(63, True), odd, 63).sign,
+        True,
+        "an odd exponent past a machine integer keeps the sign",
+    )
+    assert_equal(
+        power(BigFloat.zero(63, True), odd, 63).sign,
+        True,
+        "and so does a negative nought",
+    )
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()
