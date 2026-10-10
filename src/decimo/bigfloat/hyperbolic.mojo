@@ -782,7 +782,12 @@ def cosh(
     """
     _ = checked_precision(precision, "cosh()")
 
-    if x.is_finite() and not x.is_zero():
+    # The hyperbolic cosine of a nought is exactly one, and an exactly
+    # representable answer is the one thing the loop below cannot settle on.
+    if x.is_zero():
+        return BigFloat.from_int(1, precision)
+
+    if x.is_finite():
         # Whether `x^2/2` can reach the last place is a question about `x`'s
         # leading bit, so it is asked that way. Forming the square to ask it
         # would underflow the exponent for an argument near the bottom of the

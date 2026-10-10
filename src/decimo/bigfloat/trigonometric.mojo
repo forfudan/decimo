@@ -597,9 +597,12 @@ def cos(
     modes right: toward zero the answer is the value below one, not one.
     """
     _ = checked_precision(precision, "cos()")
+    # The cosine of a nought is exactly one, which is the one answer the loop
+    # below can never settle on, so it is answered here.
+    if x.is_zero():
+        return BigFloat.from_int(1, precision)
     if (
         x.is_finite()
-        and not x.is_zero()
         and compare_absolute(x, BigFloat.power_of_two(-(precision + 8) // 2))
         < 0
     ):
@@ -1001,6 +1004,20 @@ def arctan2(
 
     if x.is_zero():
         return _turn(precision, 1, y.sign, rounding_mode)
+
+    # In the right half plane a ratio whose cube cannot reach the last place
+    # leaves the angle equal to the ratio, less a hair. The loop below cannot
+    # answer that: once the series terminates on its first term the kernel
+    # returns the ratio exactly, and an exactly representable value has
+    # rounding neighbours on both sides, so the directed modes widened to the
+    # limit and refused. The one-argument arctangent guards this already;
+    # this is the same guard, asked of the ratio without forming it, because
+    # a ratio that small can be below what an exponent holds.
+    if not x.sign:
+        var gap = leading_bit_position(y) - leading_bit_position(x)
+        if (gap + gap) < BigInt(-(precision + 10)):
+            var ratio = bigfloat_arithmetics.divide(y, x, precision + 8)
+            return rounded_beside(ratio, precision, rounding_mode, True)
 
     var width = precision + _ZIV_START
     for _ in range(_ZIV_LIMIT):

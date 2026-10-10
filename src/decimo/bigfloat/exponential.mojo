@@ -1136,9 +1136,14 @@ def exp(
     # argument like `2^-100000` would need more widenings than the limit
     # allows before the kernel could tell which side of one the answer is on,
     # and the call would be refused rather than answered.
+    # A nought argument is the one place the answer is exactly one, which is
+    # the one answer the loop below can never settle on: a value that sits
+    # exactly on a boundary has rounding neighbours on both sides, so the
+    # directed modes widened to the limit and refused `exp(0)`.
+    if x.is_zero():
+        return BigFloat.from_int(1, precision)
     if (
         x.is_finite()
-        and not x.is_zero()
         and compare_absolute(x, BigFloat.power_of_two(-(precision + 4))) < 0
     ):
         return bigfloat_arithmetics.add(
