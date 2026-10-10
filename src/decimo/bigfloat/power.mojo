@@ -121,6 +121,51 @@ def _is_one(x: BigFloat) -> Bool:
     return trailing_zeros(x.significand) == x.precision - 1
 
 
+def _odd_part_position(x: BigFloat) raises -> BigInt:
+    """Where `x`'s odd part sits: `x` is `odd * 2^position`.
+
+    Args:
+        x: The value, finite and not nought.
+
+    Returns:
+        The position, as a `BigInt`.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    A `BigInt` because the sum can leave an `Int` while `x` is an ordinary
+    value. `128 * 2^Int.MAX` is a perfectly good float of eight bits, and its
+    odd part is one at `2^(Int.MAX + 7)`; adding those in an `Int` wraps to a
+    large negative number, which put the answer at the wrong end of the range
+    and gave the square root of such a value as its reciprocal.
+    """
+    return BigInt(x.exponent) + BigInt(trailing_zeros(x.significand))
+
+
+def _as_exponent(value: BigInt) raises -> Int:
+    """An exponent worked out in `BigInt`, back as an `Int`.
+
+    Args:
+        value: The exponent.
+
+    Returns:
+        The same value as an `Int`.
+
+    Raises:
+        OverflowError: If it does not fit one, which is exactly when the
+            answer is not representable.
+    """
+    try:
+        return value.to_int()
+    except:
+        raise OverflowError(
+            message="The exponent of this power would not fit in an Int.",
+            function="power()",
+        )
+
+
 def _whole_degree(y: BigFloat) raises -> Optional[Int]:
     """A whole exponent as an `Int`, with its sign.
 
@@ -315,46 +360,67 @@ def _integer_power(
     which is what `1 / x^n` is, and not a reciprocal taken at a working
     width and rounded twice.
     """
+    if degree == 1:
+        # The value itself. Worth saying before anything is decomposed: the
+        # odd part of a value near the top of the range sits at a position no
+        # `Int` holds, so `128 * 2^Int.MAX` to the first would have been
+        # refused although it is exactly the base it was given.
+        return BigFloat.from_rounded_parts(
+            x.significand, x.exponent, precision, x.sign, rounding_mode
+        )
+
     var negative = x.sign and degree % 2 != 0
     var magnitude = abs(degree)
-    var zeros = trailing_zeros(x.significand)
-    var odd = x.significand >> zeros
-    var shift = x.exponent + zeros
+    var odd = x.significand >> trailing_zeros(x.significand)
+    # Worked out in `BigInt` throughout. The position can leave an `Int` on
+    # its own, and the product with the degree can leave it when the answer
+    # does not -- and a guard written with `abs()` cannot catch either, since
+    # `abs(Int.MIN)` is still negative and so passes every comparison.
+    var position = _odd_part_position(x)
 
     if odd.is_one():
         # A power of two raised to anything is a power of two.
-        if shift != 0 and abs(shift) > Int.MAX // magnitude:
-            raise OverflowError(
-                message="The exponent of this power would not fit in an Int.",
-                function="power()",
-            )
-        var exponent = shift * degree
-        if degree < 0:
-            exponent = -(shift * magnitude)
         return BigFloat.from_rounded_parts(
-            BigInt.one(), exponent, precision, negative, rounding_mode
+            BigInt.one(),
+            _as_exponent(position * BigInt(degree)),
+            precision,
+            negative,
+            rounding_mode,
         )
 
     if odd.bit_length() * magnitude <= 4 * precision + 24:
-        if shift != 0 and abs(shift) > Int.MAX // magnitude:
-            raise OverflowError(
-                message="The exponent of this power would not fit in an Int.",
-                function="power()",
-            )
         var significand = odd**magnitude
-        var exponent = shift * magnitude
+        var exponent = position * BigInt(magnitude)
         if degree > 0:
             return BigFloat.from_rounded_parts(
-                significand, exponent, precision, negative, rounding_mode
+                significand,
+                _as_exponent(exponent),
+                precision,
+                negative,
+                rounding_mode,
             )
-        var exact = BigFloat(
-            significand=significand,
-            exponent=exponent,
-            precision=significand.bit_length(),
-            sign=negative,
+        # A negative degree is one correctly rounded division of exact
+        # operands. The power of two is divided out afterwards rather than
+        # built into the divisor, because the divisor's own exponent can
+        # leave the range while the reciprocal's does not.
+        var reciprocal = bigfloat_arithmetics.divide(
+            BigFloat.from_int(1, precision),
+            BigFloat(
+                significand=significand,
+                exponent=0,
+                precision=significand.bit_length(),
+                sign=negative,
+            ),
+            precision,
+            rounding_mode,
         )
-        return bigfloat_arithmetics.divide(
-            BigFloat.from_int(1, precision), exact, precision, rounding_mode
+        if reciprocal.is_zero():
+            return reciprocal^
+        return BigFloat(
+            significand=reciprocal.significand,
+            exponent=_as_exponent(BigInt(reciprocal.exponent) - exponent),
+            precision=reciprocal.precision,
+            sign=reciprocal.sign,
         )
 
     # Too long to form, so the answer is neither representable nor a
@@ -418,16 +484,15 @@ def _exact_dyadic_power(
     if y.sign:
         degree = -degree
 
-    var zeros = trailing_zeros(x.significand)
-    var odd = x.significand >> zeros
+    var odd = x.significand >> trailing_zeros(x.significand)
     if odd.is_one():
-        # The base is a power of two, so only the exponent has to divide.
-        var shift = x.exponent + zeros
-        var step = 1 << halvings
-        if shift % step != 0:
+        # The base is a power of two, so only the position has to divide.
+        var position = _odd_part_position(x)
+        var step = BigInt(1 << halvings)
+        if not (position % step).is_zero():
             return None
         return _integer_power(
-            BigFloat.power_of_two(shift // step),
+            BigFloat.power_of_two(_as_exponent(position // step)),
             degree,
             precision,
             rounding_mode,
@@ -447,13 +512,38 @@ def _exact_dyadic_power(
     return _integer_power(root, degree, precision, rounding_mode)
 
 
-def _power_at_width(x: BigFloat, y: BigFloat, width: Int) raises -> BigFloat:
+def _magnitude(x: BigFloat) raises -> BigFloat:
+    """`|x|` for a finite value.
+
+    Args:
+        x: The value, finite.
+
+    Returns:
+        The same value without its sign.
+
+    Raises:
+        Error: Propagated from the construction.
+    """
+    return BigFloat(
+        significand=x.significand,
+        exponent=x.exponent,
+        precision=x.precision,
+        sign=False,
+    )
+
+
+def _power_at_width(
+    x: BigFloat, y: BigFloat, width: Int, negative: Bool
+) raises -> BigFloat:
     """`x ** y` to `width` bits, as `exp(y ln x)`.
 
     Args:
-        x: The base, finite, positive and not nought or one.
+        x: The base, finite and not nought or one. A negative one is used by
+            its magnitude; the sign is the caller's to decide, since only a
+            whole exponent gives a negative base a real answer at all.
         y: The exponent, finite and not nought.
         width: The bits wanted.
+        negative: The sign to give the answer.
 
     Returns:
         The value, within `_POWER_SLACK` units of the last place.
@@ -475,7 +565,9 @@ def _power_at_width(x: BigFloat, y: BigFloat, width: Int) raises -> BigFloat:
     with an exponent an `Int` holds, and is refused here rather than carried
     into a width nothing could compute.
     """
-    var rough = bigfloat_arithmetics.multiply(y, ln_at_width(x, 64), 64)
+    var rough = bigfloat_arithmetics.multiply(
+        y, ln_at_width(_magnitude(x), 64), 64
+    )
     var span = 0
     if not rough.is_zero():
         var leading = rough.exponent + rough.precision - 1
@@ -488,10 +580,16 @@ def _power_at_width(x: BigFloat, y: BigFloat, width: Int) raises -> BigFloat:
         )
 
     var work = width + span + Int(bit_width(UInt(width))) + 16
-    var product = bigfloat_arithmetics.multiply(y, ln_at_width(x, work), work)
+    var product = bigfloat_arithmetics.multiply(
+        y, ln_at_width(_magnitude(x), work), work
+    )
     var value = exp_at_width(product, work)
+    if not value.is_finite():
+        # Rebuilding from the parts would turn a NaN's empty significand into
+        # a nought, which is how a negative base once came back as `+0`.
+        return value^
     return BigFloat.from_rounded_parts(
-        value.significand, value.exponent, width, value.sign
+        value.significand, value.exponent, width, negative
     )
 
 
@@ -550,13 +648,23 @@ def power(
         return BigFloat.nan(precision)
 
     var whole = _whole_degree(y)
-    var odd_whole = False
-    if whole:
-        odd_whole = whole.value() % 2 != 0
     var is_whole = False
-    if y.is_finite():
+    var odd_whole = False
+    if y.is_finite() and not y.is_zero():
         var zeros = trailing_zeros(y.significand)
-        is_whole = y.exponent + zeros >= 0
+        # `y.exponent + zeros >= 0`, asked without forming the sum, which
+        # wraps for an exponent near the top of the range and read a whole
+        # exponent as a fractional one.
+        if y.exponent >= 0:
+            is_whole = True
+            odd_whole = y.exponent == 0 and zeros == 0
+        elif y.exponent != Int.MIN:
+            is_whole = zeros >= -y.exponent
+            # A whole `y` is odd exactly when its lowest set bit is the unit
+            # bit. Asked this way the answer does not need `y` to fit a
+            # machine integer, which is what lost the sign of
+            # `power(-Infinity, n)` for a large odd `n`.
+            odd_whole = zeros == -y.exponent
 
     if y.is_infinite():
         # Which side of one the base sits on decides, and a base of minus
@@ -584,7 +692,7 @@ def power(
     if is_whole:
         if whole:
             return _integer_power(x, whole.value(), precision, rounding_mode)
-    else:
+    elif not x.sign:
         var exact = _exact_dyadic_power(x, y, precision, rounding_mode)
         if exact:
             return exact.take()
@@ -612,9 +720,13 @@ def power(
     # What is left is irrational, where the loop settles.
     var width = precision + _ZIV_START
     for _ in range(_ZIV_LIMIT):
-        var wide = _power_at_width(x, y, width)
+        var wide = _power_at_width(x, y, width, x.sign and odd_whole)
+        if not wide.is_finite():
+            if wide.is_nan():
+                return BigFloat.nan(precision)
+            return BigFloat.infinity(precision, wide.sign)
         if wide.is_zero():
-            return BigFloat.zero(precision, False)
+            return BigFloat.zero(precision, x.sign and odd_whole)
         var settled = _settled(
             wide, width, _POWER_SLACK, precision, rounding_mode
         )
