@@ -465,12 +465,10 @@ def main() raises:
 
     # === Mathematical Functions ===
     print(Dec128("2").sqrt())  # Square root: 1.4142135623730950488016887242
-    print(Dec128("100").root(3))  # Cube root: 4.641588833612778892410076351
-    print(Dec128("2.71828").ln())  # Natural log: 0.9999993273472820031578910056
+    print(Dec128("100").root(3))  # Cube root: 4.6415888336127788924100763509
+    print(Dec128("2.71828").ln())  # Natural log: 0.9999993273472820031578910055
     print(Dec128("10").log10())  # Base-10 log: 1
-    print(
-        Dec128("16").log(Dec128("2"))
-    )  # Log base 2: 3.9999999999999999999999999999
+    print(Dec128("16").log(Dec128("2")))  # Log base 2: 4
     print(Dec128("10").exp())  # e^10: 22026.465794806716516957900645
     print(Dec128("2").power(10))  # Power: 1024
 
@@ -716,6 +714,11 @@ After cloning the repo onto your local disk, you can:
 - Use `pixi run check_import_fixed_point` after changing the organizer or the
   Mojo version: it asserts that the organizer and `mojo format` do not undo
   each other's work.
+- Use `pixi run docexamples` to run every Mojo example in the documentation
+  and check that it prints what its comment says. A comment that describes the
+  result in prose is left alone; one that names a value is compared with the
+  line that print produced. Each block is a separate compile, so this takes
+  minutes and is not part of `pixi run test`.
 - Use `pixi run one <file.mojo>` to run a single file -- a sweep against a
   reference, a measurement, a probe -- against the working tree. `mojo run`
   puts the file's own directory on the import path ahead of `-I src`, so a
