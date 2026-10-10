@@ -812,5 +812,46 @@ def test_an_exponent_past_a_thousand_million() raises:
         )
 
 
+def test_the_bound_on_forming_an_exact_power() raises:
+    """A power long enough to be worth forming, and one just past it.
+
+    Whether an integer power is formed exactly or put through the deciding
+    loop turns on a length, and that length is what lets an exactly
+    representable answer be returned at all. Nothing pinned it: halving it
+    left the suite green and made `2 ** 100` at thirty-four digits start
+    raising instead of answering.
+
+    Two to the hundredth is thirty-one digits, so at thirty-four it is exact
+    and every mode has to give it.
+    """
+    var modes = _modes()
+    for index in range(7):
+        assert_equal(
+            String(
+                bigdecimal_exponential.power_rounded(
+                    BigDecimal("2"), BigDecimal("100"), 34, modes[index]
+                )
+            ),
+            "1267650600228229401496703205376",
+            String("two to the hundredth in mode ") + String(index),
+        )
+    # And a power of ten keeps the scale it is built with, however long.
+    assert_equal(
+        _same_value(
+            bigdecimal_exponential.power_rounded(
+                BigDecimal("10"),
+                BigDecimal("64"),
+                15,
+                RoundingMode.ROUND_HALF_EVEN,
+            ),
+            BigUInt("1"),
+            -64,
+            False,
+        ),
+        True,
+        "ten to the sixty-fourth",
+    )
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()

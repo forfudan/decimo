@@ -61,13 +61,4 @@ def test_pad_precision_one() raises:
 
 
 def main() raises:
-    test_pad_integer()
-    test_pad_short_fraction()
-    test_pad_exact_fraction()
-    test_pad_long_fraction()
-    test_pad_zero_precision()
-    test_pad_negative_precision()
-    test_pad_zero_value()
-    test_pad_already_has_dot_no_digits()
-    test_pad_precision_one()
-    print("test_engine: all tests passed")
+    testing.TestSuite.discover_tests[__functions_in_module()]().run()
