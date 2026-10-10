@@ -44,11 +44,9 @@ from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigfloat.comparison import compare_absolute
 from decimo.bigfloat.constants import pi
 from decimo.bigfloat.exponential import (
-    _ZIV_LIMIT,
-    _ZIV_START,
-    _settled,
     round_by_deciding,
     round_by_deciding_at,
+    round_by_deciding_at_two,
     sqrt,
 )
 from decimo.bigfloat.rounding import (
@@ -64,6 +62,7 @@ from decimo.bigfloat.rounding import (
     square_fixed_point_scale,
     square_to_fixed_point,
     to_fixed_point,
+    working_width,
 )
 from decimo.bigint.bigint import BigInt
 from decimo.errors import OverflowError
@@ -405,7 +404,7 @@ def _sin_kernel(x: BigFloat, width: Int) raises -> BigFloat:
     if x.is_zero():
         return BigFloat.zero(width, x.sign)
 
-    var scale = width + Int(bit_width(UInt(width))) + 12
+    var scale = working_width(width)
     var parts = _reduced(x, width)
     var remainder = BigFloat.from_rounded_parts(
         parts[0].significand, parts[0].exponent, scale, parts[0].sign
@@ -450,7 +449,7 @@ def _cos_kernel(x: BigFloat, width: Int) raises -> BigFloat:
     if x.is_zero():
         return BigFloat.from_int(1, width)
 
-    var scale = width + Int(bit_width(UInt(width))) + 12
+    var scale = working_width(width)
     var parts = _reduced(x, width)
     var remainder = BigFloat.from_rounded_parts(
         parts[0].significand, parts[0].exponent, scale, parts[0].sign
@@ -973,7 +972,7 @@ def _arctan2_at_width(y: BigFloat, x: BigFloat, width: Int) raises -> BigFloat:
     where no pi is added at all, and in the left half plane `arctan(y / x)`
     and pi are both about a right angle, so their sum keeps every bit it had.
     """
-    var work = width + Int(bit_width(UInt(width))) + 12
+    var work = working_width(width)
     var angle = _arctangent_of_ratio(y, x, work)
     if x.sign:
         var half_turn = pi(work)
@@ -1091,20 +1090,8 @@ def arctan2(
                 )
             return rounded_beside(ratio, precision, rounding_mode, True)
 
-    var width = precision + _ZIV_START
-    for _ in range(_ZIV_LIMIT):
-        var wide = _arctan2_at_width(y, x, width)
-        if wide.is_zero():
-            return BigFloat.zero(precision, wide.sign)
-        var settled = _settled(
-            wide, width, _ARCTAN2_SLACK, precision, rounding_mode
-        )
-        if settled:
-            return settled.take()
-        width += width - precision
-    raise Error(
-        "the rounding of this angle could not be decided; the kernel is"
-        " further from the true value than its stated bound allows"
+    return round_by_deciding_at_two[_arctan2_at_width, _ARCTAN2_SLACK](
+        y, x, precision, rounding_mode
     )
 
 

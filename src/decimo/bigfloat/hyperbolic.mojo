@@ -63,10 +63,10 @@ from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigfloat.comparison import compare_absolute
 from decimo.bigfloat.constants import ln2
 from decimo.bigfloat.exponential import (
-    atanh_at_width,
     exp_at_width,
     expm1_at_width,
     ln_at_width,
+    log1p_at_width,
     round_by_deciding_at,
     sqrt,
 )
@@ -77,6 +77,7 @@ from decimo.bigfloat.rounding import (
     guard_bits,
     leading_bit_position,
     rounded_beside,
+    working_width,
 )
 from decimo.bigint.bigint import BigInt
 from decimo.rounding_mode import RoundingMode
@@ -87,29 +88,10 @@ comptime _HYPERBOLIC_SLACK = 4
 
 Each is a handful of correctly rounded steps over an exact identity -- one
 exponential or logarithm, a square root at most, and two or three of the four
-operations -- carried at `_working_width()` and rounded once on the way out.
+operations -- carried at `working_width()` and rounded once on the way out.
 Four is what the decimal layer states for the same work, and the margin here
 is wider, because the working width grows with the width asked for.
 """
-
-
-def _working_width(width: Int) -> Int:
-    """How many bits the identities are evaluated in.
-
-    Args:
-        width: The bits the kernel returns.
-
-    Returns:
-        The width plus enough to absorb a handful of roundings.
-
-    Notes:
-
-    The same choice `ln_at_width` makes: `bit_width(width) + 12` bits beyond
-    what comes back leaves every intermediate rounding, and the two units the
-    exponential and the logarithm allow themselves, far below the last place
-    of the answer.
-    """
-    return width + Int(bit_width(UInt(width))) + 12
 
 
 def _saturation_magnitude(width: Int) raises -> BigFloat:
@@ -143,68 +125,6 @@ def _saturation_magnitude(width: Int) raises -> BigFloat:
     var rest = (width + 4) % 10000
     var bound = whole * 3466 + (rest * 3466) // 10000 + 1
     return BigFloat.from_int(bound, Int(bit_width(UInt(bound))) + 1)
-
-
-def _expm1_at(x: BigFloat, width: Int) raises -> BigFloat:
-    """`exp(x) - 1`, without the cancellation the name avoids.
-
-    Args:
-        x: The argument.
-        width: The bits to work in.
-
-    Returns:
-        The value, within a handful of units of the last place.
-
-    Raises:
-        Error: Propagated from the arithmetic.
-
-    Notes:
-
-    Below a half in magnitude the series is the whole of it, and it is the
-    series the exponential already carries. Above a half there is nothing to
-    cancel: `exp(x) - 1` is at least 0.64 while `exp(x)` is at most about
-    1.65 times that, so taking the one away costs less than two units.
-    """
-    if compare_absolute(x, BigFloat.power_of_two(-1)) <= 0:
-        return expm1_at_width(x, width)
-    return bigfloat_arithmetics.subtract(
-        exp_at_width(x, width), BigFloat.from_int(1, width), width
-    )
-
-
-def _log1p_at(x: BigFloat, width: Int) raises -> BigFloat:
-    """`ln(1 + x)`, without the cancellation the name avoids.
-
-    Args:
-        x: The argument, which must be above minus one.
-        width: The bits to work in.
-
-    Returns:
-        The value, within a handful of units of the last place.
-
-    Raises:
-        Error: Propagated from the arithmetic.
-
-    Notes:
-
-    `1 + x` is `(1 + z)/(1 - z)` with `z = x/(x + 2)`, so `ln(1 + x)` is
-    `2 atanh(z)`, and that rearrangement is exact. For a small `x` the
-    quotient is `x/2` to within its own square, so the series sees every bit
-    of it, where forming `1 + x` first would have thrown them away. Above a
-    half the logarithm is far enough from zero to be taken as it reads.
-    """
-    if compare_absolute(x, BigFloat.power_of_two(-1)) <= 0:
-        var ratio = bigfloat_arithmetics.divide(
-            x,
-            bigfloat_arithmetics.add(x, BigFloat.from_int(2, width), width),
-            width,
-        )
-        return bigfloat_arithmetics.multiply(
-            atanh_at_width(ratio, width), BigFloat.power_of_two(1), width
-        )
-    return ln_at_width(
-        bigfloat_arithmetics.add(BigFloat.from_int(1, width), x, width), width
-    )
 
 
 def _at_width(value: BigFloat, width: Int, negative: Bool) raises -> BigFloat:
@@ -268,10 +188,10 @@ def _sinh_kernel(x: BigFloat, width: Int) raises -> BigFloat:
     if x.is_zero():
         return BigFloat.zero(width, x.sign)
 
-    var working = _working_width(width)
+    var working = working_width(width)
     var one = BigFloat.from_int(1, working)
     var two = BigFloat.from_int(2, working)
-    var u = _expm1_at(abs(x), working)
+    var u = expm1_at_width(abs(x), working)
     var numerator = bigfloat_arithmetics.multiply(
         u, bigfloat_arithmetics.add(u, two, working), working
     )
@@ -316,7 +236,7 @@ def _cosh_kernel(x: BigFloat, width: Int) raises -> BigFloat:
     if x.is_zero():
         return BigFloat.from_int(1, width)
 
-    var working = _working_width(width)
+    var working = working_width(width)
     var one = BigFloat.from_int(1, working)
     var two = BigFloat.from_int(2, working)
     var exponential = exp_at_width(abs(x), working)
@@ -367,12 +287,12 @@ def _tanh_kernel(x: BigFloat, width: Int) raises -> BigFloat:
     if x.is_zero():
         return BigFloat.zero(width, x.sign)
 
-    var working = _working_width(width)
+    var working = working_width(width)
     var two = BigFloat.from_int(2, working)
     var doubled = bigfloat_arithmetics.multiply(
         abs(x), BigFloat.power_of_two(1), working
     )
-    var v = _expm1_at(doubled, working)
+    var v = expm1_at_width(doubled, working)
     return _at_width(
         bigfloat_arithmetics.divide(
             v, bigfloat_arithmetics.add(v, two, working), working
@@ -441,7 +361,7 @@ def _arcsinh_kernel(x: BigFloat, width: Int) raises -> BigFloat:
     if x.is_zero():
         return BigFloat.zero(width, x.sign)
 
-    var working = _working_width(width)
+    var working = working_width(width)
     var one = BigFloat.from_int(1, working)
     var magnitude = abs(x)
 
@@ -464,7 +384,7 @@ def _arcsinh_kernel(x: BigFloat, width: Int) raises -> BigFloat:
         var tail = bigfloat_arithmetics.divide(
             square, bigfloat_arithmetics.add(one, root, working), working
         )
-        result = _log1p_at(
+        result = log1p_at_width(
             bigfloat_arithmetics.add(magnitude, tail, working), working
         )
     else:
@@ -511,7 +431,7 @@ def _arccosh_kernel(x: BigFloat, width: Int) raises -> BigFloat:
     if x.is_infinite():
         return BigFloat.infinity(width, False)
 
-    var working = _working_width(width)
+    var working = working_width(width)
     var one = BigFloat.from_int(1, working)
     var two = BigFloat.from_int(2, working)
     if compare_absolute(x, one) < 0:
@@ -540,7 +460,9 @@ def _arccosh_kernel(x: BigFloat, width: Int) raises -> BigFloat:
             ),
             working,
         )
-        result = _log1p_at(bigfloat_arithmetics.add(t, root, working), working)
+        result = log1p_at_width(
+            bigfloat_arithmetics.add(t, root, working), working
+        )
     else:
         var root = sqrt(
             bigfloat_arithmetics.subtract(
@@ -589,7 +511,7 @@ def _arctanh_kernel(x: BigFloat, width: Int) raises -> BigFloat:
     if x.is_zero():
         return BigFloat.zero(width, x.sign)
 
-    var working = _working_width(width)
+    var working = working_width(width)
     var one = BigFloat.from_int(1, working)
     var two = BigFloat.from_int(2, working)
     var magnitude = abs(x)
@@ -608,7 +530,7 @@ def _arctanh_kernel(x: BigFloat, width: Int) raises -> BigFloat:
             bigfloat_arithmetics.subtract(one, magnitude, working),
             working,
         )
-        result = _log1p_at(tail, working)
+        result = log1p_at_width(tail, working)
     else:
         result = ln_at_width(
             bigfloat_arithmetics.divide(

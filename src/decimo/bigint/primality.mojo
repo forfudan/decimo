@@ -43,7 +43,6 @@ cheaper than a modular exponentiation.
 
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.bitwise import test_bit, trailing_zeros
-from decimo.bigint.exponential import sqrt_rem
 from decimo.bigint.number_theory import jacobi, mod_pow
 from decimo.biguint.biguint import BigUInt
 from decimo.errors import ValueError
@@ -231,22 +230,6 @@ def _half_modulo(x: BigInt, n: BigInt) raises -> BigInt:
     return (x + n) >> 1
 
 
-def _is_perfect_square(x: BigInt) raises -> Bool:
-    """Whether `x` is the square of an integer.
-
-    Args:
-        x: The value, which must not be negative.
-
-    Returns:
-        True if the integer square root is exact.
-
-    Raises:
-        Error: Propagated from the square root.
-    """
-    var parts = sqrt_rem(x)
-    return parts[1].is_zero()
-
-
 def _strong_lucas_probable_prime(x: BigInt) raises -> Bool:
     """Whether `x` passes a strong Lucas test with Selfridge's parameters.
 
@@ -270,8 +253,9 @@ def _strong_lucas_probable_prime(x: BigInt) raises -> Bool:
     be `x` itself.
 
     The search only fails to terminate for a perfect square, where no
-    non-residue exists, so the candidates are capped and a square is tested
-    for once they run out.
+    non-residue exists, so the candidates are capped and running out of them
+    is itself the answer: a square with no factor below a hundred is
+    composite.
 
     With `U` and `V` the Lucas sequences for those parameters and
     `x + 1 = d * 2^s` with `d` odd, `x` is a strong Lucas probable prime when
@@ -297,9 +281,9 @@ def _strong_lucas_probable_prime(x: BigInt) raises -> Bool:
         discriminant = -magnitude if attempt % 2 == 0 else magnitude^
     if not found:
         # Only a square has no non-residue to find, and a square above one is
-        # composite.
-        return False
-    if _is_perfect_square(x):
+        # composite. So running out of candidates is the answer, and there is
+        # no square to test for afterwards: reaching past here means a
+        # non-residue was found, which a square does not have.
         return False
 
     var q = (one - discriminant) // BigInt(4)

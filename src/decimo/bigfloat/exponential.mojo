@@ -59,10 +59,9 @@ from decimo.bigfloat.rounding import (
     from_fixed_point,
     guard_bits,
     leading_bit_position,
-    leading_bit_position,
-    rounded_beside,
     rounded_beside,
     to_fixed_point,
+    working_width,
 )
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.bitwise import test_bit, trailing_zeros
@@ -204,7 +203,7 @@ def _root_by_logarithm(
 
     var width = precision + _ZIV_START
     for _ in range(_ZIV_LIMIT):
-        var work = width + Int(bit_width(UInt(width))) + 12
+        var work = working_width(width)
         var scaled = bigfloat_arithmetics.divide(
             ln_at_width(inner, work), BigFloat.from_int(degree, work), work
         )
@@ -722,7 +721,7 @@ def _truncated_to_int(value: BigFloat, function: String) raises -> Int:
         )
 
 
-def expm1_at_width(x: BigFloat, width: Int) raises -> BigFloat:
+def expm1_series_at_width(x: BigFloat, width: Int) raises -> BigFloat:
     """`exp(x) - 1` for a small `x`, as a sum of its terms.
 
     Args:
@@ -951,6 +950,70 @@ def round_by_deciding_at[
     )
 
 
+def round_by_deciding_at_two[
+    kernel: def(BigFloat, BigFloat, Int) thin raises -> BigFloat, slack: Int
+](
+    x: BigFloat,
+    y: BigFloat,
+    precision: Int,
+    rounding_mode: RoundingMode,
+) raises -> BigFloat:
+    """`kernel(x, y)` rounded to `precision` bits, decided and not assumed.
+
+    Parameters:
+        kernel: What to evaluate. It takes two arguments and a width in bits,
+            and returns a value of that width within `slack` units of the
+            last place of the true one.
+        slack: The bound the kernel keeps to.
+
+    Args:
+        x: The first argument.
+        y: The second argument.
+        precision: The number of bits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The correctly rounded value.
+
+    Raises:
+        Error: If the kernel raises, or if the width grows `_ZIV_LIMIT` times
+            without the rounding settling.
+
+    Notes:
+
+    The same loop as `round_by_deciding_at()` with one more argument. The two
+    were once written out at every call site, on the grounds that a Mojo
+    parameter is a function rather than a closure and so cannot carry a
+    second argument -- which is true and beside the point, since the second
+    argument can simply be one the kernel takes.
+
+    What still cannot come here is a kernel of a different shape: the power
+    passes a whole degree as an `Int`, or a sign alongside the two values,
+    and decides the sign of an exact zero for itself rather than taking the
+    kernel's.
+    """
+    _ = checked_precision(precision, "round_by_deciding_at_two()")
+    var width = precision + _ZIV_START
+    for _ in range(_ZIV_LIMIT):
+        var wide = kernel(x, y, width)
+        if not wide.is_finite() or wide.is_zero():
+            # An infinity, a NaN or an exact zero is the answer whatever the
+            # width, and has no last place to put the slack under.
+            if wide.is_nan():
+                return BigFloat.nan(precision)
+            if wide.is_infinite():
+                return BigFloat.infinity(precision, wide.sign)
+            return BigFloat.zero(precision, wide.sign)
+        var settled = _settled(wide, width, slack, precision, rounding_mode)
+        if settled:
+            return settled.take()
+        width += width - precision
+    raise Error(
+        "the rounding of this value could not be decided; the kernel is"
+        " further from the true value than its stated bound allows"
+    )
+
+
 def exp_at_width(x: BigFloat, width: Int) raises -> BigFloat:
     """`exp(x)` to `width` bits.
 
@@ -1162,7 +1225,7 @@ def ln_at_width(x: BigFloat, width: Int) raises -> BigFloat:
     if x.is_infinite():
         return BigFloat.infinity(width, False)
 
-    var scale = width + Int(bit_width(UInt(width))) + 12
+    var scale = working_width(width)
     # The position of the top bit, which is `exponent + precision - 1`.
     var leading = BigInt(x.exponent) + BigInt(x.precision) - BigInt.one()
 
@@ -1331,32 +1394,11 @@ comptime _OTHER_BASE_SLACK = 2
 """Units in the last place the kernels below may be off at their own width.
 
 Each is a handful of correctly rounded steps -- one or two logarithms or one
-exponential, and a multiply or a divide -- carried at `_other_working_width()`
+exponential, and a multiply or a divide -- carried at `working_width()`
 and rounded once on the way out. Those steps contribute a few units of the
 working width, which `bit_width(width) + 12` bits beyond the answer leaves far
 below its last place, so what is left is the one rounding, worth half a unit.
 """
-
-
-def _other_working_width(width: Int) -> Int:
-    """How many bits the identities below are evaluated in.
-
-    Args:
-        width: The bits the kernel returns.
-
-    Returns:
-        The width plus enough to absorb a handful of roundings.
-
-    Notes:
-
-    The same choice `ln_at_width` and the hyperbolic kernels make. Nothing
-    here cancels -- a logarithm divided by the logarithm of its base keeps
-    its relative accuracy whatever the two are, and so does a difference from
-    one that is computed as a difference from one -- so the extra bits have
-    only a few units of the last place to cover, and a dozen covers
-    thousands.
-    """
-    return width + Int(bit_width(UInt(width))) + 12
 
 
 def _at_width(value: BigFloat, width: Int) raises -> BigFloat:
@@ -1665,7 +1707,7 @@ def log2_at_width(x: BigFloat, width: Int) raises -> BigFloat:
     This never answers a whole number for an argument that has one, because
     it is never asked to: `log2()` takes those itself.
     """
-    var work = _other_working_width(width)
+    var work = working_width(width)
     return _at_width(
         bigfloat_arithmetics.divide(ln_at_width(x, work), ln2(work), work),
         width,
@@ -1691,7 +1733,7 @@ def log10_at_width(x: BigFloat, width: Int) raises -> BigFloat:
     accounting as `log2_at_width` applies, and so does the same account of
     the special values.
     """
-    var work = _other_working_width(width)
+    var work = working_width(width)
     return _at_width(
         bigfloat_arithmetics.divide(ln_at_width(x, work), ln10(work), work),
         width,
@@ -1726,7 +1768,7 @@ def log_at_width(x: BigFloat, base: BigFloat, width: Int) raises -> BigFloat:
     base below one turns it positive, which is what `log(0)` in such a base
     is.
     """
-    var work = _other_working_width(width)
+    var work = working_width(width)
     return _at_width(
         bigfloat_arithmetics.divide(
             ln_at_width(x, work), ln_at_width(base, work), work
@@ -1779,7 +1821,7 @@ def exp2_at_width(x: BigFloat, width: Int) raises -> BigFloat:
         reach = 64
     elif leading > BigInt.zero():
         reach = leading.to_int()
-    var work = _other_working_width(width) + reach
+    var work = working_width(width) + reach
     return _at_width(
         exp_at_width(bigfloat_arithmetics.multiply(x, ln2(work), work), work),
         width,
@@ -1822,10 +1864,80 @@ def exp10_at_width(x: BigFloat, width: Int) raises -> BigFloat:
         reach = 66
     elif leading > BigInt.zero():
         reach = leading.to_int() + 2
-    var work = _other_working_width(width) + reach
+    var work = working_width(width) + reach
     return _at_width(
         exp_at_width(bigfloat_arithmetics.multiply(x, ln10(work), work), work),
         width,
+    )
+
+
+def expm1_at_width(x: BigFloat, width: Int) raises -> BigFloat:
+    """`exp(x) - 1` to `width` bits, without the cancellation the name avoids.
+
+    Args:
+        x: The argument, finite and not nought.
+        width: The bits to work in.
+
+    Returns:
+        The value, within a handful of units of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    Below a half in magnitude the series is the whole of it, which is why
+    `expm1_series_at_width` exists: the difference from one is what a small
+    argument has bits for, and the exponential itself has thrown them away by
+    the time it is formed. Above a half there is nothing left to cancel --
+    `exp(x) - 1` is then at least 0.64 while `exp(x)` is at most about 1.65
+    times that -- so taking the one away costs less than two units.
+
+    Both the rounded `expm1()` and the hyperbolic functions evaluate this,
+    which is why it is here and not in either of them.
+    """
+    if compare_absolute(x, BigFloat.power_of_two(-1)) <= 0:
+        return expm1_series_at_width(x, width)
+    return bigfloat_arithmetics.subtract(
+        exp_at_width(x, width), BigFloat.from_int(1, width), width
+    )
+
+
+def log1p_at_width(x: BigFloat, width: Int) raises -> BigFloat:
+    """`ln(1 + x)` to `width` bits, without the cancellation the name avoids.
+
+    Args:
+        x: The argument, finite, not nought and above minus one.
+        width: The bits to work in.
+
+    Returns:
+        The value, within a handful of units of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    `1 + x` is `(1 + z)/(1 - z)` with `z = x/(x + 2)`, so `ln(1 + x)` is
+    `2 atanh(z)`, and that rearrangement is exact. For a small `x` the
+    quotient is `x/2` to within its own square, so the series sees every bit
+    of it, where forming `1 + x` first would have thrown them away. Above a
+    half the logarithm is far enough from zero to be taken as it reads.
+
+    Both the rounded `log1p()` and the inverse hyperbolic functions evaluate
+    this, which is why it is here and not in either of them.
+    """
+    if compare_absolute(x, BigFloat.power_of_two(-1)) <= 0:
+        var ratio = bigfloat_arithmetics.divide(
+            x,
+            bigfloat_arithmetics.add(x, BigFloat.from_int(2, width), width),
+            width,
+        )
+        return bigfloat_arithmetics.multiply(
+            atanh_at_width(ratio, width), BigFloat.power_of_two(1), width
+        )
+    return ln_at_width(
+        bigfloat_arithmetics.add(BigFloat.from_int(1, width), x, width), width
     )
 
 
@@ -1845,21 +1957,12 @@ def _expm1_kernel(x: BigFloat, width: Int) raises -> BigFloat:
 
     Notes:
 
-    Below a half in magnitude the series is the whole of it, and it is the
-    series `expm1_at_width` already sums -- which is why that one exists
-    without this: the exponential needs the difference from one, not the
-    exponential, for a small argument. Above a half there is nothing left to
-    cancel, since `exp(x) - 1` is then at least 0.64 while `exp(x)` is at
-    most about 1.65 times that, so taking the one away costs under two bits.
+    The value itself is `expm1_at_width`, which the hyperbolic functions
+    evaluate too. What this adds is the special values and the one rounding
+    into `width`.
 
     `exp(-infinity) - 1` is exactly minus one, which `expm1()` answers
     itself: a value a kernel returns exactly cannot be settled on.
-
-    The name is not `expm1_at_width` because that one is taken by the series
-    this calls, which is half of it. The hyperbolic functions carry the same
-    identity privately as `_expm1_at`, and a shared home for the two is the
-    obvious tidying -- left alone here because this file must not reach into
-    that one, which already reaches into this.
     """
     if x.is_nan():
         return BigFloat.nan(width)
@@ -1870,15 +1973,7 @@ def _expm1_kernel(x: BigFloat, width: Int) raises -> BigFloat:
     if x.is_zero():
         return BigFloat.zero(width, x.sign)
 
-    var work = _other_working_width(width)
-    if compare_absolute(x, BigFloat.power_of_two(-1)) <= 0:
-        return _at_width(expm1_at_width(x, work), width)
-    return _at_width(
-        bigfloat_arithmetics.subtract(
-            exp_at_width(x, work), BigFloat.from_int(1, work), work
-        ),
-        width,
-    )
+    return _at_width(expm1_at_width(x, working_width(width)), width)
 
 
 def _log1p_kernel(x: BigFloat, width: Int) raises -> BigFloat:
@@ -1904,6 +1999,10 @@ def _log1p_kernel(x: BigFloat, width: Int) raises -> BigFloat:
     nought to be taken as it reads, and `1 + x` is formed there -- exactly,
     as it happens, whenever it cancels, since a difference of two values
     within a factor of two of each other is exact.
+
+    The value itself is `log1p_at_width`, which the inverse hyperbolic
+    functions evaluate too. What this adds is the special values, the edge of
+    the domain, and the one rounding into `width`.
     """
     if x.is_nan():
         return BigFloat.nan(width)
@@ -1914,31 +2013,17 @@ def _log1p_kernel(x: BigFloat, width: Int) raises -> BigFloat:
     if x.is_zero():
         return BigFloat.zero(width, x.sign)
 
-    var work = _other_working_width(width)
-    if compare_absolute(x, BigFloat.power_of_two(-1)) <= 0:
-        var ratio = bigfloat_arithmetics.divide(
-            x,
-            bigfloat_arithmetics.add(x, BigFloat.from_int(2, work), work),
-            work,
-        )
-        return _at_width(
-            bigfloat_arithmetics.multiply(
-                atanh_at_width(ratio, work), BigFloat.power_of_two(1), work
-            ),
-            width,
-        )
     if x.sign:
+        # At minus one the logarithm falls off the end, and below it there is
+        # no real answer. Asked above, where the identity holds, this costs a
+        # comparison against a one-bit value.
         var order = compare_absolute(x, BigFloat.from_int(1, 1))
         if order == 0:
             return BigFloat.infinity(width, True)
         if order > 0:
             return BigFloat.nan(width)
-    return _at_width(
-        ln_at_width(
-            bigfloat_arithmetics.add(BigFloat.from_int(1, work), x, work), work
-        ),
-        width,
-    )
+
+    return _at_width(log1p_at_width(x, working_width(width)), width)
 
 
 def _square_term_is_below_a_guard_unit(x: BigFloat, guard: Int) raises -> Bool:
@@ -2207,37 +2292,14 @@ def _log_rounded(
 
     Notes:
 
-    `round_by_deciding_at()` with a second argument. It is written out rather
-    than shared because a Mojo parameter is a function and not a closure, so
-    there is nothing to carry the base in.
-
     The kernel cannot come back non-finite here: both arguments are finite
     and positive, so the quotient of two logarithms is an ordinary number. It
     can come back as an exact zero, for an argument of one -- except that
     `log()` takes that case before this is called, as it takes every other
     answer a width could not settle on.
     """
-    var width = precision + _ZIV_START
-    for _ in range(_ZIV_LIMIT):
-        var wide = log_at_width(x, base, width)
-        if not wide.is_finite() or wide.is_zero():
-            # Unreachable for the arguments this is called with, and here
-            # because `_settled()` has no last place to put its slack under
-            # and would take the slack off a significand of nought.
-            if wide.is_nan():
-                return BigFloat.nan(precision)
-            if wide.is_infinite():
-                return BigFloat.infinity(precision, wide.sign)
-            return BigFloat.zero(precision, wide.sign)
-        var settled = _settled(
-            wide, width, _OTHER_BASE_SLACK, precision, rounding_mode
-        )
-        if settled:
-            return settled.take()
-        width += width - precision
-    raise Error(
-        "the rounding of this logarithm could not be decided; the kernel is"
-        " further from the true value than its stated bound allows"
+    return round_by_deciding_at_two[log_at_width, _OTHER_BASE_SLACK](
+        x, base, precision, rounding_mode
     )
 
 
@@ -2602,7 +2664,7 @@ def expm1(
     computed as written loses every bit of a small `x`: `exp(2^-100)` rounds
     to one, so the difference comes out as nought where the answer is
     `2^-100`. Here the difference is what is computed, by the series
-    `expm1_at_width` sums, and `expm1(2^-100000)` is `2^-100000` rather than
+    `expm1_series_at_width` sums, and `expm1(2^-100000)` is `2^-100000`
     nought.
 
     `exp(x) - 1` is exact only at nought, where it is nought with the sign of
