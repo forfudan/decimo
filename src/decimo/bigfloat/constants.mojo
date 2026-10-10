@@ -59,7 +59,7 @@ costs half of one more.
 """
 
 
-def _working_width(width: Int) -> Int:
+def _series_scale(width: Int) -> Int:
     """How many bits the fixed-point scale carries.
 
     Args:
@@ -80,6 +80,11 @@ def _working_width(width: Int) -> Int:
     The term count is below the width in all three series, so `3 * width`
     units is a bound, and `bit_width(width) + 8` extra bits of scale leaves
     that below a hundredth of a unit of what is returned.
+
+    Eight and not the dozen `rounding.working_width()` carries, and under a
+    different name, because this is not that margin: these series are summed
+    in integers, where a term costs one truncation, while a kernel widened by
+    that one is absorbing a rounding on every operation.
     """
     return width + Int(bit_width(UInt(width))) + 8
 
@@ -179,7 +184,7 @@ def _pi_computed(width: Int) raises -> BigFloat:
     Raises:
         Error: Propagated from the arithmetic.
     """
-    var scale = _working_width(width)
+    var scale = _series_scale(width)
     var total = BigInt(16) * _arctangent_of_reciprocal(5, scale) - BigInt(
         4
     ) * _arctangent_of_reciprocal(239, scale)
@@ -198,7 +203,7 @@ def _ln2_computed(width: Int) raises -> BigFloat:
     Raises:
         Error: Propagated from the arithmetic.
     """
-    var scale = _working_width(width)
+    var scale = _series_scale(width)
     var total = BigInt(2) * _arctangent_hyperbolic_of_reciprocal(3, scale)
     return BigFloat.from_rounded_parts(total, -scale, width, False)
 
@@ -234,7 +239,7 @@ def _ln10_computed(width: Int) raises -> BigFloat:
     place here, and the one rounding on the way out is what the stated bound
     is really for.
     """
-    var scale = _working_width(width)
+    var scale = _series_scale(width)
     var total = BigInt(6) * _arctangent_hyperbolic_of_reciprocal(
         3, scale
     ) + BigInt(2) * _arctangent_hyperbolic_of_reciprocal(9, scale)
@@ -253,7 +258,7 @@ def _e_computed(width: Int) raises -> BigFloat:
     Raises:
         Error: Propagated from the arithmetic.
     """
-    var scale = _working_width(width)
+    var scale = _series_scale(width)
     var term = BigInt.one() << scale
     var total = term.copy()
     var k = 1

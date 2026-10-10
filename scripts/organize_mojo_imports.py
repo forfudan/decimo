@@ -416,10 +416,23 @@ def sort_imported_names(names: tuple[ImportedName, ...]) -> tuple[ImportedName, 
     worst case here. The cost is that a type no longer sits beside the
     functions sharing its stem: `Wide` leaves `wide_multiply`. The functions
     themselves stay together, so the stem is still readable.
+
+    A name written twice in one statement is dropped here. Folding two
+    statements together already drops what the other one brought, but a
+    `from X import a, a` the author wrote by hand survived that, because
+    there was only ever one statement to fold.
     """
+    seen: set[str] = set()
+    unique = []
+    for item in names:
+        key = item.raw.strip()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
     return tuple(
         sorted(
-            names, key=lambda item: (name_kind(item.raw), item.raw.strip("`").lower())
+            unique, key=lambda item: (name_kind(item.raw), item.raw.strip("`").lower())
         )
     )
 

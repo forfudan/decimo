@@ -314,6 +314,32 @@ def _rounds_away_from_zero(
 # modules because three of them need the same ones.
 
 
+def working_width(width: Int) -> Int:
+    """How many bits a kernel evaluates in to return `width` good ones.
+
+    Args:
+        width: The bits the kernel returns.
+
+    Returns:
+        The width plus a margin: a dozen bits, and one more for every
+        doubling of the width.
+
+    Notes:
+
+    Every kernel in this layer widens by the same amount, and the amount has
+    to grow with the width because the number of roundings does. A series of
+    `n` terms, a reduction that squares `log(n)` times, a quotient of two
+    logarithms -- each costs a few units of the last place of the width it
+    works in, and `bit_width(width)` bits covers a count of them that grows
+    with the width while the dozen covers the handful that does not.
+
+    The constants widen by a little less, because their series are summed in
+    integers and not in rounded floats; `constants._series_scale()` says so
+    where it differs.
+    """
+    return width + Int(bit_width(UInt(width))) + 12
+
+
 def fixed_point_scale(x: BigFloat, width: Int) -> Int:
     """The power of two to scale a series on `x` by, for `width` good bits.
 
@@ -340,8 +366,7 @@ def fixed_point_scale(x: BigFloat, width: Int) -> Int:
     near one or near nothing.
     """
     # The leading bit sits at `exponent + precision - 1`.
-    var guard = Int(bit_width(UInt(width))) + 12
-    return width + guard - x.exponent - x.precision
+    return working_width(width) - x.exponent - x.precision
 
 
 def square_fixed_point_scale(x: BigFloat, width: Int) -> Int:
@@ -363,9 +388,8 @@ def square_fixed_point_scale(x: BigFloat, width: Int) -> Int:
     short of one.
     """
     # `x^2` lies in `[2^2L, 2^(2L+2))` for a leading bit at `L`, so this is
-    # within a bit of its leading bit, and a bit is what the guard is for.
-    var guard = Int(bit_width(UInt(width))) + 12
-    return width + guard - 2 * (x.exponent + x.precision - 1)
+    # within a bit of its leading bit, and a bit is what the margin is for.
+    return working_width(width) - 2 * (x.exponent + x.precision - 1)
 
 
 def to_fixed_point(x: BigFloat, scale: Int) -> BigInt:
