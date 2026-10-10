@@ -1466,5 +1466,96 @@ def test_the_three_eighth_diagonal_is_decided() raises:
         )
 
 
+def test_the_two_argument_methods_take_the_wider_precision() raises:
+    """A method given two values of different widths keeps the wider one.
+
+    Every one of these says so in its documentation, and nothing checked it.
+    The operators have had a test for this since they were written; the
+    methods that arrived later did not, and the tests they did get passed
+    both values at the same width, where taking the narrower one looks
+    exactly the same.
+    """
+    var narrow = BigFloat.from_int(3, 20)
+    var wide = BigFloat.from_int(4, 200)
+    assert_equal(narrow.hypot(wide).precision, 200, "the hypotenuse")
+    assert_equal(wide.hypot(narrow).precision, 200, "either way round")
+    assert_equal(narrow.arctan2(wide).precision, 200, "the angle")
+    assert_equal(wide.arctan2(narrow).precision, 200, "either way round")
+
+
+def test_a_zero_leg_still_rounds_in_the_mode_asked_for() raises:
+    """`hypot(0, y)` is the magnitude of `y`, rounded like anything else.
+
+    The branch that answers a nought leg has a rounding to do whenever the
+    other leg carries more bits than the answer keeps, and the only test it
+    had used an answer that was exact, where every mode agrees.
+    """
+    var three = BigFloat.from_int(3, 53)
+    assert_equal(
+        String(
+            hypot(
+                BigFloat.zero(53, False),
+                three,
+                1,
+                RoundingMode.ROUND_DOWN,
+            )
+        ),
+        "2",
+        "three to one bit, toward zero",
+    )
+    assert_equal(
+        String(hypot(BigFloat.zero(53, True), three, 1, RoundingMode.ROUND_UP)),
+        "4",
+        "three to one bit, away from zero",
+    )
+    assert_equal(
+        String(hypot(three, BigFloat.zero(53, False), 1)),
+        "4",
+        "and the other leg nought, to nearest",
+    )
+
+
+def test_the_angle_at_the_narrowest_precisions() raises:
+    """One and two bits, which the angle's table never reached.
+
+    At one bit a significand is a single bit, so the answer is a power of two
+    and the rounding is the whole of the computation.
+    """
+    var one = BigFloat.from_int(1, 53)
+    # The eighth of a turn is just under 0.7854, which is nearer to one than
+    # to a half, so one bit gives one and two bits give three quarters.
+    assert_equal(
+        String(arctan2(one, one, 1)), "1", "an eighth of a turn to one bit"
+    )
+    assert_equal(
+        String(arctan2(one, one, 2)),
+        "0.75",
+        "an eighth of a turn to two bits",
+    )
+    # A right angle is just over 1.5708, so one bit gives two.
+    assert_equal(
+        String(arctan2(one, BigFloat.zero(53, False), 1)),
+        "2",
+        "a right angle to one bit",
+    )
+
+
+def test_the_angle_takes_its_coordinates_at_different_widths() raises:
+    """The two coordinates need not carry the same number of bits.
+
+    Every row of the angle's table gives them the same width, which cannot
+    tell whether the wider one is being used.
+    """
+    var narrow = BigFloat.from_string("1", 8)
+    var wide = BigFloat.from_string("3", 200)
+    var mixed = arctan2(narrow, wide, 60)
+    var both_wide = arctan2(BigFloat.from_string("1", 200), wide, 60)
+    assert_equal(
+        mixed.internal_representation(),
+        both_wide.internal_representation(),
+        "one is one at any width, so the angle is the same",
+    )
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()

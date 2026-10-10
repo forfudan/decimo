@@ -209,44 +209,4 @@ def test_to_cstr() raises:
 
 
 def main() raises:
-    # split_into_lines
-    test_split_empty()
-    test_split_single_line()
-    test_split_multiple_lines()
-    test_split_trailing_newline()
-    test_split_blank_lines()
-    test_split_crlf()
-
-    # strip_comment
-    test_strip_comment_empty()
-    test_strip_comment_no_hash()
-    test_strip_comment_full_line_comment()
-    test_strip_comment_inline_comment()
-    test_strip_comment_indented_comment()
-
-    # is_blank
-    test_is_blank_empty()
-    test_is_blank_whitespace()
-    test_is_blank_not_blank()
-
-    # strip
-    test_strip_basic()
-    test_strip_empty()
-    test_strip_no_change()
-
-    # is_comment_or_blank
-    test_blank_line()
-    test_whitespace_only()
-    test_comment_line()
-    test_expression_line()
-
-    # filter_expression_lines
-    test_filter_basic()
-
-    # file_exists
-    test_file_exists_nonexistent()
-
-    # _to_cstr
-    test_to_cstr()
-
-    print("All io tests passed!")
+    testing.TestSuite.discover_tests[__functions_in_module()]().run()

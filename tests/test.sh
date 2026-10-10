@@ -303,8 +303,18 @@ run_cli() {
     done
 
     # Integration tests (exercise the compiled binary)
+    #
+    # A missing binary used to print a line and return success, so a run that
+    # executed none of the checks below reported green. On a developer's
+    # machine that is a convenience; in CI it hides the whole integration
+    # suite. So it is a convenience only when CI is not set.
     local BINARY="./decimo"
     if [[ ! -x "$BINARY" ]]; then
+        if [[ -n ${CI:-} ]]; then
+            echo "FAIL: $BINARY not found, so no CLI integration test ran."
+            echo "      Build it with \`pixi run buildcli\` before the suite."
+            return 1
+        fi
         echo "SKIP: CLI integration tests ($BINARY not found)"
         return 0
     fi

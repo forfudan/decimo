@@ -1158,5 +1158,32 @@ def test_a_precision_must_fit_the_guard_bits() raises:
             )
 
 
+def test_the_inverse_cosine_of_an_infinity() raises:
+    """`arccosh` at both infinities, which nothing reached.
+
+    The loop that pushes an infinity through these functions covers the sine
+    and its inverse, and the cosine and tangent are done by hand; the inverse
+    cosine was left out of both. It rises without bound, so a positive
+    infinity is its own answer, and it is undefined below one, so a negative
+    infinity is not a number.
+    """
+    var p = 53
+    assert_equal(
+        arccosh(BigFloat.infinity(p, False), p).is_infinite(),
+        True,
+        "the inverse cosine of a positive infinity",
+    )
+    assert_equal(
+        arccosh(BigFloat.infinity(p, False), p).sign,
+        False,
+        "and it is the positive one",
+    )
+    assert_equal(
+        arccosh(BigFloat.infinity(p, True), p).is_nan(),
+        True,
+        "the inverse cosine of a negative infinity is not a number",
+    )
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()
