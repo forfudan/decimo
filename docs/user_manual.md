@@ -618,7 +618,7 @@ You can always safely construct a `Decimal` from a Python `decimal.Decimal`
 using the `from_python_decimal()` method without worrying about precision loss.
 
 ```mojo
-from python import Python
+from std.python import Python
 
 var decimal = Python.import_module("decimal")
 var py_dec = decimal.Decimal("123.456")
@@ -874,7 +874,7 @@ var r2 = x2.ln(100, cache)  # Reuses cached ln(2) and ln(1.25)
 
 ```mojo
 print(Decimal("100").log(Decimal("10")))  # 2
-print(Decimal("8").log(Decimal("2")))     # 3.000000000000000000000000000
+print(Decimal("8").log(Decimal("2")))     # 3
 ```
 
 #### Base-10 logarithm <!-- omit from toc -->
@@ -1033,7 +1033,7 @@ x.scaleb(n)              # Multiply by 10^n (O(1), adjusts scale only)
 #### From Python <!-- omit from toc -->
 
 ```mojo
-from python import Python
+from std.python import Python
 
 var decimal = Python.import_module("decimal")
 var py_val = decimal.Decimal("3.14159265358979323846")
@@ -1476,7 +1476,7 @@ def main() raises:
     var x = BigFloat.from_int(3, 53)
     var y = BigFloat.from_int(4, 53)
     print(hypot(x, y, 53))            # 5
-    print(arctan2(y, x, 53))          # 0.9272952180016122
+    print(arctan2(y, x, 53))          # 0.92729521800161219
 ```
 
 ### Roots of Any Degree — BigFloat
@@ -1546,7 +1546,7 @@ def main() raises:
     print(two ** BigFloat.from_int(10, 53))      # 1024, in every mode
     print(BigFloat.from_int(4, 53) ** BigFloat.from_string("0.5", 53))  # 2
     print(power(two, BigFloat.from_string("0.5", 53), 53,
-                RoundingMode.ROUND_DOWN))        # 1.4142135623730951
+                RoundingMode.ROUND_DOWN))        # 1.4142135623730949
 ```
 
 The special values follow IEEE 754's `pow`, which answers two cases before it
@@ -1604,7 +1604,7 @@ about `6.4e18` up — raises rather than returning an infinity it did not earn.
 
 Beyond the arithmetic and the functions, IEEE 754 asks a format for a set of
 small operations that numerical code reaches for constantly. They are in
-`decimo.bigfloat.ieee`, they are re-exported at the top level, and each one is
+`decimo.bigfloat.ieee`, which is where they are imported from, and each one is
 also a method on the value:
 
 | Function                            | What it gives                           |
@@ -1633,7 +1633,7 @@ print(next_plus(one, 53))                     # 1 + 2^-52
 print(one.next_minus(53))                     # 1 - 2^-53, half a step away
 print(String(BigFloat.from_float64(12.0).logb()))   # 3
 print(one.scaleb(10))                          # 1024, nothing computed
-print(BigFloat.from_string("-1.5", 53).ceil()) # -0, the sign surviving
+print(BigFloat.from_string("-0.5", 53).ceil()) # -0, the sign surviving
 print(remainder(BigFloat.from_float64(5.0), BigFloat.from_float64(3.0), 53))
 # -1: six is nearer to five than three is. `fmod` of the same pair is 2.
 ```
@@ -1778,6 +1778,12 @@ does what a negative value does — the four exact types raise, while
 `BigFloat` and `MPF` return a NaN, as they do for every other function
 outside their domain.
 
+Every one of these types also answers `String(x)` and `repr(x)`. Neither
+needs a trait of its own here: `String(x)` and `print(x)` come from
+`Writable`, and `repr(x)` from the type's own `__repr__`. Mojo 1.1 has no
+`Stringable` or `Representable` to ask for, so generic code that wants to
+print its argument asks for `Writable`.
+
 #### BigInt <!-- omit from toc -->
 
 | Trait              | What it enables                       |
@@ -1791,11 +1797,9 @@ outside their domain.
 | `Numeric`          | Generic code over Decimo numbers      |
 | `Parsable`         | `T.from_string(text)` in generic code |
 | `Rootable`         | `x.sqrt()` in generic code            |
-| `Representable`    | `repr(x)`                             |
-| `Stringable`       | `String(x)`                           |
-| `Writable`         | `print(x)`, writer protocol           |
+| `Writable`         | `print(x)`, `String(x)`               |
 
-#### Decimal <!-- omit from toc -->
+#### BigDecimal <!-- omit from toc -->
 
 | Trait              | What it enables                       |
 | ------------------ | ------------------------------------- |
@@ -1808,10 +1812,25 @@ outside their domain.
 | `Numeric`          | Generic code over Decimo numbers      |
 | `Parsable`         | `T.from_string(text)` in generic code |
 | `Rootable`         | `x.sqrt()` in generic code            |
-| `Representable`    | `repr(x)`                             |
 | `Roundable`        | `round(x)`, `round(x, ndigits)`       |
-| `Stringable`       | `String(x)`                           |
-| `Writable`         | `print(x)`, writer protocol           |
+| `Writable`         | `print(x)`, `String(x)`               |
+
+#### Decimal128 <!-- omit from toc -->
+
+| Trait                      | What it enables                       |
+| -------------------------- | ------------------------------------- |
+| `Absable`                  | `abs(x)`                              |
+| `Boolable`                 | `Bool(x)`, `if x`                     |
+| `Comparable`               | `<`, `<=`, `>`, `>=`, `==`, `!=`      |
+| `Floatable`                | `Float64(x)`, which cannot overflow   |
+| `Hashable`                 | `hash(x)`, a key in a dictionary      |
+| `IntableRaising`           | `Int(x)`                              |
+| `Numeric`                  | Generic code over Decimo numbers      |
+| `Parsable`                 | `T.from_string(text)` in generic code |
+| `Rootable`                 | `x.sqrt()` in generic code            |
+| `Roundable`                | `round(x)`, `round(x, ndigits)`       |
+| `TrivialRegisterPassable`  | Passed in registers, copied bitwise   |
+| `Writable`                 | `print(x)`, `String(x)`               |
 
 #### BigFloat <!-- omit from toc -->
 

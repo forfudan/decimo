@@ -49,6 +49,14 @@ check_import_fixed_point = "bash scripts/check_import_fixed_point.sh"
 doc = """pixi run mojo doc --diagnose-missing-doc-strings src/decimo > /dev/null \
 && pixi run mojo doc --diagnose-missing-doc-strings -I tests -I src/cli src/cli/calculator > /dev/null"""
 
+# Run every ```mojo example in the documentation and check it prints what its
+# comment says. Each block is a separate compile, so this takes minutes and is
+# not part of `pixi run test`; run it after changing an example or a function
+# whose worked example shows a value.
+docexamples = """python3 scripts/check_doc_examples.py \
+README.md docs/user_manual.md docs/readme_zht.md docs/readme_toml.md \
+docs/user_manual_limo.md docs/changelog.md"""
+
 # compile the package
 p = "clear && pixi run package"
 package = """pixi run format \
