@@ -49,11 +49,20 @@ from decimo.prelude import *
   - [How Rounding Works — BigFloat](#how-rounding-works--bigfloat)
   - [Mathematical Functions — BigFloat](#mathematical-functions--bigfloat)
   - [The Other Bases, and the Exact Answers — BigFloat](#the-other-bases-and-the-exact-answers--bigfloat)
+  - [A Point in the Plane — BigFloat](#a-point-in-the-plane--bigfloat)
+  - [Roots of Any Degree — BigFloat](#roots-of-any-degree--bigfloat)
+  - [The Power — BigFloat](#the-power--bigfloat)
   - [Holding On Near Zero — BigFloat](#holding-on-near-zero--bigfloat)
   - [Special Values — BigFloat](#special-values--bigfloat)
   - [The IEEE 754 Companions — BigFloat](#the-ieee-754-companions--bigfloat)
   - [Decimal In, Decimal Out — BigFloat](#decimal-in-decimal-out--bigfloat)
   - [BigFloat, Decimal, or MPF](#bigfloat-decimal-or-mpf)
+- [Part IV — Rational](#part-iv--rational)
+  - [Construction — Rational](#construction--rational)
+  - [Arithmetic — Rational](#arithmetic--rational)
+  - [Rounding — Rational](#rounding--rational)
+  - [The Closest Fraction Under a Limit — Rational](#the-closest-fraction-under-a-limit--rational)
+  - [Conversions — Rational](#conversions--rational)
   - [Appendix A — Import Paths](#appendix-a--import-paths)
   - [Appendix B — Traits Implemented](#appendix-b--traits-implemented)
   - [Appendix C — Complete API Tables](#appendix-c--complete-api-tables)
@@ -1698,20 +1707,131 @@ a C wrapper. It is kept as a second implementation to test the traits against,
 as the baseline the Mojo one is measured against, and for anyone who was
 relying on it.
 
+## Part IV — Rational
+
+An exact fraction of two arbitrary-precision integers. Nothing is ever
+rounded: a third is a third, and a third times three is one.
+
+`Rational` is not in the prelude, which carries the four types most programs
+reach for. Import it by name:
+
+```mojo
+from decimo import Rational
+from decimo.bigint.bigint import BigInt
+```
+
+The value is always in lowest terms with a positive denominator, so two equal
+values have the same two parts and `==` is a comparison of integers rather
+than of fractions.
+
+### Construction — Rational
+
+```mojo
+print(Rational(3, 4))                      # 3/4
+print(Rational(BigInt(6), BigInt(8)))      # 3/4, reduced on the way in
+print(Rational("22/7"))                    # 22/7
+print(Rational("0.25"))                    # 1/4, a decimal literal
+print(Rational.from_float_scalar(0.1))     # 3602879701896397/36028797018963968
+```
+
+The float constructor is exact and that is the point of it: a double holding
+"0.1" is not a tenth, and this is the fraction it really holds. Use
+`Rational("0.1")` for the tenth.
+
+### Arithmetic — Rational
+
+The four operations, the comparisons and the in-place forms are all exact.
+Multiplication and division reduce across the two fractions before
+multiplying, so the intermediates stay near the size of the answer rather
+than growing to the product of the denominators.
+
+```mojo
+print(Rational(1, 2) + Rational(1, 3))     # 5/6
+print(Rational(1, 2) / Rational(1, 3))     # 3/2
+print(Rational(1, 3) < Rational(1, 2))     # True
+
+var x = Rational(1, 2)
+x += Rational(1, 3)                        # 5/6
+x **= 3                                    # 125/216
+```
+
+A power takes a whole exponent, which may be negative:
+
+```mojo
+print(Rational(3, 2) ** 7)                 # 2187/128
+print(Rational(3, 2) ** -2)                # 4/9
+```
+
+A fractional exponent is not accepted. Python's `Fraction` answers one with a
+float, which throws away the exactness the type exists for; ask `BigFloat`
+for that answer instead, where the precision is yours to choose.
+
+### Rounding — Rational
+
+The four roundings all return a `Rational` with a denominator of one, and the
+standard library's functions take this type:
+
+```mojo
+from std.math import ceil, floor, trunc
+
+var half_down = Rational(-7, 2)
+print(floor(half_down))                    # -4
+print(ceil(half_down))                     # -3
+print(trunc(half_down))                    # -3, toward zero
+print(round(half_down))                    # -4
+print(round(Rational(5, 2)))               # 2, halves go to the even side
+print(round(Rational(1, 8), 2))            # 3/25, which is 0.12
+```
+
+`round(x, n)` takes a negative `n` to round above the decimal point, as
+Python's does: `round(Rational(1350), -2)` is 1400.
+
+### The Closest Fraction Under a Limit — Rational
+
+`limit_denominator` answers the closest fraction whose denominator is at most
+the limit, which is how a long exact value becomes a short readable one:
+
+```mojo
+var pi_ish = Rational(BigInt(31415926535), BigInt(10000000000))
+print(pi_ish.limit_denominator(BigInt(10)))     # 22/7
+print(pi_ish.limit_denominator(BigInt(1000)))   # 355/113
+```
+
+It walks the continued fraction of the value, so the work is proportional to
+the length of that walk and not to the size of the denominator it starts
+from. Where two fractions are equally close it returns the same one Python's
+`Fraction` does, which is not always the one with the smaller denominator.
+
+### Conversions — Rational
+
+```mojo
+print(Rational(1, 3).to_float())           # 0.3333333333333333
+print(Rational(1, 3).to_bigdecimal(20))    # 0.33333333333333333333
+print(Rational(-7, 2).to_integer())        # -3, truncated toward zero
+print(Rational(-7, 2).reciprocal())        # -2/7
+```
+
+`to_bigdecimal` takes the digits to keep, because a third has no decimal
+expansion that ends. Everything else here is exact.
+
 ### Appendix A — Import Paths
 
 ```mojo
 # Recommended: import everything commonly needed
 from decimo.prelude import *
 # Brings in: BigInt, BInt, Decimal, BigDecimal, BDec, Decimal128, Dec128,
-#   RoundingMode, ROUND_DOWN, ROUND_HALF_UP, ROUND_HALF_EVEN,
-#   ROUND_UP, ROUND_CEILING, ROUND_FLOOR
+#   BigFloat, BFlt, RoundingMode, ROUND_DOWN, ROUND_HALF_UP,
+#   ROUND_HALF_EVEN, ROUND_UP, ROUND_CEILING, ROUND_FLOOR
 
 # Or import specific types
 from decimo import BInt, BigInt
 from decimo import Decimal  # also available as BigDecimal or BDec
 from decimo import BigFloat, BFlt
 from decimo import RoundingMode
+
+# The exact fraction is exported but not in the prelude, which carries the
+# four types most programs reach for.
+from decimo import Rational
 
 # The MPFR-backed float is in the source but not exported, and carries no
 # promise of a stable interface. It also needs its C wrapper linked; see

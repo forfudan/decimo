@@ -26,24 +26,32 @@ Invariants maintained by all constructors and operations:
     3. If value is zero: numerator == 0, denominator == 1
 """
 
+from std.math import Ceilable, Floorable, Truncable
 from std.memory import bitcast
+from std.os import abort
 
 from decimo.bigdecimal.bigdecimal import PRECISION, BigDecimal
 from decimo.bigint.bigint import BigInt
+from decimo.bigint.bitwise import test_bit
 from decimo.bigint.number_theory import gcd
 from decimo.errors import ConversionError, ValueError, ZeroDivisionError
 from decimo.rounding_mode import RoundingMode
-from decimo.traits import Parsable
+from decimo.traits import Numeric, Parsable
 
 
 struct Rational(
     Absable,
+    Ceilable,
     Comparable,
     Copyable,
     FloatableRaising,
+    Floorable,
     IntableRaising,
     Movable,
+    Numeric,
     Parsable,
+    Roundable,
+    Truncable,
     Writable,
 ):
     """An arbitrary-precision exact rational number p/q.
@@ -1127,3 +1135,338 @@ struct Rational(
         if self.numerator.is_negative():
             return Self(-self.denominator, -self.numerator, raw=True)
         return Self(self.denominator.copy(), self.numerator.copy(), raw=True)
+
+    # ===------------------------------------------------------------------=== #
+    # Powers
+    # ===------------------------------------------------------------------=== #
+
+    def __pow__(self, exponent: Int) raises -> Self:
+        """Returns self raised to an integer power, exactly.
+
+        A negative exponent inverts: `(a/b) ** -n` is `(b/a) ** n`, which is
+        why only zero cannot take one.
+
+        Args:
+            exponent: The power to raise this value to.
+
+        Returns:
+            The power, in lowest terms.
+
+        Raises:
+            ZeroDivisionError: If self is zero and the exponent is negative.
+            Error: Propagated from underlying BigInt arithmetic.
+        """
+        if exponent == 0:
+            return Self.one()
+        if self.numerator.is_zero():
+            if exponent < 0:
+                raise ZeroDivisionError(
+                    message="Cannot raise zero to a negative power",
+                    function="Rational.__pow__()",
+                )
+            return Self.zero()
+
+        # A fraction in lowest terms stays in lowest terms when both parts
+        # are raised to the same power, since the primes dividing each are
+        # the ones that divided it before. So no gcd is needed here.
+        if exponent > 0:
+            return Self(
+                self.numerator.power(exponent),
+                self.denominator.power(exponent),
+                raw=True,
+            )
+
+        var magnitude = -exponent
+        var num = self.denominator.power(magnitude)
+        var den = self.numerator.power(magnitude)
+        if den.is_negative():
+            return Self(-num, -den, raw=True)
+        return Self(num^, den^, raw=True)
+
+    def __pow__(self, exponent: BigInt) raises -> Self:
+        """Returns self raised to an integer power, exactly.
+
+        Args:
+            exponent: The power to raise this value to.
+
+        Returns:
+            The power, in lowest terms.
+
+        Raises:
+            ZeroDivisionError: If self is zero and the exponent is negative.
+            OverflowError: If the exponent does not fit in an `Int` and the
+                answer is not one of the three the value settles by itself.
+            Error: Propagated from underlying BigInt arithmetic.
+
+        Notes:
+
+        Only nought, one and minus one have a power for every exponent a
+        `BigInt` can hold. Anything else raised to such an exponent has more
+        digits than there is memory, so the exponent is taken as an `Int` and
+        refused when it does not fit -- which is the honest answer, rather
+        than an allocation that cannot succeed.
+        """
+        if exponent.is_zero():
+            return Self.one()
+        if self.denominator.is_one():
+            if self.numerator.is_zero():
+                if exponent.is_negative():
+                    raise ZeroDivisionError(
+                        message="Cannot raise zero to a negative power",
+                        function="Rational.__pow__()",
+                    )
+                return Self.zero()
+            if self.numerator.is_one():
+                return Self.one()
+            if self.numerator == BigInt(-1):
+                if test_bit(exponent, 0):
+                    return Self.minus_one()
+                return Self.one()
+        return self.__pow__(exponent.to_int())
+
+    def __ipow__(mut self, exponent: Int) raises:
+        """Raises this value to an integer power in place.
+
+        Args:
+            exponent: The power to raise this value to.
+
+        Raises:
+            ZeroDivisionError: If self is zero and the exponent is negative.
+            Error: Propagated from underlying BigInt arithmetic.
+        """
+        self = self.__pow__(exponent)
+
+    # ===------------------------------------------------------------------=== #
+    # Rounding to a whole number
+    #
+    # None of the four raises, so `floor()`, `ceil()`, `trunc()` and
+    # `round()` take a `Rational` as they take a `Float64`. Each divides by
+    # the denominator, which this type keeps positive, so the division
+    # cannot fail; where the arithmetic underneath says otherwise, these
+    # abort with that message rather than return a value they did not round.
+    # ===------------------------------------------------------------------=== #
+
+    def __floor__(self) -> Self:
+        """Returns the largest whole value at most this one.
+
+        Equivalent to `math.floor()` in Python.
+
+        Returns:
+            The value, with a denominator of one.
+        """
+        try:
+            return Self(self.numerator // self.denominator)
+        except error:
+            abort(String("Rational.__floor__(): ") + String(error))
+
+    def __ceil__(self) -> Self:
+        """Returns the smallest whole value at least this one.
+
+        Equivalent to `math.ceil()` in Python.
+
+        Returns:
+            The value, with a denominator of one.
+        """
+        try:
+            return Self(self.numerator.ceil_divide(self.denominator))
+        except error:
+            abort(String("Rational.__ceil__(): ") + String(error))
+
+    def __trunc__(self) -> Self:
+        """Returns this value with its fractional part dropped.
+
+        Equivalent to `math.trunc()` in Python: the rounding is toward zero,
+        so `(-7/2).__trunc__()` is -3 where `__floor__()` is -4.
+
+        Returns:
+            The value, with a denominator of one.
+        """
+        try:
+            return Self(self.to_integer())
+        except error:
+            abort(String("Rational.__trunc__(): ") + String(error))
+
+    def _rounded_half_even(self) raises -> BigInt:
+        """Returns the nearest whole value, halves going to the even one.
+
+        Returns:
+            The nearest integer, as a BigInt.
+
+        Raises:
+            Error: Propagated from underlying BigInt arithmetic.
+
+        Notes:
+
+        The remainder of a flooring division is never negative, so the same
+        comparison decides the rounding above and below zero: twice it
+        against the denominator, and the halves by whether the quotient is
+        already even.
+        """
+        var whole = self.numerator // self.denominator
+        var rest = self.numerator - whole * self.denominator
+        var twice = rest + rest
+        if twice < self.denominator:
+            return whole^
+        if twice > self.denominator:
+            return whole + BigInt.one()
+        if test_bit(whole, 0):
+            return whole + BigInt.one()
+        return whole^
+
+    def __round__(self) -> Self:
+        """Returns the nearest whole value, halves going to the even one.
+
+        Equivalent to `round()` in Python, which rounds `1/2` to nought and
+        `5/2` to two rather than away from zero.
+
+        Returns:
+            The value, with a denominator of one.
+        """
+        try:
+            return Self(self._rounded_half_even())
+        except error:
+            abort(String("Rational.__round__(): ") + String(error))
+
+    def __round__(self, ndigits: Int) -> Self:
+        """Returns this value rounded to `ndigits` decimal places.
+
+        Equivalent to `round(x, n)` in Python, halves going to the even
+        digit. A negative `ndigits` rounds above the decimal point, so
+        `round(1350, -2)` is 1400.
+
+        Args:
+            ndigits: The decimal places to keep.
+
+        Returns:
+            The rounded value, in lowest terms.
+        """
+        try:
+            var ten = BigInt(10)
+            if ndigits >= 0:
+                var scale = ten.power(ndigits)
+                var scaled = Self(
+                    self.numerator * scale, self.denominator.copy(), raw=False
+                )
+                return Self(scaled._rounded_half_even(), scale^)
+            var scale = ten.power(-ndigits)
+            var scaled = Self(
+                self.numerator.copy(), self.denominator * scale, raw=False
+            )
+            return Self(scaled._rounded_half_even() * scale)
+        except error:
+            abort(String("Rational.__round__(): ") + String(error))
+
+    # ===------------------------------------------------------------------=== #
+    # In-place operators
+    # ===------------------------------------------------------------------=== #
+
+    def __iadd__(mut self, other: Self) raises:
+        """Adds `other` to this value in place.
+
+        Args:
+            other: The value to add.
+
+        Raises:
+            Error: Propagated from underlying BigInt arithmetic.
+        """
+        self = self + other
+
+    def __isub__(mut self, other: Self) raises:
+        """Subtracts `other` from this value in place.
+
+        Args:
+            other: The value to subtract.
+
+        Raises:
+            Error: Propagated from underlying BigInt arithmetic.
+        """
+        self = self - other
+
+    def __imul__(mut self, other: Self) raises:
+        """Multiplies this value by `other` in place.
+
+        Args:
+            other: The value to multiply by.
+
+        Raises:
+            Error: Propagated from underlying BigInt arithmetic.
+        """
+        self = self * other
+
+    def __itruediv__(mut self, other: Self) raises:
+        """Divides this value by `other` in place.
+
+        Args:
+            other: The value to divide by.
+
+        Raises:
+            ZeroDivisionError: If `other` is zero.
+            Error: Propagated from underlying BigInt arithmetic.
+        """
+        self = self / other
+
+    # ===------------------------------------------------------------------=== #
+    # Approximation
+    # ===------------------------------------------------------------------=== #
+
+    def limit_denominator(self, max_denominator: BigInt) raises -> Self:
+        """Returns the closest value whose denominator is at most the limit.
+
+        Args:
+            max_denominator: The largest denominator allowed, at least one.
+
+        Returns:
+            The closest rational with a denominator no larger than the limit.
+            Where two are equally close, the one with the larger denominator
+            is returned, which is what Python's `Fraction` does.
+
+        Raises:
+            ValueError: If `max_denominator` is below one.
+            Error: Propagated from underlying BigInt arithmetic.
+
+        Notes:
+
+        This walks the continued fraction of the value, keeping the last two
+        convergents. The denominators grow at least as fast as the
+        Fibonacci numbers, so the walk is short even for a value whose own
+        denominator is enormous, and every convergent is the closest
+        approximation for any denominator up to its own -- which is what
+        makes the two candidates at the end the only ones worth comparing.
+        """
+        if max_denominator < BigInt.one():
+            raise ValueError(
+                message="The largest denominator allowed must be at least one",
+                function="Rational.limit_denominator()",
+            )
+        if self.denominator <= max_denominator:
+            return self.copy()
+
+        var p0 = BigInt.zero()
+        var q0 = BigInt.one()
+        var p1 = BigInt.one()
+        var q1 = BigInt.zero()
+        var n = self.numerator.copy()
+        var d = self.denominator.copy()
+        while True:
+            var a = n // d
+            var q2 = q0 + a * q1
+            if q2 > max_denominator:
+                break
+            var p0_next = p1.copy()
+            var q0_next = q1.copy()
+            p1 = p0 + a * p1
+            q1 = q2^
+            p0 = p0_next^
+            q0 = q0_next^
+            var d_next = n - a * d
+            n = d^
+            d = d_next^
+
+        # The two candidates: the last convergent, and the best value the
+        # remaining room allows between it and the one before.
+        var k = (max_denominator - q0) // q1
+        var bound1 = Self(p0 + k * p1, q0 + k * q1)
+        var bound2 = Self(p1^, q1^)
+        if abs(bound2 - self) <= abs(bound1 - self):
+            return bound2^
+        return bound1^
