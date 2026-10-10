@@ -152,6 +152,89 @@ def sqrt(
         scale += precision + 32
 
 
+comptime _ROOT_SLACK = 6
+"""Units in the last place the logarithm's route to a root may be off by.
+
+The logarithm, the division by the degree and the exponential each cost a
+unit or two of the working width.
+"""
+
+
+def _root_by_logarithm(
+    x: BigFloat, degree: Int, precision: Int, rounding_mode: RoundingMode
+) raises -> BigFloat:
+    """The `degree`-th root of a value, through the logarithm.
+
+    Args:
+        x: The value, finite and not nought. A negative one needs an odd
+            degree, which the caller has checked.
+        degree: Which root to take, positive.
+        precision: The bits the answer keeps.
+        rounding_mode: Which way to round.
+
+    Returns:
+        The float of `precision` bits nearest the root.
+
+    Raises:
+        OverflowError: If the answer's exponent would not fit an `Int`.
+        Error: If the rounding cannot be decided, or propagated from the
+            arithmetic.
+
+    Notes:
+
+    The exponent is split off first, and that is what makes this work at all.
+    `x` is `s * 2^(q * degree + r)` with `r` below the degree, so the root is
+    the root of `s * 2^r` times `2^q`, and the second factor is exact. Handed
+    the whole value instead, the logarithm of something near the top of the
+    exponent range divided by a modest degree would still be enormous and the
+    exponential would refuse it -- while the answer is an ordinary number.
+
+    Nothing is lengthened. The split only moves an exponent, so unlike the
+    integer root this route costs the same whatever the degree is, which is
+    why the caller sends the large degrees here.
+    """
+    var remainder = x.exponent % degree
+    var quotient = x.exponent // degree
+    var inner = BigFloat(
+        significand=x.significand,
+        exponent=remainder,
+        precision=x.precision,
+        sign=False,
+    )
+
+    var width = precision + _ZIV_START
+    for _ in range(_ZIV_LIMIT):
+        var work = width + Int(bit_width(UInt(width))) + 12
+        var scaled = bigfloat_arithmetics.divide(
+            ln_at_width(inner, work), BigFloat.from_int(degree, work), work
+        )
+        var value = exp_at_width(scaled, work)
+        var wide = BigFloat.from_rounded_parts(
+            value.significand, value.exponent, width, x.sign
+        )
+        var settled = _settled(
+            wide, width, _ROOT_SLACK, precision, rounding_mode
+        )
+        if settled:
+            var found = settled.take()
+            # The exponent that was split off goes back on, which is exact and
+            # is the one place an answer outside the range can show up.
+            var exponent = _raised(
+                found.exponent, quotient
+            ) if quotient >= 0 else _lowered(found.exponent, -quotient)
+            return BigFloat(
+                significand=found.significand,
+                exponent=exponent,
+                precision=found.precision,
+                sign=found.sign,
+            )
+        width += width - precision
+    raise Error(
+        "the rounding of this root could not be decided; the logarithm is"
+        " further from the true value than its stated bound allows"
+    )
+
+
 def root(
     x: BigFloat,
     degree: Int,
@@ -223,6 +306,28 @@ def root(
         return BigFloat.infinity(precision, x.sign)
     if x.sign and not odd:
         return BigFloat.nan(precision)
+
+    # The integer root is the right method only while the degree is small.
+    # It needs the value lengthened to about `degree` times the precision, so
+    # a large degree asks for a number nothing can hold -- and it buys
+    # nothing there either: an exact root above one needs a significand of at
+    # least `degree` bits, so no significand of this precision has one. The
+    # exception is a power of two, whose root is a power of two and takes no
+    # work at all.
+    if degree > precision + 2:
+        var zeros = trailing_zeros(x.significand)
+        if (x.significand >> zeros).is_one():
+            var position = BigInt(x.exponent) + BigInt(zeros)
+            var step = BigInt(degree)
+            if (position % step).is_zero():
+                return BigFloat.from_rounded_parts(
+                    BigInt.one(),
+                    (position // step).to_int(),
+                    precision,
+                    x.sign,
+                    rounding_mode,
+                )
+        return _root_by_logarithm(x, degree, precision, rounding_mode)
 
     # `exponent` is `quotient * degree + remainder` with the remainder below
     # the degree, and neither product is ever formed.
