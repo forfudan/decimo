@@ -19,7 +19,7 @@ value it was rounded to, which CPython's `Decimal(float)` also prints.
 
 from std import testing
 from std.memory import bitcast
-from std.testing import assert_equal, assert_true
+from std.testing import assert_equal, assert_raises, assert_true
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.bigfloat.bigfloat import BigFloat
@@ -31,12 +31,15 @@ from decimo.bigfloat.conversion import (
     _WHOLE,
     _boundary_kind,
     _five_power_truncated,
+    _from_decimal_by_scaling,
+    _from_decimal_exactly,
     _rounded_from_exact,
     _scaled_to_fixed_point,
     from_decimal_parts,
     to_rounded_bigdecimal,
 )
 from decimo.bigint.bigint import BigInt
+from decimo.bigint.bitwise import trailing_zeros
 from decimo.rounding_mode import RoundingMode
 
 
@@ -1179,6 +1182,340 @@ def test_the_ends_of_the_exponent_range_print() raises:
         "-6.9046614899002713E+2776511644261678565",
         "the largest value there is",
     )
+
+
+# ===----------------------------------------------------------------------=== #
+# The scaled way in
+# ===----------------------------------------------------------------------=== #
+#
+# The way in has the same two routes as the way out: the power of ten built
+# whole, which is quickest while it is small, and the power truncated to a
+# working width, which is the only way when the decimal exponent has
+# eighteen figures. The routes are checked against each other, and against
+# CPython where the whole power could never be built.
+
+
+def _both_routes(
+    magnitude: BigInt,
+    decimal_exponent: Int,
+    precision: Int,
+    negative: Bool,
+    rounding_mode: RoundingMode,
+    label: String,
+) raises:
+    """Checks the scaled route to the significand against the whole power.
+
+    Args:
+        magnitude: The decimal digits as an integer.
+        decimal_exponent: The power of ten they are scaled by.
+        precision: How many bits to keep.
+        negative: The sign the directed modes read.
+        rounding_mode: Which way to round.
+        label: What to say if the two disagree.
+
+    Raises:
+        AssertionError: If the two routes disagree.
+        Error: Propagated from the conversions.
+    """
+    # A size that keeps the scaling for every widening a right answer needs,
+    # and hands back after a few more. `Int.MAX` would keep it for ever, and
+    # a wrong boundary rule would then widen without end instead of failing.
+    var scaled = _from_decimal_by_scaling(
+        magnitude,
+        decimal_exponent,
+        precision,
+        negative,
+        rounding_mode,
+        (precision + 256) * 4,
+    )
+    var whole = _from_decimal_exactly(
+        magnitude, decimal_exponent, precision, negative, rounding_mode
+    )
+    assert_equal(scaled[0], whole[0], label + ", the significand")
+    assert_equal(scaled[1], whole[1], label + ", the exponent")
+
+
+def test_a_decimal_parses_the_same_way_either_route() raises:
+    """The two routes to the significand give the same significand.
+
+    A spread of digit counts, powers of ten either way, precisions and all
+    seven rounding modes, with the tails that make a magnitude rich in twos
+    and fives.
+    """
+    var modes = [
+        RoundingMode.ROUND_DOWN,
+        RoundingMode.ROUND_UP,
+        RoundingMode.ROUND_CEILING,
+        RoundingMode.ROUND_FLOOR,
+        RoundingMode.ROUND_HALF_UP,
+        RoundingMode.ROUND_HALF_DOWN,
+        RoundingMode.ROUND_HALF_EVEN,
+    ]
+    var state = UInt64(0x9E3779B97F4A7C15)
+    for digits in [1, 17, 40]:
+        var magnitude = BigInt.one()
+        while magnitude.number_of_digits() < digits:
+            state ^= state << 13
+            state ^= state >> 7
+            state ^= state << 17
+            magnitude = magnitude * BigInt(10) + BigInt(Int(state % UInt64(10)))
+        for tail in [BigInt.one(), BigInt(5), BigInt(1024)]:
+            var value = magnitude * tail
+            for exponent in [-1000, -41, -3, 1, 3, 41]:
+                for precision in [1, 53, 113]:
+                    for mode in modes:
+                        _both_routes(
+                            value,
+                            exponent,
+                            precision,
+                            exponent < 0,
+                            mode,
+                            (
+                                String(digits)
+                                + " digits e"
+                                + String(exponent)
+                                + " to "
+                                + String(precision)
+                                + " bits"
+                            ),
+                        )
+
+
+def test_a_decimal_that_is_a_binary_float_parses_to_it_exactly() raises:
+    """A decimal that is a binary float comes back as that float.
+
+    `m * 10^d` for a positive `d` is a whole number of `2^d`, so when `5^d`
+    fits the precision the value is a float already and no mode has anything
+    to round. Each of these parses to the same significand under all seven
+    modes, and that significand at that exponent is the value itself.
+    """
+    var modes = [
+        RoundingMode.ROUND_DOWN,
+        RoundingMode.ROUND_UP,
+        RoundingMode.ROUND_CEILING,
+        RoundingMode.ROUND_FLOOR,
+        RoundingMode.ROUND_HALF_UP,
+        RoundingMode.ROUND_HALF_DOWN,
+        RoundingMode.ROUND_HALF_EVEN,
+    ]
+    for odd in [1, 3, 5, 7, 125, 999]:
+        for exponent in [1, 2, 3, 7, 17, 41]:
+            var head = BigInt(odd) * BigInt(5).power(exponent)
+            for twos in [0, 1, 10, 64, 200]:
+                var magnitude = BigInt(odd) << twos
+                var exact = (head << twos) << exponent
+                for precision in [head.bit_length(), head.bit_length() + 7]:
+                    for negative in [False, True]:
+                        var first = from_decimal_parts(
+                            magnitude,
+                            exponent,
+                            precision,
+                            negative,
+                            RoundingMode.ROUND_DOWN,
+                        )
+                        var label = (
+                            String(magnitude)
+                            + "e"
+                            + String(exponent)
+                            + " to "
+                            + String(precision)
+                            + " bits"
+                        )
+                        assert_equal(
+                            first[0] << first[1],
+                            exact,
+                            label + " is not the value",
+                        )
+                        for mode in modes:
+                            var parts = from_decimal_parts(
+                                magnitude,
+                                exponent,
+                                precision,
+                                negative,
+                                mode,
+                            )
+                            assert_equal(
+                                parts[0], first[0], label + ", the significand"
+                            )
+                            assert_equal(
+                                parts[1], first[1], label + ", the exponent"
+                            )
+
+
+def test_a_deep_decimal_exponent_parses_what_cpython_computes() raises:
+    """Decimals whose power of ten could never be built.
+
+    `10^1000000000` has over three hundred million digits, and the exponent
+    here reaches eighteen figures. The significands come from CPython's
+    `decimal`, whose `ln` is correctly rounded, taken at a hundred and twenty
+    digits of working precision and confirmed at a hundred and seventy.
+    """
+    var cases = [
+        (
+            BigInt("12345678901234567"),
+            -100016,
+            53,
+            BigInt("6344893790027535"),
+            -332245,
+        ),
+        (
+            BigInt("12345678901234567"),
+            -1000000016,
+            53,
+            BigInt("6011489095677160"),
+            -3321928147,
+        ),
+        (
+            BigInt("12345678901234567"),
+            999999984,
+            53,
+            BigInt("5142418764458928"),
+            3321928043,
+        ),
+        (
+            BigInt("12345678901234567"),
+            -1000000000000000016,
+            53,
+            BigInt("6082925441164801"),
+            -3321928094887362400,
+        ),
+        (
+            BigInt("12345678901234567"),
+            999999999999999984,
+            53,
+            BigInt("5082027492684656"),
+            3321928094887362296,
+        ),
+        (
+            BigInt("9999999999999999999"),
+            -2000000000000000018,
+            53,
+            BigInt("6738221307732553"),
+            -6643856189774724745,
+        ),
+        (
+            BigInt("1"),
+            -2776511644261678000,
+            53,
+            BigInt("7200129597079684"),
+            -9223372036854773980,
+        ),
+        (
+            BigInt("1"),
+            2776511644261678000,
+            53,
+            BigInt("5633901259743451"),
+            9223372036854773875,
+        ),
+        (
+            BigInt("12345678901234567"),
+            -1000000016,
+            300,
+            BigInt(
+                "1359536878546490089359964328124498944451659716890413964142822101490479431212259983269865772"
+            ),
+            -3321928394,
+        ),
+    ]
+    for row in cases:
+        var parts = from_decimal_parts(
+            row[0], row[1], row[2], False, RoundingMode.ROUND_HALF_EVEN
+        )
+        var label = String(row[1]) + " to " + String(row[2]) + " bits"
+        assert_equal(parts[0], row[3], label + ", the significand")
+        assert_equal(parts[1], row[4], label + ", the exponent")
+
+
+def test_a_decimal_past_the_exponent_range_is_refused() raises:
+    """A power of ten no binary exponent can hold is a refusal, not a guess.
+
+    `10^-5000000000000000000` is `2^-16609640474436811792`, and an `Int` stops
+    at a quarter of that. The old way did not reach the question: it tried to
+    build the power first.
+    """
+    with assert_raises(contains="past the exponents"):
+        _ = from_decimal_parts(
+            BigInt.one(),
+            -5_000_000_000_000_000_000,
+            53,
+            False,
+            RoundingMode.ROUND_HALF_EVEN,
+        )
+    with assert_raises(contains="past the exponents"):
+        _ = from_decimal_parts(
+            BigInt.one(),
+            5_000_000_000_000_000_000,
+            53,
+            False,
+            RoundingMode.ROUND_HALF_EVEN,
+        )
+
+
+def test_either_route_to_the_significand_agrees() raises:
+    """The chooser picks on cost, so both of its answers must be the one.
+
+    Asked for the scaling, for the whole power, and for whichever it would
+    take by itself, the three agree.
+    """
+    var magnitude = BigInt("123456789012345678901234567")
+    for exponent in [-8000, -300, -17, 17, 300, 8000]:
+        for precision in [11, 53, 200]:
+            var scaled = _from_decimal_by_scaling(
+                magnitude,
+                exponent,
+                precision,
+                False,
+                RoundingMode.ROUND_HALF_EVEN,
+                Int.MAX,
+            )
+            var whole = _from_decimal_exactly(
+                magnitude,
+                exponent,
+                precision,
+                False,
+                RoundingMode.ROUND_HALF_EVEN,
+            )
+            var chosen = from_decimal_parts(
+                magnitude,
+                exponent,
+                precision,
+                False,
+                RoundingMode.ROUND_HALF_EVEN,
+            )
+            var label = (
+                "e" + String(exponent) + " to " + String(precision) + " bits"
+            )
+            assert_equal(scaled[0], whole[0], label + ", the two routes")
+            assert_equal(scaled[1], whole[1], label + ", the two exponents")
+            assert_equal(scaled[0], chosen[0], label + ", the chosen route")
+            assert_equal(scaled[1], chosen[1], label + ", the chosen exponent")
+
+
+def test_an_exponent_whose_scaling_wrapped_still_prints() raises:
+    """Values the exact power of five was reached for by a wrapped product.
+
+    The kernel takes the power of five whole when it fits the working width,
+    and the test for that multiplied the degree by seven, which for a degree
+    of eighteen figures wraps round into a yes and asks for a power of five
+    with a billion billion digits. The band it wrapped in is a quarter of the
+    exponent range, and these five values sit in it. The digits are
+    CPython's.
+    """
+    var cases = [
+        (-5_000_000_000_000_000_000, "3.8447251704325141E-1505149978319905961"),
+        (-6_000_000_000_000_000_000, "2.3503168068295821E-1806179973983887156"),
+        (-8_000_000_000_000_000_000, "8.7831159624901292E-2408239965311849547"),
+        (5_000_000_000_000_000_000, "5.2753860691088074E+1505149978319905991"),
+        (6_000_000_000_000_000_000, "8.6296492220600951E+1806179973983887186"),
+    ]
+    for row in cases:
+        var value = BigFloat(
+            significand=BigInt.one() << 52,
+            exponent=row[0],
+            precision=53,
+            sign=False,
+        )
+        assert_equal(value.to_string(17), row[1], "2^" + String(row[0]))
 
 
 def main() raises:

@@ -66,6 +66,54 @@ def from_decimal_parts(
 
     Notes:
 
+    Two ways there, chosen on what the power of ten would cost.
+    `_from_decimal_exactly()` builds it whole, which is the quickest way
+    while it is small -- and `10^1000` is small. `_from_decimal_by_scaling()`
+    truncates it to a working width instead, which is the only way when the
+    exponent has nineteen figures to play with. Both round once, from the
+    exact value, so the choice shows in the time and nowhere else.
+    """
+    _ = checked_precision(precision, "from_decimal_parts()")
+    if magnitude.is_zero():
+        return (BigInt.zero(), 0)
+
+    if decimal_exponent != 0 and not _power_is_worth_building(
+        decimal_exponent, precision, 0
+    ):
+        return _from_decimal_by_scaling(
+            magnitude, decimal_exponent, precision, negative, rounding_mode
+        )
+    return _from_decimal_exactly(
+        magnitude, decimal_exponent, precision, negative, rounding_mode
+    )
+
+
+def _from_decimal_exactly(
+    magnitude: BigInt,
+    decimal_exponent: Int,
+    precision: Int,
+    negative: Bool,
+    rounding_mode: RoundingMode,
+) raises -> Tuple[BigInt, Int]:
+    """Rounds `magnitude * 10^decimal_exponent` through the whole power.
+
+    Args:
+        magnitude: The decimal digits as an integer, never negative or
+            nought.
+        decimal_exponent: The power of ten they are scaled by.
+        precision: How many bits to keep.
+        negative: The sign, which the directed rounding modes read.
+        rounding_mode: Which way to round.
+
+    Returns:
+        A normalized `(significand, binary_exponent)` pair, as
+        `round_to_precision()` returns.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
     A non-negative power of ten is exact: the product is an integer and the
     only rounding is the one that fits it to the precision.
 
@@ -87,16 +135,7 @@ def from_decimal_parts(
     comes back too narrow -- a magnitude far smaller than the power can do
     that -- the shift grows and the division is taken again, which is the one
     loop here and runs at most twice in practice.
-
-    The cost is proportional to `k`, not to the precision asked for, because
-    the divisor is exact. That is the same property every exact power in
-    decimo has, and bounding it needs a correctly-rounded approximate power
-    of five, which is its own piece of work.
     """
-    _ = checked_precision(precision, "from_decimal_parts()")
-    if magnitude.is_zero():
-        return (BigInt.zero(), 0)
-
     if decimal_exponent >= 0:
         var exact = magnitude * BigInt.from_biguint(
             BigUInt.power_of_10(decimal_exponent)
@@ -174,38 +213,15 @@ def to_exact_bigdecimal(
 
 
 # ===----------------------------------------------------------------------=== #
-# A few digits, without the whole expansion
+# The scaling both directions lean on
 # ===----------------------------------------------------------------------=== #
 #
-# Rounding the exact expansion is the obvious way to a few digits and the
-# wrong one, because the expansion is as long as the exponent is deep:
-# `2^-1000000` has 301031 significant digits and a million decimal places,
-# and every one of them gets built to keep seventeen. What follows keeps the
-# digits that were asked for and no more.
-#
-# For `v = m * 2^e` and `d` digits, the answer is the `d`-digit decimal
-# nearest `v`, which is `round(v * 10^j) * 10^-j` for `j = d - 1 - k` and
-# `k = floor(log10 |v|)`. So one scaling by a power of ten, in fixed point
-# and wide enough that the rounding is decided, settles it. The power of ten
-# cannot be exact -- `5^j` for a deep exponent has more digits than memory
-# holds -- so it is truncated to a working width, and the width doubles until
-# the answer no longer depends on what the truncation dropped. That is Ziv's
-# strategy, which every correctly rounded function here uses.
-#
-# A loop like that cannot settle when the true value sits exactly on the
-# boundary it is deciding, and `v * 10^j` reaches one: `0.0625 * 10^3` is
-# `62.5` exactly. That case is decided before the loop starts, from the
-# exponents alone and without a digit. Write the significand as
-# `2^t * 5^f * u` with `u` coprime to ten. Then
-#
-#     v * 10^j = u * 2^(e + t + j) * 5^(f + j)
-#
-# so when `f + j` is negative the value keeps a five in its denominator and
-# is neither whole nor exactly a half; otherwise it is whole when `e + t + j`
-# is at least nought, and exactly a half when `e + t + j` is `-1`. The rule
-# was checked against CPython's `fractions.Fraction` on twenty thousand
-# values, among them significands made deliberately rich in twos and fives,
-# with no disagreement.
+# Each direction has a power of ten it cannot afford to build, and both get
+# the same answer: a power of five truncated to a working width, a value
+# carried in fixed point with a guard below the bits or digits kept, and a
+# guard that doubles until the rounding no longer depends on what the
+# truncation dropped. What follows is that machinery, with the two directions
+# below it.
 
 
 comptime _FIVE_POWER_SLACK = 4
@@ -290,12 +306,12 @@ def _added(left: Int, right: Int) raises -> Int:
     if right > 0 and left > Int.MAX - right:
         raise OverflowError(
             message="This exponent is above what an Int holds.",
-            function="to_rounded_bigdecimal()",
+            function="the decimal conversion",
         )
     if right < 0 and left < Int.MIN - right:
         raise OverflowError(
             message="This exponent is below what an Int holds.",
-            function="to_rounded_bigdecimal()",
+            function="the decimal conversion",
         )
     return left + right
 
@@ -313,39 +329,6 @@ def _placed(value: BigInt, places: Int) -> BigInt:
     if places >= 0:
         return value << places
     return value >> (-places)
-
-
-def _floor_log10_of_power_of_two(exponent: Int) raises -> Int:
-    """`floor(exponent * log10(2))`, within one of it.
-
-    Args:
-        exponent: The power of two, either sign.
-
-    Returns:
-        How many decimal digits before the point `2^exponent` has, less one.
-
-    Raises:
-        Error: Propagated from the arithmetic.
-
-    Notes:
-
-    Being out by one does not matter. The caller checks the digit count it
-    gets and moves the shift until the count is right, which it has to do
-    anyway: the exponent bounds the value within a factor of two, and a
-    factor of two straddles a power of ten.
-
-    So the everyday range is done in whole machine words, with `log10(2)`
-    scaled by `2^31`: the product of that and an exponent of nine figures
-    stays inside an `Int`, and the scaled constant is within `2^-36` of the
-    truth. Beyond that range the same sum is taken with `log10(2)` to
-    ninety-six bits, as three pieces that each fit an `Int`, which keeps the
-    answer within one for an exponent of any size.
-    """
-    if exponent > -2_000_000_000 and exponent < 2_000_000_000:
-        return (exponent * 646456993) >> 31
-    var numerator = ((BigInt(1292913986) << 32) + BigInt(2112355276)) << 32
-    numerator += BigInt(1204071638)
-    return ((BigInt(exponent) * numerator) >> 96).to_int()
 
 
 def _five_power_truncated(degree: Int, width: Int) raises -> Tuple[BigInt, Int]:
@@ -373,8 +356,10 @@ def _five_power_truncated(degree: Int, width: Int) raises -> Tuple[BigInt, Int]:
     """
     # An exact power is the better answer when it fits the width: no
     # squarings, no truncation and no slack to carry. Seven thirds of the
-    # degree is over the two and a third bits a power of five takes.
-    if degree * 7 <= width * 3:
+    # degree is over the two and a third bits a power of five takes, and the
+    # division rather than the multiplication keeps a degree of eighteen
+    # figures from wrapping round into a yes.
+    if degree <= width * 3 // 7:
         return (BigInt(5).power(degree), 0)
 
     var doublings = Int(bit_width(UInt(degree)))
@@ -504,6 +489,316 @@ def _scaled_to_fixed_point(
     if place >= 0:
         return _placed(significand, place).truncate_divide(power[0])
     return significand.truncate_divide(_placed(power[0], -place))
+
+
+# ===----------------------------------------------------------------------=== #
+# A decimal in, without the whole power of ten
+# ===----------------------------------------------------------------------=== #
+#
+# The way in has the same shape of problem as the way out and the same
+# answer. `m * 10^d` rounded to `p` bits was taken by building `10^d` or
+# `5^-d` whole, which costs what `d` is: `1e-100000` took eight milliseconds
+# at 53 bits and `1e-1000000000` could not be parsed at all, though a
+# `BigFloat` holds values far deeper than that.
+#
+# So the scaling is done in fixed point against a truncated power of five,
+# with `p` bits above a guard and the guard doubling until the rounding is
+# decided -- the same loop, the same kernel, the same widening.
+#
+# What the loop cannot settle is again the value that sits exactly on a
+# boundary, and here the boundary is binary: the value is a float of `p` bits
+# already, or exactly halfway between two of them. Neither reaches the loop.
+# A deep positive `d` cannot: `m * 10^d` is `m * 5^d * 2^d`, and for it to
+# stop inside `p` bits, or one bit past them, `5^d` has to fit in `p` bits,
+# which puts `d` below half the precision -- and a `d` that small is one the
+# whole power of ten is quicker for anyway. A negative `d` can, and only when
+# `5^-d` divides the magnitude, which asks for a power of five no bigger than
+# the magnitude itself; that division is taken, and what it does not divide
+# is on no boundary at all.
+
+
+comptime _POWER_LIMIT_UP = 512
+"""How deep a positive decimal exponent is still worth a whole power of ten.
+
+Added to half the precision, because the scaling widens with the precision
+while the power does not. Measured at eleven, fifty-three, three hundred and
+three thousand bits: the whole power wins up to a reach of about 550, 550,
+550 and 1700, against the 517, 538, 662 and 2012 this gives. Where the choice
+is the wrong one it costs under a factor of two either way.
+"""
+
+comptime _POWER_LIMIT_DOWN = 256
+"""The same for a negative exponent, where the whole power is also a division.
+
+A division costs several multiplications, so the power stops being worth it
+sooner: measured crossovers of about 300, 290, 300 and 1700 against the 261,
+282, 406 and 1756 this gives.
+"""
+
+
+def _power_is_worth_building(
+    decimal_exponent: Int, precision: Int, guard: Int
+) raises -> Bool:
+    """Whether the whole power of ten is the quicker way to the answer.
+
+    Args:
+        decimal_exponent: The power of ten, never nought.
+        precision: The bits the answer keeps.
+        guard: The fractional bits the scaling is working in, which is what
+            makes the answer change as a Ziv loop widens.
+
+    Returns:
+        Whether to take the power whole rather than scale against a
+        truncated one.
+
+    Raises:
+        Error: Never, but the signature matches its callers.
+
+    Notes:
+
+    The power costs what its own digits are and the scaling costs what the
+    precision is, several times over, so the two meet at a reach that grows
+    with the precision. The limits are measured; see them for the numbers.
+
+    The guard is in the question so that the same question ends the Ziv loop.
+    A loop that has widened until the scaling is as wide as the power would
+    be has nothing left to win, and handing the work over there bounds the
+    worst case by what the whole power costs -- which is what this conversion
+    used to cost for everything.
+    """
+    if decimal_exponent == Int.MIN:
+        return False
+    var reach = decimal_exponent if decimal_exponent > 0 else -decimal_exponent
+    var limit = _POWER_LIMIT_UP if decimal_exponent > 0 else _POWER_LIMIT_DOWN
+    if precision // 2 > Int.MAX - limit - guard:
+        return True
+    return reach <= limit + precision // 2 + guard
+
+
+def _floor_log2_of_power_of_ten(exponent: Int) raises -> Int:
+    """`floor(exponent * log2(10))`, within one of it.
+
+    Args:
+        exponent: The power of ten, either sign.
+
+    Returns:
+        Where the leading bit of `10^exponent` sits.
+
+    Raises:
+        OverflowError: If `10^exponent` is past the exponent range itself,
+            which a value of `10^19` and more is.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    The companion of `_floor_log10_of_power_of_two` below,
+    and the same two paths for the same reason: whole machine words while the
+    exponent has nine figures, where `log2(10)` scaled by `2^30` is within
+    `2^-32` of the truth and the product stays inside an `Int`, and ninety
+    bits of it in three pieces beyond that. Being out by one is allowed --
+    the caller reads the bit length it gets and moves the place to match.
+    """
+    if exponent > -1_000_000_000 and exponent < 1_000_000_000:
+        return (exponent * 3566893132) >> 30
+    var numerator = ((BigInt(222930820) << 32) + BigInt(3167860911)) << 32
+    numerator += BigInt(3834822512)
+    var leading = (BigInt(exponent) * numerator) >> 90
+    if leading > BigInt(Int.MAX) or leading < BigInt(Int.MIN):
+        raise OverflowError(
+            message=(
+                "This power of ten is past the exponents a binary float holds."
+            ),
+            function="from_decimal_parts()",
+        )
+    return leading.to_int()
+
+
+def _from_decimal_by_scaling(
+    magnitude: BigInt,
+    decimal_exponent: Int,
+    precision: Int,
+    negative: Bool,
+    rounding_mode: RoundingMode,
+    limit_precision: Int = -1,
+) raises -> Tuple[BigInt, Int]:
+    """Rounds `magnitude * 10^decimal_exponent` without building the power.
+
+    Args:
+        magnitude: The decimal digits as an integer, never negative or
+            nought.
+        decimal_exponent: The power of ten they are scaled by, never nought.
+        precision: How many bits to keep.
+        negative: The sign, which the directed rounding modes read.
+        rounding_mode: Which way to round.
+        limit_precision: What precision to put to the question of handing the
+            work back to the whole power. The precision itself is the one to
+            use; a test passes nought to keep the scaling for every reach the
+            widening guard has not caught up with.
+
+    Returns:
+        A normalized `(significand, binary_exponent)` pair, as
+        `round_to_precision()` returns.
+
+    Raises:
+        OverflowError: If an exponent on the way would not fit an `Int`.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    One rounding, from a scaling wide enough to decide it. The place the kept
+    bits start at is estimated from `log2(10)` and then corrected by the bit
+    length that comes back, which says exactly how far out the estimate was.
+
+    A value the power of five divides is a binary float already, and that is
+    worth finding: the quotient is exact, so no widening can settle what it
+    settles. The power it asks for is no bigger than the magnitude, because
+    a larger one could not divide it.
+
+    Every other value that reaches here sits on no rounding boundary, so the
+    loop always settles. For a negative exponent the division above has shown
+    the value is not a binary float, and what is not one is not halfway
+    between two either. For a positive exponent the value is `m * 5^d * 2^d`:
+    it stops inside the precision only if `5^d` does, and it is halfway
+    between two floats only if `5^d` fits the precision and a bit more, so
+    either way `d` is below half the precision -- and every `d` that small
+    went to the whole power instead.
+
+    The widening ends where that same question turns over, and hands the work
+    to the whole power. A value whose bits crowd a boundary for hundreds of
+    bits therefore costs what the whole power costs, which is what this
+    conversion used to cost for everything.
+    """
+    var bits = magnitude.bit_length()
+
+    if decimal_exponent < 0:
+        var fives = -decimal_exponent
+        if fives <= bits // 2:
+            var power = BigInt(5).power(fives)
+            var quotient = magnitude.truncate_divide(power)
+            if quotient * power == magnitude:
+                return round_to_precision(
+                    quotient^,
+                    decimal_exponent,
+                    precision,
+                    negative,
+                    rounding_mode,
+                )
+
+    var limited = limit_precision if limit_precision >= 0 else precision
+    var place = _added(
+        bits - precision, _floor_log2_of_power_of_ten(decimal_exponent)
+    )
+    var guard = _INITIAL_GUARD
+    var kept: BigInt
+    var reaches_half: Bool
+    var passes_half: Bool
+    while True:
+        if _power_is_worth_building(decimal_exponent, limited, guard):
+            return _from_decimal_exactly(
+                magnitude, decimal_exponent, precision, negative, rounding_mode
+            )
+        var scaled = _scaled_to_fixed_point(
+            magnitude, -place, decimal_exponent, precision + 2, guard
+        )
+        var whole = scaled >> guard
+        var rest = scaled - (whole << guard)
+        var length = whole.bit_length()
+        if length != precision:
+            # The place was out by exactly what the bit length says, and the
+            # estimate is never out by more than a bit or two.
+            place = _added(place, length - precision)
+            guard = _INITIAL_GUARD
+            continue
+        # The value sits on no boundary, so something is always dropped and
+        # which side of the half it falls is the only question.
+        var sits = _where_the_rest_sits(rest, guard)
+        if sits == _UNREADABLE:
+            guard += guard
+            continue
+        reaches_half = sits == _ABOVE_HALF
+        passes_half = True
+        kept = whole^
+        break
+
+    if rounds_away_from_zero(
+        rounding_mode, negative, reaches_half, passes_half, test_bit(kept, 0)
+    ):
+        kept += BigInt.one()
+        if kept.bit_length() > precision:
+            # The carry ran past the precision, and a carry out of all ones
+            # lands on a power of two exactly.
+            kept = kept >> 1
+            place = _added(place, 1)
+
+    return (kept^, place)
+
+
+# ===----------------------------------------------------------------------=== #
+# A few digits, without the whole expansion
+# ===----------------------------------------------------------------------=== #
+#
+# Rounding the exact expansion is the obvious way to a few digits and the
+# wrong one, because the expansion is as long as the exponent is deep:
+# `2^-1000000` has 301031 significant digits and a million decimal places,
+# and every one of them gets built to keep seventeen. What follows keeps the
+# digits that were asked for and no more.
+#
+# For `v = m * 2^e` and `d` digits, the answer is the `d`-digit decimal
+# nearest `v`, which is `round(v * 10^j) * 10^-j` for `j = d - 1 - k` and
+# `k = floor(log10 |v|)`. So one scaling by a power of ten, in fixed point
+# and wide enough that the rounding is decided, settles it. The power of ten
+# cannot be exact -- `5^j` for a deep exponent has more digits than memory
+# holds -- so it is truncated to a working width, and the width doubles until
+# the answer no longer depends on what the truncation dropped. That is Ziv's
+# strategy, which every correctly rounded function here uses.
+#
+# A loop like that cannot settle when the true value sits exactly on the
+# boundary it is deciding, and `v * 10^j` reaches one: `0.0625 * 10^3` is
+# `62.5` exactly. That case is decided before the loop starts, from the
+# exponents alone and without a digit. Write the significand as
+# `2^t * 5^f * u` with `u` coprime to ten. Then
+#
+#     v * 10^j = u * 2^(e + t + j) * 5^(f + j)
+#
+# so when `f + j` is negative the value keeps a five in its denominator and
+# is neither whole nor exactly a half; otherwise it is whole when `e + t + j`
+# is at least nought, and exactly a half when `e + t + j` is `-1`. The rule
+# was checked against CPython's `fractions.Fraction` on twenty thousand
+# values, among them significands made deliberately rich in twos and fives,
+# with no disagreement.
+
+
+def _floor_log10_of_power_of_two(exponent: Int) raises -> Int:
+    """`floor(exponent * log10(2))`, within one of it.
+
+    Args:
+        exponent: The power of two, either sign.
+
+    Returns:
+        How many decimal digits before the point `2^exponent` has, less one.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    Being out by one does not matter. The caller checks the digit count it
+    gets and moves the shift until the count is right, which it has to do
+    anyway: the exponent bounds the value within a factor of two, and a
+    factor of two straddles a power of ten.
+
+    So the everyday range is done in whole machine words, with `log10(2)`
+    scaled by `2^31`: the product of that and an exponent of nine figures
+    stays inside an `Int`, and the scaled constant is within `2^-36` of the
+    truth. Beyond that range the same sum is taken with `log10(2)` to
+    ninety-six bits, as three pieces that each fit an `Int`, which keeps the
+    answer within one for an exponent of any size.
+    """
+    if exponent > -2_000_000_000 and exponent < 2_000_000_000:
+        return (exponent * 646456993) >> 31
+    var numerator = ((BigInt(1292913986) << 32) + BigInt(2112355276)) << 32
+    numerator += BigInt(1204071638)
+    return ((BigInt(exponent) * numerator) >> 96).to_int()
 
 
 def _boundary_kind(

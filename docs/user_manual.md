@@ -1702,6 +1702,20 @@ print(deep.to_string(20))               # 1.0100340591980302247E-301030
 `to_bigdecimal()` is the one to ask when every digit is wanted, and it is the
 only one whose cost follows the exponent, because the answer does.
 
+Coming in costs what the precision is, in the same way and for the same
+reason. A decimal exponent of nine or eighteen figures is a decimal nobody
+could write out, and it parses at once:
+
+```mojo
+var deep = BigFloat.from_string("1.5e-1000000", 53)
+print(deep.to_string(17))                   # 1.5000000000000000E-1000000
+print(BigFloat.from_string("7e1000000000", 53).to_string(17))
+# 6.9999999999999999E+1000000000
+```
+
+The second one is seven to a billion powers of ten, which has no exact
+rendering in 53 bits -- the digits shown are the float's own.
+
 Going the other way rounds. `to_float64()` is exact for a normal double but
 rounds a second time when the answer is subnormal, since a subnormal has fewer
 bits than 53: converting from a wider precision avoids it.
