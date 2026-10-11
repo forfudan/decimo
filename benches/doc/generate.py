@@ -38,7 +38,8 @@ DOC = ROOT / "docs" / "benchmarks.md"
 HERE = Path(__file__).resolve().parent
 PRECISIONS = [100, 1000, 10000, 100000, 1000000]
 PI_LIBRARIES = [
-    ("decimo", "decimo"),
+    ("decimo", "decimo (BigDecimal)"),
+    ("decimo_binary", "decimo (BigFloat)"),
     ("mpmath_gmpy", "mpmath + GMP"),
     ("mpfr", "MPFR"),
     ("mpmath", "mpmath (pure Python)"),
@@ -208,7 +209,7 @@ def pi_cold(library: str, precision: int) -> float | None:
     minimum of a few costs a little wall-clock and removes the whole class of
     error.
     """
-    if library == "decimo":
+    if library.startswith("decimo"):
         return None  # taken from the Mojo run, which is already cold per call
     env = dict(os.environ)
     if library == "mpmath":
@@ -309,10 +310,11 @@ def main() -> int:
     cpython = json.loads(run(["pixi", "run", "python", str(HERE / "bench_python.py")]))
 
     pi_table: dict[str, dict[int, float | None]] = {
-        "decimo": {int(k): v for k, v in decimo["pi"].items()}
+        "decimo": {int(k): v for k, v in decimo["pi"].items()},
+        "decimo_binary": {int(k): v for k, v in decimo.get("pi_binary", {}).items()},
     }
     for library, _label in PI_LIBRARIES:
-        if library == "decimo":
+        if library.startswith("decimo"):
             continue
         pi_table[library] = {}
         for precision in PRECISIONS:
@@ -518,6 +520,11 @@ def render(
     add("")
     add("Each measurement in a fresh process, since mpmath and MPFR cache the")
     add("constant. Includes conversion to a decimal string, for every library.")
+    add("")
+    add("The two decimo columns compute the same series through the same")
+    add("integer code and differ only in where the digits end up; `BigFloat`")
+    add("is asked for the computation its own cache would have missed on, so")
+    add("that it is measured cold like the rest.")
     add("")
     header = "| Digits | " + " | ".join(label for _, label in PI_LIBRARIES) + " |"
     add(header)

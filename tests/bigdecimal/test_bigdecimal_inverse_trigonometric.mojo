@@ -20,6 +20,9 @@ from decimo.bigdecimal.arithmetics import add, multiply, subtract
 from decimo.bigdecimal.bigdecimal import BDec
 from decimo.bigdecimal.constants import pi
 from decimo.bigdecimal.trigonometric import (
+    _arccosine_in_binary,
+    _arcsine_in_binary,
+    _arctangent_in_binary,
     arccos,
     arccos_rounded,
     arcsin,
@@ -30,6 +33,7 @@ from decimo.bigdecimal.trigonometric import (
     cos,
     sin,
 )
+from decimo.biguint.biguint import BigUInt
 from decimo.rounding_mode import RoundingMode
 
 comptime WIDTH = 50
@@ -270,6 +274,152 @@ def test_rounding_modes_are_carried_through() raises:
     assert_equal(
         String(arctan2_rounded(y, left, 9, RoundingMode.ROUND_FLOOR)),
         "2.55359005",
+    )
+
+
+# ===----------------------------------------------------------------------=== #
+# The route through the binary layer
+# ===----------------------------------------------------------------------=== #
+#
+# Above a couple of dozen digits these three convert their argument to a
+# `BigFloat`, evaluate there and convert back, because the decimal series is
+# quadratic in the digits: the arccosine took five seconds at nine hundred
+# digits and now takes two tenths of a millisecond. The deciding loop settles
+# the last digit either way, so the answers are the same -- which is what
+# these check, the series being the second implementation.
+
+
+def _subjects() -> List[String]:
+    """Arguments that reach every branch of the choice.
+
+    Returns:
+        Ordinary values, both ends of the domain, and arguments a hair from
+        one, where the two inverse functions turn the argument's own error
+        into a larger one.
+    """
+    return [
+        String("0.6180339887498948482045868343656381"),
+        String("-0.5"),
+        String("0.1"),
+        String("1e-40"),
+        String("0.9999999999999999999"),
+        String("-0.9999999999999999999"),
+        String(
+            "0.999999999999999999999999999999999999999999999999999999999999"
+        ),
+    ]
+
+
+def test_both_routes_to_the_inverse_functions_agree() raises:
+    """The decimal series and the binary route, kernel against kernel.
+
+    Each promises to be within a few units of the last place of the width it
+    is asked for, so the two agree to a handful of units at that width. They
+    share nothing: one sums a series in base-10^18 words, the other converts,
+    reduces the argument, sums a different series in base-2^64 words, and
+    converts back.
+    """
+    for width in [30, 45]:
+        for text in _subjects():
+            var x = BDec(text)
+            for which in range(3):
+                var series: BDec
+                var binary: BDec
+                var name: String
+                if which == 0:
+                    series = arctan(x, width)
+                    binary = _arctangent_in_binary(x, width)
+                    name = "arctan"
+                elif which == 1:
+                    series = arcsin(x, width)
+                    binary = _arcsine_in_binary(x, width)
+                    name = "arcsin"
+                else:
+                    series = arccos(x, width)
+                    binary = _arccosine_in_binary(x, width)
+                    name = "arccos"
+                var gap = subtract(series, binary)
+                assert_true(
+                    gap.coefficient.is_zero()
+                    or Int(gap.adjusted())
+                    <= Int(series.adjusted()) - width + 2,
+                    (
+                        "the two routes to "
+                        + name
+                        + "("
+                        + text
+                        + ") at "
+                        + String(width)
+                        + " digits differ by "
+                        + String(gap)
+                    ),
+                )
+
+
+def test_the_identities_hold_where_the_binary_route_is_taken() raises:
+    """The three functions, end to end, at a precision past the floor.
+
+    `arcsin(x) + arccos(x)` is a right angle, and the sine of an arcsine is
+    the argument it was given. Both go through the public entry points, so
+    this is the route a caller takes.
+    """
+    for precision in [30, 60]:
+        var right_angle = multiply(
+            pi(precision + 10), BDec("0.5")
+        ).round_to_precision(precision - 2)
+        for text in _subjects():
+            var x = BDec(text)
+            var total = add(
+                x.arcsin(precision, RoundingMode.ROUND_HALF_EVEN),
+                x.arccos(precision, RoundingMode.ROUND_HALF_EVEN),
+            ).round_to_precision(precision - 2)
+            assert_equal(
+                String(total.round_to_precision(precision - 2)),
+                String(right_angle.round_to_precision(precision - 2)),
+                (
+                    "arcsin plus arccos at "
+                    + String(precision)
+                    + " digits for "
+                    + text
+                ),
+            )
+            var back = sin(
+                x.arcsin(precision + 10, RoundingMode.ROUND_HALF_EVEN),
+                precision + 10,
+            )
+            var drift = subtract(back, x)
+            assert_true(
+                drift.coefficient.is_zero()
+                or Int(drift.adjusted()) <= Int(x.adjusted()) - precision + 4,
+                (
+                    "the sine of the arcsine at "
+                    + String(precision)
+                    + " digits for "
+                    + text
+                    + " came back "
+                    + String(drift)
+                    + " away"
+                ),
+            )
+
+
+def test_the_arctangent_of_a_huge_argument_is_a_right_angle() raises:
+    """An argument far past where the answer stops moving.
+
+    `arctan(10^1000000)` is a right angle to every digit anyone will ask for,
+    and the argument is one the binary layer can still hold -- a million
+    decimal places is three and a third million bits. So this goes the binary
+    way, conversion and all, and has to come back with the same right angle
+    the decimal series gives.
+    """
+    var huge = BDec(BigUInt.one(), -1_000_000, False)
+    var right_angle = multiply(pi(60), BDec("0.5")).round_to_precision(40)
+    assert_equal(
+        String(
+            huge.arctan(50, RoundingMode.ROUND_HALF_EVEN).round_to_precision(40)
+        ),
+        String(right_angle),
+        "the arctangent of ten to the million",
     )
 
 

@@ -16,6 +16,8 @@ from decimo.bigdecimal import (
     rounding as bd_rounding,
 )
 from decimo.bigdecimal.bigdecimal import BigDecimal
+from decimo.bigfloat.constants import _CONSTANT_SLACK, _pi_computed
+from decimo.bigfloat.exponential import round_by_deciding
 from decimo.bigint import exponential as bigint_exponential
 from decimo.bigint.bigint import BigInt
 from decimo.rounding_mode import RoundingMode
@@ -364,6 +366,48 @@ def main() raises -> None:
         var comma = "," if k < len(pi_precisions) - 1 else ""
         print(
             '    "' + String(precision) + '": ' + format_number(best_pi) + comma
+        )
+    print("  },")
+
+    # --- pi, in the binary type ---
+    #
+    # `pi()` on the binary side keeps a cache, which the other libraries are
+    # measured without, so the loop asks for the computation the cache would
+    # have missed on. The decimal string is part of it, as above.
+    print('  "pi_binary": {')
+    for k in range(len(pi_precisions)):
+        var precision = pi_precisions[k]
+        var bits = (precision * 10) // 3 + 64
+        var reps = 1
+        if precision <= 1000:
+            reps = 200
+        elif precision <= 10000:
+            reps = 20
+        elif precision <= 100000:
+            reps = 3
+        var best_binary = 1.0e30
+        var rounds = 3 if precision >= 100000 else ROUNDS
+        for _ in range(rounds):
+            var t0 = perf_counter_ns()
+            for _ in range(reps):
+                sink += (
+                    round_by_deciding[_pi_computed, _CONSTANT_SLACK](
+                        bits, RoundingMode.ROUND_HALF_EVEN
+                    )
+                    .to_string(precision)
+                    .byte_length()
+                )
+            var t1 = perf_counter_ns()
+            best_binary = min(
+                best_binary, Float64(Int(t1 - t0)) / Float64(reps)
+            )
+        var comma = "," if k < len(pi_precisions) - 1 else ""
+        print(
+            '    "'
+            + String(precision)
+            + '": '
+            + format_number(best_binary)
+            + comma
         )
     print("  }")
     print("}")
