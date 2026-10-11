@@ -47,6 +47,11 @@ from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigfloat.exponential import round_by_deciding
 from decimo.bigfloat.rounding import checked_precision
 from decimo.bigint.bigint import BigInt
+from decimo.bigint.chudnovsky import (
+    chudnovsky_split,
+    chudnovsky_split_dropping_p,
+)
+import decimo.bigint.exponential as bigint_exponential
 from decimo.rounding_mode import RoundingMode
 
 
@@ -173,6 +178,73 @@ def _arctangent_hyperbolic_of_reciprocal(
 
 
 def _pi_computed(width: Int) raises -> BigFloat:
+    """Pi to `width` bits, by the Chudnovsky series.
+
+    Args:
+        width: The bits wanted.
+
+    Returns:
+        Pi, within `_CONSTANT_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    `pi = 426880 sqrt(10005) Q / T`, where `T / Q` is the series summed over
+    its first terms by the binary splitting in `bigint.chudnovsky`. Each term
+    is worth 14.18 digits, which is 47.1 bits, so the term count comes from
+    the width, and four terms over cover the tail -- and keep the range from
+    being empty at the narrowest widths, where the width alone asks for one
+    term or none.
+
+    Every part of that is integer arithmetic in base `2^64`: the splitting,
+    the scaling of `Q` by a power of two, the division by `T`, and the
+    reciprocal square root of 10005 in fixed point. The irrational factor
+    enters as a reciprocal so that Newton's iteration can reach it without a
+    division, and `426880 * 10005` is `4270934400`, which still fits a word.
+
+    `_pi_by_machin()` below is the series this replaced. It is kept because it
+    shares nothing with this one -- a different formula, a different series,
+    different arithmetic -- so the two answering alike is worth more than
+    either answering alone.
+    """
+    var scale = _series_scale(width)
+    # Terms, at 47.1 bits each, with three over for the tail.
+    var terms = scale // 47 + 4
+    var middle = terms // 2
+    var left = chudnovsky_split(0, middle)
+    var right = chudnovsky_split_dropping_p(middle, terms)
+    var denominator = left.t * right[0] + left.p * right[1]
+    var numerator = left.q * right[0]
+
+    # Only the leading `scale` bits of either operand outlive the division,
+    # and the splitting hands back far more than that. Shifting both by the
+    # same amount leaves the ratio alone to within a relative `2^-guard`.
+    var guard = scale + 64
+    var shared = min(numerator.bit_length(), denominator.bit_length())
+    if shared > guard:
+        var shift = shared - guard
+        numerator = numerator >> shift
+        denominator = denominator >> shift
+
+    # `Q / T` is a little under `2^-24`, and the places of the answer are
+    # counted from one, so the division is scaled by the width and what the
+    # quotient's own leading zeros take.
+    var lead = denominator.bit_length() - numerator.bit_length()
+    if lead < 0:
+        lead = 0
+    var places = scale + lead + 8
+    var quotient = (numerator << places).truncate_divide(denominator)
+
+    var root = bigint_exponential.reciprocal_sqrt_fixed_point(
+        UInt64(10005), places
+    )
+    var total = (quotient * BigInt(4270934400) * root) >> places
+    return BigFloat.from_rounded_parts(total, -places, width, False)
+
+
+def _pi_by_machin(width: Int) raises -> BigFloat:
     """Pi to `width` bits, by Machin's formula.
 
     Args:
@@ -183,6 +255,13 @@ def _pi_computed(width: Int) raises -> BigFloat:
 
     Raises:
         Error: Propagated from the arithmetic.
+
+    Notes:
+
+    `pi = 16 arctan(1/5) - 4 arctan(1/239)`, summed in fixed point. This was
+    the way pi was computed here; it is kept as the second answer the first
+    one is checked against, and because for a few hundred bits the two are
+    within a microsecond of each other.
     """
     var scale = _series_scale(width)
     var total = BigInt(16) * _arctangent_of_reciprocal(5, scale) - BigInt(
