@@ -17,6 +17,7 @@ magic.lock
 # Editor environments
 .vscode
 .helix
+.yumete
 
 # Temporary files
 tempCodeRunnerFile.mojo

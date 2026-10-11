@@ -51,14 +51,17 @@ from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigfloat.comparison import compare_absolute
 from decimo.bigfloat.constants import ln10, ln2
 from decimo.bigfloat.rounding import (
+    BLOCK_FLOOR,
     MAX_PRECISION,
     _lowered,
     _raised,
     checked_precision,
+    cube_root,
     fixed_point_scale,
     from_fixed_point,
     guard_bits,
     leading_bit_position,
+    odd_series_in_blocks,
     rounded_beside,
     to_fixed_point,
     working_width,
@@ -891,6 +894,35 @@ def atanh_at_width(x: BigFloat, width: Int) raises -> BigFloat:
     var magnitude = to_fixed_point(x, scale)
     var square = (magnitude * magnitude) >> scale
 
+    var total = odd_series_in_blocks(
+        magnitude, square, scale, False
+    ) if scale >= BLOCK_FLOOR else _atanh_in_a_loop(magnitude, square, scale)
+    return from_fixed_point(total, scale, width, x.sign)
+
+
+def _atanh_in_a_loop(
+    magnitude: BigInt, square: BigInt, scale: Int
+) raises -> BigInt:
+    """The `atanh` series summed a term at a time, in fixed point.
+
+    Args:
+        magnitude: The argument in fixed point, never negative or nought.
+        square: Its square in the same fixed point.
+        scale: The bits of the fixed point.
+
+    Returns:
+        The sum, truncated, within as many units of the last place as it took
+        terms.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    One multiplication a term, which for a short sum is the whole cost and
+    nothing is quicker. `odd_series_in_blocks()` is quicker once the sum runs
+    long, and `BLOCK_FLOOR` is where the two meet.
+    """
     var total = magnitude.copy()
     var power = magnitude.copy()
     var index = 3
@@ -898,7 +930,7 @@ def atanh_at_width(x: BigFloat, width: Int) raises -> BigFloat:
         power = (power * square) >> scale
         var term = power.truncate_divide(BigInt(index))
         if term.is_zero():
-            return from_fixed_point(total, scale, width, x.sign)
+            return total^
         total += term
         index += 2
 
@@ -1157,11 +1189,20 @@ def _root_reductions(scale: Int, value: BigFloat) raises -> Tuple[Int, Int]:
     the terms from `scale/2d` to `scale/2(d + k)`. The two costs balance near
     `k = sqrt(scale)/3`, and a `d` already past that leaves nothing to buy.
 
+    Where the series is summed in blocks the balance moves, because its
+    terms no longer cost a multiplication each: `2 sqrt(2N)` of them answer
+    `N` terms, so the cost is `2.7k + 2.83 sqrt(scale/2k)` and the least of
+    that is near the cube root of `scale/7` -- eleven roots at ten thousand
+    bits where the old balance asked for thirty-three. Fewer roots, more
+    terms, and the terms are the cheap part now.
+
     Below a few hundred bits the series is short enough that the roots cost
     more than the terms they save, so none are taken -- and the argument is
     not measured either, which at 53 bits is itself worth a few per cent.
     """
-    var wanted = _halvings(scale) // 3
+    var wanted = (
+        cube_root(scale // 7) if scale >= BLOCK_FLOOR else _halvings(scale) // 3
+    )
     if wanted < 4:
         return (0, 0)
     var agreement = _agreement_with_one(value, wanted)

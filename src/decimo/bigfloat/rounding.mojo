@@ -590,3 +590,174 @@ def rounded_beside(
         rounding_mode,
         True,
     )
+
+
+# ===----------------------------------------------------------------------=== #
+# A series summed in blocks
+# ===----------------------------------------------------------------------=== #
+#
+# `atanh` and `arctan` are both sums of `x^(2n+1)/(2n+1)`, one with every
+# term added and the other with the signs alternating, and both are summed
+# in the fixed point above. A term at a time, each costs a multiplication of
+# two numbers as wide as the sum itself, so `N` terms cost `N` of them.
+#
+# Grouping the terms into blocks of `m` costs `m + 2N/m` instead, which at
+# `m = sqrt(2N)` is about `2 sqrt(2N)`: thirty-five multiplications where
+# five hundred were, at ten thousand bits. What makes it work is that these
+# coefficients are reciprocals of single words, so the only cost left per
+# term is a division by one word, which is a pass over the digits rather
+# than a multiplication. A series whose coefficients are factorials -- the
+# exponential's -- gains much less, because there the coefficient is as wide
+# as the sum and multiplying by it costs what the whole multiplication did.
+
+
+def cube_root(value: Int) -> Int:
+    """The integer cube root of a value that fits a machine word.
+
+    Args:
+        value: The value, never negative.
+
+    Returns:
+        The largest whole number whose cube is at or below `value`, and one
+        for anything below eight.
+
+    Notes:
+
+    Newton in `Int`, like `_halvings()` above and for the same reason: the
+    balance it serves is worked out on every call, and a `BigInt` root of a
+    number that fits a word would cost more than the series it is choosing
+    for.
+    """
+    if value < 8:
+        return 1
+    var root = 1 << ((Int(bit_width(UInt(value))) + 2) // 3)
+    while True:
+        var lowered = (2 * root + value // (root * root)) // 3
+        if lowered >= root:
+            return root
+        root = lowered
+
+
+comptime BLOCK_FLOOR = 2048
+"""The scale from which summing in blocks beats a plain loop, measured.
+
+A block costs a multiplication of its own, so a sum of few terms pays for
+blocks it cannot use. On the series alone, in fixed point: a thousand bits
+is a fifth slower in blocks, three thousand half as quick again, ten
+thousand three and a third times quicker and thirty thousand six and a half.
+
+End to end, where the series is only part of the work: the logarithm goes
+from 147 to 129 microseconds at three thousand bits, 1515 to 1040 at ten
+thousand and 17.6 to 10.5 milliseconds at thirty thousand; the arctangent,
+whose series runs longer, from 185 to 161, 2313 to 1245 and 31.7 to 8.9.
+Below the floor nothing changes.
+"""
+
+
+def block_size(scale: Int, leading: Int) raises -> Int:
+    """How many terms to put in a block.
+
+    Args:
+        scale: The bits the sum is taken to.
+        leading: The bit length of the argument in that fixed point, which
+            says how fast the terms shrink.
+
+    Returns:
+        The number of terms a block holds, at least two.
+
+    Raises:
+        Error: Never, but the signature matches its callers.
+
+    Notes:
+
+    An argument `d` bits below one loses `2d` bits a term, so the sum runs
+    for about `scale / 2d` terms. Blocks of `m` cost `m` multiplications to
+    build the powers and two more for every block, so `m + 2N/m`
+    multiplications in all, which is least at `m = sqrt(2N)`.
+    """
+    var distance = scale - leading
+    if distance < 1:
+        distance = 1
+    var terms = scale // (2 * distance) + 1
+    var size = 2
+    while size * size < 2 * terms:
+        size += 1
+    return size
+
+
+def odd_series_in_blocks(
+    magnitude: BigInt,
+    square: BigInt,
+    scale: Int,
+    alternating: Bool,
+    size: Int = 0,
+) raises -> BigInt:
+    """`x + x^3/3 + x^5/5 + ...` summed in blocks, in fixed point at `scale`.
+
+    Args:
+        magnitude: The argument in fixed point, never negative or nought.
+        square: Its square in the same fixed point.
+        scale: The bits of the fixed point.
+        alternating: Whether the signs alternate, as the arctangent's do,
+            rather than every term being added, as the area hyperbolic
+            tangent's are.
+        size: How many terms to put in a block. Nought asks for the size
+            that balances the costs, which is the one to use; the sum is the
+            same whatever the size, and a test takes that as its subject.
+
+    Returns:
+        The sum, truncated, within about as many units of the last place as
+        there are terms -- which is what the plain loop above costs too.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    `atanh(x) / x` is the sum of `u^n / (2n+1)` for `u = x^2`. Writing
+    `n = jm + i` turns it into
+
+        sum over j of u^(jm) * (sum over i < m of u^i / (2(jm + i) + 1))
+
+    where the inner sum uses the same `m` powers of `u` in every block. Those
+    powers are built once, and the only multiplications left are the `m` that
+    build them and the two a block needs -- one to place the inner sum and
+    one to step `u^(jm)` on. The divisions by the odd numbers are by single
+    words and cost a pass over the digits, not a multiplication, which is why
+    trading multiplications for more of them is worth it.
+
+    The reason it pays: the plain loop costs a multiplication a term, so
+    `N` of them, while this costs about `2 sqrt(2N)`. At ten thousand bits
+    that is thirty-five against five hundred.
+    """
+    var one = BigInt.one() << scale
+    var block = size if size > 0 else block_size(scale, magnitude.bit_length())
+
+    var powers = List[BigInt]()
+    powers.append(one.copy())
+    for index in range(1, block):
+        powers.append((powers[index - 1] * square) >> scale)
+    var step = (powers[block - 1] * square) >> scale
+
+    # Upward, not Horner from the top. Horner would cost one multiplication
+    # a block against two, but both of its operands are the full width every
+    # time, while here the power of the block shrinks as the sum goes on and
+    # the multiplications shrink with it. Measured at thirty thousand bits:
+    # 28 milliseconds the clever way against 10 this way.
+    var total = BigInt.zero()
+    var reached = one^
+    var first = 1
+    while True:
+        var inner = BigInt.zero()
+        for index in range(block):
+            var term = powers[index].truncate_divide(BigInt(first + 2 * index))
+            if alternating and (first // 2 + index) % 2 == 1:
+                inner -= term
+            else:
+                inner += term
+        total += (reached * inner) >> scale
+        reached = (reached * step) >> scale
+        if reached.is_zero():
+            break
+        first += 2 * block
+    return (total * magnitude) >> scale
