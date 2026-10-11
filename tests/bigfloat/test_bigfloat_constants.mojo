@@ -41,6 +41,7 @@ from decimo.bigfloat.constants import (
     _SHARED_CONSTANTS,
     _e_computed,
     _ln2_computed,
+    _pi_by_machin,
     _pi_computed,
     e,
     ln2,
@@ -819,6 +820,34 @@ def test_a_wide_request_does_not_change_a_narrow_one() raises:
             + " is thinner than the cache believes",
         )
     assert_true(held, "no narrow copy was ever cut, so nothing was tested")
+
+
+def test_the_two_series_for_pi_agree() raises:
+    """Chudnovsky against Machin, which share nothing.
+
+    Pi comes from the Chudnovsky series, summed by binary splitting over
+    integers; Machin's formula, two arctangent series in fixed point, is what
+    it replaced. The two have no formula, no series and no arithmetic in
+    common, so where they agree to the bits they were asked for, both are
+    right. Each kernel is within `_CONSTANT_SLACK` units of the last place,
+    so the comparison is at the width less a couple of bits.
+    """
+    for width in [53, 64, 113, 200, 500, 1200, 3000]:
+        var chudnovsky = _pi_computed(width)
+        var machin = _pi_by_machin(width)
+        var narrowed = width - 4
+        assert_equal(
+            BigFloat.from_rounded_parts(
+                chudnovsky.significand,
+                chudnovsky.exponent,
+                narrowed,
+                False,
+            ),
+            BigFloat.from_rounded_parts(
+                machin.significand, machin.exponent, narrowed, False
+            ),
+            "the two series for pi at " + String(width) + " bits",
+        )
 
 
 def main() raises:
