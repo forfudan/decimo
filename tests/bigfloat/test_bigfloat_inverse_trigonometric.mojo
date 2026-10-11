@@ -46,7 +46,9 @@ from decimo.bigfloat.arithmetics import add, multiply, subtract
 from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigfloat.comparison import compare_absolute
 from decimo.bigfloat.constants import pi
+from decimo.bigfloat.rounding import odd_series_in_blocks
 from decimo.bigfloat.trigonometric import (
+    _arctangent_in_a_loop,
     arccos,
     arcsin,
     arctan,
@@ -873,6 +875,71 @@ def test_a_precision_must_fit_the_guard_bits() raises:
                 raised,
                 String("a precision of ") + String(precision) + " was taken",
             )
+
+
+# ===----------------------------------------------------------------------=== #
+# The series in blocks
+# ===----------------------------------------------------------------------=== #
+
+
+def test_the_arctangent_series_in_blocks_matches_the_plain_sum() raises:
+    """Both summations of the arctangent's series give the same sum.
+
+    This series alternates where the logarithm's adds every term, so the
+    blocks have to carry the sign of each term as well as its place. The two
+    summations truncate once or twice a term, so they agree to about as many
+    units as the sum took terms rather than to the last one.
+    """
+    for scale in [2048, 3000]:
+        for distance in [8, 14, 40]:
+            # An argument `distance` bits below one, as the halving leaves
+            # it.
+            var magnitude = (BigInt.one() << (scale - distance)) + BigInt(7)
+            var square = (magnitude * magnitude) >> scale
+            var looped = _arctangent_in_a_loop(magnitude, square, scale)
+            var blocked = odd_series_in_blocks(magnitude, square, scale, True)
+            var terms = scale // (2 * distance) + 2
+            var gap = looped - blocked
+            if gap < BigInt.zero():
+                gap = BigInt.zero() - gap
+            assert_true(
+                gap <= BigInt(4 * terms),
+                (
+                    "the two sums at scale "
+                    + String(scale)
+                    + " and distance "
+                    + String(distance)
+                    + " are "
+                    + String(gap)
+                    + " apart, which is past the "
+                    + String(4 * terms)
+                    + " the terms allow"
+                ),
+            )
+
+
+def test_the_arctangent_of_one_is_a_quarter_of_pi_up_high() raises:
+    """`arctan(1)` against `pi/4` where the blocks are used.
+
+    Two thousand bits and more is past the floor, so this is the block
+    summation end to end, and `pi` comes from Chudnovsky's series -- other
+    code with other error. Both are correctly rounded, so a quarter of one
+    is the other to the bit.
+    """
+    for precision in [2048, 3000]:
+        var one = BigFloat.from_int(1, precision)
+        var quarter = pi(precision + 2)
+        var expected = BigFloat.from_rounded_parts(
+            quarter.significand,
+            quarter.exponent - 2,
+            precision,
+            False,
+        )
+        assert_equal(
+            arctan(one, precision, RoundingMode.ROUND_HALF_EVEN),
+            expected,
+            "arctan(1) at " + String(precision) + " bits",
+        )
 
 
 def main() raises:

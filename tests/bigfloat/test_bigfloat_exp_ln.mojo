@@ -39,7 +39,15 @@ from decimo.bigfloat.arithmetics import add, multiply, subtract
 from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigfloat.comparison import compare_absolute
 from decimo.bigfloat.constants import e, ln2
-from decimo.bigfloat.exponential import exp, exp10, exp2, expm1, ln
+from decimo.bigfloat.exponential import (
+    _atanh_in_a_loop,
+    exp,
+    exp10,
+    exp2,
+    expm1,
+    ln,
+)
+from decimo.bigfloat.rounding import block_size, odd_series_in_blocks
 from decimo.bigint.bigint import BigInt
 from decimo.rounding_mode import RoundingMode
 
@@ -930,6 +938,131 @@ def test_an_argument_at_the_top_of_the_range_is_refused() raises:
         "1024",
         "two to the tenth",
     )
+
+
+# ===----------------------------------------------------------------------=== #
+# The series in blocks
+# ===----------------------------------------------------------------------=== #
+#
+# Above a few thousand bits the logarithm's series is summed in blocks
+# instead of a term at a time, which trades multiplications for divisions by
+# single words. The sum is the same either way, and that is what these check:
+# the two summations against each other, the block size against itself, and
+# the answer at a precision the blocks are actually used at against CPython.
+
+
+def test_the_series_in_blocks_matches_the_plain_sum() raises:
+    """Both summations of `atanh` give the same sum, to the terms' slack.
+
+    Each truncates once or twice a term, so neither is exact and they are not
+    expected to agree to the last unit -- they are expected to agree to about
+    as many units as the sum took terms, which for these scales is a few
+    hundred and leaves the last place of the width the caller asked for well
+    clear. The plain sum is the slow one here, which is the whole point of
+    the blocks, so two scales are enough.
+    """
+    for scale in [2048, 3000]:
+        for distance in [8, 11, 20, 64]:
+            # An argument `distance` bits below one, as the argument
+            # reduction leaves it after that many square roots.
+            var magnitude = (BigInt.one() << (scale - distance)) + BigInt(7)
+            var square = (magnitude * magnitude) >> scale
+            var looped = _atanh_in_a_loop(magnitude, square, scale)
+            var blocked = odd_series_in_blocks(magnitude, square, scale, False)
+            var terms = scale // (2 * distance) + 2
+            var gap = looped - blocked
+            if gap < BigInt.zero():
+                gap = BigInt.zero() - gap
+            assert_true(
+                gap <= BigInt(4 * terms),
+                (
+                    "the two sums of atanh at scale "
+                    + String(scale)
+                    + " and distance "
+                    + String(distance)
+                    + " are "
+                    + String(gap)
+                    + " apart, which is past the "
+                    + String(4 * terms)
+                    + " the terms allow"
+                ),
+            )
+
+
+def test_the_block_size_does_not_change_the_sum() raises:
+    """The size of a block is a cost, not an answer.
+
+    The sum is the same however the terms are grouped, so a size chosen for
+    speed cannot change what comes out. Any disagreement here would mean the
+    grouping itself is wrong, not that one size is better than another.
+    """
+    for scale in [2048, 3000]:
+        var magnitude = (BigInt.one() << (scale - 12)) + BigInt(7)
+        var square = (magnitude * magnitude) >> scale
+        var chosen = odd_series_in_blocks(magnitude, square, scale, False)
+        for size in [2, 3, 7, 16, 40]:
+            var other = odd_series_in_blocks(
+                magnitude, square, scale, False, size
+            )
+            var gap = chosen - other
+            if gap < BigInt.zero():
+                gap = BigInt.zero() - gap
+            assert_true(
+                gap <= BigInt(4 * (scale // 24 + 2)),
+                (
+                    "blocks of "
+                    + String(size)
+                    + " at scale "
+                    + String(scale)
+                    + " sum to something "
+                    + String(gap)
+                    + " away from blocks of "
+                    + String(block_size(scale, magnitude.bit_length()))
+                ),
+            )
+
+
+def test_a_logarithm_above_the_block_floor_matches_cpython() raises:
+    """The answer where the blocks are used, against the reference.
+
+    Two thousand and forty-eight bits is past `_BLOCK_FLOOR`, so this is the
+    block summation's answer end to end. The expectation is CPython's
+    `decimal.ln` at seven hundred digits, rounded to the bits asked for in
+    exact rationals -- the same way the table at the top of this file was
+    made.
+    """
+    var expected = BigInt(
+        "17751930001452090921672469244219470325843078921099959876226880516207"
+        "05929844318253795050921186183732516827775333138022141032653093267554"
+        "77526469531758774033065747768403994577667544713278369136638560960557"
+        "08783668927575015436295864293458822051927821533082505726887566777704"
+        "72077884327909896915282255226142660346892754111764252090417099358109"
+        "84239974800671982099780267633771067874030255247791963997854799025851"
+        "51922911003037910551171387028693083707804760500222105917325896667253"
+        "45383819709597958598602003954511415025787738199458875820137504255617"
+        "0539834263870460154000975900659234018728841012052206462060674839352240147"
+    )
+    var three = BigFloat.from_int(3, 2048)
+    var answer = ln(three, 2048, RoundingMode.ROUND_HALF_EVEN)
+    assert_equal(answer.significand, expected, "ln(3) at 2048 bits")
+    assert_equal(answer.exponent, -2047, "ln(3) at 2048 bits, the exponent")
+    assert_false(answer.sign, "ln(3) at 2048 bits is positive")
+
+
+def test_the_logarithm_of_two_agrees_with_the_constant_up_high() raises:
+    """`ln(2)` where the blocks are used, against the constant.
+
+    The constant is computed by its own series with its own reduction and its
+    own error, so this is an independent answer at a precision the blocks are
+    used at. Both are correctly rounded, so they agree to the bit.
+    """
+    for precision in [2048, 3000, 4096]:
+        var two = BigFloat.from_int(2, precision)
+        assert_equal(
+            ln(two, precision, RoundingMode.ROUND_HALF_EVEN),
+            ln2(precision),
+            "ln(2) at " + String(precision) + " bits",
+        )
 
 
 def main() raises:

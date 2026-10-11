@@ -50,6 +50,7 @@ from decimo.bigfloat.exponential import (
     sqrt,
 )
 from decimo.bigfloat.rounding import (
+    BLOCK_FLOOR,
     MAX_PRECISION,
     checked_precision,
     cubic_term_is_below_a_guard_unit,
@@ -57,6 +58,7 @@ from decimo.bigfloat.rounding import (
     from_fixed_point,
     guard_bits,
     leading_bit_position,
+    odd_series_in_blocks,
     round_to_precision,
     rounded_beside,
     square_fixed_point_scale,
@@ -692,6 +694,10 @@ def _arctangent_series(x: BigFloat, width: Int) raises -> BigFloat:
     power of `x^2` is kept apart from the division by the odd number so that
     the two truncations do not compound. The sum is positive for a positive
     argument, the arctangent keeping the sign of what it is given.
+
+    Above `BLOCK_FLOOR` the terms are grouped into blocks instead, which
+    trades most of the multiplications for divisions by single words. The
+    sum is the same; see `odd_series_in_blocks()` for why it is quicker.
     """
     if x.is_zero():
         return BigFloat.zero(width, x.sign)
@@ -699,6 +705,36 @@ def _arctangent_series(x: BigFloat, width: Int) raises -> BigFloat:
     var magnitude = to_fixed_point(x, scale)
     var square = (magnitude * magnitude) >> scale
 
+    var total = odd_series_in_blocks(
+        magnitude, square, scale, True
+    ) if scale >= BLOCK_FLOOR else _arctangent_in_a_loop(
+        magnitude, square, scale
+    )
+    return from_fixed_point(total, scale, width, x.sign)
+
+
+def _arctangent_in_a_loop(
+    magnitude: BigInt, square: BigInt, scale: Int
+) raises -> BigInt:
+    """The arctangent's series summed a term at a time, in fixed point.
+
+    Args:
+        magnitude: The argument in fixed point, never negative or nought.
+        square: Its square in the same fixed point.
+        scale: The bits of the fixed point.
+
+    Returns:
+        The sum, within as many units of the last place as it took terms.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    One multiplication a term, which for a short sum is the whole cost.
+    `odd_series_in_blocks()` is quicker once the sum runs long, and
+    `BLOCK_FLOOR` is where the two meet.
+    """
     var total = magnitude.copy()
     var power = magnitude.copy()
     var index = 3
@@ -707,7 +743,7 @@ def _arctangent_series(x: BigFloat, width: Int) raises -> BigFloat:
         power = (power * square) >> scale
         var term = power.truncate_divide(BigInt(index))
         if term.is_zero():
-            return from_fixed_point(total, scale, width, x.sign)
+            return total^
         if subtract:
             total -= term
         else:
