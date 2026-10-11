@@ -1688,6 +1688,20 @@ print(tenth)                            # as many digits as 53 bits are worth
 print(tenth.internal_representation())  # the significand, exponent, precision
 ```
 
+A digit count costs what the digits cost. The digits asked for are taken by
+scaling the value by a power of ten, so a deep exponent is no longer a reason
+to wait: a value whose exact expansion runs to 301,031 digits still gives
+twenty of them at once, and the smallest and largest values a `BigFloat` can
+hold print like any other.
+
+```mojo
+var deep = BigFloat.power_of_two(-1000000)
+print(deep.to_string(20))               # 1.0100340591980302247E-301030
+```
+
+`to_bigdecimal()` is the one to ask when every digit is wanted, and it is the
+only one whose cost follows the exponent, because the answer does.
+
 Going the other way rounds. `to_float64()` is exact for a normal double but
 rounds a second time when the answer is subnormal, since a subnormal has fewer
 bits than 53: converting from a wider precision avoids it.

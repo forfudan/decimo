@@ -44,6 +44,7 @@ import decimo.bigfloat.comparison as bigfloat_comparison
 from decimo.bigfloat.conversion import (
     from_decimal_parts,
     to_exact_bigdecimal,
+    to_rounded_bigdecimal,
 )
 import decimo.bigfloat.exponential as bigfloat_exponential
 import decimo.bigfloat.ieee as bigfloat_ieee
@@ -1511,32 +1512,36 @@ struct BigFloat(
 
         Notes:
 
-        The exact expansion is taken first and rounded once. That is more
-        digits than are asked for, and it is why the rounding is a single one:
-        rounding during the conversion and again to the digit count would be
-        two, and two roundings can land a step away from the one.
+        One rounding, not two. The value is scaled by the power of ten that
+        puts the digits asked for before the point, and the rounding reads
+        that scaled value's own half and remainder. Taking the exact
+        expansion and rounding it to a few more digits, then those digits to
+        the count asked for, would be two roundings, and two can land a step
+        away from the one.
 
-        The cost therefore follows the exponent and not `digits`: a value with
-        a very large negative exponent builds every digit it has before
-        keeping a few. For the exponents a `Float64` can hold that is at most
-        1074 decimal places, but the exponent here is unbounded. Bounding the
-        work needs a correctly-rounded approximate power of ten and a Ziv
-        loop over it, which is the same machinery the binary `exp` and `ln`
-        will need, so it is written with them rather than guessed at here.
+        The cost follows `digits` and not the exponent: `2^-1000000` has
+        301031 significant digits, and seventeen of them cost the work of
+        seventeen. `to_bigdecimal()` is the one to ask when every digit is
+        wanted.
         """
         if digits <= 0:
             raise ValueError(
                 message="A digit count must be positive.",
                 function="BigFloat.to_bigdecimal_rounded()",
             )
-        var exact = self.to_bigdecimal()
-        exact.round_to_precision_inplace(
-            precision=digits,
-            rounding_mode=rounding_mode,
-            remove_extra_digit_due_to_rounding=True,
-            fill_zeros_to_precision=False,
+        if self.is_nan():
+            raise ValueError(
+                message="A NaN is not a decimal value.",
+                function="BigFloat.to_bigdecimal_rounded()",
+            )
+        if self.is_infinite():
+            raise ValueError(
+                message="An infinity is not a decimal value.",
+                function="BigFloat.to_bigdecimal_rounded()",
+            )
+        return to_rounded_bigdecimal(
+            self.significand, self.exponent, self.sign, digits, rounding_mode
         )
-        return exact^
 
     def decimal_digits(self) -> Int:
         """How many decimal digits this precision is worth.
