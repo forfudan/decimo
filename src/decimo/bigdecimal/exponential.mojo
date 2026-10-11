@@ -21,6 +21,8 @@ from std.ffi import _Global
 
 import decimo.bigdecimal.arithmetics as bigdecimal_arithmetics
 from decimo.bigdecimal.bigdecimal import BigDecimal
+from decimo.bigfloat.bigfloat import BigFloat
+import decimo.bigfloat.exponential as bigfloat_exponential
 import decimo.biguint.arithmetics as biguint_arithmetics
 from decimo.biguint.biguint import BigUInt
 import decimo.biguint.exponential as biguint_exponential
@@ -420,9 +422,9 @@ def power(
     # General case using x^y = e^(y*ln(x))
     # Need to be careful with negative base
     var abs_base = abs(base)
-    var ln_result = ln(abs_base, working_precision)
+    var ln_result = _logarithm_in_binary(abs_base, working_precision)
     var product = ln_result.multiply(exponent)
-    var exp_result = exp(product, working_precision)
+    var exp_result = _exponential_in_binary(product, working_precision)
 
     # Handle sign for negative base with odd integer exponents
     if base.sign and exponent.is_integer() and exponent.is_odd():
@@ -2053,6 +2055,321 @@ def _settled_answer(
     return None
 
 
+# ===----------------------------------------------------------------------=== #
+# The same answers, worked out in binary
+# ===----------------------------------------------------------------------=== #
+#
+# `exp` and `ln` are summed here in decimal, which is the natural thing for a
+# decimal type and the slow thing for a long one: a decimal multiplication
+# moves base-10^18 words, and the series above take hundreds of them. The
+# binary layer sums the same functions in base-2^64 words, with the argument
+# reduction and the block summation its own module carries, and comes out
+# tens of times quicker: at three thousand digits the logarithm took 28.5
+# milliseconds here and 0.98 in binary.
+#
+# So the kernels below hand the work over. They convert the argument, which
+# rounds it, evaluate in binary a little wider than the digits asked for, and
+# convert back, which rounds again. Neither rounding reaches the answer: the
+# argument's own error is `2^-bits` of it, which the guard bits put below the
+# last digit, and `_round_by_deciding()` above decides the last digit from a
+# width wider still -- widening when the digits are too close to call, exactly
+# as it does for the decimal series.
+#
+# Two things the binary layer cannot do, and the decimal series still does.
+# A `BigDecimal` reaches a decimal exponent of `10^18` where a `BigFloat`
+# stops at `2^63`, so an argument or an answer outside that range goes the
+# decimal way. And the series stays as the independent implementation the
+# tests compare against: two routes to the same digits is a stronger check
+# than either against itself.
+
+
+comptime _BINARY_GUARD_BITS = 96
+"""Bits past the digits asked for, to absorb what the conversions round.
+
+The argument comes in with a relative error of `2^-bits`, and the answer's
+own last place is `2^-bits` of it, so sixteen bits would cover the pair. The
+rest is for what the two functions do to that error: the exponential turns an
+absolute error of `x` into a relative one, and `x` is below `10^20` here,
+which is sixty-seven bits.
+"""
+
+comptime _BINARY_LOGARITHM_FLOOR = 40
+"""The digits from which the binary route beats the decimal series for `ln`.
+
+Below it the two conversions cost more than the series does. Measured, in
+microseconds: 3 against 5 at sixteen digits, 5 against 5 at twenty-eight,
+13 against 8 at sixty, 47 against 17 at a hundred and fifty, 167 against 36
+at three hundred, 1603 against 225 at nine hundred and 31431 against 1376 at
+three thousand.
+"""
+
+comptime _BINARY_EXPONENTIAL_FLOOR = 256
+"""The same for `exp`, which the decimal series does well.
+
+Its series needs about `2 sqrt(3.3 p)` multiplications, which is already
+few, so the binary route only pulls ahead where a decimal multiplication
+starts to cost: 23 microseconds against 19 at three hundred digits, 135
+against 109 at nine hundred, 1702 against 1270 at three thousand. Below the
+floor the series wins outright -- 1 microsecond against 3 at sixteen digits.
+"""
+
+comptime _BINARY_EXPONENT_LIMIT = 2_000_000_000_000_000_000
+"""The decimal exponent past which the binary layer has no room.
+
+A `BigFloat` holds a power of two up to `2^63`, which is `10^2.78e18`, so a
+decimal exponent of `10^18` is inside it and `10^19` is not. This is the
+cautious line: past it the decimal series answers.
+"""
+
+
+def _bits_for_digits(digits: Int) -> Int:
+    """How many bits hold `digits` decimal digits, with room to spare.
+
+    Args:
+        digits: The decimal digits, never negative.
+
+    Returns:
+        The bits, which is ten thirds of the digits -- over the three and a
+        third a digit takes -- plus the guard.
+    """
+    return (digits * 10 + 2) // 3 + _BINARY_GUARD_BITS
+
+
+def _amplified_bits(distance: BigDecimal) raises -> Int:
+    """Bits to add where the answer is as small as the argument's distance.
+
+    Args:
+        distance: How far the argument is from where the answer is nought --
+            `x - 1` for the logarithm, `x` itself for `log1p`.
+
+    Returns:
+        The bits the cancellation takes, which is what that distance is worth
+        in bits, and nought when the distance is not small.
+
+    Raises:
+        Error: Propagated from reading the argument.
+
+    Notes:
+
+    `ln(1 + d)` is about `d`, so moving the argument by `2^-bits` moves the
+    answer by as much -- and next to an answer of size `d` that is a relative
+    error of `2^-bits / d`. Asking for those bits up front is what lets the
+    first attempt settle instead of the deciding loop widening its way there.
+    """
+    if distance.coefficient.is_zero():
+        return 0
+    var places = -Int(distance.adjusted())
+    if places <= 0:
+        return 0
+    return (places * 10 + 2) // 3
+
+
+def _exponential_in_binary(x: BigDecimal, precision: Int) raises -> BigDecimal:
+    """`exp(x)` to `precision` digits, worked out in the binary layer.
+
+    Args:
+        x: The exponent.
+        precision: The significant digits wanted.
+
+    Returns:
+        The exponential, within `EXP_SLACK` units of the last place, which is
+        what the decimal series promises too.
+
+    Raises:
+        OverflowError: If the answer is too large to represent.
+        Error: Propagated from the conversions or the binary exponential.
+
+    Notes:
+
+    The answer's own exponent is `x / ln 2` in binary, so an `x` past the
+    binary range has no answer there even though it has one here; that goes
+    the decimal way. So does an argument the conversion could not hold.
+    """
+    if (
+        precision < _BINARY_EXPONENTIAL_FLOOR
+        or x.adjusted() > 19
+        or _BINARY_EXPONENT_LIMIT // 2 < Int(x.adjusted()) + precision
+    ):
+        return exp(x, precision)
+    var bits = _bits_for_digits(precision)
+    var answer = bigfloat_exponential.exp(
+        BigFloat.from_bigdecimal(x, bits),
+        bits,
+        RoundingMode.ROUND_HALF_EVEN,
+    )
+    return answer.to_bigdecimal_rounded(precision, RoundingMode.ROUND_HALF_EVEN)
+
+
+def _logarithm_in_binary(x: BigDecimal, precision: Int) raises -> BigDecimal:
+    """`ln(x)` to `precision` digits, worked out in the binary layer.
+
+    Args:
+        x: The argument, which must be above nought.
+        precision: The significant digits wanted.
+
+    Returns:
+        The logarithm, within `LN_SLACK` units of the last place, which is
+        what the decimal series promises too.
+
+    Raises:
+        ValueError: If the argument is negative or nought.
+        Error: Propagated from the conversions or the binary logarithm.
+
+    Notes:
+
+    An argument that agrees with one is where the care goes. The logarithm of
+    `1 + d` is about `d`, so an argument the conversion moves by `2^-bits`
+    moves the answer by that much as well -- which next to an answer of size
+    `d` is a relative error of `2^-bits / d`. The bits are raised by what `d`
+    is worth, which the argument itself says, so the first attempt settles
+    rather than the loop widening its way there.
+    """
+    if precision < _BINARY_LOGARITHM_FLOOR or x.sign or x.coefficient.is_zero():
+        return ln(x, precision)
+    if (
+        x.adjusted() > _BINARY_EXPONENT_LIMIT
+        or x.adjusted() < -_BINARY_EXPONENT_LIMIT
+    ):
+        return ln(x, precision)
+    var distance = bigdecimal_arithmetics.subtract(
+        x, BigDecimal(BigUInt.one(), 0, False)
+    )
+    if distance.coefficient.is_zero():
+        # `ln(1)` is nought, the one argument whose answer is rational.
+        return ln(x, precision)
+    var bits = _bits_for_digits(precision) + _amplified_bits(distance)
+    var answer = bigfloat_exponential.ln(
+        BigFloat.from_bigdecimal(x, bits),
+        bits,
+        RoundingMode.ROUND_HALF_EVEN,
+    )
+    return answer.to_bigdecimal_rounded(precision, RoundingMode.ROUND_HALF_EVEN)
+
+
+def _common_logarithm_in_binary(
+    x: BigDecimal, precision: Int
+) raises -> BigDecimal:
+    """`log10(x)` to `precision` digits, worked out in the binary layer.
+
+    Args:
+        x: The argument, which must be above nought.
+        precision: The significant digits wanted.
+
+    Returns:
+        The logarithm, within `LOG10_SLACK` units of the last place.
+
+    Raises:
+        ValueError: If the argument is negative or nought.
+        Error: Propagated from the conversions or the binary logarithm.
+
+    Notes:
+
+    The same cancellation as the natural logarithm's, and the same answer to
+    it; the binary `log10` carries the division by `ln 10` itself, and answers
+    a whole power of ten exactly, so nothing is lost by the extra step.
+    """
+    if precision < _BINARY_LOGARITHM_FLOOR or x.sign or x.coefficient.is_zero():
+        return log10(x, precision)
+    if (
+        x.adjusted() > _BINARY_EXPONENT_LIMIT
+        or x.adjusted() < -_BINARY_EXPONENT_LIMIT
+    ):
+        return log10(x, precision)
+    var distance = bigdecimal_arithmetics.subtract(
+        x, BigDecimal(BigUInt.one(), 0, False)
+    )
+    if distance.coefficient.is_zero():
+        return log10(x, precision)
+    var bits = _bits_for_digits(precision) + _amplified_bits(distance)
+    var answer = bigfloat_exponential.log10(
+        BigFloat.from_bigdecimal(x, bits),
+        bits,
+        RoundingMode.ROUND_HALF_EVEN,
+    )
+    return answer.to_bigdecimal_rounded(precision, RoundingMode.ROUND_HALF_EVEN)
+
+
+def _exponential_less_one_in_binary(
+    x: BigDecimal, precision: Int
+) raises -> BigDecimal:
+    """`exp(x) - 1` to `precision` digits, worked out in the binary layer.
+
+    Args:
+        x: The argument.
+        precision: The significant digits wanted.
+
+    Returns:
+        The value, within `EXPM1_SLACK` units of the last place.
+
+    Raises:
+        OverflowError: If the answer is too large to represent.
+        Error: Propagated from the conversions or the binary function.
+
+    Notes:
+
+    No cancellation to make room for: `exp(x) - 1` is about `x` for a small
+    `x`, so the argument's own error carries straight through, which is the
+    whole reason this function exists next to `exp`.
+    """
+    if (
+        precision < _BINARY_EXPONENTIAL_FLOOR
+        or x.coefficient.is_zero()
+        or x.adjusted() > 19
+        or _BINARY_EXPONENT_LIMIT // 2 < Int(x.adjusted()) + precision
+    ):
+        return expm1(x, precision)
+    var bits = _bits_for_digits(precision)
+    var answer = bigfloat_exponential.expm1(
+        BigFloat.from_bigdecimal(x, bits),
+        bits,
+        RoundingMode.ROUND_HALF_EVEN,
+    )
+    return answer.to_bigdecimal_rounded(precision, RoundingMode.ROUND_HALF_EVEN)
+
+
+def _logarithm_of_one_plus_in_binary(
+    x: BigDecimal, precision: Int
+) raises -> BigDecimal:
+    """`ln(1 + x)` to `precision` digits, worked out in the binary layer.
+
+    Args:
+        x: The argument, which must be above `-1`.
+        precision: The significant digits wanted.
+
+    Returns:
+        The value, within `LOG1P_SLACK` units of the last place.
+
+    Raises:
+        ValueError: If the argument is at or below `-1`.
+        Error: Propagated from the conversions or the binary function.
+
+    Notes:
+
+    A small argument needs no room, the answer being about the argument. An
+    argument near `-1` needs it, the answer running off to nought's logarithm,
+    and the distance that measures is `1 + x`.
+    """
+    if precision < _BINARY_LOGARITHM_FLOOR or x.coefficient.is_zero():
+        return log1p(x, precision)
+    if (
+        x.adjusted() > _BINARY_EXPONENT_LIMIT
+        or x.adjusted() < -_BINARY_EXPONENT_LIMIT
+    ):
+        return log1p(x, precision)
+    var raised = bigdecimal_arithmetics.add(
+        x, BigDecimal(BigUInt.one(), 0, False)
+    )
+    if raised.sign or raised.coefficient.is_zero():
+        return log1p(x, precision)
+    var bits = _bits_for_digits(precision) + _amplified_bits(raised)
+    var answer = bigfloat_exponential.log1p(
+        BigFloat.from_bigdecimal(x, bits),
+        bits,
+        RoundingMode.ROUND_HALF_EVEN,
+    )
+    return answer.to_bigdecimal_rounded(precision, RoundingMode.ROUND_HALF_EVEN)
+
+
 def _round_by_deciding[
     kernel: def(BigDecimal, Int) thin raises -> BigDecimal, slack: Int
 ](
@@ -2111,7 +2428,9 @@ def exp_rounded(
     if x.coefficient.is_zero():
         # `exp(0)` is exactly one, the only argument where it is rational.
         return exp(x, precision)
-    return _round_by_deciding[exp, EXP_SLACK](x, precision, rounding_mode)
+    return _round_by_deciding[_exponential_in_binary, EXP_SLACK](
+        x, precision, rounding_mode
+    )
 
 
 def ln_rounded(
@@ -2133,7 +2452,9 @@ def ln_rounded(
     if x == BigDecimal.one():
         # `ln(1)` is exactly zero, the only argument where it is rational.
         return ln(x, precision)
-    return _round_by_deciding[ln, LN_SLACK](x, precision, rounding_mode)
+    return _round_by_deciding[_logarithm_in_binary, LN_SLACK](
+        x, precision, rounding_mode
+    )
 
 
 def log10_rounded(
@@ -2156,7 +2477,9 @@ def log10_rounded(
         # `log10(10^k)` is exactly `k`, the only argument where it is
         # rational, and `log10()` answers those exactly already.
         return log10(x, precision)
-    return _round_by_deciding[log10, LOG10_SLACK](x, precision, rounding_mode)
+    return _round_by_deciding[_common_logarithm_in_binary, LOG10_SLACK](
+        x, precision, rounding_mode
+    )
 
 
 comptime INTEGER_POWER_SLACK = 4
@@ -3651,7 +3974,9 @@ def expm1_rounded(
     if x.is_zero():
         # `expm1(0)` is exactly zero.
         return expm1(x, precision)
-    return _round_by_deciding[expm1, EXPM1_SLACK](x, precision, rounding_mode)
+    return _round_by_deciding[_exponential_less_one_in_binary, EXPM1_SLACK](
+        x, precision, rounding_mode
+    )
 
 
 def log1p_rounded(
@@ -3673,7 +3998,9 @@ def log1p_rounded(
     if x.is_zero():
         # `log1p(0)` is exactly zero.
         return log1p(x, precision)
-    return _round_by_deciding[log1p, LOG1P_SLACK](x, precision, rounding_mode)
+    return _round_by_deciding[_logarithm_of_one_plus_in_binary, LOG1P_SLACK](
+        x, precision, rounding_mode
+    )
 
 
 def hypot_rounded(

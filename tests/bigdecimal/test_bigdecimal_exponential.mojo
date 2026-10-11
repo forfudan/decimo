@@ -8,9 +8,12 @@ non-integer exponents.
 
 from std import testing
 from std.python import Python
+from std.testing import assert_equal
 
 from decimo import BDec
+from decimo.bigdecimal.bigdecimal import BigDecimal
 import decimo.bigdecimal.exponential as bigdecimal_exponential
+from decimo.rounding_mode import RoundingMode
 from decimo.tests import TestCase, load_test_cases, parse_file
 
 comptime file_path = "tests/bigdecimal/test_data/bigdecimal_exponential.toml"
@@ -245,6 +248,106 @@ def test_sqrt_via_reciprocal_iteration_matches_sqrt_exact() raises:
                 + String(" of ")
                 + String(len(want))
                 + String(" characters"),
+            )
+
+
+# ===----------------------------------------------------------------------=== #
+# The transcendentals that are worked out in binary
+# ===----------------------------------------------------------------------=== #
+#
+# Above a few dozen digits `ln`, `log10` and `exp` convert their argument to
+# a `BigFloat`, evaluate there and convert back. Both ways are correctly
+# rounded, so both are CPython's answer, and these ask for it on either side
+# of the floor. They live in this file because it already starts the Python
+# interpreter, which costs half a minute wherever it happens.
+
+
+def _reference_arguments() -> List[String]:
+    """The arguments the reference is asked for, which is the slow part.
+
+    Returns:
+        Six of the ten: an ordinary value, the two ends of the exponent
+        range, and the three nearest one, where the cancellation is. CPython's
+        `ln` costs more than this library's at these precisions, so the list
+        is shorter than the one the two routes are compared on.
+    """
+    return [
+        String("3.14159265358979323846264338327950288"),
+        String("1e50"),
+        String("1e-50"),
+        String("1.0000000000000000001"),
+        String("0.9999999999999999999"),
+        String(
+            "1.000000000000000000000000000000000000000000000000000000000001"
+        ),
+    ]
+
+
+def test_the_logarithm_is_what_cpython_rounds_to() raises:
+    """`ln` against CPython, on both sides of the floor.
+
+    Forty digits is where the binary route starts, so thirty is the decimal
+    series and the rest is the binary one. Both are correctly rounded, so
+    both are CPython's answer to the digit. The precisions stop at a hundred
+    and fifty because the reference, not this library, is what costs at four
+    hundred; the two routes are compared against each other up there instead.
+    """
+    var pydecimal = Python.import_module("decimal")
+    for precision in [30, 45, 60, 150]:
+        pydecimal.getcontext().prec = precision
+        for text in _reference_arguments():
+            var mine = String(
+                BigDecimal(text).ln(precision, RoundingMode.ROUND_HALF_EVEN)
+            )
+            var theirs = String(pydecimal.Decimal(text).ln())
+            assert_equal(
+                mine,
+                theirs,
+                "ln(" + text + ") at " + String(precision) + " digits",
+            )
+
+
+def test_the_common_logarithm_is_what_cpython_rounds_to() raises:
+    """`log10` against CPython, on both sides of the floor."""
+    var pydecimal = Python.import_module("decimal")
+    for precision in [30, 45, 150]:
+        pydecimal.getcontext().prec = precision
+        for text in _reference_arguments():
+            var mine = String(
+                BigDecimal(text).log10(precision, RoundingMode.ROUND_HALF_EVEN)
+            )
+            var theirs = String(pydecimal.Decimal(text).log10())
+            assert_equal(
+                mine,
+                theirs,
+                "log10(" + text + ") at " + String(precision) + " digits",
+            )
+
+
+def test_the_exponential_is_what_cpython_rounds_to() raises:
+    """`exp` against CPython, on both sides of its floor.
+
+    The arguments are bounded so that the answer stays inside the type: the
+    digits of each text with the point moved to the front.
+    """
+    var pydecimal = Python.import_module("decimal")
+    for precision in [60, 300]:
+        pydecimal.getcontext().prec = precision
+        for text in _reference_arguments():
+            var whole = BigDecimal(text)
+            var bounded = BigDecimal(
+                whole.coefficient.copy(),
+                whole.coefficient.number_of_digits(),
+                whole.sign,
+            )
+            var mine = String(
+                bounded.exp(precision, RoundingMode.ROUND_HALF_EVEN)
+            )
+            var theirs = String(pydecimal.Decimal(String(bounded)).exp())
+            assert_equal(
+                mine,
+                theirs,
+                "exp(" + String(bounded) + ") at " + String(precision),
             )
 
 
