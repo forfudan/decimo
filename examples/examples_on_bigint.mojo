@@ -11,12 +11,12 @@ def main() raises:
     # === Basic Arithmetic ===
     print(a + b)  # Addition: 12345678901234580235
     print(a - b)  # Subtraction: 12345678901234555545
-    print(a * b)  # Multiplication: 152415787814108380241050
+    print(a * b)  # Multiplication: 152407406035740740602050
 
     # === Division Operations ===
-    print(a // b)  # Floor division: 999650944609516
-    print(a.truncate_divide(b))  # Truncate division: 999650944609516
-    print(a % b)  # Modulo: 9615
+    print(a // b)  # Floor division: 1000054994024671
+    print(a.truncate_divide(b))  # Truncate division: 1000054994024671
+    print(a % b)  # Modulo: 4395
 
     # === Power Operation ===
     print(BigInt(2).power(10))  # Power: 1024

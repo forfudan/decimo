@@ -1470,3 +1470,11 @@ struct Rational(
         if abs(bound2 - self) <= abs(bound1 - self):
             return bound2^
         return bound1^
+
+
+comptime Frac = Rational
+"""A short name for `Rational`, as `BInt` is for `BigInt`.
+
+There is deliberately no `Fraction`: the name belongs to Python's module and
+reads as the module rather than the type.
+"""

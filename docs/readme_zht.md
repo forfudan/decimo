@@ -47,12 +47,17 @@ Python，`decimo.Decimal` 之於 Mojo 就如同 `decimal.Decimal` 之於 Python�
   位數字[^fixed]。
 - 任意精度二進制浮點數實現 (`BigFloat`)，精度由調用方逐次指定，七種捨入模式下
   每個運算都正確捨入，相當於 MPFR 的 `mpfr_t`，但無需安裝任何外部庫。
+- 精確有理數實現 (`Rational`，別名 `Frac`)，由一對約分到最簡的 `BigInt`
+  組成，是 Python `fractions.Fraction` 的 Mojo 原生等價實現。它不做任何捨入:
+  四則運算、整數次方和 `limit_denominator()` 都是精確的，只在你明確要求的地方
+  捨入，即 `to_bigdecimal()` 或 `round()`。
 
 | 類型         | 別名              | 信息                                      | 內部表示     |
 | ------------ | ----------------- | ----------------------------------------- | ------------ |
 | `BigInt`     | `BInt`            | 等價於 Python 的 `int` 和 GMP 的 `mpz`    | Base-2^64    |
 | `BigDecimal` | `BDec`, `Decimal` | 等價於 Python 的 `decimal.Decimal` 和 libmpdec | Base-10^18 |
 | `BigFloat`   | `BFlt`            | 等價於 MPFR 的 `mpfr_t`                   | Base-2^64    |
+| `Rational`   | `Frac`            | 精確有理數類型，等價於 Python 的 `fractions.Fraction` | 兩個 `BigInt` |
 | `Decimal128` | `Dec128`          | 128 位定點精度小數類型，等價於 C#/.NET 的 `System.Decimal` | 三個 32 位字 |
 
 輔助類型包括基於 10 進制的任意精度有符號整數類型 (`BigInt10`)

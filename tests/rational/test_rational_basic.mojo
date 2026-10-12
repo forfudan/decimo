@@ -5,8 +5,9 @@
 from std import testing
 from std.testing import assert_true
 
+import decimo
 from decimo.bigint.bigint import BigInt
-from decimo.rational.rational import Rational
+from decimo.rational.rational import Frac, Rational
 
 
 # ===----------------------------------------------------------------------=== #
@@ -499,6 +500,24 @@ def test_constants() raises:
 # ===----------------------------------------------------------------------=== #
 # Main
 # ===----------------------------------------------------------------------=== #
+
+
+def test_the_short_name_is_the_same_type() raises:
+    """`Frac` is `Rational`, and both reach a user through the package.
+
+    The README tells a reader `Frac` is the short name, and it has to be
+    reachable the way the README imports it: from `decimo` itself, as well as
+    from the module it is defined in.
+    """
+    var written_long = Rational("3/7")
+    var written_short = Frac("3/7")
+    assert_true(
+        written_long == written_short, "Frac and Rational build the same value"
+    )
+    assert_true(
+        decimo.Frac("1/2") == decimo.Rational("2/4"),
+        "the alias is exported from the package root",
+    )
 
 
 def main() raises:
