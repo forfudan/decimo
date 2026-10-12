@@ -1741,10 +1741,10 @@ An exact fraction of two arbitrary-precision integers. Nothing is ever
 rounded: a third is a third, and a third times three is one.
 
 `Rational` is not in the prelude, which carries the four types most programs
-reach for. Import it by name:
+reach for. Import it by name, as itself or under the short name `Frac`:
 
 ```mojo
-from decimo import Rational
+from decimo import Frac, Rational
 from decimo.bigint.bigint import BigInt
 ```
 

@@ -28,6 +28,7 @@ plus `pi()`, `e()` and a 128-bit decimal type. Install it with
 | `BigInt`     | `BInt`            | Arbitrary-precision binary integer type, equivalent to Python's `int` and GMP's `mpz`           | Base-2^64    |
 | `BigDecimal` | `BDec`, `Decimal` | Arbitrary-precision decimal type, equivalent to Python's `decimal.Decimal` and libmpdec         | Base-10^18   |
 | `BigFloat`   | `BFlt`            | Arbitrary-precision binary float type, equivalent to MPFR's `mpfr_t`                            | Base-2^64    |
+| `Rational`   | `Frac`            | Exact rational number type, equivalent to Python's `fractions.Fraction`                         | Two `BigInt` |
 | `Decimal128` | `Dec128`          | 128-bit fixed-precision decimal type, equivalent to C#/.NET's `System.Decimal`                  | 32-bit words |
 
 <!--
@@ -82,6 +83,11 @@ The core types are[^auxiliary]:
   are each correctly rounded, in each of decimo's seven rounding modes. An
   MPFR-backed type is still in the source as `decimo.mpf.mpf.MPF`, outside
   the public interface, for anyone who wants it.
+- An exact rational implementation (`Rational`) (alias `Frac`), a pair of
+  `BigInt` kept in lowest terms, which is a Mojo-native equivalent of
+  Python's `fractions.Fraction`. Nothing it does rounds: the four operations,
+  integer powers and `limit_denominator()` are exact, and rounding happens
+  only where you ask for it, in `to_bigdecimal()` or `round()`.
 
 Decimo is fast: at a million digits `pi()` is nearly twelve times quicker than
 pure-Python mpmath, `BigInt` multiplication is fifteen times quicker than
@@ -273,6 +279,8 @@ This will import the following types or aliases into your namespace:
   integer type, equivalent to Python's `int`.
 - `BigDecimal` (and its aliases `BDec`, `Decimal`): An arbitrary-precision
   decimal type, equivalent to Python's `decimal.Decimal`.
+- `BigFloat` (and its alias `BFlt`): An arbitrary-precision binary
+  floating-point type, equivalent to MPFR's `mpfr_t`.
 - `Decimal128` (and its alias `Dec128`): A 128-bit fixed-precision decimal type.
 - `RoundingMode`: An enumeration for rounding modes.
 - `ROUND_DOWN`, `ROUND_HALF_UP`, `ROUND_HALF_EVEN`, `ROUND_UP`,
@@ -416,6 +424,115 @@ def main() raises:
     # === Greatest common divisor ===
     print(a.gcd(b))  # Greatest common divisor: 15
     print(a.gcd(c))  # Greatest common divisor: 6
+```
+
+</details>
+
+---
+
+<details>
+<summary><b>BigFloat — binary floating point, to as many bits as you ask</b></summary>
+
+A quick tour of the `BigFloat` (`BFlt`) type. The precision is a number of
+bits and travels with each value, so 53 of them is what a `Float64` holds and
+200 is what no machine type holds. Every operation below is correctly rounded.
+
+```mojo
+import decimo.bigfloat.constants as bigfloat_constants
+import decimo.bigfloat.trigonometric as bigfloat_trigonometric
+from decimo.prelude import *
+
+
+def main() raises:
+    # === Construction: the precision is in bits, and is per value ===
+    var a = BigFloat.from_string("1.1", 53)  # What a Float64 holds
+    var b = BFlt.from_string("1.1", 200)  # 200 bits of it
+    print(a.to_string(), b.to_string(20))
+    # 1.1000000000000001 1.1000000000000000000
+
+    # === The four operations, each correctly rounded ===
+    var third = BigFloat.from_string("1", 200) / BigFloat.from_string("3", 200)
+    print(third.to_string(20))  # 0.33333333333333333333
+    print((a + a).to_string(), (b * b).to_string(20))
+    # 2.2000000000000002 1.2100000000000000000
+
+    # === Square root, logarithm, exponential, power ===
+    var two = BigFloat.from_string("2", 200)
+    print(two.sqrt().to_string(20))  # 1.4142135623730950488
+    print(two.ln().to_string(20))  # 0.69314718055994530942
+    print(two.exp().to_string(20))  # 7.3890560989306502272
+    print(two.power(BigFloat.from_string("0.5", 200)).to_string(20))
+    # 1.4142135623730950488
+
+    # === Pi and the circular functions, at the width you ask for ===
+    var pi = bigfloat_constants.pi(200)
+    print(pi.to_string(20))  # 3.1415926535897932385
+    print(bigfloat_trigonometric.sin(pi / two, 200).to_string(20))  # 1
+
+    # === Seven rounding modes, and the neighbours of a value ===
+    print(two.sqrt().to_string(5, ROUND_DOWN))  # 1.4142
+    print(two.sqrt().to_string(5, ROUND_UP))  # 1.4143
+    print(a.next_plus(53).to_string())  # 1.1000000000000003
+    print(a.next_minus(53).to_string())  # 1.0999999999999999
+
+    # === The classes IEEE 754 asks for ===
+    print(BigFloat.infinity(53).number_class())  # +Infinity
+    print(BigFloat.nan(53).is_nan())  # True
+```
+
+</details>
+
+---
+
+<details>
+<summary><b>Rational — exact fractions, with nothing rounded</b></summary>
+
+A quick tour of the `Rational` (`Frac`) type. It is a pair of `BigInt` kept in
+lowest terms, so a third is a third and stays one however long you compute
+with it. Rounding happens only where you ask for it.
+
+```mojo
+from std.math import ceil, floor
+
+from decimo import Frac, Rational
+from decimo.prelude import *
+
+
+def main() raises:
+    # === Construction ===
+    var a = Rational("3/7")  # From a ratio of two literals
+    var b = Rational("1.5")  # Read exactly: 3/2
+    var c = Rational(BigInt(22), BigInt(-8))  # Reduced and signed: -11/4
+    print(a, b, c)  # 3/7 3/2 -11/4
+
+    # === Exact arithmetic ===
+    print(Rational("1/3") + Rational("1/6"))  # 1/2
+    print(a * b)  # 9/14
+    print(a / b)  # 2/7
+    print(Rational("1/3") ** 5)  # 1/243
+
+    # === Nothing rounds, so the thirds come back whole ===
+    print(Rational("1/3") * Rational(BigInt(3)) == Rational.one())  # True
+
+    # === Comparison ===
+    print(a < b, a == Rational("6/14"))  # True True
+
+    # === Rounding, where you ask for it ===
+    print(round(Rational("7/2")), round(Rational("-7/2")))  # 4 -4
+    print(round(Rational("22/7"), 4))  # 31429/10000
+    print(floor(Rational("7/2")), ceil(Rational("7/2")))  # 3 4
+
+    # === Conversions ===
+    print(Rational("22/7").to_bigdecimal(30))  # 3.14285714285714285714285714286
+    print(Rational(BigDecimal("0.125")))  # 1/8
+    print(Rational("22/7").to_float())  # 3.142857142857143
+
+    # === The closest value with a denominator you can live with ===
+    print(
+        Rational(BigDecimal("3.141592653589793")).limit_denominator(
+            BigInt(1000)
+        )
+    )  # 355/113
 ```
 
 </details>
