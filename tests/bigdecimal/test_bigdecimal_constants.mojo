@@ -12,7 +12,6 @@ from std import testing
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
 import decimo.bigdecimal.constants as decimo_constants
-from decimo.rounding_mode import RoundingMode
 
 
 def test_pi_small_precisions() raises:
@@ -149,29 +148,28 @@ def test_the_two_pi_algorithms_agree_with_each_other() raises:
         )
 
 
-def test_the_1024_digit_table_matches_the_algorithm() raises:
+def test_pi_gives_what_the_series_gives_at_every_precision() raises:
     """`PI_1024` is a literal; a wrong digit in it would be wrong forever.
 
-    The table was checked once against an independent 1100-digit Machin
-    computation in Python's `decimal` and matched to its full length. This
-    pins the cheaper half of that: at every precision up to its own, rounding
-    the table gives exactly what `pi()` computes, so the table is a valid
-    cache should it ever be switched back on.
+    `pi()` now answers from the table up to its length, so the series is what
+    the table is weighed against -- at every precision through the table's
+    length, not a sample of them, because the table's edge and the rounding
+    that trims it each have their own way of being wrong at one precision and
+    right at the next. Three precisions past the table keep the switch itself
+    honest. The table was also checked once against an independent
+    1100-digit Machin computation in Python's `decimal`, to its full length.
     """
-    var table = materialize[decimo_constants.PI_1024]()
-    for precision in [1, 5, 28, 100, 500, 1000, 1023, 1024]:
-        var rounded = table.copy()
-        rounded.round_to_precision_inplace(
-            precision,
-            RoundingMode.half_even(),
-            remove_extra_digit_due_to_rounding=True,
-            fill_zeros_to_precision=False,
+    for precision in range(1, 1025):
+        testing.assert_equal(
+            String(decimo_constants.pi(precision)),
+            String(decimo_constants.pi_chudnovsky_binary_split(precision)),
+            "pi at " + String(precision) + " digits",
         )
-        testing.assert_true(
-            rounded == BigDecimal.pi(precision),
-            "the table rounded to "
-            + String(precision)
-            + " digits differs from pi()",
+    for precision in [1025, 1100, 2000]:
+        testing.assert_equal(
+            String(decimo_constants.pi(precision)),
+            String(decimo_constants.pi_chudnovsky_binary_split(precision)),
+            "pi at " + String(precision) + " digits",
         )
 
 

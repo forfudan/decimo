@@ -116,14 +116,55 @@ def pi(precision: Int) raises -> BigDecimal:
             message="Precision must be non-negative", function="pi()"
         )
 
-    # `PI_1024` could answer everything up to 1024 digits by rounding, and
-    # it has been verified to do so exactly: rounding the table to any
-    # precision up to its own gives what Chudnovsky computes, pinned in
-    # `test_the_1024_digit_table_matches_the_algorithm`. It is not used yet
-    # because Chudnovsky is already 0.05 ms at a thousand digits, so the win
-    # is small here; the same table-first idea matters for `ln(2)` and
-    # `ln(1.25)`, whose series are milliseconds, and it belongs in that change.
+    # The table answers everything up to its own length by rounding, and
+    # `test_pi_gives_what_the_series_gives_at_every_precision()` pins that at
+    # every precision it covers: the rounded table is the digits the series
+    # gives. Below a thousand digits the series costs microseconds and the
+    # table costs a copy and a rounding, so the table answers.
+    if precision <= 1024:
+        return _pi_from_the_table(precision)
+
+    # Above the table the series computes it here, in the decimal base. The
+    # binary layer holds the same series and was measured in its place: it is
+    # level at a million digits, 716 milliseconds against 712, and worse at
+    # the widths that are actually asked for -- 3.3 milliseconds against 2.0
+    # at 20,000 digits. Its cached constant does not rescue it, because the
+    # conversion to decimal is not cached and runs on every call. The sharing
+    # worth having is a layer down, where both sides already run the same
+    # split in `bigint.chudnovsky`.
     return pi_chudnovsky_binary_split(precision)
+
+
+@no_inline
+def _pi_from_the_table(precision: Int) raises -> BigDecimal:
+    """Pi to `precision` digits, rounded off `PI_1024`.
+
+    Args:
+        precision: The number of significant digits to return, at most the
+            table's own 1024.
+
+    Returns:
+        The value of pi, the digits `pi_chudnovsky_binary_split()` gives.
+
+    Raises:
+        ValueError: If the precision is zero, from the rounding.
+
+    Notes:
+
+    `@no_inline` is the point of the function. `materialize[PI_1024]()` emits
+    the whole table, and `pi()` is called from a dozen places in
+    `bigdecimal.trigonometric` alone; inlined at each of them it hangs the
+    compiler, which stops at no error and sits on a semaphore instead. Out of
+    line the table is emitted once.
+    """
+    var rounded = materialize[PI_1024]()
+    rounded.round_to_precision_inplace(
+        precision,
+        RoundingMode.half_even(),
+        remove_extra_digit_due_to_rounding=True,
+        fill_zeros_to_precision=False,
+    )
+    return rounded^
 
 
 def pi_chudnovsky_binary_split(precision: Int) raises -> BigDecimal:
