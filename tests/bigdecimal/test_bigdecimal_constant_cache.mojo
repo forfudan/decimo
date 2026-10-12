@@ -25,6 +25,8 @@ from std import testing
 from std.testing import assert_equal, assert_true
 
 from decimo.bigdecimal.bigdecimal import BDec
+import decimo.bigdecimal.cache as bigdecimal_cache
+import decimo.bigdecimal.constants as decimo_constants
 from decimo.bigdecimal.exponential import MathCache, ln, log10
 from decimo.rounding_mode import RoundingMode
 
@@ -139,6 +141,147 @@ def test_the_shared_cache_agrees_with_a_fresh_one() raises:
     var fresh = MathCache()
     var expected = ln(x, 1200, fresh).true_divide(fresh.get_ln10(1200), 1150)
     assert_equal(String(log10(x, 1150)), String(expected), "log10 shared")
+
+
+# ===----------------------------------------------------------------------=== #
+# Pi and Euler's number, kept by `bigdecimal.cache`
+# ===----------------------------------------------------------------------=== #
+#
+# These two are kept at the widest precision they have been asked for, and a
+# narrower request is a rounding of what is kept. The rounding is decided
+# against the kept value rather than assumed, so what has to be checked is
+# that the answer never depends on what came before it: the same precision
+# must give the same digits whether the cache is cold, warm at that width, or
+# warm at a far wider one.
+
+
+def test_pi_from_a_cold_cache_agrees_with_the_series() raises:
+    """Above the table, pi answers from the cache; the series is the reference.
+
+    Ascending precisions, so each request is wider than what is kept and
+    recomputes. The series shares no state with the cache.
+    """
+    for precision in [1025, 1026, 1100, 1500, 2000]:
+        assert_equal(
+            String(decimo_constants.pi(precision)),
+            String(decimo_constants.pi_chudnovsky_binary_split(precision)),
+            "pi at " + String(precision) + " digits",
+        )
+
+
+def test_pi_from_a_wide_cache_agrees_with_the_series() raises:
+    """A wide request first, then narrower ones answered from it.
+
+    This is the direction that can go wrong. A value kept at 4,000 digits is
+    cut down and the rounding decided against it, and every answer has to be
+    the digits the series gives at that precision -- not the digits of the
+    wide value with the tail chopped off, which differ whenever the first
+    dropped digit is a five or more.
+    """
+    var wide = decimo_constants.pi(4000)
+    assert_true(wide.coefficient.is_zero() == False, "pi is not zero")
+    for precision in [3999, 2000, 1500, 1100, 1026, 1025]:
+        assert_equal(
+            String(decimo_constants.pi(precision)),
+            String(decimo_constants.pi_chudnovsky_binary_split(precision)),
+            "pi at " + String(precision) + " digits, from a wide cache",
+        )
+
+
+def test_pi_gives_the_same_digits_twice() raises:
+    """A cold call and a warm one at the same precision must agree."""
+    for precision in [1025, 1700, 2500]:
+        var cold = String(decimo_constants.pi(precision))
+        var warm = String(decimo_constants.pi(precision))
+        assert_equal(
+            cold, warm, "pi at " + String(precision) + " digits, twice"
+        )
+
+
+def test_e_agrees_with_the_exponential() raises:
+    """`BDec.e()` is kept too, and must stay what `exp(1)` gives.
+
+    Both sides of the floor the cache keeps nothing below, and both
+    directions across it.
+    """
+    for precision in [1, 2, 63, 64, 65, 100, 1024, 1100, 2000, 300, 70]:
+        assert_equal(
+            String(BDec.e(precision)),
+            String(BDec.one().exp(precision)),
+            "e at " + String(precision) + " digits",
+        )
+
+
+def test_a_kept_value_that_straddles_a_boundary_does_not_settle() raises:
+    """The deciding, on its own.
+
+    A value whose own error reaches across a rounding boundary cannot say
+    which way the digit before it goes, and the cache has to answer that it
+    does not know rather than guess. Without this the harness would pass on a
+    cache that simply truncated whatever it held.
+    """
+    var straddles = BDec("1.4999999999999999")
+    var undecided = bigdecimal_cache._settled_from(
+        straddles.copy(), 17, 1, 1, RoundingMode.half_even()
+    )
+    assert_true(
+        not Bool(undecided),
+        "a value one unit short of 1.5 cannot decide its first digit",
+    )
+
+    var clear = BDec("1.2345678901234567")
+    var decided = bigdecimal_cache._settled_from(
+        clear.copy(), 17, 1, 1, RoundingMode.half_even()
+    )
+    assert_true(Bool(decided), "a value nowhere near a boundary decides")
+    assert_equal(String(decided.value()), "1", "1.2345... to one digit")
+
+
+def test_a_kept_value_is_cut_before_it_is_tested() raises:
+    """A value far wider than the request still gives the series' digits.
+
+    The cut is where a cache earns its keep and where it can lose the
+    rounding, so it is checked against the series at a precision many times
+    narrower than what is held.
+    """
+    var wide = decimo_constants.pi_chudnovsky_binary_split(2000)
+    for precision in [100, 500, 1200]:
+        var settled = bigdecimal_cache._settled_from(
+            wide.copy(), 2000, 1, precision, RoundingMode.half_even()
+        )
+        assert_true(
+            Bool(settled),
+            "2,000 digits of pi decide " + String(precision) + " of them",
+        )
+        assert_equal(
+            String(settled.value()),
+            String(decimo_constants.pi_chudnovsky_binary_split(precision)),
+            "pi cut from 2,000 digits to " + String(precision),
+        )
+
+
+def test_the_cache_answers_a_narrower_request_and_refuses_a_wider_one() raises:
+    """`keep()` and `held()`, on their own.
+
+    What is stored is the series' own value, so this test leaves the shared
+    cache holding nothing that is not true.
+    """
+    var wide = decimo_constants.pi_chudnovsky_binary_split(2200)
+    bigdecimal_cache.keep(bigdecimal_cache.PI, 2200, wide)
+
+    var narrower = bigdecimal_cache.held(bigdecimal_cache.PI, 1200)
+    assert_true(
+        Bool(narrower), "2,200 digits kept must answer a request for 1,200"
+    )
+    assert_true(
+        narrower.value().digits >= 2200,
+        "the width reported back is the width it was computed at",
+    )
+
+    var wider = bigdecimal_cache.held(bigdecimal_cache.PI, 10_000_000)
+    assert_true(
+        not Bool(wider), "the cache must not answer beyond what it holds"
+    )
 
 
 def main() raises:

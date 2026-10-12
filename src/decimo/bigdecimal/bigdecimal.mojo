@@ -27,6 +27,7 @@ from std.memory import Pointer, unsafe_memcpy
 from std.python import PythonObject
 
 import decimo.bigdecimal.arithmetics as bigdecimal_arithmetics
+import decimo.bigdecimal.cache as bigdecimal_cache
 import decimo.bigdecimal.comparison as bigdecimal_comparison
 import decimo.bigdecimal.constants as bigdecimal_constants
 from decimo.bigdecimal.exponential import MathCache
@@ -2165,9 +2166,9 @@ struct BigDecimal(
         Raises:
             Error: If the underlying computation fails.
         """
-        return bigdecimal_exponential.exp(
-            x=Self(BigUInt.one()), precision=precision
-        )
+        return bigdecimal_cache.rounded[
+            bigdecimal_exponential._e_computed, bigdecimal_exponential.EXP_SLACK
+        ](bigdecimal_cache.E, precision, RoundingMode.half_even())
 
     # === Exponential operations === #
 

@@ -18,6 +18,7 @@
 """
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
+import decimo.bigdecimal.cache as bigdecimal_cache
 import decimo.bigdecimal.trigonometric as bigdecimal_trigonometric
 import decimo.bigint.arithmetics as bigint_arithmetics
 from decimo.bigint.bigint import BigInt, Magnitude
@@ -98,6 +99,16 @@ comptime PI_1024 = BigDecimal(
 """Pi to 1024 digits of precision."""
 
 
+comptime _PI_SLACK = 1
+"""Units in the last place `pi_chudnovsky_binary_split()` may be off by.
+
+It sums the series in a scale nine digits wider than it is asked for and
+takes three terms beyond what that width needs, so what it rounds is already
+good to a small fraction of a unit of the width it returns, and the one
+rounding into that width costs half of one.
+"""
+
+
 def pi(precision: Int) raises -> BigDecimal:
     """Calculates π using the fastest available algorithm.
 
@@ -124,15 +135,23 @@ def pi(precision: Int) raises -> BigDecimal:
     if precision <= 1024:
         return _pi_from_the_table(precision)
 
-    # Above the table the series computes it here, in the decimal base. The
-    # binary layer holds the same series and was measured in its place: it is
-    # level at a million digits, 716 milliseconds against 712, and worse at
-    # the widths that are actually asked for -- 3.3 milliseconds against 2.0
-    # at 20,000 digits. Its cached constant does not rescue it, because the
-    # conversion to decimal is not cached and runs on every call. The sharing
-    # worth having is a layer down, where both sides already run the same
-    # split in `bigint.chudnovsky`.
-    return pi_chudnovsky_binary_split(precision)
+    # Above the table the series computes it, and what it computes is kept:
+    # a second request at that precision or a narrower one is a rounding of
+    # what is already here rather than the series summed again, which is 2.0
+    # milliseconds at 20,000 digits against a microsecond or two. The
+    # rounding is decided against the kept value, never assumed; see
+    # `bigdecimal.cache`.
+    #
+    # The binary layer holds the same series and was measured in its place:
+    # it is level at a million digits, 716 milliseconds against 712, and
+    # worse at the widths that are actually asked for -- 3.3 milliseconds
+    # against 2.0 at 20,000 digits. Its own cached constant does not rescue
+    # it, because the conversion to decimal is not cached and runs on every
+    # call. The sharing worth having is a layer down, where both sides
+    # already run the same split in `bigint.chudnovsky`.
+    return bigdecimal_cache.rounded[pi_chudnovsky_binary_split, _PI_SLACK](
+        bigdecimal_cache.PI, precision, RoundingMode.half_even()
+    )
 
 
 @no_inline
