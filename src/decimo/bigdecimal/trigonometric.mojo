@@ -95,6 +95,51 @@ def budget_for(x: BigDecimal, reduced: BigDecimal, precision: Int) -> Int:
     return precision + SAFETY_DIGITS + (cancellation if cancellation > 0 else 0)
 
 
+comptime MAX_REDUCTION_DIGITS: Int = Int.MAX // 4
+"""The widest reduction by pi this layer will attempt.
+
+Reducing `x` modulo `2pi` spends one digit of pi for every digit of `x`
+above the point, so an argument of `10^k` asks for `k` digits of the constant
+before the answer's own digits begin. That is honest work for a `k` of
+thousands or millions, and it is not work at all for a `k` of quintillions:
+nothing would finish it.
+
+The bound is the one `bigfloat.rounding` draws for a precision, and for the
+same reason -- so that an argument nothing could answer is refused in one
+line rather than discovered as a hang. An argument below it is attempted
+however long that takes, which is what the binary layer and MPFR do too.
+"""
+
+
+def checked_reduction_digits(
+    x: BigDecimal, precision: Int, function: String
+) raises -> Int:
+    """The reduction's budget, refusing one that could never be computed.
+
+    Args:
+        x: The argument about to be reduced.
+        precision: The number of significant digits wanted in the result.
+        function: The name to put in the error.
+
+    Returns:
+        What `reduction_digits()` returns.
+
+    Raises:
+        ValueError: If the budget is past `MAX_REDUCTION_DIGITS`, or has
+            wrapped past what an `Int` holds on the way there.
+    """
+    var budget = reduction_digits(x, precision)
+    if budget > MAX_REDUCTION_DIGITS or budget < 0:
+        raise ValueError(
+            message=(
+                "This argument is so far from nought that reducing it would"
+                " need more digits of pi than any precision holds."
+            ),
+            function=function,
+        )
+    return budget
+
+
 def reduction_digits(x: BigDecimal, precision: Int) -> Int:
     """Returns the working precision a reduction by pi needs for this argument.
 
@@ -221,7 +266,7 @@ def sin(x: BigDecimal, precision: Int) raises -> BigDecimal:
     argument settles on that first attempt; the ones that do not are computed
     again at the width their own cancellation asked for.
     """
-    var budget = reduction_digits(x, precision)
+    var budget = checked_reduction_digits(x, precision, "sin()")
     for _ in range(4):
         var attempt = _sin_at(x, precision, budget)
         if attempt[1] <= budget:
@@ -448,7 +493,7 @@ def cos(x: BigDecimal, precision: Int) raises -> BigDecimal:
     # reduction, and an argument near π/2 cancels in it, so what it cost is
     # weighed afterwards and the width raised if it was not enough. `sin`
     # then weighs its own.
-    var budget = reduction_digits(x, precision)
+    var budget = checked_reduction_digits(x, precision, "cos()")
     for _ in range(4):
         var pi = bigdecimal_constants.pi(precision=budget)
         var pi_div_2 = pi.true_divide(2, precision=budget)
@@ -590,7 +635,7 @@ def tan_cot(x: BigDecimal, precision: Int, is_tan: Bool) raises -> BigDecimal:
         Error: Propagated from the arithmetic, or if the reduction does not
             settle within four attempts.
     """
-    var budget = reduction_digits(x, precision)
+    var budget = checked_reduction_digits(x, precision, "tan_cot()")
     for _ in range(4):
         var attempt = _tan_cot_at(x, precision, budget, is_tan)
         if attempt[1] <= budget:
@@ -1095,15 +1140,32 @@ def arctan(x: BigDecimal, precision: Int) raises -> BigDecimal:
         var half_pi = bigdecimal_constants.pi(
             precision=working_precision
         ).true_divide(bdec_2, precision=working_precision)
-        var reciprocal_x = bdec_1.true_divide(x, precision=working_precision)
-        var arctan_reciprocal = arctan_taylor_series(
-            reciprocal_x^, minimum_precision=precision
-        )
 
-        if x.sign:
-            result = (-half_pi).subtract(arctan_reciprocal)
+        # Past a point the reciprocal is below the last place and the series
+        # has nothing to add -- and must not be asked, because its terms are
+        # the reciprocal cubed and fifthed, whose scales are three and five
+        # times an exponent that already reaches `10^18`. Lining those up
+        # against the sum is what exhausts memory: `arctan(10^(3*10^18))`
+        # used to abort here rather than answer.
+        #
+        # Every rounding mode's answer is then the same mode's answer for
+        # `pi/2`. The true value is `pi/2` less `1/x`, which puts it strictly
+        # between the representable value below `pi/2` and `pi/2` itself, and
+        # `pi/2` is irrational, so it is strictly between the same pair.
+        if Int(x.adjusted()) > working_precision + 2:
+            result = -half_pi if x.sign else half_pi^
         else:
-            result = half_pi.subtract(arctan_reciprocal)
+            var reciprocal_x = bdec_1.true_divide(
+                x, precision=working_precision
+            )
+            var arctan_reciprocal = arctan_taylor_series(
+                reciprocal_x^, minimum_precision=precision
+            )
+
+            if x.sign:
+                result = (-half_pi).subtract(arctan_reciprocal)
+            else:
+                result = half_pi.subtract(arctan_reciprocal)
 
     result.round_to_precision_inplace(
         precision,
