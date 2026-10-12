@@ -195,7 +195,9 @@ def sin_rounded(
     if x.is_zero():
         # `sin(0)` is exactly zero, and the loop could not settle on it.
         return sin(x, precision)
-    return _round_by_deciding[sin, TRIG_SLACK](x, precision, rounding_mode)
+    return _round_by_deciding[_sine_in_binary, TRIG_SLACK](
+        x, precision, rounding_mode
+    )
 
 
 def cos_rounded(
@@ -217,7 +219,9 @@ def cos_rounded(
     if x.is_zero():
         # `cos(0)` is exactly one.
         return cos(x, precision)
-    return _round_by_deciding[cos, TRIG_SLACK](x, precision, rounding_mode)
+    return _round_by_deciding[_cosine_in_binary, TRIG_SLACK](
+        x, precision, rounding_mode
+    )
 
 
 def tan_rounded(
@@ -239,7 +243,9 @@ def tan_rounded(
     if x.is_zero():
         # `tan(0)` is exactly zero.
         return tan(x, precision)
-    return _round_by_deciding[tan, TRIG_SLACK](x, precision, rounding_mode)
+    return _round_by_deciding[_tangent_in_binary, TRIG_SLACK](
+        x, precision, rounding_mode
+    )
 
 
 def sin(x: BigDecimal, precision: Int) raises -> BigDecimal:
@@ -871,6 +877,293 @@ def sec_rounded(
         # `sec(0)` is exactly one, which the loop could not settle on.
         return sec(x, precision)
     return _round_by_deciding[sec, TRIG_SLACK](x, precision, rounding_mode)
+
+
+# ===----------------------------------------------------------------------=== #
+# The circular functions, worked out in binary
+# ===----------------------------------------------------------------------=== #
+#
+# The reduction is what costs, not the series. `sin()` below reduces the
+# argument by `pi/2` in base 10^18 and sums the Taylor series there, and both
+# halves are quadratic in the digits. The binary layer reduces and sums in
+# base 2^64, where a multiplication of the same size costs about a third as
+# much, and sums the series in blocks besides.
+#
+# So the three of them hand the work over, as the inverse functions above do.
+# What is new here is the width: the sine and the cosine of an argument near
+# a multiple of `pi/2` begin with a run of zeros, and every one of those is a
+# digit the reduction had to find and lose. An argument far from zero spends
+# its magnitude the same way. Both are the same quantity -- what the answer
+# is worth against what the argument is worth -- and a first attempt reports
+# it, so the second is wide enough. The decimal series stays for short
+# requests, for arguments the binary exponent range cannot hold, for an
+# answer that comes out exactly zero, and as the second implementation the
+# tests compare against.
+
+
+# There is no floor on the digits here, unlike the inverse functions below.
+# The binary route wins at every precision there is, down to a single digit,
+# because what it replaces is a reduction and not just a series. Measured in
+# nanoseconds per call, `sin(1.2)` at 1, 28 and 64 digits: 12,413 against
+# 4,596, 16,380 against 6,463, and 20,595 against 7,305. The tangent is the
+# extreme case, 67,436 against 4,140 at a single digit -- sixteen times --
+# because the decimal tangent sums two series and divides them.
+
+comptime _AMPLIFICATION_ROOM = 64
+"""Bits of amplification the guard absorbs without a second attempt.
+
+`_bits_for_digits()` carries ninety-six bits beyond the digits asked for.
+Thirty-two of them answer for the two conversions and the roundings between
+them, which leaves sixty-four for an amplification the first attempt did not
+predict -- and almost every argument amplifies by a handful of bits, not by
+sixty. Without this the loop would compute `sin(1.2)` twice to find that it
+needed one more bit than it had already set aside.
+"""
+
+comptime _BINARY_FORWARD_LIMIT = 2_000_000_000_000_000_000
+"""The decimal exponent past which the binary layer has no room.
+
+The same line the inverse functions draw.
+"""
+
+
+def _magnitude_bits(x: BigDecimal) raises -> Int:
+    """Bits of the argument's own magnitude, which the reduction spends.
+
+    Args:
+        x: The argument.
+
+    Returns:
+        What `|x|` is worth in bits when it is above one, and nought below.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    A seed for the loop below rather than a bound. Getting it right saves an
+    attempt for a large argument; getting it wrong costs one.
+    """
+    var places = Int(x.adjusted())
+    if places <= 0:
+        return 0
+    return (places * 10 + 2) // 3
+
+
+def _width_the_answer_asked_for(
+    argument: BigFloat, answer: BigFloat, runs_off: Bool
+) raises -> Int:
+    """Bits the function makes of the width the argument was held at.
+
+    Args:
+        argument: The argument, as the binary layer was given it.
+        answer: What the binary layer returned, which is not zero.
+        runs_off: True for the tangent, whose answer can be large as well as
+            small.
+
+    Returns:
+        The bits to add, never negative.
+
+    Raises:
+        Error: Propagated from the exponents.
+
+    Notes:
+
+    An argument held to `b` bits is held to an absolute error of about
+    `|x| 2^-b`. The sine and the cosine both have a derivative of at most
+    one, so that is the absolute error of the answer too, and against an
+    answer of size `|a|` it is a relative error of `|x| / |a| * 2^-b`. The
+    bits to add are therefore what `|x| / |a|` is worth -- the argument's
+    magnitude and the answer's leading zeros, which is why one quantity
+    covers an argument far from zero and an argument near a multiple of
+    `pi/2` both.
+
+    The tangent is the one that also runs off: its derivative is `1 + t^2`,
+    so a large answer amplifies as much as a small one, and the bits to add
+    are what `|x| |t|` is worth instead.
+    """
+    var answer_bits = Int(answer.logb())
+    var grow = -answer_bits
+    if runs_off and answer_bits > 0:
+        grow = answer_bits
+    var needed = Int(argument.logb()) + grow
+    if needed < 0:
+        return 0
+    return needed
+
+
+def _below_the_reduction(x: BigDecimal) raises -> Bool:
+    """True when the decimal series answers without reducing the argument.
+
+    Args:
+        x: The argument.
+
+    Returns:
+        True when `|x|` is at most about `pi/4`.
+
+    Raises:
+        Error: Propagated from the comparison.
+
+    Notes:
+
+    The reduction is the whole reason to go to binary, so an argument that
+    does not need one is better left where it is: measured at 10,000 digits,
+    `sin(0.7)` is 17 milliseconds in decimal against 55 in binary, while
+    `sin(0.8)` -- just the other side of `pi/4` -- is 248 against 112. The
+    cliff is that sharp because below `pi/4` the decimal side sums the series
+    at the argument it was given.
+
+    Only the sine has this. Its series at a small argument is as cheap as
+    arithmetic gets -- the answer is nearly the argument -- while the decimal
+    cosine and tangent cost three or four times as much there and lose to
+    binary all the same: at 2,000 digits and an argument of `0.5`, 3.3
+    milliseconds against 1.0 for the cosine and 4.5 against 2.0 for the
+    tangent. So they go to binary at every argument and only the sine asks
+    this question.
+
+    The bound is three digits of `pi/4` rather than the constant itself, so
+    that the test costs a word comparison and no constant at all. It sits
+    just under, which hands the sliver between `0.785` and `pi/4` to the
+    binary route; that route is correct there, only a shade slower than the
+    decimal one would have been.
+    """
+    var places = Int(x.adjusted())
+    if places >= 0:
+        return False
+    if places < -1:
+        return True
+    return abs(x) < BigDecimal(
+        BigUInt.from_word_unsafe(BigUInt.Word(785)), 3, False
+    )
+
+
+def _circular_in_binary[
+    binary: def(BigFloat, Int, RoundingMode) thin raises -> BigFloat,
+    runs_off: Bool,
+](x: BigDecimal, precision: Int) raises -> Optional[BigDecimal]:
+    """`binary(x)` to `precision` digits, or nothing if it will not settle.
+
+    Parameters:
+        binary: The binary layer's own version of the function.
+        runs_off: True for the tangent; see
+            `_width_the_answer_asked_for()`.
+
+    Args:
+        x: The argument, which is not zero.
+        precision: The significant digits wanted.
+
+    Returns:
+        The value, within `TRIG_SLACK` units of the last place, or nothing
+        when the answer came out exactly zero or four attempts did not find
+        a width that held. The caller then asks the decimal series.
+
+    Raises:
+        Error: Propagated from the conversions or the binary function.
+
+    Notes:
+
+    Each attempt reports the width it turned out to need and the next uses
+    it, which is the shape `sin()` already has in decimal. Almost every
+    argument settles on the first or the second.
+    """
+    var target = _bits_for_digits(precision, 0)
+    var extra = _magnitude_bits(x)
+    for _ in range(4):
+        var bits = target + extra
+        var argument = BigFloat.from_bigdecimal(x, bits)
+        var answer = binary(argument, bits, RoundingMode.ROUND_HALF_EVEN)
+        if answer.is_zero():
+            return None
+        var needed = _width_the_answer_asked_for(argument, answer, runs_off)
+        if needed <= extra + _AMPLIFICATION_ROOM:
+            return answer.to_bigdecimal_rounded(
+                precision, RoundingMode.ROUND_HALF_EVEN
+            )
+        extra = needed
+    return None
+
+
+def _sine_in_binary(x: BigDecimal, precision: Int) raises -> BigDecimal:
+    """`sin(x)` to `precision` digits, worked out in the binary layer.
+
+    Args:
+        x: The angle in radians.
+        precision: The significant digits wanted.
+
+    Returns:
+        The sine, within `TRIG_SLACK` units of the last place, which is what
+        the decimal series promises too.
+
+    Raises:
+        Error: Propagated from the conversions or the binary sine.
+    """
+    if (
+        x.coefficient.is_zero()
+        or x.adjusted() > _BINARY_FORWARD_LIMIT
+        or x.adjusted() < -_BINARY_FORWARD_LIMIT
+        or _below_the_reduction(x)
+    ):
+        return sin(x, precision)
+    var answer = _circular_in_binary[bigfloat_trigonometric.sin, False](
+        x, precision
+    )
+    if answer:
+        return answer.take()
+    return sin(x, precision)
+
+
+def _cosine_in_binary(x: BigDecimal, precision: Int) raises -> BigDecimal:
+    """`cos(x)` to `precision` digits, worked out in the binary layer.
+
+    Args:
+        x: The angle in radians.
+        precision: The significant digits wanted.
+
+    Returns:
+        The cosine, within `TRIG_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from the conversions or the binary cosine.
+    """
+    if (
+        x.coefficient.is_zero()
+        or x.adjusted() > _BINARY_FORWARD_LIMIT
+        or x.adjusted() < -_BINARY_FORWARD_LIMIT
+    ):
+        return cos(x, precision)
+    var answer = _circular_in_binary[bigfloat_trigonometric.cos, False](
+        x, precision
+    )
+    if answer:
+        return answer.take()
+    return cos(x, precision)
+
+
+def _tangent_in_binary(x: BigDecimal, precision: Int) raises -> BigDecimal:
+    """`tan(x)` to `precision` digits, worked out in the binary layer.
+
+    Args:
+        x: The angle in radians.
+        precision: The significant digits wanted.
+
+    Returns:
+        The tangent, within `TRIG_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from the conversions or the binary tangent.
+    """
+    if (
+        x.coefficient.is_zero()
+        or x.adjusted() > _BINARY_FORWARD_LIMIT
+        or x.adjusted() < -_BINARY_FORWARD_LIMIT
+    ):
+        return tan(x, precision)
+    var answer = _circular_in_binary[bigfloat_trigonometric.tan, True](
+        x, precision
+    )
+    if answer:
+        return answer.take()
+    return tan(x, precision)
 
 
 # ===----------------------------------------------------------------------=== #
