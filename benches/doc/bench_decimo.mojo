@@ -339,6 +339,12 @@ def main() raises -> None:
     )
 
     # --- pi ---
+    #
+    # `pi()` answers from a table below 1,024 digits and from a cache above
+    # it, and the other libraries are measured without either, so the loop
+    # asks for the computation those would have saved: the series itself,
+    # which is what `pi()` calls on a cold cache. The same is done for the
+    # binary type below.
     var pi_precisions = [100, 1000, 10000, 100000, 1000000]
     print('  "pi_digits_100": "' + String(bd_constants.pi(100)) + '",')
     print('  "pi": {')
@@ -360,7 +366,9 @@ def main() raises -> None:
                 # mpmath and MPFR. decimo is already base-10 internally, so
                 # this step is cheap for it, but that is to be measured rather
                 # than assumed.
-                sink += String(bd_constants.pi(precision)).byte_length()
+                sink += String(
+                    bd_constants.pi_chudnovsky_binary_split(precision)
+                ).byte_length()
             var t1 = perf_counter_ns()
             best_pi = min(best_pi, Float64(Int(t1 - t0)) / Float64(reps))
         var comma = "," if k < len(pi_precisions) - 1 else ""

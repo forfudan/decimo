@@ -2881,6 +2881,25 @@ def _is_power_of_ten(x: BigDecimal) -> Bool:
     return True
 
 
+def _e_computed(precision: Int) raises -> BigDecimal:
+    """Euler's number to `precision` digits, from the series.
+
+    Args:
+        precision: The number of significant digits to compute.
+
+    Returns:
+        The value, within `EXP_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from `exp()`.
+
+    Notes:
+
+    The kernel `BigDecimal.e()` keeps between calls; see `bigdecimal.cache`.
+    """
+    return exp(BigDecimal(BigUInt.one()), precision)
+
+
 def exp(x: BigDecimal, precision: Int) raises -> BigDecimal:
     """Calculate the natural exponential of x (e^x) to the specified precision.
 
