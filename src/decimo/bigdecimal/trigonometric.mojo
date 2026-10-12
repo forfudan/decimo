@@ -23,6 +23,7 @@ operating on the arbitrary-precision BigDecimal type.
 
 from std import time
 
+import decimo.bigdecimal.arithmetics as bigdecimal_arithmetics
 from decimo.bigdecimal.bigdecimal import BigDecimal
 import decimo.bigdecimal.constants as bigdecimal_constants
 from decimo.bigdecimal.exponential import (
@@ -32,6 +33,8 @@ from decimo.bigdecimal.exponential import (
     _settled_answer,
 )
 import decimo.bigdecimal.exponential as bigdecimal_exponential
+from decimo.bigfloat.bigfloat import BigFloat
+import decimo.bigfloat.trigonometric as bigfloat_trigonometric
 from decimo.biguint.biguint import BigUInt
 from decimo.errors import ValueError
 from decimo.rounding_mode import RoundingMode
@@ -825,6 +828,177 @@ def sec_rounded(
     return _round_by_deciding[sec, TRIG_SLACK](x, precision, rounding_mode)
 
 
+# ===----------------------------------------------------------------------=== #
+# The inverse functions, worked out in binary
+# ===----------------------------------------------------------------------=== #
+#
+# The arctangent's series gains `2 log2(1/|x|)` bits a term, which for an
+# argument near one is almost nothing, and the decimal side sums it without
+# reducing the argument first. That is quadratic in the digits, and it shows:
+# 2.25 seconds at nine hundred digits, where the binary layer -- which halves
+# the argument first and sums the rest in blocks -- takes 174 microseconds.
+# The arcsine and the arccosine go through the arctangent and inherit it.
+#
+# So the three of them hand the work over, the way `ln` and `exp` do in
+# `bigdecimal.exponential`: convert the argument, evaluate in binary a little
+# wider than the digits asked for, convert back, and let the deciding loop
+# settle the last digit. The decimal series stays for short requests, for
+# arguments the binary exponent range cannot hold, and as the second
+# implementation the tests compare against.
+
+
+comptime _BINARY_INVERSE_FLOOR = 24
+"""The digits from which the binary route beats the decimal series.
+
+Low, because the series it replaces is quadratic and loses early. Measured,
+in microseconds at 28, 60, 150, 300 and 900 digits: the arctangent 43 against
+8, 285 against 11, 4776 against 24, 44974 against 47, and 2252021 against
+174.
+"""
+
+comptime _BINARY_INVERSE_LIMIT = 2_000_000_000_000_000_000
+"""The decimal exponent past which the binary layer has no room.
+
+The same line `bigdecimal.exponential` draws: a `BigFloat` holds a power of
+two up to `2^63`, which is `10^2.78e18`.
+"""
+
+
+def _bits_for_digits(digits: Int, amplification: Int) -> Int:
+    """How many bits hold `digits` decimal digits, with room to spare.
+
+    Args:
+        digits: The decimal digits, never negative.
+        amplification: Bits the function multiplies the argument's own error
+            by, which the caller works out from the argument.
+
+    Returns:
+        The bits: ten thirds of the digits -- over the three and a third a
+        digit takes -- plus the guard and the amplification.
+    """
+    return (digits * 10 + 2) // 3 + 96 + amplification
+
+
+def _arctangent_in_binary(x: BigDecimal, precision: Int) raises -> BigDecimal:
+    """`arctan(x)` to `precision` digits, worked out in the binary layer.
+
+    Args:
+        x: The argument.
+        precision: The significant digits wanted.
+
+    Returns:
+        The arctangent, within `ARCTAN_SLACK` units of the last place, which
+        is what the decimal series promises too.
+
+    Raises:
+        Error: Propagated from the conversions or the binary arctangent.
+
+    Notes:
+
+    No room to make for the argument's own error. The derivative is
+    `1/(1 + x^2)`, which is never above one, and for a small argument the
+    answer is about the argument, so a relative error going in is a relative
+    error of the same size coming out -- the arctangent is as well behaved as
+    a function gets.
+    """
+    if (
+        precision < _BINARY_INVERSE_FLOOR
+        or x.coefficient.is_zero()
+        or x.adjusted() > _BINARY_INVERSE_LIMIT
+        or x.adjusted() < -_BINARY_INVERSE_LIMIT
+    ):
+        return arctan(x, precision)
+    var bits = _bits_for_digits(precision, 0)
+    var answer = bigfloat_trigonometric.arctan(
+        BigFloat.from_bigdecimal(x, bits),
+        bits,
+        RoundingMode.ROUND_HALF_EVEN,
+    )
+    return answer.to_bigdecimal_rounded(precision, RoundingMode.ROUND_HALF_EVEN)
+
+
+def _inverse_amplification(x: BigDecimal) raises -> Int:
+    """Bits the arcsine and the arccosine make of the argument's own error.
+
+    Args:
+        x: The argument, whose magnitude is at most one.
+
+    Returns:
+        The bits, which is what `1 - |x|` is worth and nought away from the
+        ends.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    Both derivatives are `1/sqrt(1 - x^2)`, which runs off at the ends, and
+    the arccosine's answer runs down to nought there at the same time. An
+    argument `d` below one therefore turns a relative error of `2^-bits` into
+    one of `2^-bits / d`, so the bits are raised by what `d` is worth. Asking
+    for them up front is what lets the first attempt settle.
+    """
+    var distance = bigdecimal_arithmetics.subtract(
+        BigDecimal(BigUInt.one(), 0, False), abs(x)
+    )
+    if distance.sign or distance.coefficient.is_zero():
+        return 0
+    var places = -Int(distance.adjusted())
+    if places <= 0:
+        return 0
+    return (places * 10 + 2) // 3
+
+
+def _arcsine_in_binary(x: BigDecimal, precision: Int) raises -> BigDecimal:
+    """`arcsin(x)` to `precision` digits, worked out in the binary layer.
+
+    Args:
+        x: The argument, whose magnitude must be at most one.
+        precision: The significant digits wanted.
+
+    Returns:
+        The arcsine, within `INVERSE_TRIG_SLACK` units of the last place.
+
+    Raises:
+        ValueError: If the argument is outside `[-1, 1]`.
+        Error: Propagated from the conversions or the binary arcsine.
+    """
+    if precision < _BINARY_INVERSE_FLOOR or x.coefficient.is_zero():
+        return arcsin(x, precision)
+    var bits = _bits_for_digits(precision, _inverse_amplification(x))
+    var answer = bigfloat_trigonometric.arcsin(
+        BigFloat.from_bigdecimal(x, bits),
+        bits,
+        RoundingMode.ROUND_HALF_EVEN,
+    )
+    return answer.to_bigdecimal_rounded(precision, RoundingMode.ROUND_HALF_EVEN)
+
+
+def _arccosine_in_binary(x: BigDecimal, precision: Int) raises -> BigDecimal:
+    """`arccos(x)` to `precision` digits, worked out in the binary layer.
+
+    Args:
+        x: The argument, whose magnitude must be at most one.
+        precision: The significant digits wanted.
+
+    Returns:
+        The arccosine, within `INVERSE_TRIG_SLACK` units of the last place.
+
+    Raises:
+        ValueError: If the argument is outside `[-1, 1]`.
+        Error: Propagated from the conversions or the binary arccosine.
+    """
+    if precision < _BINARY_INVERSE_FLOOR:
+        return arccos(x, precision)
+    var bits = _bits_for_digits(precision, _inverse_amplification(x))
+    var answer = bigfloat_trigonometric.arccos(
+        BigFloat.from_bigdecimal(x, bits),
+        bits,
+        RoundingMode.ROUND_HALF_EVEN,
+    )
+    return answer.to_bigdecimal_rounded(precision, RoundingMode.ROUND_HALF_EVEN)
+
+
 def arctan_rounded(
     x: BigDecimal, precision: Int, rounding_mode: RoundingMode
 ) raises -> BigDecimal:
@@ -853,7 +1027,9 @@ def arctan_rounded(
     if x.is_zero():
         # `arctan(0)` is exactly zero.
         return arctan(x, precision)
-    return _round_by_deciding[arctan, ARCTAN_SLACK](x, precision, rounding_mode)
+    return _round_by_deciding[_arctangent_in_binary, ARCTAN_SLACK](
+        x, precision, rounding_mode
+    )
 
 
 def arctan(x: BigDecimal, precision: Int) raises -> BigDecimal:
@@ -1233,7 +1409,7 @@ def arcsin_rounded(
     if x.is_zero():
         # `arcsin(0)` is exactly zero.
         return arcsin(x, precision)
-    return _round_by_deciding[arcsin, INVERSE_TRIG_SLACK](
+    return _round_by_deciding[_arcsine_in_binary, INVERSE_TRIG_SLACK](
         x, precision, rounding_mode
     )
 
@@ -1254,7 +1430,7 @@ def arccos_rounded(
     Raises:
         Error: Propagated from `arccos()`.
     """
-    return _round_by_deciding[arccos, INVERSE_TRIG_SLACK](
+    return _round_by_deciding[_arccosine_in_binary, INVERSE_TRIG_SLACK](
         x, precision, rounding_mode
     )
 
