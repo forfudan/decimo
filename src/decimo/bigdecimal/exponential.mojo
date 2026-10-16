@@ -671,9 +671,9 @@ def root(x: BigDecimal, n: BigDecimal, precision: Int) raises -> BigDecimal:
 
     # Compute root using the identity: x^(1/n) = exp(ln(|x|)/n)
     var abs_x = abs(x)
-    var ln_x = ln(abs_x, working_precision)
+    var ln_x = _logarithm_in_binary(abs_x, working_precision)
     var ln_divided = ln_x.true_divide(n, working_precision)
-    var result = exp(ln_divided, working_precision)
+    var result = _exponential_in_binary(ln_divided, working_precision)
 
     # Handle sign for negative inputs (only possible with odd integer roots)
     if x.sign:
@@ -982,9 +982,9 @@ def _integer_root_via_exp_ln(
     comptime BUFFER_DIGITS = 9
     var working_precision = precision + BUFFER_DIGITS
     var abs_x = abs(x)
-    var ln_x = ln(abs_x, working_precision)
+    var ln_x = _logarithm_in_binary(abs_x, working_precision)
     var ln_divided = ln_x.true_divide(n, working_precision)
-    var result = exp(ln_divided, working_precision)
+    var result = _exponential_in_binary(ln_divided, working_precision)
     result.sign = result_sign
 
     result.round_to_precision_inplace(
@@ -2897,7 +2897,7 @@ def _e_computed(precision: Int) raises -> BigDecimal:
 
     The kernel `BigDecimal.e()` keeps between calls; see `bigdecimal.cache`.
     """
-    return exp(BigDecimal(BigUInt.one()), precision)
+    return _exponential_in_binary(BigDecimal(BigUInt.one()), precision)
 
 
 def exp(x: BigDecimal, precision: Int) raises -> BigDecimal:
@@ -3278,11 +3278,14 @@ def log(x: BigDecimal, base: BigDecimal, precision: Int) raises -> BigDecimal:
         return log10(x, precision)
 
     # Use the identity: log_base(x) = ln(x) / ln(base)
-    # The process-wide cache serves both ln() calls with the same ln(2) and
-    # ln(1.25), and keeps them for the next call.
-    var cache = _SHARED_MATH_CACHE.get_or_create_ptr()
-    var ln_x = ln(x, working_precision, cache[])
-    var ln_base = ln(base, working_precision, cache[])
+    #
+    # Both logarithms are taken by the binary kernel, which is what makes
+    # this quick: the decimal series is 62 milliseconds at 5,000 digits where
+    # the kernel is 2, and this function takes two of them. The kernel keeps
+    # its own constants in the binary layer, so `MathCache` is not needed
+    # here any more.
+    var ln_x = _logarithm_in_binary(x, working_precision)
+    var ln_base = _logarithm_in_binary(base, working_precision)
 
     var result = ln_x.true_divide(ln_base, precision)
     return result^
