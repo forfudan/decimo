@@ -730,8 +730,8 @@ def _tan_cot_at(
     # Calculate
     # tan(x) = sin(x) / cos(x)
     # cot(x) = cos(x) / sin(x)
-    var sin_x: BigDecimal = sin(x_reduced, precision=working_precision)
-    var cos_x: BigDecimal = cos(x_reduced, precision=working_precision)
+    var sin_x: BigDecimal = _sine_in_binary(x_reduced, working_precision)
+    var cos_x: BigDecimal = _cosine_in_binary(x_reduced, working_precision)
     var result: BigDecimal
     if is_tan:
         result = sin_x.true_divide(cos_x, precision=working_precision)
@@ -771,7 +771,7 @@ def csc(x: BigDecimal, precision: Int) raises -> BigDecimal:
     comptime BUFFER_DIGITS = 9
     var working_precision = precision + BUFFER_DIGITS
 
-    var sin_x = sin(x, precision=working_precision)
+    var sin_x = _sine_in_binary(x, working_precision)
 
     return BigDecimal(BigUInt.one()).true_divide(sin_x, precision=precision)
 
@@ -800,7 +800,7 @@ def sec(x: BigDecimal, precision: Int) raises -> BigDecimal:
     comptime BUFFER_DIGITS = 9
     var working_precision = precision + BUFFER_DIGITS
 
-    var cos_x = cos(x, precision=working_precision)
+    var cos_x = _cosine_in_binary(x, working_precision)
 
     return BigDecimal(BigUInt.one()).true_divide(cos_x, precision=precision)
 
