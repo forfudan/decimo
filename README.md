@@ -90,13 +90,13 @@ The core types are[^auxiliary]:
   integer powers and `limit_denominator()` are exact, and rounding happens
   only where you ask for it, in `to_bigdecimal()` or `round()`.
 
-Decimo is fast: at a million digits `pi()` is nearly twelve times quicker than
+Decimo is fast: at a million digits `pi()` is twelve times quicker than
 pure-Python mpmath, `BigInt` multiplication is fifteen times quicker than
-CPython's `int`,
-and small `BigDecimal` operations are close to libmpdec, the C library behind
-Python's `decimal`. The measured numbers, with the commit they were taken on,
-are in [docs/benchmarks.md](docs/benchmarks.md); `pixi run benchdoc` regenerates
-them.
+CPython's `int`, the logarithm at ten thousand digits is four hundred times
+quicker than libmpdec, and small `BigDecimal` operations are close to that
+same C library behind Python's `decimal`. The measured numbers, with the
+commit they were taken on, are in [docs/benchmarks.md](docs/benchmarks.md);
+`pixi run benchdoc` regenerates them.
 
 **Decimo** combines "**Deci**mal" and "**Mo**jo" - reflecting its purpose and
 implementation language. "Decimo" is also a Latin word meaning "tenth" and is
