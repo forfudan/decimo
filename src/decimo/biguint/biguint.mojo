@@ -25,6 +25,7 @@ mathematical methods that do not implement a trait.
 
 from std import math
 from std.builtin.globals import global_constant
+from std.hashlib.hasher import Hasher
 from std.memory import Pointer, unsafe_memcpy
 from std.sys import size_of
 
@@ -276,7 +277,16 @@ a division by a constant is the expensive part of writing a number out.
 """
 
 
-struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
+struct BigUInt(
+    Absable,
+    Copyable,
+    Equatable,
+    Hashable,
+    IntableRaising,
+    Movable,
+    Rootable,
+    Writable,
+):
     """Represents a base-10 arbitrary-precision unsigned integer.
 
     Notes:
@@ -2044,6 +2054,22 @@ struct BigUInt(Absable, Copyable, IntableRaising, Movable, Rootable, Writable):
     # ===------------------------------------------------------------------=== #
     # Other dunders
     # ===------------------------------------------------------------------=== #
+
+    def __hash__[H: Hasher](self, mut hasher: H):
+        """Hashes this number, so that it can be the key of a dictionary.
+
+        The representation invariant does the work here: a value has one
+        word list and no leading zero word, so equal values hold equal words
+        and feeding the words is enough. Zero is the single word `0`.
+
+        Parameters:
+            H: The hasher to use.
+
+        Args:
+            hasher: The hasher to feed.
+        """
+        for word in self.words:
+            word.__hash__(hasher)
 
     # ===------------------------------------------------------------------=== #
     # Mathematical methods that do not implement a trait (not a dunder)

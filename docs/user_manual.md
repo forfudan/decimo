@@ -1926,6 +1926,18 @@ does what a negative value does — the four exact types raise, while
 `BigFloat` and `MPF` return a NaN, as they do for every other function
 outside their domain.
 
+`Hashable` gives `hash(x)`, and with it a key in a `Dict`. `BigUInt`,
+`BigInt`, `BigDecimal`, `BigFloat`, `Rational` and `Decimal128` all conform.
+The rule a hash has to keep is that equal values hash alike, and each of
+these types holds values that are equal without being written the same way,
+so each has something to see through. A decimal drops the trailing zeros it
+was written with, which is why `1.0` and `1.00` reach the same entry. A
+binary float shifts its significand down to an odd number, which is why a
+half at fifty-three bits and a half at five hundred reach the same entry. A
+zero is one key whatever sign it carries. The converse is not promised: two
+different numbers may land on the same sixty-four bits, as they may under
+any hash, and the dictionary settles that with `==`.
+
 Every one of these types also answers `String(x)` and `repr(x)`. Neither
 needs a trait of its own here: `String(x)` and `print(x)` come from
 `Writable`, and `repr(x)` from the type's own `__repr__`. Mojo 1.1 has no
@@ -1941,6 +1953,7 @@ print its argument asks for `Writable`.
 | `Copyable`         | Value-semantic copy                   |
 | `Movable`          | Move semantics                        |
 | `FloatableRaising` | `Float64(x)`                          |
+| `Hashable`         | `hash(x)`, a key in a dictionary      |
 | `IntableRaising`   | `Int(x)`                              |
 | `Numeric`          | Generic code over Decimo numbers      |
 | `Parsable`         | `T.from_string(text)` in generic code |
@@ -1956,6 +1969,7 @@ print its argument asks for `Writable`.
 | `Copyable`         | Value-semantic copy                   |
 | `Movable`          | Move semantics                        |
 | `FloatableRaising` | `Float64(x)`                          |
+| `Hashable`         | `hash(x)`, a key in a dictionary      |
 | `IntableRaising`   | `Int(x)`                              |
 | `Numeric`          | Generic code over Decimo numbers      |
 | `Parsable`         | `T.from_string(text)` in generic code |
@@ -1987,6 +2001,7 @@ print its argument asks for `Writable`.
 | `Absable`          | `abs(x)`                              |
 | `Comparable`       | `<`, `<=`, `>`, `>=`, `==`, `!=`      |
 | `Copyable`         | Value-semantic copy                   |
+| `Hashable`         | `hash(x)`, a key in a dictionary      |
 | `Movable`          | Move semantics                        |
 | `Parsable`         | `T.from_string(text)` in generic code |
 | `Rootable`         | `x.sqrt()` in generic code            |

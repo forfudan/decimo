@@ -27,6 +27,7 @@ in little-endian order, and a separate sign bit.
 """
 
 from std.bit import bit_width, count_leading_zeros, pop_count
+from std.hashlib.hasher import Hasher
 from std.memory import Pointer, unsafe_memcpy, unsafe_memset_zero
 from std.sys import size_of
 
@@ -96,6 +97,7 @@ struct BigInt(
     Comparable,
     Copyable,
     FloatableRaising,
+    Hashable,
     IntableRaising,
     Movable,
     Numeric,
@@ -1450,6 +1452,29 @@ struct BigInt(
         return bigint_comparison.not_equal(
             self, Self.from_integral_scalar(other)
         )
+
+    # ===------------------------------------------------------------------=== #
+    # Other dunders that implement traits
+    # hash
+    # ===------------------------------------------------------------------=== #
+
+    def __hash__[H: Hasher](self, mut hasher: H):
+        """Hashes this number, so that it can be the key of a dictionary.
+
+        The words are canonical, with no leading zero word, so equal values
+        hold equal words. The sign is not: a zero may carry `sign = True`
+        and still equal a zero that does not, so what is fed is
+        `is_negative()` rather than the field.
+
+        Parameters:
+            H: The hasher to use.
+
+        Args:
+            hasher: The hasher to feed.
+        """
+        UInt8(self.is_negative()).__hash__(hasher)
+        for word in self.words:
+            word.__hash__(hasher)
 
     # ===------------------------------------------------------------------=== #
     # Mathematical methods that do not implement a trait (not a dunder)
