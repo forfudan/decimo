@@ -34,6 +34,20 @@ The functions, with the identity each is computed from (`u = expm1(|x|)`):
 - arctanh(x: BigDecimal, precision: Int) -> BigDecimal  log1p of 2x/(1 - x)/2
 
 and one `*_rounded()` for each, whose rounding is decided rather than assumed.
+
+The `expm1()` and `log1p()` each of them calls is the kernel that works the
+answer out in the binary layer, not the decimal series of the same name. The
+series is still there, and is still what the tests weigh these against, but
+it is quadratic in the digits where the binary route is not: at 5,000 digits
+`log1p()` is 75 milliseconds in decimal against 5 in binary, and `ln()` 62
+against 2. The functions here are mostly one logarithm, so they inherit the
+whole of that -- `arccosh(2)` at 5,000 digits went from 132 milliseconds to
+2.5. The two exponentials gain less, half as much again, because `exp()`'s
+own series converges on factorials and was never the slow one.
+
+Both kernels promise the same handful of units in the last place at the
+width they are asked for, and each falls back to the series below its own
+floor, so the choice is one of speed and not of accuracy.
 """
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
@@ -124,11 +138,13 @@ def sinh(x: BigDecimal, precision: Int) raises -> BigDecimal:
 
     if magnitude.compare_absolute(_saturation_magnitude(working_precision)) > 0:
         # `e^-|x|` is below the last digit, so the difference is `e^|x|`.
-        result = bigdecimal_exponential.exp(
+        result = bigdecimal_exponential._exponential_in_binary(
             magnitude, working_precision
         ).true_divide(_two(), precision=working_precision)
     else:
-        var u = bigdecimal_exponential.expm1(magnitude, working_precision)
+        var u = bigdecimal_exponential._exponential_less_one_in_binary(
+            magnitude, working_precision
+        )
         var numerator = u.multiply(u.add(_two()), precision=working_precision)
         var denominator = _two().multiply(
             u.add(_one()), precision=working_precision
@@ -171,7 +187,9 @@ def cosh(x: BigDecimal, precision: Int) raises -> BigDecimal:
     var working_precision = precision + BUFFER_DIGITS
 
     var magnitude = abs(x)
-    var exponential = bigdecimal_exponential.exp(magnitude, working_precision)
+    var exponential = bigdecimal_exponential._exponential_in_binary(
+        magnitude, working_precision
+    )
     var result: BigDecimal
 
     if magnitude.compare_absolute(_saturation_magnitude(working_precision)) > 0:
@@ -233,7 +251,7 @@ def tanh(x: BigDecimal, precision: Int) raises -> BigDecimal:
     if magnitude.compare_absolute(_saturation_magnitude(working_precision)) > 0:
         result = _one()
     else:
-        var v = bigdecimal_exponential.expm1(
+        var v = bigdecimal_exponential._exponential_less_one_in_binary(
             magnitude.multiply(_two()), working_precision
         )
         result = v.true_divide(v.add(_two()), precision=working_precision)
@@ -293,11 +311,11 @@ def arcsinh(x: BigDecimal, precision: Int) raises -> BigDecimal:
         var tail = magnitude.multiply(magnitude).true_divide(
             _one().add(root), precision=working_precision
         )
-        result = bigdecimal_exponential.log1p(
+        result = bigdecimal_exponential._logarithm_of_one_plus_in_binary(
             magnitude.add(tail), working_precision
         )
     else:
-        result = bigdecimal_exponential.ln(
+        result = bigdecimal_exponential._logarithm_in_binary(
             magnitude.add(root), working_precision
         )
 
@@ -358,12 +376,16 @@ def arccosh(x: BigDecimal, precision: Int) raises -> BigDecimal:
         var root = bigdecimal_exponential.sqrt_via_reciprocal_iteration(
             t.multiply(t.add(_two())), working_precision
         )
-        result = bigdecimal_exponential.log1p(t.add(root), working_precision)
+        result = bigdecimal_exponential._logarithm_of_one_plus_in_binary(
+            t.add(root), working_precision
+        )
     else:
         var root = bigdecimal_exponential.sqrt_via_reciprocal_iteration(
             x.multiply(x).subtract(_one()), working_precision
         )
-        result = bigdecimal_exponential.ln(x.add(root), working_precision)
+        result = bigdecimal_exponential._logarithm_in_binary(
+            x.add(root), working_precision
+        )
 
     result.round_to_precision_inplace(
         precision,
@@ -426,9 +448,11 @@ def arctanh(x: BigDecimal, precision: Int) raises -> BigDecimal:
                 _one().subtract(magnitude), precision=working_precision
             )
         )
-        result = bigdecimal_exponential.log1p(tail, working_precision)
+        result = bigdecimal_exponential._logarithm_of_one_plus_in_binary(
+            tail, working_precision
+        )
     else:
-        result = bigdecimal_exponential.ln(
+        result = bigdecimal_exponential._logarithm_in_binary(
             _one()
             .add(magnitude)
             .true_divide(
