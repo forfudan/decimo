@@ -194,11 +194,26 @@ def main() raises -> None:
     print("  },")
 
     # --- sqrt, exp, ln, power ---
+    #
+    # These are timed through the methods a user calls, not through the
+    # module-level functions of the same name. The latter are the decimal
+    # series, kept as the second implementation the tests weigh the first
+    # against; the methods take the binary route and decide their last digit,
+    # which is also what libmpdec does, so the two sides match in what they
+    # promise as well as in what they compute. The difference is not small:
+    # at 10,000 digits the series takes 349 milliseconds over a logarithm
+    # that the method answers in 8.
+    #
+    # The widest row runs more than once for the same reason every other row
+    # does. A single call there would have `exp` pay for the logarithm of two
+    # at 10,000 digits and `ln`, running next, find it already computed --
+    # which measures the order of this loop rather than either function.
     var higher_precisions = [28, 100, 1000, 10000]
-    var higher_iterations = [20000, 5000, 200, 1]
-    var higher_rounds = [ROUNDS, ROUNDS, 3, 1]
+    var higher_iterations = [20000, 5000, 200, 2]
+    var higher_rounds = [ROUNDS, ROUNDS, 3, 2]
     var base = BigDecimal("2.3456789")
     var exponent = BigDecimal("1.5")
+    comptime HALF_EVEN = RoundingMode.ROUND_HALF_EVEN
 
     print('  "higher": {')
     for k in range(len(higher_precisions)):
@@ -212,27 +227,25 @@ def main() raises -> None:
         for _ in range(rounds):
             var t0 = perf_counter_ns()
             for _ in range(iters):
-                sink += Int(bd_exponential.sqrt(base, precision).sign)
+                sink += Int(base.sqrt(precision, HALF_EVEN).sign)
             var t1 = perf_counter_ns()
             best_sqrt = min(best_sqrt, Float64(Int(t1 - t0)) / Float64(iters))
 
             t0 = perf_counter_ns()
             for _ in range(iters):
-                sink += Int(bd_exponential.exp(base, precision).sign)
+                sink += Int(base.exp(precision, HALF_EVEN).sign)
             t1 = perf_counter_ns()
             best_exp = min(best_exp, Float64(Int(t1 - t0)) / Float64(iters))
 
             t0 = perf_counter_ns()
             for _ in range(iters):
-                sink += Int(bd_exponential.ln(base, precision).sign)
+                sink += Int(base.ln(precision, HALF_EVEN).sign)
             t1 = perf_counter_ns()
             best_ln = min(best_ln, Float64(Int(t1 - t0)) / Float64(iters))
 
             t0 = perf_counter_ns()
             for _ in range(iters):
-                sink += Int(
-                    bd_exponential.power(base, exponent, precision).sign
-                )
+                sink += Int(base.power(exponent, precision, HALF_EVEN).sign)
             t1 = perf_counter_ns()
             best_power = min(best_power, Float64(Int(t1 - t0)) / Float64(iters))
 

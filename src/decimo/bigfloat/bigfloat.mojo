@@ -15,7 +15,7 @@
 # ===----------------------------------------------------------------------=== #
 
 
-"""An arbitrary-precision binary float, written in Mojo.
+"""An arbitrary-precision binary float.
 
 A value is `(-1)^sign * significand * 2^exponent`, with the significand an
 integer holding exactly `precision` bits. The precision is a property of the
@@ -172,7 +172,7 @@ struct BigFloat(
         self.kind = kind
 
     def __init__(out self, *, copy: Self):
-        """A copy of another value.
+        """Initialize the big float from a copy of another value.
 
         Args:
             copy: The value to copy.
@@ -184,7 +184,7 @@ struct BigFloat(
         self.kind = copy.kind
 
     def copy(self) -> Self:
-        """An explicit copy.
+        """Make an explicit copy of the value.
 
         Returns:
             The copy.
