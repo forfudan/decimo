@@ -23,6 +23,7 @@ mathematical methods that do not implement a trait.
 """
 
 from std import math, testing
+from std.hashlib.hasher import Hasher
 from std.memory import Pointer, unsafe_memcpy
 from std.python import PythonObject
 
@@ -112,6 +113,7 @@ struct BigDecimal(
     Comparable,
     Copyable,
     FloatableRaising,
+    Hashable,
     IntableRaising,
     Movable,
     Numeric,
@@ -1754,6 +1756,29 @@ struct BigDecimal(
             True if the two values are not equal, False otherwise.
         """
         return bigdecimal_comparison.compare(self, other) != 0
+
+    def __hash__[H: Hasher](self, mut hasher: H):
+        """Hashes this number, so that it can be the key of a dictionary.
+
+        Trailing zeros carry no value, only the precision a value was
+        written with, and `1.0 == 1.00` because of it. They are dropped
+        here, together with the scale that goes with them, so the two agree.
+        A zero is a zero whatever its sign and scale, and every one of them
+        hashes alike.
+
+        Parameters:
+            H: The hasher to use.
+
+        Args:
+            hasher: The hasher to feed.
+        """
+        if self.coefficient.is_zero():
+            UInt8(0).__hash__(hasher)
+            return
+        var dropped = self.number_of_trailing_zeros()
+        UInt8(self.sign).__hash__(hasher)
+        Int64(self.scale - dropped).__hash__(hasher)
+        self.coefficient.floor_divide_by_power_of_ten(dropped).__hash__(hasher)
 
     # ===------------------------------------------------------------------=== #
     # Other dunders that implements traits
