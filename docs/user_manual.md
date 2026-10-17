@@ -1372,6 +1372,7 @@ tried again. This is Ziv's method, and it is why the last bit can be trusted.
 | `expm1`, `log1p`                         | `decimo.bigfloat.exponential`   |
 | `power`                                  | `decimo.bigfloat.power`         |
 | `sin`, `cos`, `tan`                      | `decimo.bigfloat.trigonometric` |
+| `cot`, `csc`, `sec`                      | `decimo.bigfloat.trigonometric` |
 | `arcsin`, `arccos`, `arctan`             | `decimo.bigfloat.trigonometric` |
 | `arctan2`                                | `decimo.bigfloat.trigonometric` |
 | `sinh`, `cosh`, `tanh`                   | `decimo.bigfloat.hyperbolic`    |
@@ -2028,15 +2029,21 @@ the float of that precision nearest the true value.
 | `expm1`, `log1p`                  | `decimo.bigfloat.exponential`   |
 | `power`                           | `decimo.bigfloat.power`         |
 | `sin`, `cos`, `tan`               | `decimo.bigfloat.trigonometric` |
+| `cot`, `csc`, `sec`               | `decimo.bigfloat.trigonometric` |
 | `arcsin`, `arccos`, `arctan`      | `decimo.bigfloat.trigonometric` |
 | `arctan2`                         | `decimo.bigfloat.trigonometric` |
 | `sinh`, `cosh`, `tanh`            | `decimo.bigfloat.hyperbolic`    |
 | `arcsinh`, `arccosh`, `arctanh`   | `decimo.bigfloat.hyperbolic`    |
 | `pi`, `ln2`, `ln10`, `e`          | `decimo.bigfloat.constants`     |
+| `fma`, `remainder`, `fmod`        | `decimo.bigfloat.ieee`          |
 
 `log` takes the base as its second argument, before the precision. Every other
 one takes the argument, the precision and the mode.
-| `fma`, `remainder`, `fmod`        | `decimo.bigfloat.ieee`          |
+
+`cot` and `csc` have a pole at zero and return an infinity of the zero's
+sign, the way a float does; `BigDecimal` raises there instead, having no
+infinity to return. No other pole of the six is a binary float, so every
+other argument has an answer, however large it is.
 
 These take no rounding mode, or no precision, because their answers are exact
 or carry the argument's own precision. All of them are in

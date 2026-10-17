@@ -94,6 +94,14 @@ It is a sine over a cosine, so both of their bounds compound and the division
 rounds once more.
 """
 
+comptime _RECIPROCAL_SLACK = 8
+"""Units in the last place the cotangent's, cosecant's and secant's kernels
+may be off by.
+
+Each is a quotient of the same two series the tangent divides, taken the
+other way up, so the bound is the tangent's.
+"""
+
 
 def _truncated_to_bigint(value: BigFloat) raises -> BigInt:
     """The integer part of a finite value, toward zero.
@@ -523,6 +531,157 @@ def _tan_kernel(x: BigFloat, width: Int) raises -> BigFloat:
     )
 
 
+def _cot_kernel(x: BigFloat, width: Int) raises -> BigFloat:
+    """`cot(x)` to `width` bits.
+
+    Args:
+        x: The argument.
+        width: The bits wanted.
+
+    Returns:
+        The value, within `_RECIPROCAL_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    The tangent upside down, which is the same two series with the quotient
+    the other way round. A pole is reachable here where it is not for the
+    tangent -- `cot(0)` is an infinity -- but `cot()` answers that before
+    coming here, and no other multiple of pi is a binary float.
+
+    Dividing by the small series rather than the large one is what makes
+    this worth writing out instead of taking `1/tan(x)`: a reciprocal of a
+    rounded tangent would round twice, once for the tangent and once for the
+    division, and near a pole the first of those two is where the digits are
+    lost.
+    """
+    if x.is_nan() or x.is_infinite():
+        return BigFloat.nan(width)
+    if x.is_zero():
+        return BigFloat.infinity(width, x.sign)
+
+    var scale = width + Int(bit_width(UInt(width))) + 16
+    var parts = _reduced(x, width)
+    var remainder = BigFloat.from_rounded_parts(
+        parts[0].significand, parts[0].exponent, scale, parts[0].sign
+    )
+    var quadrant = parts[1]
+
+    var sine = _sine_series(remainder, scale)
+    var cosine = bigfloat_arithmetics.add(
+        BigFloat.from_int(1, scale),
+        _cosine_minus_one_series(remainder, scale),
+        scale,
+    )
+    # In an odd quadrant the two swap places, and the sign goes with them.
+    var answer = bigfloat_arithmetics.divide(cosine, sine, scale)
+    if quadrant == 1 or quadrant == 3:
+        answer = bigfloat_arithmetics.divide(sine, cosine, scale)
+        answer = -answer
+    return BigFloat.from_rounded_parts(
+        answer.significand, answer.exponent, width, answer.sign
+    )
+
+
+def _csc_kernel(x: BigFloat, width: Int) raises -> BigFloat:
+    """`csc(x)` to `width` bits.
+
+    Args:
+        x: The argument.
+        width: The bits wanted.
+
+    Returns:
+        The value, within `_RECIPROCAL_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    One over the sine, with the quadrant choosing which series the sine is,
+    exactly as `_sin_kernel` chooses it. The division is taken at the
+    working width against the series itself and not against a rounded sine,
+    so only the one rounding stands between the series and the answer.
+    """
+    if x.is_nan() or x.is_infinite():
+        return BigFloat.nan(width)
+    if x.is_zero():
+        return BigFloat.infinity(width, x.sign)
+
+    var scale = width + Int(bit_width(UInt(width))) + 16
+    var parts = _reduced(x, width)
+    var remainder = BigFloat.from_rounded_parts(
+        parts[0].significand, parts[0].exponent, scale, parts[0].sign
+    )
+    var quadrant = parts[1]
+
+    var sine = _sine_series(remainder, scale)
+    if quadrant == 1 or quadrant == 3:
+        sine = bigfloat_arithmetics.add(
+            BigFloat.from_int(1, scale),
+            _cosine_minus_one_series(remainder, scale),
+            scale,
+        )
+    if quadrant >= 2:
+        sine = -sine
+    var answer = bigfloat_arithmetics.divide(
+        BigFloat.from_int(1, scale), sine, scale
+    )
+    return BigFloat.from_rounded_parts(
+        answer.significand, answer.exponent, width, answer.sign
+    )
+
+
+def _sec_kernel(x: BigFloat, width: Int) raises -> BigFloat:
+    """`sec(x)` to `width` bits.
+
+    Args:
+        x: The argument.
+        width: The bits wanted.
+
+    Returns:
+        The value, within `_RECIPROCAL_SLACK` units of the last place.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    One over the cosine, the quadrants rotated as `_cos_kernel` rotates
+    them. No argument is a pole: every pole of the secant is an odd multiple
+    of a half of pi, and no binary float is one.
+    """
+    if x.is_nan() or x.is_infinite():
+        return BigFloat.nan(width)
+    if x.is_zero():
+        return BigFloat.from_int(1, width)
+
+    var scale = width + Int(bit_width(UInt(width))) + 16
+    var parts = _reduced(x, width)
+    var remainder = BigFloat.from_rounded_parts(
+        parts[0].significand, parts[0].exponent, scale, parts[0].sign
+    )
+    var quadrant = parts[1]
+
+    var cosine = bigfloat_arithmetics.add(
+        BigFloat.from_int(1, scale),
+        _cosine_minus_one_series(remainder, scale),
+        scale,
+    )
+    if quadrant == 1 or quadrant == 3:
+        cosine = -_sine_series(remainder, scale)
+    if quadrant == 2 or quadrant == 3:
+        cosine = -cosine
+    var answer = bigfloat_arithmetics.divide(
+        BigFloat.from_int(1, scale), cosine, scale
+    )
+    return BigFloat.from_rounded_parts(
+        answer.significand, answer.exponent, width, answer.sign
+    )
+
+
 def sin(
     x: BigFloat,
     precision: Int,
@@ -662,6 +821,212 @@ def tan(
         # `tan(x) = x + x^3/3 + ...`, away from zero.
         return rounded_beside(x, precision, rounding_mode, False)
     return round_by_deciding_at[_tan_kernel, _TANGENT_SLACK](
+        x, precision, rounding_mode
+    )
+
+
+def _exact_reciprocal(x: BigFloat) raises -> Optional[BigFloat]:
+    """`1/x` when it is a binary float, and nothing when it is not.
+
+    Args:
+        x: The argument, finite and not zero.
+
+    Returns:
+        The reciprocal, exactly, when `x` is a power of two. Otherwise
+        nothing, because a significand that is not a power of two divides
+        one into a fraction no precision holds.
+
+    Raises:
+        Error: Propagated from the construction.
+    """
+    var shift = x.significand.trailing_zeros()
+    if shift != x.significand.bit_length() - 1:
+        return None
+    return BigFloat.power_of_two(-(x.exponent + shift))
+
+
+def _correction_is_below_a_guard_unit(
+    reciprocal: BigFloat, guard: Int
+) raises -> Bool:
+    """Whether the term past `1/x` is below one guard unit of `1/x`.
+
+    Args:
+        reciprocal: `1/x`, exactly, as `_exact_reciprocal()` returns it.
+        guard: How many guard bits the rounding will be given.
+
+    Returns:
+        True when the correction is below a guard unit, which is what makes
+        moving `1/x` by a guard unit land on the same side of every rounding
+        boundary as the true value does.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    `cot(x)` is `1/x - x/3 - ...` and `csc(x)` is `1/x + x/6 + ...`, so both
+    corrections are below `|x|/2`, which is `2^-L` for `L` the leading bit of
+    `1/x`. A guard unit of the reciprocal is `2^(L - p + 1 - g)` for a
+    significand of `p` bits, so the condition is
+
+        p + g - 1 <= 2L
+
+    which an argument has to be genuinely small to meet: at fifty-three bits
+    it wants `|x|` below about `2^-27`.
+    """
+    var leading = leading_bit_position(reciprocal)
+    return (leading + leading) >= BigInt(reciprocal.precision + guard - 1)
+
+
+def cot(
+    x: BigFloat,
+    precision: Int,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) raises -> BigFloat:
+    """The cotangent of a value, correctly rounded.
+
+    Args:
+        x: The argument, in radians.
+        precision: How many bits the result keeps. Must be positive.
+        rounding_mode: Which way to round.
+
+    Returns:
+        The float of `precision` bits nearest `cot(x)`.
+
+    Raises:
+        ValueError: If `precision` is not positive.
+        OverflowError: If reducing the argument would need more bits of pi
+            than a precision may be.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    An infinity gives a NaN. A zero gives an infinity of the same sign,
+    which is the one pole a binary float can land on: the others are at the
+    non-zero multiples of pi, and none of those is a float. Near one of them
+    the answer is enormous and still correct to the last bit, because the
+    sine it divides by is small only because its own argument is small.
+
+    The decimal `cot()` raises at the pole rather than returning an
+    infinity. That is not a disagreement about the value; `BigDecimal` has
+    no infinity to return.
+    """
+    _ = checked_precision(precision, "cot()")
+    if x.is_zero():
+        return BigFloat.infinity(precision, x.sign)
+    if x.is_finite():
+        var reciprocal = _exact_reciprocal(x)
+        if reciprocal and _correction_is_below_a_guard_unit(
+            reciprocal.value(), guard_bits(reciprocal.value(), precision)
+        ):
+            # `cot(x) = 1/x - x/3 - ...`, so the answer is the reciprocal
+            # moved toward zero.
+            return rounded_beside(
+                reciprocal.value(), precision, rounding_mode, True
+            )
+    return round_by_deciding_at[_cot_kernel, _RECIPROCAL_SLACK](
+        x, precision, rounding_mode
+    )
+
+
+def csc(
+    x: BigFloat,
+    precision: Int,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) raises -> BigFloat:
+    """The cosecant of a value, correctly rounded.
+
+    Args:
+        x: The argument, in radians.
+        precision: How many bits the result keeps. Must be positive.
+        rounding_mode: Which way to round.
+
+    Returns:
+        The float of `precision` bits nearest `csc(x)`.
+
+    Raises:
+        ValueError: If `precision` is not positive.
+        OverflowError: If reducing the argument would need more bits of pi
+            than a precision may be.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    One over the sine, so the poles are the sine's zeros and a zero is the
+    only one a float reaches. It gives an infinity of the same sign, where
+    the decimal `csc()` raises for want of one.
+    """
+    _ = checked_precision(precision, "csc()")
+    if x.is_zero():
+        return BigFloat.infinity(precision, x.sign)
+    if x.is_finite():
+        var reciprocal = _exact_reciprocal(x)
+        if reciprocal and _correction_is_below_a_guard_unit(
+            reciprocal.value(), guard_bits(reciprocal.value(), precision)
+        ):
+            # `csc(x) = 1/x + x/6 + ...`, so the answer is the reciprocal
+            # moved away from zero.
+            return rounded_beside(
+                reciprocal.value(), precision, rounding_mode, False
+            )
+    return round_by_deciding_at[_csc_kernel, _RECIPROCAL_SLACK](
+        x, precision, rounding_mode
+    )
+
+
+def sec(
+    x: BigFloat,
+    precision: Int,
+    rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+) raises -> BigFloat:
+    """The secant of a value, correctly rounded.
+
+    Args:
+        x: The argument, in radians.
+        precision: How many bits the result keeps. Must be positive.
+        rounding_mode: Which way to round.
+
+    Returns:
+        The float of `precision` bits nearest `sec(x)`.
+
+    Raises:
+        ValueError: If `precision` is not positive.
+        OverflowError: If reducing the argument would need more bits of pi
+            than a precision may be.
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    An infinity gives a NaN. No argument is a pole, since every pole of the
+    secant is an odd multiple of half of pi and no binary float is one, so
+    the answer is always a number however large.
+
+    The secant of a zero is one, and an argument small enough that the
+    secant is one to within a rounding is answered as `1 + x^2/2` through
+    the addition. Both cases are here rather than in the kernel because a
+    kernel that returns exactly one says nothing about which side of one
+    the true value lies, and the deciding loop would widen for ever looking
+    for the answer it already had.
+    """
+    _ = checked_precision(precision, "sec()")
+    if x.is_zero():
+        return BigFloat.from_int(1, precision)
+    if (
+        x.is_finite()
+        and compare_absolute(x, BigFloat.power_of_two(-(precision + 8) // 2))
+        < 0
+    ):
+        var square = bigfloat_arithmetics.multiply(x, x, precision + 8)
+        var half_square = bigfloat_arithmetics.multiply(
+            square, BigFloat.power_of_two(-1), precision + 8
+        )
+        return bigfloat_arithmetics.add(
+            BigFloat.from_int(1, precision),
+            half_square,
+            precision,
+            rounding_mode,
+        )
+    return round_by_deciding_at[_sec_kernel, _RECIPROCAL_SLACK](
         x, precision, rounding_mode
     )
 
