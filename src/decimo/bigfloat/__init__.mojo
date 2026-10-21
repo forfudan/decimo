@@ -15,7 +15,8 @@ Modules:
   the two remainders
 - power: x ** y, with the exact answers found before the series runs
 - rounding: round_to_precision and the fixed-point helpers the series use
-- trigonometric: sin, cos, tan, arcsin, arccos, arctan, arctan2
+- trigonometric: sin, cos, tan, cot, csc, sec, arcsin, arccos, arctan,
+  arctan2
 
 The exponentials, the logarithms and the IEEE companions are re-exported
 here, so that the functions whose names say what they do can be reached
