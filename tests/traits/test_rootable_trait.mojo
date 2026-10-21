@@ -51,12 +51,8 @@ def test_bigint_through_rootable() raises:
 
 
 def test_biguint_through_rootable() raises:
-    """`BigUInt` conforms though it can never be `Numeric`.
-
-    Compared as text because `BigUInt` has `__eq__` but does not declare
-    `Equatable`, which is what `assert_equal` bounds on.
-    """
-    testing.assert_equal(String(_root_of(BigUInt(144))), "12", "sqrt(144)")
+    """`BigUInt` conforms though it can never be `Numeric`."""
+    testing.assert_equal(_root_of(BigUInt(144)), BigUInt(12), "sqrt(144)")
 
 
 def test_bigdecimal_through_rootable() raises:

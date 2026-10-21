@@ -36,6 +36,7 @@ the bit access and the division that the arithmetic needs. The sign field it
 brings along is one byte that this type does not read.
 """
 
+from std.hashlib.hasher import Hasher
 from std.memory import bitcast
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
@@ -74,7 +75,14 @@ comptime _KIND_NAN: UInt8 = 2
 
 
 struct BigFloat(
-    Absable, Comparable, Copyable, Movable, Parsable, Rootable, Writable
+    Absable,
+    Comparable,
+    Copyable,
+    Hashable,
+    Movable,
+    Parsable,
+    Rootable,
+    Writable,
 ):
     """An arbitrary-precision binary floating-point number.
 
@@ -1077,6 +1085,37 @@ struct BigFloat(
 
         """
         return bigfloat_comparison.greater_equal(self, other)
+
+    def __hash__[H: Hasher](self, mut hasher: H):
+        """Hashes this number, so that it can be the key of a dictionary.
+
+        The precision is not part of the value. One half holds one bit at
+        any precision and the rest of the significand is zeros, so the
+        significand is shifted down to an odd number and the exponent is
+        raised to match before either is fed. The two zeros are equal and
+        hash alike, and so does every NaN, which equals nothing at all.
+
+        Parameters:
+            H: The hasher to use.
+
+        Args:
+            hasher: The hasher to feed.
+        """
+        if self.kind == _KIND_NAN:
+            UInt8(3).__hash__(hasher)
+            return
+        if self.kind == _KIND_INFINITY:
+            UInt8(2).__hash__(hasher)
+            UInt8(self.sign).__hash__(hasher)
+            return
+        if self.significand.is_zero():
+            UInt8(1).__hash__(hasher)
+            return
+        UInt8(0).__hash__(hasher)
+        UInt8(self.sign).__hash__(hasher)
+        var shift = self.significand.trailing_zeros()
+        Int64(self.exponent + shift).__hash__(hasher)
+        (self.significand >> shift).__hash__(hasher)
 
     # ===------------------------------------------------------------------=== #
     # The IEEE 754 companion operations

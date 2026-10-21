@@ -26,6 +26,7 @@ Invariants maintained by all constructors and operations:
     3. If value is zero: numerator == 0, denominator == 1
 """
 
+from std.hashlib.hasher import Hasher
 from std.math import Ceilable, Floorable, Truncable
 from std.memory import bitcast
 from std.os import abort
@@ -46,6 +47,7 @@ struct Rational(
     Copyable,
     FloatableRaising,
     Floorable,
+    Hashable,
     IntableRaising,
     Movable,
     Numeric,
@@ -850,6 +852,22 @@ struct Rational(
             True if not equal.
         """
         return not self.__eq__(other)
+
+    def __hash__[H: Hasher](self, mut hasher: H):
+        """Hashes this number, so that it can be the key of a dictionary.
+
+        A fraction is held in lowest terms with a positive denominator, so
+        two equal fractions hold the same pair and the pair is all that is
+        needed. Zero is `0/1`.
+
+        Parameters:
+            H: The hasher to use.
+
+        Args:
+            hasher: The hasher to feed.
+        """
+        self.numerator.__hash__(hasher)
+        self.denominator.__hash__(hasher)
 
     def __lt__(self, other: Self) -> Bool:
         """Returns True if self < other.
