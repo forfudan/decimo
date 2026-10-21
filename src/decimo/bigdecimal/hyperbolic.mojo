@@ -51,7 +51,12 @@ floor, so the choice is one of speed and not of accuracy.
 """
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
-from decimo.bigdecimal.exponential import _round_by_deciding
+from decimo.bigdecimal.exponential import (
+    _cubic_term_is_below_a_guard_unit,
+    _round_by_deciding,
+    _rounded_beside,
+    _square_term_is_below_a_guard_unit_of_one,
+)
 import decimo.bigdecimal.exponential as bigdecimal_exponential
 from decimo.biguint.biguint import BigUInt
 from decimo.errors import ValueError
@@ -556,9 +561,18 @@ def sinh_rounded(
 
     Raises:
         Error: Propagated from `sinh()`.
+
+    Notes:
+
+    A small argument is answered directly: `sinh(x)` is `x + x^3/6`, so the
+    answer is `x` moved a hair away from zero. The loop could not settle
+    there, because the identity gives back `x` itself at every width and `x`
+    is a value the destination holds exactly.
     """
     if x.is_zero():
         return sinh(x, precision)
+    if _cubic_term_is_below_a_guard_unit(x, precision):
+        return _rounded_beside(x, precision, rounding_mode, False)
     return _round_by_deciding[sinh, HYPERBOLIC_SLACK](
         x, precision, rounding_mode
     )
@@ -579,10 +593,20 @@ def cosh_rounded(
 
     Raises:
         Error: Propagated from `cosh()`.
+
+    Notes:
+
+    A small argument is answered as one moved a hair away from zero, which
+    is what `cosh(x) = 1 + x^2/2` comes to once the square is below a guard
+    unit of one.
     """
     if x.is_zero():
         # `cosh(0)` is exactly one, which the loop could not settle on.
         return cosh(x, precision)
+    if _square_term_is_below_a_guard_unit_of_one(x, precision):
+        return _rounded_beside(
+            BigDecimal.one(), precision, rounding_mode, False
+        )
     return _round_by_deciding[cosh, HYPERBOLIC_SLACK](
         x, precision, rounding_mode
     )
@@ -617,6 +641,9 @@ def tanh_rounded(
         return tanh(x, precision)
     if x.compare_absolute(_saturation_magnitude(precision)) > 0:
         return _saturated_tanh(precision, rounding_mode, x.sign)
+    if _cubic_term_is_below_a_guard_unit(x, precision):
+        # `tanh(x) = x - x^3/3`, so `x` moved a hair toward zero.
+        return _rounded_beside(x, precision, rounding_mode, True)
     return _round_by_deciding[tanh, HYPERBOLIC_SLACK](
         x, precision, rounding_mode
     )
@@ -637,9 +664,16 @@ def arcsinh_rounded(
 
     Raises:
         Error: Propagated from `arcsinh()`.
+
+    Notes:
+
+    A small argument is answered directly: `arcsinh(x)` is `x - x^3/6`, so
+    the answer is `x` moved a hair toward zero.
     """
     if x.is_zero():
         return arcsinh(x, precision)
+    if _cubic_term_is_below_a_guard_unit(x, precision):
+        return _rounded_beside(x, precision, rounding_mode, True)
     return _round_by_deciding[arcsinh, HYPERBOLIC_SLACK](
         x, precision, rounding_mode
     )
@@ -681,9 +715,16 @@ def arctanh_rounded(
 
     Raises:
         Error: Propagated from `arctanh()`.
+
+    Notes:
+
+    A small argument is answered directly: `arctanh(x)` is `x + x^3/3`, so
+    the answer is `x` moved a hair away from zero.
     """
     if x.is_zero():
         return arctanh(x, precision)
+    if _cubic_term_is_below_a_guard_unit(x, precision):
+        return _rounded_beside(x, precision, rounding_mode, False)
     return _round_by_deciding[arctanh, HYPERBOLIC_SLACK](
         x, precision, rounding_mode
     )

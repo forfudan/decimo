@@ -2409,6 +2409,309 @@ def _round_by_deciding[
     )
 
 
+# ===----------------------------------------------------------------------=== #
+# A small argument, answered without the loop
+# ===----------------------------------------------------------------------=== #
+#
+# `_round_by_deciding()` settles only when the whole interval the kernel's
+# bound allows falls inside one rounding bucket. For a small enough argument
+# that never happens and widening does not help: `sin(1E-500)` is `1E-500` at
+# every width a kernel can be asked for, so the answer sits exactly on a
+# boundary of the destination, and after `_ZIV_LIMIT` doublings the loop
+# raises. It shows in the four directed modes, which are the ones that have
+# to choose between the two values a boundary separates.
+#
+# What the rounding needs there is not the size of the correction but its
+# side. So the limit value is moved by one guard unit -- smaller than the
+# distance from it to any boundary it does not already sit on, and larger
+# than the correction itself -- and that is rounded. The binary layer does
+# the same; see `rounded_beside()` in `bigfloat/rounding.mojo`.
+
+
+def _significant_digits(x: BigDecimal) -> Int:
+    """The digits of `x` that carry a value, which its trailing zeros do not.
+
+    Args:
+        x: The value, not zero.
+
+    Returns:
+        The coefficient's digits less its trailing zeros.
+
+    Notes:
+
+    A `BigDecimal` keeps the trailing zeros it was given, and they say how
+    precisely the value is known rather than what it is. Everything below
+    weighs a correction against the last place of a value, and the last place
+    that matters is the last one that carries a digit: `1.000E-500` has four
+    digits and one significant one, and its last place is `1E-500`. Measuring
+    against the fourth zero instead would ask for a correction a thousand
+    times smaller than it needs to be, and would turn away an argument that
+    the direct answer has to take -- `sin(1.000E-500)` is a value no width
+    can decide.
+    """
+    return x.number_of_digits() - x.number_of_trailing_zeros()
+
+
+def _tightened(x: BigDecimal) raises -> BigDecimal:
+    """The same value with its trailing zeros dropped.
+
+    Args:
+        x: The value, not zero.
+
+    Returns:
+        A value equal to `x` whose coefficient ends in a digit that is not a
+        zero, so that its last place is the last place that carries a digit.
+
+    Raises:
+        Error: Propagated from the construction.
+    """
+    var dropped = x.number_of_trailing_zeros()
+    if dropped == 0:
+        return x.copy()
+    return BigDecimal(
+        x.coefficient.floor_divide_by_power_of_ten(dropped),
+        x.scale - dropped,
+        x.sign,
+    )
+
+
+def _guard_digits(x: BigDecimal, precision: Int) -> Int:
+    """How many digits to widen `x` by before rounding it to `precision`.
+
+    Args:
+        x: The value, not zero.
+        precision: The digits the answer keeps.
+
+    Returns:
+        At least two, and enough that the widened coefficient has more digits
+        than the answer keeps, which is what the rounding needs in order to
+        read a discarded remainder.
+    """
+    var guard = 2
+    if precision + 2 - _significant_digits(x) > guard:
+        guard = precision + 2 - _significant_digits(x)
+    return guard
+
+
+def _rounded_beside(
+    x: BigDecimal,
+    precision: Int,
+    rounding_mode: RoundingMode,
+    toward_zero: Bool,
+) raises -> BigDecimal:
+    """Rounds the value a hair to one side of `x`, by one guard unit.
+
+    Args:
+        x: The value the answer sits beside, not zero.
+        precision: The digits the answer keeps.
+        rounding_mode: Which way to round.
+        toward_zero: Whether the answer is below `x` in magnitude or above.
+
+    Returns:
+        `x` moved by a hundredth of its own last place, or less, rounded.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    This is for an argument whose correction term is real but far too small
+    to compute: `sin(x)` is `x - x^3/6`, and at `x = 1E-500` the cubic term
+    is beyond any width a kernel will be asked for. What the rounding needs
+    is not the correction's size but its side, and one guard unit stands in
+    for it exactly.
+
+    Exactly, because `x` is a whole number of its own last places while the
+    boundaries of the destination are a whole number of destination last
+    places, which `x`'s are a hundred or more to. So the distance from `x` to
+    any boundary it does not sit on is at least one of `x`'s own last places,
+    and a guard unit is a hundredth of that at most -- it cannot cross a
+    boundary that the true correction does not. Where `x` sits on a boundary,
+    moving off it is the whole point, since the truth is not on it.
+    """
+    var tight = _tightened(x)
+    var guard = _guard_digits(tight, precision)
+    var coefficient = tight.coefficient.multiply_by_power_of_ten(guard)
+    if toward_zero:
+        coefficient = coefficient - BigUInt.one()
+    else:
+        coefficient = coefficient + BigUInt.one()
+    var moved = BigDecimal(coefficient^, tight.scale + guard, tight.sign)
+    moved.round_to_precision_inplace(
+        precision=precision,
+        rounding_mode=rounding_mode,
+        remove_extra_digit_due_to_rounding=True,
+        fill_zeros_to_precision=False,
+    )
+    return moved^
+
+
+def _cubic_term_is_below_a_guard_unit(x: BigDecimal, precision: Int) -> Bool:
+    """Whether `x^3` is small enough for a guard unit of `x` to stand in.
+
+    Args:
+        x: The argument, not zero.
+        precision: The digits the answer keeps.
+
+    Returns:
+        True when the cubic correction is below one guard unit of `x`, which
+        is what makes moving `x` by a guard unit land on the same side of
+        every rounding boundary as the true value does.
+
+    Notes:
+
+    The six circular and hyperbolic functions whose limit is the argument
+    itself correct it by `x^3/6` or `x^3/3`, both below `10^(3A + 3)` for `A`
+    the adjusted exponent of `x`. A guard unit is `10^(A - 1 - m)` with `m`
+    the larger of the digits `x` has and the digits the answer keeps, so the
+    condition is
+
+        2A <= -(m + 4)
+
+    which an argument has to be genuinely small to meet: at twenty digits it
+    wants `|x|` below `1E-12`.
+    """
+    var room = _significant_digits(x)
+    if precision > room:
+        room = precision
+    return x.adjusted() + x.adjusted() <= -(room + 4)
+
+
+def _square_term_is_below_a_guard_unit(x: BigDecimal, precision: Int) -> Bool:
+    """Whether `x^2` is small enough for a guard unit of `x` to stand in.
+
+    Args:
+        x: The argument, not zero.
+        precision: The digits the answer keeps.
+
+    Returns:
+        True when the quadratic correction is below one guard unit of `x`.
+
+    Notes:
+
+    `expm1(x)` is `x + x^2/2` and `log1p(x)` is `x - x^2/2`, so the
+    correction is one order lower than the circular functions' and the test
+    is stricter: with `A` the adjusted exponent of `x` and `m` the larger of
+    its digits and the answer's,
+
+        A <= -(m + 3)
+    """
+    var room = _significant_digits(x)
+    if precision > room:
+        room = precision
+    return x.adjusted() <= -(room + 3)
+
+
+def _square_term_is_below_a_guard_unit_of_one(
+    x: BigDecimal, precision: Int
+) -> Bool:
+    """Whether `x^2` is below a guard unit of one.
+
+    Args:
+        x: The argument, not zero.
+        precision: The digits the answer keeps.
+
+    Returns:
+        True when `x^2/2` cannot reach a guard unit of one, so that the
+        answer is one moved by a hair.
+
+    Notes:
+
+    `cos`, `cosh` and `sec` all come to one as the argument goes to zero,
+    and all correct it by `x^2/2`, below `10^(2A + 2)`. A guard unit of one
+    at `p` digits is `10^-(p + 1)`, so the condition is `2A <= -(p + 3)`.
+    """
+    return x.adjusted() + x.adjusted() <= -(precision + 3)
+
+
+def _magnitude_is_below_a_guard_unit_of_one(
+    x: BigDecimal, precision: Int
+) -> Bool:
+    """Whether `x` itself is below a guard unit of one.
+
+    Args:
+        x: The argument, not zero.
+        precision: The digits the answer keeps.
+
+    Returns:
+        True when `x` cannot reach a guard unit of one, so that `exp(x)` is
+        one moved by a hair.
+
+    Notes:
+
+    `exp(x)` is `1 + x + x^2/2`, whose correction to one is `x` and not its
+    square, so this is the strictest of the four tests: `|x| < 10^(A + 1)`
+    has to stay under the guard unit `10^-(p + 1)`, which asks that
+    `A <= -(p + 2)`.
+    """
+    return x.adjusted() <= -(precision + 2)
+
+
+def _exact_reciprocal(
+    x: BigDecimal, precision: Int
+) raises -> Optional[BigDecimal]:
+    """`1/x` when the destination holds it exactly, and nothing when it does not.
+
+    Args:
+        x: The argument, not zero.
+        precision: The digits the answer keeps.
+
+    Returns:
+        The reciprocal, exactly, when it terminates within `precision + 1`
+        digits. Otherwise nothing.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    One digit past the destination, because the boundaries the deciding loop
+    cannot straddle are of two kinds: the values the destination holds, which
+    have `precision` digits, and the midpoints between them, which have one
+    more and end in a five. A reciprocal that needs more digits than that is
+    strictly inside a rounding bucket, and the loop settles on it in its own
+    time.
+
+    The test is to divide and multiply back. A quotient that did not
+    terminate was rounded on the way out, and the product then misses one.
+    """
+    var quotient = BigDecimal.one().true_divide(x, precision=precision + 1)
+    if quotient.multiply(x) == BigDecimal.one():
+        return quotient^
+    return None
+
+
+def _reciprocal_correction_is_below_a_guard_unit(
+    x: BigDecimal, reciprocal: BigDecimal, precision: Int
+) -> Bool:
+    """Whether the term past `1/x` is below one guard unit of `1/x`.
+
+    Args:
+        x: The argument, not zero.
+        reciprocal: `1/x`, exactly, as `_exact_reciprocal()` returns it.
+        precision: The digits the answer keeps.
+
+    Returns:
+        True when the correction is below a guard unit of the reciprocal.
+
+    Notes:
+
+    `cot(x)` is `1/x - x/3` and `csc(x)` is `1/x + x/6`, so both corrections
+    are below `|x|`, which is under `10^(A + 1)` for `A` the adjusted
+    exponent of `x`. A guard unit of the reciprocal is `10^(B - 1 - m)` with
+    `B` its adjusted exponent and `m` the larger of its digits and the
+    answer's, so the condition is
+
+        A + 2 + m <= B
+
+    which, since `B` is about `-A`, again asks that the argument be small.
+    """
+    var room = _significant_digits(reciprocal)
+    if precision > room:
+        room = precision
+    return x.adjusted() + 2 + room <= reciprocal.adjusted()
+
+
 def exp_rounded(
     x: BigDecimal, precision: Int, rounding_mode: RoundingMode
 ) raises -> BigDecimal:
@@ -2424,10 +2727,21 @@ def exp_rounded(
 
     Raises:
         Error: Propagated from `exp()`.
+
+    Notes:
+
+    A small argument is answered directly, as one moved a hair: `exp(x)` is
+    `1 + x + x^2/2`, so for an `x` below a guard unit of one the answer is
+    one with the argument's own side to it, and the loop could not settle on
+    a value the destination holds exactly.
     """
     if x.coefficient.is_zero():
         # `exp(0)` is exactly one, the only argument where it is rational.
         return exp(x, precision)
+    if _magnitude_is_below_a_guard_unit_of_one(x, precision):
+        return _rounded_beside(
+            BigDecimal.one(), precision, rounding_mode, x.sign
+        )
     return _round_by_deciding[_exponential_in_binary, EXP_SLACK](
         x, precision, rounding_mode
     )
@@ -2448,10 +2762,28 @@ def ln_rounded(
 
     Raises:
         Error: Propagated from `ln()`.
+
+    Notes:
+
+    An argument close to one is answered directly, because the logarithm is
+    then `log1p()` of a difference the subtraction gives exactly: with
+    `e = x - 1`, `ln(x)` is `e - e^2/2`, which for a small enough `e` is `e`
+    moved toward zero above one and away from it below.
     """
     if x == BigDecimal.one():
         # `ln(1)` is exactly zero, the only argument where it is rational.
         return ln(x, precision)
+    # The difference is only worth forming where it could be small, which
+    # the adjusted exponent settles without touching the digits: a huge
+    # argument would otherwise pay for a subtraction that cannot help.
+    if not x.sign and (x.adjusted() == 0 or x.adjusted() == -1):
+        var difference = x.subtract(BigDecimal.one())
+        if not difference.is_zero() and _square_term_is_below_a_guard_unit(
+            difference, precision
+        ):
+            return _rounded_beside(
+                difference, precision, rounding_mode, not difference.sign
+            )
     return _round_by_deciding[_logarithm_in_binary, LN_SLACK](
         x, precision, rounding_mode
     )
@@ -3992,10 +4324,19 @@ def expm1_rounded(
 
     Raises:
         Error: Propagated from `expm1()`.
+
+    Notes:
+
+    A small argument is answered directly. `expm1(x)` is `x + x^2/2`, and
+    once the square is below a guard unit the answer is `x` moved a hair
+    away from nought -- away from zero above it and toward zero below it,
+    since the square is positive whichever sign `x` has.
     """
     if x.is_zero():
         # `expm1(0)` is exactly zero.
         return expm1(x, precision)
+    if _square_term_is_below_a_guard_unit(x, precision):
+        return _rounded_beside(x, precision, rounding_mode, x.sign)
     return _round_by_deciding[_exponential_less_one_in_binary, EXPM1_SLACK](
         x, precision, rounding_mode
     )
@@ -4016,10 +4357,18 @@ def log1p_rounded(
 
     Raises:
         Error: Propagated from `log1p()`.
+
+    Notes:
+
+    A small argument is answered directly. `log1p(x)` is `x - x^2/2`, which
+    is `x` moved the other way from `expm1()`: toward zero above nought and
+    away from it below.
     """
     if x.is_zero():
         # `log1p(0)` is exactly zero.
         return log1p(x, precision)
+    if _square_term_is_below_a_guard_unit(x, precision):
+        return _rounded_beside(x, precision, rounding_mode, not x.sign)
     return _round_by_deciding[_logarithm_of_one_plus_in_binary, LOG1P_SLACK](
         x, precision, rounding_mode
     )
