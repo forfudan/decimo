@@ -8,6 +8,7 @@ from calculator.io import (
     filter_expression_lines,
     is_blank,
     is_comment_or_blank,
+    read_file_text,
     split_into_lines,
     strip,
     strip_comment,
@@ -190,6 +191,51 @@ def test_file_exists_nonexistent() raises:
     testing.assert_false(
         file_exists(String("/tmp/_decimo_no_such_file_a1b2c3d4e5f6_.dm"))
     )
+
+
+# ===----------------------------------------------------------------------=== #
+# read_file_text
+# ===----------------------------------------------------------------------=== #
+
+
+def test_read_file_text_round_trip() raises:
+    """What is written comes back, newlines and all.
+
+    The file is written here rather than taken from `tests/cli/test_data`, so
+    the test does not depend on the directory it is run from.
+
+    This function used to redirect stdin at the file with `dup2` and read it
+    through `getchar`, restoring stdin afterwards. It had no test. It now
+    uses the standard library's file handle, and the last assertion is the
+    one the old implementation had to work for: reading a file must leave
+    stdin alone.
+    """
+    var path = String("/tmp/_decimo_read_file_text_b7f3c1a9.dm")
+    var contents = String("pi\n# a comment\n\nsqrt(2)\n")
+
+    with open(path, "w") as handle:
+        handle.write(contents)
+
+    testing.assert_true(file_exists(path))
+    testing.assert_equal(read_file_text(path), contents)
+
+    # Twice in a row: nothing is consumed by the first read.
+    testing.assert_equal(read_file_text(path), contents)
+
+    # An empty file is an empty string, not a failure.
+    var empty = String("/tmp/_decimo_read_file_text_empty_b7f3c1a9.dm")
+    with open(empty, "w") as handle:
+        handle.write(String(""))
+    testing.assert_equal(read_file_text(empty), String(""))
+
+
+def test_read_file_text_refuses_a_missing_file() raises:
+    var raised = False
+    try:
+        _ = read_file_text(String("/tmp/_decimo_no_such_file_a1b2c3d4e5f6_.dm"))
+    except:
+        raised = True
+    testing.assert_true(raised, "a missing file has to raise")
 
 
 # ===----------------------------------------------------------------------=== #

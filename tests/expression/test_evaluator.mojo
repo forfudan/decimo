@@ -452,8 +452,8 @@ def _eval_with_vars(
 ) raises -> Decimal:
     """Helper to evaluate an expression with variables."""
     var tokens = tokenize(expr, variables)
-    var rpn = parse_to_rpn(tokens^)
-    return final_round(evaluate_rpn(rpn^, precision, variables), precision)
+    var rpn = parse_to_rpn(tokens)
+    return final_round(evaluate_rpn(rpn, precision, variables), precision)
 
 
 def test_variable_simple() raises:

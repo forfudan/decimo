@@ -12,8 +12,11 @@ version = "0.16.0"
 # CLI argument parsing for the Decimo calculator. `pixi run buildcli`
 # falls back to the pinned upstream commit (see src/cli/ensure_argmojo.sh)
 # if the following line is commented out.
-argmojo = ">=0.9.0,<0.10.0"
-mojo = ">=1.1.0,<1.2.0" # Mojo language compiler and runtime
+# argmojo = ">=0.10.0,<0.11.0"  # the modular-community channel has no
+# argmojo build for mojo-compiler 1.2 yet. Until it does, the git fallback
+# in src/cli/ensure_argmojo.sh supplies v0.10.0 from source. Uncomment this
+# line once the channel has it, and the fallback stands down on its own.
+mojo = ">=1.2.0,<1.3.0" # Mojo language compiler and runtime
 python = ">=3.13" # For Python bindings and tests
 ruff = ">=0.15.0" # Python code formatter
 pre-commit = ">=4.6.1,<5"

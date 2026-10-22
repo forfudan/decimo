@@ -18,7 +18,7 @@ conformance is for.
 """
 
 from std import testing
-from std.hashlib.hasher import default_hasher
+from std.hash.hasher import default_hasher
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.bigfloat.bigfloat import BigFloat
@@ -32,7 +32,7 @@ def _hash_of[T: Hashable](value: T) -> UInt64:
     """Returns the hash of `value`, naming no concrete type."""
     var hasher = default_hasher()
     value.__hash__(hasher)
-    return hasher^.finish()
+    return hasher.finish()
 
 
 def _assert_same_hash[T: Hashable](a: T, b: T, message: StringSlice) raises:

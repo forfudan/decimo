@@ -25,7 +25,7 @@ mathematical methods that do not implement a trait.
 
 from std import math
 from std.builtin.globals import global_constant
-from std.hashlib.hasher import Hasher
+from std.hash.hasher import Hasher
 from std.memory import Pointer, unsafe_memcpy
 from std.sys import size_of
 
@@ -1533,7 +1533,7 @@ struct BigUInt(
                     ](),
                     total_len,
                 )
-                result = String(unsafe_from_utf8=buffer^)
+                result = String(unsafe_from_utf8=buffer)
 
         if line_width > 0:
             var start = 0
@@ -1546,7 +1546,7 @@ struct BigUInt(
                 start = end
                 end += line_width
             lines.append(String(result[byte=start:]))
-            result = String("\n").join(lines^)
+            result = String("\n").join(lines)
 
         return result^
 

@@ -27,7 +27,7 @@ in little-endian order, and a separate sign bit.
 """
 
 from std.bit import bit_width, count_leading_zeros, pop_count
-from std.hashlib.hasher import Hasher
+from std.hash.hasher import Hasher
 from std.memory import Pointer, unsafe_memcpy, unsafe_memset_zero
 from std.sys import size_of
 
@@ -685,7 +685,7 @@ struct BigInt(
                 start = end
                 end += line_width
             lines.append(String(result[byte=start:]))
-            result = String("\n").join(lines^)
+            result = String("\n").join(lines)
 
         return result^
 
@@ -2816,7 +2816,7 @@ def _magnitude_to_decimal_simple(words: Magnitude, eff_words: Int) -> String:
         for d in range(_DECIMAL_CHUNK_DIGITS):
             buf.append(padded[d])
 
-    return String(unsafe_from_utf8=buf^)
+    return String(unsafe_from_utf8=buf)
 
 
 def _magnitude_to_chunks_simple(
@@ -3155,4 +3155,4 @@ def _dc_to_str_recursive(
     for i in range(low_str.byte_length()):
         buf.append(low_str.unsafe_ptr()[unsafe_offset=i])
 
-    return String(unsafe_from_utf8=buf^)
+    return String(unsafe_from_utf8=buf)

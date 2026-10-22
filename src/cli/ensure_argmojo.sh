@@ -9,9 +9,13 @@
 #      provides argmojo, nothing else is done.
 #
 #   2. Fallback: the upstream git repository, pinned at $ARGMOJO_COMMIT
-#      (= release v0.9.0).  The sources are cloned into temp/argmojo and
+#      (= release v0.10.0).  The sources are cloned into temp/argmojo and
 #      precompiled to temp/argmojo.mojoc, which the CLI build picks up
 #      through its `-I temp` include path.
+#
+#      This is the path in use: the modular-community channel has no
+#      argmojo build for mojo-compiler 1.2 yet, so the dependency in
+#      pixi.toml is commented out and source 1 cannot satisfy the import.
 #
 # Usage:
 #   bash src/cli/ensure_argmojo.sh          # auto-detect (used by `pixi run buildcli`)
@@ -26,8 +30,8 @@
 set -euo pipefail
 
 ARGMOJO_REPO="${ARGMOJO_REPO:-https://github.com/forfudan/argmojo.git}"
-# https://github.com/forfudan/argmojo/releases#release-v0.9.0
-ARGMOJO_COMMIT="${ARGMOJO_COMMIT:-1d0054987cb47136cdf16d64cfe7db3fcdfefc97}"
+# https://github.com/forfudan/argmojo/releases#release-v0.10.0
+ARGMOJO_COMMIT="${ARGMOJO_COMMIT:-fa41f835d68105e4b2cf36b80c1ad75a61dc1faf}"
 MODE="${DECIMO_ARGMOJO:-auto}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"

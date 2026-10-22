@@ -35,8 +35,8 @@ def rpn_to_string(rpn: List[Token]) -> String:
 def parse_expr(expr: String) raises -> String:
     """Tokenize and parse an expression, return RPN as string."""
     var tokens = tokenize(expr)
-    var rpn = parse_to_rpn(tokens^)
-    return rpn_to_string(rpn^)
+    var rpn = parse_to_rpn(tokens)
+    return rpn_to_string(rpn)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -143,7 +143,7 @@ def test_mismatched_lparen() raises:
     var raised = False
     try:
         var tokens = tokenize("(2+3")
-        _ = parse_to_rpn(tokens^)
+        _ = parse_to_rpn(tokens)
     except:
         raised = True
     testing.assert_true(raised, "should raise on missing ')'")
@@ -153,7 +153,7 @@ def test_mismatched_rparen() raises:
     var raised = False
     try:
         var tokens = tokenize("2+3)")
-        _ = parse_to_rpn(tokens^)
+        _ = parse_to_rpn(tokens)
     except:
         raised = True
     testing.assert_true(raised, "should raise on missing '('")

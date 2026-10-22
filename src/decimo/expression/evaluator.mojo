@@ -410,8 +410,8 @@ def eval(
             by zero, domain error in a math function).
     """
     var tokens = tokenize(expr, variables)
-    var rpn = parse_to_rpn(tokens^)
-    var result = evaluate_rpn(rpn^, precision, variables)
+    var rpn = parse_to_rpn(tokens)
+    var result = evaluate_rpn(rpn, precision, variables)
     return final_round(result, precision, rounding_mode)
 
 

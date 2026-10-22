@@ -56,7 +56,7 @@ def add(x1: BigInt10, x2: BigInt10) -> BigInt10:
     # Same sign: add magnitudes and preserve the sign
     var magnitude: BigUInt = x1.magnitude + x2.magnitude
 
-    return BigInt10(magnitude^, sign=x1.sign)
+    return BigInt10(magnitude, sign=x1.sign)
 
 
 def add_inplace(mut x1: BigInt10, x2: BigInt10) -> None:
@@ -128,7 +128,7 @@ def subtract(x1: BigInt10, x2: BigInt10) -> BigInt10:
         biguint_arithmetics.subtract_no_check_inplace(magnitude, x1.magnitude)
         sign = not x1.sign
 
-    return BigInt10(magnitude^, sign=sign)
+    return BigInt10(magnitude, sign=sign)
 
 
 def negative(x: BigInt10) -> BigInt10:
@@ -189,7 +189,7 @@ def multiply(x1: BigInt10, x2: BigInt10) -> BigInt10:
     var result_magnitude = x1.magnitude * x2.magnitude
 
     # Create and return final result with correct sign
-    return BigInt10(result_magnitude^, sign=x1.sign != x2.sign)
+    return BigInt10(result_magnitude, sign=x1.sign != x2.sign)
 
 
 def floor_divide(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
@@ -226,7 +226,7 @@ def floor_divide(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
                 function="floor_divide()",
                 previous_error=e^,
             )
-        return BigInt10(magnitude^, sign=False)
+        return BigInt10(magnitude, sign=False)
 
     else:
         # Use ceil division of the magnitudes
@@ -240,7 +240,7 @@ def floor_divide(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
                 function="floor_divide()",
                 previous_error=e^,
             )
-        return BigInt10(magnitude^, sign=True)
+        return BigInt10(magnitude, sign=True)
 
 
 def truncate_divide(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
@@ -267,7 +267,7 @@ def truncate_divide(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
             function="truncate_divide()",
             previous_error=e^,
         )
-    return BigInt10(magnitude^, sign=x1.sign != x2.sign)
+    return BigInt10(magnitude, sign=x1.sign != x2.sign)
 
 
 def floor_modulo(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
@@ -300,7 +300,7 @@ def floor_modulo(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
                 function="floor_modulo()",
                 previous_error=e^,
             )
-        return BigInt10(magnitude^, sign=x2.sign)
+        return BigInt10(magnitude, sign=x2.sign)
 
     else:
         # Use ceil division of the magnitudes
@@ -314,7 +314,7 @@ def floor_modulo(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
                 function="floor_modulo()",
                 previous_error=e^,
             )
-        return BigInt10(magnitude^, sign=x2.sign)
+        return BigInt10(magnitude, sign=x2.sign)
 
 
 def truncate_modulo(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
@@ -341,4 +341,4 @@ def truncate_modulo(x1: BigInt10, x2: BigInt10) raises -> BigInt10:
             function="truncate_modulo()",
             previous_error=e^,
         )
-    return BigInt10(magnitude^, sign=x1.sign)
+    return BigInt10(magnitude, sign=x1.sign)

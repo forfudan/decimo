@@ -90,7 +90,7 @@ def read_line() -> Optional[String]:
     if len(chars) == 0:
         return String("")
 
-    return String(unsafe_from_utf8=chars^)
+    return String(unsafe_from_utf8=chars)
 
 
 def read_stdin() -> String:
@@ -114,7 +114,7 @@ def read_stdin() -> String:
         return String("")
 
     # String(unsafe_from_utf8=...) adds its own null terminator.
-    return String(unsafe_from_utf8=chunks^)
+    return String(unsafe_from_utf8=chunks)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -298,67 +298,32 @@ def filter_expression_lines(lines: List[String]) -> List[String]:
 
 
 def read_file_text(path: String) raises -> String:
-    """Reads the entire contents of a file and returns it as a String.
-
-    Uses POSIX `open()` + `dup2()` + `getchar()` to read the file
-    by temporarily redirecting stdin.  This avoids FFI signature conflicts
-    with Mojo's stdlib and ArgMojo for `read`/`fclose`.
-
-    The original stdin is saved via `dup()` before redirection and
-    restored afterwards, so callers
-    can continue reading from the real stdin after this call returns.
+    """Reads the whole of a file.
 
     Args:
         path: The file path to read.
 
     Returns:
-        The file contents as a string, or an empty string if the file is empty.
+        The contents, or an empty string for an empty file.
 
     Raises:
-        If the file cannot be opened.
+        Error: If the file cannot be opened or read.
+
+    Notes:
+
+    This used to go through POSIX `open`, `dup2` and `getchar`, redirecting
+    stdin at the file and reading it a byte at a time, and saving and
+    restoring the real stdin around the whole thing. The reason was that
+    declaring `read` or `fclose` with `external_call` collided with the
+    declarations in the Mojo standard library and in argmojo.
+
+    Mojo 1.2 closed that door: the standard library now declares `open`
+    itself, as the variadic C function it is, and a second declaration of it
+    cannot be made to match. So the FFI is gone and the standard library's
+    own file handle does the work, which is what it was for.
     """
-    var c_path = _to_cstr(path)
-
-    # Save original stdin so we can restore it after reading.
-    var saved_stdin = external_call["dup", Int32](Int32(0))
-    if saved_stdin < 0:
-        raise Error("cannot save stdin (dup failed)")
-
-    # open(path, O_RDONLY=0)
-    var fd = external_call["open", Int32](c_path.unsafe_ptr(), Int32(0))
-    if fd < 0:
-        # Restore stdin before raising.
-        _ = external_call["dup2", Int32](saved_stdin, Int32(0))
-        _ = external_call["close", Int32](saved_stdin)
-        raise Error("cannot open file: " + path)
-
-    # Redirect stdin (fd 0) to the file
-    var dup_result = external_call["dup2", Int32](fd, Int32(0))
-    # Close the original fd — dup2 made a copy on fd 0.
-    _ = external_call["close", Int32](fd)
-
-    if dup_result < 0:
-        # Restore stdin before raising.
-        _ = external_call["dup2", Int32](saved_stdin, Int32(0))
-        _ = external_call["close", Int32](saved_stdin)
-        raise Error("cannot redirect stdin to file: " + path)
-
-    # Read all bytes via getchar()
-    var chunks = List[UInt8]()
-    while True:
-        var c = external_call["getchar", Int32]()
-        if c < 0:  # EOF
-            break
-        chunks.append(UInt8(c))
-
-    # Restore original stdin.
-    _ = external_call["dup2", Int32](saved_stdin, Int32(0))
-    _ = external_call["close", Int32](saved_stdin)
-
-    if len(chunks) == 0:
-        return String("")
-
-    return String(unsafe_from_utf8=chunks^)
+    with open(path, "r") as handle:
+        return handle.read()
 
 
 def file_exists(path: String) -> Bool:

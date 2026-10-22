@@ -17,13 +17,13 @@
 """Smoke tests for MPF: verify MPFR pipeline works end-to-end."""
 
 from decimo.mpf.mpf import MPF, PRECISION
-from decimo.mpf.mpfr_wrapper import mpfrw_available
+from decimo.mpf.mpfr_wrapper import decimo_mpfrw_available
 from decimo.traits import Rootable
 
 
 def test_mpfr_available() raises:
     print("test_mpfr_available ... ", end="")
-    if not mpfrw_available():
+    if not decimo_mpfrw_available():
         print("SKIPPED (MPFR not installed)")
         return
     print("OK")
@@ -31,7 +31,7 @@ def test_mpfr_available() raises:
 
 def test_construct_from_string() raises:
     print("test_construct_from_string ... ", end="")
-    if not mpfrw_available():
+    if not decimo_mpfrw_available():
         print("SKIPPED")
         return
     var x = MPF("3.14159")
@@ -40,7 +40,7 @@ def test_construct_from_string() raises:
 
 def test_construct_from_int() raises:
     print("test_construct_from_int ... ", end="")
-    if not mpfrw_available():
+    if not decimo_mpfrw_available():
         print("SKIPPED")
         return
     var x = MPF(42)
@@ -49,7 +49,7 @@ def test_construct_from_int() raises:
 
 def test_sqrt() raises:
     print("test_sqrt ... ", end="")
-    if not mpfrw_available():
+    if not decimo_mpfrw_available():
         print("SKIPPED")
         return
     var x = MPF("2.0", precision=50)
@@ -63,7 +63,7 @@ def test_sqrt() raises:
 
 def test_exp() raises:
     print("test_exp ... ", end="")
-    if not mpfrw_available():
+    if not decimo_mpfrw_available():
         print("SKIPPED")
         return
     var x = MPF("1.0", precision=50)
@@ -77,7 +77,7 @@ def test_exp() raises:
 
 def test_ln() raises:
     print("test_ln ... ", end="")
-    if not mpfrw_available():
+    if not decimo_mpfrw_available():
         print("SKIPPED")
         return
     var x = MPF("2.0", precision=30)
@@ -91,7 +91,7 @@ def test_ln() raises:
 
 def test_trig() raises:
     print("test_trig ... ", end="")
-    if not mpfrw_available():
+    if not decimo_mpfrw_available():
         print("SKIPPED")
         return
     var pi = MPF.pi(50)
@@ -105,7 +105,7 @@ def test_trig() raises:
 
 def test_arithmetic() raises:
     print("test_arithmetic ... ", end="")
-    if not mpfrw_available():
+    if not decimo_mpfrw_available():
         print("SKIPPED")
         return
     var a = MPF("10.0")
@@ -119,7 +119,7 @@ def test_arithmetic() raises:
 
 def test_comparison() raises:
     print("test_comparison ... ", end="")
-    if not mpfrw_available():
+    if not decimo_mpfrw_available():
         print("SKIPPED")
         return
     var a = MPF("1.0")
@@ -146,7 +146,7 @@ def test_comparison() raises:
 
 def test_pi() raises:
     print("test_pi ... ", end="")
-    if not mpfrw_available():
+    if not decimo_mpfrw_available():
         print("SKIPPED")
         return
     var pi = MPF.pi(100)
@@ -159,7 +159,7 @@ def test_pi() raises:
 
 def test_to_bigdecimal() raises:
     print("test_to_bigdecimal ... ", end="")
-    if not mpfrw_available():
+    if not decimo_mpfrw_available():
         print("SKIPPED")
         return
     var x = MPF("2.0", precision=50)
@@ -174,7 +174,7 @@ def test_to_bigdecimal() raises:
 
 def test_power_and_root() raises:
     print("test_power_and_root ... ", end="")
-    if not mpfrw_available():
+    if not decimo_mpfrw_available():
         print("SKIPPED")
         return
     var x = MPF("8.0", precision=30)
@@ -195,10 +195,9 @@ def test_power_and_root() raises:
     if not raised:
         raise Error("FAIL test_power_and_root: root(0) did not raise")
     # One past `UInt32.MAX`, which would wrap to 0 if it reached the cast.
-    # A literal, because Mojo 1.1 can miscompile `Int(UInt32.MAX)` to -1.
     raised = False
     try:
-        _ = x.root(4_294_967_296)
+        _ = x.root(Int(UInt32.MAX) + 1)
     except:
         raised = True
     if not raised:
@@ -208,7 +207,7 @@ def test_power_and_root() raises:
 
 def test_neg_and_abs() raises:
     print("test_neg_and_abs ... ", end="")
-    if not mpfrw_available():
+    if not decimo_mpfrw_available():
         print("SKIPPED")
         return
     var x = MPF("-5.0")
@@ -219,7 +218,7 @@ def test_neg_and_abs() raises:
 
 def test_high_precision_sqrt() raises:
     print("test_high_precision_sqrt ... ", end="")
-    if not mpfrw_available():
+    if not decimo_mpfrw_available():
         print("SKIPPED")
         return
     var x = MPF("2.0", precision=1000)
@@ -239,12 +238,12 @@ def _root_of[T: Rootable](var x: T) raises -> T:
     `Rootable` carries `Deinitable` and `Movable` and nothing else, which is
     what lets it reach `MPF`: a type that moves without copying.
     """
-    return x^.sqrt()
+    return x.sqrt()
 
 
 def test_rootable_conformance() raises:
     print("test_rootable_conformance ... ", end="")
-    if not mpfrw_available():
+    if not decimo_mpfrw_available():
         print("SKIPPED")
         return
     var s = _root_of(MPF("2.0", precision=50))

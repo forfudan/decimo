@@ -36,7 +36,7 @@ the bit access and the division that the arithmetic needs. The sign field it
 brings along is one byte that this type does not read.
 """
 
-from std.hashlib.hasher import Hasher
+from std.hash.hasher import Hasher
 from std.memory import bitcast
 
 from decimo.bigdecimal.bigdecimal import BigDecimal

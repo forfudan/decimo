@@ -280,7 +280,7 @@ def _strip_colon_prefix(line: String) -> String:
     var result = List[UInt8](capacity=n - i)
     for j in range(i, n):
         result.append(bytes[j])
-    return String(unsafe_from_utf8=result^)
+    return String(unsafe_from_utf8=result)
 
 
 def _parse_assignment(line: String) -> Optional[Tuple[String, String]]:
@@ -329,7 +329,7 @@ def _parse_assignment(line: String) -> Optional[Tuple[String, String]]:
     var name_bytes = List[UInt8](capacity=name_end - name_start)
     for j in range(name_start, name_end):
         name_bytes.append(line_bytes[j])
-    var var_name = String(unsafe_from_utf8=name_bytes^)
+    var var_name = String(unsafe_from_utf8=name_bytes)
 
     var expr_start = i + 1
     # Skip whitespace after '='
@@ -344,7 +344,7 @@ def _parse_assignment(line: String) -> Optional[Tuple[String, String]]:
     var expr_bytes = List[UInt8](capacity=n - expr_start)
     for j in range(expr_start, n):
         expr_bytes.append(line_bytes[j])
-    var expr = String(unsafe_from_utf8=expr_bytes^)
+    var expr = String(unsafe_from_utf8=expr_bytes)
 
     return (var_name^, expr^)
 

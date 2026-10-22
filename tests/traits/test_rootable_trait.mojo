@@ -37,7 +37,7 @@ def _root_of[T: Rootable](var x: T) raises -> T:
     `Movable` and nothing else, so it reaches a type that moves without
     copying.
     """
-    return x^.sqrt()
+    return x.sqrt()
 
 
 def test_bigint_through_rootable() raises:

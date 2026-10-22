@@ -321,7 +321,7 @@ def test_an_integer_power_is_exact() raises:
         var parts = cases[index].split("@")
         var x = _parse(String(parts[0]))
         var exponent = Int(String(parts[1]))
-        var answer = String("raises")
+        var answer: String
         try:
             answer = String(x**exponent)
         except:
