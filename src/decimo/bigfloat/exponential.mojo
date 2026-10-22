@@ -63,6 +63,7 @@ from decimo.bigfloat.rounding import (
     leading_bit_position,
     odd_series_in_blocks,
     rounded_beside,
+    tightened,
     to_fixed_point,
     working_width,
 )
@@ -1380,6 +1381,66 @@ def exp(
     )
 
 
+def _logarithm_beside_one(
+    x: BigFloat, precision: Int, rounding_mode: RoundingMode
+) raises -> Optional[BigFloat]:
+    """`ln(x)` for an argument so near one that the loop cannot place it.
+
+    Args:
+        x: The argument.
+        precision: How many bits the answer keeps.
+        rounding_mode: Which way to round.
+
+    Returns:
+        The answer, or nothing when this is not that kind of argument and the
+        loop should have it.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    `ln(1 + d)` is `d - d^2/2 + ...`, so for a small `d` the answer is `d`
+    moved toward nought by a correction the loop would need about `2 log2 |d|`
+    bits to see. At `d = 2^-2000` that is four thousand bits and the loop
+    gives up at a few hundred, so every width it reaches says the answer is
+    `d`, which is a value a float sits exactly on. The three nearest modes
+    then agree by luck and the four directed ones raise.
+
+    The difference is formed exactly, which costs nothing: `x` lies within a
+    factor of two of one, so `x - 1` needs no more bits than `x` has. The
+    gate is `log1p`'s, because `ln(x)` and `log1p(x - 1)` are the same number
+    once the subtraction is exact, and the correction to both is quadratic.
+
+    The pre-filter on the leading bit is what keeps an ordinary argument from
+    paying for the subtraction. `ln(10^500)` is not near one and must not be
+    asked to prove it by building a difference.
+    """
+    if not x.is_finite() or x.is_zero() or x.sign:
+        return None
+
+    # Within a factor of two of one, and no further: the leading bit of a
+    # value in `[1, 2)` sits at nought and of one in `[1/2, 1)` at minus one.
+    var leading = leading_bit_position(x)
+    if leading != BigInt.zero() and leading != BigInt(-1):
+        return None
+
+    var difference = bigfloat_arithmetics.subtract(
+        x, BigFloat.from_int(1, 1), x.precision + 2
+    )
+    if difference.is_zero():
+        return None
+
+    if not _square_term_is_below_a_guard_unit(
+        difference, guard_bits(difference, precision)
+    ):
+        return None
+
+    return rounded_beside(
+        difference, precision, rounding_mode, not difference.sign
+    )
+
+
 def ln(
     x: BigFloat,
     precision: Int,
@@ -1404,8 +1465,17 @@ def ln(
     A negative argument gives a NaN, as the square root of one does, and zero
     gives a negative infinity, which is the value the logarithm approaches
     there. `ln(1)` is a positive zero.
+
+    An argument a hair from one is answered by `_logarithm_beside_one()`
+    rather than by the loop, which cannot see the difference between
+    `ln(1 + 2^-2000)` and `2^-2000` at any width it reaches.
     """
     _ = checked_precision(precision, "ln()")
+
+    var beside_one = _logarithm_beside_one(x, precision, rounding_mode)
+    if beside_one:
+        return beside_one.take()
+
     return round_by_deciding_at[ln_at_width, _LN_SLACK](
         x, precision, rounding_mode
     )
@@ -1679,6 +1749,102 @@ def _halved_base(
             power = power.truncate_divide(BigInt(2))
         taken += 1
     return (odd^, power^, taken)
+
+
+def _whole_beside(x: BigFloat) raises -> Optional[Tuple[Int, BigFloat]]:
+    """The whole number nearest `x`, with the exact distance to it.
+
+    Args:
+        x: The value, finite.
+
+    Returns:
+        A pair `(k, d)` with `k` the nearest whole number and `d` exactly
+        `x - k`, or nothing when `x` is whole already, is not finite, or
+        sits outside what an `Int` holds.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    The difference is exact and needs no care to be: `k` is `x` with its
+    fractional bits dropped, so `x - k` is made of bits `x` already carries
+    and the subtraction at `x.precision + 2` has room for all of them.
+
+    The whole number is the nearest one and not the one toward nought. That
+    is not a nicety: `exp2(1 - 2^-2000)` is as much this kind of argument as
+    `exp2(1 + 2^-2000)` is, and truncating would hand the first of them a
+    `k` of nought and a distance of nearly one, which every gate refuses.
+    """
+    if not x.is_finite():
+        return None
+    var whole = _integer_argument(x)
+    if whole:
+        return None  # already exact; the caller's exact path has it
+    if x.exponent > 63:
+        return None
+    var leading = leading_bit_position(x)
+    if leading > BigInt(62):
+        return None
+    if leading < BigInt(-1):
+        # `|x| < 1/2`, so the nearest whole number is nought, which is not a
+        # value a move off can express. The callers have their own path for a
+        # small argument and it is a better one: `2^x` and `10^x` are both
+        # `1 + x` to within far less than a last place there.
+        #
+        # A leading bit at minus one is a different matter and has to stay:
+        # `1 - 2^-2000` lies in `[1/2, 1)` and the whole number it sits
+        # beside is one.
+        return None
+    var fraction_bits = -x.exponent
+    var integral = (x.significand >> fraction_bits).to_int()
+    var whole_number = -integral if x.sign else integral
+    var width = x.precision + 2
+    var difference = bigfloat_arithmetics.subtract(
+        x, BigFloat.from_int(whole_number, leading.to_int() + 2), width
+    )
+    if difference.is_zero():
+        return None
+
+    # Truncation lands on the whole number toward nought. Step one further
+    # when the remaining distance is half or more, so that the pair names the
+    # nearest whole number and the shortest distance to it.
+    if compare_absolute(difference, BigFloat.power_of_two(-1)) >= 0:
+        whole_number += -1 if difference.sign else 1
+        difference = bigfloat_arithmetics.subtract(
+            x, BigFloat.from_int(whole_number, leading.to_int() + 2), width
+        )
+        if difference.is_zero():
+            return None
+    return (whole_number, difference^)
+
+
+def _is_below_two_to_minus(difference: BigFloat, headroom: Int) raises -> Bool:
+    """Whether `|difference|` is below `2^-headroom`.
+
+    Args:
+        difference: The distance, finite and not nought.
+        headroom: The bits it has to stay under.
+
+    Returns:
+        True when `|difference| < 2^-headroom`.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    A value with its leading bit at `L` is below `2^(L+1)` and at `2^L` or
+    above, so `|difference| < 2^-headroom` is `L + 1 <= -headroom`. Writing
+    the `+ 1` here rather than at each call site is what keeps the callers'
+    arithmetic the same as the arithmetic in their comments: a caller that
+    needs `|d| < 2^-(p+1)` passes `p + 1`.
+
+    The comparison is in a `BigInt` because that position can be far outside
+    an `Int`, which is the whole reason these gates exist rather than a
+    subtraction and a look at the result.
+    """
+    return leading_bit_position(difference) <= BigInt(-headroom - 1)
 
 
 def _integer_argument(x: BigFloat) raises -> Optional[Int]:
@@ -2100,7 +2266,8 @@ def _square_term_is_below_a_guard_unit(x: BigFloat, guard: Int) raises -> Bool:
     The comparison is in a `BigInt` because `L` can be far outside an `Int`,
     which is the whole reason this gate exists.
     """
-    return leading_bit_position(x) < BigInt(-(x.precision + guard))
+    var tight = tightened(x)
+    return leading_bit_position(tight) < BigInt(-(tight.precision + guard))
 
 
 def _expm1_saturation_magnitude(width: Int) raises -> BigFloat:
@@ -2195,6 +2362,141 @@ def _saturated_expm1(
         precision=precision,
         sign=True,
     )
+
+
+def _power_of_ten_beside(x: BigFloat, precision: Int) raises -> Optional[Int]:
+    """The `k` with `10^k` close enough to `x` to be worth forming.
+
+    Args:
+        x: The argument, finite, positive and not nought.
+        precision: The bits the answer keeps.
+
+    Returns:
+        The candidate `k`, or nothing when there is none worth the work.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    `x` can only be a hair off `10^k` while its leading bit sits where
+    `10^k`'s does, so the leading bit names the candidate and there is just
+    the one. `10^k`'s leading bit is at `floor(k log2 10)`, and inverting
+    that gives `k = ceil(L log10 2)`: a leading bit at three belongs to ten,
+    at six to a hundred, at thirteen to ten thousand.
+
+    `log10 2` is carried to twenty digits, which keeps the ceiling exact far
+    past any `L` an argument can reach. It does not have to be exact to be
+    safe, though: the caller forms the power and subtracts, so a candidate
+    that is wrong fails that check and the argument goes to the loop.
+
+    Forming `10^k` costs about `3.33 k` bits, and the bound here is what
+    keeps that from being paid for an argument it cannot help. `x` has to
+    carry `10^k`'s leading bits to sit a hair from it, so a `k` whose power
+    is far wider than `x` itself is not a candidate at all.
+    """
+    var leading = leading_bit_position(x)
+    if leading < BigInt.one():
+        return None  # at one or below: `k` is nought or negative, and
+        # `10^-k` is no binary float, so the loop settles on it
+    var affordable = BigInt(x.precision + precision + 128)
+    if leading > affordable:
+        return None
+    # ceil(L * log10 2), with log10 2 = 0.30102999566398119521...
+    var numerator = leading * BigInt("30102999566398119521")
+    var scale = BigInt("100000000000000000000")
+    var candidate = (numerator + scale - BigInt.one()) // scale
+    if candidate.is_zero():
+        return None
+    return candidate.to_int()
+
+
+def _logarithm_beside_a_power(
+    x: BigFloat,
+    whole: BigInt,
+    power: BigFloat,
+    precision: Int,
+    rounding_mode: RoundingMode,
+) raises -> Optional[BigFloat]:
+    """The answer for an argument a hair off a point where it is whole.
+
+    Args:
+        x: The argument, finite, positive and not nought.
+        whole: The value the logarithm takes at `power`.
+        power: The base raised to `whole`, held exactly.
+        precision: The bits the answer keeps.
+        rounding_mode: Which way to round.
+
+    Returns:
+        The answer, or nothing when `x` is not close enough to `power` for
+        the move to stand in for the correction.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    With `x = power * (1 + e)` the answer is `whole + log_b(1 + e)`, and that
+    correction stays below `2 |e|` for every base at two or above: `ln(1 + e)`
+    is at most `e`, and `1 / ln b` is at most `1 / ln 2`, which is below two.
+    A guard unit of `whole` is `2^(L - p - 1)` for a leading bit at `L`, so
+    what the move needs is
+
+        2 |e| < 2^(L - p - 1),   that is   |e| < 2^(L - p - 2)
+
+    and with `L = bit_length(|whole|) - 1` that is the test below, less one
+    more bit.
+
+    The spare bit costs nothing and is not needed. One bit looser still keeps
+    the correction inside half a last place, which is where every midpoint
+    sits, so the move and the truth round alike in the nearest modes as well
+    as the directed ones. An argument the other side of the line is one the
+    loop settles by itself, since the correction it has to see is then a
+    fraction of a last place rather than nothing at all. The bit is here
+    because the gates next door carry one for the same reason.
+
+    A `whole` of nought is refused. The answer is then near nought, which no
+    move off a value can express, and it is also the one case the loop
+    settles by itself: the logarithm near one is `e / ln b`, an irrational
+    multiple of `e` and so never a value a float sits exactly on.
+    """
+    if whole.is_zero():
+        return None
+
+    var difference = bigfloat_arithmetics.subtract(
+        x, power, x.precision + power.precision + 2
+    )
+    if difference.is_zero():
+        return None  # exact; the caller's exact path has it
+
+    # The relative offset's leading bit, as the difference of two positions.
+    var offset_leading = leading_bit_position(difference) - (
+        leading_bit_position(power)
+    )
+    if offset_leading > BigInt(whole.bit_length() - precision - 4):
+        return None
+
+    # The correction carries the sign of `x - power`; whether that moves the
+    # answer away from nought depends on which side of nought `whole` is.
+    var below = difference.sign
+    return rounded_beside(
+        BigFloat.from_bigint(whole, _at_least_one(whole.bit_length())),
+        precision,
+        rounding_mode,
+        below != whole.is_negative(),
+    )
+
+
+def _at_least_one(value: Int) -> Int:
+    """`value` or one, whichever is larger.
+
+    Args:
+        value: The count.
+
+    Returns:
+        The count, floored at one, which is what a precision must be.
+    """
+    return 1 if value < 1 else value
 
 
 def _exact_log2(
@@ -2393,6 +2695,29 @@ def log2(
         var exact = _exact_log2(x, precision, rounding_mode)
         if exact:
             return exact.take()
+        # A hair off a power of two. The power is the leading bit itself, so
+        # there is nothing to search for and nothing to form. The bound on
+        # the bit is what `power_of_two()` can hold as an exponent; a value
+        # past it is one whose own exponent is near the end of the range, and
+        # the loop refuses it with the message that belongs to that.
+        # Two candidates, not one: an `x` a hair below `2^k` has its leading
+        # bit at `k - 1`, so the power it sits beside is the one above its
+        # own leading bit.
+        var leading = leading_bit_position(x)
+        if leading > BigInt(Int.MIN + 1) and leading < BigInt(Int.MAX - 2):
+            for step in [0, 1]:
+                var candidate = leading + BigInt(step)
+                if candidate.is_zero():
+                    continue
+                var beside = _logarithm_beside_a_power(
+                    x,
+                    candidate,
+                    BigFloat.power_of_two(candidate.to_int()),
+                    precision,
+                    rounding_mode,
+                )
+                if beside:
+                    return beside.take()
 
     return round_by_deciding_at[log2_at_width, _OTHER_BASE_SLACK](
         x, precision, rounding_mode
@@ -2451,6 +2776,21 @@ def log10(
         var exact = _exact_log10(x, precision, rounding_mode)
         if exact:
             return exact.take()
+        # A hair off a power of ten. Unlike `log2`'s power, this one has to
+        # be found and formed before the distance can be measured.
+        var candidate = _power_of_ten_beside(x, precision)
+        if candidate:
+            var power = candidate.take()
+            var ten_to_k = BigInt(10).power(power)
+            var beside = _logarithm_beside_a_power(
+                x,
+                BigInt(power),
+                BigFloat.from_bigint(ten_to_k, ten_to_k.bit_length()),
+                precision,
+                rounding_mode,
+            )
+            if beside:
+                return beside.take()
 
     return round_by_deciding_at[log10_at_width, _OTHER_BASE_SLACK](
         x, precision, rounding_mode
@@ -2605,6 +2945,25 @@ def exp2(
             return bigfloat_arithmetics.add(
                 BigFloat.from_int(1, precision), x, precision, rounding_mode
             )
+        # A whole `k` with a hair `d` on it: the answer is `2^k * 2^d`, which
+        # is `2^k` moved the way `d` points. `|2^d - 1|` is below `|d|` for
+        # `|d|` up to a half, and a guard unit of `2^k` is `2^(k-p-1)`, so
+        # `|d| < 2^-(p+1)` is what the move needs.
+        var beside = _whole_beside(x)
+        if beside:
+            var pair = beside.take()
+            if _is_below_two_to_minus(pair[1], precision + 1):
+                return rounded_beside(
+                    BigFloat(
+                        significand=BigInt.one(),
+                        exponent=pair[0],
+                        precision=1,
+                        sign=False,
+                    ),
+                    precision,
+                    rounding_mode,
+                    pair[1].sign,
+                )
 
     return round_by_deciding_at[exp2_at_width, _OTHER_BASE_SLACK](
         x, precision, rounding_mode
@@ -2673,6 +3032,28 @@ def exp10(
             return bigfloat_arithmetics.add(
                 BigFloat.from_int(1, precision), x, precision, rounding_mode
             )
+        # A whole `k` with a hair `d` on it, by `exp2`'s account. The bound
+        # is four bits tighter because `|10^d - 1|` runs to about `2.4 |d|`
+        # where `|2^d - 1|` stays under `|d|`, and because `10^k` can sit a
+        # whole bit above its own leading bit. The power has to be one a
+        # float holds exactly, which is the same `k` bound the whole-argument
+        # path above uses.
+        var beside = _whole_beside(x)
+        if beside:
+            var pair = beside.take()
+            var power = pair[0]
+            if (
+                power >= 0
+                and power <= precision
+                and _is_below_two_to_minus(pair[1], precision + 5)
+            ):
+                var ten_to_k = BigInt(10).power(power)
+                return rounded_beside(
+                    BigFloat.from_bigint(ten_to_k, ten_to_k.bit_length()),
+                    precision,
+                    rounding_mode,
+                    pair[1].sign,
+                )
 
     return round_by_deciding_at[exp10_at_width, _OTHER_BASE_SLACK](
         x, precision, rounding_mode

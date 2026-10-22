@@ -953,6 +953,26 @@ correction term, which is all the rounding needs: `sin(x) = x - x^3/6` is
 below `x` and `tan(x) = x + x^3/3` is above it, and neither correction can be
 computed at `1E-500` by any width a loop would reach.
 
+A small argument is not the only place this happens. Wherever a function's
+value is a whole number, an argument a hair away from that point has an
+answer a hair away from a value the destination holds, and the same thing
+goes wrong. `log10(1000)` is three exactly; `log10` of a thousand plus
+`1E-500` is three plus a correction five hundred digits down.
+
+```mojo
+from decimo import Decimal, RoundingMode
+
+var beside = Decimal("1000").add(Decimal("1E-500"))
+print(beside.log10(precision=20, rounding_mode=RoundingMode.ROUND_UP))
+# 3.0000000000000000001 -- above three, because the argument is above a thousand
+print(beside.log10(precision=20, rounding_mode=RoundingMode.ROUND_DOWN))
+# 3.0000000000000000000 -- and the same value truncated is three
+```
+
+`BigFloat` has the same answers for `ln` beside one, `log2` and `log10`
+beside a power of their base, and `exp2` and `exp10` beside a whole
+argument.
+
 ### Mathematical Constants
 
 #### π (pi) <!-- omit from toc -->
