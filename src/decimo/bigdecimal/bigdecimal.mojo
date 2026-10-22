@@ -23,7 +23,7 @@ mathematical methods that do not implement a trait.
 """
 
 from std import math, testing
-from std.hashlib.hasher import Hasher
+from std.hash.hasher import Hasher
 from std.memory import Pointer, unsafe_memcpy
 from std.python import PythonObject
 
@@ -859,7 +859,7 @@ struct BigDecimal(
                     var trimmed = List[UInt8](capacity=clen)
                     for i in range(clen):
                         trimmed.append(cptr[unsafe_offset=i])
-                    coef = String(unsafe_from_utf8=trimmed^)
+                    coef = String(unsafe_from_utf8=trimmed)
             result += coef[byte=0]
             if coef.byte_length() > 1:
                 result += "."
@@ -905,7 +905,7 @@ struct BigDecimal(
 
         # Insert digit-group separators if requested
         if delimiter:
-            result = _insert_digit_separators(result^, delimiter)
+            result = _insert_digit_separators(result, delimiter)
 
         # Split the result in multiple lines if line_width > 0
         if line_width > 0:
@@ -919,7 +919,7 @@ struct BigDecimal(
                 start = end
                 end += line_width
             lines.append(String(result[byte=start:]))
-            result = String("\n").join(lines^)
+            result = String("\n").join(lines)
 
         return result^
 
@@ -1038,7 +1038,7 @@ struct BigDecimal(
             buffer.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin](),
             digits,
         )
-        return String(unsafe_from_utf8=buffer^)
+        return String(unsafe_from_utf8=buffer)
 
     def __str__(self) -> String:
         """Returns the value as text.

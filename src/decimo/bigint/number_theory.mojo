@@ -665,7 +665,7 @@ def sqrt_mod(a: BigInt, modulus: BigInt) raises -> Optional[BigInt]:
     var four = BigInt(4)
     if floor_modulo(modulus, four) == BigInt(3):
         var direct = mod_pow(residue, (modulus + one) // four, modulus)
-        return _nearer_root(direct^, modulus)
+        return _nearer_root(direct, modulus)
 
     # Tonelli-Shanks. Write `modulus - 1 = odd_part * 2^shift`, with
     # `shift >= 2` because the modulus is one modulo four.
@@ -704,7 +704,7 @@ def sqrt_mod(a: BigInt, modulus: BigInt) raises -> Optional[BigInt]:
         remainder = floor_modulo(multiply(remainder, ladder), modulus)
         order = i
 
-    return _nearer_root(root^, modulus)
+    return _nearer_root(root, modulus)
 
 
 def _nearer_root(root: BigInt, modulus: BigInt) raises -> BigInt:

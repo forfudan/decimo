@@ -24,7 +24,7 @@ mathematical methods that do not implement a trait.
 """
 
 from std.collections import Span
-from std.hashlib.hasher import Hasher
+from std.hash.hasher import Hasher
 from std.memory import Pointer
 from std.sys import bit_width_of
 
@@ -1480,7 +1480,7 @@ struct Decimal128(
         if not scientific and not engineering:
             var out = String()
             self.write_to(out)
-            return _insert_digit_separators(out^, delimiter)
+            return _insert_digit_separators(out, delimiter)
 
         var scale: Int = self.scale()
         var coef = self.coefficient()
@@ -1495,7 +1495,7 @@ struct Decimal128(
                 var sign = String("-") if self.is_negative() else String("")
                 result = sign + String("0E-") + String(scale)
             if delimiter:
-                return _insert_digit_separators(result^, delimiter)
+                return _insert_digit_separators(result, delimiter)
             return result^
 
         # Strip trailing zeros from the coefficient. Both scientific and
@@ -1570,7 +1570,7 @@ struct Decimal128(
                 result += "E" + String(adjusted_exp)
 
         if delimiter:
-            return _insert_digit_separators(result^, delimiter)
+            return _insert_digit_separators(result, delimiter)
         return result^
 
     @always_inline

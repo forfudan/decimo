@@ -1524,7 +1524,7 @@ def arctan(x: BigDecimal, precision: Int) raises -> BigDecimal:
                 x, precision=working_precision
             )
             var arctan_reciprocal = arctan_taylor_series(
-                reciprocal_x^, minimum_precision=precision
+                reciprocal_x, minimum_precision=precision
             )
 
             if x.sign:

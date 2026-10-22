@@ -299,13 +299,13 @@ def split_inline_settings(
     var expr_bytes = List[UInt8](capacity=colon_pos)
     for k in range(colon_pos):
         expr_bytes.append(bytes[k])
-    var expr = String(unsafe_from_utf8=expr_bytes^)
+    var expr = String(unsafe_from_utf8=expr_bytes)
 
     var settings_start = colon_pos + 1
     var settings_bytes = List[UInt8](capacity=n - settings_start)
     for k in range(settings_start, n):
         settings_bytes.append(bytes[k])
-    var settings_str = String(unsafe_from_utf8=settings_bytes^)
+    var settings_str = String(unsafe_from_utf8=settings_bytes)
 
     return (expr^, settings_str^)
 
@@ -474,7 +474,7 @@ def _split_whitespace(s: String) -> List[String]:
         var token_bytes = List[UInt8](capacity=i - start)
         for j in range(start, i):
             token_bytes.append(bytes[j])
-        result.append(String(unsafe_from_utf8=token_bytes^))
+        result.append(String(unsafe_from_utf8=token_bytes))
 
     return result^
 
@@ -497,4 +497,4 @@ def to_lower(s: String) -> String:
             result.append(c + 32)
         else:
             result.append(c)
-    return String(unsafe_from_utf8=result^)
+    return String(unsafe_from_utf8=result)

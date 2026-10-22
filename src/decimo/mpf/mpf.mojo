@@ -30,7 +30,7 @@ Design:
     - Single field: `handle: Int32` (index into C wrapper's mpfr_t handle pool)
     - Precision specified in decimal digits, converted to bits internally
     - Guard bits (64 extra) ensure requested decimal digits are correct
-    - RAII: destructor frees MPFR handle via `mpfrw_clear`
+    - RAII: destructor frees MPFR handle via `decimo_mpfrw_clear`
 """
 
 from std import math
@@ -41,30 +41,30 @@ from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.biguint.biguint import BigUInt
 from decimo.errors import ConversionError, RuntimeError, ValueError
 from decimo.mpf.mpfr_wrapper import (
-    mpfrw_abs,
-    mpfrw_add,
-    mpfrw_available,
-    mpfrw_clear,
-    mpfrw_cmp,
-    mpfrw_const_pi,
-    mpfrw_cos,
-    mpfrw_div,
-    mpfrw_exp,
-    mpfrw_free_raw_str,
-    mpfrw_free_str,
-    mpfrw_get_raw_digits,
-    mpfrw_get_str,
-    mpfrw_init,
-    mpfrw_log,
-    mpfrw_mul,
-    mpfrw_neg,
-    mpfrw_pow,
-    mpfrw_rootn_ui,
-    mpfrw_set_str,
-    mpfrw_sin,
-    mpfrw_sqrt,
-    mpfrw_sub,
-    mpfrw_tan,
+    decimo_mpfrw_abs,
+    decimo_mpfrw_add,
+    decimo_mpfrw_available,
+    decimo_mpfrw_clear,
+    decimo_mpfrw_cmp,
+    decimo_mpfrw_const_pi,
+    decimo_mpfrw_cos,
+    decimo_mpfrw_div,
+    decimo_mpfrw_exp,
+    decimo_mpfrw_free_raw_str,
+    decimo_mpfrw_free_str,
+    decimo_mpfrw_get_raw_digits,
+    decimo_mpfrw_get_str,
+    decimo_mpfrw_init,
+    decimo_mpfrw_log,
+    decimo_mpfrw_mul,
+    decimo_mpfrw_neg,
+    decimo_mpfrw_pow,
+    decimo_mpfrw_rootn_ui,
+    decimo_mpfrw_set_str,
+    decimo_mpfrw_sin,
+    decimo_mpfrw_sqrt,
+    decimo_mpfrw_sub,
+    decimo_mpfrw_tan,
 )
 from decimo.traits import Rootable
 
@@ -104,7 +104,7 @@ def _read_c_string(address: Int) -> String:
     for _ in range(length):
         buf.append(0)
     external_call["memcpy", NoneType](buf.unsafe_ptr(), address, length)
-    return String(unsafe_from_utf8=buf^)
+    return String(unsafe_from_utf8=buf)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -151,7 +151,7 @@ struct MPF(Comparable, Movable, Rootable, Writable):
                 message="Precision must be non-negative",
                 function="MPF.__init__()",
             )
-        if not mpfrw_available():
+        if not decimo_mpfrw_available():
             raise RuntimeError(
                 message=(
                     "MPF requires MPFR (brew install mpfr / apt"
@@ -160,7 +160,7 @@ struct MPF(Comparable, Movable, Rootable, Writable):
                 function="MPF.__init__()",
             )
         var bits = _dps_to_bits(precision)
-        self.handle = mpfrw_init(bits)
+        self.handle = decimo_mpfrw_init(bits)
         if self.handle < 0:
             raise RuntimeError(
                 message="MPFR handle pool exhausted",
@@ -168,13 +168,13 @@ struct MPF(Comparable, Movable, Rootable, Writable):
             )
         self.precision = precision
         var s_bytes = value.as_bytes()
-        var result_code = mpfrw_set_str(
+        var result_code = decimo_mpfrw_set_str(
             self.handle,
             s_bytes.unsafe_ptr().unsafe_bitcast[c_char](),
             Int32(len(s_bytes)),
         )
         if result_code != 0:
-            mpfrw_clear(self.handle)
+            decimo_mpfrw_clear(self.handle)
             raise ConversionError(
                 message="Invalid number string: " + value,
                 function="MPF.__init__()",
@@ -232,7 +232,7 @@ struct MPF(Comparable, Movable, Rootable, Writable):
     def __deinit__(deinit self):
         """Frees the MPFR handle."""
         if self.handle >= 0:
-            mpfrw_clear(self.handle)
+            decimo_mpfrw_clear(self.handle)
 
     # ===------------------------------------------------------------------=== #
     # String conversion
@@ -252,14 +252,14 @@ struct MPF(Comparable, Movable, Rootable, Writable):
             ConversionError: If string export fails.
         """
         var d = digits if digits > 0 else self.precision
-        var address = mpfrw_get_str(self.handle, Int32(d))
+        var address = decimo_mpfrw_get_str(self.handle, Int32(d))
         if address == 0:
             raise ConversionError(
                 message="Failed to export string",
                 function="MPF.to_string()",
             )
         var result = _read_c_string(address)
-        mpfrw_free_str(address)
+        decimo_mpfrw_free_str(address)
         return result
 
     def write_to[W: Writer](self, mut writer: W):
@@ -274,12 +274,12 @@ struct MPF(Comparable, Movable, Rootable, Writable):
         if self.handle < 0:
             writer.write("MPF(<moved>)")
             return
-        var address = mpfrw_get_str(self.handle, Int32(self.precision))
+        var address = decimo_mpfrw_get_str(self.handle, Int32(self.precision))
         if address == 0:
             writer.write("MPF(<error>)")
             return
         var s = _read_c_string(address)
-        mpfrw_free_str(address)
+        decimo_mpfrw_free_str(address)
         writer.write(s)
 
     def write_repr_to[W: Writer](self, mut writer: W):
@@ -294,12 +294,12 @@ struct MPF(Comparable, Movable, Rootable, Writable):
         if self.handle < 0:
             writer.write('MPF("<moved>")')
             return
-        var address = mpfrw_get_str(self.handle, Int32(self.precision))
+        var address = decimo_mpfrw_get_str(self.handle, Int32(self.precision))
         if address == 0:
             writer.write('MPF("<error>")')
             return
         var s = _read_c_string(address)
-        mpfrw_free_str(address)
+        decimo_mpfrw_free_str(address)
         writer.write('MPF("', s, '")')
 
     # ===------------------------------------------------------------------=== #
@@ -330,13 +330,13 @@ struct MPF(Comparable, Movable, Rootable, Writable):
         var d = precision if precision > 0 else self.precision
 
         # 1. Get raw digits + exponent in one call
-        # mpfrw_get_raw_digits calls mpfr_get_str (resolved as p_get_str
+        # decimo_mpfrw_get_raw_digits calls mpfr_get_str (resolved as p_get_str
         # via dlsym).  It returns a pure ASCII digit string like
         # "31415926535897932385" (possibly "-" prefixed for negatives) and
         # writes the base-10 exponent to out_exp.
         # Meaning: value = 0.<digits> × 10^exp.
         var exp = Int(0)
-        var address = mpfrw_get_raw_digits(
+        var address = decimo_mpfrw_get_raw_digits(
             self.handle, Int32(d), Pointer(to=exp)
         )
         if address == 0:
@@ -351,7 +351,7 @@ struct MPF(Comparable, Movable, Rootable, Writable):
         var n = external_call["strlen", Int](address)
         var buf = List[UInt8](unsafe_uninit_length=n)
         external_call["memcpy", NoneType](buf.unsafe_ptr(), address, n)
-        mpfrw_free_raw_str(address)  # Free MPFR allocation immediately.
+        decimo_mpfrw_free_raw_str(address)  # Free MPFR allocation immediately.
 
         # 3. Read bytes from the Mojo buffer (no further copies)
         var ptr = buf.unsafe_ptr()
@@ -406,7 +406,7 @@ struct MPF(Comparable, Movable, Rootable, Writable):
         Returns:
             `True` if the values are equal, `False` otherwise.
         """
-        return mpfrw_cmp(self.handle, other.handle) == 0
+        return decimo_mpfrw_cmp(self.handle, other.handle) == 0
 
     def __ne__(self, other: Self) -> Bool:
         """Checks whether two MPF values are not equal.
@@ -417,7 +417,7 @@ struct MPF(Comparable, Movable, Rootable, Writable):
         Returns:
             `True` if the values are not equal, `False` otherwise.
         """
-        return mpfrw_cmp(self.handle, other.handle) != 0
+        return decimo_mpfrw_cmp(self.handle, other.handle) != 0
 
     def __lt__(self, other: Self) -> Bool:
         """Checks whether this value is strictly less than another.
@@ -428,7 +428,7 @@ struct MPF(Comparable, Movable, Rootable, Writable):
         Returns:
             `True` if `self < other`, `False` otherwise.
         """
-        var c = mpfrw_cmp(self.handle, other.handle)
+        var c = decimo_mpfrw_cmp(self.handle, other.handle)
         return c != -2 and c < 0
 
     def __le__(self, other: Self) -> Bool:
@@ -440,7 +440,7 @@ struct MPF(Comparable, Movable, Rootable, Writable):
         Returns:
             `True` if `self <= other`, `False` otherwise.
         """
-        var c = mpfrw_cmp(self.handle, other.handle)
+        var c = decimo_mpfrw_cmp(self.handle, other.handle)
         return c != -2 and c <= 0
 
     def __gt__(self, other: Self) -> Bool:
@@ -452,7 +452,7 @@ struct MPF(Comparable, Movable, Rootable, Writable):
         Returns:
             `True` if `self > other`, `False` otherwise.
         """
-        var c = mpfrw_cmp(self.handle, other.handle)
+        var c = decimo_mpfrw_cmp(self.handle, other.handle)
         return c != -2 and c > 0
 
     def __ge__(self, other: Self) -> Bool:
@@ -464,7 +464,7 @@ struct MPF(Comparable, Movable, Rootable, Writable):
         Returns:
             `True` if `self >= other`, `False` otherwise.
         """
-        var c = mpfrw_cmp(self.handle, other.handle)
+        var c = decimo_mpfrw_cmp(self.handle, other.handle)
         return c != -2 and c >= 0
 
     # ===------------------------------------------------------------------=== #
@@ -480,13 +480,13 @@ struct MPF(Comparable, Movable, Rootable, Writable):
         Raises:
             RuntimeError: If MPFR handle allocation fails.
         """
-        var h = mpfrw_init(_dps_to_bits(self.precision))
+        var h = decimo_mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
                 function="MPF.__neg__()",
             )
-        mpfrw_neg(h, self.handle)
+        decimo_mpfrw_neg(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
 
     def __abs__(self) raises -> Self:
@@ -498,13 +498,13 @@ struct MPF(Comparable, Movable, Rootable, Writable):
         Raises:
             RuntimeError: If MPFR handle allocation fails.
         """
-        var h = mpfrw_init(_dps_to_bits(self.precision))
+        var h = decimo_mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
                 function="MPF.__abs__()",
             )
-        mpfrw_abs(h, self.handle)
+        decimo_mpfrw_abs(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
 
     # ===------------------------------------------------------------------=== #
@@ -524,13 +524,13 @@ struct MPF(Comparable, Movable, Rootable, Writable):
             RuntimeError: If MPFR handle allocation fails.
         """
         var prec = max(self.precision, other.precision)
-        var h = mpfrw_init(_dps_to_bits(prec))
+        var h = decimo_mpfrw_init(_dps_to_bits(prec))
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
                 function="MPF.__add__()",
             )
-        mpfrw_add(h, self.handle, other.handle)
+        decimo_mpfrw_add(h, self.handle, other.handle)
         return Self(_handle=h, _precision=prec)
 
     def __sub__(self, other: Self) raises -> Self:
@@ -546,13 +546,13 @@ struct MPF(Comparable, Movable, Rootable, Writable):
             RuntimeError: If MPFR handle allocation fails.
         """
         var prec = max(self.precision, other.precision)
-        var h = mpfrw_init(_dps_to_bits(prec))
+        var h = decimo_mpfrw_init(_dps_to_bits(prec))
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
                 function="MPF.__sub__()",
             )
-        mpfrw_sub(h, self.handle, other.handle)
+        decimo_mpfrw_sub(h, self.handle, other.handle)
         return Self(_handle=h, _precision=prec)
 
     def __mul__(self, other: Self) raises -> Self:
@@ -568,13 +568,13 @@ struct MPF(Comparable, Movable, Rootable, Writable):
             RuntimeError: If MPFR handle allocation fails.
         """
         var prec = max(self.precision, other.precision)
-        var h = mpfrw_init(_dps_to_bits(prec))
+        var h = decimo_mpfrw_init(_dps_to_bits(prec))
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
                 function="MPF.__mul__()",
             )
-        mpfrw_mul(h, self.handle, other.handle)
+        decimo_mpfrw_mul(h, self.handle, other.handle)
         return Self(_handle=h, _precision=prec)
 
     def __truediv__(self, other: Self) raises -> Self:
@@ -590,13 +590,13 @@ struct MPF(Comparable, Movable, Rootable, Writable):
             RuntimeError: If MPFR handle allocation fails.
         """
         var prec = max(self.precision, other.precision)
-        var h = mpfrw_init(_dps_to_bits(prec))
+        var h = decimo_mpfrw_init(_dps_to_bits(prec))
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
                 function="MPF.__truediv__()",
             )
-        mpfrw_div(h, self.handle, other.handle)
+        decimo_mpfrw_div(h, self.handle, other.handle)
         return Self(_handle=h, _precision=prec)
 
     def __pow__(self, exponent: Self) raises -> Self:
@@ -626,13 +626,13 @@ struct MPF(Comparable, Movable, Rootable, Writable):
         Raises:
             RuntimeError: If MPFR handle allocation fails.
         """
-        var h = mpfrw_init(_dps_to_bits(self.precision))
+        var h = decimo_mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
                 function="MPF.sqrt()",
             )
-        mpfrw_sqrt(h, self.handle)
+        decimo_mpfrw_sqrt(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
 
     def exp(self) raises -> Self:
@@ -644,13 +644,13 @@ struct MPF(Comparable, Movable, Rootable, Writable):
         Raises:
             RuntimeError: If MPFR handle allocation fails.
         """
-        var h = mpfrw_init(_dps_to_bits(self.precision))
+        var h = decimo_mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
                 function="MPF.exp()",
             )
-        mpfrw_exp(h, self.handle)
+        decimo_mpfrw_exp(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
 
     def ln(self) raises -> Self:
@@ -662,13 +662,13 @@ struct MPF(Comparable, Movable, Rootable, Writable):
         Raises:
             RuntimeError: If MPFR handle allocation fails.
         """
-        var h = mpfrw_init(_dps_to_bits(self.precision))
+        var h = decimo_mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
                 function="MPF.ln()",
             )
-        mpfrw_log(h, self.handle)
+        decimo_mpfrw_log(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
 
     def sin(self) raises -> Self:
@@ -680,13 +680,13 @@ struct MPF(Comparable, Movable, Rootable, Writable):
         Raises:
             RuntimeError: If MPFR handle allocation fails.
         """
-        var h = mpfrw_init(_dps_to_bits(self.precision))
+        var h = decimo_mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
                 function="MPF.sin()",
             )
-        mpfrw_sin(h, self.handle)
+        decimo_mpfrw_sin(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
 
     def cos(self) raises -> Self:
@@ -698,13 +698,13 @@ struct MPF(Comparable, Movable, Rootable, Writable):
         Raises:
             RuntimeError: If MPFR handle allocation fails.
         """
-        var h = mpfrw_init(_dps_to_bits(self.precision))
+        var h = decimo_mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
                 function="MPF.cos()",
             )
-        mpfrw_cos(h, self.handle)
+        decimo_mpfrw_cos(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
 
     def tan(self) raises -> Self:
@@ -716,13 +716,13 @@ struct MPF(Comparable, Movable, Rootable, Writable):
         Raises:
             RuntimeError: If MPFR handle allocation fails.
         """
-        var h = mpfrw_init(_dps_to_bits(self.precision))
+        var h = decimo_mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
                 function="MPF.tan()",
             )
-        mpfrw_tan(h, self.handle)
+        decimo_mpfrw_tan(h, self.handle)
         return Self(_handle=h, _precision=self.precision)
 
     def power(self, exponent: Self) raises -> Self:
@@ -738,13 +738,13 @@ struct MPF(Comparable, Movable, Rootable, Writable):
             RuntimeError: If MPFR handle allocation fails.
         """
         var prec = max(self.precision, exponent.precision)
-        var h = mpfrw_init(_dps_to_bits(prec))
+        var h = decimo_mpfrw_init(_dps_to_bits(prec))
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
                 function="MPF.power()",
             )
-        mpfrw_pow(h, self.handle, exponent.handle)
+        decimo_mpfrw_pow(h, self.handle, exponent.handle)
         return Self(_handle=h, _precision=prec)
 
     def root(self, n: Int) raises -> Self:
@@ -768,9 +768,8 @@ struct MPF(Comparable, Movable, Rootable, Writable):
                 function="MPF.root()",
             )
         # The degree reaches MPFR as a `UInt32`. Without this bound a larger
-        # `n` would wrap and quietly compute a different root. The bound is a
-        # literal because Mojo 1.1 can miscompile `Int(UInt32.MAX)` to -1.
-        if n > 4_294_967_295:
+        # `n` would wrap and quietly compute a different root.
+        if n > Int(UInt32.MAX):
             raise ValueError(
                 message="Root degree is too large.",
                 function="MPF.root()",
@@ -789,13 +788,13 @@ struct MPF(Comparable, Movable, Rootable, Writable):
         Raises:
             RuntimeError: If MPFR handle allocation fails.
         """
-        var h = mpfrw_init(_dps_to_bits(self.precision))
+        var h = decimo_mpfrw_init(_dps_to_bits(self.precision))
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
                 function="MPF.root()",
             )
-        mpfrw_rootn_ui(h, self.handle, n)
+        decimo_mpfrw_rootn_ui(h, self.handle, n)
         return Self(_handle=h, _precision=self.precision)
 
     @staticmethod
@@ -817,7 +816,7 @@ struct MPF(Comparable, Movable, Rootable, Writable):
                 message="Precision must be non-negative",
                 function="MPF.pi()",
             )
-        if not mpfrw_available():
+        if not decimo_mpfrw_available():
             raise RuntimeError(
                 message=(
                     "MPF requires MPFR (brew install mpfr / apt"
@@ -825,11 +824,11 @@ struct MPF(Comparable, Movable, Rootable, Writable):
                 ),
                 function="MPF.pi()",
             )
-        var h = mpfrw_init(_dps_to_bits(precision))
+        var h = decimo_mpfrw_init(_dps_to_bits(precision))
         if h < 0:
             raise RuntimeError(
                 message="Handle allocation failed.",
                 function="MPF.pi()",
             )
-        mpfrw_const_pi(h)
+        decimo_mpfrw_const_pi(h)
         return MPF(_handle=h, _precision=precision)

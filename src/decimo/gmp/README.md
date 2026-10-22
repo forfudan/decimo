@@ -15,7 +15,7 @@ means:
   on ARM64 macOS and x86_64 Linux. If you encounter issues on an unusual
   platform, rebuilding with `mpfr.h` included would provide a compile-time size
   check.
-- **Runtime**: If MPFR is installed, `mpfrw_available()` returns 1 and all
+- **Runtime**: If MPFR is installed, `decimo_mpfrw_available()` returns 1 and all
   operations work. If not installed, it returns 0 and MPF raises a clear
   error.
 

@@ -17,6 +17,13 @@
  *
  * gmp_wrapper.c — C bridge between Mojo and MPFR/GMP.
  *
+ * Every symbol this file exports is named `decimo_mpfrw_*`. The prefix is
+ * not decoration: a C symbol is global to the whole link, so a short name
+ * like `mpfrw_add` could meet the same name from another MPFR wrapper in a
+ * downstream program, and the linker has only one of them to offer. Mojo 1.2
+ * made that concrete for `read`, `write` and `open`, where the standard
+ * library's own declarations and ours could not both be right.
+ *
  * This file uses dlopen/dlsym to load MPFR lazily at runtime. It compiles
  * on any system with a C compiler — no MPFR/GMP headers needed at build time.
  *
@@ -30,7 +37,7 @@
  *   - A pool of mpfr_t handles (fixed-size array, index-based)
  *   - Mojo side only sees Int32 handle indices
  *   - All MPFR functions resolved via dlsym at first use
- *   - If MPFR is not installed, mpfrw_available() returns 0
+ *   - If MPFR is not installed, decimo_mpfrw_available() returns 0
  *
  * Build:
  *   cc -shared -O2 -o libdecimo_gmp_wrapper.dylib gmp_wrapper.c -ldl
@@ -62,7 +69,7 @@
 /* mpfr_t is internally a struct. The size is not guaranteed by the MPFR ABI,
  * but has been 32 bytes on all tested platforms (ARM64 macOS, x86_64 Linux)
  * since MPFR 3.x. We over-allocate to 64 bytes and align to 16 bytes for
- * safety. A runtime assertion in mpfrw_load() verifies the actual size.
+ * safety. A runtime assertion in decimo_mpfrw_load() verifies the actual size.
  * If MPFR headers are available at build time, the compile-time static_assert
  * below catches any mismatch. */
 #define MPFR_T_SIZE 64
@@ -99,7 +106,7 @@ typedef int   (*fn_mpfr_snprintf)(char *buf, size_t n, const char *fmt, ...);
 static void *mpfr_lib = NULL;
 static int   mpfr_load_attempted = 0;
 
-/* Function pointers — resolved by mpfrw_load() */
+/* Function pointers — resolved by decimo_mpfrw_load() */
 static fn_mpfr_init2      p_init2      = NULL;
 static fn_mpfr_clear      p_clear      = NULL;
 static fn_mpfr_set_str    p_set_str    = NULL;
@@ -131,7 +138,7 @@ static int   handle_in_use[MAX_HANDLES];  /* 0 = free, 1 = in use */
  * Library loading (dlopen/dlsym)
  * ===----------------------------------------------------------------------=== */
 
-static int mpfrw_load(void) {
+static int decimo_mpfrw_load(void) {
     if (mpfr_load_attempted) return (mpfr_lib != NULL);
     mpfr_load_attempted = 1;
 
@@ -202,12 +209,12 @@ static int mpfrw_load(void) {
  * Public API — called from Mojo via external_call
  * ===----------------------------------------------------------------------=== */
 
-int mpfrw_available(void) {
-    return mpfrw_load();
+int decimo_mpfrw_available(void) {
+    return decimo_mpfrw_load();
 }
 
-int mpfrw_init(int prec_bits) {
-    if (!mpfrw_load()) return -1;
+int decimo_mpfrw_init(int prec_bits) {
+    if (!decimo_mpfrw_load()) return -1;
     if (prec_bits < 2) prec_bits = 2;
     if (prec_bits > MAX_PREC_BITS) return -1;  /* precision cap */
 
@@ -222,7 +229,7 @@ int mpfrw_init(int prec_bits) {
     return -1;  /* pool exhausted */
 }
 
-void mpfrw_clear(int handle) {
+void decimo_mpfrw_clear(int handle) {
     if (handle < 0 || handle >= MAX_HANDLES) return;
     if (!handle_in_use[handle]) return;
     if (!p_clear) return;  /* MPFR not loaded — nothing to free */
@@ -230,7 +237,7 @@ void mpfrw_clear(int handle) {
     handle_in_use[handle] = 0;
 }
 
-int mpfrw_set_str(int handle, const char *s, int length) {
+int decimo_mpfrw_set_str(int handle, const char *s, int length) {
     if (handle < 0 || handle >= MAX_HANDLES || !handle_in_use[handle]) return -1;
 
     /* Copy to null-terminated buffer (s may not be null-terminated) */
@@ -244,7 +251,7 @@ int mpfrw_set_str(int handle, const char *s, int length) {
     return ret;
 }
 
-char* mpfrw_get_str(int handle, int digits) {
+char* decimo_mpfrw_get_str(int handle, int digits) {
     if (handle < 0 || handle >= MAX_HANDLES || !handle_in_use[handle]) return NULL;
     if (digits < 1) digits = 1;
 
@@ -269,7 +276,7 @@ char* mpfrw_get_str(int handle, int digits) {
     return buf;
 }
 
-void mpfrw_free_str(char *s) {
+void decimo_mpfrw_free_str(char *s) {
     if (s) free(s);
 }
 
@@ -286,10 +293,10 @@ void mpfrw_free_str(char *s) {
  * no mutable global state, no two-call pattern.
  *
  * The returned string is allocated by MPFR and must be freed with
- * mpfrw_free_raw_str().
+ * decimo_mpfrw_free_raw_str().
  * ===----------------------------------------------------------------------=== */
 
-char* mpfrw_get_raw_digits(int handle, int digits, long *out_exp) {
+char* decimo_mpfrw_get_raw_digits(int handle, int digits, long *out_exp) {
     if (handle < 0 || handle >= MAX_HANDLES || !handle_in_use[handle]) return NULL;
     if (!p_get_str) return NULL;
     if (digits < 1) digits = 1;
@@ -297,10 +304,10 @@ char* mpfrw_get_raw_digits(int handle, int digits, long *out_exp) {
     char *raw = p_get_str(NULL, &exp, 10, (size_t)digits,
                           &handle_pool[handle], MPFR_RNDN);
     if (out_exp) *out_exp = exp;
-    return raw;  /* Caller frees with mpfrw_free_raw_str */
+    return raw;  /* Caller frees with decimo_mpfrw_free_raw_str */
 }
 
-void mpfrw_free_raw_str(char *s) {
+void decimo_mpfrw_free_raw_str(char *s) {
     if (s && p_free_str) p_free_str(s);
 }
 
@@ -316,37 +323,37 @@ void mpfrw_free_raw_str(char *s) {
     CHECK_HANDLES_2(r, a) \
     if ((b) < 0 || (b) >= MAX_HANDLES || !handle_in_use[(b)]) return;
 
-void mpfrw_add(int r, int a, int b) {
+void decimo_mpfrw_add(int r, int a, int b) {
     CHECK_HANDLES_3(r, a, b);
     p_add(&handle_pool[r], &handle_pool[a], &handle_pool[b], MPFR_RNDN);
 }
 
-void mpfrw_sub(int r, int a, int b) {
+void decimo_mpfrw_sub(int r, int a, int b) {
     CHECK_HANDLES_3(r, a, b);
     p_sub(&handle_pool[r], &handle_pool[a], &handle_pool[b], MPFR_RNDN);
 }
 
-void mpfrw_mul(int r, int a, int b) {
+void decimo_mpfrw_mul(int r, int a, int b) {
     CHECK_HANDLES_3(r, a, b);
     p_mul(&handle_pool[r], &handle_pool[a], &handle_pool[b], MPFR_RNDN);
 }
 
-void mpfrw_div(int r, int a, int b) {
+void decimo_mpfrw_div(int r, int a, int b) {
     CHECK_HANDLES_3(r, a, b);
     p_div(&handle_pool[r], &handle_pool[a], &handle_pool[b], MPFR_RNDN);
 }
 
-void mpfrw_neg(int r, int a) {
+void decimo_mpfrw_neg(int r, int a) {
     CHECK_HANDLES_2(r, a);
     p_neg(&handle_pool[r], &handle_pool[a], MPFR_RNDN);
 }
 
-void mpfrw_abs(int r, int a) {
+void decimo_mpfrw_abs(int r, int a) {
     CHECK_HANDLES_2(r, a);
     p_abs(&handle_pool[r], &handle_pool[a], MPFR_RNDN);
 }
 
-int mpfrw_cmp(int a, int b) {
+int decimo_mpfrw_cmp(int a, int b) {
     if (a < 0 || a >= MAX_HANDLES || !handle_in_use[a]) return -2;  /* error sentinel */
     if (b < 0 || b >= MAX_HANDLES || !handle_in_use[b]) return -2;  /* error sentinel */
     int result = p_cmp(&handle_pool[a], &handle_pool[b]);
@@ -360,47 +367,47 @@ int mpfrw_cmp(int a, int b) {
  * Transcendental operations
  * ===----------------------------------------------------------------------=== */
 
-void mpfrw_sqrt(int r, int a) {
+void decimo_mpfrw_sqrt(int r, int a) {
     CHECK_HANDLES_2(r, a);
     if (p_sqrt) p_sqrt(&handle_pool[r], &handle_pool[a], MPFR_RNDN);
 }
 
-void mpfrw_exp(int r, int a) {
+void decimo_mpfrw_exp(int r, int a) {
     CHECK_HANDLES_2(r, a);
     if (p_exp) p_exp(&handle_pool[r], &handle_pool[a], MPFR_RNDN);
 }
 
-void mpfrw_log(int r, int a) {
+void decimo_mpfrw_log(int r, int a) {
     CHECK_HANDLES_2(r, a);
     if (p_log) p_log(&handle_pool[r], &handle_pool[a], MPFR_RNDN);
 }
 
-void mpfrw_sin(int r, int a) {
+void decimo_mpfrw_sin(int r, int a) {
     CHECK_HANDLES_2(r, a);
     if (p_sin) p_sin(&handle_pool[r], &handle_pool[a], MPFR_RNDN);
 }
 
-void mpfrw_cos(int r, int a) {
+void decimo_mpfrw_cos(int r, int a) {
     CHECK_HANDLES_2(r, a);
     if (p_cos) p_cos(&handle_pool[r], &handle_pool[a], MPFR_RNDN);
 }
 
-void mpfrw_tan(int r, int a) {
+void decimo_mpfrw_tan(int r, int a) {
     CHECK_HANDLES_2(r, a);
     if (p_tan) p_tan(&handle_pool[r], &handle_pool[a], MPFR_RNDN);
 }
 
-void mpfrw_pow(int r, int a, int b) {
+void decimo_mpfrw_pow(int r, int a, int b) {
     CHECK_HANDLES_3(r, a, b);
     if (p_pow) p_pow(&handle_pool[r], &handle_pool[a], &handle_pool[b], MPFR_RNDN);
 }
 
-void mpfrw_rootn_ui(int r, int a, unsigned int n) {
+void decimo_mpfrw_rootn_ui(int r, int a, unsigned int n) {
     CHECK_HANDLES_2(r, a);
     if (p_rootn_ui) p_rootn_ui(&handle_pool[r], &handle_pool[a], (unsigned long)n, MPFR_RNDN);
 }
 
-void mpfrw_const_pi(int r) {
+void decimo_mpfrw_const_pi(int r) {
     if (r < 0 || r >= MAX_HANDLES || !handle_in_use[r]) return;
     if (p_const_pi) p_const_pi(&handle_pool[r], MPFR_RNDN);
 }
@@ -409,7 +416,7 @@ void mpfrw_const_pi(int r) {
  * Diagnostics
  * ===----------------------------------------------------------------------=== */
 
-int mpfrw_handles_in_use(void) {
+int decimo_mpfrw_handles_in_use(void) {
     int count = 0;
     for (int i = 0; i < MAX_HANDLES; i++) {
         if (handle_in_use[i]) count++;

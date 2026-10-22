@@ -1065,11 +1065,18 @@ def add_by_word_inplace(mut x: BigUInt, y: BigUInt.Word) -> None:
         x.words.unsafe_set(i, x.words.unsafe_get(i) + carry)
         if x.words.unsafe_get(i) <= BigUInt.BASE_MAX:
             return  # No carry, we can stop early
-        else:
-            carry = 1  # Cannot be more than 1
-            x.words.unsafe_set(i, x.words.unsafe_get(i) - BigUInt.BASE)
-    else:
-        x.words.append(BigUInt.Word(1))
+        carry = 1  # Cannot be more than 1
+        x.words.unsafe_set(i, x.words.unsafe_get(i) - BigUInt.BASE)
+
+    # The early return above is the only way out of the loop, so reaching
+    # this line means every word carried and the number needs one more.
+    #
+    # This used to be the `else` clause of the loop, which says the same
+    # thing. Mojo 1.2 drops a loop's `else` clause at `-O3`, the default
+    # optimization level, when the body can `return` and the clause has a
+    # side effect. See `tests/biguint/test_biguint_arithmetics.mojo`, which
+    # pins the value that regressed.
+    x.words.append(BigUInt.Word(1))
 
     return
 

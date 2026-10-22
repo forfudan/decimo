@@ -64,9 +64,9 @@ def evaluate_and_print(
     """
     try:
         var tokens = tokenize(expr, variables)
-        var rpn = parse_to_rpn(tokens^)
+        var rpn = parse_to_rpn(tokens)
         var value = final_round(
-            evaluate_rpn(rpn^, precision, variables), precision, rounding_mode
+            evaluate_rpn(rpn, precision, variables), precision, rounding_mode
         )
 
         if scientific:
@@ -204,9 +204,9 @@ def evaluate_and_return(
     """
     try:
         var tokens = tokenize(expr, variables)
-        var rpn = parse_to_rpn(tokens^)
+        var rpn = parse_to_rpn(tokens)
         var value = final_round(
-            evaluate_rpn(rpn^, precision, variables), precision, rounding_mode
+            evaluate_rpn(rpn, precision, variables), precision, rounding_mode
         )
 
         if scientific:

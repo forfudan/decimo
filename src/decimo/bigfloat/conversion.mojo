@@ -677,7 +677,7 @@ def _from_decimal_by_scaling(
             var quotient = magnitude.truncate_divide(power)
             if quotient * power == magnitude:
                 return round_to_precision(
-                    quotient^,
+                    quotient,
                     decimal_exponent,
                     precision,
                     negative,

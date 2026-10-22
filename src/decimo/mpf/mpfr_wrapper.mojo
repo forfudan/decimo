@@ -33,7 +33,7 @@ from std.ffi import c_char, c_int, external_call
 # ===----------------------------------------------------------------------=== #
 
 
-def mpfrw_available() -> Bool:
+def decimo_mpfrw_available() -> Bool:
     """Checks if MPFR is available on this system.
 
     First call triggers the lazy load attempt. Result is cached in C.
@@ -41,7 +41,7 @@ def mpfrw_available() -> Bool:
     Returns:
         True if the C wrapper successfully loaded libmpfr via dlopen.
     """
-    var result = external_call["mpfrw_available", c_int]()
+    var result = external_call["decimo_mpfrw_available", c_int]()
     return result != 0
 
 
@@ -50,7 +50,7 @@ def mpfrw_available() -> Bool:
 # ===----------------------------------------------------------------------=== #
 
 
-def mpfrw_init(prec_bits: Int) -> Int32:
+def decimo_mpfrw_init(prec_bits: Int) -> Int32:
     """Allocates an MPFR handle with the given precision in bits.
 
     Args:
@@ -60,16 +60,16 @@ def mpfrw_init(prec_bits: Int) -> Int32:
         A handle index (>= 0) on success, or -1 if the pool is full
         or MPFR is unavailable.
     """
-    return external_call["mpfrw_init", Int32](Int32(prec_bits))
+    return external_call["decimo_mpfrw_init", Int32](Int32(prec_bits))
 
 
-def mpfrw_clear(handle: Int32):
+def decimo_mpfrw_clear(handle: Int32):
     """Frees an MPFR handle, returning it to the pool.
 
     Args:
         handle: MPFR handle index to free.
     """
-    external_call["mpfrw_clear", NoneType](handle)
+    external_call["decimo_mpfrw_clear", NoneType](handle)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -81,7 +81,9 @@ def mpfrw_clear(handle: Int32):
 # ===----------------------------------------------------------------------=== #
 
 
-def mpfrw_set_str(handle: Int32, s: Pointer[c_char, _], length: Int32) -> Int32:
+def decimo_mpfrw_set_str(
+    handle: Int32, s: Pointer[c_char, _], length: Int32
+) -> Int32:
     """Sets the MPFR handle value from a decimal string.
 
     Args:
@@ -92,10 +94,10 @@ def mpfrw_set_str(handle: Int32, s: Pointer[c_char, _], length: Int32) -> Int32:
     Returns:
         0 on success, non-zero on parse error.
     """
-    return external_call["mpfrw_set_str", Int32](handle, s, length)
+    return external_call["decimo_mpfrw_set_str", Int32](handle, s, length)
 
 
-def mpfrw_get_str(handle: Int32, digits: Int32) -> Int:
+def decimo_mpfrw_get_str(handle: Int32, digits: Int32) -> Int:
     """Exports the MPFR handle value as a decimal string.
 
     Args:
@@ -104,18 +106,18 @@ def mpfrw_get_str(handle: Int32, digits: Int32) -> Int:
 
     Returns:
         Raw address of a null-terminated C string (malloc'd).
-        Caller must free it with `mpfrw_free_str`.
+        Caller must free it with `decimo_mpfrw_free_str`.
     """
-    return external_call["mpfrw_get_str", Int](handle, digits)
+    return external_call["decimo_mpfrw_get_str", Int](handle, digits)
 
 
-def mpfrw_free_str(addr: Int):
-    """Frees a string returned by `mpfrw_get_str`.
+def decimo_mpfrw_free_str(addr: Int):
+    """Frees a string returned by `decimo_mpfrw_get_str`.
 
     Args:
-        addr: Raw address returned by `mpfrw_get_str`.
+        addr: Raw address returned by `decimo_mpfrw_get_str`.
     """
-    external_call["mpfrw_free_str", NoneType](addr)
+    external_call["decimo_mpfrw_free_str", NoneType](addr)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -123,7 +125,7 @@ def mpfrw_free_str(addr: Int):
 # ===----------------------------------------------------------------------=== #
 
 
-def mpfrw_get_raw_digits(
+def decimo_mpfrw_get_raw_digits(
     handle: Int32, digits: Int32, out_exp: Pointer[Int, _]
 ) -> Int:
     """Exports MPFR value as raw digit string via mpfr_get_str.
@@ -135,7 +137,7 @@ def mpfrw_get_raw_digits(
     Meaning: raw = `"31415..."` with exp = 1 → value = 0.31415… × 10^1.
 
     The digit string is allocated by MPFR and must be freed with
-    `mpfrw_free_raw_str`.
+    `decimo_mpfrw_free_raw_str`.
 
     Args:
         handle: MPFR handle index.
@@ -145,16 +147,18 @@ def mpfrw_get_raw_digits(
     Returns:
         Raw address of the digit string, or 0 on failure.
     """
-    return external_call["mpfrw_get_raw_digits", Int](handle, digits, out_exp)
+    return external_call["decimo_mpfrw_get_raw_digits", Int](
+        handle, digits, out_exp
+    )
 
 
-def mpfrw_free_raw_str(addr: Int):
-    """Frees a digit string returned by `mpfrw_get_raw_digits`.
+def decimo_mpfrw_free_raw_str(addr: Int):
+    """Frees a digit string returned by `decimo_mpfrw_get_raw_digits`.
 
     Args:
-        addr: Raw address returned by `mpfrw_get_raw_digits`.
+        addr: Raw address returned by `decimo_mpfrw_get_raw_digits`.
     """
-    external_call["mpfrw_free_raw_str", NoneType](addr)
+    external_call["decimo_mpfrw_free_raw_str", NoneType](addr)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -162,7 +166,7 @@ def mpfrw_free_raw_str(addr: Int):
 # ===----------------------------------------------------------------------=== #
 
 
-def mpfrw_add(result: Int32, a: Int32, b: Int32):
+def decimo_mpfrw_add(result: Int32, a: Int32, b: Int32):
     """Computes result = a + b (MPFR_RNDN).
 
     Args:
@@ -170,10 +174,10 @@ def mpfrw_add(result: Int32, a: Int32, b: Int32):
         a: Left operand handle.
         b: Right operand handle.
     """
-    external_call["mpfrw_add", NoneType](result, a, b)
+    external_call["decimo_mpfrw_add", NoneType](result, a, b)
 
 
-def mpfrw_sub(result: Int32, a: Int32, b: Int32):
+def decimo_mpfrw_sub(result: Int32, a: Int32, b: Int32):
     """Computes result = a - b (MPFR_RNDN).
 
     Args:
@@ -181,10 +185,10 @@ def mpfrw_sub(result: Int32, a: Int32, b: Int32):
         a: Left operand handle.
         b: Right operand handle.
     """
-    external_call["mpfrw_sub", NoneType](result, a, b)
+    external_call["decimo_mpfrw_sub", NoneType](result, a, b)
 
 
-def mpfrw_mul(result: Int32, a: Int32, b: Int32):
+def decimo_mpfrw_mul(result: Int32, a: Int32, b: Int32):
     """Computes result = a * b (MPFR_RNDN).
 
     Args:
@@ -192,10 +196,10 @@ def mpfrw_mul(result: Int32, a: Int32, b: Int32):
         a: Left operand handle.
         b: Right operand handle.
     """
-    external_call["mpfrw_mul", NoneType](result, a, b)
+    external_call["decimo_mpfrw_mul", NoneType](result, a, b)
 
 
-def mpfrw_div(result: Int32, a: Int32, b: Int32):
+def decimo_mpfrw_div(result: Int32, a: Int32, b: Int32):
     """Computes result = a / b (MPFR_RNDN).
 
     Args:
@@ -203,30 +207,30 @@ def mpfrw_div(result: Int32, a: Int32, b: Int32):
         a: Dividend handle.
         b: Divisor handle.
     """
-    external_call["mpfrw_div", NoneType](result, a, b)
+    external_call["decimo_mpfrw_div", NoneType](result, a, b)
 
 
-def mpfrw_neg(result: Int32, a: Int32):
+def decimo_mpfrw_neg(result: Int32, a: Int32):
     """Computes result = -a (MPFR_RNDN).
 
     Args:
         result: Handle to store the result.
         a: Operand handle.
     """
-    external_call["mpfrw_neg", NoneType](result, a)
+    external_call["decimo_mpfrw_neg", NoneType](result, a)
 
 
-def mpfrw_abs(result: Int32, a: Int32):
+def decimo_mpfrw_abs(result: Int32, a: Int32):
     """Computes result = |a| (MPFR_RNDN).
 
     Args:
         result: Handle to store the result.
         a: Operand handle.
     """
-    external_call["mpfrw_abs", NoneType](result, a)
+    external_call["decimo_mpfrw_abs", NoneType](result, a)
 
 
-def mpfrw_cmp(a: Int32, b: Int32) -> Int32:
+def decimo_mpfrw_cmp(a: Int32, b: Int32) -> Int32:
     """Compares a and b.
 
     Args:
@@ -236,7 +240,7 @@ def mpfrw_cmp(a: Int32, b: Int32) -> Int32:
     Returns:
         -1 if a < b, 0 if equal, 1 if a > b. -2 on invalid handle.
     """
-    return external_call["mpfrw_cmp", Int32](a, b)
+    return external_call["decimo_mpfrw_cmp", Int32](a, b)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -244,67 +248,67 @@ def mpfrw_cmp(a: Int32, b: Int32) -> Int32:
 # ===----------------------------------------------------------------------=== #
 
 
-def mpfrw_sqrt(result: Int32, a: Int32):
+def decimo_mpfrw_sqrt(result: Int32, a: Int32):
     """Computes result = sqrt(a) (MPFR_RNDN).
 
     Args:
         result: Handle to store the result.
         a: Operand handle.
     """
-    external_call["mpfrw_sqrt", NoneType](result, a)
+    external_call["decimo_mpfrw_sqrt", NoneType](result, a)
 
 
-def mpfrw_exp(result: Int32, a: Int32):
+def decimo_mpfrw_exp(result: Int32, a: Int32):
     """Computes result = exp(a) (MPFR_RNDN).
 
     Args:
         result: Handle to store the result.
         a: Operand handle.
     """
-    external_call["mpfrw_exp", NoneType](result, a)
+    external_call["decimo_mpfrw_exp", NoneType](result, a)
 
 
-def mpfrw_log(result: Int32, a: Int32):
+def decimo_mpfrw_log(result: Int32, a: Int32):
     """Computes result = ln(a) (MPFR_RNDN).
 
     Args:
         result: Handle to store the result.
         a: Operand handle.
     """
-    external_call["mpfrw_log", NoneType](result, a)
+    external_call["decimo_mpfrw_log", NoneType](result, a)
 
 
-def mpfrw_sin(result: Int32, a: Int32):
+def decimo_mpfrw_sin(result: Int32, a: Int32):
     """Computes result = sin(a) (MPFR_RNDN).
 
     Args:
         result: Handle to store the result.
         a: Operand handle.
     """
-    external_call["mpfrw_sin", NoneType](result, a)
+    external_call["decimo_mpfrw_sin", NoneType](result, a)
 
 
-def mpfrw_cos(result: Int32, a: Int32):
+def decimo_mpfrw_cos(result: Int32, a: Int32):
     """Computes result = cos(a) (MPFR_RNDN).
 
     Args:
         result: Handle to store the result.
         a: Operand handle.
     """
-    external_call["mpfrw_cos", NoneType](result, a)
+    external_call["decimo_mpfrw_cos", NoneType](result, a)
 
 
-def mpfrw_tan(result: Int32, a: Int32):
+def decimo_mpfrw_tan(result: Int32, a: Int32):
     """Computes result = tan(a) (MPFR_RNDN).
 
     Args:
         result: Handle to store the result.
         a: Operand handle.
     """
-    external_call["mpfrw_tan", NoneType](result, a)
+    external_call["decimo_mpfrw_tan", NoneType](result, a)
 
 
-def mpfrw_pow(result: Int32, a: Int32, b: Int32):
+def decimo_mpfrw_pow(result: Int32, a: Int32, b: Int32):
     """Computes result = a^b (MPFR_RNDN).
 
     Args:
@@ -312,10 +316,10 @@ def mpfrw_pow(result: Int32, a: Int32, b: Int32):
         a: Base handle.
         b: Exponent handle.
     """
-    external_call["mpfrw_pow", NoneType](result, a, b)
+    external_call["decimo_mpfrw_pow", NoneType](result, a, b)
 
 
-def mpfrw_rootn_ui(result: Int32, a: Int32, n: UInt32):
+def decimo_mpfrw_rootn_ui(result: Int32, a: Int32, n: UInt32):
     """Computes result = a^(1/n) (MPFR_RNDN), the n-th root.
 
     Args:
@@ -323,13 +327,13 @@ def mpfrw_rootn_ui(result: Int32, a: Int32, n: UInt32):
         a: Operand handle.
         n: Root degree.
     """
-    external_call["mpfrw_rootn_ui", NoneType](result, a, n)
+    external_call["decimo_mpfrw_rootn_ui", NoneType](result, a, n)
 
 
-def mpfrw_const_pi(result: Int32):
+def decimo_mpfrw_const_pi(result: Int32):
     """Computes result = π (MPFR_RNDN) to the handle's precision.
 
     Args:
         result: Handle to store the result.
     """
-    external_call["mpfrw_const_pi", NoneType](result)
+    external_call["decimo_mpfrw_const_pi", NoneType](result)

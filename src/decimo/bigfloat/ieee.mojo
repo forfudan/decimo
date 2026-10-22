@@ -234,7 +234,7 @@ def _neighbour(x: BigFloat, precision: Int, upwards: Bool) raises -> BigFloat:
             magnitude = magnitude - BigInt.one()
 
     return BigFloat(
-        significand=magnitude^,
+        significand=magnitude,
         exponent=exponent,
         precision=precision,
         sign=x.sign,
@@ -639,7 +639,7 @@ def _to_integral(x: BigFloat, rounding_mode: RoundingMode) raises -> BigFloat:
         rounding_mode, x.sign, leading_dropped, rest_below, lowest_kept
     ):
         kept = kept + BigInt.one()
-    return BigFloat.from_rounded_parts(kept^, 0, x.precision, x.sign)
+    return BigFloat.from_rounded_parts(kept, 0, x.precision, x.sign)
 
 
 def truncate(x: BigFloat) raises -> BigFloat:
@@ -970,7 +970,7 @@ def _remainder(
         # and C's `fmod` both ask.
         return BigFloat.zero(precision, x.sign)
     return BigFloat.from_rounded_parts(
-        remainder_magnitude^, exponent, precision, x.sign, rounding_mode
+        remainder_magnitude, exponent, precision, x.sign, rounding_mode
     )
 
 

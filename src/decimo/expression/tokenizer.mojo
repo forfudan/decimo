@@ -327,7 +327,7 @@ def tokenize(
             tokens.append(
                 Token(
                     TOKEN_NUMBER,
-                    String(unsafe_from_utf8=num_bytes^),
+                    String(unsafe_from_utf8=num_bytes),
                     position=start,
                 )
             )
@@ -342,21 +342,21 @@ def tokenize(
             var id_bytes = List[UInt8](capacity=i - start)
             for j in range(start, i):
                 id_bytes.append(ptr[unsafe_offset=j])
-            var name = String(unsafe_from_utf8=id_bytes^)
+            var name = String(unsafe_from_utf8=id_bytes)
 
             # Check if it is a known constant
             if is_known_constant(name):
-                tokens.append(Token(TOKEN_CONST, name^, position=start))
+                tokens.append(Token(TOKEN_CONST, name, position=start))
                 continue
 
             # Check if it is a known function
             if is_known_function(name):
-                tokens.append(Token(TOKEN_FUNC, name^, position=start))
+                tokens.append(Token(TOKEN_FUNC, name, position=start))
                 continue
 
             # Check if it is a known variable
             if name in known_variables:
-                tokens.append(Token(TOKEN_VARIABLE, name^, position=start))
+                tokens.append(Token(TOKEN_VARIABLE, name, position=start))
                 continue
 
             raise Error(

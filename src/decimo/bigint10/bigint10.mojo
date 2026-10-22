@@ -280,7 +280,7 @@ struct BigInt10(
         # every other constructor in this type normalises away.
         var magnitude = BigUInt(raw_words=list_of_words^)
         magnitude.remove_leading_empty_words()
-        return Self(magnitude^, sign)
+        return Self(magnitude, sign)
 
     @staticmethod
     def from_integral_scalar[
@@ -346,7 +346,7 @@ struct BigInt10(
 
         var magnitude = BigUInt.from_string(value, ignore_sign=True)
 
-        return Self(magnitude=magnitude^, sign=sign)
+        return Self(magnitude=magnitude, sign=sign)
 
     @staticmethod
     def from_python_int(value: PythonObject) raises -> Self:
@@ -526,7 +526,7 @@ struct BigInt10(
                 start = end
                 end += line_width
             lines.append(String(result[byte=start:]))
-            result = String("\n").join(lines^)
+            result = String("\n").join(lines)
 
         return result^
 
@@ -1100,7 +1100,7 @@ struct BigInt10(
         var sign = False
         if self.sign:
             sign = exponent % 2 == 1
-        return Self(magnitude^, sign)
+        return Self(magnitude, sign)
 
     def power(self, exponent: Self) raises -> Self:
         """Raises the BigInt10 to the power of another BigInt10.

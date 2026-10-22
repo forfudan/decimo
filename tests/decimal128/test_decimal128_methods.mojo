@@ -10,7 +10,7 @@ canonicalization}.mojo. None use TOML.
 """
 
 from std import testing
-from std.hashlib.hasher import default_hasher
+from std.hash.hasher import default_hasher
 
 from decimo import Dec128
 
@@ -372,7 +372,7 @@ def _h(d: Dec128) -> UInt64:
     """Helper: feed `d` through the default Mojo hasher and finish."""
     var h = default_hasher()
     d.__hash__(h)
-    return h^.finish()
+    return h.finish()
 
 
 def test_hash_equal_values_same_scale_collide() raises:

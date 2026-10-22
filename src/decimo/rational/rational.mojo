@@ -26,7 +26,7 @@ Invariants maintained by all constructors and operations:
     3. If value is zero: numerator == 0, denominator == 1
 """
 
-from std.hashlib.hasher import Hasher
+from std.hash.hasher import Hasher
 from std.math import Ceilable, Floorable, Truncable
 from std.memory import bitcast
 from std.os import abort
@@ -1365,7 +1365,7 @@ struct Rational(
                 var scaled = Self(
                     self.numerator * scale, self.denominator.copy(), raw=False
                 )
-                return Self(scaled._rounded_half_even(), scale^)
+                return Self(scaled._rounded_half_even(), scale)
             var scale = ten.power(-ndigits)
             var scaled = Self(
                 self.numerator.copy(), self.denominator * scale, raw=False
@@ -1484,7 +1484,7 @@ struct Rational(
         # remaining room allows between it and the one before.
         var k = (max_denominator - q0) // q1
         var bound1 = Self(p0 + k * p1, q0 + k * q1)
-        var bound2 = Self(p1^, q1^)
+        var bound2 = Self(p1, q1)
         if abs(bound2 - self) <= abs(bound1 - self):
             return bound2^
         return bound1^

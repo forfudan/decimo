@@ -408,7 +408,7 @@ def _buffer_to_string(buffer: List[UInt8]) -> String:
     var copy = List[UInt8](capacity=len(buffer))
     for i in range(len(buffer)):
         copy.append(buffer[i])
-    return String(unsafe_from_utf8=copy^)
+    return String(unsafe_from_utf8=copy)
 
 
 def _action_insert(mut buffer: List[UInt8], mut cursor: Int, byte: UInt8):

@@ -36,7 +36,8 @@ layout is added, the guard can be relaxed.  See:
 https://github.com/forfudan/decimo/issues for tracking.
 """
 
-from std.ffi import external_call
+from std.ffi import c_int, external_call
+from std.io import RawFileDescriptor
 from std.sys.info import CompilationTarget
 
 
@@ -346,45 +347,45 @@ def disable_raw_mode_nothrow(mut original_settings: TermIOS):
 
 
 def read_byte() raises -> UInt8:
-    """Reads a single byte from stdin (blocking).
+    """Reads a single byte from stdin, blocking until one arrives.
 
-    Requires raw mode to be active for byte-at-a-time reads.
-    Uses `read(2)` without explicit argument types, like `write` below: the
-    Mojo stdlib already declares `read`, so spelling out the argument types
-    produces a conflicting LLVM declaration.
+    Returns:
+        The byte.
+
+    Raises:
+        Error: At end of file, or if the read fails.
+
+    Notes:
+
+    Raw mode has to be active for a byte at a time to come back.
+
+    The call goes through the standard library's own file descriptor rather
+    than through `external_call["read", ...]`, for the reason `write_stdout`
+    gives below: Mojo 1.2 declares `read` itself and rejects a second
+    declaration of it that does not match.
     """
     var buf = List[UInt8](length=1, fill=0)
-    var bytes_read = external_call["read", Int](
-        Int(STDIN_FILENO), buf.unsafe_ptr(), UInt(1)
-    )
-    if bytes_read <= 0:
+    var stdin = RawFileDescriptor(c_int(STDIN_FILENO))
+    if stdin.read_bytes(buf) <= 0:
         raise Error("read failed (EOF)")
     return buf[0]
 
 
 def write_stdout(data: String):
     """Writes a string to stdout (best-effort, for terminal output)."""
-    var byte_span = data.as_bytes()
-    # NOTE: Unlike tcgetattr/tcsetattr, we do NOT use explicit Int arg types
-    # here because `write` already has a declaration in the Mojo stdlib with
-    # different arg types — adding explicit types would cause an LLVM IR
-    # signature conflict.  `read` is exempt for the same reason.
-    _ = external_call["write", Int](
-        Int(STDOUT_FILENO),
-        byte_span.unsafe_ptr(),
-        UInt(len(byte_span)),
-    )
+    # The stdlib declares `write` itself, and its own declaration has to be
+    # the only one: Mojo 1.2 lowers both into one module and rejects the pair
+    # as "existing function with conflicting signature". Calling through
+    # `RawFileDescriptor` leaves the declaration to the stdlib.
+    var out = RawFileDescriptor(c_int(STDOUT_FILENO))
+    out.write_bytes(data.as_bytes())
 
 
 def write_stderr(data: String):
     """Writes a string to stderr (best-effort, for prompt output)."""
-    var byte_span = data.as_bytes()
-    # Same note as write_stdout — no explicit arg types for `write`.
-    _ = external_call["write", Int](
-        Int(STDERR_FILENO),
-        byte_span.unsafe_ptr(),
-        UInt(len(byte_span)),
-    )
+    # Same note as write_stdout.
+    var err = RawFileDescriptor(c_int(STDERR_FILENO))
+    err.write_bytes(data.as_bytes())
 
 
 # === ANSI escape helpers (single-line use) =================================

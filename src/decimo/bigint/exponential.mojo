@@ -536,7 +536,7 @@ def root(x: BigInt, n: Int) raises -> BigInt:
             function="root()",
         )
     var magnitude = biguint_exponential.root(x.to_biguint(), n)
-    return BigInt.from_biguint(magnitude^, sign=x.sign)
+    return BigInt.from_biguint(magnitude, sign=x.sign)
 
 
 def isqrt(x: BigInt) raises -> BigInt:

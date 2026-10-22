@@ -10,6 +10,7 @@ from std.testing import assert_equal, assert_true
 
 from decimo.biguint.arithmetics import (
     add,
+    add_by_word_inplace,
     add_inplace,
     floor_divide_by_uint64_inplace,
     floor_divide_by_word_inplace,
@@ -659,6 +660,45 @@ def test_biguint_add_subtract_carry_chains() raises:
         var self_difference = x.copy()
         subtract_inplace(self_difference, x)
         assert_equal(String(self_difference), "0", "x -= x" + label)
+
+
+def test_a_carry_that_runs_off_the_end_grows_the_number() raises:
+    """A carry out of the top word has to append a word.
+
+    `add_by_word_inplace` walks the words from the least significant end and
+    returns as soon as one of them absorbs the carry. When none of them does,
+    the number needs one more word. Every operand here is a run of nines whose
+    length is a whole number of words, so the carry leaves the top word.
+
+    Mojo 1.2 miscompiled the original form of that function at `-O3`, the
+    default optimization level: the append lived in the loop's `else` clause,
+    and the optimizer dropped the clause. `999999999999999999 + 9` came out as
+    `8`. The loop now falls through to the append instead.
+    """
+    for n_words in range(1, 6):
+        var width = n_words * 18  # digits per word
+        var nines = _digit_run("9", width)
+
+        # A run of `width` nines is 10^width - 1, so adding `a` to it gives
+        # 10^width + (a - 1): a leading one, then (a - 1) padded out to the
+        # full width. The result is one word longer than the operand.
+        for addend in [1, 9, 500, 999999999999999999]:
+            var low = String(addend - 1)
+            var expected = (
+                "1" + _digit_run("0", width - low.byte_length()) + low
+            )
+
+            var x = BigUInt(nines)
+            add_by_word_inplace(x, BigUInt.Word(addend))
+            var label = " at " + String(width) + " digits + " + String(addend)
+            assert_equal(len(x.words), n_words + 1, "word count" + label)
+            assert_equal(String(x), expected, "value" + label)
+
+        # A carry that stops inside the number must not append anything.
+        var y = BigUInt(_digit_run("9", width - 1))
+        add_by_word_inplace(y, BigUInt.Word(1))
+        assert_equal(len(y.words), n_words, "no growth at " + String(width))
+        assert_equal(String(y), "1" + _digit_run("0", width - 1))
 
 
 def main() raises:
