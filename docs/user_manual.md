@@ -36,6 +36,7 @@ from decimo.prelude import *
   - [Mathematical Functions — Roots and Powers](#mathematical-functions--roots-and-powers)
   - [Mathematical Functions — Exponential and Logarithmic](#mathematical-functions--exponential-and-logarithmic)
   - [Mathematical Functions — Trigonometric](#mathematical-functions--trigonometric)
+  - [A Small Argument and a Directed Mode](#a-small-argument-and-a-directed-mode)
   - [Mathematical Constants](#mathematical-constants)
   - [Decimal Conversion and Output](#decimal-conversion-and-output)
   - [Decimal Query Methods](#decimal-query-methods)
@@ -919,6 +920,38 @@ print(Decimal("1").sec(precision=50))   # 1/cos
 ```mojo
 print(Decimal("1").arctan(precision=50))  # π/4 to 50 digits
 ```
+
+### A Small Argument and a Directed Mode
+
+Each of these functions comes to a simple value as its argument goes to
+nought: the sine to the argument itself, the cosine to one, the cosecant to
+one over the argument. Every one of those is a value the destination holds
+exactly, and that is awkward for a function that decides its rounding rather
+than assuming it. Deciding means evaluating wider than asked until every
+value the error allows rounds the same way, and an answer that lands on a
+value the destination holds has values on both sides of it that round
+differently, however wide the evaluation goes.
+
+The three nearest modes do not notice, since the answer is that value either
+way. The four directed modes do, because they have to say which side of it
+the truth lies on.
+
+```mojo
+from decimo import Decimal, RoundingMode
+
+var tiny = Decimal("1E-500")
+print(tiny.sin(precision=20, rounding_mode=RoundingMode.ROUND_DOWN))
+# 9.9999999999999999999E-501 -- the sine is below its argument
+print(tiny.tan(precision=20, rounding_mode=RoundingMode.ROUND_DOWN))
+# 1.0000000000000000000E-500 -- the tangent is above it
+print(tiny.cos(precision=20, rounding_mode=RoundingMode.ROUND_DOWN))
+# 0.99999999999999999999 -- the cosine is below one
+```
+
+So such an argument is answered from the sign of the function's own first
+correction term, which is all the rounding needs: `sin(x) = x - x^3/6` is
+below `x` and `tan(x) = x + x^3/3` is above it, and neither correction can be
+computed at `1E-500` by any width a loop would reach.
 
 ### Mathematical Constants
 

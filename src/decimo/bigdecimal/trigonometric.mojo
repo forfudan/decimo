@@ -29,8 +29,13 @@ import decimo.bigdecimal.constants as bigdecimal_constants
 from decimo.bigdecimal.exponential import (
     _ZIV_LIMIT,
     _ZIV_START,
+    _cubic_term_is_below_a_guard_unit,
+    _exact_reciprocal,
+    _reciprocal_correction_is_below_a_guard_unit,
     _round_by_deciding,
+    _rounded_beside,
     _settled_answer,
+    _square_term_is_below_a_guard_unit_of_one,
 )
 import decimo.bigdecimal.exponential as bigdecimal_exponential
 from decimo.bigfloat.bigfloat import BigFloat
@@ -191,10 +196,19 @@ def sin_rounded(
 
     Raises:
         Error: Propagated from `sin()`.
+
+    Notes:
+
+    A small argument is answered directly. `sin(x)` is `x - x^3/6`, and once
+    the cubic term is below a guard unit the answer is `x` moved a hair
+    toward zero; the loop could not settle there, since the kernel returns
+    `x` itself at every width and `x` is a value the destination holds.
     """
     if x.is_zero():
         # `sin(0)` is exactly zero, and the loop could not settle on it.
         return sin(x, precision)
+    if _cubic_term_is_below_a_guard_unit(x, precision):
+        return _rounded_beside(x, precision, rounding_mode, True)
     return _round_by_deciding[_sine_in_binary, TRIG_SLACK](
         x, precision, rounding_mode
     )
@@ -215,10 +229,18 @@ def cos_rounded(
 
     Raises:
         Error: Propagated from `cos()`.
+
+    Notes:
+
+    A small argument is answered as one moved a hair toward zero, which is
+    what `cos(x) = 1 - x^2/2` comes to once the square is below a guard unit
+    of one.
     """
     if x.is_zero():
         # `cos(0)` is exactly one.
         return cos(x, precision)
+    if _square_term_is_below_a_guard_unit_of_one(x, precision):
+        return _rounded_beside(BigDecimal.one(), precision, rounding_mode, True)
     return _round_by_deciding[_cosine_in_binary, TRIG_SLACK](
         x, precision, rounding_mode
     )
@@ -239,10 +261,18 @@ def tan_rounded(
 
     Raises:
         Error: Propagated from `tan()`.
+
+    Notes:
+
+    A small argument is answered directly: `tan(x)` is `x + x^3/3`, so the
+    answer is `x` moved a hair away from zero -- the other way from the
+    sine's.
     """
     if x.is_zero():
         # `tan(0)` is exactly zero.
         return tan(x, precision)
+    if _cubic_term_is_below_a_guard_unit(x, precision):
+        return _rounded_beside(x, precision, rounding_mode, False)
     return _round_by_deciding[_tangent_in_binary, TRIG_SLACK](
         x, precision, rounding_mode
     )
@@ -834,7 +864,25 @@ def cot_rounded(
 
     Raises:
         Error: Propagated from `cot()`.
+
+    Notes:
+
+    A small argument is answered directly, where the destination holds `1/x`
+    exactly. `cot(x)` is `1/x - x/3`, so the answer is the reciprocal moved a
+    hair toward zero, and the loop could not settle on a value it lands on.
+
+    The cubic test is the cheap one, and is here to keep the division that
+    finds the reciprocal off the ordinary path. What the move actually needs
+    is the condition stated beside the reciprocal itself.
     """
+    if not x.is_zero() and _cubic_term_is_below_a_guard_unit(x, precision):
+        var reciprocal = _exact_reciprocal(x, precision)
+        if reciprocal and _reciprocal_correction_is_below_a_guard_unit(
+            x, reciprocal.value(), precision
+        ):
+            return _rounded_beside(
+                reciprocal.value(), precision, rounding_mode, True
+            )
     return _round_by_deciding[cot, TRIG_SLACK](x, precision, rounding_mode)
 
 
@@ -853,7 +901,21 @@ def csc_rounded(
 
     Raises:
         Error: Propagated from `csc()`.
+
+    Notes:
+
+    A small argument is answered directly, where the destination holds `1/x`
+    exactly. `csc(x)` is `1/x + x/6`, so the answer is the reciprocal moved a
+    hair away from zero -- the other way from the cotangent's.
     """
+    if not x.is_zero() and _cubic_term_is_below_a_guard_unit(x, precision):
+        var reciprocal = _exact_reciprocal(x, precision)
+        if reciprocal and _reciprocal_correction_is_below_a_guard_unit(
+            x, reciprocal.value(), precision
+        ):
+            return _rounded_beside(
+                reciprocal.value(), precision, rounding_mode, False
+            )
     return _round_by_deciding[csc, TRIG_SLACK](x, precision, rounding_mode)
 
 
@@ -876,6 +938,11 @@ def sec_rounded(
     if x.is_zero():
         # `sec(0)` is exactly one, which the loop could not settle on.
         return sec(x, precision)
+    if _square_term_is_below_a_guard_unit_of_one(x, precision):
+        # `sec(x) = 1 + x^2/2`, so one moved a hair away from zero.
+        return _rounded_beside(
+            BigDecimal.one(), precision, rounding_mode, False
+        )
     return _round_by_deciding[sec, TRIG_SLACK](x, precision, rounding_mode)
 
 
@@ -1361,10 +1428,15 @@ def arctan_rounded(
     where the true value continues `...67850000000000000000000000000021929`
     and nine digits of guard see only the zeros: the kernel rounds the
     apparent tie to even and answers one unit low.
+
+    A small argument is answered directly: `arctan(x)` is `x - x^3/3`, so
+    the answer is `x` moved a hair toward zero.
     """
     if x.is_zero():
         # `arctan(0)` is exactly zero.
         return arctan(x, precision)
+    if _cubic_term_is_below_a_guard_unit(x, precision):
+        return _rounded_beside(x, precision, rounding_mode, True)
     return _round_by_deciding[_arctangent_in_binary, ARCTAN_SLACK](
         x, precision, rounding_mode
     )
@@ -1760,10 +1832,17 @@ def arcsin_rounded(
 
     Raises:
         Error: Propagated from `arcsin()`.
+
+    Notes:
+
+    A small argument is answered directly: `arcsin(x)` is `x + x^3/6`, so
+    the answer is `x` moved a hair away from zero.
     """
     if x.is_zero():
         # `arcsin(0)` is exactly zero.
         return arcsin(x, precision)
+    if _cubic_term_is_below_a_guard_unit(x, precision):
+        return _rounded_beside(x, precision, rounding_mode, False)
     return _round_by_deciding[_arcsine_in_binary, INVERSE_TRIG_SLACK](
         x, precision, rounding_mode
     )
