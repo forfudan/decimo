@@ -2,77 +2,51 @@
 
 This is a list of changes for the Decimo package (formerly DeciMojo).
 
-## 20261009 (v0.16.0)
+## 20261023 (v0.16.0)
 
-Decimo v0.16.0 has an arbitrary-precision binary float written in Mojo.
-`BigFloat` was the name of a wrapper over the GNU MPFR library; it is now a
-type of decimo's own, with no dependency to install, and every one of its
-operations is correctly rounded in all seven rounding modes.
+Decimo v0.16.0 has an arbitrary-precision binary float written in Mojo. `BigFloat` was the name of a wrapper over the GNU MPFR library; it is now a type of decimo's own, with no dependency to install, and every one of its operations is correctly rounded in all seven rounding modes.
+
+It requires **Mojo v1.2.0**. `BigDecimal`'s transcendental functions are now worked out with that float underneath and converted back, rather than in decimal digits.
 
 ### ⭐️ New in v0.16.0
 
-1. **`BigFloat`, an arbitrary-precision binary float in Mojo.** The value is
-   `(-1)^sign * significand * 2^exponent`, with the significand a `BigInt` of
-   exactly `precision` bits and the exponent as wide as an `Int`. The
-   precision is a field on the value rather than a global context, and the
-   rounded free functions in `decimo.bigfloat` take it as an argument, so one
-   call can be answered at a precision another does not share. The operators
-   have to assume something and take the wider of their operands; negating,
-   comparing and the exact conversions take no precision at all. NaN, both
-   infinities and both zeros are carried (PR #327).
-1. **Correct rounding, decided rather than assumed.** The four arithmetic
-   operations (PR #331, #334), the square root (PR #336), the exponential and
-   the logarithm (PR #339), the sine, cosine and tangent (PR #340), their
-   inverses (PR #342), the six hyperbolic functions (PR #341) and the
-   constants pi, `ln 2` and `e` (PR #338) each return the float of the
-   precision asked for nearest the true value, in whichever of the seven
-   modes is asked for. For the transcendental functions that is Ziv's method:
-   evaluate wider than asked, return the rounding only when every value the
-   error allows rounds the same way, and widen again when they do not.
-1. **Decimal and `Float64` conversions, exact where exactness is possible.**
-   Every `Float64` but a NaN round-trips bit for bit at 53 bits or more,
-   since a double is a binary float. A NaN does not: this type keeps one
-   canonical NaN, so a sign or a payload on the way in is not on the way
-   out.
-   Every `BigFloat` has an exact decimal expansion, because `2^-k` is
-   `5^k / 10^k`, so `to_bigdecimal()` loses nothing and only the digit count
-   is a choice. Parsing a decimal rounds, correctly, in every mode: 924
-   strings agree with CPython's own `float()` bit for bit (PR #329).
-1. **Comparison, with the two kinds of answer a float needs.** The six
-   operators answer a NaN rather than refusing it -- every order question is
-   False and `!=` is True -- so the type conforms to `Comparable`. The
-   three-way `compare()` refuses it, and `compare_total()` gives the total
-   order to sort by (PR #330).
+1. **`BigFloat`, an arbitrary-precision binary float in Mojo.** The value is `(-1)^sign * significand * 2^exponent`, with the significand a `BigInt` of exactly `precision` bits and the exponent as wide as an `Int`. The precision is a field on the value rather than a global context, and the rounded free functions in `decimo.bigfloat` take it as an argument, so one call can be answered at a precision another does not share. The operators have to assume something and take the wider of their operands; negating, comparing and the exact conversions take no precision at all. NaN, both infinities and both zeros are carried (PR #327).
+1. **Correct rounding, decided rather than assumed.** The four arithmetic operations (PR #331, #334), the square root (PR #336), the exponential and the logarithm (PR #339), the sine, cosine and tangent (PR #340), their inverses (PR #342), the six hyperbolic functions (PR #341) and the constants pi, `ln 2` and `e` (PR #338) each return the float of the precision asked for nearest the true value, in whichever of the seven modes is asked for. For the transcendental functions that is Ziv's method: evaluate wider than asked, return the rounding only when every value the error allows rounds the same way, and widen again when they do not.
+1. **Decimal and `Float64` conversions, exact where exactness is possible.** Every `Float64` but a NaN round-trips bit for bit at 53 bits or more, since a double is a binary float. A NaN does not: this type keeps one canonical NaN, so a sign or a payload on the way in is not on the way out. Every `BigFloat` has an exact decimal expansion, because `2^-k` is `5^k / 10^k`, so `to_bigdecimal()` loses nothing and only the digit count is a choice. Parsing a decimal rounds, correctly, in every mode: 924 strings agree with CPython's own `float()` bit for bit (PR #329).
+1. **Comparison, with the two kinds of answer a float needs.** The six operators answer a NaN rather than refusing it -- every order question is False and `!=` is True -- so the type conforms to `Comparable`. The three-way `compare()` refuses it, and `compare_total()` gives the total order to sort by (PR #330).
+1. `BigFloat` also gets the other bases -- `exp2`, `exp10`, `log2`, `log10`, `log`, `expm1` and `log1p` (PR #354) -- the power (PR #355), roots of any degree (PR #357), `hypot` and `arctan2` (PR #358), `cot`, `csc` and `sec` (PR #386), and the IEEE 754 companions, among them `next_plus`, `logb` and `scaleb` (PR #353).
+1. `BigDecimal`: `arcsin`, `arccos` and `arctan2` (PR #321); `expm1`, `log1p` and `hypot` (PR #322); the six hyperbolic functions and their inverses (PR #323).
+1. `BigInt` and `BigUInt`: `binomial`, the nth root, `ceil_divide` and `sqrt_rem` (PR #325); bit-level access (PR #326); the predicates and the Fibonacci and Lucas sequences (PR #333); primality testing (PR #332); factorization (PR #348); the quadratic residue symbols, modular square roots and the CRT (PR #349).
+1. `Rational` gets the operations it was missing, and a section in the manual (PR #370).
+1. Every type can be hashed (PR #385).
+1. The Python bindings expose the transcendental functions on `Decimal` (PR #337).
 
 ### 🦋 Changed in v0.16.0
 
-1. **`BigFloat` no longer means the MPFR wrapper, and this is a breaking
-   change.** The wrapper is still in the source, as `MPF`, at
-   `decimo.mpf.mpf.MPF`. It is no longer exported by the package and carries
-   no promise of a stable interface. Code that used `BigFloat` for the
-   MPFR-backed type keeps its old behaviour by importing `MPF` from that
-   module; code that wants a float with no dependency to install should use
-   the new `BigFloat`, whose interface is not the old one's.
-1. `MPF` is kept rather than removed for three reasons: it is a second
-   implementation to test the traits against, it is the baseline the Mojo
-   float is measured against, and it is the migration path above. Using it
-   needs MPFR on the system and its C wrapper compiled and linked
-   (`pixi run buildgmp`); a program that leaves it alone needs neither, and
-   MPFR is loaded through `dlopen` at the first call rather than at build
-   time.
-1. `BigFloat` and `BFlt` are exported from the package and from
-   `decimo.prelude`. There is deliberately no `Float` alias: that name, in a
-   language whose machine floats are `Float64` and `Float32`, would be read
-   as one of those.
+1. **`BigFloat` no longer means the MPFR wrapper, and this is a breaking change.** The wrapper is still in the source, as `MPF`, at `decimo.mpf.mpf.MPF`. It is no longer exported by the package and carries no promise of a stable interface. Code that used `BigFloat` for the MPFR-backed type keeps its old behaviour by importing `MPF` from that module; code that wants a float with no dependency to install should use the new `BigFloat`, whose interface is not the old one's.
+1. `MPF` is kept rather than removed for three reasons: it is a second implementation to test the traits against, it is the baseline the Mojo float is measured against, and it is the migration path above. Using it needs MPFR on the system and its C wrapper compiled and linked (`pixi run buildgmp`); a program that leaves it alone needs neither, and MPFR is loaded through `dlopen` at the first call rather than at build time.
+1. `BigFloat` and `BFlt` are exported from the package and from `decimo.prelude`. There is deliberately no `Float` alias: that name, in a language whose machine floats are `Float64` and `Float32`, would be read as one of those.
+1. **`BigDecimal`'s transcendental functions are computed in binary** and converted back (PRs #374, #376, #381, #382, #383). Pi and e are kept between calls (PRs #378, #379).
+1. `BigDecimal` refuses a precision it cannot honour instead of quietly returning fewer digits (PR #359).
+1. An integer power is rounded once, in the mode asked for, which changes the last digit under the four directed modes (PR #352). A fractional power that lands on an exact value is answered instead of refused (PR #356).
 
 ### 🩹 Fixed in v0.16.0
 
-1. `BigUInt.power_of_10` returned ten to twice the power asked for, above the
-   first word (PR #328).
-1. A product's or quotient's exponent is formed after the significand is
-   normalized, not before. The two exponents can add to a value outside an
-   `Int` while the normalized result sits inside it, and that answer was
-   refused (PR #335).
+1. `BigUInt.power_of_10` returned ten to twice the power asked for, above the first word (PR #328).
+1. A product's or quotient's exponent is formed after the significand is normalized, not before. The two exponents can add to a value outside an `Int` while the normalized result sits inside it, and that answer was refused (PR #335).
+1. **An argument sitting on or beside a value the answer holds exactly no longer raises.** Seventeen `BigDecimal` functions (PR #387), and `ln`, `log2`, `log10`, `exp2`, `exp10`, `expm1` and `log1p` on `BigFloat` (PR #389). They answered in the three nearest rounding modes and refused in the four directed ones. `power` and `arctan2` still do this, and are next.
+1. A repeated squaring no longer loses the bits it needs (PR #360).
+1. `BigDecimal` answers or refuses at the ends of the exponent range rather than overflowing (PR #377).
+1. A `BigFloat` argument too large to work with raises instead of stopping the program (PR #363).
+1. Worked examples in the documentation printed values the functions do not produce (PR #368).
+1. Mojo v1.2.0 skips a `for ... else` clause at `-O3`, which made `BigUInt("999999999999999999") + 9` come out as `8`. Worked around, and reported to Modular (PR #388).
+1. **`Decimal128` read a digitless string as nought.** `Decimal128("")`, `Decimal128("   ")` and `Decimal128(".")` all returned `0`, so a field that was never filled in became `0.00` and the caller could not tell it from a real zero. All three raise now, as `BigDecimal` and Python's `decimal.Decimal` do.
+1. `ROUND_HALF_DOWN` was the one rounding mode the prelude did not export, so `from decimo.prelude import *` gave six of the seven.
+
+### 💥 Breaking in v0.16.0
+
+1. **Decimo requires Mojo v1.2.0**, pinned `>=1.2.0,<1.3.0`. The CLI needs `argmojo` v0.10.0.
+1. `BigFloat` is decimo's own float, not the MPFR wrapper. See the first item under Changed.
 
 ## 20260926 (v0.15.0)
 

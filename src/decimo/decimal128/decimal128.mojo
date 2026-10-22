@@ -693,7 +693,10 @@ struct Decimal128(
         var value_bytes_len = len(value_bytes)
 
         if value_bytes_len == 0:
-            return Decimal128.ZERO()
+            raise ValueError(
+                message="Empty string.",
+                function="Decimal128.from_string()",
+            )
 
         # Non-ASCII bytes are rejected by the catch-all `else` branch of the
         # main loop, which reports the offending byte and the input string.
@@ -845,6 +848,19 @@ struct Decimal128(
         if unexpected_end_char:
             raise ValueError(
                 message="Unexpected end character in decimal128 string.",
+                function="Decimal128.from_string()",
+            )
+
+        # A string of separators, signs and a decimal point parses without an
+        # unexpected character and without ever reaching a digit. `"   "` and
+        # `"."` both land here. Before this check they fell through with a
+        # coefficient of nought and returned `0`, which is the one answer a
+        # money type must not give for a field that was never filled in: the
+        # caller cannot tell it from a real zero. `BigDecimal` and CPython's
+        # `decimal.Decimal` both refuse all three, and so does this now.
+        if not mantissa_start:
+            raise ValueError(
+                message="No digits found in the string of the number.",
                 function="Decimal128.from_string()",
             )
 

@@ -16,7 +16,7 @@ plus `pi()`, `e()` and a 128-bit decimal type. Install it with
 `pip install decimo`.
 
 [![Version](https://img.shields.io/badge/version-v0.16.0-blue)](https://github.com/forfudan/decimo/releases/tag/v0.16.0)
-[![Mojo](https://img.shields.io/badge/mojo-1.1.0-orange)](https://docs.modular.com/mojo/manual/)
+[![Mojo](https://img.shields.io/badge/mojo-1.2.0-orange)](https://docs.modular.com/mojo/manual/)
 [![CI](https://img.shields.io/github/actions/workflow/status/forfudan/decimo/run_tests.yaml?branch=main&label=tests)](https://github.com/forfudan/decimo/actions/workflows/run_tests.yaml)
 [![License](https://img.shields.io/github/license/forfudan/decimo)](https://github.com/forfudan/decimo/blob/main/LICENSE)
 
@@ -213,7 +213,8 @@ versions:
 | `decimo`   | v0.12.0 | >=1.0.0, <1.1.0 | pixi            |
 | `decimo`   | v0.13.0 | >=1.0.0, <1.1.0 | pixi            |
 | `decimo`   | v0.14.0 | >=1.0.0, <1.1.0 | pixi            |
-| `decimo`   | v0.16.0 | >=1.1.0, <1.2.0 | pixi            |
+| `decimo`   | v0.15.0 | >=1.1.0, <1.2.0 | pixi            |
+| `decimo`   | v0.16.0 | >=1.2.0, <1.3.0 | pixi            |
 
 </details>
 
@@ -284,8 +285,8 @@ This will import the following types or aliases into your namespace:
   floating-point type, equivalent to MPFR's `mpfr_t`.
 - `Decimal128` (and its alias `Dec128`): A 128-bit fixed-precision decimal type.
 - `RoundingMode`: An enumeration for rounding modes.
-- `ROUND_DOWN`, `ROUND_HALF_UP`, `ROUND_HALF_EVEN`, `ROUND_UP`,
-  `ROUND_CEILING`, `ROUND_FLOOR`: Constants for common rounding modes.
+- `ROUND_DOWN`, `ROUND_UP`, `ROUND_CEILING`, `ROUND_FLOOR`, `ROUND_HALF_UP`,
+  `ROUND_HALF_DOWN`, `ROUND_HALF_EVEN`: Constants for all seven rounding modes.
 
 ---
 

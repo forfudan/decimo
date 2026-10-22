@@ -35,6 +35,7 @@ from decimo.rounding_mode import (
     ROUND_CEILING,
     ROUND_DOWN,
     ROUND_FLOOR,
+    ROUND_HALF_DOWN,
     ROUND_HALF_EVEN,
     ROUND_HALF_UP,
     ROUND_UP,

@@ -151,5 +151,34 @@ def test_agrees_with_rational() raises:
         assert_true(as_decimal * denominator == numerator)
 
 
+def test_float_past_nineteen_significant_digits() raises:
+    """The other direction, which Mojo 1.2 quietly fixed.
+
+    `BigDecimal.__float__` is `Float64(self.to_string())`, so it goes through
+    `atof`. Before Mojo 1.2 that raised "The number is too long" past 19
+    significant digits and misrounded a mantissa needing more than 53 bits.
+    Both are fixed upstream, and nothing here reached far enough to notice
+    either the bug or its return.
+
+    The expected values are CPython's `float()`, which is correctly rounded.
+    The tie is the one worth having: `4503599627370497.5` sits exactly halfway
+    between two doubles, and round-to-even takes it up.
+    """
+    assert_equal(
+        Float64(BigDecimal("0.1234567890123456789012")), 0.12345678901234568
+    )
+    assert_equal(
+        Float64(BigDecimal("-0.1234567890123456789012")), -0.12345678901234568
+    )
+    assert_equal(Float64(BigDecimal("4503599627370497.5")), 4503599627370498.0)
+    assert_equal(
+        Float64(BigDecimal("1.2345678901234567890123456789")),
+        1.2345678901234567,
+    )
+    assert_equal(
+        Float64(BigDecimal("2.2250738585072011e-308")), 2.225073858507201e-308
+    )
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()
