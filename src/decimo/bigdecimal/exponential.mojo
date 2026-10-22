@@ -2789,6 +2789,78 @@ def ln_rounded(
     )
 
 
+def _common_logarithm_beside_a_power(
+    x: BigDecimal, precision: Int, rounding_mode: RoundingMode
+) raises -> Optional[BigDecimal]:
+    """`log10(x)` for an argument a hair off a power of ten.
+
+    Args:
+        x: The value to take the logarithm of.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The answer, or nothing when `x` is not that kind of argument and the
+        loop should have it.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    `log10(10^k (1 + e))` is `k + log10(1 + e)`, and the correction stays
+    below `|e|` because `1 / ln 10` is below one half. A guard unit of `k` is
+    a hundredth of its own last place, so with `d` the digits of `k` and `p`
+    the digits asked for, the move needs
+
+        |e| < 10^(d - p - 2)
+
+    which is the test below, written on the adjusted exponent of `e` and with
+    one more digit of room than the inequality asks for. That digit costs
+    nothing and is not needed: one digit looser still keeps the correction
+    inside half a last place, where every midpoint sits. It is here because
+    the gates next door carry the same spare digit.
+
+    There are two candidate powers and not one. An `x` a hair above `10^k`
+    has an adjusted exponent of `k`, and an `x` a hair below it reads as
+    `9.99...  * 10^(k-1)`, so the power it sits beside is the one above its
+    own adjusted exponent.
+
+    A `k` of nought is refused. The answer is then near nought, which no move
+    off a value can express, and it is the one case the loop settles anyway:
+    `log10(1 + e)` is `e / ln 10`, an irrational multiple of `e`, so it never
+    lands on a value the destination holds.
+
+    This mirrors `_logarithm_beside_a_power()` in the binary layer, which has
+    the same account of the same problem in base two.
+    """
+    if x.sign or x.coefficient.is_zero():
+        return None
+
+    var adjusted = x.adjusted()
+    for step in [0, 1]:
+        var whole = adjusted + step
+        if whole == 0:
+            continue
+        var power = BigDecimal(BigUInt.one(), -whole, False)
+        var difference = x.subtract(power)
+        if difference.is_zero():
+            continue  # `_is_power_of_ten` has this argument already
+
+        var digits = BigUInt(UInt(abs(whole))).number_of_digits()
+        if difference.adjusted() - whole > digits - precision - 3:
+            continue
+
+        var below = difference.sign
+        return _rounded_beside(
+            BigDecimal(BigUInt(UInt(abs(whole))), 0, whole < 0),
+            precision,
+            rounding_mode,
+            below != (whole < 0),
+        )
+    return None
+
+
 def log10_rounded(
     x: BigDecimal, precision: Int, rounding_mode: RoundingMode
 ) raises -> BigDecimal:
@@ -2809,6 +2881,11 @@ def log10_rounded(
         # `log10(10^k)` is exactly `k`, the only argument where it is
         # rational, and `log10()` answers those exactly already.
         return log10(x, precision)
+
+    var beside = _common_logarithm_beside_a_power(x, precision, rounding_mode)
+    if beside:
+        return beside.take()
+
     return _round_by_deciding[_common_logarithm_in_binary, LOG10_SLACK](
         x, precision, rounding_mode
     )

@@ -475,6 +475,53 @@ def leading_bit_position(x: BigFloat) raises -> BigInt:
     return BigInt(x.exponent) + BigInt(x.precision) - BigInt.one()
 
 
+def tightened(x: BigFloat) raises -> BigFloat:
+    """The same value, carrying only the bits it needs.
+
+    Args:
+        x: The value.
+
+    Returns:
+        `x` with the trailing zero bits of its significand removed and its
+        `precision` reduced to match. A zero, an infinity and a NaN come back
+        unchanged.
+
+    Raises:
+        Error: Propagated from the construction.
+
+    Notes:
+
+    A float's `precision` says how well the value is known, not what it is.
+    `2^-2000` written with one bit and the same number written with two
+    thousand are the same point on the line, and every gate here asks about
+    the point.
+
+    The gates ask it in terms of the last place, though, and the last place
+    of a padded significand is far below the last place that carries a digit.
+    So a question like "is the correction below a guard unit" gets the answer
+    "no" for a value whose real last place leaves room to spare, and the
+    caller then goes to the loop that decides a rounding, which cannot settle
+    on the value either. Tightening first asks the question about the bits
+    that mean something.
+
+    This is not an optimization. Before it, `log1p` of `2^-2000` answered in
+    the three nearest modes and raised in the four directed ones as soon as
+    the argument was written with 2102 bits instead of one, and `sin` did the
+    same at 4201.
+    """
+    if not x.is_finite() or x.is_zero():
+        return x.copy()
+    var dropped = trailing_zeros(x.significand)
+    if dropped == 0:
+        return x.copy()
+    return BigFloat(
+        significand=x.significand >> dropped,
+        exponent=x.exponent + dropped,
+        precision=x.precision - dropped,
+        sign=x.sign,
+    )
+
+
 def cubic_term_is_below_a_guard_unit(x: BigFloat, guard: Int) raises -> Bool:
     """Whether `x^3` is small enough for a guard unit to stand in for it.
 
@@ -505,11 +552,12 @@ def cubic_term_is_below_a_guard_unit(x: BigFloat, guard: Int) raises -> Bool:
     let it through. The tangent then answered `1/16` where the truth is above
     the midpoint and the answer is `1/8`.
     """
-    var leading = leading_bit_position(x)
-    return (leading + leading) < BigInt(-(x.precision + guard + 1))
+    var tight = tightened(x)
+    var leading = leading_bit_position(tight)
+    return (leading + leading) < BigInt(-(tight.precision + guard + 1))
 
 
-def guard_bits(x: BigFloat, precision: Int) -> Int:
+def guard_bits(x: BigFloat, precision: Int) raises -> Int:
     """How many bits to widen `x` by before rounding it to `precision`.
 
     Args:
@@ -520,10 +568,19 @@ def guard_bits(x: BigFloat, precision: Int) -> Int:
         At least two, and enough that the widened significand has more bits
         than the answer keeps, which is what the rounding needs to read a
         discarded remainder.
+
+    Raises:
+        Error: Propagated from the tightening.
+
+    Notes:
+
+    The bits counted are the ones that carry a digit, not the ones the value
+    declares: see `tightened()` for why the difference matters.
     """
+    var bits = tightened(x).precision
     var guard = 2
-    if precision + 2 - x.precision > guard:
-        guard = precision + 2 - x.precision
+    if precision + 2 - bits > guard:
+        guard = precision + 2 - bits
     return guard
 
 
@@ -570,8 +627,9 @@ def rounded_beside(
     that crossed the midpoint and answered `1/16` where the sine is above it
     and the answer is `1/8`.
     """
-    var guard = guard_bits(x, precision)
-    if x.exponent < Int.MIN + guard:
+    var tight = tightened(x)
+    var guard = guard_bits(tight, precision)
+    if tight.exponent < Int.MIN + guard:
         raise OverflowError(
             message=(
                 "This argument sits too low in the exponent range to leave"
@@ -579,14 +637,14 @@ def rounded_beside(
             ),
             function="rounded_beside()",
         )
-    var magnitude = x.significand << guard
+    var magnitude = tight.significand << guard
     if toward_zero:
         magnitude = magnitude - BigInt.one()
     return BigFloat.from_rounded_parts(
         magnitude,
-        x.exponent - guard,
+        tight.exponent - guard,
         precision,
-        x.sign,
+        tight.sign,
         rounding_mode,
         True,
     )
