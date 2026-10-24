@@ -1,7 +1,7 @@
 [workspace]
 authors = ["ZHU Yuhao (朱宇浩) <dr.yuhao.zhu@outlook.com>"]
 channels = ["https://conda.modular.com/max", "https://repo.prefix.dev/modular-community", "conda-forge"]
-description = "An arbitrary-precision decimal and integer library for Mojo"
+description = "An arbitrary-precision integer, decimal, binary floating-point, and rational library for Mojo, written in pure Mojo, with a 128-bit fixed-point decimal type as well."
 license = "Apache-2.0"
 name = "decimo"
 platforms = ["osx-arm64", "linux-64", "linux-aarch64"]
