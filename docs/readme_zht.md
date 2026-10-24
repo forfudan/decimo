@@ -46,12 +46,8 @@ Python，`decimo.Decimal` 之於 Mojo 就如同 `decimal.Decimal` 之於 Python�
   Python `decimal.Decimal` 的 Mojo 原生等價實現。
 - 128 位定點小數實現 (`Dec128`)，支持最多 29 位有效數字，小數點後最多 28
   位數字[^fixed]。
-- 任意精度二進制浮點數實現 (`BigFloat`)，精度由調用方逐次指定，七種捨入模式下
-  每個運算都正確捨入，相當於 MPFR 的 `mpfr_t`，但無需安裝任何外部庫。
-- 精確有理數實現 (`Rational`，別名 `Frac`)，由一對約分到最簡的 `BigInt`
-  組成，是 Python `fractions.Fraction` 的 Mojo 原生等價實現。它不做任何捨入:
-  四則運算、整數次方和 `limit_denominator()` 都是精確的，只在你明確要求的地方
-  捨入，即 `to_bigdecimal()` 或 `round()`。
+- 任意精度二進制浮點數實現 (`BigFloat`，別名 `BFlt`)，七種捨入模式下都正確捨入，是 MPFR `mpfr_t` 的 Mojo 原生等價實現[^mpf]。
+- 精確有理數實現 (`Rational`，別名 `Frac`)，由一對約分到最簡的 `BigInt` 組成，是 Python `fractions.Fraction` 的 Mojo 原生等價實現。
 
 | 類型         | 別名              | 信息                                      | 內部表示     |
 | ------------ | ----------------- | ----------------------------------------- | ------------ |
@@ -145,7 +141,7 @@ channels = ["https://conda.modular.com/max", "https://repo.prefix.dev/modular-co
 1. 在您項目的 `mojoproject.toml` 文件中，添加以下依賴：
 
     ```toml
-    decimo = ">=0.15.0, <0.16.0"
+    decimo = ">=0.16.0, <0.17.0"
     ```
 
     然後運行 `pixi install` 來下載並安裝包。
@@ -174,6 +170,7 @@ channels = ["https://conda.modular.com/max", "https://repo.prefix.dev/modular-co
 | `decimo`   | v0.13.0 | ==1.0.0       | pixi     |
 | `decimo`   | v0.14.0 | ==1.0.0       | pixi     |
 | `decimo`   | v0.15.0 | ==1.1.0       | pixi     |
+| `decimo`   | v0.16.0 | >=1.2.0,<1.3.0 | pixi     |
 
 ### 安裝命令行計算器
 
@@ -532,7 +529,7 @@ Python 遷移到 Mojo 時，我需要一個可靠的、能够正確捨入的、�
     year         = {2026},
     title        = {Decimo: An arbitrary-precision integer and decimal library for Mojo},
     url          = {https://github.com/forfudan/decimo},
-    version      = {0.15.0},
+    version      = {0.16.0},
     note         = {Computer Software}
 }
 ```
@@ -559,3 +556,4 @@ Python 遷移到 Mojo 時，我需要一個可靠的、能够正確捨入的、�
 [^arbitrary]: 建立在 BigUInt 實現之上，Decimal
     支持整數和小數部分的任意精度，類似於 Python 中的 `decimal` 和
     `mpmath`、Java 中的 `java.math.BigDecimal` 等。
+[^mpf]: 以前名爲 `BigFloat` 的 MPFR 封裝仍保留在源碼中，名爲 `MPF`，位於 `decimo.mpf.mpf`。它不在公開接口中，接口可能變動。使用它需要安裝 MPFR，並用 `pixi run buildgmp` 編譯 C 封裝。

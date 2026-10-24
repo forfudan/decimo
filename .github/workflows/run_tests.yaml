@@ -110,6 +110,8 @@ jobs:
             echo "=== doc crashed, retrying in 5s... ==="
             sleep 5
           done
+      - name: Compile the examples
+        run: pixi run buildexamples
       - name: Verify decimo.mojoc was produced
         run: test -f decimo.mojoc
       - name: Upload decimo.mojoc artifact
@@ -267,6 +269,35 @@ jobs:
           for attempt in 1 2 3; do
             echo "=== test attempt $attempt ==="
             if bash tests/test.sh bigint10; then
+              echo "=== tests passed on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== tests failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== test run crashed, retrying in 5s... ==="
+            sleep 5
+          done
+
+  # ── Test: BigFloat ───────────────────────────────────────────────────────────
+  test-bigfloat:
+    name: Test BigFloat (${{ matrix.os }})
+    needs: [build, build-linux]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-decimo
+      - name: Run tests (with retry for Mojo compiler intermittent crashes)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== test attempt $attempt ==="
+            if bash tests/test.sh bigfloat; then
               echo "=== tests passed on attempt $attempt ==="
               break
             fi

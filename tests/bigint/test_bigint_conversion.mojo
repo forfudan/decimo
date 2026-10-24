@@ -408,6 +408,34 @@ def test_float_large() raises:
     testing.assert_equal(Float64(BigInt(1000000)), 1000000.0)
 
 
+def test_float_past_nineteen_significant_digits() raises:
+    """`__float__` goes through `atof`, which used to refuse this many digits.
+
+    `BigInt.__float__` is `Float64(self.to_string())`. Before Mojo 1.2 that
+    path raised "The number is too long" past 19 significant digits, and
+    misrounded a mantissa needing more than 53 bits. Both are fixed upstream,
+    and the old limit stopped every test here well short of it, so nothing
+    would have caught either the bug or its return.
+
+    The expected values are CPython's, which is correctly rounded.
+    """
+    testing.assert_equal(
+        Float64(BigInt("123456789012345678901234567890")),
+        1.2345678901234568e29,
+    )
+    testing.assert_equal(
+        Float64(BigInt("123456789012345678")), 1.2345678901234568e17
+    )
+    testing.assert_equal(
+        Float64(BigInt("-123456789012345678901234567890")),
+        -1.2345678901234568e29,
+    )
+
+    # Forty digits, and the same value as a negative.
+    var forty = String("1234567890123456789012345678901234567890")
+    testing.assert_equal(Float64(BigInt(forty)), 1.2345678901234568e39)
+
+
 # ===----------------------------------------------------------------------=== #
 # Test: to_biguint / from_biguint
 # ===----------------------------------------------------------------------=== #
