@@ -7,8 +7,8 @@ Modules:
 - constants: pi, ln2, ln10, e
 - conversion: the bridge to and from the decimal side
 - exponential: sqrt, root, cbrt, hypot, exp, ln, and the other bases -- exp2,
-  exp10, log2,
-  log10, log, expm1, log1p -- with the loop that decides a rounding
+  exp10, log2, log10, log, expm1, log1p -- with the loop that decides a
+  rounding
 - hyperbolic: sinh, cosh, tanh, arcsinh, arccosh, arctanh
 - ieee: the IEEE 754 companion operations -- the neighbours, logb, scaleb,
   the sign copies, number_class, the roundings to a whole number, fma and

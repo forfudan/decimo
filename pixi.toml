@@ -1,7 +1,7 @@
 [workspace]
 authors = ["ZHU Yuhao (朱宇浩) <dr.yuhao.zhu@outlook.com>"]
 channels = ["https://conda.modular.com/max", "https://repo.prefix.dev/modular-community", "conda-forge"]
-description = "An arbitrary-precision decimal and integer library for Mojo"
+description = "An arbitrary-precision integer, decimal, binary floating-point, and rational library for Mojo, written in pure Mojo, with a 128-bit fixed-point decimal type as well."
 license = "Apache-2.0"
 name = "decimo"
 platforms = ["osx-arm64", "linux-64", "linux-aarch64"]
@@ -60,6 +60,12 @@ docexamples = """python3 scripts/check_doc_examples.py \
 README.md docs/user_manual.md docs/readme_zht.md docs/readme_toml.md \
 docs/user_manual_limo.md docs/changelog.md"""
 
+# Compile every example. CI formats `examples/` and used to build none of it,
+# so a broken example could ship. The MPF one is left out: it links the MPFR
+# C wrapper, which is not present outside the mpf job. Use `examples/run_mpf.sh`
+# for that one.
+buildexamples = "bash scripts/build_examples.sh"
+
 # compile the package
 p = "clear && pixi run package"
 package = """pixi run format \
@@ -88,6 +94,11 @@ buildgmp = "bash src/decimo/gmp/build_gmp_wrapper.sh"
 test = "bash tests/test.sh"
 # mpf (build test binary linking the C wrapper, then run it)
 testmpf = "pixi run buildgmp && bash tests/test.sh mpf"
+# bigfloat on its own. `pixi run test` already covers it; this is for working
+# on the float. The `tf` shortcut used to call a `testfloat` task that was
+# never defined, so it printed the task list and exited 0 -- it looked like a
+# passing run and was nothing.
+testfloat = "bash tests/test.sh bigfloat"
 # shortcut for tests
 t = "clear && pixi run test"
 tf = "clear && pixi run testfloat"

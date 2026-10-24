@@ -79,8 +79,8 @@ comptime PRECISION: Int = 28
 """Default precision in decimal digits for MPF."""
 
 # The short aliases `BFlt` and `Float` that this type used to carry are
-# deliberately not here. They belong to the name `BigFloat`, which is being
-# kept for a float written in Mojo rather than borrowed from MPFR.
+# deliberately not here. They belong to the name `BigFloat`, which since
+# v0.16.0 is the float written in Mojo rather than the one borrowed from MPFR.
 
 
 def _dps_to_bits(precision: Int) -> Int:

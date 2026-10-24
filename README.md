@@ -16,7 +16,7 @@ plus `pi()`, `e()` and a 128-bit decimal type. Install it with
 `pip install decimo`.
 
 [![Version](https://img.shields.io/badge/version-v0.16.0-blue)](https://github.com/forfudan/decimo/releases/tag/v0.16.0)
-[![Mojo](https://img.shields.io/badge/mojo-1.1.0-orange)](https://docs.modular.com/mojo/manual/)
+[![Mojo](https://img.shields.io/badge/mojo-1.2.0-orange)](https://docs.modular.com/mojo/manual/)
 [![CI](https://img.shields.io/github/actions/workflow/status/forfudan/decimo/run_tests.yaml?branch=main&label=tests)](https://github.com/forfudan/decimo/actions/workflows/run_tests.yaml)
 [![License](https://img.shields.io/github/license/forfudan/decimo)](https://github.com/forfudan/decimo/blob/main/LICENSE)
 
@@ -66,29 +66,11 @@ Rust.
 
 The core types are[^auxiliary]:
 
-- An arbitrary-precision signed integer type `BigInt`[^bigint] (alias `BInt`),
-  which is a Mojo-native equivalent of Python's `int`.
-- An arbitrary-precision decimal implementation (`BigDecimal`) (alias `Decimal`)
-  allowing for calculations with unlimited digits and decimal
-  places[^arbitrary], which is a Mojo-native equivalent of Python's
-  `decimal.Decimal`.
-- A 128-bit fixed-point decimal implementation (`Decimal128`) (alias `Dec128`)
-  supporting up to 29 significant digits with a maximum of 28 decimal
-  places[^fixed], which is a Mojo-native equivalent of C#'s `System.Decimal` or
-  Rust's `rust_decimal`.
-- An arbitrary-precision binary floating-point implementation (`BigFloat`)
-  written in Mojo, with no dependency to install. The significand is a
-  `BigInt` and the exponent is as wide as an `Int`. The four arithmetic
-  operations, the square root, the exponential and the logarithm, the
-  circular functions and their inverses, and the hyperbolic ones and theirs
-  are each correctly rounded, in each of decimo's seven rounding modes. An
-  MPFR-backed type is still in the source as `decimo.mpf.mpf.MPF`, outside
-  the public interface, for anyone who wants it.
-- An exact rational implementation (`Rational`) (alias `Frac`), a pair of
-  `BigInt` kept in lowest terms, which is a Mojo-native equivalent of
-  Python's `fractions.Fraction`. Nothing it does rounds: the four operations,
-  integer powers and `limit_denominator()` are exact, and rounding happens
-  only where you ask for it, in `to_bigdecimal()` or `round()`.
+- An arbitrary-precision signed integer type `BigInt`[^bigint] (alias `BInt`), which is a Mojo-native equivalent of Python's `int`.
+- An arbitrary-precision decimal implementation (`BigDecimal`) (alias `Decimal`) allowing for calculations with unlimited digits and decimal places[^arbitrary], which is a Mojo-native equivalent of Python's `decimal.Decimal`.
+- A 128-bit fixed-point decimal implementation (`Decimal128`) (alias `Dec128`) supporting up to 29 significant digits with a maximum of 28 decimal places[^fixed], which is a Mojo-native equivalent of C#'s `System.Decimal` or Rust's `rust_decimal`.
+- An arbitrary-precision binary floating-point implementation (`BigFloat`) (alias `BFlt`), correctly rounded in all seven rounding modes, which is a Mojo-native equivalent of MPFR's `mpfr_t`[^mpf].
+- An exact rational implementation (`Rational`) (alias `Frac`), a pair of `BigInt` kept in lowest terms, which is a Mojo-native equivalent of Python's `fractions.Fraction`.
 
 Decimo is fast: at a million digits `pi()` is twelve times quicker than
 pure-Python mpmath, `BigInt` multiplication is fifteen times quicker than
@@ -213,7 +195,8 @@ versions:
 | `decimo`   | v0.12.0 | >=1.0.0, <1.1.0 | pixi            |
 | `decimo`   | v0.13.0 | >=1.0.0, <1.1.0 | pixi            |
 | `decimo`   | v0.14.0 | >=1.0.0, <1.1.0 | pixi            |
-| `decimo`   | v0.16.0 | >=1.1.0, <1.2.0 | pixi            |
+| `decimo`   | v0.15.0 | >=1.1.0, <1.2.0 | pixi            |
+| `decimo`   | v0.16.0 | >=1.2.0, <1.3.0 | pixi            |
 
 </details>
 
@@ -284,8 +267,8 @@ This will import the following types or aliases into your namespace:
   floating-point type, equivalent to MPFR's `mpfr_t`.
 - `Decimal128` (and its alias `Dec128`): A 128-bit fixed-precision decimal type.
 - `RoundingMode`: An enumeration for rounding modes.
-- `ROUND_DOWN`, `ROUND_HALF_UP`, `ROUND_HALF_EVEN`, `ROUND_UP`,
-  `ROUND_CEILING`, `ROUND_FLOOR`: Constants for common rounding modes.
+- `ROUND_DOWN`, `ROUND_UP`, `ROUND_CEILING`, `ROUND_FLOOR`, `ROUND_HALF_UP`,
+  `ROUND_HALF_DOWN`, `ROUND_HALF_EVEN`: Constants for all seven rounding modes.
 
 ---
 
@@ -905,3 +888,4 @@ for details.
     supports arbitrary precision for both the integer and fractional
     parts, similar to `decimal` and `mpmath` in Python,
     `java.math.BigDecimal` in Java, etc.
+[^mpf]: The MPFR wrapper that used to be called `BigFloat` is still in the source as `MPF`, at `decimo.mpf.mpf`. It is not exported and its interface may change. Using it needs MPFR installed and the C wrapper built with `pixi run buildgmp`.

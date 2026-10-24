@@ -27,8 +27,11 @@
 #   cli                         → CLI calculator tests
 #   python      py              → Python binding tests
 #   decimo      core            → All core suites (bigdecimal+bigint+biguint+bigint10+
-#                                 decimal128+rational+expression+numerals+traits)
-#   all                         → Everything (decimo + toml + cli)
+#                                 bigfloat+decimal128+rational+expression+
+#                                 numerals+traits)
+#   all                         → Everything (decimo + toml + cli).
+#                                 Note: not mpf and not python -- run those
+#                                 two by hand.
 #
 # Environment:
 #   DECIMO_TEST_JOBS=N   Run up to N Mojo test files concurrently. Defaults to
@@ -582,8 +585,8 @@ list_suites() {
     printf "  %-28s %s\n" "toml"                        "TOML parser tests"
     printf "  %-28s %s\n" "cli"                         "CLI calculator tests"
     printf "  %-28s %s\n" "python, py"                  "Python binding tests"
-    printf "  %-28s %s\n" "decimo, core"                "All core suites (bdec+bint+buint+bint10+dec128+rational+expression+traits)"
-    printf "  %-28s %s\n" "all"                         "Everything (decimo + toml + cli)"
+    printf "  %-28s %s\n" "decimo, core"                "All core suites (bdec+bint+buint+bint10+bfloat+dec128+rational+expression+numerals+traits)"
+    printf "  %-28s %s\n" "all"                         "Everything (decimo + toml + cli); not mpf, not python"
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────────

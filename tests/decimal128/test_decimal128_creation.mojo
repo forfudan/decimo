@@ -627,5 +627,55 @@ def test_from_float_is_a_forwarding_alias() raises:
     )
 
 
+def test_a_string_with_no_digit_is_refused() raises:
+    """A blank or digitless string raises rather than parsing as nought.
+
+    `Decimal128("")`, `Decimal128("   ")` and `Decimal128(".")` all returned
+    `0` before this test existed. For the type people hold money in that is
+    the one wrong answer: a field that was never filled in becomes `0.00` and
+    the caller cannot tell it from a real zero.
+
+    Spaces, commas and underscores are separators this parser ignores, and a
+    sign and a decimal point are not digits, so a string of nothing else has
+    to be refused however it is spelled. `BigDecimal` and CPython's
+    `decimal.Decimal` refuse all of these too.
+    """
+    var digitless = [
+        "",
+        " ",
+        "   ",
+        ".",
+        " . ",
+        "-",
+        "+",
+        "-.",
+        "+.",
+        ",",
+        "_",
+        "_,_",
+        "-,.",
+    ]
+    for text in digitless:
+        var raised = False
+        try:
+            _ = Decimal128(text)
+        except:
+            raised = True
+        testing.assert_true(
+            raised,
+            String('Decimal128("') + text + '") has to raise, not parse',
+        )
+
+    # The counterpart: a value whose digits are all nought is still a number,
+    # and the separators and the sign around them are still ignored.
+    testing.assert_equal(String(Decimal128("0")), "0")
+    testing.assert_equal(String(Decimal128("-0")), "-0")
+    testing.assert_equal(String(Decimal128("0.00")), "0.00")
+    testing.assert_equal(String(Decimal128(".0")), "0.0")
+    testing.assert_equal(String(Decimal128(" 0 ")), "0")
+    testing.assert_equal(String(Decimal128("+.5")), "0.5")
+    testing.assert_equal(String(Decimal128("1_0")), "10")
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()
