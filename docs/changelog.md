@@ -12,7 +12,7 @@ Decimo v0.16.0 requires **Mojo v1.2.0**. `BigDecimal`'s transcendental functions
 
 1. `BigFloat` becomes an arbitrary-precision binary float written in Mojo. Each value carries its own precision in bits. NaN, infinities and signed zeros are supported (PR #327).
 1. Every `BigFloat` operation is correctly rounded in all seven rounding modes. This covers arithmetic (PRs #331, #334), `sqrt` (PR #336), `exp` and `ln` (PR #339), `sin`, `cos` and `tan` (PR #340) and their inverses (PR #342), the hyperbolic functions (PR #341), and the constants pi, ln 2 and e (PR #338).
-1. `BigFloat` converts to and from `Float64` and decimal strings. A `Float64` round-trips exactly, and `to_bigdecimal()` loses nothing (PR #329).
+1. `BigFloat` converts to and from `Float64` and decimal strings. At 53 bits or more, every `Float64` except NaN round-trips exactly. `to_bigdecimal()` is exact for every finite value (PR #329).
 1. `BigFloat` has the comparison operators, `compare()` and `compare_total()` (PR #330).
 1. `BigFloat` also has `exp2`, `exp10`, `log2`, `log10`, `log`, `expm1` and `log1p` (PR #354), `power` (PR #355), `root` (PR #357), `hypot` and `arctan2` (PR #358), `cot`, `csc` and `sec` (PR #386), and IEEE 754 functions such as `next_plus`, `logb` and `scaleb` (PR #353).
 1. `BigDecimal` has `arcsin`, `arccos` and `arctan2` (PR #321), `expm1`, `log1p` and `hypot` (PR #322), and the hyperbolic functions and their inverses (PR #323).
