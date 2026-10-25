@@ -1,19 +1,10 @@
 # Decimo (formerly DeciMojo) <!-- omit from toc -->
 
-An arbitrary-precision integer, decimal, binary floating-point, and rational
-library for [Mojo](https://www.modular.com/mojo), written in **pure Mojo**,
-with a 128-bit fixed-point decimal type as well. Inspired by Python's `int`,
-`Decimal` and `Fraction`, MPFR, and C#/.NET's `System.Decimal`. Install it
-with `pixi add decimo`.
+An arbitrary-precision integer, decimal, binary floating-point, and rational library for [Mojo](https://www.modular.com/mojo), written in **pure Mojo**, with a 128-bit fixed-point decimal type as well. Inspired by Python's `int`, `Decimal` and `Fraction`, MPFR, and C#/.NET's `System.Decimal`. Install it with `pixi add decimo`.
 
-Comes with an interactive arbitrary-precision calculator (REPL + one-shot mode)
-powered by [ArgMojo](https://github.com/forfudan/argmojo). Install it with
-`brew install forfudan/tap/decimo`.
+Comes with an interactive arbitrary-precision calculator (REPL + one-shot mode) powered by [ArgMojo](https://github.com/forfudan/argmojo). Install it with `brew install forfudan/tap/decimo`.
 
-The same library is packaged for Python as a near drop-in for the standard
-library's `decimal`, and a superset of it: the whole of its method surface,
-plus `pi()`, `e()` and a 128-bit decimal type. Install it with
-`pip install decimo`.
+The same library is packaged for Python as a near drop-in for the standard library's `decimal`, and a superset of it: the whole of its method surface, plus `pi()`, `e()` and a 128-bit decimal type. Install it with `pip install decimo`.
 
 [![Version](https://img.shields.io/badge/version-v0.16.0-blue)](https://github.com/forfudan/decimo/releases/tag/v0.16.0)
 [![Mojo](https://img.shields.io/badge/mojo-1.2.0-orange)](https://docs.modular.com/mojo/manual/)
@@ -24,13 +15,13 @@ plus `pi()`, `e()` and a 128-bit decimal type. Install it with
 [![PyPI](https://img.shields.io/badge/pip%20install-decimo-blue)](https://pypi.org/project/decimo/)
 [![Homebrew](https://img.shields.io/badge/brew%20install-forfudan%2Ftap%2Fdecimo-orange)](https://github.com/forfudan/homebrew-tap)
 
-| Type         | Alias             | Information                                                                                    | Layout       |
-| ------------ | ----------------- | ---------------------------------------------------------------------------------------------- | ------------ |
-| `BigInt`     | `BInt`            | Arbitrary-precision binary integer type, equivalent to Python's `int` and GMP's `mpz`           | Base-2^64    |
-| `BigDecimal` | `BDec`, `Decimal` | Arbitrary-precision decimal type, equivalent to Python's `decimal.Decimal` and libmpdec         | Base-10^18   |
-| `BigFloat`   | `BFlt`            | Arbitrary-precision binary float type, equivalent to MPFR's `mpfr_t`                            | Base-2^64    |
-| `Rational`   | `Frac`            | Exact rational number type, equivalent to Python's `fractions.Fraction`                         | Two `BigInt` |
-| `Decimal128` | `Dec128`          | 128-bit fixed-precision decimal type, equivalent to C#/.NET's `System.Decimal`                  | 32-bit words |
+| Type         | Alias             | Information                                                                             | Layout       |
+| ------------ | ----------------- | --------------------------------------------------------------------------------------- | ------------ |
+| `BigInt`     | `BInt`            | Arbitrary-precision binary integer type, equivalent to Python's `int` and GMP's `mpz`   | Base-2^64    |
+| `BigDecimal` | `BDec`, `Decimal` | Arbitrary-precision decimal type, equivalent to Python's `decimal.Decimal` and libmpdec | Base-10^18   |
+| `BigFloat`   | `BFlt`            | Arbitrary-precision binary float type, equivalent to MPFR's `mpfr_t`                    | Base-2^64    |
+| `Rational`   | `Frac`            | Exact rational number type, equivalent to Python's `fractions.Fraction`                 | Two `BigInt` |
+| `Decimal128` | `Dec128`          | 128-bit fixed-precision decimal type, equivalent to C#/.NET's `System.Decimal`          | 32-bit words |
 
 <!--
 [![Stars](https://img.shields.io/github/stars/forfudan/decimo?style=flat)](https://github.com/forfudan/decimo/stargazers)
@@ -53,16 +44,9 @@ plus `pi()`, `e()` and a 128-bit decimal type. Install it with
 ![Decimo library](https://raw.githubusercontent.com/forfudan/forfudan-github-data/main/decimo/library.webp)  
 *Base-ten arithmetic, integers with no width limit, and an expression evaluator*
 
-Decimo provides an arbitrary-precision integer and decimal library for Mojo. It
-delivers exact calculations for financial modeling, scientific computing, and
-applications where floating-point approximation errors are unacceptable. Beyond
-basic arithmetic, the library includes advanced mathematical functions with
-guaranteed precision.
+Decimo provides arbitrary-precision integer, decimal, binary floating-point and rational types for Mojo. Its decimal types give exact results for financial modeling, scientific computing, and applications where floating-point approximation errors are unacceptable. Beyond basic arithmetic, the library has the exponential, logarithmic, trigonometric and hyperbolic functions.
 
-For Pythonistas, `decimo.BigInt` to Mojo is like `int` to Python, and
-`decimo.BigDecimal` to Mojo is like `decimal.Decimal` to Python.
-`decimo.Decimal128` to Mojo is like `System.Decimal` to C# or `rust_decimal` to
-Rust.
+For Pythonistas, `decimo.BigInt` to Mojo is like `int` to Python, `decimo.BigDecimal` to Mojo is like `decimal.Decimal` to Python, and `decimo.Rational` to Mojo is like `fractions.Fraction` to Python. `decimo.BigFloat` to Mojo is like MPFR to C, and `decimo.Decimal128` to Mojo is like `System.Decimal` to C# or `rust_decimal` to Rust.
 
 The core types are[^auxiliary]:
 
@@ -72,17 +56,9 @@ The core types are[^auxiliary]:
 - An arbitrary-precision binary floating-point implementation (`BigFloat`) (alias `BFlt`), correctly rounded in all seven rounding modes, which is a Mojo-native equivalent of MPFR's `mpfr_t`[^mpf].
 - An exact rational implementation (`Rational`) (alias `Frac`), a pair of `BigInt` kept in lowest terms, which is a Mojo-native equivalent of Python's `fractions.Fraction`.
 
-Decimo is fast: at a million digits `pi()` is twelve times quicker than
-pure-Python mpmath, `BigInt` multiplication is fifteen times quicker than
-CPython's `int`, the logarithm at ten thousand digits is four hundred times
-quicker than libmpdec, and small `BigDecimal` operations are close to that
-same C library behind Python's `decimal`. The measured numbers, with the
-commit they were taken on, are in [docs/benchmarks.md](docs/benchmarks.md);
-`pixi run benchdoc` regenerates them.
+Decimo is fast: at a million digits `pi()` is twelve times quicker than pure-Python mpmath, `BigInt` multiplication is fifteen times quicker than CPython's `int`, the logarithm at ten thousand digits is four hundred times quicker than libmpdec, and small `BigDecimal` operations are close to that same C library behind Python's `decimal`. The measured numbers, with the commit they were taken on, are in [docs/benchmarks.md](docs/benchmarks.md); `pixi run benchdoc` regenerates them.
 
-**Decimo** combines "**Deci**mal" and "**Mo**jo" - reflecting its purpose and
-implementation language. "Decimo" is also a Latin word meaning "tenth" and is
-the root of the word "decimal".
+**Decimo** combines "**Deci**mal" and "**Mo**jo" - reflecting its purpose and implementation language. "Decimo" is also a Latin word meaning "tenth" and is the root of the word "decimal".
 
 ### CLI calculator
 
@@ -888,4 +864,7 @@ for details.
     supports arbitrary precision for both the integer and fractional
     parts, similar to `decimal` and `mpmath` in Python,
     `java.math.BigDecimal` in Java, etc.
-[^mpf]: The MPFR wrapper that used to be called `BigFloat` is still in the source as `MPF`, at `decimo.mpf.mpf`. It is not exported and its interface may change. Using it needs MPFR installed and the C wrapper built with `pixi run buildgmp`.
+[^mpf]: The MPFR wrapper that used to be called `BigFloat` is still in the
+    source as `MPF`, at `decimo.mpf.mpf`. It is not exported and its
+    interface may change. Using it needs MPFR installed and the C wrapper
+    built with `pixi run buildgmp`.
