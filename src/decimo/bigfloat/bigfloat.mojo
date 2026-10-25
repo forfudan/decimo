@@ -207,7 +207,7 @@ struct BigFloat(
 
     @staticmethod
     def zero() -> Self:
-        """A positive zero at the default precision.
+        """Constructs a positive zero at the default precision.
 
         Returns:
             The zero. This is the form `Numeric` asks for, which cannot
@@ -217,7 +217,7 @@ struct BigFloat(
 
     @staticmethod
     def zero(precision: Int, sign: Bool = False) raises -> Self:
-        """A signed zero.
+        """Constructs a signed zero.
 
         Args:
             precision: The number of bits the value carries.
@@ -238,7 +238,7 @@ struct BigFloat(
 
     @staticmethod
     def one() -> Self:
-        """One at the default precision.
+        """Constructs one at the default precision.
 
         Returns:
             The one. This is the form `Numeric` asks for, which cannot raise;
@@ -251,7 +251,7 @@ struct BigFloat(
 
     @staticmethod
     def one(precision: Int) raises -> Self:
-        """One at a given precision.
+        """Constructs one at a given precision.
 
         Args:
             precision: The number of bits the value carries.
@@ -266,7 +266,7 @@ struct BigFloat(
 
     @staticmethod
     def infinity(precision: Int = PRECISION, sign: Bool = False) raises -> Self:
-        """A signed infinity.
+        """Constructs a signed infinity.
 
         Args:
             precision: The number of bits the value carries.
@@ -288,7 +288,7 @@ struct BigFloat(
 
     @staticmethod
     def nan(precision: Int = PRECISION) raises -> Self:
-        """The NaN.
+        """Constructs the NaN.
 
         There is one, not two: no signalling NaN, which decimo has no signals
         to raise.
@@ -780,7 +780,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The square root, correctly rounded.
+        """Returns the square root, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -836,7 +836,7 @@ struct BigFloat(
         return bigfloat_exponential.root(self, degree, precision, rounding_mode)
 
     def cbrt(self) raises -> Self:
-        """The cube root, correctly rounded.
+        """Returns the cube root, correctly rounded.
 
         Returns:
             The root at this value's own precision, rounded half to even. A
@@ -853,7 +853,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The cube root, correctly rounded.
+        """Returns the cube root, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -869,7 +869,7 @@ struct BigFloat(
         return bigfloat_exponential.cbrt(self, precision, rounding_mode)
 
     def hypot(self, other: Self) raises -> Self:
-        """The hypotenuse of this value and another, correctly rounded.
+        """Returns the hypotenuse of this value and another, correctly rounded.
 
         Args:
             other: The other leg.
@@ -895,7 +895,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The hypotenuse of this value and another, correctly rounded.
+        """Returns the hypotenuse of this value and another, correctly rounded.
 
         Args:
             other: The other leg.
@@ -912,7 +912,7 @@ struct BigFloat(
         return bigfloat_exponential.hypot(self, other, precision, rounding_mode)
 
     def arctan2(self, other: Self) raises -> Self:
-        """The angle of the point whose coordinates are `other` and `self`.
+        """Returns the angle of the point whose coordinates are `other` and `self`.
 
         Args:
             other: The first coordinate, the one along the axis.
@@ -938,7 +938,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The angle of the point whose coordinates are `other` and `self`.
+        """Returns the angle of the point whose coordinates are `other` and `self`.
 
         Args:
             other: The first coordinate, the one along the axis.
@@ -961,7 +961,7 @@ struct BigFloat(
     # ===------------------------------------------------------------------=== #
 
     def sin(self) raises -> Self:
-        """The sine of this value, in radians, correctly rounded.
+        """Returns the sine of this value, in radians, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even.
@@ -976,7 +976,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The sine of this value, in radians, correctly rounded.
+        """Returns the sine of this value, in radians, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -992,7 +992,7 @@ struct BigFloat(
         return bigfloat_trigonometric.sin(self, precision, rounding_mode)
 
     def cos(self) raises -> Self:
-        """The cosine of this value, in radians, correctly rounded.
+        """Returns the cosine of this value, in radians, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even.
@@ -1007,7 +1007,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The cosine of this value, in radians, correctly rounded.
+        """Returns the cosine of this value, in radians, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1023,7 +1023,7 @@ struct BigFloat(
         return bigfloat_trigonometric.cos(self, precision, rounding_mode)
 
     def tan(self) raises -> Self:
-        """The tangent of this value, in radians, correctly rounded.
+        """Returns the tangent of this value, in radians, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even.
@@ -1038,7 +1038,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The tangent of this value, in radians, correctly rounded.
+        """Returns the tangent of this value, in radians, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1054,7 +1054,7 @@ struct BigFloat(
         return bigfloat_trigonometric.tan(self, precision, rounding_mode)
 
     def cot(self) raises -> Self:
-        """The cotangent of this value, in radians, correctly rounded.
+        """Returns the cotangent of this value, in radians, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even.
@@ -1069,7 +1069,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The cotangent of this value, in radians, correctly rounded.
+        """Returns the cotangent of this value, in radians, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1085,7 +1085,7 @@ struct BigFloat(
         return bigfloat_trigonometric.cot(self, precision, rounding_mode)
 
     def csc(self) raises -> Self:
-        """The cosecant of this value, in radians, correctly rounded.
+        """Returns the cosecant of this value, in radians, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even.
@@ -1100,7 +1100,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The cosecant of this value, in radians, correctly rounded.
+        """Returns the cosecant of this value, in radians, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1116,7 +1116,7 @@ struct BigFloat(
         return bigfloat_trigonometric.csc(self, precision, rounding_mode)
 
     def sec(self) raises -> Self:
-        """The secant of this value, in radians, correctly rounded.
+        """Returns the secant of this value, in radians, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even.
@@ -1131,7 +1131,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The secant of this value, in radians, correctly rounded.
+        """Returns the secant of this value, in radians, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1147,7 +1147,7 @@ struct BigFloat(
         return bigfloat_trigonometric.sec(self, precision, rounding_mode)
 
     def arcsin(self) raises -> Self:
-        """The inverse sine of this value, correctly rounded.
+        """Returns the inverse sine of this value, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even.
@@ -1162,7 +1162,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The inverse sine of this value, correctly rounded.
+        """Returns the inverse sine of this value, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1178,7 +1178,7 @@ struct BigFloat(
         return bigfloat_trigonometric.arcsin(self, precision, rounding_mode)
 
     def arccos(self) raises -> Self:
-        """The inverse cosine of this value, correctly rounded.
+        """Returns the inverse cosine of this value, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even.
@@ -1193,7 +1193,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The inverse cosine of this value, correctly rounded.
+        """Returns the inverse cosine of this value, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1209,7 +1209,7 @@ struct BigFloat(
         return bigfloat_trigonometric.arccos(self, precision, rounding_mode)
 
     def arctan(self) raises -> Self:
-        """The inverse tangent of this value, correctly rounded.
+        """Returns the inverse tangent of this value, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even.
@@ -1224,7 +1224,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The inverse tangent of this value, correctly rounded.
+        """Returns the inverse tangent of this value, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1240,7 +1240,7 @@ struct BigFloat(
         return bigfloat_trigonometric.arctan(self, precision, rounding_mode)
 
     def sinh(self) raises -> Self:
-        """The hyperbolic sine of this value, correctly rounded.
+        """Returns the hyperbolic sine of this value, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even.
@@ -1255,7 +1255,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The hyperbolic sine of this value, correctly rounded.
+        """Returns the hyperbolic sine of this value, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1271,7 +1271,7 @@ struct BigFloat(
         return bigfloat_hyperbolic.sinh(self, precision, rounding_mode)
 
     def cosh(self) raises -> Self:
-        """The hyperbolic cosine of this value, correctly rounded.
+        """Returns the hyperbolic cosine of this value, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even.
@@ -1286,7 +1286,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The hyperbolic cosine of this value, correctly rounded.
+        """Returns the hyperbolic cosine of this value, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1302,7 +1302,7 @@ struct BigFloat(
         return bigfloat_hyperbolic.cosh(self, precision, rounding_mode)
 
     def tanh(self) raises -> Self:
-        """The hyperbolic tangent of this value, correctly rounded.
+        """Returns the hyperbolic tangent of this value, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even.
@@ -1317,7 +1317,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The hyperbolic tangent of this value, correctly rounded.
+        """Returns the hyperbolic tangent of this value, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1333,7 +1333,7 @@ struct BigFloat(
         return bigfloat_hyperbolic.tanh(self, precision, rounding_mode)
 
     def arcsinh(self) raises -> Self:
-        """The inverse hyperbolic sine of this value, correctly rounded.
+        """Returns the inverse hyperbolic sine of this value, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even.
@@ -1348,7 +1348,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The inverse hyperbolic sine of this value, correctly rounded.
+        """Returns the inverse hyperbolic sine of this value, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1364,7 +1364,7 @@ struct BigFloat(
         return bigfloat_hyperbolic.arcsinh(self, precision, rounding_mode)
 
     def arccosh(self) raises -> Self:
-        """The inverse hyperbolic cosine of this value, correctly rounded.
+        """Returns the inverse hyperbolic cosine of this value, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even.
@@ -1379,7 +1379,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The inverse hyperbolic cosine of this value, correctly rounded.
+        """Returns the inverse hyperbolic cosine of this value, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1395,7 +1395,7 @@ struct BigFloat(
         return bigfloat_hyperbolic.arccosh(self, precision, rounding_mode)
 
     def arctanh(self) raises -> Self:
-        """The inverse hyperbolic tangent of this value, correctly rounded.
+        """Returns the inverse hyperbolic tangent of this value, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even.
@@ -1410,7 +1410,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The inverse hyperbolic tangent of this value, correctly rounded.
+        """Returns the inverse hyperbolic tangent of this value, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1435,7 +1435,7 @@ struct BigFloat(
     # a rounding mode, it is the free function asked for those.
 
     def exp(self) raises -> Self:
-        """`e` to the power of this value, correctly rounded.
+        """Returns `e` to the power of this value, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even.
@@ -1450,7 +1450,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """`e` to the power of this value, correctly rounded.
+        """Returns `e` to the power of this value, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1466,7 +1466,7 @@ struct BigFloat(
         return bigfloat_exponential.exp(self, precision, rounding_mode)
 
     def exp2(self) raises -> Self:
-        """Two to the power of this value, correctly rounded.
+        """Returns two to the power of this value, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even. A
@@ -1482,7 +1482,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """Two to the power of this value, correctly rounded.
+        """Returns two to the power of this value, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1498,7 +1498,7 @@ struct BigFloat(
         return bigfloat_exponential.exp2(self, precision, rounding_mode)
 
     def exp10(self) raises -> Self:
-        """Ten to the power of this value, correctly rounded.
+        """Returns ten to the power of this value, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even. A
@@ -1514,7 +1514,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """Ten to the power of this value, correctly rounded.
+        """Returns ten to the power of this value, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1530,7 +1530,7 @@ struct BigFloat(
         return bigfloat_exponential.exp10(self, precision, rounding_mode)
 
     def expm1(self) raises -> Self:
-        """`exp(x) - 1`, correctly rounded, without the cancellation.
+        """Returns `exp(x) - 1`, correctly rounded, without the cancellation.
 
         Returns:
             The value at this value's own precision, rounded half to even.
@@ -1547,7 +1547,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """`exp(x) - 1`, correctly rounded, without the cancellation.
+        """Returns `exp(x) - 1`, correctly rounded, without the cancellation.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1563,7 +1563,7 @@ struct BigFloat(
         return bigfloat_exponential.expm1(self, precision, rounding_mode)
 
     def ln(self) raises -> Self:
-        """The natural logarithm of this value, correctly rounded.
+        """Returns the natural logarithm of this value, correctly rounded.
 
         Returns:
             The logarithm at this value's own precision, rounded half to even.
@@ -1580,7 +1580,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The natural logarithm of this value, correctly rounded.
+        """Returns the natural logarithm of this value, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1596,7 +1596,7 @@ struct BigFloat(
         return bigfloat_exponential.ln(self, precision, rounding_mode)
 
     def log2(self) raises -> Self:
-        """The base-two logarithm of this value, correctly rounded.
+        """Returns the base-two logarithm of this value, correctly rounded.
 
         Returns:
             The logarithm at this value's own precision, rounded half to even.
@@ -1612,7 +1612,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The base-two logarithm of this value, correctly rounded.
+        """Returns the base-two logarithm of this value, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1628,7 +1628,7 @@ struct BigFloat(
         return bigfloat_exponential.log2(self, precision, rounding_mode)
 
     def log10(self) raises -> Self:
-        """The base-ten logarithm of this value, correctly rounded.
+        """Returns the base-ten logarithm of this value, correctly rounded.
 
         Returns:
             The logarithm at this value's own precision, rounded half to even.
@@ -1644,7 +1644,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The base-ten logarithm of this value, correctly rounded.
+        """Returns the base-ten logarithm of this value, correctly rounded.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1660,7 +1660,7 @@ struct BigFloat(
         return bigfloat_exponential.log10(self, precision, rounding_mode)
 
     def log(self, base: Self) raises -> Self:
-        """The logarithm of this value in an arbitrary base, correctly rounded.
+        """Returns the logarithm of this value in an arbitrary base, correctly rounded.
 
         Args:
             base: The base, which must be finite, positive and not one.
@@ -1686,7 +1686,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """The logarithm of this value in an arbitrary base, correctly rounded.
+        """Returns the logarithm of this value in an arbitrary base, correctly rounded.
 
         Args:
             base: The base, which must be finite, positive and not one.
@@ -1703,7 +1703,7 @@ struct BigFloat(
         return bigfloat_exponential.log(self, base, precision, rounding_mode)
 
     def log1p(self) raises -> Self:
-        """`ln(1 + x)`, correctly rounded, without the cancellation.
+        """Returns `ln(1 + x)`, correctly rounded, without the cancellation.
 
         Returns:
             The logarithm at this value's own precision, rounded half to even.
@@ -1720,7 +1720,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """`ln(1 + x)`, correctly rounded, without the cancellation.
+        """Returns `ln(1 + x)`, correctly rounded, without the cancellation.
 
         Args:
             precision: How many bits the result keeps. Must be positive.
@@ -1740,7 +1740,7 @@ struct BigFloat(
     # ===------------------------------------------------------------------=== #
 
     def power(self, exponent: Self) raises -> Self:
-        """This value raised to a power, correctly rounded.
+        """Returns this value raised to a power, correctly rounded.
 
         Args:
             exponent: The exponent.
@@ -1768,7 +1768,7 @@ struct BigFloat(
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """This value raised to a power, correctly rounded.
+        """Returns this value raised to a power, correctly rounded.
 
         Args:
             exponent: The exponent.
@@ -1786,7 +1786,7 @@ struct BigFloat(
         return bigfloat_power.power(self, exponent, precision, rounding_mode)
 
     def __pow__(self, exponent: Self) raises -> Self:
-        """This value raised to a power, correctly rounded.
+        """Returns this value raised to a power, correctly rounded.
 
         Args:
             exponent: The exponent.
@@ -1801,7 +1801,7 @@ struct BigFloat(
         return self.power(exponent)
 
     def __truediv__(self, other: Self) raises -> Self:
-        """The quotient, correctly rounded.
+        """Returns the quotient, correctly rounded.
 
         Args:
             other: The value to divide by.

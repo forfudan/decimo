@@ -19,12 +19,13 @@ Traits describing what Decimo's number types can do.
 
 These exist so that code outside Decimo can be written once and run over
 `BigInt`, `BigDecimal`, `BigFloat`, `Decimal128` and `Rational` alike - a
-matrix library being the motivating case. Mojo's trait conformance is nominal and has to be declared
-where the struct is defined, so the traits live here rather than in the
-consumer.
+matrix library being the motivating case. Mojo's trait conformance is nominal 
+and has to be declared where the struct is defined, so the traits live here 
+rather than in the consumer.
 
-`Numeric` covers all five, division included. Integer division is closed as long as it is understood the way Mojo's
-own `Int` understands it: `/` truncates toward zero and stays in the type, and
+`Numeric` covers all five, division included. Integer division is closed 
+as long as it is understood the way Mojo's own `Int` understands it: 
+`/` truncates toward zero and stays in the type, and
 `//` (which floors, and so differs whenever the signs differ) is a
 separate operator that this trait does not require.
 

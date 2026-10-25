@@ -342,11 +342,7 @@ Because LLVM sees identical declarations from both packages, the merge is clean
 and there is no conflict.
 
 > [!NOTE]
-> For library authors: if you write a Mojo package that calls
-> `tcgetattr` or `tcsetattr` via `external_call`, use the `Int`-only signatures
-> above to stay compatible with both argmojo and limo. For `read`, `write` and
-> `isatty` the Mojo standard library already declares the symbol, so give the
-> return type only (`isatty` takes `Int32`) and let the arguments be inferred.
+> For library authors: if you write a Mojo package that calls `tcgetattr` or `tcsetattr` via `external_call`, use the `Int`-only signatures above to stay compatible with both argmojo and limo. For `read`, `write` and `isatty` the Mojo standard library already declares the symbol, so give the return type only (`isatty` takes `Int32`) and let the arguments be inferred.
 
 ### Raw Mode Control Functions
 

@@ -134,8 +134,7 @@ for details.
 | `(`, `)` | Grouping       | `(2 + 3) * 4` | `20`        |
 
 > [!NOTE]
-> Division always produces a decimal result. `7 / 2` gives `3.5`, not
-> `3`.
+> Division always produces a decimal result. `7 / 2` gives `3.5`, not `3`.
 
 ### Operator Precedence
 
