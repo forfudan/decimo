@@ -1451,7 +1451,7 @@ hundred bits of pi before the first bit of its answer is right. An argument
 whose leading bit sits beyond what a precision may be is refused rather than
 answered badly.
 
-Each function except the constants and the four arithmetic ones is also a method, in two forms. Without a precision it keeps this value's own precision and rounds half to even. With a precision, and optionally a rounding mode, it behaves like the free function asked for those:
+Each function except the constants and the four arithmetic ones is also a method. `fma`, `remainder` and `fmod` always take a precision, as they do as functions. The rest come in two forms. Without a precision it keeps this value's own precision and rounds half to even. With a precision, and optionally a rounding mode, it behaves like the free function asked for those:
 
 ```mojo
 var x = BigFloat.from_int(2, 53)
@@ -2137,7 +2137,7 @@ or carry the argument's own precision. All of them are in
 | `a.arcsin()`, `a.arccos()`, `a.arctan()`    | The same                                     |
 | `a.sinh()`, `a.cosh()`, `a.tanh()`          | The same                                     |
 | `a.arcsinh()`, `a.arccosh()`, `a.arctanh()` | The same                                     |
-| `a.exp(p)`, `a.exp(p, mode)`                | Any method above at `p` bits, in `mode`      |
+| `a.exp(p)`, `a.exp(p, mode)`                | `sqrt`, and `exp` to `arctanh`, at `p` bits  |
 | `BigFloat.zero()`, `BigFloat.one()`         | At fifty-three bits                          |
 | `a.to_bigdecimal()`                         | The exact decimal expansion                  |
 | `a.to_bigdecimal_rounded(n)`                | `n` significant digits                       |
