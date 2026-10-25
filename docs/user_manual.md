@@ -161,7 +161,8 @@ var e = BInt("1.23e5")                # Scientific notation (= 123000)
 var f = BInt("1991_10,18")            # Mixed separators (= 19911018)
 ```
 
-> **Note:** The string must represent an integer. `BInt("1.5")` raises an error.
+> [!NOTE]
+> The string must represent an integer. `BInt("1.5")` raises an error.
 > Scientific notation like `"1.23e5"` is accepted only if the result is an
 > integer.
 
@@ -536,7 +537,8 @@ print(x.sqrt(precision=100))   # 100 significant digits
 print(x.sqrt(precision=1000))  # 1000 significant digits
 ```
 
-> **Note:** The default precision of 28 will be configurable globally in a
+> [!NOTE]
+> The default precision of 28 will be configurable globally in a
 > future version when Mojo supports global variables.
 
 ### Construction — Decimal
@@ -1451,15 +1453,22 @@ hundred bits of pi before the first bit of its answer is right. An argument
 whose leading bit sits beyond what a precision may be is refused rather than
 answered badly.
 
-Each function also has a method, which asks for this value's own precision and
-the default rounding; the free function is where the precision and the mode
-live:
+Each function except the constants and the four arithmetic ones is also a
+method, in two forms. Without a precision it keeps this value's own precision
+and rounds half to even. With a precision, and optionally a rounding mode, it
+is the free function asked for those:
 
 ```mojo
+var x = BigFloat.from_int(2, 53)
+print(x.sin())                         # 53 bits, half to even
+print(x.sin(200))                      # 200 bits, half to even
+print(x.sin(200, RoundingMode.ROUND_UP))
 print(BigFloat.from_int(8, 53).log2())        # 3
-print(BigFloat.from_int(10, 53).log10())      # 1
 print(BigFloat.from_int(27, 53).log(BigFloat.from_int(3, 53)))  # 3
 ```
+
+A method of two values, such as `log`, `power`, `hypot` or `arctan2`, keeps the
+wider of the two precisions in its first form.
 
 ### The Other Bases, and the Exact Answers — BigFloat
 
@@ -1952,13 +1961,14 @@ from decimo.expression import tokenize, parse_to_rpn, evaluate_rpn
 
 All of these come from the Mojo standard library except **`Numeric`**,
 **`Parsable`** and **`Rootable`**, which Decimo defines in `decimo.traits`.
-`BigInt`, `BigDecimal` and `Decimal128` conform to all three. Mojo checks
+`BigInt`, `BigDecimal`, `BigFloat` and `Decimal128` conform to all three, and
+`Rational` to `Numeric` and `Parsable`. Mojo checks
 conformance nominally, which is why the traits live in Decimo rather than in
 the consumer.
 
 `Numeric` gathers `zero()`, `one()`, `-x`, `+`, `-`, `*` and `/`, so a generic
 routine — a matrix or polynomial library, say — can be written once against
-`T: Numeric` and run over any of the three.
+`T: Numeric` and run over any of them.
 
 `Parsable` requires the static `from_string(value)`, so the same generic
 routine can also fill itself from text. The two are separate because the
@@ -1972,8 +1982,8 @@ evidence is sharper: `BigUInt` has a square root but is unsigned, so it has no
 `__neg__` and can never be `Numeric` either. Its supertraits are `Deinitable`
 and `Movable` and no more — `Copyable` is pointedly absent, so that `MPF`
 can conform.
-`BigFloat`, `MPF` and `BigUInt` therefore conform to `Rootable` as well, six
-types in all. Ask for `T: Numeric & Rootable` in a routine that needs both. What the
+`MPF` and `BigUInt` therefore conform to `Rootable` as well, six types in
+all. Ask for `T: Numeric & Rootable` in a routine that needs both. What the
 root means stays the implementing type's business: on an integral type it
 truncates, so `BigInt("10").sqrt()` is `3`, exactly as `/` truncates there. So
 does what a negative value does — the four exact types raise, while
@@ -2057,6 +2067,7 @@ print its argument asks for `Writable`.
 | `Copyable`         | Value-semantic copy                   |
 | `Hashable`         | `hash(x)`, a key in a dictionary      |
 | `Movable`          | Move semantics                        |
+| `Numeric`          | Generic code over Decimo numbers      |
 | `Parsable`         | `T.from_string(text)` in generic code |
 | `Rootable`         | `x.sqrt()` in generic code            |
 | `Writable`         | `print(x)`, `String(x)`               |
@@ -2073,9 +2084,10 @@ NaN is unordered, so `<`, `<=`, `>`, `>=` and `==` are all False for it and
 `!=` is True, which breaks the law that exactly one of less, equal and
 greater holds. `compare_total()` is there for code that needs a total order.
 
-`Numeric` is absent for now: it asks for operators that round, and this
-type's operators have to be told a precision to round to. The free functions
-in `decimo.bigfloat.arithmetics` take one.
+`Numeric` asks for `zero()` and `one()` without arguments, so those two give
+values of fifty-three bits; `zero(precision, sign)` and `one(precision)` give
+any other. The operators keep the wider of the two precisions and round half
+to even, so generic code works at the precision of the values it is handed.
 
 ### Appendix C — Complete API Tables
 
@@ -2148,6 +2160,13 @@ or carry the argument's own precision. All of them are in
 | `a.log2()`, `a.log10()`        | The same; a whole power of the base is exact |
 | `a.log(base)`                  | At the wider precision, half to even     |
 | `a.expm1()`, `a.log1p()`       | The same; these keep a small argument    |
+| `a.sin()`, `a.cos()`, `a.tan()` | At `a`'s own precision, half to even    |
+| `a.cot()`, `a.csc()`, `a.sec()` | The same                                |
+| `a.arcsin()`, `a.arccos()`, `a.arctan()` | The same                       |
+| `a.sinh()`, `a.cosh()`, `a.tanh()` | The same                             |
+| `a.arcsinh()`, `a.arccosh()`, `a.arctanh()` | The same                    |
+| `a.exp(p)`, `a.exp(p, mode)`   | Any method above at `p` bits, in `mode`  |
+| `BigFloat.zero()`, `BigFloat.one()` | At fifty-three bits                 |
 | `a.to_bigdecimal()`            | The exact decimal expansion              |
 | `a.to_bigdecimal_rounded(n)`   | `n` significant digits                   |
 | `a.to_float64()`               | The nearest double                       |

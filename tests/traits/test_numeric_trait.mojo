@@ -1,6 +1,6 @@
 """
-Test that `BigInt`, `BigDecimal` and `Decimal128` are usable *through* the
-`Numeric` trait, not merely declared to conform to it.
+Test that `BigInt`, `BigDecimal`, `BigFloat` and `Decimal128` are usable
+*through* the `Numeric` trait, not merely declared to conform to it.
 
 The helpers below are written once, against the trait alone. They can only
 compile if every required operation is present with the declared signature, and
@@ -15,6 +15,7 @@ value, which is the case the `Movable` supertrait exists to serve.
 from std import testing
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
+from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigint.bigint import BigInt
 from decimo.decimal128.decimal128 import Decimal128
 from decimo.traits import Numeric
@@ -102,6 +103,54 @@ def test_bigdecimal_through_numeric() raises:
     testing.assert_equal(
         _ratio_plus_one(BigDecimal("-7"), BigDecimal("2")),
         BigDecimal("-2.5"),
+        "-7 / 2 + 1",
+    )
+
+
+def test_bigfloat_through_numeric() raises:
+    """`BigFloat` used through the trait."""
+    testing.assert_equal(
+        BigFloat.zero().internal_representation(),
+        BigFloat.zero(53).internal_representation(),
+        "BigFloat.zero()",
+    )
+    testing.assert_equal(
+        BigFloat.one().internal_representation(),
+        BigFloat.from_int(1).internal_representation(),
+        "BigFloat.one()",
+    )
+    testing.assert_equal(BigFloat.one(200).precision, 200, "one(200)")
+    testing.assert_true(
+        BigFloat.one(200) == BigFloat.one(), "one(200) equals one()"
+    )
+
+    var values: List[BigFloat] = [
+        BigFloat.from_int(1),
+        BigFloat.from_int(2),
+        BigFloat.from_int(3),
+        BigFloat.from_int(4),
+    ]
+    testing.assert_true(_sum(values) == BigFloat.from_int(10), "sum of 1..4")
+
+    testing.assert_true(
+        _horner(
+            BigFloat.from_int(2),
+            BigFloat.from_int(3),
+            BigFloat.from_int(4),
+            BigFloat.from_int(5),
+        )
+        == BigFloat.from_int(69),
+        "2*5^2 + 3*5 + 4",
+    )
+    testing.assert_true(
+        _negated_difference(BigFloat.from_int(3), BigFloat.from_int(10))
+        == BigFloat.from_int(7),
+        "-(3 - 10)",
+    )
+    # A float divides exactly where the quotient fits: -7/2 is -3.5.
+    testing.assert_true(
+        _ratio_plus_one(BigFloat.from_int(-7), BigFloat.from_int(2))
+        == BigFloat.from_string("-2.5"),
         "-7 / 2 + 1",
     )
 

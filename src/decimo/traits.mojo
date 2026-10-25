@@ -18,13 +18,12 @@
 Traits describing what Decimo's number types can do.
 
 These exist so that code outside Decimo can be written once and run over
-`BigInt`, `BigDecimal` and `Decimal128` alike - a matrix library being the
-motivating case. Mojo's trait conformance is nominal and has to be declared
+`BigInt`, `BigDecimal`, `BigFloat`, `Decimal128` and `Rational` alike - a
+matrix library being the motivating case. Mojo's trait conformance is nominal and has to be declared
 where the struct is defined, so the traits live here rather than in the
 consumer.
 
-`Numeric` covers `BigInt`, `BigDecimal` and `Decimal128` alike, division
-included. Integer division is closed as long as it is understood the way Mojo's
+`Numeric` covers all five, division included. Integer division is closed as long as it is understood the way Mojo's
 own `Int` understands it: `/` truncates toward zero and stays in the type, and
 `//` (which floors, and so differs whenever the signs differ) is a
 separate operator that this trait does not require.
@@ -51,8 +50,8 @@ here hands back an owned `Self`. A caller that stores such a result, or returns
 it onward, moves it; without the bound each consumer would have to spell
 `T: Numeric & Movable` to do the obvious thing with a result. The two are
 separate capabilities in this codebase (`MPF` is `Movable` but not
-`Copyable`) so requiring both is a real statement, and one all three
-conforming types already satisfy.
+`Copyable`) so requiring both is a real statement, and one every conforming
+type already satisfies.
 """
 
 

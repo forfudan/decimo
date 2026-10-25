@@ -341,7 +341,8 @@ adopted by argmojo and followed by limo:
 Because LLVM sees identical declarations from both packages, the merge is clean
 and there is no conflict.
 
-> **Note for library authors:** If you write a Mojo package that calls
+> [!NOTE]
+> For library authors: if you write a Mojo package that calls
 > `tcgetattr` or `tcsetattr` via `external_call`, use the `Int`-only signatures
 > above to stay compatible with both argmojo and limo. For `read`, `write` and
 > `isatty` the Mojo standard library already declares the symbol, so give the
