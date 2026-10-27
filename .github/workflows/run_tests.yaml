@@ -508,7 +508,7 @@ jobs:
   # ── Test: CLI ────────────────────────────────────────────────────────────────
   # The CLI test needs a freshly built binary, not the .mojoc, so we
   # invoke `pixi run buildcli` here. The pixi env is not cached, so every run
-  # installs argmojo from the modular-community channel afresh.
+  # installs dependencies from the modular-community channel afresh.
   test-cli:
     name: Test CLI
     needs: build
