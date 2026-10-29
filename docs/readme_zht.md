@@ -33,11 +33,9 @@ C#/.NET 的 `System.Decimal`。
 ![Decimo 庫](https://raw.githubusercontent.com/forfudan/forfudan-github-data/main/decimo/library.webp)  
 *十進制算術、沒有位寬上限的整數，以及一個表達式求值器*
 
-Decimo 爲 Mojo
-提供任意精度整數和小數運算庫，爲金融建模、科學計算以及浮點近似誤差不可接受的應用提供精確計算。除了基本算術運算外，該庫還包括具有保證精度的高級數學函數。
+Decimo 爲 Mojo 提供任意精度的整數、小數、二進制浮點數和有理數類型。其中小數類型爲金融建模、科學計算以及浮點近似誤差不可接受的應用提供精確計算。除了基本算術運算外，該庫還包括指數、對數、三角和雙曲函數。
 
-對於 Python 用戶，`decimo.BInt` 之於 Mojo 就如同 `int` 之於
-Python，`decimo.Decimal` 之於 Mojo 就如同 `decimal.Decimal` 之於 Python。
+對於 Python 用戶，`decimo.BInt` 之於 Mojo 就如同 `int` 之於 Python，`decimo.Decimal` 之於 Mojo 就如同 `decimal.Decimal` 之於 Python，`decimo.Rational` 之於 Mojo 就如同 `fractions.Fraction` 之於 Python。`decimo.BigFloat` 之於 Mojo 就如同 MPFR 之於 C，`decimo.Decimal128` 之於 Mojo 就如同 `System.Decimal` 之於 C# 或 `rust_decimal` 之於 Rust。
 
 核心類型包括:
 

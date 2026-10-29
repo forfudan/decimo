@@ -161,9 +161,8 @@ var e = BInt("1.23e5")                # Scientific notation (= 123000)
 var f = BInt("1991_10,18")            # Mixed separators (= 19911018)
 ```
 
-> **Note:** The string must represent an integer. `BInt("1.5")` raises an error.
-> Scientific notation like `"1.23e5"` is accepted only if the result is an
-> integer.
+> [!NOTE]
+> The string must represent an integer. `BInt("1.5")` raises an error. Scientific notation like `"1.23e5"` is accepted only if the result is an integer.
 
 #### From `Scalar` (any integral SIMD type) <!-- omit from toc -->
 
@@ -192,10 +191,10 @@ Accepts any integral scalar type (`Int8` through `Int256`, `UInt8` through
 These constructors skip validation for performance-sensitive code. The caller
 must ensure the data is valid.
 
-| Constructor                               | Description                               |
-| ----------------------------------------- | ----------------------------------------- |
-| `BInt(uninitialized_capacity=n)`          | Empty words list with reserved capacity   |
-| `BInt(raw_words=Magnitude, sign=Bool)`    | From raw words, no leading-zero stripping |
+| Constructor                            | Description                               |
+| -------------------------------------- | ----------------------------------------- |
+| `BInt(uninitialized_capacity=n)`       | Empty words list with reserved capacity   |
+| `BInt(raw_words=Magnitude, sign=Bool)` | From raw words, no leading-zero stripping |
 
 `Magnitude` is `BInt`'s word storage, exported from `decimo`. Its words are
 `UInt64` and its base is 2^64; before v0.14.0 this was a `List[UInt32]` in
@@ -424,11 +423,11 @@ print(mod_inverse(BInt(3), BInt(7)))      # 5
 
 #### Numeric conversions <!-- omit from toc -->
 
-| Method            | Description                                       |
-| ----------------- | ------------------------------------------------- |
-| `Int(x)`          | Convert to `Int` (raises if exceeds 64-bit range) |
-| `Float64(x)`      | Convert to `Float64` (may lose precision)         |
-| `x.to_biguint()`  | Convert the magnitude to `BigUInt` (base-10^18)   |
+| Method           | Description                                       |
+| ---------------- | ------------------------------------------------- |
+| `Int(x)`         | Convert to `Int` (raises if exceeds 64-bit range) |
+| `Float64(x)`     | Convert to `Float64` (may lose precision)         |
+| `x.to_biguint()` | Convert the magnitude to `BigUInt` (base-10^18)   |
 
 ```mojo
 var x = BInt("123456789012345678901234567890")
@@ -536,7 +535,8 @@ print(x.sqrt(precision=100))   # 100 significant digits
 print(x.sqrt(precision=1000))  # 1000 significant digits
 ```
 
-> **Note:** The default precision of 28 will be configurable globally in a
+> [!NOTE]
+> The default precision of 28 will be configurable globally in a
 > future version when Mojo supports global variables.
 
 ### Construction — Decimal
@@ -1337,17 +1337,17 @@ right type for scientific work: a square root, an exponential or a sine has
 no exact decimal answer, so the question is not whether it rounds but whether
 it rounds correctly. Every function here does.
 
-| Property        | Value                                                |
-| --------------- | ---------------------------------------------------- |
-| Name            | `BigFloat`                                           |
-| Alias           | `BFlt`                                               |
-| Value           | `(-1)^sign * significand * 2^exponent`               |
-| Significand     | A `BigInt`, exactly `precision` bits when non-zero   |
-| Exponent        | An `Int`, so from `Int.MIN` to `Int.MAX`             |
-| Precision       | A field on the value, in bits, chosen per call       |
-| Special values  | `NaN`, `+Infinity`, `-Infinity`, `+0` and `-0`       |
-| Rounding        | All seven of decimo's modes, correctly               |
-| Dependencies    | None                                                 |
+| Property       | Value                                              |
+| -------------- | -------------------------------------------------- |
+| Name           | `BigFloat`                                         |
+| Alias          | `BFlt`                                             |
+| Value          | `(-1)^sign * significand * 2^exponent`             |
+| Significand    | A `BigInt`, exactly `precision` bits when non-zero |
+| Exponent       | An `Int`, so from `Int.MIN` to `Int.MAX`           |
+| Precision      | A field on the value, in bits, chosen per call     |
+| Special values | `NaN`, `+Infinity`, `-Infinity`, `+0` and `-0`     |
+| Rounding       | All seven of decimo's modes, correctly             |
+| Dependencies   | None                                               |
 
 The precision is a field on the value rather than a global context. Two values
 of different precisions can be added, and the destination's precision is an
@@ -1417,21 +1417,21 @@ tried again. This is Ziv's method, and it is why the last bit can be trusted.
 
 | Function                                | Where                           |
 | --------------------------------------- | ------------------------------- |
-| `add`, `subtract`, `multiply`, `divide`  | `decimo.bigfloat.arithmetics`   |
-| `sqrt`, `exp`, `ln`                      | `decimo.bigfloat.exponential`   |
-| `root`, `cbrt`                           | `decimo.bigfloat.exponential`   |
-| `hypot`                                  | `decimo.bigfloat.exponential`   |
-| `exp2`, `exp10`, `log2`, `log10`, `log`  | `decimo.bigfloat.exponential`   |
-| `expm1`, `log1p`                         | `decimo.bigfloat.exponential`   |
-| `power`                                  | `decimo.bigfloat.power`         |
-| `sin`, `cos`, `tan`                      | `decimo.bigfloat.trigonometric` |
-| `cot`, `csc`, `sec`                      | `decimo.bigfloat.trigonometric` |
-| `arcsin`, `arccos`, `arctan`             | `decimo.bigfloat.trigonometric` |
-| `arctan2`                                | `decimo.bigfloat.trigonometric` |
-| `sinh`, `cosh`, `tanh`                   | `decimo.bigfloat.hyperbolic`    |
-| `arcsinh`, `arccosh`, `arctanh`          | `decimo.bigfloat.hyperbolic`    |
-| `pi`, `ln2`, `ln10`, `e`                 | `decimo.bigfloat.constants`     |
-| `fma`, `remainder`, `fmod`               | `decimo.bigfloat.ieee`          |
+| `add`, `subtract`, `multiply`, `divide` | `decimo.bigfloat.arithmetics`   |
+| `sqrt`, `exp`, `ln`                     | `decimo.bigfloat.exponential`   |
+| `root`, `cbrt`                          | `decimo.bigfloat.exponential`   |
+| `hypot`                                 | `decimo.bigfloat.exponential`   |
+| `exp2`, `exp10`, `log2`, `log10`, `log` | `decimo.bigfloat.exponential`   |
+| `expm1`, `log1p`                        | `decimo.bigfloat.exponential`   |
+| `power`                                 | `decimo.bigfloat.power`         |
+| `sin`, `cos`, `tan`                     | `decimo.bigfloat.trigonometric` |
+| `cot`, `csc`, `sec`                     | `decimo.bigfloat.trigonometric` |
+| `arcsin`, `arccos`, `arctan`            | `decimo.bigfloat.trigonometric` |
+| `arctan2`                               | `decimo.bigfloat.trigonometric` |
+| `sinh`, `cosh`, `tanh`                  | `decimo.bigfloat.hyperbolic`    |
+| `arcsinh`, `arccosh`, `arctanh`         | `decimo.bigfloat.hyperbolic`    |
+| `pi`, `ln2`, `ln10`, `e`                | `decimo.bigfloat.constants`     |
+| `fma`, `remainder`, `fmod`              | `decimo.bigfloat.ieee`          |
 
 ```mojo
 from decimo.bigfloat.constants import pi
@@ -1451,15 +1451,18 @@ hundred bits of pi before the first bit of its answer is right. An argument
 whose leading bit sits beyond what a precision may be is refused rather than
 answered badly.
 
-Each function also has a method, which asks for this value's own precision and
-the default rounding; the free function is where the precision and the mode
-live:
+Each function except the constants and the four arithmetic ones is also a method. `fma`, `remainder` and `fmod` always take a precision, as they do as functions. The rest come in two forms. Without a precision it keeps this value's own precision and rounds half to even. With a precision, and optionally a rounding mode, it behaves like the free function asked for those:
 
 ```mojo
+var x = BigFloat.from_int(2, 53)
+print(x.sin())                         # 53 bits, half to even
+print(x.sin(200))                      # 200 bits, half to even
+print(x.sin(200, RoundingMode.ROUND_UP))
 print(BigFloat.from_int(8, 53).log2())        # 3
-print(BigFloat.from_int(10, 53).log10())      # 1
 print(BigFloat.from_int(27, 53).log(BigFloat.from_int(3, 53)))  # 3
 ```
+
+A method of two values, such as `log`, `power`, `hypot` or `arctan2`, keeps the wider of the two precisions in its first form.
 
 ### The Other Bases, and the Exact Answers — BigFloat
 
@@ -1670,22 +1673,22 @@ small operations that numerical code reaches for constantly. They are in
 `decimo.bigfloat.ieee`, which is where they are imported from, and each one is
 also a method on the value:
 
-| Function                            | What it gives                           |
-| ----------------------------------- | --------------------------------------- |
-| `next_plus(x, p)`                   | The smallest value above `x` at `p` bits |
-| `next_minus(x, p)`                  | The largest value below it              |
-| `next_toward(x, y, p)`              | One step from `x` in the direction of `y` |
-| `logb(x)`                           | `floor(log2(abs(x)))`, as a `BigInt`    |
-| `scaleb(x, n)`                      | `x * 2^n`, exactly                      |
-| `copy_sign(x, y)`                   | `x` with the sign of `y`                |
-| `copy_abs(x)`, `copy_negate(x)`     | The sign dropped, the sign flipped      |
-| `number_class(x)`                   | `+Normal`, `-Zero`, `NaN`, and so on    |
-| `is_integer(x)`                     | Whether `x` is a whole number           |
+| Function                             | What it gives                               |
+| ------------------------------------ | ------------------------------------------- |
+| `next_plus(x, p)`                    | The smallest value above `x` at `p` bits    |
+| `next_minus(x, p)`                   | The largest value below it                  |
+| `next_toward(x, y, p)`               | One step from `x` in the direction of `y`   |
+| `logb(x)`                            | `floor(log2(abs(x)))`, as a `BigInt`        |
+| `scaleb(x, n)`                       | `x * 2^n`, exactly                          |
+| `copy_sign(x, y)`                    | `x` with the sign of `y`                    |
+| `copy_abs(x)`, `copy_negate(x)`      | The sign dropped, the sign flipped          |
+| `number_class(x)`                    | `+Normal`, `-Zero`, `NaN`, and so on        |
+| `is_integer(x)`                      | Whether `x` is a whole number               |
 | `truncate(x)`, `floor(x)`, `ceil(x)` | The three named roundings to a whole number |
-| `round_to_integer(x, mode)`         | The same in any of the seven modes      |
-| `fma(x, y, z, p, mode)`             | `x * y + z` with a single rounding      |
-| `remainder(x, y, p)`                | `x - y*n`, `n` the nearest integer      |
-| `fmod(x, y, p)`                     | `x - y*n`, `n` the quotient truncated   |
+| `round_to_integer(x, mode)`          | The same in any of the seven modes          |
+| `fma(x, y, z, p, mode)`              | `x * y + z` with a single rounding          |
+| `remainder(x, y, p)`                 | `x - y*n`, `n` the nearest integer          |
+| `fmod(x, y, p)`                      | `x - y*n`, `n` the quotient truncated       |
 
 ```mojo
 from decimo import BigFloat
@@ -1950,15 +1953,9 @@ from decimo.expression import tokenize, parse_to_rpn, evaluate_rpn
 
 ### Appendix B — Traits Implemented
 
-All of these come from the Mojo standard library except **`Numeric`**,
-**`Parsable`** and **`Rootable`**, which Decimo defines in `decimo.traits`.
-`BigInt`, `BigDecimal` and `Decimal128` conform to all three. Mojo checks
-conformance nominally, which is why the traits live in Decimo rather than in
-the consumer.
+All of these come from the Mojo standard library except **`Numeric`**, **`Parsable`** and **`Rootable`**, which Decimo defines in `decimo.traits`. `BigInt`, `BigDecimal`, `BigFloat` and `Decimal128` conform to all three, and `Rational` to `Numeric` and `Parsable`. Mojo checks conformance nominally, which is why the traits live in Decimo rather than in the consumer.
 
-`Numeric` gathers `zero()`, `one()`, `-x`, `+`, `-`, `*` and `/`, so a generic
-routine — a matrix or polynomial library, say — can be written once against
-`T: Numeric` and run over any of the three.
+`Numeric` gathers `zero()`, `one()`, `-x`, `+`, `-`, `*` and `/`, so a generic routine — a matrix or polynomial library, say — can be written once against `T: Numeric` and run over any of them.
 
 `Parsable` requires the static `from_string(value)`, so the same generic
 routine can also fill itself from text. The two are separate because the
@@ -1966,19 +1963,7 @@ capabilities are: the MPFR-backed `MPF`, which is in the source but outside
 the public interface, parses but is `Movable` without being `Copyable`, so it
 can never be `Numeric`. Ask for `T: Numeric & Parsable` to get both.
 
-`Rootable` requires `sqrt()`, the one operation a Cholesky or QR factorisation
-needs beyond arithmetic. It is separate for the same reason, and here the
-evidence is sharper: `BigUInt` has a square root but is unsigned, so it has no
-`__neg__` and can never be `Numeric` either. Its supertraits are `Deinitable`
-and `Movable` and no more — `Copyable` is pointedly absent, so that `MPF`
-can conform.
-`BigFloat`, `MPF` and `BigUInt` therefore conform to `Rootable` as well, six
-types in all. Ask for `T: Numeric & Rootable` in a routine that needs both. What the
-root means stays the implementing type's business: on an integral type it
-truncates, so `BigInt("10").sqrt()` is `3`, exactly as `/` truncates there. So
-does what a negative value does — the four exact types raise, while
-`BigFloat` and `MPF` return a NaN, as they do for every other function
-outside their domain.
+`Rootable` requires `sqrt()`, the one operation a Cholesky or QR factorisation needs beyond arithmetic. It is separate for the same reason, and here the evidence is sharper: `BigUInt` has a square root but is unsigned, so it has no `__neg__` and can never be `Numeric` either. Its supertraits are `Deinitable` and `Movable` and no more — `Copyable` is pointedly absent, so that `MPF` can conform. `MPF` and `BigUInt` therefore conform to `Rootable` as well, six types in all. Ask for `T: Numeric & Rootable` in a routine that needs both. What the root means stays the implementing type's business: on an integral type it truncates, so `BigInt("10").sqrt()` is `3`, exactly as `/` truncates there. So does what a negative value does — the four exact types raise, while `BigFloat` and `MPF` return a NaN, as they do for every other function outside their domain.
 
 `Hashable` gives `hash(x)`, and with it a key in a `Dict`. `BigUInt`,
 `BigInt`, `BigDecimal`, `BigFloat`, `Rational` and `Decimal128` all conform.
@@ -2033,33 +2018,34 @@ print its argument asks for `Writable`.
 
 #### Decimal128 <!-- omit from toc -->
 
-| Trait                      | What it enables                       |
-| -------------------------- | ------------------------------------- |
-| `Absable`                  | `abs(x)`                              |
-| `Boolable`                 | `Bool(x)`, `if x`                     |
-| `Comparable`               | `<`, `<=`, `>`, `>=`, `==`, `!=`      |
-| `Floatable`                | `Float64(x)`, which cannot overflow   |
-| `Hashable`                 | `hash(x)`, a key in a dictionary      |
-| `IntableRaising`           | `Int(x)`                              |
-| `Numeric`                  | Generic code over Decimo numbers      |
-| `Parsable`                 | `T.from_string(text)` in generic code |
-| `Rootable`                 | `x.sqrt()` in generic code            |
-| `Roundable`                | `round(x)`, `round(x, ndigits)`       |
-| `TrivialRegisterPassable`  | Passed in registers, copied bitwise   |
-| `Writable`                 | `print(x)`, `String(x)`               |
+| Trait                     | What it enables                       |
+| ------------------------- | ------------------------------------- |
+| `Absable`                 | `abs(x)`                              |
+| `Boolable`                | `Bool(x)`, `if x`                     |
+| `Comparable`              | `<`, `<=`, `>`, `>=`, `==`, `!=`      |
+| `Floatable`               | `Float64(x)`, which cannot overflow   |
+| `Hashable`                | `hash(x)`, a key in a dictionary      |
+| `IntableRaising`          | `Int(x)`                              |
+| `Numeric`                 | Generic code over Decimo numbers      |
+| `Parsable`                | `T.from_string(text)` in generic code |
+| `Rootable`                | `x.sqrt()` in generic code            |
+| `Roundable`               | `round(x)`, `round(x, ndigits)`       |
+| `TrivialRegisterPassable` | Passed in registers, copied bitwise   |
+| `Writable`                | `print(x)`, `String(x)`               |
 
 #### BigFloat <!-- omit from toc -->
 
-| Trait              | What it enables                       |
-| ------------------ | ------------------------------------- |
-| `Absable`          | `abs(x)`                              |
-| `Comparable`       | `<`, `<=`, `>`, `>=`, `==`, `!=`      |
-| `Copyable`         | Value-semantic copy                   |
-| `Hashable`         | `hash(x)`, a key in a dictionary      |
-| `Movable`          | Move semantics                        |
-| `Parsable`         | `T.from_string(text)` in generic code |
-| `Rootable`         | `x.sqrt()` in generic code            |
-| `Writable`         | `print(x)`, `String(x)`               |
+| Trait        | What it enables                       |
+| ------------ | ------------------------------------- |
+| `Absable`    | `abs(x)`                              |
+| `Comparable` | `<`, `<=`, `>`, `>=`, `==`, `!=`      |
+| `Copyable`   | Value-semantic copy                   |
+| `Hashable`   | `hash(x)`, a key in a dictionary      |
+| `Movable`    | Move semantics                        |
+| `Numeric`    | Generic code over Decimo numbers      |
+| `Parsable`   | `T.from_string(text)` in generic code |
+| `Rootable`   | `x.sqrt()` in generic code            |
+| `Writable`   | `print(x)`, `String(x)`               |
 
 `Parsable` asks for a `from_string(text)` of one argument, and a binary float
 has to be told how many bits to keep, so there are two: the one the trait
@@ -2073,9 +2059,7 @@ NaN is unordered, so `<`, `<=`, `>`, `>=` and `==` are all False for it and
 `!=` is True, which breaks the law that exactly one of less, equal and
 greater holds. `compare_total()` is there for code that needs a total order.
 
-`Numeric` is absent for now: it asks for operators that round, and this
-type's operators have to be told a precision to round to. The free functions
-in `decimo.bigfloat.arithmetics` take one.
+`Numeric` asks for `zero()` and `one()` without arguments, so those two give values of fifty-three bits; `zero(precision, sign)` and `one(precision)` give any other. The operators keep the wider of the two precisions and round half to even, so generic code works at the precision of the values it is handed.
 
 ### Appendix C — Complete API Tables
 
@@ -2084,26 +2068,26 @@ in `decimo.bigfloat.arithmetics` take one.
 Every one of these takes a precision in bits and a rounding mode, and returns
 the float of that precision nearest the true value.
 
-| Function                          | Module                          |
-| --------------------------------- | ------------------------------- |
-| `add`, `subtract`                 | `decimo.bigfloat.arithmetics`   |
-| `multiply`, `divide`              | `decimo.bigfloat.arithmetics`   |
-| `sqrt`                            | `decimo.bigfloat.exponential`   |
-| `root`, `cbrt`                    | `decimo.bigfloat.exponential`   |
-| `hypot`                           | `decimo.bigfloat.exponential`   |
-| `exp`, `ln`                       | `decimo.bigfloat.exponential`   |
-| `exp2`, `exp10`                   | `decimo.bigfloat.exponential`   |
-| `log2`, `log10`, `log`            | `decimo.bigfloat.exponential`   |
-| `expm1`, `log1p`                  | `decimo.bigfloat.exponential`   |
-| `power`                           | `decimo.bigfloat.power`         |
-| `sin`, `cos`, `tan`               | `decimo.bigfloat.trigonometric` |
-| `cot`, `csc`, `sec`               | `decimo.bigfloat.trigonometric` |
-| `arcsin`, `arccos`, `arctan`      | `decimo.bigfloat.trigonometric` |
-| `arctan2`                         | `decimo.bigfloat.trigonometric` |
-| `sinh`, `cosh`, `tanh`            | `decimo.bigfloat.hyperbolic`    |
-| `arcsinh`, `arccosh`, `arctanh`   | `decimo.bigfloat.hyperbolic`    |
-| `pi`, `ln2`, `ln10`, `e`          | `decimo.bigfloat.constants`     |
-| `fma`, `remainder`, `fmod`        | `decimo.bigfloat.ieee`          |
+| Function                        | Module                          |
+| ------------------------------- | ------------------------------- |
+| `add`, `subtract`               | `decimo.bigfloat.arithmetics`   |
+| `multiply`, `divide`            | `decimo.bigfloat.arithmetics`   |
+| `sqrt`                          | `decimo.bigfloat.exponential`   |
+| `root`, `cbrt`                  | `decimo.bigfloat.exponential`   |
+| `hypot`                         | `decimo.bigfloat.exponential`   |
+| `exp`, `ln`                     | `decimo.bigfloat.exponential`   |
+| `exp2`, `exp10`                 | `decimo.bigfloat.exponential`   |
+| `log2`, `log10`, `log`          | `decimo.bigfloat.exponential`   |
+| `expm1`, `log1p`                | `decimo.bigfloat.exponential`   |
+| `power`                         | `decimo.bigfloat.power`         |
+| `sin`, `cos`, `tan`             | `decimo.bigfloat.trigonometric` |
+| `cot`, `csc`, `sec`             | `decimo.bigfloat.trigonometric` |
+| `arcsin`, `arccos`, `arctan`    | `decimo.bigfloat.trigonometric` |
+| `arctan2`                       | `decimo.bigfloat.trigonometric` |
+| `sinh`, `cosh`, `tanh`          | `decimo.bigfloat.hyperbolic`    |
+| `arcsinh`, `arccosh`, `arctanh` | `decimo.bigfloat.hyperbolic`    |
+| `pi`, `ln2`, `ln10`, `e`        | `decimo.bigfloat.constants`     |
+| `fma`, `remainder`, `fmod`      | `decimo.bigfloat.ieee`          |
 
 `log` takes the base as its second argument, before the precision. Every other
 one takes the argument, the precision and the mode.
@@ -2117,41 +2101,48 @@ These take no rounding mode, or no precision, because their answers are exact
 or carry the argument's own precision. All of them are in
 `decimo.bigfloat.ieee`, and all of them are methods as well.
 
-| Function                             | Description                             |
-| ------------------------------------ | --------------------------------------- |
-| `next_plus`, `next_minus`            | The neighbour at a given precision      |
-| `next_toward`                        | The neighbour in another value's direction |
-| `logb`                               | The leading bit's position, as a `BigInt` |
-| `scaleb`                             | Times a power of two, exactly           |
-| `copy_sign`, `copy_abs`, `copy_negate` | The sign, never raising                |
-| `number_class`                       | The specification's name for the value   |
-| `is_integer`                         | Whether there is a fractional part      |
-| `truncate`, `floor`, `ceil`          | The three named roundings to a whole number |
-| `round_to_integer`                   | The same in any of the seven modes      |
+| Function                               | Description                                 |
+| -------------------------------------- | ------------------------------------------- |
+| `next_plus`, `next_minus`              | The neighbour at a given precision          |
+| `next_toward`                          | The neighbour in another value's direction  |
+| `logb`                                 | The leading bit's position, as a `BigInt`   |
+| `scaleb`                               | Times a power of two, exactly               |
+| `copy_sign`, `copy_abs`, `copy_negate` | The sign, never raising                     |
+| `number_class`                         | The specification's name for the value      |
+| `is_integer`                           | Whether there is a fractional part          |
+| `truncate`, `floor`, `ceil`            | The three named roundings to a whole number |
+| `round_to_integer`                     | The same in any of the seven modes          |
 
-| Operator / Method              | Description                              |
-| ------------------------------ | ---------------------------------------- |
-| `a + b`, `a - b`               | At the wider precision, half to even     |
-| `a * b`, `a / b`               | The same                                 |
-| `-a`, `abs(a)`                 | Exact                                    |
-| `a == b`, `a < b`, and the rest | False for a NaN, both zeros equal       |
-| `a.sqrt()`                     | At `a`'s own precision, half to even     |
-| `a.fma(b, c, p)`               | `a * b + c`, the product formed exactly  |
-| `a.remainder(b, p)`, `a.fmod(b, p)` | The two remainders                  |
-| `a.next_plus(p)`, `a.next_minus(p)` | The neighbours                      |
-| `a.logb()`, `a.scaleb(n)`      | The exponent, read and written           |
-| `a.truncate()`, `a.floor()`, `a.ceil()` | Rounded to a whole number       |
-| `a.round_to_integer(mode)`     | The same in any mode                     |
-| `a.number_class()`, `a.is_integer()` | What kind of value it is           |
-| `a.exp()`, `a.ln()`            | The same                                 |
-| `a.exp2()`, `a.exp10()`        | The same; a whole exponent is exact      |
-| `a.log2()`, `a.log10()`        | The same; a whole power of the base is exact |
-| `a.log(base)`                  | At the wider precision, half to even     |
-| `a.expm1()`, `a.log1p()`       | The same; these keep a small argument    |
-| `a.to_bigdecimal()`            | The exact decimal expansion              |
-| `a.to_bigdecimal_rounded(n)`   | `n` significant digits                   |
-| `a.to_float64()`               | The nearest double                       |
-| `a.internal_representation()`  | The significand, exponent and precision  |
+| Operator / Method                           | Description                                  |
+| ------------------------------------------- | -------------------------------------------- |
+| `a + b`, `a - b`                            | At the wider precision, half to even         |
+| `a * b`, `a / b`                            | The same                                     |
+| `-a`, `abs(a)`                              | Exact                                        |
+| `a == b`, `a < b`, and the rest             | False for a NaN, both zeros equal            |
+| `a.sqrt()`                                  | At `a`'s own precision, half to even         |
+| `a.fma(b, c, p)`                            | `a * b + c`, the product formed exactly      |
+| `a.remainder(b, p)`, `a.fmod(b, p)`         | The two remainders                           |
+| `a.next_plus(p)`, `a.next_minus(p)`         | The neighbours                               |
+| `a.logb()`, `a.scaleb(n)`                   | The exponent, read and written               |
+| `a.truncate()`, `a.floor()`, `a.ceil()`     | Rounded to a whole number                    |
+| `a.round_to_integer(mode)`                  | The same in any mode                         |
+| `a.number_class()`, `a.is_integer()`        | What kind of value it is                     |
+| `a.exp()`, `a.ln()`                         | The same                                     |
+| `a.exp2()`, `a.exp10()`                     | The same; a whole exponent is exact          |
+| `a.log2()`, `a.log10()`                     | The same; a whole power of the base is exact |
+| `a.log(base)`                               | At the wider precision, half to even         |
+| `a.expm1()`, `a.log1p()`                    | The same; these keep a small argument        |
+| `a.sin()`, `a.cos()`, `a.tan()`             | At `a`'s own precision, half to even         |
+| `a.cot()`, `a.csc()`, `a.sec()`             | The same                                     |
+| `a.arcsin()`, `a.arccos()`, `a.arctan()`    | The same                                     |
+| `a.sinh()`, `a.cosh()`, `a.tanh()`          | The same                                     |
+| `a.arcsinh()`, `a.arccosh()`, `a.arctanh()` | The same                                     |
+| `a.exp(p)`, `a.exp(p, mode)`                | `sqrt`, and `exp` to `arctanh`, at `p` bits  |
+| `BigFloat.zero()`, `BigFloat.one()`         | At fifty-three bits                          |
+| `a.to_bigdecimal()`                         | The exact decimal expansion                  |
+| `a.to_bigdecimal_rounded(n)`                | `n` significant digits                       |
+| `a.to_float64()`                            | The nearest double                           |
+| `a.internal_representation()`               | The significand, exponent and precision      |
 
 #### BigInt — All Operators <!-- omit from toc -->
 

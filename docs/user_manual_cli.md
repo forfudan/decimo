@@ -133,8 +133,8 @@ for details.
 | `**`     | Power (alias)  | `2 ** 10`     | `1024`      |
 | `(`, `)` | Grouping       | `(2 + 3) * 4` | `20`        |
 
-> **Note:** Division always produces a decimal result. `7 / 2` gives `3.5`, not
-> `3`.
+> [!NOTE]
+> Division always produces a decimal result. `7 / 2` gives `3.5`, not `3`.
 
 ### Operator Precedence
 

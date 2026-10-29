@@ -4,9 +4,9 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 
 ## 20261024 (v0.16.0)
 
-Decimo v0.16.0 makes `BigFloat` pure Mojo. `BigFloat` was a wrapper over the GNU MPFR library, but it is now a type of decimo's own, with no dependency to install.
+Decimo v0.16.0 makes `BigFloat` pure Mojo. `BigFloat` was a wrapper over the GNU MPFR library, but it is now a type of decimo's own, with no dependency to install. `BigDecimal`'s transcendental functions are now worked out with that float underneath and converted back, rather than in decimal digits.
 
-Decimo v0.16.0 requires **Mojo v1.2.0**. `BigDecimal`'s transcendental functions are now worked out with that float underneath and converted back, rather than in decimal digits.
+Decimo v0.16.0 requires **Mojo v1.2.0**.
 
 ### ⭐️ New in v0.16.0
 
@@ -79,7 +79,7 @@ of names that v1.0.0 had deprecated, and gives `WordList` the bounds checks.
    Mojo v1.1.0, `root(3)` included. Its guard read `n > Int(UInt32.MAX)`, and
    v1.1 folds that constant to -1
    ([modular/modular#7154](https://github.com/modular/modular/issues/7154)), so
-   the guard refused everything. The bound is thus written as a literal now 
+   the guard refused everything. The bound is thus written as a literal now
    (PR #318).
 1. The CLI build never took argmojo from the environment: its probe program
    used `fn main()`, which v1.1 rejects, so it failed even where the package

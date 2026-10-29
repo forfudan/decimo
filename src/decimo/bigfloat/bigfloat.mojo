@@ -48,6 +48,7 @@ from decimo.bigfloat.conversion import (
     to_rounded_bigdecimal,
 )
 import decimo.bigfloat.exponential as bigfloat_exponential
+import decimo.bigfloat.hyperbolic as bigfloat_hyperbolic
 import decimo.bigfloat.ieee as bigfloat_ieee
 import decimo.bigfloat.power as bigfloat_power
 from decimo.bigfloat.rounding import (
@@ -59,7 +60,7 @@ from decimo.bigint.bigint import BigInt
 from decimo.bigint.bitwise import test_bit, trailing_zeros
 from decimo.errors import ValueError
 from decimo.rounding_mode import RoundingMode
-from decimo.traits import Parsable, Rootable
+from decimo.traits import Numeric, Parsable, Rootable
 
 comptime PRECISION: Int = 53
 """Bits a `BigFloat` keeps when no precision is given.
@@ -80,6 +81,7 @@ struct BigFloat(
     Copyable,
     Hashable,
     Movable,
+    Numeric,
     Parsable,
     Rootable,
     Writable,
@@ -204,8 +206,18 @@ struct BigFloat(
     # ===------------------------------------------------------------------=== #
 
     @staticmethod
-    def zero(precision: Int = PRECISION, sign: Bool = False) raises -> Self:
-        """A signed zero.
+    def zero() -> Self:
+        """Constructs a positive zero at the default precision.
+
+        Returns:
+            The zero. This is the form `Numeric` asks for, which cannot
+            raise; `zero(precision, sign)` is the one that chooses.
+        """
+        return Self()
+
+    @staticmethod
+    def zero(precision: Int, sign: Bool = False) raises -> Self:
+        """Constructs a signed zero.
 
         Args:
             precision: The number of bits the value carries.
@@ -225,8 +237,36 @@ struct BigFloat(
         )
 
     @staticmethod
+    def one() -> Self:
+        """Constructs one at the default precision.
+
+        Returns:
+            The one. This is the form `Numeric` asks for, which cannot raise;
+            `one(precision)` is the one that chooses.
+        """
+        var result = Self()
+        result.significand = BigInt(UInt64(1) << UInt64(PRECISION - 1))
+        result.exponent = 1 - PRECISION
+        return result^
+
+    @staticmethod
+    def one(precision: Int) raises -> Self:
+        """Constructs one at a given precision.
+
+        Args:
+            precision: The number of bits the value carries.
+
+        Returns:
+            The one.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+        """
+        return Self.from_int(1, precision)
+
+    @staticmethod
     def infinity(precision: Int = PRECISION, sign: Bool = False) raises -> Self:
-        """A signed infinity.
+        """Constructs a signed infinity.
 
         Args:
             precision: The number of bits the value carries.
@@ -248,7 +288,7 @@ struct BigFloat(
 
     @staticmethod
     def nan(precision: Int = PRECISION) raises -> Self:
-        """The NaN.
+        """Constructs the NaN.
 
         There is one, not two: no signalling NaN, which decimo has no signals
         to raise.
@@ -735,6 +775,26 @@ struct BigFloat(
         """
         return bigfloat_exponential.sqrt(self, self.precision)
 
+    def sqrt(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the square root, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `exponential.sqrt()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.sqrt(self, precision, rounding_mode)
+
     def root(self, degree: Int) raises -> Self:
         """The `degree`-th root, correctly rounded.
 
@@ -753,8 +813,30 @@ struct BigFloat(
         """
         return bigfloat_exponential.root(self, degree, self.precision)
 
+    def root(
+        self,
+        degree: Int,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """The `degree`-th root, correctly rounded.
+
+        Args:
+            degree: Which root to take. Must be positive.
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `exponential.root()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `degree` or `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.root(self, degree, precision, rounding_mode)
+
     def cbrt(self) raises -> Self:
-        """The cube root, correctly rounded.
+        """Returns the cube root, correctly rounded.
 
         Returns:
             The root at this value's own precision, rounded half to even. A
@@ -766,8 +848,28 @@ struct BigFloat(
         """
         return bigfloat_exponential.cbrt(self, self.precision)
 
+    def cbrt(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the cube root, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `exponential.cbrt()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.cbrt(self, precision, rounding_mode)
+
     def hypot(self, other: Self) raises -> Self:
-        """The hypotenuse of this value and another, correctly rounded.
+        """Returns the hypotenuse of this value and another, correctly rounded.
 
         Args:
             other: The other leg.
@@ -787,8 +889,30 @@ struct BigFloat(
             > other.precision else (other.precision),
         )
 
+    def hypot(
+        self,
+        other: Self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the hypotenuse of this value and another, correctly rounded.
+
+        Args:
+            other: The other leg.
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `exponential.hypot()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.hypot(self, other, precision, rounding_mode)
+
     def arctan2(self, other: Self) raises -> Self:
-        """The angle of the point whose coordinates are `other` and `self`.
+        """Returns the angle of the point whose coordinates are `other` and `self`.
 
         Args:
             other: The first coordinate, the one along the axis.
@@ -808,18 +932,510 @@ struct BigFloat(
             > other.precision else (other.precision),
         )
 
+    def arctan2(
+        self,
+        other: Self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the angle of the point whose coordinates are `other` and `self`.
+
+        Args:
+            other: The first coordinate, the one along the axis.
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `trigonometric.arctan2()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_trigonometric.arctan2(
+            self, other, precision, rounding_mode
+        )
+
+    # ===------------------------------------------------------------------=== #
+    # The circular and the hyperbolic functions
+    # ===------------------------------------------------------------------=== #
+
+    def sin(self) raises -> Self:
+        """Returns the sine of this value, in radians, correctly rounded.
+
+        Returns:
+            The value at this value's own precision, rounded half to even.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_trigonometric.sin(self, self.precision)
+
+    def sin(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the sine of this value, in radians, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `trigonometric.sin()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_trigonometric.sin(self, precision, rounding_mode)
+
+    def cos(self) raises -> Self:
+        """Returns the cosine of this value, in radians, correctly rounded.
+
+        Returns:
+            The value at this value's own precision, rounded half to even.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_trigonometric.cos(self, self.precision)
+
+    def cos(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the cosine of this value, in radians, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `trigonometric.cos()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_trigonometric.cos(self, precision, rounding_mode)
+
+    def tan(self) raises -> Self:
+        """Returns the tangent of this value, in radians, correctly rounded.
+
+        Returns:
+            The value at this value's own precision, rounded half to even.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_trigonometric.tan(self, self.precision)
+
+    def tan(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the tangent of this value, in radians, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `trigonometric.tan()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_trigonometric.tan(self, precision, rounding_mode)
+
+    def cot(self) raises -> Self:
+        """Returns the cotangent of this value, in radians, correctly rounded.
+
+        Returns:
+            The value at this value's own precision, rounded half to even.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_trigonometric.cot(self, self.precision)
+
+    def cot(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the cotangent of this value, in radians, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `trigonometric.cot()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_trigonometric.cot(self, precision, rounding_mode)
+
+    def csc(self) raises -> Self:
+        """Returns the cosecant of this value, in radians, correctly rounded.
+
+        Returns:
+            The value at this value's own precision, rounded half to even.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_trigonometric.csc(self, self.precision)
+
+    def csc(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the cosecant of this value, in radians, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `trigonometric.csc()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_trigonometric.csc(self, precision, rounding_mode)
+
+    def sec(self) raises -> Self:
+        """Returns the secant of this value, in radians, correctly rounded.
+
+        Returns:
+            The value at this value's own precision, rounded half to even.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_trigonometric.sec(self, self.precision)
+
+    def sec(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the secant of this value, in radians, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `trigonometric.sec()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_trigonometric.sec(self, precision, rounding_mode)
+
+    def arcsin(self) raises -> Self:
+        """Returns the inverse sine of this value, correctly rounded.
+
+        Returns:
+            The value at this value's own precision, rounded half to even.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_trigonometric.arcsin(self, self.precision)
+
+    def arcsin(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the inverse sine of this value, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `trigonometric.arcsin()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_trigonometric.arcsin(self, precision, rounding_mode)
+
+    def arccos(self) raises -> Self:
+        """Returns the inverse cosine of this value, correctly rounded.
+
+        Returns:
+            The value at this value's own precision, rounded half to even.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_trigonometric.arccos(self, self.precision)
+
+    def arccos(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the inverse cosine of this value, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `trigonometric.arccos()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_trigonometric.arccos(self, precision, rounding_mode)
+
+    def arctan(self) raises -> Self:
+        """Returns the inverse tangent of this value, correctly rounded.
+
+        Returns:
+            The value at this value's own precision, rounded half to even.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_trigonometric.arctan(self, self.precision)
+
+    def arctan(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the inverse tangent of this value, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `trigonometric.arctan()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_trigonometric.arctan(self, precision, rounding_mode)
+
+    def sinh(self) raises -> Self:
+        """Returns the hyperbolic sine of this value, correctly rounded.
+
+        Returns:
+            The value at this value's own precision, rounded half to even.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_hyperbolic.sinh(self, self.precision)
+
+    def sinh(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the hyperbolic sine of this value, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `hyperbolic.sinh()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_hyperbolic.sinh(self, precision, rounding_mode)
+
+    def cosh(self) raises -> Self:
+        """Returns the hyperbolic cosine of this value, correctly rounded.
+
+        Returns:
+            The value at this value's own precision, rounded half to even.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_hyperbolic.cosh(self, self.precision)
+
+    def cosh(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the hyperbolic cosine of this value, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `hyperbolic.cosh()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_hyperbolic.cosh(self, precision, rounding_mode)
+
+    def tanh(self) raises -> Self:
+        """Returns the hyperbolic tangent of this value, correctly rounded.
+
+        Returns:
+            The value at this value's own precision, rounded half to even.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_hyperbolic.tanh(self, self.precision)
+
+    def tanh(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the hyperbolic tangent of this value, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `hyperbolic.tanh()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_hyperbolic.tanh(self, precision, rounding_mode)
+
+    def arcsinh(self) raises -> Self:
+        """Returns the inverse hyperbolic sine of this value, correctly rounded.
+
+        Returns:
+            The value at this value's own precision, rounded half to even.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_hyperbolic.arcsinh(self, self.precision)
+
+    def arcsinh(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the inverse hyperbolic sine of this value, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `hyperbolic.arcsinh()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_hyperbolic.arcsinh(self, precision, rounding_mode)
+
+    def arccosh(self) raises -> Self:
+        """Returns the inverse hyperbolic cosine of this value, correctly rounded.
+
+        Returns:
+            The value at this value's own precision, rounded half to even.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_hyperbolic.arccosh(self, self.precision)
+
+    def arccosh(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the inverse hyperbolic cosine of this value, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `hyperbolic.arccosh()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_hyperbolic.arccosh(self, precision, rounding_mode)
+
+    def arctanh(self) raises -> Self:
+        """Returns the inverse hyperbolic tangent of this value, correctly rounded.
+
+        Returns:
+            The value at this value's own precision, rounded half to even.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_hyperbolic.arctanh(self, self.precision)
+
+    def arctanh(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the inverse hyperbolic tangent of this value, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `hyperbolic.arctanh()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_hyperbolic.arctanh(self, precision, rounding_mode)
+
     # ===------------------------------------------------------------------=== #
     # The exponentials and the logarithms
     # ===------------------------------------------------------------------=== #
     #
-    # Each of these is the free function in `decimo.bigfloat.exponential` asked
-    # for this value's own precision and for the default rounding. A caller who
-    # wants another precision or another mode calls the free function, which is
-    # where every argument lives; these are here so that the common case reads
-    # as a method, the way `sqrt` does.
+    # Each of these comes in two forms. Without arguments it is the free
+    # function in `decimo.bigfloat.exponential` asked for this value's own
+    # precision and for the default rounding. With a precision, and optionally
+    # a rounding mode, it is the free function asked for those.
 
     def exp(self) raises -> Self:
-        """`e` to the power of this value, correctly rounded.
+        """Returns `e` to the power of this value, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even.
@@ -829,8 +1445,28 @@ struct BigFloat(
         """
         return bigfloat_exponential.exp(self, self.precision)
 
+    def exp(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns `e` to the power of this value, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `exponential.exp()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.exp(self, precision, rounding_mode)
+
     def exp2(self) raises -> Self:
-        """Two to the power of this value, correctly rounded.
+        """Returns two to the power of this value, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even. A
@@ -841,8 +1477,28 @@ struct BigFloat(
         """
         return bigfloat_exponential.exp2(self, self.precision)
 
+    def exp2(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns two to the power of this value, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `exponential.exp2()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.exp2(self, precision, rounding_mode)
+
     def exp10(self) raises -> Self:
-        """Ten to the power of this value, correctly rounded.
+        """Returns ten to the power of this value, correctly rounded.
 
         Returns:
             The value at this value's own precision, rounded half to even. A
@@ -853,8 +1509,28 @@ struct BigFloat(
         """
         return bigfloat_exponential.exp10(self, self.precision)
 
+    def exp10(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns ten to the power of this value, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `exponential.exp10()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.exp10(self, precision, rounding_mode)
+
     def expm1(self) raises -> Self:
-        """`exp(x) - 1`, correctly rounded, without the cancellation.
+        """Returns `exp(x) - 1`, correctly rounded, without the cancellation.
 
         Returns:
             The value at this value's own precision, rounded half to even.
@@ -866,8 +1542,28 @@ struct BigFloat(
         """
         return bigfloat_exponential.expm1(self, self.precision)
 
+    def expm1(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns `exp(x) - 1`, correctly rounded, without the cancellation.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `exponential.expm1()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.expm1(self, precision, rounding_mode)
+
     def ln(self) raises -> Self:
-        """The natural logarithm of this value, correctly rounded.
+        """Returns the natural logarithm of this value, correctly rounded.
 
         Returns:
             The logarithm at this value's own precision, rounded half to even.
@@ -879,8 +1575,28 @@ struct BigFloat(
         """
         return bigfloat_exponential.ln(self, self.precision)
 
+    def ln(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the natural logarithm of this value, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `exponential.ln()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.ln(self, precision, rounding_mode)
+
     def log2(self) raises -> Self:
-        """The base-two logarithm of this value, correctly rounded.
+        """Returns the base-two logarithm of this value, correctly rounded.
 
         Returns:
             The logarithm at this value's own precision, rounded half to even.
@@ -891,8 +1607,28 @@ struct BigFloat(
         """
         return bigfloat_exponential.log2(self, self.precision)
 
+    def log2(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the base-two logarithm of this value, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `exponential.log2()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.log2(self, precision, rounding_mode)
+
     def log10(self) raises -> Self:
-        """The base-ten logarithm of this value, correctly rounded.
+        """Returns the base-ten logarithm of this value, correctly rounded.
 
         Returns:
             The logarithm at this value's own precision, rounded half to even.
@@ -903,8 +1639,28 @@ struct BigFloat(
         """
         return bigfloat_exponential.log10(self, self.precision)
 
+    def log10(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the base-ten logarithm of this value, correctly rounded.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `exponential.log10()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.log10(self, precision, rounding_mode)
+
     def log(self, base: Self) raises -> Self:
-        """The logarithm of this value in an arbitrary base, correctly rounded.
+        """Returns the logarithm of this value in an arbitrary base, correctly rounded.
 
         Args:
             base: The base, which must be finite, positive and not one.
@@ -924,8 +1680,30 @@ struct BigFloat(
             > base.precision else (base.precision),
         )
 
+    def log(
+        self,
+        base: Self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns the logarithm of this value in an arbitrary base, correctly rounded.
+
+        Args:
+            base: The base, which must be finite, positive and not one.
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `exponential.log()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.log(self, base, precision, rounding_mode)
+
     def log1p(self) raises -> Self:
-        """`ln(1 + x)`, correctly rounded, without the cancellation.
+        """Returns `ln(1 + x)`, correctly rounded, without the cancellation.
 
         Returns:
             The logarithm at this value's own precision, rounded half to even.
@@ -937,12 +1715,32 @@ struct BigFloat(
         """
         return bigfloat_exponential.log1p(self, self.precision)
 
+    def log1p(
+        self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns `ln(1 + x)`, correctly rounded, without the cancellation.
+
+        Args:
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `exponential.log1p()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_exponential.log1p(self, precision, rounding_mode)
+
     # ===------------------------------------------------------------------=== #
     # The power
     # ===------------------------------------------------------------------=== #
 
     def power(self, exponent: Self) raises -> Self:
-        """This value raised to a power, correctly rounded.
+        """Returns this value raised to a power, correctly rounded.
 
         Args:
             exponent: The exponent.
@@ -964,8 +1762,31 @@ struct BigFloat(
             > exponent.precision else (exponent.precision),
         )
 
+    def power(
+        self,
+        exponent: Self,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Returns this value raised to a power, correctly rounded.
+
+        Args:
+            exponent: The exponent.
+            precision: How many bits the result keeps. Must be positive.
+            rounding_mode: Which way to round.
+
+        Returns:
+            What `power.power()` returns for the same arguments.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            OverflowError: If the answer's exponent would not fit an `Int`.
+            Error: Propagated from the arithmetic.
+        """
+        return bigfloat_power.power(self, exponent, precision, rounding_mode)
+
     def __pow__(self, exponent: Self) raises -> Self:
-        """This value raised to a power, correctly rounded.
+        """Returns this value raised to a power, correctly rounded.
 
         Args:
             exponent: The exponent.
@@ -980,7 +1801,7 @@ struct BigFloat(
         return self.power(exponent)
 
     def __truediv__(self, other: Self) raises -> Self:
-        """The quotient, correctly rounded.
+        """Returns the quotient, correctly rounded.
 
         Args:
             other: The value to divide by.
