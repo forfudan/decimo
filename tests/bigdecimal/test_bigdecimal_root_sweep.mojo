@@ -48,7 +48,7 @@ def radicand(ndigits: Int) raises -> BDec:
 
 def assert_root_reaches_its_precision(x: BDec, n: Int, precision: Int) raises:
     var r = x.root(n, precision)
-    var back = r.power(n, precision + 40)
+    var back = r.power(precision + 40, exponent=n)
     var got = correct_digits(x, back)
     assert_true(
         got >= precision - 2,

@@ -95,7 +95,7 @@ def test_every_function_that_rounds_refuses_it() raises:
         except:
             raised += 1
         try:
-            _ = BigDecimal("8").power(BigDecimal("0.5"), precision)
+            _ = BigDecimal("8").power(precision, exponent=BigDecimal("0.5"))
         except:
             raised += 1
     assert_equal(raised, total, "every one of them refused")

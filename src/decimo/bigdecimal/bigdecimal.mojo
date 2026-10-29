@@ -2299,13 +2299,45 @@ struct BigDecimal(
         """
         return bigdecimal_exponential.ln(self, precision, cache)
 
+    @deprecated(
+        "pass the base by keyword, as `x.log(base=y)`; the positional"
+        " form will be removed in decimo v0.18.0"
+    )
+    def log(
+        self,
+        base: Self,
+        /,
+        precision: Int = PRECISION,
+    ) raises -> Self:
+        """Deprecated spelling of `log(base=...)`.
+
+        A positional `Int` here was easy to mistake for a precision, which
+        it is in `ln(p)` and the other one-argument methods.
+
+        Args:
+            base: The base.
+            precision: The number of significant digits for the result.
+
+        Returns:
+            What `log(base=base)` returns.
+
+        Raises:
+            Error: Propagated from the computation.
+        """
+        return self.log(precision, base=base)
+
     @always_inline
-    def log(self, base: Self, precision: Int = PRECISION) raises -> Self:
+    def log(
+        self,
+        precision: Int = PRECISION,
+        *,
+        base: Self,
+    ) raises -> Self:
         """Returns the logarithm of the BigDecimal number with the given base.
 
         Args:
-            base: The logarithmic base.
             precision: The number of significant digits for the result.
+            base: The logarithmic base.
 
         Returns:
             The logarithm of this value in the given base.
@@ -2522,21 +2554,51 @@ struct BigDecimal(
         """
         return bigdecimal_exponential.cbrt(self, precision)
 
-    @always_inline
+    @deprecated(
+        "pass the exponent by keyword, as `x.power(exponent=y)`; the positional"
+        " form will be removed in decimo v0.18.0"
+    )
     def power(
         self,
         exponent: Self,
+        /,
         precision: Int = PRECISION,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Deprecated spelling of `power(exponent=...)`.
+
+        A positional `Int` here was easy to mistake for a precision, which
+        it is in `ln(p)` and the other one-argument methods.
+
+        Args:
+            exponent: The exponent.
+            precision: The number of significant digits for the result.
+            rounding_mode: How to round the result.
+
+        Returns:
+            What `power(exponent=exponent)` returns.
+
+        Raises:
+            Error: Propagated from the computation.
+        """
+        return self.power(precision, rounding_mode, exponent=exponent)
+
+    @always_inline
+    def power(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+        *,
+        exponent: Self,
     ) raises -> Self:
         """Returns the result of exponentiation with the given precision.
         See `exponential.power()` for more information.
 
         Args:
-            exponent: The power to raise this value to.
             precision: The number of significant digits for the result.
             rounding_mode: How to round the result. Decided rather than
                 approximated; see `power_rounded()`.
+            exponent: The power to raise this value to.
 
         Returns:
             This value raised to the given exponent.
@@ -2763,11 +2825,41 @@ struct BigDecimal(
             self, precision, rounding_mode
         )
 
+    @deprecated(
+        "pass the abscissa by keyword, as `x.arctan2(other=y)`; the positional"
+        " form will be removed in decimo v0.18.0"
+    )
     def arctan2(
         self,
         other: Self,
+        /,
         precision: Int = PRECISION,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises -> Self:
+        """Deprecated spelling of `arctan2(other=...)`.
+
+        A positional `Int` here was easy to mistake for a precision, which
+        it is in `ln(p)` and the other one-argument methods.
+
+        Args:
+            other: The abscissa.
+            precision: The number of significant digits for the result.
+            rounding_mode: How to round the result.
+
+        Returns:
+            What `arctan2(other=other)` returns.
+
+        Raises:
+            Error: Propagated from the computation.
+        """
+        return self.arctan2(precision, rounding_mode, other=other)
+
+    def arctan2(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+        *,
+        other: Self,
     ) raises -> Self:
         """Returns the angle of the point `(other, self)` from the x-axis.
 
@@ -2775,10 +2867,10 @@ struct BigDecimal(
         `atan2(y, x)` has everywhere else.
 
         Args:
-            other: The abscissa of the point.
             precision: The number of significant digits for the result.
             rounding_mode: How to round the result. Decided rather than
                 approximated; see `_round_by_deciding()`.
+            other: The abscissa of the point.
 
         Returns:
             The angle in radians, in `(-π, π]`.
@@ -2841,18 +2933,48 @@ struct BigDecimal(
             self, precision, rounding_mode
         )
 
+    @deprecated(
+        "pass the other leg by keyword, as `x.hypot(other=y)`; the positional"
+        " form will be removed in decimo v0.18.0"
+    )
     def hypot(
         self,
         other: Self,
+        /,
         precision: Int = PRECISION,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
     ) raises -> Self:
-        """Returns `sqrt(self*self + other*other)`, the hypotenuse.
+        """Deprecated spelling of `hypot(other=...)`.
+
+        A positional `Int` here was easy to mistake for a precision, which
+        it is in `ln(p)` and the other one-argument methods.
 
         Args:
             other: The other leg.
             precision: The number of significant digits for the result.
             rounding_mode: How to round the result.
+
+        Returns:
+            What `hypot(other=other)` returns.
+
+        Raises:
+            Error: Propagated from the computation.
+        """
+        return self.hypot(precision, rounding_mode, other=other)
+
+    def hypot(
+        self,
+        precision: Int = PRECISION,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+        *,
+        other: Self,
+    ) raises -> Self:
+        """Returns `sqrt(self*self + other*other)`, the hypotenuse.
+
+        Args:
+            precision: The number of significant digits for the result.
+            rounding_mode: How to round the result.
+            other: The other leg.
 
         Returns:
             The hypotenuse, which is never negative.

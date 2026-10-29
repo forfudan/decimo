@@ -45,7 +45,9 @@ def test_bigdecimal_power() raises:
     var test_cases = load_test_cases(toml, "power_tests")
     var count_wrong = 0
     for test_case in test_cases:
-        var result = BDec(test_case.a).power(BDec(test_case.b), precision=28)
+        var result = BDec(test_case.a).power(
+            exponent=BDec(test_case.b), precision=28
+        )
         var mojo_str = String(result)
         if mojo_str != test_case.expected:
             print(
@@ -110,7 +112,7 @@ def test_power_invalid_inputs() raises:
     var exp1 = BDec("0")
     var exception_caught: Bool
     try:
-        _ = base1.power(exp1, precision=28)
+        _ = base1.power(exponent=exp1, precision=28)
         exception_caught = False
     except:
         exception_caught = True
@@ -119,7 +121,7 @@ def test_power_invalid_inputs() raises:
     var base2 = BDec("0")
     var exp2 = BDec("-1")
     try:
-        _ = base2.power(exp2, precision=28)
+        _ = base2.power(exponent=exp2, precision=28)
         exception_caught = False
     except:
         exception_caught = True
@@ -130,7 +132,7 @@ def test_power_invalid_inputs() raises:
     var base3 = BDec("-2")
     var exp3 = BDec("0.5")
     try:
-        _ = base3.power(exp3, precision=28)
+        _ = base3.power(exponent=exp3, precision=28)
         exception_caught = False
     except:
         exception_caught = True

@@ -849,9 +849,9 @@ print(Decimal("100").root(Decimal("3")))    # 4.641588833612778892...
 #### Power / exponentiation <!-- omit from toc -->
 
 ```mojo
-print(Decimal("2").power(Decimal("10")))                 # 1024
-print(Decimal("2").power(Decimal("0.5"), precision=50))  # sqrt(2) to 50 digits
-print(Decimal("2") ** 10)                                # 1024
+print(Decimal("2").power(exponent=Decimal("10")))                 # 1024
+print(Decimal("2").power(exponent=Decimal("0.5"), precision=50))  # sqrt(2) to 50 digits
+print(Decimal("2") ** 10)                                         # 1024
 ```
 
 ### Mathematical Functions — Exponential and Logarithmic
@@ -883,9 +883,11 @@ var r2 = x2.ln(100, cache)  # Reuses cached ln(2) and ln(1.25)
 #### Logarithm with arbitrary base <!-- omit from toc -->
 
 ```mojo
-print(Decimal("100").log(Decimal("10")))  # 2
-print(Decimal("8").log(Decimal("2")))     # 3
+print(Decimal("100").log(base=Decimal("10")))  # 2
+print(Decimal("8").log(base=2))                # 3
 ```
+
+`log`, `power`, `arctan2` and `hypot` take the other value by keyword: `x.log(base=b)`, `x.power(exponent=e)`, `y.arctan2(other=x)` and `x.hypot(other=y)`. An `Int` converts to a `Decimal`, so a positional `x.log(100)` would read as base 100 while `x.ln(100)` means 100 digits; the keyword keeps the two apart. The positional form still works in this release with a deprecation warning, and goes in v0.18.0.
 
 #### Base-10 logarithm <!-- omit from toc -->
 
@@ -2202,22 +2204,22 @@ or carry the argument's own precision. All of them are in
 
 #### Decimal — Mathematical Functions <!-- omit from toc -->
 
-| Function | Signature                    | Default | Description          |
-| -------- | ---------------------------- | ------- | -------------------- |
-| `sqrt`   | `x.sqrt(precision=28)`       | 28      | Square root          |
-| `cbrt`   | `x.cbrt(precision=28)`       | 28      | Cube root            |
-| `root`   | `x.root(n, precision=28)`    | 28      | Nth root             |
-| `power`  | `x.power(exp, precision=28)` | 28      | Exponentiation       |
-| `exp`    | `x.exp(precision=28)`        | 28      | e^x                  |
-| `ln`     | `x.ln(precision=28)`         | 28      | Natural logarithm    |
-| `log`    | `x.log(base, precision=28)`  | 28      | Logarithm (any base) |
-| `log10`  | `x.log10(precision=28)`      | 28      | Base-10 logarithm    |
-| `sin`    | `x.sin(precision=28)`        | 28      | Sine (radians)       |
-| `cos`    | `x.cos(precision=28)`        | 28      | Cosine (radians)     |
-| `tan`    | `x.tan(precision=28)`        | 28      | Tangent (radians)    |
-| `cot`    | `x.cot(precision=28)`        | 28      | Cotangent (radians)  |
-| `csc`    | `x.csc(precision=28)`        | 28      | Cosecant (radians)   |
-| `sec`    | `x.sec(precision=28)`        | 28      | Secant (radians)     |
-| `arctan` | `x.arctan(precision=28)`     | 28      | Arctangent (radians) |
-| `pi`     | `Decimal.pi(precision)`      | —       | Compute π            |
-| `e`      | `Decimal.e(precision)`       | —       | Compute e            |
+| Function | Signature                           | Default | Description          |
+| -------- | ----------------------------------- | ------- | -------------------- |
+| `sqrt`   | `x.sqrt(precision=28)`              | 28      | Square root          |
+| `cbrt`   | `x.cbrt(precision=28)`              | 28      | Cube root            |
+| `root`   | `x.root(n, precision=28)`           | 28      | Nth root             |
+| `power`  | `x.power(exponent=e, precision=28)` | 28      | Exponentiation       |
+| `exp`    | `x.exp(precision=28)`               | 28      | e^x                  |
+| `ln`     | `x.ln(precision=28)`                | 28      | Natural logarithm    |
+| `log`    | `x.log(base=b, precision=28)`       | 28      | Logarithm (any base) |
+| `log10`  | `x.log10(precision=28)`             | 28      | Base-10 logarithm    |
+| `sin`    | `x.sin(precision=28)`               | 28      | Sine (radians)       |
+| `cos`    | `x.cos(precision=28)`               | 28      | Cosine (radians)     |
+| `tan`    | `x.tan(precision=28)`               | 28      | Tangent (radians)    |
+| `cot`    | `x.cot(precision=28)`               | 28      | Cotangent (radians)  |
+| `csc`    | `x.csc(precision=28)`               | 28      | Cosecant (radians)   |
+| `sec`    | `x.sec(precision=28)`               | 28      | Secant (radians)     |
+| `arctan` | `x.arctan(precision=28)`            | 28      | Arctangent (radians) |
+| `pi`     | `Decimal.pi(precision)`             | —       | Compute π            |
+| `e`      | `Decimal.e(precision)`              | —       | Compute e            |
