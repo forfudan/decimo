@@ -389,10 +389,10 @@ def test_hypot() raises:
     var x = _argument("hypot")
     var other = BigFloat.from_string("0.6", 64)
     # The form without a precision takes the wider of the two.
-    _same(x.hypot(other), exponential.hypot(x, other, 80), "hypot()")
+    _same(x.hypot(other=other), exponential.hypot(x, other, 80), "hypot()")
     for mode in _modes():
         _same(
-            x.hypot(other, 120, mode),
+            x.hypot(120, mode, other=other),
             exponential.hypot(x, other, 120, mode),
             String("hypot(120, ", mode, ")"),
         )
@@ -403,10 +403,12 @@ def test_arctan2() raises:
     var x = _argument("arctan2")
     var other = BigFloat.from_string("0.6", 64)
     # The form without a precision takes the wider of the two.
-    _same(x.arctan2(other), trigonometric.arctan2(x, other, 80), "arctan2()")
+    _same(
+        x.arctan2(other=other), trigonometric.arctan2(x, other, 80), "arctan2()"
+    )
     for mode in _modes():
         _same(
-            x.arctan2(other, 120, mode),
+            x.arctan2(120, mode, other=other),
             trigonometric.arctan2(x, other, 120, mode),
             String("arctan2(120, ", mode, ")"),
         )
@@ -417,10 +419,10 @@ def test_log() raises:
     var x = _argument("log")
     var base = BigFloat.from_string("3", 64)
     # The form without a precision takes the wider of the two.
-    _same(x.log(base), exponential.log(x, base, 80), "log()")
+    _same(x.log(base=base), exponential.log(x, base, 80), "log()")
     for mode in _modes():
         _same(
-            x.log(base, 120, mode),
+            x.log(120, mode, base=base),
             exponential.log(x, base, 120, mode),
             String("log(120, ", mode, ")"),
         )
@@ -431,10 +433,10 @@ def test_power() raises:
     var x = _argument("power")
     var exponent = BigFloat.from_string("0.75", 64)
     # The form without a precision takes the wider of the two.
-    _same(x.power(exponent), power.power(x, exponent, 80), "power()")
+    _same(x.power(exponent=exponent), power.power(x, exponent, 80), "power()")
     for mode in _modes():
         _same(
-            x.power(exponent, 120, mode),
+            x.power(120, mode, exponent=exponent),
             power.power(x, exponent, 120, mode),
             String("power(120, ", mode, ")"),
         )

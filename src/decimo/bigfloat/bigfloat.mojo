@@ -974,7 +974,28 @@ struct BigFloat(
         """
         return bigfloat_exponential.cbrt(self, precision, rounding_mode)
 
-    def hypot(self, other: Self) raises -> Self:
+    @deprecated(
+        "pass the other leg by keyword, as `x.hypot(other=y)`; the positional"
+        " form will be removed in decimo v0.18.0"
+    )
+    def hypot(self, other: Self, /) raises -> Self:
+        """Deprecated spelling of `hypot(other=...)`.
+
+        A positional `Int` here was easy to mistake for a precision, which
+        it is in `ln(p)` and the other one-argument methods.
+
+        Args:
+            other: The other leg.
+
+        Returns:
+            What `hypot(other=other)` returns.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return self.hypot(other=other)
+
+    def hypot(self, *, other: Self) raises -> Self:
         """Returns the hypotenuse of this value and another, correctly rounded.
 
         Args:
@@ -983,7 +1004,7 @@ struct BigFloat(
         Returns:
             The hypotenuse at the wider of the two precisions, rounded half
             to even. The sum of the squares is formed exactly, so an answer
-            that is exact is exact: `BFlt(3).hypot(BFlt(4))` is five.
+            that is exact is exact: `BFlt(3).hypot(other=BFlt(4))` is five.
 
         Raises:
             Error: Propagated from the arithmetic.
@@ -997,16 +1018,17 @@ struct BigFloat(
 
     def hypot(
         self,
-        other: Self,
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+        *,
+        other: Self,
     ) raises -> Self:
         """Returns the hypotenuse of this value and another, correctly rounded.
 
         Args:
-            other: The other leg.
             precision: How many bits the result keeps. Must be positive.
             rounding_mode: Which way to round.
+            other: The other leg.
 
         Returns:
             What `exponential.hypot()` returns for the same arguments.
@@ -1017,7 +1039,28 @@ struct BigFloat(
         """
         return bigfloat_exponential.hypot(self, other, precision, rounding_mode)
 
-    def arctan2(self, other: Self) raises -> Self:
+    @deprecated(
+        "pass the first coordinate by keyword, as `x.arctan2(other=y)`; the"
+        " positional form will be removed in decimo v0.18.0"
+    )
+    def arctan2(self, other: Self, /) raises -> Self:
+        """Deprecated spelling of `arctan2(other=...)`.
+
+        A positional `Int` here was easy to mistake for a precision, which
+        it is in `ln(p)` and the other one-argument methods.
+
+        Args:
+            other: The first coordinate.
+
+        Returns:
+            What `arctan2(other=other)` returns.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return self.arctan2(other=other)
+
+    def arctan2(self, *, other: Self) raises -> Self:
         """Returns the angle of the point whose coordinates are `other` and `self`.
 
         Args:
@@ -1026,7 +1069,7 @@ struct BigFloat(
         Returns:
             The angle in `(-pi, pi]` at the wider of the two precisions,
             rounded half to even. The receiver is the second coordinate, so
-            that `y.arctan2(x)` reads in the order the function is named for.
+            that `y.arctan2(other=x)` reads in the order the function is named for.
 
         Raises:
             Error: Propagated from the arithmetic.
@@ -1040,16 +1083,17 @@ struct BigFloat(
 
     def arctan2(
         self,
-        other: Self,
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+        *,
+        other: Self,
     ) raises -> Self:
         """Returns the angle of the point whose coordinates are `other` and `self`.
 
         Args:
-            other: The first coordinate, the one along the axis.
             precision: How many bits the result keeps. Must be positive.
             rounding_mode: Which way to round.
+            other: The first coordinate, the one along the axis.
 
         Returns:
             What `trigonometric.arctan2()` returns for the same arguments.
@@ -1765,7 +1809,28 @@ struct BigFloat(
         """
         return bigfloat_exponential.log10(self, precision, rounding_mode)
 
-    def log(self, base: Self) raises -> Self:
+    @deprecated(
+        "pass the base by keyword, as `x.log(base=y)`; the positional"
+        " form will be removed in decimo v0.18.0"
+    )
+    def log(self, base: Self, /) raises -> Self:
+        """Deprecated spelling of `log(base=...)`.
+
+        A positional `Int` here was easy to mistake for a precision, which
+        it is in `ln(p)` and the other one-argument methods.
+
+        Args:
+            base: The base.
+
+        Returns:
+            What `log(base=base)` returns.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return self.log(base=base)
+
+    def log(self, *, base: Self) raises -> Self:
         """Returns the logarithm of this value in an arbitrary base, correctly rounded.
 
         Args:
@@ -1788,16 +1853,17 @@ struct BigFloat(
 
     def log(
         self,
-        base: Self,
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+        *,
+        base: Self,
     ) raises -> Self:
         """Returns the logarithm of this value in an arbitrary base, correctly rounded.
 
         Args:
-            base: The base, which must be finite, positive and not one.
             precision: How many bits the result keeps. Must be positive.
             rounding_mode: Which way to round.
+            base: The base, which must be finite, positive and not one.
 
         Returns:
             What `exponential.log()` returns for the same arguments.
@@ -1845,7 +1911,28 @@ struct BigFloat(
     # The power
     # ===------------------------------------------------------------------=== #
 
-    def power(self, exponent: Self) raises -> Self:
+    @deprecated(
+        "pass the exponent by keyword, as `x.power(exponent=y)`; the positional"
+        " form will be removed in decimo v0.18.0"
+    )
+    def power(self, exponent: Self, /) raises -> Self:
+        """Deprecated spelling of `power(exponent=...)`.
+
+        A positional `Int` here was easy to mistake for a precision, which
+        it is in `ln(p)` and the other one-argument methods.
+
+        Args:
+            exponent: The exponent.
+
+        Returns:
+            What `power(exponent=exponent)` returns.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return self.power(exponent=exponent)
+
+    def power(self, *, exponent: Self) raises -> Self:
         """Returns this value raised to a power, correctly rounded.
 
         Args:
@@ -1854,7 +1941,7 @@ struct BigFloat(
         Returns:
             The power at the wider of the two precisions, rounded half to
             even. An exactly representable answer is exact, which is what
-            makes `BFlt(2).power(BFlt(10))` a thousand and twenty-four and not
+            makes `BFlt(2).power(exponent=BFlt(10))` a thousand and twenty-four and not
             a value near it.
 
         Raises:
@@ -1870,16 +1957,17 @@ struct BigFloat(
 
     def power(
         self,
-        exponent: Self,
         precision: Int,
         rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+        *,
+        exponent: Self,
     ) raises -> Self:
         """Returns this value raised to a power, correctly rounded.
 
         Args:
-            exponent: The exponent.
             precision: How many bits the result keeps. Must be positive.
             rounding_mode: Which way to round.
+            exponent: The exponent.
 
         Returns:
             What `power.power()` returns for the same arguments.
@@ -1904,7 +1992,7 @@ struct BigFloat(
             OverflowError: If the answer's exponent would not fit an `Int`.
             Error: Propagated from the arithmetic.
         """
-        return self.power(exponent)
+        return self.power(exponent=exponent)
 
     def __truediv__(self, other: Self) raises -> Self:
         """Returns the quotient, correctly rounded.

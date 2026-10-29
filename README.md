@@ -421,7 +421,7 @@ def main() raises:
     print(two.sqrt().to_string(20))  # 1.4142135623730950488
     print(two.ln().to_string(20))  # 0.69314718055994530942
     print(two.exp().to_string(20))  # 7.3890560989306502272
-    print(two.power(BigFloat.from_string("0.5", 200)).to_string(20))
+    print(two.power(exponent=BigFloat.from_string("0.5", 200)).to_string(20))
     # 1.4142135623730950488
 
     # === Pi and the circular functions, at the width you ask for ===

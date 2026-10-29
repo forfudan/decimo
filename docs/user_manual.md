@@ -1482,10 +1482,11 @@ print(x.sin())                         # 53 bits, half to even
 print(x.sin(200))                      # 200 bits, half to even
 print(x.sin(200, RoundingMode.ROUND_UP))
 print(BigFloat.from_int(8, 53).log2())        # 3
-print(BigFloat.from_int(27, 53).log(BigFloat.from_int(3, 53)))  # 3
+print(BigFloat.from_int(27, 53).log(base=BigFloat.from_int(3, 53)))  # 3
+print(BigFloat.from_int(27, 53).log(200, base=3).precision)  # 200
 ```
 
-A method of two values, such as `log`, `power`, `hypot` or `arctan2`, keeps the wider of the two precisions in its first form. For these four the first argument is the other value, not a precision, and an `Int` converts to one: `x.log(100)` is the logarithm to base 100, while `x.log10(100)` is the base-10 logarithm at 100 bits.
+The four methods of two values, `log`, `power`, `hypot` and `arctan2`, take the other value by keyword: `x.log(base=b)`, `x.power(exponent=e)`, `x.hypot(other=y)` and `y.arctan2(other=x)`. That keeps one rule for every method: a positional `Int` is a precision. Without a precision they keep the wider of the two precisions. The positional form, `x.log(b)`, still works in this release with a deprecation warning, and goes in v0.18.0.
 
 ### The Other Bases, and the Exact Answers — BigFloat
 
@@ -1534,8 +1535,8 @@ knowing:
 ### A Point in the Plane — BigFloat
 
 `hypot(x, y, precision, mode)` is the length of the point and
-`arctan2(y, x, precision, mode)` is its angle, with `x.hypot(y)` and
-`y.arctan2(x)` over them. Together they turn a pair of coordinates into polar
+`arctan2(y, x, precision, mode)` is its angle, with `x.hypot(other=y)` and
+`y.arctan2(other=x)` over them. Together they turn a pair of coordinates into polar
 form.
 
 `hypot` forms `x*x + y*y` exactly, in integers, and never as two roundings
@@ -1594,7 +1595,7 @@ answered.
 
 ### The Power — BigFloat
 
-`power(x, y, precision, mode)`, also `x.power(y)` and `x ** y`, raises one
+`power(x, y, precision, mode)`, also `x.power(exponent=y)` and `x ** y`, raises one
 value to another. It ends in `exp(y ln x)`, and almost nothing about it is
 that line.
 
@@ -2159,7 +2160,7 @@ or carry the argument's own precision. All of them are in
 | `a.exp()`, `a.ln()`                         | The same                                     |
 | `a.exp2()`, `a.exp10()`                     | The same; a whole exponent is exact          |
 | `a.log2()`, `a.log10()`                     | The same; a whole power of the base is exact |
-| `a.log(base)`                               | At the wider precision, half to even         |
+| `a.log(base=b)`                             | At the wider precision, half to even         |
 | `a.expm1()`, `a.log1p()`                    | The same; these keep a small argument        |
 | `a.sin()`, `a.cos()`, `a.tan()`             | At `a`'s own precision, half to even         |
 | `a.cot()`, `a.csc()`, `a.sec()`             | The same                                     |

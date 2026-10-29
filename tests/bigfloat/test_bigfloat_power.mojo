@@ -939,11 +939,11 @@ def test_the_special_values_follow_ieee() raises:
 
 
 def test_the_method_and_the_operator_agree() raises:
-    """`a ** b`, `a.power(b)` and the free function are one thing."""
+    """`a ** b`, `a.power(exponent=b)` and the free function are one thing."""
     var two = BigFloat.from_int(2, 53)
     var ten = BigFloat.from_int(10, 53)
     assert_equal(String(two**ten), "1024", "the operator")
-    assert_equal(String(two.power(ten)), "1024", "the method")
+    assert_equal(String(two.power(exponent=ten)), "1024", "the method")
     assert_equal(String(power(two, ten, 53)), "1024", "the free function")
 
 
@@ -1364,7 +1364,7 @@ def test_a_negative_base_with_a_whole_exponent_too_large_to_hold() raises:
 
 
 def test_the_power_method_takes_the_wider_precision() raises:
-    """`a.power(b)` and `a ** b` keep the wider of the two widths.
+    """`a.power(exponent=b)` and `a ** b` keep the wider of the two widths.
 
     Both say so in their documentation and neither was checked. The tests
     they had passed both values at the same width, where taking the narrower
@@ -1372,11 +1372,11 @@ def test_the_power_method_takes_the_wider_precision() raises:
     """
     var narrow = BigFloat.from_int(2, 20)
     var wide = BigFloat.from_int(10, 200)
-    assert_equal(narrow.power(wide).precision, 200, "the method")
+    assert_equal(narrow.power(exponent=wide).precision, 200, "the method")
     assert_equal((narrow**wide).precision, 200, "the operator")
-    assert_equal(wide.power(narrow).precision, 200, "either way round")
+    assert_equal(wide.power(exponent=narrow).precision, 200, "either way round")
     assert_equal(
-        BigFloat.from_int(8, 20).log(BigFloat.from_int(2, 200)).precision,
+        BigFloat.from_int(8, 20).log(base=BigFloat.from_int(2, 200)).precision,
         200,
         "and the logarithm in a given base",
     )
