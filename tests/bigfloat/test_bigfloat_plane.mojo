@@ -1322,12 +1322,12 @@ def test_the_two_angles_libm_rounds_the_other_way() raises:
 
 
 def test_the_methods_agree_with_the_functions() raises:
-    """`a.hypot(b)` and `y.arctan2(x)` are the free functions."""
+    """`a.hypot(other=b)` and `y.arctan2(other=x)` are the free functions."""
     var three = BigFloat.from_int(3, 53)
     var four = BigFloat.from_int(4, 53)
-    assert_equal(String(three.hypot(four)), "5", "the hypotenuse method")
+    assert_equal(String(three.hypot(other=four)), "5", "the hypotenuse method")
     assert_equal(
-        String(three.arctan2(four).to_float64()),
+        String(three.arctan2(other=four).to_float64()),
         String(arctan2(three, four, 53).to_float64()),
         "the angle method",
     )
@@ -1478,10 +1478,10 @@ def test_the_two_argument_methods_take_the_wider_precision() raises:
     """
     var narrow = BigFloat.from_int(3, 20)
     var wide = BigFloat.from_int(4, 200)
-    assert_equal(narrow.hypot(wide).precision, 200, "the hypotenuse")
-    assert_equal(wide.hypot(narrow).precision, 200, "either way round")
-    assert_equal(narrow.arctan2(wide).precision, 200, "the angle")
-    assert_equal(wide.arctan2(narrow).precision, 200, "either way round")
+    assert_equal(narrow.hypot(other=wide).precision, 200, "the hypotenuse")
+    assert_equal(wide.hypot(other=narrow).precision, 200, "either way round")
+    assert_equal(narrow.arctan2(other=wide).precision, 200, "the angle")
+    assert_equal(wide.arctan2(other=narrow).precision, 200, "either way round")
 
 
 def test_a_zero_leg_still_rounds_in_the_mode_asked_for() raises:
