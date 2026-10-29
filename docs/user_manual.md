@@ -1370,14 +1370,37 @@ print((a + b).precision)                      # 200: an operator takes the wider
 from decimo import BigFloat
 from decimo.bigdecimal.bigdecimal import BigDecimal
 
-var from_text = BigFloat.from_string("3.14159", 120)   # rounds, 120 bits
-var from_int = BigFloat.from_int(42)                   # exact where it fits
-var from_double = BigFloat.from_float64(0.1)           # exact: a double is one
+var from_text = BigFloat("3.14159")                    # rounds, 53 bits
+var wider = BigFloat("3.14159", 120)                   # rounds, 120 bits
+var from_int = BigFloat(42)                            # exact
+var from_double = BigFloat(0.1)                        # exact: a double is one
 var from_decimal = BigFloat.from_bigdecimal(BigDecimal("0.1"), 53)
 
 var zero = BigFloat.zero(53, False)                    # a signed zero
 var infinity = BigFloat.infinity(53, True)             # -Infinity
 var nan = BigFloat.nan(53)
+```
+
+With a precision, and optionally a rounding mode, each constructor is a `from_` function under another name: `BigFloat(text, p, mode)` is `from_string`, `BigFloat(n, p, mode)` is `from_int`, `BigFloat(x, p, mode)` is `from_float64`. Without a precision, text and a `Float64` get 53 bits. An `Int` gets 53 bits, or its own number of significant bits when that is more, so unlike `from_int(n)` it never rounds:
+
+```mojo
+print(BigFloat(2).precision)                    # 53
+print(BigFloat((1 << 60) + 1).precision)        # 61
+print(BigFloat(1 << 62).precision)              # 53
+```
+
+The `Int` and the `Float64` constructors are implicit, so a literal can stand on either side of an operator, and in-place operators work too. Each operator rounds half to even at the wider of the two precisions, as described in the overview. A literal has at least 53 bits, so it lifts a narrower float to 53 bits: with a 24-bit `x`, `x * 2` has 53. Mojo has no reflected comparisons, so in a comparison the literal goes on the right: `x < 2` works and `2 > x` does not compile.
+
+A `Float64` literal is the double it stands for, not the decimal: `x * 0.1` multiplies by the double nearest a tenth. For the decimal, write `x * BigFloat("0.1", p)`, or `x / 10`.
+
+```mojo
+var x = BigFloat(1.5)
+print(1 + x)                                    # 2.5
+print(3 / x)                                    # 2
+print(x == 1.5)                                 # True
+x += 1
+x *= 2
+print(x)                                        # 5
 ```
 
 `from_float64` is exact in both directions where there is room for it: a
@@ -1462,7 +1485,7 @@ print(BigFloat.from_int(8, 53).log2())        # 3
 print(BigFloat.from_int(27, 53).log(BigFloat.from_int(3, 53)))  # 3
 ```
 
-A method of two values, such as `log`, `power`, `hypot` or `arctan2`, keeps the wider of the two precisions in its first form.
+A method of two values, such as `log`, `power`, `hypot` or `arctan2`, keeps the wider of the two precisions in its first form. For these four the first argument is the other value, not a precision, and an `Int` converts to one: `x.log(100)` is the logarithm to base 100, while `x.log10(100)` is the base-10 logarithm at 100 bits.
 
 ### The Other Bases, and the Exact Answers — BigFloat
 
@@ -2116,7 +2139,13 @@ or carry the argument's own precision. All of them are in
 | Operator / Method                           | Description                                  |
 | ------------------------------------------- | -------------------------------------------- |
 | `a + b`, `a - b`                            | At the wider precision, half to even         |
-| `a * b`, `a / b`                            | The same                                     |
+| `a * b`, `a / b`, `a ** b`                  | The same                                     |
+| `BigFloat(text)`, `BigFloat(x)`             | At fifty-three bits; a `Float64` is exact    |
+| `BigFloat(n)`                               | Exact, at fifty-three bits or more           |
+| `BigFloat(v, p, mode)`                      | At `p` bits, in `mode`                       |
+| `1 + a`, `2 * a`, `2 ** a`, and the rest    | The literal converts, then as `a + b`        |
+| `a += b`, `a -= b`, `a *= b`, `a /= b`      | As `a + b` and the rest                      |
+| `a **= b`                                   | As `a ** b`                                  |
 | `-a`, `abs(a)`                              | Exact                                        |
 | `a == b`, `a < b`, and the rest             | False for a NaN, both zeros equal            |
 | `a.sqrt()`                                  | At `a`'s own precision, half to even         |

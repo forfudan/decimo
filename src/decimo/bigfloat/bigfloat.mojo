@@ -181,6 +181,112 @@ struct BigFloat(
         self.sign = sign
         self.kind = kind
 
+    @implicit
+    def __init__(out self, value: Int) raises:
+        """Builds the float equal to an integer, exactly.
+
+        Args:
+            value: The integer.
+
+        Raises:
+            Error: Propagated from the conversion, which does not round.
+
+        Notes:
+
+        The precision is the default 53 bits, or the integer's own count of
+        significant bits when that is more, so no `Int` is rounded on the way
+        in. This is the conversion behind `1 + x` and `x * 3`, and an operand
+        rounded before the operator ran would make the answer round twice.
+        """
+        var integer = BigInt(value)
+        var precision = PRECISION
+        if value != 0:
+            var bits = integer.bit_length() - trailing_zeros(integer)
+            if bits > precision:
+                precision = bits
+        self = Self.from_bigint(integer, precision)
+
+    def __init__(
+        out self,
+        value: Int,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises:
+        """Builds the nearest float to an integer at a given precision.
+
+        Args:
+            value: The integer.
+            precision: The number of bits to keep.
+            rounding_mode: How to round when the integer does not fit.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the rounding.
+        """
+        self = Self.from_int(value, precision, rounding_mode)
+
+    @implicit
+    def __init__(out self, value: Float64) raises:
+        """Builds the float equal to a `Float64`, exactly, at 53 bits.
+
+        Args:
+            value: The double. Its infinities and NaN carry across.
+
+        Raises:
+            Error: Propagated from the conversion, which does not round.
+        """
+        self = Self.from_float64(value)
+
+    def __init__(
+        out self,
+        value: Float64,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises:
+        """Builds the nearest float to a `Float64` at a given precision.
+
+        Args:
+            value: The double.
+            precision: The number of bits to keep. At 53 or more the
+                conversion is exact.
+            rounding_mode: How to round below 53 bits.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the rounding.
+        """
+        self = Self.from_float64(value, precision, rounding_mode)
+
+    def __init__(out self, value: StringSlice) raises:
+        """Parses decimal text at the default precision.
+
+        Args:
+            value: The text, such as `"1.5"`, `"-2.5e-3"`, `"inf"` or `"nan"`.
+
+        Raises:
+            ValueError: If the text is not a number.
+        """
+        self = Self.from_string(value)
+
+    def __init__(
+        out self,
+        value: StringSlice,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises:
+        """Parses decimal text, rounded once to a given precision.
+
+        Args:
+            value: The text.
+            precision: The number of bits to keep.
+            rounding_mode: How to round the digits.
+
+        Raises:
+            ValueError: If the text is not a number or `precision` is not
+                positive.
+        """
+        self = Self.from_string(value, precision, rounding_mode)
+
     def __init__(out self, *, copy: Self):
         """Initialize the big float from a copy of another value.
 
@@ -1820,6 +1926,138 @@ struct BigFloat(
             self.precision if self.precision
             > other.precision else (other.precision),
         )
+
+    # The reflected operators are what `1 + x` reaches: `Int` has no `__add__`
+    # taking a `BigFloat`, so the left operand is converted through the
+    # implicit constructor and handed to these. The in-place ones round as
+    # the plain operators do, to the wider of the two precisions.
+
+    def __radd__(self, other: Self) raises -> Self:
+        """The sum with the value on the left, correctly rounded.
+
+        Args:
+            other: The left-hand operand.
+
+        Returns:
+            What `other + self` returns.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return other + self
+
+    def __rsub__(self, other: Self) raises -> Self:
+        """The difference with the value on the left, correctly rounded.
+
+        Args:
+            other: The left-hand operand.
+
+        Returns:
+            What `other - self` returns.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return other - self
+
+    def __rmul__(self, other: Self) raises -> Self:
+        """The product with the value on the left, correctly rounded.
+
+        Args:
+            other: The left-hand operand.
+
+        Returns:
+            What `other * self` returns.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return other * self
+
+    def __rtruediv__(self, other: Self) raises -> Self:
+        """The quotient with the value on the left, correctly rounded.
+
+        Args:
+            other: The dividend.
+
+        Returns:
+            What `other / self` returns.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        return other / self
+
+    def __rpow__(self, base: Self) raises -> Self:
+        """The base on the left raised to this value, correctly rounded.
+
+        Args:
+            base: The base.
+
+        Returns:
+            What `base ** self` returns.
+
+        Raises:
+            OverflowError: If the answer's exponent would not fit an `Int`.
+            Error: Propagated from the arithmetic.
+        """
+        return base**self
+
+    def __iadd__(mut self, other: Self) raises:
+        """Adds in place, at the wider of the two precisions.
+
+        Args:
+            other: The value to add.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        self = self + other
+
+    def __isub__(mut self, other: Self) raises:
+        """Subtracts in place, at the wider of the two precisions.
+
+        Args:
+            other: The value to take away.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        self = self - other
+
+    def __imul__(mut self, other: Self) raises:
+        """Multiplies in place, at the wider of the two precisions.
+
+        Args:
+            other: The value to multiply by.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        self = self * other
+
+    def __itruediv__(mut self, other: Self) raises:
+        """Divides in place, at the wider of the two precisions.
+
+        Args:
+            other: The value to divide by.
+
+        Raises:
+            Error: Propagated from the arithmetic.
+        """
+        self = self / other
+
+    def __ipow__(mut self, exponent: Self) raises:
+        """Raises to a power in place, at the wider of the two precisions.
+
+        Args:
+            exponent: The exponent.
+
+        Raises:
+            OverflowError: If the answer's exponent would not fit an `Int`.
+            Error: Propagated from the arithmetic.
+        """
+        self = self**exponent
 
     # ===------------------------------------------------------------------=== #
     # Comparison
