@@ -18,7 +18,7 @@
 
 from std.algorithm import vectorize
 
-from decimo.errors import ValueError
+from decimo.errors import OverflowError, ValueError
 
 
 def rjust(s: String, width: Int, fillchar: String = " ") -> String:
@@ -91,6 +91,16 @@ def _raise_invalid_char(c: UInt8, value: StringSlice) raises -> None:
     )
 
 
+comptime MAX_SCALE: Int = Int.MAX // 4
+"""The largest scale, in either direction, that a parsed number may have.
+
+`Int` wraps silently, so without a bound `1E18446744073709551916` would come
+out as `1E+300`. A quarter of `Int.MAX` leaves room to add or subtract two
+scales, or a scale and a digit count, without wrapping, so that `BigDecimal`
+can check a result's scale after it is formed.
+"""
+
+
 def parse_numeric_string(
     value: StringSlice,
 ) raises -> Tuple[List[UInt8], Int, Bool]:
@@ -145,6 +155,8 @@ def parse_numeric_string(
     Raises:
         ValueError: If the string is empty, contains invalid characters, or
             has malformed numeric syntax.
+        OverflowError: If the exponent, or the scale it gives, is beyond
+            `MAX_SCALE`.
     """
 
     # [Mojo Miji]
@@ -335,7 +347,17 @@ def parse_numeric_string(
         for i in range(exponent_pos + 1, n):
             var c = ptr[unsafe_offset=i]
             if c >= 48 and c <= 57:
-                raw_exponent = raw_exponent * 10 + Int(c - 48)
+                var digit = Int(c - 48)
+                if raw_exponent > (MAX_SCALE - digit) // 10:
+                    raise OverflowError(
+                        message=String(
+                            "The exponent of the number is beyond ",
+                            MAX_SCALE,
+                            ".",
+                        ),
+                        function="parse_numeric_string()",
+                    )
+                raw_exponent = raw_exponent * 10 + digit
             elif c == 45:
                 exponent_is_negative = True
             # '+', ' ', ',', '_' are skipped
@@ -349,6 +371,13 @@ def parse_numeric_string(
         if exponent_is_negative:
             # Negative exponent increases scale
             # e.g. 123.456e-3 -> scale = 3 + 3 = 6
+            if raw_exponent > MAX_SCALE - scale:
+                raise OverflowError(
+                    message=String(
+                        "The scale of the number is beyond ", MAX_SCALE, "."
+                    ),
+                    function="parse_numeric_string()",
+                )
             scale += raw_exponent
         else:
             # Positive exponent decreases scale

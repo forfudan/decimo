@@ -24,8 +24,41 @@ from decimo.bigdecimal.bigdecimal import BigDecimal
 from decimo.bigdecimal.rounding import round_to_precision_inplace
 import decimo.biguint.arithmetics as biguint_arithmetics
 from decimo.biguint.biguint import BigUInt
-from decimo.errors import ZeroDivisionError
+from decimo.errors import OverflowError, ZeroDivisionError
 from decimo.rounding_mode import RoundingMode
+from decimo.str import MAX_SCALE
+
+
+def checked_scale(scale: Int, function: String) raises -> Int:
+    """Returns a result's scale, or raises if it is out of range.
+
+    Operands' scales are within `MAX_SCALE`, which is a quarter of `Int.MAX`,
+    so the sum or difference of two of them cannot wrap before this check
+    sees it. Without the check, a scale doubled by squaring wraps silently:
+    `10 ** 1E+19` came out as `1E-8446744073709551616`.
+
+    Args:
+        scale: The scale the result would have.
+        function: The name of the calling function, for the error message.
+
+    Returns:
+        The same scale.
+
+    Raises:
+        OverflowError: If the scale is beyond `MAX_SCALE` in either
+            direction.
+    """
+    if scale < -MAX_SCALE:
+        raise OverflowError(
+            message="The result is too large to represent.",
+            function=function,
+        )
+    if scale > MAX_SCALE:
+        raise OverflowError(
+            message="The result is too small to represent.",
+            function=function,
+        )
+    return scale
 
 
 def add(
@@ -61,6 +94,11 @@ def add(
         Error: If an arithmetic error occurs during computation.
     """
     if precision > 0:
+        var shortcut = _rounded_sum_beside_a_far_operand(
+            x1, x2, x2.sign, precision, rounding_mode
+        )
+        if shortcut:
+            return shortcut.take()
         var result = add(x1, x2, precision=0)
         round_to_precision_inplace(
             result,
@@ -121,6 +159,137 @@ def add(
         x1.sign,
         max_scale,
     )
+
+
+def _rounded_sum_beside_a_far_operand(
+    x1: BigDecimal,
+    x2: BigDecimal,
+    x2_sign: Bool,
+    precision: Int,
+    rounding_mode: RoundingMode,
+) raises -> Optional[BigDecimal]:
+    """Rounds `x1 + x2` without the digits that lie between the two.
+
+    An exact sum holds every digit from the top of one operand to the bottom
+    of the other, and a rounded sum used to be built from it. That is wasted
+    work when the gap runs past the precision, and with a gap of `10^18`
+    digits the allocation failed and took the process down with it:
+    `1E+9223372036854775807 + 1` could not even be caught.
+
+    Args:
+        x1: The first operand.
+        x2: The second operand. Its own `sign` field is ignored.
+        x2_sign: The sign to treat `x2` as having.
+        precision: The number of significant digits wanted. Positive.
+        rounding_mode: How to round.
+
+    Returns:
+        The rounded sum when one operand is far below the other, or nothing
+        when the exact sum is no wider than the operands and the precision
+        together.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    A zero adds nothing but its scale, and an exact sum keeps the larger
+    scale by filling the other operand with zeros. The rounding takes all
+    but `precision` digits of them off again, so they are never written.
+
+    For two non-zero operands, take `near` as the one with the larger
+    adjusted exponent and `far` as the other. Let `position` be the lower
+    of two places: two digits below where the rounding falls, and one digit
+    below the last digit of `near`. If `far` sits wholly below `position`,
+    any value with the same sign and the same bound gives the same rounding:
+    `near` lies on the grid of `10^(position + 1)`, no rounding boundary
+    falls strictly within one step of that grid on either side of it, and
+    `near + far` lies within that step. So `far` is replaced by
+    `10^position`, which keeps the sum `precision + 3` digits wide at most.
+    The two-digit margin covers a sum that drops below a power of ten, such
+    as `1000 - 10^-50`, where the rounding falls one place lower.
+    """
+    if x1.coefficient.is_zero() and x2.coefficient.is_zero():
+        return None
+    if x1.coefficient.is_zero():
+        return _rounded_beside_a_far_zero(
+            x2, x2_sign, x1.scale, precision, rounding_mode
+        )
+    if x2.coefficient.is_zero():
+        return _rounded_beside_a_far_zero(
+            x1, x1.sign, x2.scale, precision, rounding_mode
+        )
+
+    var x1_is_near = x1.adjusted() >= x2.adjusted()
+    var near_adjusted = x1.adjusted() if x1_is_near else x2.adjusted()
+    var near_scale = x1.scale if x1_is_near else x2.scale
+    var far_adjusted = x2.adjusted() if x1_is_near else x1.adjusted()
+    var position = min(near_adjusted - precision - 2, -near_scale - 1)
+    if far_adjusted > position:
+        return None
+
+    var stand_in = BigDecimal(
+        coefficient=BigUInt.one(),
+        scale=-position,
+        sign=x2_sign if x1_is_near else x1.sign,
+    )
+    var result: BigDecimal
+    if x1_is_near:
+        result = add(x1, stand_in, precision=0)
+    else:
+        var near = BigDecimal(
+            coefficient=x2.coefficient.copy(), scale=x2.scale, sign=x2_sign
+        )
+        result = add(near, stand_in, precision=0)
+    round_to_precision_inplace(
+        result,
+        precision,
+        rounding_mode,
+        remove_extra_digit_due_to_rounding=True,
+        fill_zeros_to_precision=False,
+    )
+    return result^
+
+
+def _rounded_beside_a_far_zero(
+    value: BigDecimal,
+    sign: Bool,
+    zero_scale: Int,
+    precision: Int,
+    rounding_mode: RoundingMode,
+) raises -> Optional[BigDecimal]:
+    """Rounds `value + 0` when the zero's scale is far below `value`'s.
+
+    Args:
+        value: The non-zero operand. Its own `sign` field is ignored.
+        sign: The sign to treat `value` as having.
+        zero_scale: The scale of the zero operand.
+        precision: The number of significant digits wanted. Positive.
+        rounding_mode: How to round.
+
+    Returns:
+        The rounded sum, or nothing when the exact sum is no wider than
+        `value` and the precision together.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+    """
+    var room = max(precision - value.coefficient.number_of_digits(), 0)
+    if zero_scale - value.scale <= room:
+        return None
+    var result = BigDecimal(
+        coefficient=value.coefficient.multiply_by_power_of_ten(room),
+        scale=value.scale + room,
+        sign=sign,
+    )
+    round_to_precision_inplace(
+        result,
+        precision,
+        rounding_mode,
+        remove_extra_digit_due_to_rounding=True,
+        fill_zeros_to_precision=False,
+    )
+    return result^
 
 
 @always_inline
@@ -200,6 +369,11 @@ def subtract(
         Error: If an arithmetic error occurs during computation.
     """
     if precision > 0:
+        var shortcut = _rounded_sum_beside_a_far_operand(
+            x1, x2, not x2.sign, precision, rounding_mode
+        )
+        if shortcut:
+            return shortcut.take()
         var result = subtract(x1, x2, precision=0)
         round_to_precision_inplace(
             result,
@@ -320,7 +494,7 @@ def multiply(
     # we may lose accuracy.
     var result = BigDecimal(
         coefficient=x1.coefficient * x2.coefficient,
-        scale=x1.scale + x2.scale,
+        scale=checked_scale(x1.scale + x2.scale, "multiply()"),
         sign=x1.sign != x2.sign,
     )
 
@@ -360,14 +534,15 @@ def multiply_inplace(
     Raises:
         Error: If an arithmetic error occurs during computation.
     """
+    var scale = checked_scale(x1.scale + x2.scale, "multiply_inplace()")
     if x1.coefficient.is_zero() or x2.coefficient.is_zero():
         x1.coefficient = BigUInt.zero()
-        x1.scale = x1.scale + x2.scale
+        x1.scale = scale
         x1.sign = x1.sign != x2.sign
         return
 
     x1.coefficient = x1.coefficient * x2.coefficient
-    x1.scale = x1.scale + x2.scale
+    x1.scale = scale
     x1.sign = x1.sign != x2.sign
 
     if precision > 0:
@@ -433,6 +608,14 @@ def add_inplace_signed(
     Raises:
         Error: If an arithmetic error occurs during computation.
     """
+    if precision > 0:
+        var shortcut = _rounded_sum_beside_a_far_operand(
+            x1, x2, x2_sign, precision, rounding_mode
+        )
+        if shortcut:
+            x1 = shortcut.take()
+            return
+
     var max_scale = max(x1.scale, x2.scale)
     var scale_factor1 = (max_scale - x1.scale) if x1.scale < max_scale else 0
     var scale_factor2 = (max_scale - x2.scale) if x2.scale < max_scale else 0
@@ -569,11 +752,15 @@ def true_divide(
             function="true_divide()",
         )
 
+    # The quotient's scale is this plus at most the digits of precision
+    # asked for, which `MAX_SCALE` leaves room for.
+    var scale = checked_scale(x.scale - y.scale, "true_divide()")
+
     # Handle dividend of zero
     if x.coefficient.is_zero():
         return BigDecimal(
             coefficient=BigUInt.zero(),
-            scale=x.scale - y.scale,
+            scale=scale,
             sign=x.sign != y.sign,
         )
 
@@ -984,6 +1171,7 @@ def true_divide_inexact(
             message="Division by zero.",
             function="true_divide_inexact()",
         )
+    _ = checked_scale(x1.scale - x2.scale, "true_divide_inexact()")
 
     # Handle dividend of zero
     if x1.coefficient.is_zero():
