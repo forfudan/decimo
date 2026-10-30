@@ -516,5 +516,43 @@ def test_undefined_variable_raises() raises:
 # ===----------------------------------------------------------------------=== #
 
 
+# ===----------------------------------------------------------------------=== #
+# Tests: one rounding in the mode asked for
+# ===----------------------------------------------------------------------=== #
+
+
+def test_working_values_are_not_rounded_twice() raises:
+    """A working value rounded half-even and then again in the user's mode.
+
+    `1 - 10^-20` came out as `1.0000` at five digits rounding down, because
+    the working value had already been rounded up to one.
+    """
+    var cases: List[Tuple[String, RoundingMode, String]] = [
+        ("1-10^-20", RoundingMode.down(), "0.99999"),
+        ("1+10^-20", RoundingMode.up(), "1.0001"),
+        ("1+10^-20", RoundingMode.ceiling(), "1.0001"),
+        ("-1-10^-30", RoundingMode.ceiling(), "-1.0000"),
+        ("-1-10^-30", RoundingMode.floor(), "-1.0001"),
+        ("1.00005000000000000001+0", RoundingMode.half_even(), "1.0001"),
+        ("1.00004999999999999999*1", RoundingMode.half_up(), "1.0000"),
+        ("0.99999999999999999999*1", RoundingMode.down(), "0.99999"),
+        ("sqrt(1.00000000000000000001)", RoundingMode.up(), "1.0001"),
+        ("10^-20+1", RoundingMode.down(), "1.0000"),
+        ("2/3", RoundingMode.down(), "0.66666"),
+    ]
+    for item in cases:
+        testing.assert_equal(
+            String(evaluate(item[0], precision=5, rounding_mode=item[1])),
+            item[2],
+            item[0] + " in " + String(item[1]),
+        )
+
+
+def test_a_carry_keeps_the_digits_asked_for() raises:
+    """`0.999999999` rounds to one, shown with five digits and not six."""
+    testing.assert_equal(String(evaluate("0.999999999", precision=5)), "1.0000")
+    testing.assert_equal(String(evaluate("1/3*3", precision=5)), "1.0000")
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()

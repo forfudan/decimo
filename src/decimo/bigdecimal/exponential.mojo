@@ -3247,6 +3247,90 @@ def _exact_fractional_power(
     return answer^
 
 
+def _fractional_power_beside_one_or_a_power_of_ten(
+    base: BigDecimal,
+    exponent: BigDecimal,
+    precision: Int,
+    rounding_mode: RoundingMode,
+) raises -> Optional[BigDecimal]:
+    """A fractional power whose answer is one, a power of ten, or a hair
+    from one.
+
+    Args:
+        base: The base, not zero.
+        exponent: The exponent, not a whole number.
+        precision: The number of significant digits wanted.
+        rounding_mode: How to round the result.
+
+    Returns:
+        The answer, padded to `precision` digits as a fractional power is,
+        or nothing when the base and exponent are none of these cases.
+
+    Raises:
+        Error: Propagated from the arithmetic.
+
+    Notes:
+
+    The deciding loop cannot settle on an answer that is exactly a value the
+    destination holds, and the directed modes raised for each of these.
+
+    - A base of one gives one for every exponent. `1 ** 1E-10` raised: the
+      exact search gives up past nine decimal places.
+    - A power of ten `10^k` gives `10^(k * y)` when that is whole, however
+      many places `y` has: `1E+1024 ** 0.0009765625` is ten.
+    - An exponent so small that `y ln(x)` is below a guard unit of one gives
+      one moved by a hair, below one when `y ln(x)` is negative. This is the
+      gate BigFloat's power has. `|ln(x)|` is below `2.31 (|A| + 1)` for an
+      adjusted exponent `A`, so `|y ln(x)|` is below `10^reach` with `reach`
+      as below, and `|x^y - 1|` is below twice that. A guard unit of one is
+      `10^-(p + 1)`, hence the test `reach < -(p + 3)`.
+    """
+    if base.sign:
+        return None
+    var one = BigDecimal(BigUInt.one(), 0, False)
+    if base == one:
+        return _padded(one^, precision)
+
+    if _is_power_of_ten(base):
+        var whole = exponent.multiply(
+            BigDecimal(BigUInt(UInt64(abs(base.adjusted()))), 0, False)
+        )
+        if whole.is_integer():
+            var magnitude = _whole_exponent(whole)
+            if magnitude:
+                var power = (
+                    -magnitude.value() if whole.sign else magnitude.value()
+                )
+                if base.adjusted() < 0:
+                    power = -power
+                return _padded(
+                    BigDecimal(BigUInt.one(), -power, False), precision
+                )
+
+    var size = abs(base.adjusted()) + 1
+    var reach = exponent.adjusted() + 2 + String(size).byte_length()
+    if reach >= -(precision + 3):
+        return None
+    var below_one = exponent.sign != (base.adjusted() < 0)
+    return _rounded_beside(one, precision, rounding_mode, below_one)
+
+
+def _padded(var answer: BigDecimal, precision: Int) -> BigDecimal:
+    """An exact answer to a fractional power, written with `precision` digits.
+
+    Args:
+        answer: The exact answer, not zero.
+        precision: The digits a fractional power carries.
+
+    Returns:
+        The same value, with trailing zeros up to `precision` digits.
+    """
+    var digits = answer.coefficient.number_of_digits()
+    if digits < precision:
+        answer = answer.extend_precision(precision - digits)
+    return answer^
+
+
 def power_rounded(
     base: BigDecimal,
     exponent: BigDecimal,
@@ -3344,6 +3428,11 @@ def power_rounded(
     # A fractional exponent can still land on an exact answer -- `4 ** 0.5`
     # is two -- and the loop below could not settle on one.
     if not exponent.is_integer():
+        var answered = _fractional_power_beside_one_or_a_power_of_ten(
+            base, exponent, precision, rounding_mode
+        )
+        if answered:
+            return answered.take()
         var exact = _exact_fractional_power(
             base, exponent, precision, rounding_mode
         )
@@ -4514,6 +4603,21 @@ def expm1_rounded(
         return expm1(x, precision)
     if _square_term_is_below_a_guard_unit(x, precision):
         return _rounded_beside(x, precision, rounding_mode, x.sign)
+    # Far below nought, `expm1(x)` is minus one plus `exp(x)`, and once
+    # `exp(x)` is below a guard unit of one -- `10^-(p + 1)`, reached when
+    # `x < -(p + 1) ln 10` -- the answer is minus one moved a hair toward
+    # nought. The kernel returned exactly minus one there, which the deciding
+    # loop could not settle on: `expm1(-1000)` raised in the directed modes.
+    # BigFloat's `expm1` has the same branch. The bound uses `2.31 > ln 10`.
+    if x.sign:
+        var bound = (231 * (precision + 2)) // 100 + 1
+        if x < BigDecimal(BigUInt(UInt64(bound)), 0, True):
+            return _rounded_beside(
+                BigDecimal(BigUInt.one(), 0, True),
+                precision,
+                rounding_mode,
+                True,
+            )
     return _round_by_deciding[_exponential_less_one_in_binary, EXPM1_SLACK](
         x, precision, rounding_mode
     )
@@ -4569,8 +4673,7 @@ def hypot_rounded(
         The correctly rounded value.
 
     Raises:
-        Error: Propagated from `hypot()`, and if the width doubles
-            `_ZIV_LIMIT` times without settling.
+        Error: Propagated from `sqrt()`.
 
     Notes:
 
@@ -4579,7 +4682,27 @@ def hypot_rounded(
     own last digit and takes the mode. A hypotenuse that is exact -- the legs 3
     and 4 give 5 -- sits on a boundary rather than beside one, and `sqrt()` is
     where that is detected.
+
+    A leg far below the other is not squared. `hypot(1, 1E-1000000000)` built
+    a sum two thousand million digits long. The answer is the larger leg `L`
+    plus less than `L r^2 / 2` for the ratio `r`, which is below
+    `10^(A + 3 - 2 gap)` for `L`'s adjusted exponent `A` and a gap of `gap`
+    between the two. A guard unit of `L` is `10^(A - s + 1 - g)` for `s`
+    significant digits and `g` guard digits, so `L` moved a hair away from
+    nought stands in once `2 gap > s + g + 2`. BigFloat's `hypot` has the same
+    gate.
     """
+    if not x.coefficient.is_zero() and not y.coefficient.is_zero():
+        var larger = abs(x)
+        var smaller = abs(y)
+        if larger < smaller:
+            larger = abs(y)
+            smaller = abs(x)
+        var gap = larger.adjusted() - smaller.adjusted()
+        var tight = _tightened(larger)
+        var room = _significant_digits(tight) + _guard_digits(tight, precision)
+        if gap > room // 2 + 2:
+            return _rounded_beside(larger, precision, rounding_mode, False)
     return sqrt(
         abs(x).multiply(abs(x)).add(abs(y).multiply(abs(y))),
         precision,
