@@ -205,8 +205,9 @@ def _root_by_logarithm(
         sign=False,
     )
 
+    var limit = _deciding_limit(precision, tightened(x).precision)
     var width = precision + _ZIV_START
-    for _ in range(_ZIV_LIMIT):
+    while width - precision <= limit:
         var work = working_width(width)
         var scaled = bigfloat_arithmetics.divide(
             ln_at_width(inner, work), BigFloat.from_int(degree, work), work
@@ -312,19 +313,28 @@ def root(
 
     # The integer root is the right method only while the degree is small.
     # It needs the value lengthened to about `degree` times the precision, so
-    # a large degree asks for a number nothing can hold -- and it buys
-    # nothing there either: an exact root above one needs a significand of at
-    # least `degree` bits, so no significand of this precision has one. The
-    # exception is a power of two, whose root is a power of two and takes no
-    # work at all.
+    # a large degree asks for a number nothing can hold. An exact root is
+    # still possible, though, and the logarithm could not settle on one: the
+    # root of an odd part above one is odd and at least three, so the odd
+    # part has more than `degree` bits. That is a test on `x`'s own bits, not
+    # on the precision asked for -- `root(3^100, 100)` at 53 bits is three,
+    # and the directed modes used to refuse it. Such a root is taken from the
+    # odd part alone, which is as long as `x` and no longer. A power of two
+    # has an odd part of one, and its root is a power of two.
     if degree > precision + 2:
         var zeros = trailing_zeros(x.significand)
-        if (x.significand >> zeros).is_one():
-            var position = BigInt(x.exponent) + BigInt(zeros)
-            var step = BigInt(degree)
-            if (position % step).is_zero():
+        var odd = x.significand >> zeros
+        var position = BigInt(x.exponent) + BigInt(zeros)
+        var step = BigInt(degree)
+        if (position % step).is_zero() and (
+            odd.is_one() or odd.bit_length() > degree
+        ):
+            var candidate = BigInt.one()
+            if not odd.is_one():
+                candidate = bigint_root(odd, degree)
+            if odd.is_one() or candidate.power(degree) == odd:
                 return BigFloat.from_rounded_parts(
-                    BigInt.one(),
+                    candidate,
                     (position // step).to_int(),
                     precision,
                     x.sign,
@@ -445,10 +455,18 @@ def hypot(
         larger = y.copy()
         smaller = x.copy()
 
+    # `larger * sqrt(1 + ratio^2)` is above the larger leg by less than
+    # `larger * ratio^2 / 2`, which is below `2^(L - 2 gap + 2)` for a leading
+    # bit at `L`. A guard unit of the larger leg is `2^(L - t + 1 - g)` for
+    # `t` bits that carry a digit and `g` guard bits, so the hair stands in
+    # for the correction when `2 gap > t + g + 1`. Measuring against the
+    # destination precision instead let a wide leg through: with a 200-bit
+    # `1 + 2^-53 - 2^-199` and `2^-60`, half-even answered 1 where the sum is
+    # past the midpoint and the answer is `1 + 2^-52`.
     var gap = leading_bit_position(larger) - leading_bit_position(smaller)
-    if gap > BigInt(precision + 4):
-        # `larger * sqrt(1 + ratio^2)` with `ratio^2` below the last place:
-        # above the larger leg, and by less than a guard unit of it.
+    var tight = tightened(larger)
+    var guard = guard_bits(tight, precision)
+    if gap + gap > BigInt(tight.precision + guard + 1):
         return rounded_beside(
             BigFloat(
                 significand=larger.significand,
@@ -550,11 +568,43 @@ a retry is what fewer bits would buy more often.
 """
 
 comptime _ZIV_LIMIT = 8
-"""How many times the width may grow before giving up.
+"""How many times the width may grow before giving up, for a short argument.
 
 The loop always ends long before this. It is here so that a kernel whose
 error is larger than it claims ends in an error rather than in a hang.
 """
+
+
+def _deciding_limit(precision: Int, bits: Int) -> Int:
+    """How many bits past the precision the deciding loop may widen to.
+
+    Args:
+        precision: The number of bits wanted.
+        bits: The bits that carry a digit in the arguments, together.
+
+    Returns:
+        The most bits beyond `precision` the loop may ask for: what
+        `_ZIV_LIMIT` doublings of `_ZIV_START` reach, or more for a long
+        argument.
+
+    Notes:
+
+    A short argument settles well inside the fixed limit. A long one can put
+    its answer much nearer a rounding boundary: `sin(2^-1000 + 2^-4000)` is
+    off `2^-1000` by about `2^-3000` of itself, and `exp` of `ln 2` written
+    with 3000 bits is two to as many. Those are real distances, and the loop
+    sees them once it is wide enough, but a fixed limit of 1536 bits refused
+    them in the directed modes. An argument of `b` bits can put its answer
+    within about `2^-2b` of a boundary -- `cos(pi(800))` is `-1` plus the
+    square of an 800-bit rounding error -- and the widths double, so the
+    limit is twice that. It still ends a kernel that is further off than it
+    claims in an error rather than a hang.
+    """
+    var fixed = _ZIV_START << (_ZIV_LIMIT - 1)
+    if bits > MAX_PRECISION // 8 or precision > MAX_PRECISION // 8:
+        return MAX_PRECISION
+    var wide = 4 * bits + 2 * precision + 64
+    return wide if wide > fixed else fixed
 
 
 def _settled(
@@ -628,13 +678,14 @@ def round_by_deciding[
         The correctly rounded value.
 
     Raises:
-        Error: If the kernel raises, or if the width grows `_ZIV_LIMIT` times
+        Error: If the kernel raises, or if the width passes `_deciding_limit()`
             without the rounding settling, which would mean the kernel is
             further off than `slack` allows.
     """
     _ = checked_precision(precision, "round_by_deciding()")
+    var limit = _deciding_limit(precision, 0)
     var width = precision + _ZIV_START
-    for _ in range(_ZIV_LIMIT):
+    while width - precision <= limit:
         var settled = _settled(
             kernel(width), width, slack, precision, rounding_mode
         )
@@ -956,12 +1007,13 @@ def round_by_deciding_at[
         The correctly rounded value.
 
     Raises:
-        Error: If the kernel raises, or if the width grows `_ZIV_LIMIT` times
+        Error: If the kernel raises, or if the width passes `_deciding_limit()`
             without the rounding settling.
     """
     _ = checked_precision(precision, "round_by_deciding_at()")
+    var limit = _deciding_limit(precision, tightened(x).precision)
     var width = precision + _ZIV_START
-    for _ in range(_ZIV_LIMIT):
+    while width - precision <= limit:
         var wide = kernel(x, width)
         if not wide.is_finite() or wide.is_zero():
             # An infinity, a NaN or an exact zero is the answer whatever the
@@ -1009,7 +1061,7 @@ def round_by_deciding_at_two[
         The correctly rounded value.
 
     Raises:
-        Error: If the kernel raises, or if the width grows `_ZIV_LIMIT` times
+        Error: If the kernel raises, or if the width passes `_deciding_limit()`
             without the rounding settling.
 
     Notes:
@@ -1026,8 +1078,11 @@ def round_by_deciding_at_two[
     kernel's.
     """
     _ = checked_precision(precision, "round_by_deciding_at_two()")
+    var limit = _deciding_limit(
+        precision, tightened(x).precision + tightened(y).precision
+    )
     var width = precision + _ZIV_START
-    for _ in range(_ZIV_LIMIT):
+    while width - precision <= limit:
         var wide = kernel(x, y, width)
         if not wide.is_finite() or wide.is_zero():
             # An infinity, a NaN or an exact zero is the answer whatever the
@@ -2630,7 +2685,7 @@ def _log_rounded(
         The correctly rounded value.
 
     Raises:
-        Error: If the width grows `_ZIV_LIMIT` times without the rounding
+        Error: If the width passes `_deciding_limit()` without the rounding
             settling, or from the arithmetic.
 
     Notes:
@@ -3032,28 +3087,30 @@ def exp10(
             return bigfloat_arithmetics.add(
                 BigFloat.from_int(1, precision), x, precision, rounding_mode
             )
-        # A whole `k` with a hair `d` on it, by `exp2`'s account. The bound
-        # is four bits tighter because `|10^d - 1|` runs to about `2.4 |d|`
-        # where `|2^d - 1|` stays under `|d|`, and because `10^k` can sit a
-        # whole bit above its own leading bit. The power has to be one a
-        # float holds exactly, which is the same `k` bound the whole-argument
-        # path above uses.
+        # A whole `k` with a hair `d` on it. `10^(k+d)` is off `10^k` by
+        # `10^k |10^d - 1|`, under `2^(L+1) * 2.4 |d|` for a leading bit at
+        # `L`. A guard unit of `10^k` is `2^(L - t + 1 - g)`, where `t` is
+        # the bit length of `5^k` -- the bits of `10^k` that carry a digit --
+        # and `g` the guard bits, so the hair stands in for the correction
+        # when `|d| < 2^-(t + g + 2)`. The bound used to be the destination
+        # precision, which is only the same thing while `5^k` fits in it:
+        # `exp10(8 - 3 * 2^-21)` at 13 bits answered `100007936`, past the
+        # midpoint, where the value is below it and the answer is `99991552`.
         var beside = _whole_beside(x)
         if beside:
             var pair = beside.take()
             var power = pair[0]
-            if (
-                power >= 0
-                and power <= precision
-                and _is_below_two_to_minus(pair[1], precision + 5)
-            ):
+            if power >= 0 and power <= precision:
                 var ten_to_k = BigInt(10).power(power)
-                return rounded_beside(
-                    BigFloat.from_bigint(ten_to_k, ten_to_k.bit_length()),
-                    precision,
-                    rounding_mode,
-                    pair[1].sign,
+                var exact = BigFloat.from_bigint(
+                    ten_to_k, ten_to_k.bit_length()
                 )
+                var tight = tightened(exact)
+                var guard = guard_bits(tight, precision)
+                if _is_below_two_to_minus(pair[1], tight.precision + guard + 2):
+                    return rounded_beside(
+                        exact, precision, rounding_mode, pair[1].sign
+                    )
 
     return round_by_deciding_at[exp10_at_width, _OTHER_BASE_SLACK](
         x, precision, rounding_mode
