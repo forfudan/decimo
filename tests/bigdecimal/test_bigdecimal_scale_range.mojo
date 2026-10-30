@@ -79,25 +79,35 @@ def test_a_power_past_the_range_is_refused() raises:
         with assert_raises(contains=item[2]):
             _ = base**exponent
         with assert_raises(contains=item[2]):
-            _ = base.power(exponent)
+            _ = base.power(exponent=exponent)
         with assert_raises(contains=item[2]):
-            _ = base.power(exponent, 28, RoundingMode.ROUND_DOWN)
+            _ = base.power(28, RoundingMode.ROUND_DOWN, exponent=exponent)
 
 
 def test_a_power_with_a_long_whole_exponent() raises:
     """A base of one digit and a scale, raised past a thousand million."""
-    assert_equal(String(BDec(-1).power(BDec(1000000000))), "1")
+    assert_equal(String(BDec(-1).power(exponent=BDec(1000000000))), "1")
     assert_equal(
-        String(BDec(-1).power(BDec(1000000001), 28, RoundingMode.ROUND_DOWN)),
+        String(
+            BDec(-1).power(
+                28, RoundingMode.ROUND_DOWN, exponent=BDec(1000000001)
+            )
+        ),
         "-1",
     )
     assert_equal(
-        String(BDec(-1).power(BDec("1E+20"), 28, RoundingMode.ROUND_UP)),
+        String(
+            BDec(-1).power(28, RoundingMode.ROUND_UP, exponent=BDec("1E+20"))
+        ),
         "1",
     )
     assert_equal(String(BDec(-1) ** BDec("1E+20")), "1")
-    assert_equal(String(BDec(10).power(BDec(1000000000))), "1E+1000000000")
-    assert_equal(String(BDec("0.1").power(BDec(1000000000))), "1E-1000000000")
+    assert_equal(
+        String(BDec(10).power(exponent=BDec(1000000000))), "1E+1000000000"
+    )
+    assert_equal(
+        String(BDec("0.1").power(exponent=BDec(1000000000))), "1E-1000000000"
+    )
 
 
 def test_a_power_with_a_large_product_keeps_its_digits() raises:
@@ -123,7 +133,9 @@ def test_a_power_with_a_large_product_keeps_its_digits() raises:
             String(base**exponent), item[2], item[0] + "**" + item[1]
         )
         assert_equal(
-            String(base.power(exponent)), item[2], item[0] + "^" + item[1]
+            String(base.power(exponent=exponent)),
+            item[2],
+            item[0] + "^" + item[1],
         )
 
 
