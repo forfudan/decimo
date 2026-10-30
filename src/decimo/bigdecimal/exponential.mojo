@@ -29,6 +29,7 @@ import decimo.biguint.exponential as biguint_exponential
 import decimo.decimal128.utility as decimal128_utility
 from decimo.errors import OverflowError, ValueError, ZeroDivisionError
 from decimo.rounding_mode import RoundingMode
+from decimo.str import MAX_SCALE
 
 comptime _F64_SEED_DIGITS = 12
 """Correct decimal digits the `Float64` seed of a Newton iteration is worth.
@@ -347,6 +348,65 @@ first at a given precision.
 # ===----------------------------------------------------------------------=== #
 
 
+def _log10_of_magnitude(x: BigDecimal) -> Float64:
+    """The common logarithm of `|x|`, to about fifteen digits.
+
+    Args:
+        x: A non-zero value.
+
+    Returns:
+        `log10(|x|)`, read from the top two words of the coefficient and the
+        scale, so that it is finite however large or small `x` is.
+    """
+    var words = len(x.coefficient.words)
+    var top = Float64(x.coefficient.words[words - 1])
+    var below = 0
+    if words > 1:
+        top = top * 1e9 + Float64(x.coefficient.words[words - 2])
+        below = (words - 2) * BigUInt.DIGITS_PER_WORD
+    return math.log10(top) + Float64(below) - Float64(x.scale)
+
+
+def _check_power_range(
+    base: BigDecimal, exponent: BigDecimal, function: String
+) raises:
+    """Raises when `base ** exponent` is clearly out of a scale's range.
+
+    Args:
+        base: The base. Not zero.
+        exponent: The exponent. Not zero.
+        function: The name of the calling function, for the error message.
+
+    Raises:
+        OverflowError: If `|exponent * log10(|base|)|` is beyond `MAX_SCALE`,
+            so that the answer's scale could not be held.
+
+    Notes:
+
+    The test is `log10|exponent| + log10|log10|base||` against
+    `log10(MAX_SCALE)`, which stays finite where the product itself would
+    not. It is an estimate, so it only refuses what is clearly out of range.
+    A power near the edge goes on, and the checked scales in the arithmetic
+    catch it if it does not fit. Without this, a squaring loop doubled a scale
+    until it wrapped: `10 ** 1E+19` came out as `1E-8446744073709551616`.
+    """
+    var log_base = _log10_of_magnitude(base)
+    if log_base == 0.0:
+        return
+    var size = _log10_of_magnitude(exponent) + math.log10(abs(log_base))
+    if size <= math.log10(Float64(MAX_SCALE)) + 0.01:
+        return
+    if (log_base > 0.0) == (not exponent.sign):
+        raise OverflowError(
+            message="The result is too large to represent.",
+            function=function,
+        )
+    raise OverflowError(
+        message="The result is too small to represent.",
+        function=function,
+    )
+
+
 def power(
     base: BigDecimal, exponent: BigDecimal, precision: Int = 28
 ) raises -> BigDecimal:
@@ -395,6 +455,13 @@ def power(
     if base == BigDecimal(BigUInt.one(), 0, False):
         return BigDecimal(BigUInt.one(), 0, False)  # 1^y = 1
 
+    # (-1)^n is one or minus one, however long n is. The general path would
+    # expand an exponent such as 1E+20 into all of its digits.
+    if base == BigDecimal(BigUInt.one(), 0, True) and exponent.is_integer():
+        return BigDecimal(BigUInt.one(), 0, exponent.is_odd())
+
+    _check_power_range(base, exponent, "power()")
+
     if exponent == BigDecimal(BigUInt.one(), 0, False):
         var result = base.copy()
         result.round_to_precision_inplace(
@@ -415,8 +482,10 @@ def power(
             function="power()",
         )
 
-    # Optimization for integer exponents
-    if exponent.is_integer() and exponent.coefficient.number_of_digits() <= 9:
+    # Optimization for integer exponents. The test is on the value, not on
+    # the digits of the coefficient: `1E+12` has one digit, and
+    # `integer_power()` would expand it into a trillion.
+    if exponent.is_integer() and exponent.adjusted() < 9:
         return integer_power(base, exponent, precision)
 
     # General case using x^y = e^(y*ln(x))
@@ -424,6 +493,16 @@ def power(
     var abs_base = abs(base)
     var ln_result = _logarithm_in_binary(abs_base, working_precision)
     var product = ln_result.multiply(exponent)
+    # The exponential turns the absolute error of the product into the
+    # relative error of the answer, so the logarithm needs the product's
+    # integer digits on top of the working precision. Without them,
+    # `2 ** 1E+12` was wrong from its twenty-first digit.
+    var integer_digits = product.adjusted() + 1
+    if integer_digits > 0:
+        ln_result = _logarithm_in_binary(
+            abs_base, working_precision + integer_digits
+        )
+        product = ln_result.multiply(exponent)
     var exp_result = _exponential_in_binary(product, working_precision)
 
     # Handle sign for negative base with odd integer exponents
@@ -2921,6 +3000,8 @@ def _whole_exponent(exponent: BigDecimal) raises -> Optional[Int]:
     caller falls back to the loop that decides a rounding, which does not need
     the exponent in a machine word.
     """
+    if exponent.adjusted() > 17:
+        return None
     var magnitude = abs(exponent)
     var value: BigUInt
     if magnitude.scale > 0:
@@ -2999,23 +3080,32 @@ def _exact_integer_power(
             return None
 
     var negative = base.sign and degree % 2 == 1
-    if degree != 0 and digits * degree <= affordable + 64:
-        # The scale multiplies by the degree, and a scale is an `Int`.
-        if base.scale != 0 and abs(base.scale) > Int.MAX // degree:
-            return None
+    if degree == 0:
+        return BigDecimal(BigUInt.one(), 0, False)
+    # The scale multiplies by the degree, and has to stay within `MAX_SCALE`.
+    if digits * degree <= affordable + 64 and (
+        base.scale == 0 or abs(base.scale) <= MAX_SCALE // degree
+    ):
         return BigDecimal(
             base.coefficient**degree, base.scale * degree, negative
         )
-    if degree == 0:
-        return BigDecimal(BigUInt.one(), 0, False)
 
     # Too long as it came, so the zeros move into the scale. What is left is
     # either one, whose powers are one digit, or short enough by the count
-    # above, so there is nothing more to decline here.
+    # above, so there is nothing more to decline here. A one is not raised
+    # to the degree at all: `BigUInt.power()` refuses an exponent of a
+    # thousand million, and `(-1) ** 1000000000` is still one.
     var scale = base.scale - trailing
-    if scale != 0 and abs(scale) > Int.MAX // degree:
-        return None
-    return BigDecimal(stripped**degree, scale * degree, negative)
+    if scale != 0 and abs(scale) > MAX_SCALE // degree:
+        raise OverflowError(
+            message=(
+                "The result is too large to represent." if scale
+                < 0 else "The result is too small to represent."
+            ),
+            function="power()",
+        )
+    var coefficient = BigUInt.one() if stripped.is_one() else stripped ** degree
+    return BigDecimal(coefficient^, scale * degree, negative)
 
 
 comptime _MAX_FRACTIONAL_SCALE = 9
@@ -3194,7 +3284,15 @@ def power_rounded(
     `_exact_integer_power()`'s decision, and it is made so that every value
     the loop could not settle on falls on the exact side.
     """
-    if exponent.is_integer():
+    if not base.coefficient.is_zero() and not exponent.coefficient.is_zero():
+        _check_power_range(base, exponent, "power()")
+
+    # Past eighteen digits an integer exponent is too long to raise a base to
+    # by squaring, and only a base of one or minus one could then land on an
+    # exact answer that fits; `power()` answers those outright.
+    if exponent.is_integer() and (
+        exponent.adjusted() <= 17 or base == BigDecimal(BigUInt.one(), 0, True)
+    ):
         var one = BigDecimal(BigUInt.one(), 0, False)
         # The cases `power()` answers outright are exact already, and
         # rounding an exact value that fits cannot change it.
@@ -3202,6 +3300,7 @@ def power_rounded(
             base.coefficient.is_zero()
             or exponent.coefficient.is_zero()
             or base == one
+            or base == -one
         ):
             return power(base, exponent, precision)
 
@@ -3244,11 +3343,12 @@ def power_rounded(
 
     # A fractional exponent can still land on an exact answer -- `4 ** 0.5`
     # is two -- and the loop below could not settle on one.
-    var exact = _exact_fractional_power(
-        base, exponent, precision, rounding_mode
-    )
-    if exact:
-        return exact.take()
+    if not exponent.is_integer():
+        var exact = _exact_fractional_power(
+            base, exponent, precision, rounding_mode
+        )
+        if exact:
+            return exact.take()
 
     var width = precision + _ZIV_START
     for _ in range(_ZIV_LIMIT):
