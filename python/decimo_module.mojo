@@ -2045,7 +2045,7 @@ def _power_to_context(
     approximating with guard digits.
     """
     ref cell = state()[]
-    return base.power(exponent, cell.precision, cell.rounding)
+    return base.power(cell.precision, cell.rounding, exponent=exponent)
 
 
 def bigdecimal_neg(py_self: PythonObject) raises -> PythonObject:
@@ -3630,13 +3630,13 @@ def _method_pair_to_precision[
 def _do_arctan2(
     value: BigDecimal, other: BigDecimal, digits: Int, mode: RoundingMode
 ) raises -> BigDecimal:
-    return value.arctan2(other, digits, mode)
+    return value.arctan2(digits, mode, other=other)
 
 
 def _do_hypot(
     value: BigDecimal, other: BigDecimal, digits: Int, mode: RoundingMode
 ) raises -> BigDecimal:
-    return value.hypot(other, digits, mode)
+    return value.hypot(digits, mode, other=other)
 
 
 def method_arctan2(

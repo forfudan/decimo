@@ -89,7 +89,7 @@ def _call_func(
             )
         var base_val = stack.pop()
         var x_val = stack.pop()
-        stack.append(x_val.log(base_val, precision))
+        stack.append(x_val.log(precision, base=base_val))
         return
 
     # All remaining functions take exactly one argument
@@ -307,7 +307,7 @@ def evaluate_rpn(
                 )
             var b = stack.pop()
             var a = stack.pop()
-            stack.append(a.power(b, working_precision))
+            stack.append(a.power(working_precision, exponent=b))
 
         elif kind == TOKEN_FUNC:
             _call_func(rpn[i].value, stack, working_precision, rpn[i].position)

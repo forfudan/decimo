@@ -245,7 +245,9 @@ def main() raises -> None:
 
             t0 = perf_counter_ns()
             for _ in range(iters):
-                sink += Int(base.power(exponent, precision, HALF_EVEN).sign)
+                sink += Int(
+                    base.power(precision, HALF_EVEN, exponent=exponent).sign
+                )
             t1 = perf_counter_ns()
             best_power = min(best_power, Float64(Int(t1 - t0)) / Float64(iters))
 

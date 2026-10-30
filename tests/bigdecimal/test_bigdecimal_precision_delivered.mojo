@@ -127,10 +127,10 @@ def test_power_delivers_its_precision() raises:
         for exponent in [-3000, 0]:
             var x = value_at(exponent)
             for pair in pairs:
-                var y = x.power(BDec(pair[0]), precision)
+                var y = x.power(precision, exponent=BDec(pair[0]))
                 assert_round_trip(
                     x,
-                    y.power(BDec(pair[1]), precision + 20),
+                    y.power(precision + 20, exponent=BDec(pair[1])),
                     precision,
                     "power by " + pair[0],
                 )
