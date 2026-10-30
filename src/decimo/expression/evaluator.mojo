@@ -46,6 +46,43 @@ from .tokenizer import (
 # ===----------------------------------------------------------------------=== #
 
 
+comptime _DOWN = RoundingMode.ROUND_DOWN
+comptime _UP = RoundingMode.ROUND_UP
+
+
+def _rounded_to_odd(var down: Decimal, up: Decimal) -> Decimal:
+    """A working value rounded to odd, from its two directed roundings.
+
+    Args:
+        down: The value rounded toward zero at the working precision.
+        up: The same value rounded away from zero.
+
+    Returns:
+        `down` when the two agree, which means the value was exact. Otherwise
+        whichever of the two does not end in 0 or 5.
+
+    Notes:
+
+    The evaluator works `GUARD_DIGITS` past the precision and rounds once
+    more at the end, in the mode the user asked for. Rounding the working
+    value half-even first made that a double rounding: `1 - 10^-20` became
+    `1.0000000000000` at fourteen digits, and rounding that down at five gave
+    `1.0000` where the answer is `0.99999`.
+
+    An inexact working value that ends in 0 or 5 is the only kind that can
+    pass for a rounding boundary further up, so such a value takes the other
+    neighbour, whose last digit is neither. Then the final rounding sees
+    exactly what the true value would have shown it, in every mode, as long
+    as the working precision is at least two digits past the final one.
+    """
+    if down == up:
+        return down^
+    var last = down.coefficient.words[0] % 10
+    if last == 0 or last == 5:
+        return up.copy()
+    return down^
+
+
 def _call_func(
     name: String, mut stack: List[Decimal], precision: Int, position: Int
 ) raises:
@@ -112,7 +149,9 @@ def _call_func(
                 + String(a)
                 + ")"
             )
-        stack.append(a.sqrt(precision))
+        stack.append(
+            _rounded_to_odd(a.sqrt(precision, _DOWN), a.sqrt(precision, _UP))
+        )
     elif name == "cbrt":
         stack.append(a.cbrt(precision))
     elif name == "ln":
@@ -127,7 +166,9 @@ def _call_func(
                     + ")"
                 )
             )
-        stack.append(a.ln(precision))
+        stack.append(
+            _rounded_to_odd(a.ln(precision, _DOWN), a.ln(precision, _UP))
+        )
     elif name == "log10":
         if a.is_negative() or a.is_zero():
             raise Error(
@@ -140,19 +181,33 @@ def _call_func(
                     + ")"
                 )
             )
-        stack.append(a.log10(precision))
+        stack.append(
+            _rounded_to_odd(a.log10(precision, _DOWN), a.log10(precision, _UP))
+        )
     elif name == "exp":
-        stack.append(a.exp(precision))
+        stack.append(
+            _rounded_to_odd(a.exp(precision, _DOWN), a.exp(precision, _UP))
+        )
     elif name == "sin":
-        stack.append(a.sin(precision))
+        stack.append(
+            _rounded_to_odd(a.sin(precision, _DOWN), a.sin(precision, _UP))
+        )
     elif name == "cos":
-        stack.append(a.cos(precision))
+        stack.append(
+            _rounded_to_odd(a.cos(precision, _DOWN), a.cos(precision, _UP))
+        )
     elif name == "tan":
-        stack.append(a.tan(precision))
+        stack.append(
+            _rounded_to_odd(a.tan(precision, _DOWN), a.tan(precision, _UP))
+        )
     elif name == "cot":
-        stack.append(a.cot(precision))
+        stack.append(
+            _rounded_to_odd(a.cot(precision, _DOWN), a.cot(precision, _UP))
+        )
     elif name == "csc":
-        stack.append(a.csc(precision))
+        stack.append(
+            _rounded_to_odd(a.csc(precision, _DOWN), a.csc(precision, _UP))
+        )
     elif name == "abs":
         stack.append(abs(a))
     else:
@@ -256,7 +311,12 @@ def evaluate_rpn(
                 )
             var b = stack.pop()
             var a = stack.pop()
-            stack.append(a.add(b, working_precision))
+            stack.append(
+                _rounded_to_odd(
+                    a.add(b, working_precision, _DOWN),
+                    a.add(b, working_precision, _UP),
+                )
+            )
 
         elif kind == TOKEN_MINUS:
             if len(stack) < 2:
@@ -267,7 +327,12 @@ def evaluate_rpn(
                 )
             var b = stack.pop()
             var a = stack.pop()
-            stack.append(a.subtract(b, working_precision))
+            stack.append(
+                _rounded_to_odd(
+                    a.subtract(b, working_precision, _DOWN),
+                    a.subtract(b, working_precision, _UP),
+                )
+            )
 
         elif kind == TOKEN_STAR:
             if len(stack) < 2:
@@ -278,8 +343,12 @@ def evaluate_rpn(
                 )
             var b = stack.pop()
             var a = stack.pop()
-            var product = a.multiply(b, working_precision)
-            stack.append(product^)
+            stack.append(
+                _rounded_to_odd(
+                    a.multiply(b, working_precision, _DOWN),
+                    a.multiply(b, working_precision, _UP),
+                )
+            )
 
         elif kind == TOKEN_SLASH:
             if len(stack) < 2:
@@ -296,7 +365,12 @@ def evaluate_rpn(
                     + ": division by zero"
                 )
             var a = stack.pop()
-            stack.append(a.true_divide(b, working_precision))
+            stack.append(
+                _rounded_to_odd(
+                    a.true_divide(b, working_precision, _DOWN),
+                    a.true_divide(b, working_precision, _UP),
+                )
+            )
 
         elif kind == TOKEN_CARET:
             if len(stack) < 2:
@@ -307,7 +381,12 @@ def evaluate_rpn(
                 )
             var b = stack.pop()
             var a = stack.pop()
-            stack.append(a.power(working_precision, exponent=b))
+            stack.append(
+                _rounded_to_odd(
+                    a.power(working_precision, _DOWN, exponent=b),
+                    a.power(working_precision, _UP, exponent=b),
+                )
+            )
 
         elif kind == TOKEN_FUNC:
             _call_func(rpn[i].value, stack, working_precision, rpn[i].position)
@@ -354,8 +433,10 @@ def final_round(
     """
     if value.is_zero():
         return value.copy()
+    # A carry that adds a digit (`0.999999999` to `1.00000` at five) takes
+    # the extra digit off again, so the answer shows `precision` digits.
     var result = value.copy()
-    result.round_to_precision_inplace(precision, rounding_mode, False, False)
+    result.round_to_precision_inplace(precision, rounding_mode, True, False)
     return result^
 
 
