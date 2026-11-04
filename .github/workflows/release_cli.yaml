@@ -94,7 +94,7 @@ jobs:
           # the floor for no gain.
           - os: ubuntu-22.04-arm
             target: linux-aarch64
-          - os: macos-14          # Apple Silicon (arm64)
+          - os: macos-15          # Apple Silicon (arm64)
             target: darwin-arm64
     steps:
       - uses: actions/checkout@v7

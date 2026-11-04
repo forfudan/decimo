@@ -102,17 +102,17 @@ jobs:
       fail-fast: false
       matrix:
         environment: [py313, py314]
-        # macos-14 is the oldest arm64 runner GitHub has. The wheel says
-        # macOS 11, which is what the Mojo runtime libraries inside it say,
-        # so 11 to 13 is reasoned rather than tested: the probe below proves
-        # it loads on 14.
+        # macos-15 is the oldest arm64 runner GitHub has, since macos-14 was
+        # retired on 2 November 2026. The wheel says macOS 11, which is what
+        # the Mojo runtime libraries inside it say, so 11 to 14 is reasoned
+        # rather than tested: the probe below proves it loads on 15.
         #
         # The Linux runners are 22.04 on purpose. Its glibc is 2.35, and
         # `auditwheel` names the wheel for the glibc it was built against, so
         # building on 24.04 would produce `manylinux_2_39` and refuse to
         # install on anything older. Both architectures are built: Mojo
         # publishes for `linux-64` and `linux-aarch64` alike.
-        os: [macos-14, ubuntu-22.04, ubuntu-22.04-arm]
+        os: [macos-15, ubuntu-22.04, ubuntu-22.04-arm]
     steps:
       - uses: actions/checkout@v7
 
