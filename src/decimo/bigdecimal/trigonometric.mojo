@@ -1889,7 +1889,48 @@ def arctan2_rounded(
     Raises:
         Error: Propagated from `arctan2()`, and if the width doubles
             `_ZIV_LIMIT` times without settling.
+
+    Notes:
+
+    In the right half plane, a ratio whose cube cannot reach the last place
+    leaves the angle equal to the ratio, less a hair. The kernel returned the
+    ratio exactly there, and the directed modes raised:
+    `arctan2(1E-500, 1)` at 28 digits. BigFloat's `arctan2` answers this
+    directly, and so does this, by the same argument.
+
+    The ratio is divided at a width `w`, truncated toward nought, and the
+    angle is `ratio - c` with `0 < c < ratio^3 / 3`. If the division is
+    exact, the angle is the quotient less a hair, which holds while the cubic
+    term is below a guard unit of it. If not, the ratio is above the quotient
+    by at least `10^m / X`, with `10^m` the quotient's last place and `X` the
+    coefficient of `x`, as long as `w` reaches the last digit of `y`. The
+    angle is then above the quotient too once the cubic term is below that,
+    and it rounds like the quotient plus a hair. With `G` the gap between the
+    adjusted exponents, the ratio is below `10^(G + 1)`, the cubic term below
+    `10^(3G + 3)` and the step below `10^(G - w - t)` for `t` digits of `x`,
+    hence the test.
     """
+    if (
+        not x.sign
+        and not x.coefficient.is_zero()
+        and not y.coefficient.is_zero()
+    ):
+        var gap = y.adjusted() - x.adjusted()
+        var x_digits = x.number_of_digits() - x.number_of_trailing_zeros()
+        var y_digits = y.number_of_digits() - y.number_of_trailing_zeros()
+        var quotient_width = max(precision + 8, y_digits + 2)
+        if gap + gap < -(quotient_width + x_digits + 6):
+            var lower = bigdecimal_arithmetics.true_divide(
+                y, x, quotient_width, RoundingMode.ROUND_DOWN
+            )
+            var upper = bigdecimal_arithmetics.true_divide(
+                y, x, quotient_width, RoundingMode.ROUND_UP
+            )
+            if lower != upper:
+                return _rounded_beside(lower, precision, rounding_mode, False)
+            if _cubic_term_is_below_a_guard_unit(lower, precision):
+                return _rounded_beside(lower, precision, rounding_mode, True)
+
     var width = precision + _ZIV_START
     for _ in range(_ZIV_LIMIT):
         var settled = _settled_answer(

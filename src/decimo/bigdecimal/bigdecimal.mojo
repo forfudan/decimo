@@ -1414,8 +1414,18 @@ struct BigDecimal(
                 (e.g. negative base with non-integer exponent, or `0**0`
                 in contexts that disallow it).
             OverflowError: If the result is too large to represent.
+
+        Notes:
+
+        This is `self.power(exponent)`, correctly rounded to `PRECISION`
+        digits half-even. It used to call the unrounded kernel, which kept
+        nine guard digits however large `exponent * ln(self)` was and so
+        disagreed with `power()` in the last digit: `2 ** 10000000000` ended
+        in `089` where the answer ends in `088`.
         """
-        return bigdecimal_exponential.power(self, exponent, precision=PRECISION)
+        return bigdecimal_exponential.power_rounded(
+            self, exponent, PRECISION, RoundingMode.ROUND_HALF_EVEN
+        )
 
     @always_inline
     def __divmod__(self, other: Self) raises -> Tuple[Self, Self]:
@@ -1565,7 +1575,9 @@ struct BigDecimal(
             ValueError: If the operation is mathematically undefined.
             OverflowError: If the result is too large to represent.
         """
-        return bigdecimal_exponential.power(base, self, precision=PRECISION)
+        return bigdecimal_exponential.power_rounded(
+            base, self, PRECISION, RoundingMode.ROUND_HALF_EVEN
+        )
 
     @always_inline
     def __rtruediv__(self, other: Self) raises -> Self:
@@ -1652,6 +1664,21 @@ struct BigDecimal(
         """
         self = bigdecimal_arithmetics.true_divide(
             self, other, precision=PRECISION
+        )
+
+    @always_inline
+    def __ipow__(mut self, exponent: Self) raises:
+        """Raises to a power in place, as `**` does.
+
+        Args:
+            exponent: The power to raise this value to.
+
+        Raises:
+            ValueError: If the operation is mathematically undefined.
+            OverflowError: If the result is too large to represent.
+        """
+        self = bigdecimal_exponential.power_rounded(
+            self, exponent, PRECISION, RoundingMode.ROUND_HALF_EVEN
         )
 
     @always_inline
