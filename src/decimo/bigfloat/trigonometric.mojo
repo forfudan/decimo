@@ -63,6 +63,7 @@ from decimo.bigfloat.rounding import (
     rounded_beside,
     square_fixed_point_scale,
     square_to_fixed_point,
+    tightened,
     to_fixed_point,
     working_width,
 )
@@ -206,7 +207,7 @@ def _reduced(x: BigFloat, width: Int) raises -> Tuple[BigFloat, Int]:
 
     Raises:
         OverflowError: If the reduction needs more bits of pi than a
-            precision may be, or cannot resolve the remainder in eight tries.
+            precision may be.
         Error: Propagated from the arithmetic.
 
     Notes:
@@ -227,10 +228,15 @@ def _reduced(x: BigFloat, width: Int) raises -> Tuple[BigFloat, Int]:
     remainder of exactly nought, which would make the cosine nought and the
     tangent an infinity, though no binary float is a pole. So when `r` is too
     small for its own error the scale grows and the reduction runs again.
+
+    The scale at least doubles each time, and jumps further when the
+    remainder shows how far it cancelled. It used to grow by the width, eight
+    times at most, which reached about 650 bits at 53: `sin(pi(800))` at 53
+    bits, whose remainder is near `2^-800`, was refused in every mode.
     """
     var leading = leading_bit_position(x)
     var scale = _reduction_width(x, width)
-    for _ in range(8):
+    while True:
         var half_pi = bigfloat_arithmetics.multiply(
             pi(scale), BigFloat.power_of_two(-1), scale
         )
@@ -254,31 +260,32 @@ def _reduced(x: BigFloat, width: Int) raises -> Tuple[BigFloat, Int]:
                 if quadrant < 0:
                     quadrant += 4
                 return (remainder^, quadrant)
-        scale = _widened_reduction(scale, width)
-    raise OverflowError(
-        message=(
-            "The reduction of this argument could not be resolved: its"
-            " remainder cancels against pi further than eight widenings"
-            " reach."
-        ),
-        function="_reduced()",
-    )
+        # A remainder that did not pass is mostly error, so the true one is
+        # at most about its size, and the floor test above says what scale
+        # a remainder that size needs.
+        var wanted = BigInt(scale) + BigInt(scale)
+        if not remainder.is_zero():
+            var needed = (
+                leading - leading_bit_position(remainder) + BigInt(width + 24)
+            )
+            if needed > wanted:
+                wanted = needed^
+        scale = _widened_reduction(wanted)
 
 
-def _widened_reduction(scale: Int, width: Int) raises -> Int:
+def _widened_reduction(wanted: BigInt) raises -> Int:
     """The next scale to try when a remainder cancelled too far.
 
     Args:
-        scale: The scale that was not enough.
-        width: The bits wanted in the answer.
+        wanted: The scale the next try asks for.
 
     Returns:
-        A wider scale.
+        The same scale, as an `Int`.
 
     Raises:
         OverflowError: If that is more than a precision may be.
     """
-    if scale > MAX_PRECISION - width - 16:
+    if wanted > BigInt(MAX_PRECISION):
         raise OverflowError(
             message=(
                 "Resolving this reduction needs more bits of pi than a"
@@ -286,7 +293,7 @@ def _widened_reduction(scale: Int, width: Int) raises -> Int:
             ),
             function="_reduced()",
         )
-    return scale + width + 16
+    return wanted.to_int()
 
 
 def _sine_series(x: BigFloat, width: Int) raises -> BigFloat:
@@ -1470,26 +1477,62 @@ def arctan2(
     # limit and refused. The one-argument arctangent guards this already;
     # this is the same guard, asked of the ratio without forming it, because
     # a ratio that small can be below what an exponent holds.
+    #
+    # The ratio is divided at a width `w`, truncated, and the angle is
+    # `ratio - c` with `0 < c < ratio^3 / 3`. Two cases follow.
+    #
+    # - The division is exact. Then the angle is the quotient less a hair,
+    #   which holds while the cubic term is below a guard unit of it.
+    # - It is not. Then the ratio is above the quotient by at least
+    #   `2^m / X`, with `2^m` the quotient's last place and `X` the odd part
+    #   of `x`, as long as `w` reaches `y`'s last bit (`w >= t_y + 2`). The
+    #   angle is above the quotient as well when the cubic term is below
+    #   that, and since the quotient lies on a grid finer than any rounding
+    #   boundary, the angle rounds like the quotient plus a hair.
+    #
+    # Rounding the ratio first and moving it afterwards rounded twice: with
+    # `y = 3 * 2^-100 + 2^-168` and `x = 3`, the ratio rounded down to
+    # `2^-100`, and the hair then took it below, where the angle is above.
     if not x.sign:
         var gap = leading_bit_position(y) - leading_bit_position(x)
         if (gap + gap) < BigInt(-(precision + 10)):
-            # Here the angle is the ratio, and a ratio can be smaller than
-            # any exponent holds -- in which case so is the angle, and there
-            # is no value to return. The division says so, in words about a
-            # quotient the caller never asked for, so the answer is named
-            # here instead.
-            var ratio: BigFloat
-            try:
-                ratio = bigfloat_arithmetics.divide(y, x, precision + 8)
-            except:
-                raise OverflowError(
-                    message=(
-                        "The angle of this point is too near the horizontal"
-                        " axis for its exponent to fit in an Int."
-                    ),
-                    function="arctan2()",
-                )
-            return rounded_beside(ratio, precision, rounding_mode, True)
+            var x_bits = tightened(x).precision
+            var width = max(precision + 8, tightened(y).precision + 2)
+            # `|ratio|` is below `2^(gap + 2)`, so the cubic term is below
+            # `2^(3 gap + 6)` and the gap to the next quotient below
+            # `2^(gap - w - x_bits)`: hence the test.
+            if (gap + gap) < BigInt(-(width + x_bits + 8)):
+                # Here the angle is the ratio, and a ratio can be smaller
+                # than any exponent holds -- in which case so is the angle,
+                # and there is no value to return. The division says so, in
+                # words about a quotient the caller never asked for, so the
+                # answer is named here instead.
+                var lower: BigFloat
+                var upper: BigFloat
+                try:
+                    lower = bigfloat_arithmetics.divide(
+                        y, x, width, RoundingMode.ROUND_DOWN
+                    )
+                    upper = bigfloat_arithmetics.divide(
+                        y, x, width, RoundingMode.ROUND_UP
+                    )
+                except:
+                    raise OverflowError(
+                        message=(
+                            "The angle of this point is too near the"
+                            " horizontal axis for its exponent to fit in an"
+                            " Int."
+                        ),
+                        function="arctan2()",
+                    )
+                if compare_absolute(lower, upper) != 0:
+                    return rounded_beside(
+                        lower, precision, rounding_mode, False
+                    )
+                if cubic_term_is_below_a_guard_unit(
+                    lower, guard_bits(tightened(lower), precision)
+                ):
+                    return rounded_beside(lower, precision, rounding_mode, True)
 
     return round_by_deciding_at_two[_arctan2_at_width, _ARCTAN2_SLACK](
         y, x, precision, rounding_mode
