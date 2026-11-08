@@ -52,8 +52,8 @@ from std.bit import bit_width
 import decimo.bigfloat.arithmetics as bigfloat_arithmetics
 from decimo.bigfloat.bigfloat import BigFloat
 from decimo.bigfloat.exponential import (
-    _ZIV_LIMIT,
     _ZIV_START,
+    _deciding_limit,
     _settled,
     exp_at_width,
     ln_at_width,
@@ -62,6 +62,7 @@ from decimo.bigfloat.rounding import (
     checked_precision,
     leading_bit_position,
     rounded_beside,
+    tightened,
 )
 from decimo.bigint.bigint import BigInt
 from decimo.bigint.bitwise import trailing_zeros
@@ -388,7 +389,10 @@ def _integer_power(
             rounding_mode,
         )
 
-    if odd.bit_length() * magnitude <= 4 * precision + 24:
+    # Divided rather than multiplied: the product wraps for an exponent near
+    # `2^62`, and `9 ** 2^61` then asked `BigInt.power()` for a power it
+    # refuses.
+    if magnitude <= (4 * precision + 24) // odd.bit_length():
         var significand = odd**magnitude
         var exponent = position * BigInt(magnitude)
         if degree > 0:
@@ -425,8 +429,9 @@ def _integer_power(
 
     # Too long to form, so the answer is neither representable nor a
     # midpoint, and the loop below can settle on it.
+    var limit = _deciding_limit(precision, tightened(x).precision + 64)
     var width = precision + _ZIV_START
-    for _ in range(_ZIV_LIMIT):
+    while width - precision <= limit:
         var wide = _integer_power_at_width(x, degree, width)
         if wide.is_zero():
             return BigFloat.zero(precision, wide.sign)
@@ -689,6 +694,15 @@ def power(
     if x.sign and not is_whole:
         return BigFloat.nan(precision)
 
+    # Minus one to a whole power is one or minus one by its parity, which
+    # `odd_whole` reads from the bits without the exponent having to fit an
+    # `Int`. Past `2^62` the exponent does not reach `_integer_power()`, and
+    # the loop could not settle on an exact one.
+    if is_whole and _is_one_in_magnitude(x):
+        return BigFloat.from_rounded_parts(
+            BigInt.one(), 0, precision, odd_whole, rounding_mode
+        )
+
     if is_whole:
         if whole:
             return _integer_power(x, whole.value(), precision, rounding_mode)
@@ -718,8 +732,11 @@ def power(
         )
 
     # What is left is irrational, where the loop settles.
+    var limit = _deciding_limit(
+        precision, tightened(x).precision + tightened(y).precision
+    )
     var width = precision + _ZIV_START
-    for _ in range(_ZIV_LIMIT):
+    while width - precision <= limit:
         var wide = _power_at_width(x, y, width, x.sign and odd_whole)
         if not wide.is_finite():
             if wide.is_nan():
