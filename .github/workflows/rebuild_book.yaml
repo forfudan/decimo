@@ -1,0 +1,38 @@
+name: Rebuild the online book
+
+# The book at decimo.mojo-lang.com is built by Cloudflare Pages from the
+# decimo-docs repository, which reads docs/user_manual.md from here. A push to
+# this repository does not reach Cloudflare by itself, so this job calls the
+# deploy hook of the Pages project when the manual changes on main.
+#
+# It needs the repository secret CLOUDFLARE_DEPLOY_HOOK: the URL from the
+# Pages project, Settings > Builds & deployments > Deploy hooks. Without the
+# secret, the job does nothing.
+#
+# When the site moves from main to the latest release tag, trigger this on
+# `release: types: [published]` instead of on a push.
+
+on:
+  push:
+    branches: [main]
+    paths: [docs/user_manual.md]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  rebuild:
+    name: Call the Cloudflare deploy hook
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call the deploy hook
+        env:
+          HOOK: ${{ secrets.CLOUDFLARE_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "No CLOUDFLARE_DEPLOY_HOOK secret; nothing to do."
+            exit 0
+          fi
+          curl -sSf -X POST "$HOOK" > /dev/null
+          echo "Cloudflare will rebuild the book."

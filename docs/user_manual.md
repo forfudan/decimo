@@ -1,3 +1,11 @@
+<!--
+The `mdbook:` comments in this file split it into the pages of the online
+book (decimo.mojo-lang.com, built by the decimo-docs repository). A page runs
+from its `page` comment to the next one; `skip` leaves a part out of the book.
+GitHub does not show these comments. A new section that should be a page of
+its own needs a `page` comment above its heading.
+-->
+<!-- mdbook: page file="introduction.md" title="Introduction" -->
 # Decimo — User Manual <!-- omit from toc -->
 
 > A guide to the Decimo arbitrary-precision arithmetic library for Mojo.
@@ -8,6 +16,8 @@ your Mojo file:
 ```mojo
 from decimo.prelude import *
 ```
+
+<!-- mdbook: skip -->
 
 - [Installation](#installation)
 - [Quick Start](#quick-start)
@@ -25,12 +35,12 @@ from decimo.prelude import *
   - [Query Methods](#query-methods)
   - [Constants and Factory Methods](#constants-and-factory-methods)
 - [Part II — Decimal](#part-ii--decimal)
-  - [Overview — Decimal](#overview--decimal)
+  - [Overview (Decimal)](#overview-decimal)
   - [How Precision Works](#how-precision-works)
-  - [Construction — Decimal](#construction--decimal)
-  - [Decimal Arithmetic](#decimal-arithmetic)
+  - [Construction (Decimal)](#construction-decimal)
+  - [Arithmetic (Decimal)](#arithmetic-decimal)
   - [Division Methods](#division-methods)
-  - [Decimal Comparison](#decimal-comparison)
+  - [Comparison (Decimal)](#comparison-decimal)
   - [Rounding and Formatting](#rounding-and-formatting)
   - [RoundingMode](#roundingmode)
   - [Mathematical Functions — Roots and Powers](#mathematical-functions--roots-and-powers)
@@ -38,36 +48,39 @@ from decimo.prelude import *
   - [Mathematical Functions — Trigonometric](#mathematical-functions--trigonometric)
   - [A Small Argument and a Directed Mode](#a-small-argument-and-a-directed-mode)
   - [Mathematical Constants](#mathematical-constants)
-  - [Decimal Conversion and Output](#decimal-conversion-and-output)
-  - [Decimal Query Methods](#decimal-query-methods)
+  - [Conversion and Output (Decimal)](#conversion-and-output-decimal)
+  - [Query Methods (Decimal)](#query-methods-decimal)
   - [Python Interoperability](#python-interoperability)
   - [A note on result exponents (`Decimal` and `Dec128`)](#a-note-on-result-exponents-decimal-and-dec128)
   - [Chinese Numerals](#chinese-numerals)
   - [Expression Engine](#expression-engine)
 - [Part III — BigFloat (`BFlt`)](#part-iii--bigfloat-bflt)
-  - [Overview — BigFloat](#overview--bigfloat)
-  - [Construction — BigFloat](#construction--bigfloat)
-  - [How Rounding Works — BigFloat](#how-rounding-works--bigfloat)
-  - [Mathematical Functions — BigFloat](#mathematical-functions--bigfloat)
-  - [The Other Bases, and the Exact Answers — BigFloat](#the-other-bases-and-the-exact-answers--bigfloat)
-  - [A Point in the Plane — BigFloat](#a-point-in-the-plane--bigfloat)
-  - [Roots of Any Degree — BigFloat](#roots-of-any-degree--bigfloat)
-  - [The Power — BigFloat](#the-power--bigfloat)
-  - [Holding On Near Zero — BigFloat](#holding-on-near-zero--bigfloat)
-  - [Special Values — BigFloat](#special-values--bigfloat)
-  - [The IEEE 754 Companions — BigFloat](#the-ieee-754-companions--bigfloat)
-  - [Decimal In, Decimal Out — BigFloat](#decimal-in-decimal-out--bigfloat)
+  - [Overview (BigFloat)](#overview-bigfloat)
+  - [Construction (BigFloat)](#construction-bigfloat)
+  - [How Rounding Works (BigFloat)](#how-rounding-works-bigfloat)
+  - [Mathematical Functions (BigFloat)](#mathematical-functions-bigfloat)
+  - [The Other Bases, and the Exact Answers (BigFloat)](#the-other-bases-and-the-exact-answers-bigfloat)
+  - [A Point in the Plane (BigFloat)](#a-point-in-the-plane-bigfloat)
+  - [Roots of Any Degree (BigFloat)](#roots-of-any-degree-bigfloat)
+  - [The Power (BigFloat)](#the-power-bigfloat)
+  - [Holding On Near Zero (BigFloat)](#holding-on-near-zero-bigfloat)
+  - [Special Values (BigFloat)](#special-values-bigfloat)
+  - [The IEEE 754 Companions (BigFloat)](#the-ieee-754-companions-bigfloat)
+  - [Decimal In, Decimal Out (BigFloat)](#decimal-in-decimal-out-bigfloat)
   - [BigFloat, Decimal, or MPF](#bigfloat-decimal-or-mpf)
 - [Part IV — Rational](#part-iv--rational)
-  - [Construction — Rational](#construction--rational)
-  - [Arithmetic — Rational](#arithmetic--rational)
-  - [Rounding — Rational](#rounding--rational)
-  - [The Closest Fraction Under a Limit — Rational](#the-closest-fraction-under-a-limit--rational)
-  - [Conversions — Rational](#conversions--rational)
+  - [Construction (Rational)](#construction-rational)
+  - [Arithmetic (Rational)](#arithmetic-rational)
+  - [Rounding (Rational)](#rounding-rational)
+  - [The Closest Fraction Under a Limit (Rational)](#the-closest-fraction-under-a-limit-rational)
+  - [Conversions (Rational)](#conversions-rational)
   - [Appendix A — Import Paths](#appendix-a--import-paths)
   - [Appendix B — Traits Implemented](#appendix-b--traits-implemented)
   - [Appendix C — Complete API Tables](#appendix-c--complete-api-tables)
 
+<!-- mdbook: end skip -->
+
+<!-- mdbook: page file="installation.md" -->
 ## Installation
 
 Decimo is available in the
@@ -92,6 +105,7 @@ decimo = ">=0.16.0, <0.17.0"
 
 Then run `pixi install`.
 
+<!-- mdbook: page file="quick-start.md" -->
 ## Quick Start
 
 ```mojo
@@ -114,6 +128,7 @@ def main() raises:
     print(Decimal.pi(precision=1000))     # 1000 digits of π
 ```
 
+<!-- mdbook: page file="bigint/index.md" -->
 ## Part I — BigInt (`BInt`)
 
 ### Overview
@@ -131,6 +146,7 @@ functions.
 | Word type         | `UInt64` (little-endian)     |
 | Python equivalent | `int`                        |
 
+<!-- mdbook: page file="bigint/construction.md" -->
 ### Construction
 
 #### From zero <!-- omit from toc -->
@@ -216,6 +232,7 @@ must ensure the data is valid.
 base 2^32, so a literal is now `[UInt64(1)]`, and an existing `List` goes in
 as `BInt(raw_words=Magnitude(words^), sign=False)`.
 
+<!-- mdbook: page file="bigint/arithmetic.md" -->
 ### Arithmetic Operations
 
 #### Binary operators <!-- omit from toc -->
@@ -257,6 +274,7 @@ print(a % b)   # 4395
 print(BInt(2) ** 10)  # 1024
 ```
 
+<!-- mdbook: page file="bigint/division.md" -->
 ### Division Semantics
 
 BigInt supports two division conventions:
@@ -288,6 +306,7 @@ print(a.truncate_divide(b))      # -3
 print(a.truncate_modulo(b))      #  1
 ```
 
+<!-- mdbook: page file="bigint/comparison.md" -->
 ### Comparison
 
 All six comparison operators (`==`, `!=`, `>`, `>=`, `<`, `<=`) are supported.
@@ -307,6 +326,7 @@ a.compare(b)              # Returns Int8: 1, 0, or -1
 a.compare_magnitudes(b)   # Compares |a| vs |b|
 ```
 
+<!-- mdbook: page file="bigint/bitwise.md" -->
 ### Bitwise Operations
 
 All bitwise operations follow **Python's two's complement semantics** for
@@ -334,6 +354,7 @@ print(~a)      # -13
 print(BInt(-1) & BInt(255))  # 255
 ```
 
+<!-- mdbook: page file="bigint/shift.md" -->
 ### Shift Operations
 
 | Operator | Description                         |
@@ -347,6 +368,7 @@ print(x << 100)         # 1267650600228229401496703205376 (= 2^100)
 print(BInt(1024) >> 5)  # 32
 ```
 
+<!-- mdbook: page file="bigint/math.md" -->
 ### Mathematical Functions
 
 #### Exponentiation <!-- omit from toc -->
@@ -369,6 +391,7 @@ print(x.isqrt())   # Same as sqrt()
 
 Raises if the value is negative.
 
+<!-- mdbook: page file="bigint/number-theory.md" -->
 ### Number Theory
 
 All number-theory operations are available as both **instance methods** and
@@ -421,6 +444,7 @@ print(BInt(3).mod_inverse(BInt(7)))      # 5 (since 3×5 = 15 ≡ 1 mod 7)
 print(mod_inverse(BInt(3), BInt(7)))      # 5
 ```
 
+<!-- mdbook: page file="bigint/conversion.md" -->
 ### Conversion and Output
 
 #### String conversions <!-- omit from toc -->
@@ -459,6 +483,7 @@ print(BInt(15).to_chinese())          # 十五
 print(BInt("123456789").to_chinese()) # 一亿二千三百四十五万六千七百八十九
 ```
 
+<!-- mdbook: page file="bigint/query.md" -->
 ### Query Methods
 
 | Method                 | Return | Description                           |
@@ -480,6 +505,7 @@ print(x.number_of_digits()) # 2
 print(x.is_positive())      # True
 ```
 
+<!-- mdbook: page file="bigint/constants.md" -->
 ### Constants and Factory Methods
 
 | Method / Constant      | Value                                                     |
@@ -491,9 +517,10 @@ print(x.is_positive())      # True
 | `BigInt.ONE`           | 1 (comptime; use `materialize[BigInt.ONE]()` at runtime)  |
 | `BigInt.BITS_PER_WORD` | 64                                                        |
 
+<!-- mdbook: page file="decimal/index.md" -->
 ## Part II — Decimal
 
-### Overview — Decimal
+### Overview (Decimal)
 
 `Decimal` is an arbitrary-precision decimal type — the Mojo-native equivalent of
 Python's `decimal.Decimal`. It can represent numbers with unlimited digits and
@@ -511,6 +538,7 @@ and applications where floating-point errors are unacceptable.
 `Decimal`, `BigDecimal`, and `BDec` are all the same type. We recommend
 `Decimal` for consistency with Python's `decimal.Decimal`.
 
+<!-- mdbook: page file="decimal/precision.md" -->
 ### How Precision Works
 
 - The default precision is **28** significant digits, matching Python's
@@ -554,7 +582,8 @@ print(x.sqrt(precision=1000))  # 1000 significant digits
 > The default precision of 28 will be configurable globally in a
 > future version when Mojo supports global variables.
 
-### Construction — Decimal
+<!-- mdbook: page file="decimal/construction.md" title="Construction" -->
+### Construction (Decimal)
 
 Decimal can be constructed from various types of input using the `Decimal()`
 constructor or factory methods. Among these, the most common way is from a
@@ -675,7 +704,8 @@ must ensure the data is valid.
 | `Decimal.from_raw_components(words, scale=0, sign=False)` | From raw `List[BigUInt.Word]` words (unsafe) |
 | `Decimal.from_raw_components(word, scale=0, sign=False)`  | From a single `BigUInt.Word` (unsafe)        |
 
-### Decimal Arithmetic
+<!-- mdbook: page file="decimal/arithmetic.md" title="Arithmetic" -->
+### Arithmetic (Decimal)
 
 The operators `+`, `-` and `*` round their result HALF_EVEN to 28 significant
 digits, as Python's `decimal` default context does. Use `.add()`, `.subtract()`
@@ -711,6 +741,7 @@ print(a - b)   # 123455554.555566789
 print(a * b)   # 152415787654.32099750190521
 ```
 
+<!-- mdbook: page file="decimal/division.md" -->
 ### Division Methods
 
 Division is the primary operation where precision matters. Decimo provides
@@ -739,7 +770,8 @@ print(Decimal("7") // Decimal("4"))    # 1
 print(Decimal("-7") // Decimal("4"))   # -1  (toward zero)
 ```
 
-### Decimal Comparison
+<!-- mdbook: page file="decimal/comparison.md" title="Comparison" -->
+### Comparison (Decimal)
 
 All six comparison operators are supported:
 
@@ -759,6 +791,7 @@ a.max(b)               # Returns the larger value
 a.min(b)               # Returns the smaller value
 ```
 
+<!-- mdbook: page file="decimal/rounding.md" -->
 ### Rounding and Formatting
 
 #### `round()` — round to decimal places <!-- omit from toc -->
@@ -809,6 +842,7 @@ print(Decimal("1.9").__floor__())   # 1
 print(Decimal("-1.9").__trunc__())  # -1
 ```
 
+<!-- mdbook: page file="decimal/rounding-mode.md" -->
 ### RoundingMode
 
 Seven rounding modes are available:
@@ -833,6 +867,7 @@ print(x.round(0, ROUND_CEILING))    # 3
 print(x.round(0, ROUND_FLOOR))      # 2
 ```
 
+<!-- mdbook: page file="decimal/roots-and-powers.md" title="Roots and Powers" -->
 ### Mathematical Functions — Roots and Powers
 
 All mathematical functions accept an optional `precision` parameter
@@ -867,6 +902,7 @@ print(Decimal("2").power(exponent=Decimal("0.5"), precision=50))  # sqrt(2) to 5
 print(Decimal("2") ** 10)                                         # 1024
 ```
 
+<!-- mdbook: page file="decimal/exp-and-log.md" title="Exponential and Logarithmic" -->
 ### Mathematical Functions — Exponential and Logarithmic
 
 #### Exponential (e^x) <!-- omit from toc -->
@@ -909,6 +945,7 @@ print(Decimal("1000").log10())  # 3 (exact for powers of 10)
 print(Decimal("2").log10(precision=50))
 ```
 
+<!-- mdbook: page file="decimal/trigonometric.md" title="Trigonometric Functions" -->
 ### Mathematical Functions — Trigonometric
 
 All trigonometric functions take inputs in **radians** and accept an optional
@@ -936,6 +973,7 @@ print(Decimal("1").sec(precision=50))   # 1/cos
 print(Decimal("1").arctan(precision=50))  # π/4 to 50 digits
 ```
 
+<!-- mdbook: page file="decimal/small-argument.md" -->
 ### A Small Argument and a Directed Mode
 
 Each of these functions comes to a simple value as its argument goes to
@@ -988,6 +1026,7 @@ print(beside.log10(precision=20, rounding_mode=RoundingMode.ROUND_DOWN))
 beside a power of their base, and `exp2` and `exp10` beside a whole
 argument.
 
+<!-- mdbook: page file="decimal/constants.md" -->
 ### Mathematical Constants
 
 #### π (pi) <!-- omit from toc -->
@@ -1008,7 +1047,8 @@ print(Decimal.e(precision=100))     # 100 digits of e
 print(Decimal.e(precision=1000))    # 1000 digits of e
 ```
 
-### Decimal Conversion and Output
+<!-- mdbook: page file="decimal/conversion.md" title="Conversion and Output" -->
+### Conversion and Output (Decimal)
 
 #### String output <!-- omit from toc -->
 
@@ -1073,7 +1113,8 @@ var n = Int(Decimal("123.99").truncate())  # 123; Int() alone raises on a fracti
 var f = Float64(Decimal("3.14"))   # 3.14 (may lose precision)
 ```
 
-### Decimal Query Methods
+<!-- mdbook: page file="decimal/query.md" title="Query Methods" -->
+### Query Methods (Decimal)
 
 | Method                 | Return | Description                               |
 | ---------------------- | ------ | ----------------------------------------- |
@@ -1105,6 +1146,7 @@ x.fma(a, b)              # Fused multiply-add: x*a+b (exact)
 x.scaleb(n)              # Multiply by 10^n (O(1), adjusts scale only)
 ```
 
+<!-- mdbook: page file="decimal/python.md" -->
 ### Python Interoperability
 
 #### From Python <!-- omit from toc -->
@@ -1136,6 +1178,7 @@ Many methods mirror Python's `decimal.Decimal` API:
 | `d.adjusted()`          | `x.adjusted()`          |
 | `d.same_quantum(other)` | `x.same_quantum(other)` |
 
+<!-- mdbook: page file="decimal/result-exponents.md" -->
 ### A note on result exponents (`Decimal` and `Dec128`)
 
 decimo follows the **preferred-exponent** rules from IEEE 754-2008 §3.3
@@ -1161,6 +1204,7 @@ scale of the operands and pads exact divide quotients with trailing
 zeros to the operand-scale difference. If you need rust_decimal-style
 output, call `.quantize(...)` or `.normalize()` explicitly.
 
+<!-- mdbook: page file="decimal/chinese-numerals.md" -->
 ### Chinese Numerals
 
 Both `BInt` and `Decimal` can write themselves in Chinese numerals with
@@ -1256,6 +1300,7 @@ _ = BInt("1" + String("0") * 20000).to_chinese()   # raises ValueError
 print(Decimal("1E+20000").to_chinese(max_digits=0))
 ```
 
+<!-- mdbook: page file="decimal/expression-engine.md" -->
 ### Expression Engine
 
 `eval()` takes an arithmetic expression as a string and works it out with
@@ -1341,9 +1386,10 @@ print(evaluate_rpn(rpn^, precision=50))         # 7
 
 `evaluate()` is an alias of `eval()`.
 
+<!-- mdbook: page file="bigfloat/index.md" -->
 ## Part III — BigFloat (`BFlt`)
 
-### Overview — BigFloat
+### Overview (BigFloat)
 
 `BigFloat` is an arbitrary-precision binary floating-point type, written in
 Mojo with nothing to install. Where `Decimal` keeps digits and a scale,
@@ -1379,7 +1425,8 @@ print(add(a, b, 300).precision)               # 300: the caller says
 print((a + b).precision)                      # 200: an operator takes the wider
 ```
 
-### Construction — BigFloat
+<!-- mdbook: page file="bigfloat/construction.md" title="Construction" -->
+### Construction (BigFloat)
 
 ```mojo
 from decimo import BigFloat
@@ -1430,7 +1477,8 @@ NaN, so a sign or a payload goes in and does not come out.
 `from_string` and `from_bigdecimal` round, because almost no decimal is a
 binary float, and they round correctly in whichever mode is asked for.
 
-### How Rounding Works — BigFloat
+<!-- mdbook: page file="bigfloat/rounding.md" title="How Rounding Works" -->
+### How Rounding Works (BigFloat)
 
 Every function takes a precision and a rounding mode, and returns the float of
 that precision nearest the true value, with the mode settling which side when
@@ -1453,7 +1501,8 @@ evaluated wider than asked, and the rounding is only returned when every value
 the error allows rounds the same way. If they do not, the width grows and it is
 tried again. This is Ziv's method, and it is why the last bit can be trusted.
 
-### Mathematical Functions — BigFloat
+<!-- mdbook: page file="bigfloat/math.md" title="Mathematical Functions" -->
+### Mathematical Functions (BigFloat)
 
 | Function                                | Where                           |
 | --------------------------------------- | ------------------------------- |
@@ -1505,7 +1554,8 @@ print(BigFloat.from_int(27, 53).log(200, base=3).precision)  # 200
 
 The four methods of two values, `log`, `power`, `hypot` and `arctan2`, take the other value by keyword: `x.log(base=b)`, `x.power(exponent=e)`, `x.hypot(other=y)` and `y.arctan2(other=x)`. That keeps one rule for every method: a positional `Int` is a precision. Without a precision they keep the wider of the two precisions. The positional form, `x.log(b)`, still works in this release with a deprecation warning, and goes in v0.18.0.
 
-### The Other Bases, and the Exact Answers — BigFloat
+<!-- mdbook: page file="bigfloat/bases-and-exact-answers.md" title="The Other Bases, and the Exact Answers" -->
+### The Other Bases, and the Exact Answers (BigFloat)
 
 `log2`, `log10`, `log`, `exp2` and `exp10` have something the natural
 exponential and logarithm do not: arguments whose answers a float holds
@@ -1549,7 +1599,8 @@ knowing:
 - `expm1` and `log1p` are exact only at zero, where both are zero with the
   sign of the argument, and `expm1(-Infinity)` which is exactly minus one.
 
-### A Point in the Plane — BigFloat
+<!-- mdbook: page file="bigfloat/point-in-the-plane.md" title="A Point in the Plane" -->
+### A Point in the Plane (BigFloat)
 
 `hypot(x, y, precision, mode)` is the length of the point and
 `arctan2(y, x, precision, mode)` is its angle, with `x.hypot(other=y)` and
@@ -1586,7 +1637,8 @@ def main() raises:
     print(arctan2(y, x, 53))          # 0.92729521800161219
 ```
 
-### Roots of Any Degree — BigFloat
+<!-- mdbook: page file="bigfloat/roots.md" title="Roots of Any Degree" -->
+### Roots of Any Degree (BigFloat)
 
 `root(x, degree, precision, mode)` and `cbrt(x, precision, mode)`, also
 `x.root(n)` and `x.cbrt()`, take any positive degree.
@@ -1610,7 +1662,8 @@ even one, the way `sqrt` does. A nought keeps its sign at an odd degree and
 loses it at an even one. A degree of nought or less is refused rather than
 answered.
 
-### The Power — BigFloat
+<!-- mdbook: page file="bigfloat/power.md" title="The Power" -->
+### The Power (BigFloat)
 
 `power(x, y, precision, mode)`, also `x.power(exponent=y)` and `x ** y`, raises one
 value to another. It ends in `exp(y ln x)`, and almost nothing about it is
@@ -1664,7 +1717,8 @@ answer. There is no overflow to an infinity for finite arguments — this
 type's exponent is as wide as an `Int`, and an answer asking for more is
 refused rather than answered with an infinity it did not earn.
 
-### Holding On Near Zero — BigFloat
+<!-- mdbook: page file="bigfloat/near-zero.md" title="Holding On Near Zero" -->
+### Holding On Near Zero (BigFloat)
 
 `expm1` is `exp(x) - 1` and `log1p` is `ln(1 + x)`, and both exist because the
 expressions they are named after throw their answers away for a small
@@ -1683,7 +1737,8 @@ print(log1p(tiny, 53).internal_representation())   # and a hair under it
 They are also what the hyperbolic functions are built on, which is why
 `sinh(2^-100000)` is `2^-100000` rather than zero.
 
-### Special Values — BigFloat
+<!-- mdbook: page file="bigfloat/special-values.md" title="Special Values" -->
+### Special Values (BigFloat)
 
 The special values follow IEEE 754 rather than `Decimal`'s rules, because this
 is a float:
@@ -1707,7 +1762,8 @@ There is no overflow to an infinity for a finite argument. The exponent is as
 wide as an `Int`, so an operation that asks for more — `exp` of anything from
 about `6.4e18` up — raises rather than returning an infinity it did not earn.
 
-### The IEEE 754 Companions — BigFloat
+<!-- mdbook: page file="bigfloat/ieee754.md" title="The IEEE 754 Companions" -->
+### The IEEE 754 Companions (BigFloat)
 
 Beyond the arithmetic and the functions, IEEE 754 asks a format for a set of
 small operations that numerical code reaches for constantly. They are in
@@ -1773,7 +1829,8 @@ leading bit is `exponent + precision - 1`, and that sum can be outside an
 an infinity or a NaN, where the standard's answers are infinities and a NaN,
 and raises instead — as the decimal `logb()` does.
 
-### Decimal In, Decimal Out — BigFloat
+<!-- mdbook: page file="bigfloat/decimal-in-decimal-out.md" title="Decimal In, Decimal Out" -->
+### Decimal In, Decimal Out (BigFloat)
 
 Every binary float is exactly a decimal, because `2^-k` is `5^k / 10^k`, so
 the conversion out loses nothing and only the number of digits is a choice:
@@ -1818,6 +1875,7 @@ Going the other way rounds. `to_float64()` is exact for a normal double but
 rounds a second time when the answer is subnormal, since a subnormal has fewer
 bits than 53: converting from a wider precision avoids it.
 
+<!-- mdbook: page file="bigfloat/choosing.md" -->
 ### BigFloat, Decimal, or MPF
 
 Use `Decimal` when the arithmetic has to be decimal — money, anything whose
@@ -1833,6 +1891,7 @@ a C wrapper. It is kept as a second implementation to test the traits against,
 as the baseline the Mojo one is measured against, and for anyone who was
 relying on it.
 
+<!-- mdbook: page file="rational/index.md" -->
 ## Part IV — Rational
 
 An exact fraction of two arbitrary-precision integers. Nothing is ever
@@ -1850,7 +1909,8 @@ The value is always in lowest terms with a positive denominator, so two equal
 values have the same two parts and `==` is a comparison of integers rather
 than of fractions.
 
-### Construction — Rational
+<!-- mdbook: page file="rational/construction.md" title="Construction" -->
+### Construction (Rational)
 
 ```mojo
 print(Rational(3, 4))                      # 3/4
@@ -1864,7 +1924,8 @@ The float constructor is exact and that is the point of it: a double holding
 "0.1" is not a tenth, and this is the fraction it really holds. Use
 `Rational("0.1")` for the tenth.
 
-### Arithmetic — Rational
+<!-- mdbook: page file="rational/arithmetic.md" title="Arithmetic" -->
+### Arithmetic (Rational)
 
 The four operations, the comparisons and the in-place forms are all exact.
 Multiplication and division reduce across the two fractions before
@@ -1892,7 +1953,8 @@ A fractional exponent is not accepted. Python's `Fraction` answers one with a
 float, which throws away the exactness the type exists for; ask `BigFloat`
 for that answer instead, where the precision is yours to choose.
 
-### Rounding — Rational
+<!-- mdbook: page file="rational/rounding.md" title="Rounding" -->
+### Rounding (Rational)
 
 The four roundings all return a `Rational` with a denominator of one, and the
 standard library's functions take this type:
@@ -1912,7 +1974,8 @@ print(round(Rational(1, 8), 2))            # 3/25, which is 0.12
 `round(x, n)` takes a negative `n` to round above the decimal point, as
 Python's does: `round(Rational(1350), -2)` is 1400.
 
-### The Closest Fraction Under a Limit — Rational
+<!-- mdbook: page file="rational/closest-fraction.md" title="The Closest Fraction Under a Limit" -->
+### The Closest Fraction Under a Limit (Rational)
 
 `limit_denominator` answers the closest fraction whose denominator is at most
 the limit, which is how a long exact value becomes a short readable one:
@@ -1928,7 +1991,8 @@ the length of that walk and not to the size of the denominator it starts
 from. Where two fractions are equally close it returns the same one Python's
 `Fraction` does, which is not always the one with the smaller denominator.
 
-### Conversions — Rational
+<!-- mdbook: page file="rational/conversions.md" title="Conversions" -->
+### Conversions (Rational)
 
 ```mojo
 print(Rational(1, 3).to_float())           # 0.3333333333333333
@@ -1940,6 +2004,8 @@ print(Rational(-7, 2).reciprocal())        # -2/7
 `to_bigdecimal` takes the digits to keep, because a third has no decimal
 expansion that ends. Everything else here is exact.
 
+<!-- mdbook: part title="Appendices" -->
+<!-- mdbook: page file="appendix/import-paths.md" -->
 ### Appendix A — Import Paths
 
 ```mojo
@@ -1992,6 +2058,7 @@ from decimo import eval
 from decimo.expression import tokenize, parse_to_rpn, evaluate_rpn
 ```
 
+<!-- mdbook: page file="appendix/traits.md" -->
 ### Appendix B — Traits Implemented
 
 All of these come from the Mojo standard library except **`Numeric`**, **`Parsable`** and **`Rootable`**, which Decimo defines in `decimo.traits`. `BigInt`, `BigDecimal`, `BigFloat` and `Decimal128` conform to all three, and `Rational` to `Numeric` and `Parsable`. Mojo checks conformance nominally, which is why the traits live in Decimo rather than in the consumer.
@@ -2102,6 +2169,7 @@ greater holds. `compare_total()` is there for code that needs a total order.
 
 `Numeric` asks for `zero()` and `one()` without arguments, so those two give values of fifty-three bits; `zero(precision, sign)` and `one(precision)` give any other. The operators keep the wider of the two precisions and round half to even, so generic code works at the precision of the values it is handed.
 
+<!-- mdbook: page file="appendix/api-tables.md" -->
 ### Appendix C — Complete API Tables
 
 #### BigFloat — All Functions <!-- omit from toc -->
