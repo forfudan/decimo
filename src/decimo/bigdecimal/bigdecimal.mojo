@@ -235,6 +235,33 @@ struct BigDecimal(
         self.scale = 0
         self.sign = value.sign
 
+    @implicit
+    def __init__[
+        v: __mlir_type.`!pop.int_literal`
+    ](out self, value: IntLiteral[v]):
+        """Constructs a BigDecimal from an integer literal of any size.
+
+        This is what lets a literal wider than `Int` be written directly:
+
+        ```mojo
+        var a: BigDecimal = 123456789012345678901234567890
+        ```
+
+        The literal's words are worked out at compile time, so there is no
+        string parsing at run time and nothing can fail.
+
+        Parameters:
+            v: The literal's compile-time value.
+
+        Args:
+            value: The integer literal.
+        """
+        comptime L = IntLiteral[v]()
+        comptime if L < 0:
+            self = Self(BigUInt(-L), scale=0, sign=True)
+        else:
+            self = Self(BigUInt(L), scale=0, sign=False)
+
     def __init__(out self, value: StringSlice) raises:
         """Constructs a BigDecimal from a string representation.
 
