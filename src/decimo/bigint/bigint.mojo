@@ -263,6 +263,202 @@ struct BigInt(
         """
         self = Self.from_integral_scalar(value)
 
+    # [Mojo Miji]
+    # For more information about "literals" in Mojo, check this page:
+    # https://mojo-lang.com/miji/basic/literal.html
+    @implicit
+    def __init__[
+        v: __mlir_type.`!pop.int_literal`
+    ](out self, value: IntLiteral[v]):
+        """Constructs a BigInt from an integer literal of any size.
+
+        This is what lets a literal wider than `Int` be written directly:
+
+        ```mojo
+        var a: BigInt = 12345678901234567890123456789012345678901234567890
+        ```
+
+        The literal's words are worked out at compile time, so there is no
+        string parsing at run time and nothing can fail.
+
+        Parameters:
+            v: The literal's compile-time value.
+
+        Args:
+            value: The integer literal.
+
+        Notes:
+
+        Two things about `IntLiteral` decide how this is written. Both turn
+        the literal into an `Int` without a word of warning, which drops
+        every bit above the 64th:
+
+        - A conditional expression, `-L if L < 0 else L`. Hence the
+          `comptime if` with one call on each branch.
+        - Arithmetic with an `Int`, even a `comptime` one, such as
+          `L >> (64 * i)`. Hence the helpers take the word count as a
+          literal too.
+
+        Each helper call with a new literal is a new function for the
+        compiler to build, and its cost grows with the literal's length. The
+        helpers split the literal in halves rather than one word at a time,
+        so the literals they carry add up to about `n log n` words, not
+        `n^2 / 2`.
+        """
+        comptime L = IntLiteral[v]()
+        self.words = Magnitude()
+        comptime if L < 0:
+            Self._literal_words(self.words, -L)
+        else:
+            Self._literal_words(self.words, L)
+        self.sign = L < 0
+        if len(self.words) == 0:
+            self.words.append(UInt64(0))
+
+    @staticmethod
+    def _literal_words[
+        v: __mlir_type.`!pop.int_literal`
+    ](mut words: Magnitude, value: IntLiteral[v]):
+        """Appends the base-2^64 words of a non-negative literal, low first,
+        with no zero word on top.
+
+        Parameters:
+            v: The literal's compile-time value, which must be non-negative.
+
+        Args:
+            words: The words to append to.
+            value: The integer literal.
+
+        Notes:
+
+        The word count is found by one chain of tests in this function.
+        Every helper call that carries the whole literal costs compile time
+        in proportion to its length, so a recursion that doubles the count
+        made a 60,000-digit literal take about 20 s longer to compile.
+        """
+        comptime L = IntLiteral[v]()
+        comptime assert L >= 0, "_literal_words() takes a non-negative literal"
+        comptime if L >> 64 == 0:
+            Self._literal_words_reserved(words, L, 1)
+        elif L >> 128 == 0:
+            Self._literal_words_reserved(words, L, 2)
+        elif L >> 256 == 0:
+            Self._literal_words_reserved(words, L, 4)
+        elif L >> 512 == 0:
+            Self._literal_words_reserved(words, L, 8)
+        elif L >> 1024 == 0:
+            Self._literal_words_reserved(words, L, 16)
+        elif L >> 2048 == 0:
+            Self._literal_words_reserved(words, L, 32)
+        elif L >> 4096 == 0:
+            Self._literal_words_reserved(words, L, 64)
+        elif L >> 8192 == 0:
+            Self._literal_words_reserved(words, L, 128)
+        elif L >> 16384 == 0:
+            Self._literal_words_reserved(words, L, 256)
+        elif L >> 32768 == 0:
+            Self._literal_words_reserved(words, L, 512)
+        elif L >> 65536 == 0:
+            Self._literal_words_reserved(words, L, 1024)
+        elif L >> 131072 == 0:
+            Self._literal_words_reserved(words, L, 2048)
+        elif L >> 262144 == 0:
+            Self._literal_words_reserved(words, L, 4096)
+        elif L >> 524288 == 0:
+            Self._literal_words_reserved(words, L, 8192)
+        elif L >> 1048576 == 0:
+            Self._literal_words_reserved(words, L, 16384)
+        elif L >> 2097152 == 0:
+            Self._literal_words_reserved(words, L, 32768)
+        elif L >> 4194304 == 0:
+            Self._literal_words_reserved(words, L, 65536)
+        # 2^16 = 65536 words is about 1.26 million digits.
+        # A longer literal would take minutes to compile,
+        # so it is refused with advice to build it at run time.
+        # This is a threshold that we can modify if needed.
+        else:
+            comptime assert False, (
+                "the literal is too long to split at compile time;"
+                " build the number at run time instead"
+            )
+
+    @staticmethod
+    def _literal_words_reserved[
+        v: __mlir_type.`!pop.int_literal`, c: __mlir_type.`!pop.int_literal`
+    ](mut words: Magnitude, value: IntLiteral[v], count: IntLiteral[c]):
+        """Reserves `count` words and appends those of a literal below
+        `2^(64 count)`, with no zero word on top.
+
+        Parameters:
+            v: The literal's compile-time value.
+            c: The word count, a power of two.
+
+        Args:
+            words: The words to append to.
+            value: The integer literal.
+            count: The word count.
+        """
+        words.reserve(Int(IntLiteral[c]()))
+        Self._literal_words_trimmed(words, value, count)
+
+    @staticmethod
+    def _literal_words_trimmed[
+        v: __mlir_type.`!pop.int_literal`, c: __mlir_type.`!pop.int_literal`
+    ](mut words: Magnitude, value: IntLiteral[v], count: IntLiteral[c]):
+        """Appends the words of a literal below `2^(64 count)`, low first,
+        with no zero word on top. Appends nothing for zero.
+
+        Parameters:
+            v: The literal's compile-time value.
+            c: The word count, a power of two.
+
+        Args:
+            words: The words to append to.
+            value: The integer literal.
+            count: The word count.
+        """
+        comptime L = IntLiteral[v]()
+        comptime C = IntLiteral[c]()
+        comptime if C == 1:
+            comptime if L != 0:
+                words.append(UInt64(L))
+        else:
+            comptime H = C // 2
+            comptime high = L >> (64 * H)
+            comptime if high == 0:
+                Self._literal_words_trimmed(words, L, H)
+            else:
+                Self._literal_words_padded(words, L & ((1 << (64 * H)) - 1), H)
+                Self._literal_words_trimmed(words, high, H)
+
+    @staticmethod
+    def _literal_words_padded[
+        v: __mlir_type.`!pop.int_literal`, c: __mlir_type.`!pop.int_literal`
+    ](mut words: Magnitude, value: IntLiteral[v], count: IntLiteral[c]):
+        """Appends exactly `count` words of a literal below `2^(64 count)`,
+        low first, zeros included.
+
+        Parameters:
+            v: The literal's compile-time value.
+            c: The word count, a power of two.
+
+        Args:
+            words: The words to append to.
+            value: The integer literal.
+            count: The word count.
+        """
+        comptime L = IntLiteral[v]()
+        comptime C = IntLiteral[c]()
+        comptime if C == 1:
+            words.append(UInt64(L))
+        elif L == 0:
+            for _ in range(Int(C)):
+                words.append(UInt64(0))
+        else:
+            comptime H = C // 2
+            Self._literal_words_padded(words, L & ((1 << (64 * H)) - 1), H)
+            Self._literal_words_padded(words, L >> (64 * H), H)
+
     # ===------------------------------------------------------------------=== #
     # Constructing methods that are not dunders
     # ===------------------------------------------------------------------=== #

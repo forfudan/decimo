@@ -150,6 +150,20 @@ var z: BInt = 42        # Implicit conversion from Int
 The constructor is marked `@implicit`, so Mojo can automatically convert `Int`
 to `BInt` where expected.
 
+#### From an integer literal of any size <!-- omit from toc -->
+
+```mojo
+var a: BInt = 12345678901234567890123456789012345678901234567890
+var b: BInt = -340282366920938463463374607431768211457
+var c = BInt(2**200)
+var d = a + 99999999999999999999999  # works wherever a BInt is expected
+```
+
+A literal wider than `Int` can be written directly, with no string. Its words
+are worked out at compile time, so nothing is parsed at run time and nothing
+can fail. `BUInt` accepts literals the same way; a negative literal is a
+compile-time error there.
+
 #### From `String` <!-- omit from toc -->
 
 ```mojo
@@ -180,6 +194,7 @@ Accepts any integral scalar type (`Int8` through `Int256`, `UInt8` through
 | Constructor                        | Description                            |
 | ---------------------------------- | -------------------------------------- |
 | `BInt()`                           | Zero                                   |
+| `BInt(value: IntLiteral)`          | From a literal of any size (implicit)  |
 | `BInt(value: String)`              | From decimal string (raises)           |
 | `BInt(value: Scalar)`              | From any integral scalar (implicit)    |
 | `BInt.from_integral_scalar(value)` | From any integral scalar type          |
@@ -565,21 +580,18 @@ var x = Decimal("0")  # Explicitly from string
 var y = Decimal()    # Default constructor creates zero, same as Decimal("0")
 ```
 
-#### From `Int` (Decimal) <!-- omit from toc -->
-
-Although you can construct a `Decimal` from an `Int` directly, it is still risky
-if the `Int` is so large that it exceeds the maximum value of `Int` (which is
-2^63-1).
+#### From `Int` or an integer literal (Decimal) <!-- omit from toc -->
 
 ```mojo
-# These work
 var x = Decimal(42)     # From Int
-var y: Decimal = 100    # Implicit conversion (IntLiteral -> Int -> Decimal)
-
-# This is dangerous!
-var z: Decimal = 9223372036854775808  # 2^63, exceeds Int range!
-print(z)  # Prints -9223372036854775808, overflowed!
+var y: Decimal = 100    # From an integer literal
+var z: Decimal = 123456789012345678901234567890  # Wider than Int, still exact
+var w = Decimal(2**200)  # Worked out exactly at compile time
 ```
+
+An integer literal of any size is exact, as `decimal.Decimal(int)` is in
+Python. A run-time `Int` is 64 bits, so `Decimal(n << 100)` for an `Int` `n`
+has already lost its high bits before `Decimal` sees it.
 
 #### From integral scalars <!-- omit from toc -->
 
@@ -642,6 +654,7 @@ var b = Decimal(py=py_dec)  # Alternative keyword-only syntax
 | Constructor                           | Description                     |
 | ------------------------------------- | ------------------------------- |
 | `Decimal()`                           | Zero                            |
+| `Decimal(value: IntLiteral)`          | From a literal of any size      |
 | `Decimal(value: String)`              | From string (raises)            |
 | `Decimal(value: Scalar)`              | From any integral scalar (impl) |
 | `Decimal(py=py_obj)`                  | From Python `Decimal` (raises)  |
@@ -1390,6 +1403,8 @@ print(BigFloat(2).precision)                    # 53
 print(BigFloat((1 << 60) + 1).precision)        # 61
 print(BigFloat(1 << 62).precision)              # 53
 ```
+
+An integer literal wider than `Int` and a `BigInt` are exact too, by the same rule: `var x: BigFloat = 123456789012345678901234567890` has 96 bits. With a precision, `BigFloat(2**100 + 1, 10)` rounds the whole literal, and `BigFloat(n, p, mode)` for a `BigInt` is `from_bigint`. The exact conversion has its own name, `from_bigint_exactly(n)`; `from_bigint(n)` rounds to 53 bits.
 
 The `Int` and the `Float64` constructors are implicit, so a literal can stand on either side of an operator, and in-place operators work too. Each operator rounds half to even at the wider of the two precisions, as described in the overview. A literal has at least 53 bits, so it lifts a narrower float to 53 bits: with a 24-bit `x`, `x * 2` has 53. Mojo has no reflected comparisons, so in a comparison the literal goes on the right: `x < 2` works and `2 > x` does not compile.
 

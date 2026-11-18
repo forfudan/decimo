@@ -626,6 +626,187 @@ struct BigUInt(
         """
         self = Self.from_integral_scalar(value)
 
+    @implicit
+    def __init__[
+        v: __mlir_type.`!pop.int_literal`
+    ](out self, value: IntLiteral[v]):
+        """Initializes a BigUInt from a non-negative integer literal of any
+        size.
+
+        This is what lets a literal wider than `Int` be written directly:
+
+        ```mojo
+        var a: BigUInt = 12345678901234567890123456789012345678901234567890
+        ```
+
+        The literal's words are worked out at compile time, so there is no
+        string parsing at run time and nothing can fail. A negative literal is
+        a compile-time error rather than the run-time `OverflowError` the
+        `Scalar` constructor raises.
+
+        Parameters:
+            v: The literal's compile-time value, which must be non-negative.
+
+        Args:
+            value: The integer literal.
+
+        Notes:
+
+        The helpers split the literal in halves and take the word count as a
+        literal. See `BigInt`'s literal constructor for why.
+        """
+        comptime L = IntLiteral[v]()
+        comptime assert L >= 0, "a BigUInt cannot hold a negative literal"
+        self.words = Coefficient()
+        Self._literal_words(self.words, L)
+        if len(self.words) == 0:
+            self.words.append(Self.Word(0))
+
+    @staticmethod
+    def _literal_words[
+        v: __mlir_type.`!pop.int_literal`
+    ](mut words: Coefficient, value: IntLiteral[v]):
+        """Appends the base-10^18 words of a non-negative literal, low first,
+        with no zero word on top.
+
+        Parameters:
+            v: The literal's compile-time value, which must be non-negative.
+
+        Args:
+            words: The words to append to.
+            value: The integer literal.
+
+        Notes:
+
+        The count comes from the same chain of binary tests as in `BigInt`:
+        a literal below `2^(64 n)` has at most `2n` base-10^18 words, since
+        `10^18 > 2^32`. Testing powers of ten instead would build them.
+        """
+        # The base is spelled out because it has to stay an `IntLiteral`;
+        # `Self.BASE` is an `Int`. The assert keeps the two together.
+        comptime assert (
+            Self.BASE == 1_000_000_000_000_000_000
+        ), "update the literal base to match BigUInt.BASE"
+        comptime L = IntLiteral[v]()
+        comptime if L >> 64 == 0:
+            Self._literal_words_reserved(words, L, 2)
+        elif L >> 128 == 0:
+            Self._literal_words_reserved(words, L, 4)
+        elif L >> 256 == 0:
+            Self._literal_words_reserved(words, L, 8)
+        elif L >> 512 == 0:
+            Self._literal_words_reserved(words, L, 16)
+        elif L >> 1024 == 0:
+            Self._literal_words_reserved(words, L, 32)
+        elif L >> 2048 == 0:
+            Self._literal_words_reserved(words, L, 64)
+        elif L >> 4096 == 0:
+            Self._literal_words_reserved(words, L, 128)
+        elif L >> 8192 == 0:
+            Self._literal_words_reserved(words, L, 256)
+        elif L >> 16384 == 0:
+            Self._literal_words_reserved(words, L, 512)
+        elif L >> 32768 == 0:
+            Self._literal_words_reserved(words, L, 1024)
+        elif L >> 65536 == 0:
+            Self._literal_words_reserved(words, L, 2048)
+        elif L >> 131072 == 0:
+            Self._literal_words_reserved(words, L, 4096)
+        elif L >> 262144 == 0:
+            Self._literal_words_reserved(words, L, 8192)
+        elif L >> 524288 == 0:
+            Self._literal_words_reserved(words, L, 16384)
+        elif L >> 1048576 == 0:
+            Self._literal_words_reserved(words, L, 32768)
+        elif L >> 2097152 == 0:
+            Self._literal_words_reserved(words, L, 65536)
+        elif L >> 4194304 == 0:
+            Self._literal_words_reserved(words, L, 131072)
+        else:
+            comptime assert False, (
+                "the literal is too long to split at compile time;"
+                " build the number at run time instead"
+            )
+
+    @staticmethod
+    def _literal_words_reserved[
+        v: __mlir_type.`!pop.int_literal`, c: __mlir_type.`!pop.int_literal`
+    ](mut words: Coefficient, value: IntLiteral[v], count: IntLiteral[c]):
+        """Reserves `count` words and appends those of a literal below
+        `10^(18 count)`, with no zero word on top.
+
+        Parameters:
+            v: The literal's compile-time value.
+            c: The word count, a power of two.
+
+        Args:
+            words: The words to append to.
+            value: The integer literal.
+            count: The word count.
+        """
+        words.reserve(Int(IntLiteral[c]()))
+        Self._literal_words_trimmed(words, value, count)
+
+    @staticmethod
+    def _literal_words_trimmed[
+        v: __mlir_type.`!pop.int_literal`, c: __mlir_type.`!pop.int_literal`
+    ](mut words: Coefficient, value: IntLiteral[v], count: IntLiteral[c]):
+        """Appends the words of a literal below `10^(18 count)`, low first,
+        with no zero word on top. Appends nothing for zero.
+
+        Parameters:
+            v: The literal's compile-time value.
+            c: The word count, a power of two.
+
+        Args:
+            words: The words to append to.
+            value: The integer literal.
+            count: The word count.
+        """
+        comptime L = IntLiteral[v]()
+        comptime C = IntLiteral[c]()
+        comptime if C == 1:
+            comptime if L != 0:
+                words.append(Self.Word(L))
+        else:
+            comptime H = C // 2
+            comptime P = 1_000_000_000_000_000_000**H
+            comptime high = L // P
+            comptime if high == 0:
+                Self._literal_words_trimmed(words, L, H)
+            else:
+                Self._literal_words_padded(words, L % P, H)
+                Self._literal_words_trimmed(words, high, H)
+
+    @staticmethod
+    def _literal_words_padded[
+        v: __mlir_type.`!pop.int_literal`, c: __mlir_type.`!pop.int_literal`
+    ](mut words: Coefficient, value: IntLiteral[v], count: IntLiteral[c]):
+        """Appends exactly `count` words of a literal below `10^(18 count)`,
+        low first, zeros included.
+
+        Parameters:
+            v: The literal's compile-time value.
+            c: The word count, a power of two.
+
+        Args:
+            words: The words to append to.
+            value: The integer literal.
+            count: The word count.
+        """
+        comptime L = IntLiteral[v]()
+        comptime C = IntLiteral[c]()
+        comptime if C == 1:
+            words.append(Self.Word(L))
+        elif L == 0:
+            for _ in range(Int(C)):
+                words.append(Self.Word(0))
+        else:
+            comptime H = C // 2
+            comptime P = 1_000_000_000_000_000_000**H
+            Self._literal_words_padded(words, L % P, H)
+            Self._literal_words_padded(words, L // P, H)
+
     def __init__(out self, value: String, *, ignore_sign: Bool = False) raises:
         """Initializes a BigUInt from a string representation.
 

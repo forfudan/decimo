@@ -309,6 +309,78 @@ struct Decimal128(
         """
         self = Decimal128.from_int(value)
 
+    @always_inline
+    @implicit
+    def __init__[
+        v: __mlir_type.`!pop.int_literal`
+    ](out self, value: IntLiteral[v]):
+        """Initializes a Decimal128 from an integer literal.
+
+        A literal wider than `Int` can be written directly, up to the largest
+        coefficient, `79228162514264337593543950335`:
+
+        ```mojo
+        var a: Decimal128 = 12345678901234567890123456789
+        ```
+
+        A literal beyond that is a compile-time error.
+
+        Parameters:
+            v: The literal's compile-time value.
+
+        Args:
+            value: The integer literal.
+        """
+        comptime L = IntLiteral[v]()
+        comptime assert (
+            L >= -79228162514264337593543950335
+            and L <= 79228162514264337593543950335
+        ), (
+            "the literal is beyond what a Decimal128 can hold;"
+            " use a BigDecimal instead"
+        )
+        comptime if L < 0:
+            self = Self._from_literal_magnitude(-L, True)
+        else:
+            self = Self._from_literal_magnitude(L, False)
+
+    @always_inline
+    @staticmethod
+    def _from_literal_magnitude[
+        v: __mlir_type.`!pop.int_literal`
+    ](value: IntLiteral[v], sign: Bool) -> Self:
+        """Builds a Decimal128 from the magnitude of an integer literal.
+
+        Parameters:
+            v: The literal's compile-time value, which must fit in 96 bits.
+
+        Args:
+            value: The magnitude.
+            sign: Whether the value is negative.
+
+        Returns:
+            The Decimal128 with scale zero.
+
+        Notes:
+
+        Each word is split off with a literal shift. Shifting an `IntLiteral`
+        by a run-time `Int` turns it into an `Int` first, which drops every
+        bit above the 64th.
+        """
+        comptime M = IntLiteral[v]()
+        comptime assert (
+            M >= 0 and M < 2**96
+        ), "the magnitude must fit in 96 bits"
+        var flags = UInt32(0)
+        if sign:
+            flags = Self.SIGN_MASK
+        return Self(
+            UInt32(M & 0xFFFF_FFFF),
+            UInt32((M >> 32) & 0xFFFF_FFFF),
+            UInt32((M >> 64) & 0xFFFF_FFFF),
+            flags,
+        )
+
     def __init__(out self, value: Int, scale: UInt32) raises:
         """Initializes a Decimal128 from an integer.
         See `from_int()` for more information.

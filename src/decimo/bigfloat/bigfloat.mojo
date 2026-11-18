@@ -198,13 +198,7 @@ struct BigFloat(
         in. This is the conversion behind `1 + x` and `x * 3`, and an operand
         rounded before the operator ran would make the answer round twice.
         """
-        var integer = BigInt(value)
-        var precision = PRECISION
-        if value != 0:
-            var bits = integer.bit_length() - trailing_zeros(integer)
-            if bits > precision:
-                precision = bits
-        self = Self.from_bigint(integer, precision)
+        self = Self.from_bigint_exactly(BigInt(value))
 
     def __init__(
         out self,
@@ -224,6 +218,93 @@ struct BigFloat(
             Error: Propagated from the rounding.
         """
         self = Self.from_int(value, precision, rounding_mode)
+
+    @implicit
+    def __init__(out self, value: BigInt) raises:
+        """Builds the float equal to a `BigInt`, exactly.
+
+        See `from_bigint_exactly()`.
+
+        Args:
+            value: The integer.
+
+        Raises:
+            Error: Propagated from the conversion, which does not round.
+        """
+        self = Self.from_bigint_exactly(value)
+
+    def __init__(
+        out self,
+        value: BigInt,
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises:
+        """Builds the nearest float to a `BigInt` at a given precision.
+
+        See `from_bigint()`.
+
+        Args:
+            value: The integer.
+            precision: The number of bits to keep.
+            rounding_mode: How to round when the integer does not fit.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the rounding.
+        """
+        self = Self.from_bigint(value, precision, rounding_mode)
+
+    @implicit
+    def __init__[
+        v: __mlir_type.`!pop.int_literal`
+    ](out self, value: IntLiteral[v]) raises:
+        """Builds the float equal to an integer literal of any size, exactly.
+
+        This is what lets a literal wider than `Int` be written directly:
+
+        ```mojo
+        var a: BigFloat = 123456789012345678901234567890
+        ```
+
+        Parameters:
+            v: The literal's compile-time value.
+
+        Args:
+            value: The integer literal.
+
+        Raises:
+            Error: Propagated from the conversion, which does not round.
+
+        Notes:
+
+        The precision follows the `Int` constructor: the default 53 bits, or
+        the literal's own count of significant bits when that is more.
+        """
+        self = Self.from_bigint_exactly(BigInt(value))
+
+    def __init__[
+        v: __mlir_type.`!pop.int_literal`
+    ](
+        out self,
+        value: IntLiteral[v],
+        precision: Int,
+        rounding_mode: RoundingMode = RoundingMode.ROUND_HALF_EVEN,
+    ) raises:
+        """Builds the nearest float to an integer literal at a given precision.
+
+        Parameters:
+            v: The literal's compile-time value.
+
+        Args:
+            value: The integer literal.
+            precision: The number of bits to keep.
+            rounding_mode: How to round when the literal does not fit.
+
+        Raises:
+            ValueError: If `precision` is not positive.
+            Error: Propagated from the rounding.
+        """
+        self = Self.from_bigint(BigInt(value), precision, rounding_mode)
 
     @implicit
     def __init__(out self, value: Float64) raises:
@@ -485,6 +566,39 @@ struct BigFloat(
             precision=precision,
             sign=value.sign,
         )
+
+    @staticmethod
+    def from_bigint_exactly(value: BigInt) raises -> Self:
+        """Builds the float equal to an integer, with no rounding.
+
+        The precision is the default 53 bits, or the integer's own count of
+        significant bits when that is more. `from_bigint()` rounds to the
+        precision it is given instead.
+
+        ```mojo
+        var n = BigInt(3).power(100)
+        var x = BigFloat.from_bigint_exactly(n)  # 159 bits, exact
+        var y = BigFloat.from_bigint(n)          # rounded to 53 bits
+        ```
+
+        `BigFloat(n)` gives the same result for an `Int`, a `BigInt` or an
+        integer literal.
+
+        Args:
+            value: The integer.
+
+        Returns:
+            The float equal to `value`.
+
+        Raises:
+            Error: Propagated from the conversion, which does not round.
+        """
+        var precision = PRECISION
+        if not value.is_zero():
+            var bits = value.bit_length() - trailing_zeros(value)
+            if bits > precision:
+                precision = bits
+        return Self.from_bigint(value, precision)
 
     @staticmethod
     def from_int(
