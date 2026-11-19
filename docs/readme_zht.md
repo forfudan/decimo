@@ -5,7 +5,7 @@
 位定點小數類型。靈感來源自 Python 的 `int`、`Decimal` 和 `Fraction`、MPFR，以及
 C#/.NET 的 `System.Decimal`。
 
-**[English](https://zhuyuhao.com/decimo/)**　|　**[更新日誌](https://github.com/forfudan/decimo/blob/main/docs/changelog.md)**　|　**[GitHub 倉庫»](https://github.com/forfudan/decimo)**　|　**[Discord 頻道»](https://discord.gg/3rGH87uZTk)**
+**[English](https://zhuyuhao.com/decimo/)**　|　**[用戶手冊（英文）»](https://decimo.mojo-lang.com)**　|　**[更新日誌](https://github.com/forfudan/decimo/blob/main/docs/changelog.md)**　|　**[GitHub 倉庫»](https://github.com/forfudan/decimo)**　|　**[Discord 頻道»](https://discord.gg/3rGH87uZTk)**
 
 - [概述](#概述)
   - [Decimo 庫](#decimo-庫)
@@ -46,6 +46,8 @@ Decimo 爲 Mojo 提供任意精度的整數、小數、二進制浮點數和有�
   位數字[^fixed]。
 - 任意精度二進制浮點數實現 (`BigFloat`，別名 `BFlt`)，七種捨入模式下都正確捨入，是 MPFR `mpfr_t` 的 Mojo 原生等價實現[^mpf]。
 - 精確有理數實現 (`Rational`，別名 `Frac`)，由一對約分到最簡的 `BigInt` 組成，是 Python `fractions.Fraction` 的 Mojo 原生等價實現。
+
+各類型的詳細用法見[用戶手冊](https://decimo.mojo-lang.com)（英文）。
 
 | 類型         | 別名              | 信息                                      | 內部表示     |
 | ------------ | ----------------- | ----------------------------------------- | ------------ |

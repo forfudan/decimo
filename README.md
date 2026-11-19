@@ -8,8 +8,8 @@ The same library is packaged for Python as a near drop-in for the standard libra
 
 [![Version](https://img.shields.io/badge/version-v0.16.0-blue)](https://github.com/forfudan/decimo/releases/tag/v0.16.0)
 [![Mojo](https://img.shields.io/badge/mojo-1.2.0-orange)](https://docs.modular.com/mojo/manual/)
-[![CI](https://img.shields.io/github/actions/workflow/status/forfudan/decimo/run_tests.yaml?branch=main&label=tests)](https://github.com/forfudan/decimo/actions/workflows/run_tests.yaml)
 [![License](https://img.shields.io/github/license/forfudan/decimo)](https://github.com/forfudan/decimo/blob/main/LICENSE)
+[![Manual](https://img.shields.io/badge/user%20manual-decimo.mojo--lang.com-green)](https://decimo.mojo-lang.com)
 
 [![pixi](https://img.shields.io/badge/pixi%20add-decimo-purple)](https://prefix.dev/channels/modular-community/packages/decimo)
 [![PyPI](https://img.shields.io/badge/pip%20install-decimo-blue)](https://pypi.org/project/decimo/)
@@ -24,6 +24,7 @@ The same library is packaged for Python as a near drop-in for the standard libra
 | `Decimal128` | `Dec128`          | 128-bit fixed-precision decimal type, equivalent to C#/.NET's `System.Decimal`          | 32-bit words |
 
 <!--
+[![CI](https://img.shields.io/github/actions/workflow/status/forfudan/decimo/run_tests.yaml?branch=main&label=tests)](https://github.com/forfudan/decimo/actions/workflows/run_tests.yaml)
 [![Stars](https://img.shields.io/github/stars/forfudan/decimo?style=flat)](https://github.com/forfudan/decimo/stargazers)
 [![Issues](https://img.shields.io/github/issues/forfudan/decimo)](https://github.com/forfudan/decimo/issues)
 ![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)
@@ -55,6 +56,8 @@ The core types are[^auxiliary]:
 - A 128-bit fixed-point decimal implementation (`Decimal128`) (alias `Dec128`) supporting up to 29 significant digits with a maximum of 28 decimal places[^fixed], which is a Mojo-native equivalent of C#'s `System.Decimal` or Rust's `rust_decimal`.
 - An arbitrary-precision binary floating-point implementation (`BigFloat`) (alias `BFlt`), correctly rounded in all seven rounding modes, which is a Mojo-native equivalent of MPFR's `mpfr_t`[^mpf].
 - An exact rational implementation (`Rational`) (alias `Frac`), a pair of `BigInt` kept in lowest terms, which is a Mojo-native equivalent of Python's `fractions.Fraction`.
+
+The [user manual](https://decimo.mojo-lang.com) covers each type in detail.
 
 Decimo is fast: at a million digits `pi()` is twelve times quicker than pure-Python mpmath, `BigInt` multiplication is fifteen times quicker than CPython's `int`, the logarithm at ten thousand digits is four hundred times quicker than libmpdec, and small `BigDecimal` operations are close to that same C library behind Python's `decimal`. The measured numbers, with the commit they were taken on, are in [docs/benchmarks.md](docs/benchmarks.md); `pixi run benchdoc` regenerates them.
 
