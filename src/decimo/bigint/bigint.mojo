@@ -980,7 +980,7 @@ struct BigInt(
         """Returns a hexadecimal string representation of the BigInt.
 
         Returns:
-            The hexadecimal string (e.g. "0x1A2B3C").
+            The hexadecimal string (e.g. "0x1a2b3c").
         """
         if self.is_zero():
             return "0x0"
