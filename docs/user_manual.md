@@ -34,7 +34,7 @@ def main() raises:
 | `Decimal`    | `BigDecimal`, `BDec` | Decimals of any precision, like Python's `decimal.Decimal`                | [Part II](#part-ii--decimal-bdec)    |
 | `BigFloat`   | `BFlt`               | Binary floats of any precision, correctly rounded, like MPFR              | [Part III](#part-iii--bigfloat-bflt) |
 | `Rational`   | `Frac`               | Exact fractions, like Python's `fractions.Fraction`                       | [Part IV](#part-iv--rational-frac)   |
-| `Decimal128` | `Dec128`             | A fixed 128-bit decimal: up to 29 digits, 0 to 28 of them after the point | —                                    |
+| `Decimal128` | `Dec128`             | A fixed 128-bit decimal: up to 29 digits, 0 to 28 of them after the point | [Part V](#part-v--decimal128-dec128) |
 | `BigUInt`    | `BUInt`              | Non-negative integers in base 10^18; it holds the digits of a `Decimal`   | —                                    |
 
 Every type except `Rational` and `BigUInt` comes with the prelude. All examples
@@ -95,6 +95,11 @@ The source is on [GitHub](https://github.com/forfudan/decimo), and the
   - [Rounding (Rational)](#rounding-rational)
   - [Closest Fraction (Rational)](#closest-fraction-rational)
   - [Conversions (Rational)](#conversions-rational)
+- [Part V — Decimal128 (`Dec128`)](#part-v--decimal128-dec128)
+  - [Construction (Decimal128)](#construction-decimal128)
+  - [Arithmetic and Rounding (Decimal128)](#arithmetic-and-rounding-decimal128)
+  - [Mathematical Functions (Decimal128)](#mathematical-functions-decimal128)
+  - [Conversion and Queries (Decimal128)](#conversion-and-queries-decimal128)
 - [Tools](#tools)
   - [Chinese Numerals](#chinese-numerals)
   - [Expression Engine](#expression-engine)
@@ -194,8 +199,8 @@ print(Rational(1, 3) + Rational(1, 6))   # 1/2
 ```
 
 Next, read the part for the type you need: [BigInt](#part-i--bigint-bint),
-[Decimal](#part-ii--decimal-bdec), [BigFloat](#part-iii--bigfloat-bflt) or
-[Rational](#part-iv--rational-frac).
+[Decimal](#part-ii--decimal-bdec), [BigFloat](#part-iii--bigfloat-bflt),
+[Rational](#part-iv--rational-frac) or [Decimal128](#part-v--decimal128-dec128).
 
 <!-- mdbook: page file="bigint/index.md" -->
 ## Part I — BigInt (`BInt`)
@@ -399,6 +404,18 @@ print(~a)      # -13
 print(BInt(-1) & BInt(255))  # 255
 ```
 
+Single bits can be read and changed by index, counting from 0 at the lowest
+bit. The changing methods return a new value:
+
+```mojo
+var x = BInt(10)            # 0b1010
+print(x.test_bit(1))        # True
+print(x.set_bit(0))         # 11  (0b1011)
+print(x.clear_bit(1))       # 8   (0b1000)
+print(x.flip_bit(3))        # 2   (0b0010)
+print(BInt(40).trailing_zeros())  # 3: 40 = 0b101000
+```
+
 #### Shift
 
 Shifting a `BInt` moves its bits. The result never overflows, because a
@@ -447,6 +464,14 @@ print(a.truncate_divide(b))      # -3
 print(a.truncate_modulo(b))      #  1
 ```
 
+Named methods exist for the floor forms too, and for rounding the quotient up:
+
+```mojo
+print(BInt(-7).floor_modulo(BInt(2)))   # 1, same as %
+print(BInt(7).ceil_divide(BInt(2)))     # 4
+print(BInt(-7).ceil_divide(BInt(2)))    # -3
+```
+
 <!-- mdbook: page file="bigint/math.md" -->
 ### Math and Number Theory (BigInt)
 
@@ -472,15 +497,36 @@ print(x.sqrt())    # 10000000000 (largest y such that y² ≤ x)
 print(x.isqrt())   # Same as sqrt()
 ```
 
-Raises if the value is negative.
+Raises if the value is negative. Three related methods:
+
+```mojo
+var r = BInt(30).sqrt_rem()          # (5, 5): 30 = 5*5 + 5
+print(BInt(49).is_perfect_square())  # True
+var p = BInt(1024).perfect_power()   # (2, 10): 1024 = 2**10
+```
+
+`perfect_power()` returns the largest exponent it can, and `(x, 1)` when there
+is none above one.
+
+##### Combinatorics <!-- omit from toc -->
+
+```mojo
+print(BInt(20).factorial())         # 2432902008176640000
+print(BInt(9).double_factorial())   # 945 = 9*7*5*3*1
+print(BInt(10).binomial(3))         # 120 ways to choose 3 of 10
+print(BInt(10).permutation(3))      # 720 ordered choices of 3 of 10
+print(BInt(100).fibonacci())        # 354224848179261915075
+print(BInt(10).lucas())             # 123
+```
 
 #### Number Theory
 
-All number-theory operations are available as both **instance methods** and
-**free functions**:
+`gcd`, `lcm`, `extended_gcd`, `mod_pow`, `mod_inverse`, `jacobi`, `legendre`,
+`kronecker` and `sqrt_mod` are both methods and free functions. The rest of
+this section is free functions only. Import them from `decimo`:
 
 ```mojo
-from decimo import BInt, gcd, lcm, extended_gcd, mod_pow, mod_inverse
+from decimo import gcd, lcm, extended_gcd, mod_pow, mod_inverse
 ```
 
 ##### GCD — Greatest Common Divisor <!-- omit from toc -->
@@ -525,6 +571,71 @@ Finds `x` such that `a * x % m == 1`:
 print(BInt(3).mod_inverse(BInt(7)))      # 5 (since 3×5 = 15 ≡ 1 mod 7)
 print(mod_inverse(BInt(3), BInt(7)))      # 5
 ```
+
+##### Modular square roots and symbols <!-- omit from toc -->
+
+```mojo
+from decimo import jacobi, kronecker, legendre, sqrt_mod
+
+var s = sqrt_mod(BInt(2), BInt(7))   # Optional: 3, since 3*3 = 9 = 2 mod 7
+print(s.value())                     # 3
+print(legendre(BInt(2), BInt(7)))    # 1: 2 is a square modulo the prime 7
+print(jacobi(BInt(2), BInt(15)))     # 1
+print(kronecker(BInt(2), BInt(15)))  # 1
+```
+
+`sqrt_mod` returns nothing when there is no square root. `sqrt_mod` and
+`legendre` need a prime modulus; this is not checked.
+
+##### Chinese remainder theorem <!-- omit from toc -->
+
+`crt(residues, moduli)` finds `x` that leaves the same remainder as
+`residues[i]` when divided by `moduli[i]`, for every `i`. It returns `(x, m)`, where `m` is the least common multiple of the moduli,
+or nothing when there is no solution. The moduli need not be coprime.
+
+```mojo
+from decimo import crt
+
+var residues: List[BInt] = [BInt(2), BInt(3)]
+var moduli: List[BInt] = [BInt(3), BInt(5)]
+var c = crt(residues, moduli)
+print(c.value()[0], c.value()[1])    # 8 15
+```
+
+##### Primes <!-- omit from toc -->
+
+```mojo
+from decimo import is_prime, next_prime, prev_prime, primes_below
+
+print(is_prime(BInt(2) ** 127 - 1))  # True
+print(next_prime(BInt(100)))         # 101
+print(prev_prime(BInt(100)))         # 97
+print(primes_below(30))              # [2, 3, 5, 7, 11, 13, 17, 19, 23, 29]
+```
+
+##### Factorization and divisors <!-- omit from toc -->
+
+```mojo
+from decimo import factor, divisors, divisor_count, divisor_sum
+from decimo import euler_phi, moebius, multiplicative_order
+
+var f = factor(BInt(360))
+print(f)                                      # 2^3 * 3^2 * 5
+print(f.primes[0], f.powers[0])               # 2 3
+print(divisors(BInt(12)))                     # [1, 2, 3, 4, 6, 12]
+print(divisor_count(BInt(360)))               # 24
+print(divisor_sum(BInt(12)))                  # 28
+print(euler_phi(BInt(36)))                    # 12
+print(moebius(BInt(30)))                      # -1
+print(multiplicative_order(BInt(2), BInt(7))) # 3: 2**3 = 8 = 1 mod 7
+```
+
+`factor` returns a `Factorization`: the lists `primes` and `powers`, and a
+`cofactor` it could not split. Factoring is hard for very large numbers, so
+each of these functions takes an optional `budget`, the work it may spend.
+When the budget runs out, `factor` returns what it found: `f.is_complete()` is
+`False` and the `cofactor` holds the unfactored part. The other functions
+raise `ValueError` instead.
 
 <!-- mdbook: page file="bigint/conversion.md" -->
 ### Conversion and Queries (BigInt)
@@ -725,6 +836,16 @@ Works with all integral SIMD types.
 **Floating-point scalars are rejected at compile time** — use
 `from_float_scalar()` instead.
 
+#### From `BigInt` (Decimal) <!-- omit from toc -->
+
+A `BigInt` converts exactly, and implicitly, so it can be passed wherever a
+`Decimal` is expected:
+
+```mojo
+var d: Decimal = BInt(2) ** 100
+print(d)   # 1267650600228229401496703205376
+```
+
 #### From floating-point — `from_float_scalar()` <!-- omit from toc -->
 
 `from_float_scalar()` reads the bits of the float and returns the value the
@@ -772,18 +893,19 @@ var b = Decimal(py=py_dec)  # Alternative keyword-only syntax
 
 #### Summary of Decimal constructors <!-- omit from toc -->
 
-| Constructor                           | Description                     |
-| ------------------------------------- | ------------------------------- |
-| `Decimal()`                           | Zero                            |
-| `Decimal(value: IntLiteral)`          | From a literal of any size      |
-| `Decimal(value: String)`              | From string (raises)            |
-| `Decimal(value: Scalar)`              | From any integral scalar (impl) |
-| `Decimal(py=py_obj)`                  | From Python `Decimal` (raises)  |
-| `Decimal.from_integral_scalar(value)` | From any integral scalar type   |
-| `Decimal.from_float_scalar(value)`    | From any float scalar (raises)  |
-| `Decimal.from_float(value)`           | Deprecated alias of the above   |
-| `Decimal.from_string(value)`          | Explicit factory from string    |
-| `Decimal.from_python_decimal(py_obj)` | From Python `Decimal` (raises)  |
+| Constructor                           | Description                         |
+| ------------------------------------- | ----------------------------------- |
+| `Decimal()`                           | Zero                                |
+| `Decimal(value: IntLiteral)`          | From a literal of any size          |
+| `Decimal(value: BigInt)`              | From `BigInt`, exact (implicit)     |
+| `Decimal(value: String)`              | From string (raises)                |
+| `Decimal(value: Scalar)`              | From any integral scalar (implicit) |
+| `Decimal(py=py_obj)`                  | From Python `Decimal` (raises)      |
+| `Decimal.from_integral_scalar(value)` | From any integral scalar type       |
+| `Decimal.from_float_scalar(value)`    | From any float scalar (raises)      |
+| `Decimal.from_float(value)`           | Deprecated alias of the above       |
+| `Decimal.from_string(value)`          | Explicit factory from string        |
+| `Decimal.from_python_decimal(py_obj)` | From Python `Decimal` (raises)      |
 
 #### Unsafe Decimal constructors <!-- omit from toc -->
 
@@ -1020,6 +1142,16 @@ print(Decimal("2").power(exponent=Decimal("0.5"), precision=50))  # sqrt(2) to 5
 print(Decimal("2") ** 10)                                         # 1024
 ```
 
+#### Factorial <!-- omit from toc -->
+
+The factorial of a whole `Decimal` is exact by default. With a precision, it
+is rounded, which keeps large factorials fast:
+
+```mojo
+print(Decimal(30).factorial())                # 265252859812191058636308480000000
+print(Decimal(1000).factorial(precision=20))  # 4.0238726007709377354E+2567
+```
+
 <!-- mdbook: page file="decimal/exp-and-log.md" -->
 ### Exponential and Logarithmic (Decimal)
 
@@ -1028,6 +1160,18 @@ print(Decimal("2") ** 10)                                         # 1024
 ```mojo
 print(Decimal("1").exp())                # e ≈ 2.718281828459045235360287471
 print(Decimal("10").exp(precision=50))   # e^10 to 50 digits
+```
+
+#### Near zero: `expm1` and `log1p` <!-- omit from toc -->
+
+For a tiny `x`, `exp(x) - 1` and `ln(1 + x)` lose their digits to
+cancellation. `expm1` and `log1p` keep them:
+
+```mojo
+var tiny = Decimal("1E-20")
+print(tiny.exp(precision=30) - 1)    # 1.000000000E-20: most digits are lost
+print(tiny.expm1(precision=30))      # 1.00000000000000000000500000000E-20
+print(tiny.log1p(precision=30))      # 9.99999999999999999995000000000E-21
 ```
 
 #### Natural logarithm <!-- omit from toc -->
@@ -1056,7 +1200,7 @@ print(Decimal("100").log(base=Decimal("10")))  # 2
 print(Decimal("8").log(base=2))                # 3.000000000000000000000000000
 ```
 
-*To be in v0.17.0:* <!-- [forthcoming] --> `log`, `power`, `arctan2` and `hypot` take the other value by keyword: `x.log(base=b)`, `x.power(exponent=e)`, `y.arctan2(other=x)` and `x.hypot(other=y)`. An `Int` converts to a `Decimal`, so a positional `x.log(100)` would read as base 100 while `x.ln(100)` means 100 digits; the keyword keeps the two apart. The positional form still works in v0.17.0 with a deprecation warning, and goes in v0.18.0.
+`log`, `power`, `arctan2` and `hypot` take the other value by keyword: `x.log(base=b)`, `x.power(exponent=e)`, `y.arctan2(other=x)` and `x.hypot(other=y)`. An `Int` converts to a `Decimal`, so a positional `x.log(100)` would read as base 100 while `x.ln(100)` means 100 digits; the keyword keeps the two apart. *To be in v0.17.0:* <!-- [forthcoming] --> the positional form still works, with a deprecation warning, and goes in v0.18.0.
 
 #### Base-10 logarithm <!-- omit from toc -->
 
@@ -1091,6 +1235,29 @@ print(Decimal("1").sec(precision=50))   # 1/cos
 
 ```mojo
 print(Decimal("1").arctan(precision=50))  # π/4 to 50 digits
+print(Decimal("0.5").arcsin(precision=30))  # 0.523598775598298873077107230547
+print(Decimal("0.5").arccos(precision=30))  # 1.04719755119659774615421446109
+```
+
+#### Two-argument functions <!-- omit from toc -->
+
+`y.arctan2(other=x)` is the angle of the point `(x, y)`, and `x.hypot(other=y)`
+is its distance from the origin. Pass the other value by keyword.
+
+```mojo
+print(Decimal("1").arctan2(other=Decimal("1"), precision=30))  # π/4
+print(Decimal("3").hypot(other=Decimal("4")))                  # 5
+```
+
+#### Hyperbolic functions <!-- omit from toc -->
+
+```mojo
+print(Decimal("1").sinh(precision=30))     # 1.17520119364380145688238185060
+print(Decimal("1").cosh(precision=30))     # 1.54308063481524377847790562076
+print(Decimal("1").tanh(precision=30))     # 0.761594155955764888119458282605
+print(Decimal("1").arcsinh(precision=30))  # 0.881373587019543025232609324980
+print(Decimal("2").arccosh(precision=30))  # 1.31695789692481670862504634731
+print(Decimal("0.5").arctanh(precision=30))  # 0.549306144334054845697622618461
 ```
 
 <!-- mdbook: page file="decimal/near-zero.md" -->
@@ -1271,16 +1438,8 @@ x.scaleb(n)              # Multiply by 10^n (O(1), adjusts scale only)
 
 #### From Python <!-- omit from toc -->
 
-```mojo
-from std.python import Python
-
-var decimal = Python.import_module("decimal")
-var py_val = decimal.Decimal("3.14159265358979323846")
-
-var d = Decimal.from_python_decimal(py_val)
-# Or:
-var d = Decimal(py=py_val)
-```
+A Python `decimal.Decimal` converts without loss; see
+[From Python](#from-python--from_python_decimal) on the Construction page.
 
 #### Matching Python's API <!-- omit from toc -->
 
@@ -1437,6 +1596,15 @@ tried again. This is Ziv's method, and it is why the last bit can be trusted.
 | `arcsinh`, `arccosh`, `arctanh`         | `decimo.bigfloat.hyperbolic`    |
 | `pi`, `ln2`, `ln10`, `e`                | `decimo.bigfloat.constants`     |
 | `fma`, `remainder`, `fmod`              | `decimo.bigfloat.ieee`          |
+
+Each takes its arguments, a precision in bits and an optional rounding mode
+(half to even by default), and returns the float of that precision nearest
+the true value. `log` takes the base as its second argument, before the
+precision.
+
+`cot` and `csc` have a pole at zero and return an infinity of the zero's
+sign, the way a float does; `Decimal` raises there instead, having no
+infinity to return.
 
 ```mojo
 from decimo.bigfloat.constants import pi
@@ -1669,6 +1837,9 @@ print(sin(BigFloat.infinity(), 53).is_nan())          # True: it settles nowhere
 print(arctan(BigFloat.infinity(), 53))                # pi/2: this one settles
 ```
 
+Three methods tell the kinds apart: `x.is_nan()`, `x.is_infinite()` and
+`x.is_finite()`. A NaN is neither infinite nor finite.
+
 A NaN is unordered, so every comparison with it is False except `!=`, and that
 holds for a NaN against itself. The two zeros compare equal. Sorting therefore
 needs an order that covers them, and `compare_total(x, y)` is it (import it
@@ -1824,7 +1995,12 @@ from decimo import Frac, Rational
 
 The value is always in lowest terms with a positive denominator, so two equal
 values have the same two parts and `==` is a comparison of integers rather
-than of fractions.
+than of fractions. The two parts are the fields `numerator` and `denominator`:
+
+```mojo
+var r = Rational(6, -8)
+print(r.numerator, r.denominator)   # -3 4
+```
 
 <!-- mdbook: page file="rational/construction.md" -->
 ### Construction (Rational)
@@ -1930,6 +2106,465 @@ print(Rational(-7, 2).reciprocal())        # -2/7
 
 `to_bigdecimal` takes the digits to keep, because a third has no decimal
 expansion that ends. Everything else here is exact.
+
+<!-- mdbook: page file="decimal128/index.md" -->
+## Part V — Decimal128 (`Dec128`)
+
+A decimal of fixed size, like `System.Decimal` in C# and .NET. It fits in 128
+bits and holds up to 29 digits, with 0 to 28 of them after the point. It never
+uses the heap, so it is fast and cheap to copy.
+
+| Property        | Value                                                    |
+| --------------- | -------------------------------------------------------- |
+| Name            | `Decimal128`                                             |
+| Alias           | `Dec128`                                                 |
+| Value           | `(-1)^sign * coefficient * 10^(-scale)`                  |
+| Coefficient     | 96 bits, from 0 to `2^96 - 1`                            |
+| Scale           | 0 to 28 (`Dec128.MAX_SCALE`)                             |
+| Digits          | Up to 29 (`Dec128.MAX_NUM_DIGITS`)                       |
+| Largest value   | `Dec128.MAX()`, which is `79228162514264337593543950335` |
+| Smallest step   | `1E-28`                                                  |
+| Special values  | None: no NaN and no infinity, but `-0` is kept           |
+| Rounding        | Half to even, the only mode for arithmetic and functions |
+| Memory          | 16 bytes, no heap                                        |
+| .NET equivalent | `System.Decimal`                                         |
+
+The scale is the number of digits after the point, and a value keeps it:
+`Dec128("1.50")` prints as `1.50` and is equal to `Dec128("1.5")`.
+
+```mojo
+var price = Dec128("19.99")
+print(price * Dec128(3))                # 59.97
+print(Dec128.MAX())                     # 79228162514264337593543950335
+print(Dec128.MIN())                     # -79228162514264337593543950335
+```
+
+#### Decimal128 or Decimal <!-- omit from toc -->
+
+Both are decimal types, so `0.1 + 0.2` is `0.3` in both. The difference is
+size.
+
+|                        | `Decimal128`                    | `Decimal`                     |
+| ---------------------- | ------------------------------- | ----------------------------- |
+| Digits                 | Up to 29                        | Any number                    |
+| Digits after the point | 0 to 28                         | Any number                    |
+| A result too large     | Raises `OverflowError`          | Grows                         |
+| A result below `1E-28` | Rounds to zero                  | Kept                          |
+| Arithmetic rounds to   | 29 digits, at most 28 after `.` | 28 significant digits         |
+| Precision              | Fixed                           | Can be chosen                 |
+| Functions              | Roots, powers, exp, log, trig   | Also inverse trig, hyperbolic |
+| Memory                 | 16 bytes, no heap               | Grows on the heap             |
+
+Choose `Dec128` for money, prices, rates and quantities that fit in 29 digits,
+when speed and a fixed size matter. It also matches .NET `System.Decimal`, and
+it reads and writes the IEEE 754 decimal128 bytes that BSON stores.
+
+Choose `Decimal` when a value can have more than 29 digits, when you need a
+precision of your choice, a function that `Dec128` lacks, or results that
+match Python's `decimal` digit for digit.
+
+```mojo
+print(Dec128(100) / Dec128(3))          # 33.333333333333333333333333333
+print(Decimal(100) / Decimal(3))        # 33.33333333333333333333333333
+```
+
+`Dec128` fills its 29 digits; `Decimal` rounds to 28 significant digits.
+
+`Dec128` is in the prelude. Its traits are listed in
+[Appendix B](#appendix-b--traits-implemented).
+
+<!-- mdbook: page file="decimal128/construction.md" -->
+### Construction (Decimal128)
+
+A `Dec128` can be built from an `Int`, an integer literal, a `String`, a float,
+any integer scalar, or its raw parts.
+
+| Constructor                                    | Example                                      | Result                 |
+| ---------------------------------------------- | -------------------------------------------- | ---------------------- |
+| `Dec128()`                                     | `Dec128()`                                   | `0`                    |
+| `Dec128(n)`                                    | `Dec128(-42)`                                | `-42`                  |
+| `Dec128(n, scale)`                             | `Dec128(12345, 2)`                           | `123.45`               |
+| `Dec128(s)`, `Dec128.from_string(s)`           | `Dec128("1.50")`                             | `1.50`                 |
+| `Dec128(f)`                                    | `Dec128(2.5)`                                | `2.5`                  |
+| `Dec128.from_int(n, scale)`                    | `Dec128.from_int(-5, 3)`                     | `-0.005`               |
+| `Dec128.from_integral_scalar(v)`               | `Dec128.from_integral_scalar(UInt64.MAX)`    | `18446744073709551615` |
+| `Dec128.from_float_scalar(v)`                  | `Dec128.from_float_scalar(Float32(0.5))`     | `0.5`                  |
+| `Dec128.from_uint128(c, scale, sign)`          | `Dec128.from_uint128(314, 2)`                | `3.14`                 |
+| `Dec128.from_components(l, m, h, scale, sign)` | `Dec128.from_components(150, 0, 0, 2, True)` | `-1.50`                |
+| `Dec128.from_words(l, m, h, flags)`            | `Dec128.from_words(150, 0, 0, 0x80020000)`   | `-1.50`                |
+| `Dec128.from_decimal(d)`                       | `Dec128.from_decimal(Decimal("2.5"))`        | `2.5`                  |
+| `Dec128.from_ieee754(bits)`                    | See [IEEE 754](#ieee-754-decimal128-bytes)   |                        |
+
+The constants are static methods: `Dec128.ZERO()`, `ONE()`, `MAX()`, `MIN()`,
+`PI()` and `E()`. `zero()` and `one()` are the same values for generic code.
+
+#### From `Int` <!-- omit from toc -->
+
+```mojo
+var a = Dec128(42)
+var b = Dec128(12345, 2)                # 123.45: the second number is the scale
+var c = Dec128("1.23") + 1              # 2.23: an Int converts implicitly
+```
+
+The scale must be from 0 to 28. `Dec128(1, 29)` raises.
+
+The constructors wrap any error in a `ConversionError`; its cause names the
+problem, such as an `OverflowError`.
+
+An integer scalar other than `Int`, such as `Int64` or `UInt128`, goes through
+`from_integral_scalar()`. It raises `OverflowError` above `Dec128.MAX()`,
+which only 128-bit and 256-bit scalars can reach.
+
+#### From an integer literal <!-- omit from toc -->
+
+```mojo
+var a: Dec128 = 123
+var b: Dec128 = -79228162514264337593543950335   # Dec128.MIN()
+```
+
+*To be in v0.17.0:* <!-- [forthcoming] --> a literal wider than `Int` works
+directly, up to `Dec128.MAX()` (v0.16.0 silently gets it wrong). A literal
+beyond that is a compile-time error, which suggests `BigDecimal` instead:
+
+```text
+var c: Dec128 = 79228162514264337593543950336
+# error: the literal is beyond what a Decimal128 can hold; use a BigDecimal instead
+```
+
+#### From `String` <!-- omit from toc -->
+
+```mojo
+print(Dec128("123.4500"))               # 123.4500, the scale is kept
+print(Dec128("-1.5E-3"))                # -0.0015
+print(Dec128("1.5e3"))                  # 1500
+print(Dec128("1_000_000.50"))           # 1000000.50
+print(Dec128("0.12345678901234567890123456789"))  # 0.1234567890123456789012345679
+print(Dec128("1E-30"))                  # 0.0000000000000000000000000000
+```
+
+The text may have digits, one `.`, a sign in front, and an exponent after `e`
+or `E`. Spaces, `,` and `_` are ignored.
+
+- More than 28 digits after the point are rounded, half to even.
+- A value below `1E-28` rounds to zero; it does not raise.
+- An integer part beyond `Dec128.MAX()` raises `OverflowError`.
+- An empty string, or one with no digits such as `"."`, raises `ValueError`.
+
+#### From a float <!-- omit from toc -->
+
+```mojo
+print(Dec128(2.5))                                  # 2.5
+print(Dec128(0.1))                                  # 0.1
+print(Dec128.from_float_scalar(Float32(0.1)))       # 0.100000001490116119384765625
+```
+
+This conversion is not exact. The float `0.1` really holds
+`0.1000000000000000055511151231...`, but `Dec128(0.1)` gives `0.1`: the digits
+after the point are worked out in floating point, and they stop where that
+runs out. Do not trust more than 15 digits. (`Decimal.from_float_scalar()` is
+exact.) For an exact value, write a string.
+
+Infinity, NaN and a float of `2^96` or more raise an error.
+
+#### From raw parts <!-- omit from toc -->
+
+A `Dec128` is four `UInt32` words. `low`, `mid` and `high` hold the 96-bit
+coefficient, low word first. `flags` holds the scale in bits 16 to 23 and the
+sign in bit 31; the other bits must be zero.
+
+```mojo
+var x = Dec128.from_words(150, 0, 0, 0x80020000)
+print(x)                                # -1.50
+print(x.low, x.mid, x.high, hex(x.flags))   # 150 0 0 0x80020000
+print(Dec128.from_components(0, 0, 1, 0, False))  # 18446744073709551616, 2^64
+```
+
+`from_words()` checks the flags and raises `ValueError` on a bad bit or a scale
+above 28. `from_components()` takes the scale and the sign as separate
+arguments. The four-word constructor `Dec128(low, mid, high, flags)` checks
+nothing in a release build; use `from_words()` for data from outside.
+
+<!-- mdbook: page file="decimal128/arithmetic.md" -->
+### Arithmetic and Rounding (Decimal128)
+
+| Operation                           | Result                               |
+| ----------------------------------- | ------------------------------------ |
+| `x + y`, `x - y`, `x * y`           | Sum, difference, product             |
+| `x / y`                             | Quotient                             |
+| `x // y`                            | Quotient truncated toward zero       |
+| `x % y`                             | Remainder, with the sign of `x`      |
+| `x.__divmod__(y)`                   | `(x // y, x % y)` in one call        |
+| `x ** n`, `x.power(n)`              | Power; `n` is an `Int` or a `Dec128` |
+| `-x`, `+x`, `abs(x)`                | Negation, copy, absolute value       |
+| `+=`, `-=`, `*=`, `/=`, `//=`, `%=` | In-place forms                       |
+| `==`, `!=`, `<`, `<=`, `>`, `>=`    | Compare by value: `1.0 == 1.00`      |
+| `x.max(y)`, `x.min(y)`              | The larger or the smaller            |
+| `x.clamp(lower, upper)`             | `x` limited to `[lower, upper]`      |
+| `x.fma(y, z)`                       | `x * y + z`, rounded once            |
+
+```mojo
+var a = Dec128("123456789.123456789")
+var b = Dec128("1234.56789")
+print(a + b)                            # 123458023.691346789
+print(a * b)                            # 152415787654.32099750190521
+print(Dec128(7) // Dec128(2), Dec128(-7) // Dec128(2))   # 3 -3
+print(Dec128(7) % Dec128(2), Dec128(-7) % Dec128(2))     # 1 -1
+print(Dec128("1.0") == Dec128("1.00"))  # True
+```
+
+`//` and `%` work as in Python's `decimal`, not as for Python's `int`. The
+builtin `divmod()` does not take a `Dec128`; call `x.__divmod__(y)`.
+
+#### How results round <!-- omit from toc -->
+
+The scale of a result follows the same rules as `Decimal`; see
+[Result exponents](#result-exponents-decimal-and-dec128). When the exact
+result does not fit, digits after the point are dropped until it has at most
+29 digits and at most 28 after the point. The rest is rounded half to even.
+Operators have no other rounding mode.
+
+```mojo
+print(Dec128(2) / Dec128(3))            # 0.6666666666666666666666666667
+print(Dec128(100) / Dec128(3))          # 33.333333333333333333333333333
+print(Dec128("1E-28") / Dec128(2))      # 0.0000000000000000000000000000
+```
+
+The last result is half of `1E-28`, which rounds to the even side, zero. A
+result below the smallest step becomes zero without an error.
+
+`fma` rounds once where `x * y + z` rounds twice, so it can keep one more
+digit:
+
+```mojo
+var pi = Dec128("3.141592653589793238462643383")
+print(pi.fma(pi, Dec128("-9.8")))       # 0.0696044010893586188344909981
+print(pi * pi + Dec128("-9.8"))         # 0.069604401089358618834490998
+```
+
+#### Overflow <!-- omit from toc -->
+
+There is no infinity. When the integer part of a result does not fit, the
+operation raises `OverflowError`:
+
+```mojo
+try:
+    print(Dec128.MAX() + Dec128(1))
+except e:
+    print("OverflowError")              # this branch runs
+print(Dec128.MAX() + Dec128("0.4"))     # 79228162514264337593543950335
+```
+
+The second sum is exact as `...335.4`, which rounds back to `Dec128.MAX()`.
+
+#### Rounding <!-- omit from toc -->
+
+`round(ndigits, rounding_mode)` rounds to `ndigits` places after the point,
+half to even by default. A negative `ndigits` rounds to the left of the point.
+It takes all seven modes of [RoundingMode](#roundingmode).
+
+```mojo
+var x = Dec128("123.456")
+print(x.round(2))                       # 123.46
+print(x.round(-1))                      # 120
+print(x.round(2, ROUND_DOWN))           # 123.45
+print(x.round(5))                       # 123.45600
+print(round(x, 2))                      # 123.46
+print(round(Dec128("2.5")))             # 2, halves go to the even side
+```
+
+A `round()` that would need more than 29 digits raises `OverflowError`. The
+builtin `round(x, n)` does not raise: it returns `x` unchanged instead.
+
+`quantize(exp)` rounds to the scale of `exp`; the value of `exp` does not
+matter. `normalize()` removes trailing zeros.
+
+```mojo
+print(Dec128("19.999").quantize(Dec128("0.01")))   # 20.00
+print(Dec128("1.2345").quantize(Dec128("0.01"), ROUND_UP))   # 1.24
+print(Dec128("1.2345000").normalize())  # 1.2345
+```
+
+The integer part, the fraction and the sign are methods too:
+
+```mojo
+var y = Dec128("-3.75")
+print(y.trunc(), y.floor(), y.ceil())   # -3 -4 -3
+print(y.fract())                        # -0.75
+print(y.signum())                       # -1
+```
+
+The standard library's `floor()`, `ceil()` and `trunc()` do not take a
+`Dec128`; use these methods.
+
+<!-- mdbook: page file="decimal128/math.md" -->
+### Mathematical Functions (Decimal128)
+
+The functions are methods. Each one works with extra digits inside and rounds
+once at the end, half to even. When the extra digits cannot decide the last
+digit, it runs again with more. There is no precision argument: the result
+always has up to 29 digits and up to 28 after the point.
+
+| Method                      | Computes                   | Raises when                                         |
+| --------------------------- | -------------------------- | --------------------------------------------------- |
+| `x.sqrt()`                  | Square root                | `x < 0`                                             |
+| `x.cbrt()`                  | Cube root                  | —                                                   |
+| `x.root(n)`                 | `n`-th root                | `n <= 0`, or `n` is even and `x < 0`                |
+| `x.power(e)`, `x ** e`      | `x` to the power `e`       | `x < 0` and `e` has a fraction, `x = 0` and `e < 0` |
+| `x.exp()`                   | `e` to the power `x`       | `x` above about 66.54                               |
+| `x.ln()`                    | Natural logarithm          | `x <= 0`                                            |
+| `x.log10()`                 | Base-10 logarithm          | `x <= 0`                                            |
+| `x.log(base)`               | Logarithm in `base`        | `x <= 0`, `base <= 0` or `base = 1`                 |
+| `x.sin()`, `x.cos()`        | Sine, cosine (radians)     | —                                                   |
+| `x.tan()`, `x.sec()`        | Tangent, secant            | Very near `pi/2 + k * pi`, if the result is too big |
+| `x.cot()`, `x.csc()`        | Cotangent, cosecant        | `x = 0`, or very near `k * pi`                      |
+| `Dec128.PI()`, `Dec128.E()` | `pi` and `e`, 28 places    | —                                                   |
+| `factorial(n)`              | `n!`, for `n` from 0 to 27 | `n < 0` or `n > 27`                                 |
+
+Any function also raises `OverflowError` when its result is above
+`Dec128.MAX()`.
+
+`factorial` is a function, not a method. Import it with
+`from decimo.decimal128.special import factorial`.
+
+```mojo
+print(Dec128(2).sqrt())                 # 1.4142135623730950488016887242
+print(Dec128(-8).cbrt())                # -2
+print(Dec128(2).root(5))                # 1.1486983549970350067986269468
+print(Dec128(2) ** 10)                  # 1024
+print(Dec128(2) ** Dec128("0.5"))       # 1.4142135623730950488016887242
+print(Dec128(1).exp())                  # 2.7182818284590452353602874714
+print(Dec128(10).ln())                  # 2.3025850929940456840179914547
+print(Dec128(8).log(Dec128(2)))         # 3
+print(Dec128(1).sin())                  # 0.8414709848078965066525023216
+print(Dec128("1E20").sin())             # -0.6452512852657808442058117113
+```
+
+A large angle is reduced with enough digits of `pi`, so `sin(1E20)` is right
+to the last digit.
+
+#### What it lacks <!-- omit from toc -->
+
+`Dec128` has no inverse trigonometric functions (`arcsin`, `arccos`, `arctan`,
+`arctan2`), no hyperbolic functions or their inverses, and no `expm1`,
+`log1p` or `hypot`. `Decimal` has all of them. Convert, compute, and convert
+back:
+
+```mojo
+var x = Dec128("0.5")
+var y = Dec128.from_decimal(Decimal(String(x)).arctan(precision=40))
+print(y)                                # 0.4636476090008061162142562315
+```
+
+<!-- mdbook: page file="decimal128/conversion.md" -->
+### Conversion and Queries (Decimal128)
+
+#### To a string <!-- omit from toc -->
+
+`Dec128` always prints in plain notation, never as `1E-7`. See
+[Conversion and Output (Decimal)](#conversion-and-output-decimal) for how
+this differs from `Decimal`.
+
+```mojo
+var x = Dec128("12345.678")
+print(x)                                # 12345.678
+print(x.to_string(scientific=True))     # 1.2345678E+4
+print(x.to_string(engineering=True))    # 12.345678E+3
+print(x.to_string(delimiter="_"))       # 12_345.678
+print(repr(Dec128("1.50")))             # Decimal128("1.50")
+```
+
+`to_scientific_string()`, `to_eng_string()` and
+`to_string_with_separators("_")` are short forms of the three calls above.
+
+#### To numbers <!-- omit from toc -->
+
+```mojo
+var x = Dec128("-123.99")
+print(Int(x))                           # -123, toward zero
+print(x.to_int64())                     # -123
+print(x.to_int128())                    # -123
+print(x.to_uint128())                   # 123, the integer part of abs(x)
+print(Float64(x))                       # -123.99
+print(Dec128.MAX().to_int128())         # 79228162514264337593543950335
+```
+
+`Int(x)`, `to_int()` and `to_int64()` drop the fraction and raise when the
+result does not fit in 64 bits. This is unlike `Decimal`, where `Int()` raises
+on a fraction. `to_int128()` and `to_uint128()` never raise, since every
+`Dec128` fits. `Float64(x)` never raises, but it may lose digits.
+
+#### To and from `Decimal` <!-- omit from toc -->
+
+```mojo
+var d = Decimal(String(Dec128("1.50")))
+print(d)                                # 1.50
+var e = Dec128.from_decimal(Decimal("3.14159265358979323846264338327950288"))
+print(e)                                # 3.1415926535897932384626433833
+```
+
+`from_decimal()` rounds half to even to 29 digits, at most 28 after the point. It raises
+`OverflowError` when the integer part does not fit.
+
+#### Raw parts <!-- omit from toc -->
+
+```mojo
+var x = Dec128("-1.50")
+print(x.coefficient(), x.scale(), x.is_negative())   # 150 2 True
+print(x.repr_words())                   # Decimal128(0x96, 0x0, 0x0, 0x80020000)
+var y = Dec128.from_words(x.low, x.mid, x.high, x.flags)
+print(y)                                # -1.50
+```
+
+`as_tuple()` gives `(is_negative, coefficient, scale)` in one call, and
+`repr_components()` prints the five parts that `from_components()` takes.
+
+#### IEEE 754 decimal128 bytes <!-- omit from toc -->
+
+`to_ieee754()` writes the value in the IEEE 754 decimal128 interchange format,
+binary integer decimal encoding (what BSON and Intel's library use). The
+sixteen bytes come back as one `UInt128`. `from_ieee754()` reads them back.
+Trailing zeros are kept, so `1.0` and `1` give different bytes.
+
+```mojo
+from decimo.ieee754 import decimal128_to_bytes
+
+var bits = Dec128("1.0").to_ieee754()
+print(hex(bits))                        # 0x303e000000000000000000000000000a
+print(Dec128.from_ieee754(bits))        # 1.0
+var bytes = decimal128_to_bytes(bits)   # little-endian by default, as in BSON
+print(bytes[0])                         # 10
+```
+
+The format holds 34 digits and a far wider exponent, so `from_ieee754()` can
+round, ties to even. It raises `OverflowError` for a value above
+`Dec128.MAX()` and `ValueError` for an infinity or a NaN. A value below
+`1E-28` rounds to zero. `decimal128_from_bytes()` turns sixteen bytes back
+into the `UInt128`.
+
+#### Queries <!-- omit from toc -->
+
+| Method                           | Return    | Description                                 |
+| -------------------------------- | --------- | ------------------------------------------- |
+| `is_zero()`                      | `Bool`    | Zero, of any sign and scale                 |
+| `is_negative()`                  | `Bool`    | The sign bit is set, also for `-0`          |
+| `is_positive()`                  | `Bool`    | Greater than zero                           |
+| `is_integer()`                   | `Bool`    | No fraction: `2.00` is an integer           |
+| `is_one()`                       | `Bool`    | Equal to 1, at any scale                    |
+| `is_odd()`                       | `Bool`    | The integer part is odd                     |
+| `scale()`                        | `Int`     | Digits after the point                      |
+| `coefficient()`                  | `UInt128` | The digits as an integer: 150 for `1.50`    |
+| `number_of_significant_digits()` | `Int`     | Digits in the coefficient                   |
+| `number_of_trailing_zeros()`     | `Int`     | Trailing zeros in the coefficient           |
+| `adjusted()`                     | `Int`     | Exponent of the first digit: 2 for `123.45` |
+| `same_quantum(y)`                | `Bool`    | Same scale as `y`                           |
+
+```mojo
+var x = Dec128("123.4500")
+print(x.scale(), x.coefficient())       # 4 1234500
+print(x.number_of_significant_digits(), x.number_of_trailing_zeros())  # 7 2
+print(x.adjusted(), x.is_integer())     # 2 False
+print(Dec128("2.00").is_integer(), Dec128("1.000").is_one())   # True True
+```
 
 <!-- mdbook: part title="Tools" -->
 <!-- mdbook: skip -->
@@ -2292,58 +2927,35 @@ is there for code that needs a total order.
 
 `Numeric` asks for `zero()` and `one()` without arguments, so those two give values of fifty-three bits; `zero(precision, sign)` and `one(precision)` give any other. The operators keep the wider of the two precisions and round half to even, so generic code works at the precision of the values it is handed.
 
+#### Rational <!-- omit from toc -->
+
+| Trait                   | What it enables                       |
+| ----------------------- | ------------------------------------- |
+| `Absable`               | `abs(x)`                              |
+| `Ceilable`, `Floorable` | `ceil(x)`, `floor(x)`                 |
+| `Comparable`            | `<`, `<=`, `>`, `>=`, `==`, `!=`      |
+| `Copyable`              | Value-semantic copy                   |
+| `FloatableRaising`      | `Float64(x)`                          |
+| `Hashable`              | `hash(x)`, a key in a dictionary      |
+| `IntableRaising`        | `Int(x)`                              |
+| `Movable`               | Move semantics                        |
+| `Numeric`               | Generic code over Decimo numbers      |
+| `Parsable`              | `T.from_string(text)` in generic code |
+| `Roundable`             | `round(x)`, `round(x, ndigits)`       |
+| `Truncable`             | `trunc(x)`                            |
+| `Writable`              | `print(x)`, `String(x)`               |
+
 <!-- mdbook: page file="appendix/api-tables.md" -->
 ### Appendix C — Complete API Tables
 
-#### BigFloat — All Functions <!-- omit from toc -->
+One table per type of the operators and methods. Free functions and longer
+explanations are on the pages linked from each table.
 
-Every one of these takes a precision in bits and a rounding mode, and returns
-the float of that precision nearest the true value.
+#### BigFloat <!-- omit from toc -->
 
-| Function                        | Module                          |
-| ------------------------------- | ------------------------------- |
-| `add`, `subtract`               | `decimo.bigfloat.arithmetics`   |
-| `multiply`, `divide`            | `decimo.bigfloat.arithmetics`   |
-| `sqrt`                          | `decimo.bigfloat.exponential`   |
-| `root`, `cbrt`                  | `decimo.bigfloat.exponential`   |
-| `hypot`                         | `decimo.bigfloat.exponential`   |
-| `exp`, `ln`                     | `decimo.bigfloat.exponential`   |
-| `exp2`, `exp10`                 | `decimo.bigfloat.exponential`   |
-| `log2`, `log10`, `log`          | `decimo.bigfloat.exponential`   |
-| `expm1`, `log1p`                | `decimo.bigfloat.exponential`   |
-| `power`                         | `decimo.bigfloat.power`         |
-| `sin`, `cos`, `tan`             | `decimo.bigfloat.trigonometric` |
-| `cot`, `csc`, `sec`             | `decimo.bigfloat.trigonometric` |
-| `arcsin`, `arccos`, `arctan`    | `decimo.bigfloat.trigonometric` |
-| `arctan2`                       | `decimo.bigfloat.trigonometric` |
-| `sinh`, `cosh`, `tanh`          | `decimo.bigfloat.hyperbolic`    |
-| `arcsinh`, `arccosh`, `arctanh` | `decimo.bigfloat.hyperbolic`    |
-| `pi`, `ln2`, `ln10`, `e`        | `decimo.bigfloat.constants`     |
-| `fma`, `remainder`, `fmod`      | `decimo.bigfloat.ieee`          |
-
-`log` takes the base as its second argument, before the precision. Every other
-one takes the argument, the precision and the mode.
-
-`cot` and `csc` have a pole at zero and return an infinity of the zero's
-sign, the way a float does; `BigDecimal` raises there instead, having no
-infinity to return. No other pole of the six is a binary float, so every
-other argument has an answer, however large it is.
-
-These take no rounding mode, or no precision, because their answers are exact
-or carry the argument's own precision. All of them are in
-`decimo.bigfloat.ieee`, and all of them are methods as well.
-
-| Function                               | Description                                 |
-| -------------------------------------- | ------------------------------------------- |
-| `next_plus`, `next_minus`              | The neighbour at a given precision          |
-| `next_toward`                          | The neighbour in another value's direction  |
-| `logb`                                 | The leading bit's position, as a `BigInt`   |
-| `scaleb`                               | Times a power of two, exactly               |
-| `copy_sign`, `copy_abs`, `copy_negate` | The sign, never raising                     |
-| `number_class`                         | The specification's name for the value      |
-| `is_integer`                           | Whether there is a fractional part          |
-| `truncate`, `floor`, `ceil`            | The three named roundings to a whole number |
-| `round_to_integer`                     | The same in any of the seven modes          |
+The free functions and their modules are listed in
+[Mathematical Functions (BigFloat)](#mathematical-functions-bigfloat) and
+[IEEE 754 Functions (BigFloat)](#ieee-754-functions-bigfloat).
 
 | Operator / Method                           | Description                                  |
 | ------------------------------------------- | -------------------------------------------- |
@@ -2382,50 +2994,87 @@ or carry the argument's own precision. All of them are in
 | `a.to_float64()`                            | The nearest double                           |
 | `a.internal_representation()`               | The significand, exponent and precision      |
 
-#### BigInt — All Operators <!-- omit from toc -->
+#### BigInt <!-- omit from toc -->
 
-| Operator / Method   | Accepts              | Raises? | Description            |
-| ------------------- | -------------------- | ------- | ---------------------- |
-| `a + b`             | `BInt`, `Int`        | No      | Addition               |
-| `a - b`             | `BInt`, `Int`        | No      | Subtraction            |
-| `a * b`             | `BInt`, `Int`        | No      | Multiplication         |
-| `a / b`             | `BInt`, `Int`        | Yes     | Truncating division    |
-| `a // b`            | `BInt`, `Int`        | Yes     | Floor division         |
-| `a % b`             | `BInt`, `Int`        | Yes     | Floor modulo           |
-| `a ** b`            | `BInt`, `Int`        | Yes     | Power                  |
-| `a << n`            | `Int`                | No      | Left shift             |
-| `a >> n`            | `Int`                | No      | Right shift            |
-| `a & b`             | `BInt`, `Int`        | No      | Bitwise AND            |
-| `a \| b`            | `BInt`, `Int`        | No      | Bitwise OR             |
-| `a ^ b`             | `BInt`, `Int`        | No      | Bitwise XOR            |
-| `~a`                | —                    | No      | Bitwise NOT            |
-| `-a`                | —                    | No      | Negation               |
-| `abs(a)`            | —                    | No      | Absolute value         |
-| `a.sqrt()`          | —                    | Yes     | Integer square root    |
-| `a.gcd(b)`          | `BInt`               | No      | GCD                    |
-| `a.lcm(b)`          | `BInt`               | Yes     | LCM                    |
-| `a.extended_gcd(b)` | `BInt`               | Yes     | Extended GCD           |
-| `a.mod_pow(e, m)`   | `BInt`/`Int`, `BInt` | Yes     | Modular exponentiation |
-| `a.mod_inverse(m)`  | `BInt`               | Yes     | Modular inverse        |
+Free functions: see [Number Theory](#number-theory).
 
-#### Decimal — Mathematical Functions <!-- omit from toc -->
+| Operator / Method                                 | Accepts              | Raises? | Description                  |
+| ------------------------------------------------- | -------------------- | ------- | ---------------------------- |
+| `a + b`                                           | `BInt`, `Int`        | No      | Addition                     |
+| `a - b`                                           | `BInt`, `Int`        | No      | Subtraction                  |
+| `a * b`                                           | `BInt`, `Int`        | No      | Multiplication               |
+| `a / b`                                           | `BInt`, `Int`        | Yes     | Truncating division          |
+| `a // b`                                          | `BInt`, `Int`        | Yes     | Floor division               |
+| `a % b`                                           | `BInt`, `Int`        | Yes     | Floor modulo                 |
+| `a ** b`                                          | `BInt`, `Int`        | Yes     | Power                        |
+| `a << n`                                          | `Int`                | No      | Left shift                   |
+| `a >> n`                                          | `Int`                | No      | Right shift                  |
+| `a & b`                                           | `BInt`, `Int`        | No      | Bitwise AND                  |
+| `a \| b`                                          | `BInt`, `Int`        | No      | Bitwise OR                   |
+| `a ^ b`                                           | `BInt`, `Int`        | No      | Bitwise XOR                  |
+| `~a`                                              | —                    | No      | Bitwise NOT                  |
+| `-a`                                              | —                    | No      | Negation                     |
+| `abs(a)`                                          | —                    | No      | Absolute value               |
+| `a.sqrt()`                                        | —                    | Yes     | Integer square root          |
+| `a.gcd(b)`                                        | `BInt`               | Yes     | GCD                          |
+| `a.lcm(b)`                                        | `BInt`               | Yes     | LCM                          |
+| `a.extended_gcd(b)`                               | `BInt`               | Yes     | Extended GCD                 |
+| `a.mod_pow(e, m)`                                 | `BInt`/`Int`, `BInt` | Yes     | Modular exponentiation       |
+| `a.mod_inverse(m)`                                | `BInt`               | Yes     | Modular inverse              |
+| `a.__divmod__(b)`                                 | `BInt`               | Yes     | Floor quotient and remainder |
+| `a.truncate_divide(b)`, `a.truncate_modulo(b)`    | `BInt`               | Yes     | Division toward zero         |
+| `a.floor_modulo(b)`                               | `BInt`               | Yes     | Same as `%`                  |
+| `a.ceil_divide(b)`                                | `BInt`               | Yes     | Quotient rounded up          |
+| `a.sqrt_rem()`                                    | —                    | Yes     | Root and remainder           |
+| `a.is_perfect_square()`                           | —                    | Yes     | Whether a square             |
+| `a.perfect_power()`                               | —                    | Yes     | `(base, exponent)`           |
+| `a.factorial()`, `a.double_factorial()`           | —                    | Yes     | `n!`, `n!!`                  |
+| `a.binomial(k)`, `a.permutation(k)`               | `Int`                | Yes     | Choices of `k`               |
+| `a.fibonacci()`, `a.lucas()`                      | —                    | Yes     | The `n`th number             |
+| `a.test_bit(i)`                                   | `Int`                | Yes     | Whether bit `i` is set       |
+| `a.set_bit(i)`, `a.clear_bit(i)`, `a.flip_bit(i)` | `Int`                | Yes     | A copy with bit `i` changed  |
+| `a.bit_count()`                                   | —                    | No      | Number of set bits           |
+| `a.trailing_zeros()`                              | —                    | No      | Zero bits at the low end     |
 
-| Function | Signature                           | Default | Description          |
-| -------- | ----------------------------------- | ------- | -------------------- |
-| `sqrt`   | `x.sqrt(precision=28)`              | 28      | Square root          |
-| `cbrt`   | `x.cbrt(precision=28)`              | 28      | Cube root            |
-| `root`   | `x.root(n, precision=28)`           | 28      | Nth root             |
-| `power`  | `x.power(exponent=e, precision=28)` | 28      | Exponentiation       |
-| `exp`    | `x.exp(precision=28)`               | 28      | e^x                  |
-| `ln`     | `x.ln(precision=28)`                | 28      | Natural logarithm    |
-| `log`    | `x.log(base=b, precision=28)`       | 28      | Logarithm (any base) |
-| `log10`  | `x.log10(precision=28)`             | 28      | Base-10 logarithm    |
-| `sin`    | `x.sin(precision=28)`               | 28      | Sine (radians)       |
-| `cos`    | `x.cos(precision=28)`               | 28      | Cosine (radians)     |
-| `tan`    | `x.tan(precision=28)`               | 28      | Tangent (radians)    |
-| `cot`    | `x.cot(precision=28)`               | 28      | Cotangent (radians)  |
-| `csc`    | `x.csc(precision=28)`               | 28      | Cosecant (radians)   |
-| `sec`    | `x.sec(precision=28)`               | 28      | Secant (radians)     |
-| `arctan` | `x.arctan(precision=28)`            | 28      | Arctangent (radians) |
-| `pi`     | `Decimal.pi(precision)`             | —       | Compute π            |
-| `e`      | `Decimal.e(precision)`              | —       | Compute e            |
+#### Decimal <!-- omit from toc -->
+
+The precision is in significant digits, 28 by default. Most functions also
+take a `rounding_mode`, half to even by default.
+
+| Function                        | Signature                           | Description                    |
+| ------------------------------- | ----------------------------------- | ------------------------------ |
+| `sqrt`, `cbrt`                  | `x.sqrt(precision=28)`              | Square and cube root           |
+| `root`                          | `x.root(n, precision)`              | `n`th root                     |
+| `power`                         | `x.power(exponent=e, precision=28)` | Power                          |
+| `exp`, `expm1`                  | `x.exp(precision=28)`               | `e**x`, and `e**x - 1`         |
+| `ln`, `log1p`                   | `x.ln(precision=28)`                | Natural log, and `ln(1 + x)`   |
+| `log`                           | `x.log(base=b, precision=28)`       | Logarithm in any base          |
+| `log10`                         | `x.log10(precision=28)`             | Base-10 logarithm              |
+| `sin`, `cos`, `tan`             | `x.sin(precision=28)`               | In radians                     |
+| `cot`, `csc`, `sec`             | `x.cot(precision=28)`               | In radians                     |
+| `arcsin`, `arccos`, `arctan`    | `x.arcsin(precision=28)`            | In radians                     |
+| `arctan2`                       | `y.arctan2(other=x, precision=28)`  | Angle of the point `(x, y)`    |
+| `hypot`                         | `x.hypot(other=y, precision=28)`    | `sqrt(x*x + y*y)`              |
+| `sinh`, `cosh`, `tanh`          | `x.sinh(precision=28)`              | Hyperbolic functions           |
+| `arcsinh`, `arccosh`, `arctanh` | `x.arcsinh(precision=28)`           | Their inverses                 |
+| `factorial`                     | `x.factorial(precision=0)`          | Exact unless a precision given |
+| `pi`, `e`                       | `Decimal.pi(precision)`             | The constants                  |
+
+#### Rational <!-- omit from toc -->
+
+| Operator / Method                  | Description                                   |
+| ---------------------------------- | --------------------------------------------- |
+| `a + b`, `a - b`, `a * b`, `a / b` | Exact, and the in-place forms                 |
+| `a ** n`                           | Exact, for an `Int` or `BigInt` exponent      |
+| `-a`, `abs(a)`                     | Exact                                         |
+| `a == b`, `a < b`, and the rest    | Exact comparison                              |
+| `floor(a)`, `ceil(a)`, `trunc(a)`  | Rounded to a whole number                     |
+| `round(a)`, `round(a, n)`          | Half to even, to a whole number or `n` places |
+| `a.numerator`, `a.denominator`     | The two parts, in lowest terms                |
+| `a.reciprocal()`                   | `1 / a`                                       |
+| `a.limit_denominator(n)`           | The closest fraction with denominator `<= n`  |
+| `a.is_integer()`, `a.is_zero()`    | What kind of value it is                      |
+| `a.sign()`                         | `-1`, `0` or `1`                              |
+| `a.to_integer()`, `a.to_int()`     | Truncated toward zero                         |
+| `a.to_float()`                     | The nearest double                            |
+| `a.to_bigdecimal(precision)`       | A `Decimal`, rounded once                     |
