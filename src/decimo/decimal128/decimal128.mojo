@@ -27,6 +27,7 @@ from std.collections import Span
 from std.hash.hasher import Hasher
 from std.memory import Pointer
 from std.sys import bit_width_of
+from std.utils.numerics import isinf, isnan
 
 from decimo.bigdecimal.bigdecimal import BigDecimal
 import decimo.decimal128.arithmetics as decimal128_arithmetics
@@ -1142,6 +1143,17 @@ struct Decimal128(
 
         var widened = value.cast[DType.float64]()
 
+        # CASE: Infinity and NaN, which have no decimal value. They must be
+        # caught here: the size check below converts to `UInt128`, which is
+        # undefined for them.
+        if isinf(widened) or isnan(widened):
+            raise ValueError(
+                message=String(
+                    "The float value {} cannot be transformed into Decimal128."
+                ).format(value),
+                function="Decimal128.from_float_scalar()",
+            )
+
         # CASE: Zero
         if widened == Float64(0):
             return Decimal128.ZERO()
@@ -1887,11 +1899,8 @@ struct Decimal128(
     def __divmod__(self, other: Self) raises -> Tuple[Self, Self]:
         """Returns `(self // other, self % other)` in a single call.
 
-        Equivalent to `(self // other, self % other)` but amortises the
-        divide pipeline: the truncated quotient is computed once and
-        reused to derive the remainder as `self - quotient * other`,
-        avoiding the second full `divide()` that the two-step path
-        would perform. The identity
+        Equivalent to `(self // other, self % other)`, from a single exact
+        division of the coefficients. The identity
         `self == (self // other) * other + (self % other)` always
         holds.
 
@@ -1905,8 +1914,7 @@ struct Decimal128(
             ZeroDivisionError: If `other` is zero.
             OverflowError: If the result overflows.
         """
-        var q = decimal128_arithmetics.truncate_divide(self, other)
-        return (q, self - q * other)
+        return decimal128_arithmetics.truncate_divmod(self, other)
 
     @always_inline
     def __pow__(self, exponent: Self) raises -> Self:
@@ -3035,9 +3043,9 @@ struct Decimal128(
         1. Negatives precede positives (including signed zero: `-0 < +0`).
         2. Among same-sign non-zero values: usual numeric order.
         3. Among numerically equal values (incl. same-signed zeros), the
-           *lower* scale comes first for positives; reversed for negatives,
-           so the global sequence stays monotonic across the zero boundary:
-           `... -0.00 < -0.0 < -0 < +0 < +0.0 < +0.00 ...`.
+           *higher* scale (the lower exponent) comes first for positives,
+           and last for negatives, as in Python's `decimal` and `BigDecimal`:
+           `-0 < -0.0 < -0.00 < +0.00 < +0.0 < +0 ...`.
 
         Args:
             other: The Decimal128 to compare against.
@@ -3050,9 +3058,9 @@ struct Decimal128(
 
         ```mojo
         from decimo import Decimal128
-        print(Decimal128("1.0").compare_total(Decimal128("1.00")))    # -1
-        print(Decimal128("1").compare_total(Decimal128("1.0")))       # -1
-        print(Decimal128("-1.0").compare_total(Decimal128("-1")))     # -1
+        print(Decimal128("1.0").compare_total(Decimal128("1.00")))    # 1
+        print(Decimal128("1").compare_total(Decimal128("1.0")))       # 1
+        print(Decimal128("-1.0").compare_total(Decimal128("-1")))     # 1
         print(Decimal128("-0.00").compare_total(Decimal128("0.00")))  # -1
         ```
         End of example.

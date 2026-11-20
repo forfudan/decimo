@@ -1549,7 +1549,8 @@ def sqrt_exact(
     """
 
     # Handle special cases
-    if x.sign:
+    # A negative zero has a root, itself, as in Python's `decimal`.
+    if x.sign and not x.coefficient.is_zero():
         raise ValueError(
             message="Cannot compute square root of a negative number.",
             function="sqrt_exact()",
@@ -1561,7 +1562,7 @@ def sqrt_exact(
         # result scale = -((-x.scale) // 2)
         var x_exp = -x.scale
         var result_exp = x_exp >> 1  # floor division toward -inf for >>
-        return BigDecimal(BigUInt.zero(), -result_exp, False)
+        return BigDecimal(BigUInt.zero(), -result_exp, x.sign)
 
     # --- CPython _pydecimal.py sqrt algorithm ---
     # prec = precision + 1 (one guard digit for rounding)
@@ -1702,14 +1703,15 @@ def sqrt_via_reciprocal_iteration(
     """
 
     # Handle special cases
-    if x.sign:
+    # A negative zero has a root, itself, as in Python's `decimal`.
+    if x.sign and not x.coefficient.is_zero():
         raise ValueError(
             message="Cannot compute square root of a negative number.",
             function="sqrt_via_reciprocal_iteration()",
         )
 
     if x.coefficient.is_zero():
-        return BigDecimal(BigUInt.zero(), (x.scale + 1) // 2, False)
+        return BigDecimal(BigUInt.zero(), (x.scale + 1) // 2, x.sign)
 
     # For x = 1, return 1
     if x.is_one():
@@ -1922,14 +1924,15 @@ def sqrt_newton(x: BigDecimal, precision: Int) raises -> BigDecimal:
     # That is t > p + (s - d(c)) // 2
 
     # Handle special cases
-    if x.sign:
+    # A negative zero has a root, itself, as in Python's `decimal`.
+    if x.sign and not x.coefficient.is_zero():
         raise ValueError(
             message="Cannot compute square root of a negative number.",
             function="sqrt_newton()",
         )
 
     if x.coefficient.is_zero():
-        return BigDecimal(BigUInt.zero(), (x.scale + 1) // 2, False)
+        return BigDecimal(BigUInt.zero(), (x.scale + 1) // 2, x.sign)
 
     # STEP 1: Extend the coefficient by 10^(2p-s)
     var working_precision = precision + 9  # p

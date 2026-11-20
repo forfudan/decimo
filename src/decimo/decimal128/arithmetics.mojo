@@ -985,6 +985,102 @@ def divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     return wide.to_decimal()
 
 
+def _divide_to_integer(
+    x1: Decimal128, x2: Decimal128, function: String
+) raises -> Tuple[UInt256, UInt256, Int]:
+    """Divides the magnitudes exactly into a whole quotient and a remainder.
+
+    Both values are brought to the larger of the two scales, so that their
+    coefficients are whole numbers in the same unit, and then divided as
+    integers. Nothing is rounded: rounding the quotient first, as dividing and
+    then truncating does, can carry it up to the next whole number.
+
+    Args:
+        x1: The dividend.
+        x2: The divisor.
+        function: The caller's name, for the error message.
+
+    Returns:
+        The quotient of the magnitudes, truncated; the remainder of the
+        magnitudes, in units of `10^-scale`; and that scale.
+
+    Raises:
+        ZeroDivisionError: If the divisor is zero.
+    """
+    if x2.is_zero():
+        raise ZeroDivisionError(message="Division by zero.", function=function)
+    var scale1 = x1.scale()
+    var scale2 = x2.scale()
+    var scale = max(scale1, scale2)
+    # A coefficient has at most 96 bits and 10^28 needs 94, so the product
+    # fits in 256 bits.
+    var a = UInt256(x1.coefficient()) * decimal128_utility.power_of_10[
+        DType.uint256
+    ](scale - scale1)
+    var b = UInt256(x2.coefficient()) * decimal128_utility.power_of_10[
+        DType.uint256
+    ](scale - scale2)
+    return (a // b, a % b, scale)
+
+
+def _quotient_from(
+    x1: Decimal128, x2: Decimal128, quotient: UInt256, function: String
+) raises -> Decimal128:
+    """Returns a whole quotient of magnitudes as a `Decimal128`.
+
+    Args:
+        x1: The dividend.
+        x2: The divisor.
+        quotient: The quotient of their magnitudes.
+        function: The caller's name, for the error message.
+
+    Returns:
+        The quotient with the sign of `x1 / x2`. A zero quotient is positive:
+        this type does not hand out a negative zero from `//`, unlike
+        Python's `decimal`.
+
+    Raises:
+        OverflowError: If the quotient is above `Decimal128.MAX()`.
+    """
+    if quotient >> 96 != 0:
+        raise OverflowError(
+            message="The quotient is too large for Decimal128.",
+            function=function,
+        )
+    var negative = x1.is_negative() != x2.is_negative()
+    return Decimal128.from_uint128(
+        UInt128(quotient), 0, negative and quotient != UInt256(0)
+    )
+
+
+def _remainder_from(
+    x1: Decimal128, remainder: UInt256, scale: Int
+) raises -> Decimal128:
+    """Returns a remainder of magnitudes as a `Decimal128`.
+
+    The remainder always fits in 96 bits: at the common scale, the operand
+    with the larger scale keeps its own coefficient, which has at most 96
+    bits, and the remainder is smaller than both aligned operands.
+
+    Args:
+        x1: The dividend.
+        remainder: The remainder of the magnitudes, in units of
+            `10^-scale`.
+        scale: Its scale.
+
+    Returns:
+        The remainder with the sign of `x1`. A zero remainder is positive.
+
+    Raises:
+        Error: Propagated from the construction.
+    """
+    return Decimal128.from_uint128(
+        UInt128(remainder),
+        UInt32(scale),
+        x1.is_negative() and remainder != UInt256(0),
+    )
+
+
 def truncate_divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     """Returns the integral part of the quotient (truncating towards zero).
     The following identity always holds: x_1 == (x_1 // x_2) * x_2 + x_1 % x_2.
@@ -1000,15 +1096,17 @@ def truncate_divide(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
         ZeroDivisionError: If the divisor is zero.
         OverflowError: If the result overflows.
     """
-    try:
-        return divide(x1, x2).round(0, RoundingMode.down())
-    except e:
-        raise e^
+    var parts = _divide_to_integer(x1, x2, "truncate_divide()")
+    return _quotient_from(x1, x2, parts[0], "truncate_divide()")
 
 
 def modulo(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
     """Returns the remainder of the division of x1 by x2.
     The following identity always holds: x_1 == (x_1 // x_2) * x_2 + x_1 % x_2.
+
+    The remainder has the sign of the dividend and the larger of the two
+    scales, as in Python's `decimal`, except that a zero remainder is
+    positive.
 
     Args:
         x1: The dividend.
@@ -1019,12 +1117,32 @@ def modulo(x1: Decimal128, x2: Decimal128) raises -> Decimal128:
 
     Raises:
         ZeroDivisionError: If the divisor is zero.
-        OverflowError: If the result overflows.
     """
-    try:
-        return x1 - (truncate_divide(x1, x2) * x2)
-    except e:
-        raise e^
+    var parts = _divide_to_integer(x1, x2, "modulo()")
+    return _remainder_from(x1, parts[1], parts[2])
+
+
+def truncate_divmod(
+    x1: Decimal128, x2: Decimal128
+) raises -> Tuple[Decimal128, Decimal128]:
+    """Returns `(x1 // x2, x1 % x2)` from a single division.
+
+    Args:
+        x1: The dividend.
+        x2: The divisor.
+
+    Returns:
+        The quotient, truncated toward zero, and the remainder.
+
+    Raises:
+        ZeroDivisionError: If the divisor is zero.
+        OverflowError: If the quotient overflows.
+    """
+    var parts = _divide_to_integer(x1, x2, "truncate_divmod()")
+    return (
+        _quotient_from(x1, x2, parts[0], "truncate_divmod()"),
+        _remainder_from(x1, parts[1], parts[2]),
+    )
 
 
 def fma(x1: Decimal128, x2: Decimal128, x3: Decimal128) raises -> Decimal128:

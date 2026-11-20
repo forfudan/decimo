@@ -489,18 +489,19 @@ def test_adjusted_zero() raises:
 
 
 def test_compare_total_distinguishes_scales_when_equal() raises:
-    """Numerically equal values: lower scale precedes higher scale for
-    positives (`1 < 1.0 < 1.00`)."""
-    testing.assert_equal(Int(Dec128("1.0").compare_total(Dec128("1.00"))), -1)
-    testing.assert_equal(Int(Dec128("1").compare_total(Dec128("1.0"))), -1)
-    testing.assert_equal(Int(Dec128("1.00").compare_total(Dec128("1.0"))), 1)
+    """Numerically equal values: a higher scale (lower exponent) precedes a
+    lower one for positives (`1.00 < 1.0 < 1`), as in Python's `decimal`."""
+    testing.assert_equal(Int(Dec128("1.0").compare_total(Dec128("1.00"))), 1)
+    testing.assert_equal(Int(Dec128("1").compare_total(Dec128("1.0"))), 1)
+    testing.assert_equal(Int(Dec128("1.00").compare_total(Dec128("1.0"))), -1)
 
 
 def test_compare_total_negative_reverses_scale_ordering() raises:
-    """For negatives, higher scale precedes lower scale so the global
-    sequence stays monotonic across the sign change."""
-    testing.assert_equal(Int(Dec128("-1.00").compare_total(Dec128("-1.0"))), -1)
-    testing.assert_equal(Int(Dec128("-1.0").compare_total(Dec128("-1"))), -1)
+    """For negatives the relation reverses (`-1 < -1.0 < -1.00`), as in
+    Python's `decimal`."""
+    testing.assert_equal(Int(Dec128("-1.00").compare_total(Dec128("-1.0"))), 1)
+    testing.assert_equal(Int(Dec128("-1.0").compare_total(Dec128("-1"))), 1)
+    testing.assert_equal(Int(Dec128("-1").compare_total(Dec128("-1.00"))), -1)
 
 
 def test_compare_total_falls_back_to_value_when_scales_match() raises:
@@ -532,17 +533,17 @@ def test_compare_total_signed_zero() raises:
 
 def test_compare_total_scaled_zeros_same_sign() raises:
     """Scaled-zero edge case (rule 3): same-sign zeros differ by scale.
-    For positives lower scale precedes higher (`0 < 0.0 < 0.00`); for
-    negatives the relation reverses (`-0.00 < -0.0 < -0`) so the global
-    sequence stays monotonic across +0/-0."""
-    # Positive zeros: lower scale precedes higher.
-    testing.assert_equal(Int(Dec128("0").compare_total(Dec128("0.0"))), -1)
-    testing.assert_equal(Int(Dec128("0.0").compare_total(Dec128("0.00"))), -1)
-    testing.assert_equal(Int(Dec128("0.00").compare_total(Dec128("0"))), 1)
-    # Negative zeros: higher scale precedes lower.
-    testing.assert_equal(Int(Dec128("-0.00").compare_total(Dec128("-0.0"))), -1)
-    testing.assert_equal(Int(Dec128("-0.0").compare_total(Dec128("-0"))), -1)
-    testing.assert_equal(Int(Dec128("-0").compare_total(Dec128("-0.0"))), 1)
+    For positives a higher scale precedes a lower one (`0.00 < 0.0 < 0`);
+    for negatives the relation reverses (`-0 < -0.0 < -0.00`), as in
+    Python's `decimal`."""
+    # Positive zeros: higher scale precedes lower.
+    testing.assert_equal(Int(Dec128("0").compare_total(Dec128("0.0"))), 1)
+    testing.assert_equal(Int(Dec128("0.0").compare_total(Dec128("0.00"))), 1)
+    testing.assert_equal(Int(Dec128("0.00").compare_total(Dec128("0"))), -1)
+    # Negative zeros: lower scale precedes higher.
+    testing.assert_equal(Int(Dec128("-0.00").compare_total(Dec128("-0.0"))), 1)
+    testing.assert_equal(Int(Dec128("-0.0").compare_total(Dec128("-0"))), 1)
+    testing.assert_equal(Int(Dec128("-0").compare_total(Dec128("-0.0"))), -1)
     # Identical zero representations still tie.
     testing.assert_equal(Int(Dec128("0").compare_total(Dec128("0"))), 0)
     testing.assert_equal(Int(Dec128("-0.00").compare_total(Dec128("-0.00"))), 0)

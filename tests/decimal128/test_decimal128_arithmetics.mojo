@@ -933,5 +933,42 @@ def test_division_keeps_its_shapes() raises:
     )
 
 
+def test_truncate_divide_does_not_round_the_quotient_up() raises:
+    """`//` and `%` divide exactly. Dividing first and truncating after
+    rounded a quotient just below one up to one."""
+    var a = Decimal128("79228162514264337593543950334")
+    testing.assert_equal(String(a // Decimal128.MAX()), "0")
+    testing.assert_equal(String(a % Decimal128.MAX()), String(a))
+
+
+def test_truncate_divide_and_modulo_match_python() raises:
+    """Results checked against Python's `decimal`, except for the sign of a
+    zero."""
+    testing.assert_equal(String(Decimal128("7.5") // Decimal128("0.2")), "37")
+    testing.assert_equal(String(Decimal128("7.50") % Decimal128(2)), "1.50")
+    testing.assert_equal(String(Decimal128(7) % Decimal128("0.50")), "0.00")
+    # A zero result is positive here, where Python's `decimal` gives -0.
+    testing.assert_equal(String(Decimal128(-1) // Decimal128(3)), "0")
+    testing.assert_equal(String(Decimal128(-6) % Decimal128(3)), "0")
+    testing.assert_equal(String(Decimal128(-7) // Decimal128(2)), "-3")
+    testing.assert_equal(String(Decimal128(-7) % Decimal128(2)), "-1")
+
+
+def test_truncate_divide_overflow() raises:
+    with testing.assert_raises():
+        _ = Decimal128.MAX() // Decimal128("0.5")
+
+
+def test_divmod_matches_floor_divide_and_modulo() raises:
+    """The remainder of `__divmod__` was `x - q * y`, whose product could
+    need more than 28 digits and be rounded."""
+    var x = Decimal128("7922816251426433759354395033.5")
+    var y = Decimal128("3.3333")
+    var qr = x.__divmod__(y)
+    testing.assert_equal(String(qr[0]), "2376868644114371271519033700")
+    testing.assert_equal(String(qr[1]), "1.2900")
+    testing.assert_equal(String(qr[1]), String(x % y))
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()
