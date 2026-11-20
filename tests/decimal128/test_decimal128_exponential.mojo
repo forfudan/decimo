@@ -703,5 +703,14 @@ def test_exponential_at_the_second_width() raises:
     _check("66.5")
 
 
+def test_exp_of_a_large_negative_argument_is_zero() raises:
+    """Below -66.54 the answer rounds to zero. From -128 on, the table of
+    `e**(2**k)` was read past its end."""
+    for x in ["-66.55", "-127.9", "-128", "-1000"]:
+        testing.assert_equal(
+            String(exp(Dec128(x))), "0.0000000000000000000000000000"
+        )
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()

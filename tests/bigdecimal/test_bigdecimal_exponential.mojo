@@ -351,5 +351,12 @@ def test_the_exponential_is_what_cpython_rounds_to() raises:
             )
 
 
+def test_sqrt_of_a_negative_zero() raises:
+    """A negative zero is its own root, as in Python's `decimal`."""
+    assert_equal(String(BigDecimal("-0").sqrt()), "-0")
+    assert_equal(String(BigDecimal("-0.00").sqrt()), "-0.0")
+    assert_equal(String(BigDecimal("-0.000").sqrt(precision=50)), "-0.00")
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()

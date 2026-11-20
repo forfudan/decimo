@@ -10,6 +10,7 @@ of its checks are startswith-style.
 """
 
 from std import testing
+from std.utils.numerics import inf, nan
 
 from decimo import BigDecimal, Dec128, Decimal128
 from decimo.tests import TestCase, load_test_cases, parse_file
@@ -675,6 +676,16 @@ def test_a_string_with_no_digit_is_refused() raises:
     testing.assert_equal(String(Decimal128(" 0 ")), "0")
     testing.assert_equal(String(Decimal128("+.5")), "0.5")
     testing.assert_equal(String(Decimal128("1_0")), "10")
+
+
+def test_from_float_scalar_rejects_infinity_and_nan() raises:
+    for v in [
+        inf[DType.float64](),
+        -inf[DType.float64](),
+        nan[DType.float64](),
+    ]:
+        with testing.assert_raises():
+            _ = Decimal128.from_float_scalar(v)
 
 
 def main() raises:

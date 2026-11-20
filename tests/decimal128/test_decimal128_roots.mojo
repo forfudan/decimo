@@ -499,5 +499,33 @@ def test_power_and_root_keep_whole_answers_whole() raises:
     testing.assert_equal(String(Decimal128("4").power(Decimal128("0.5"))), "2")
 
 
+def test_power_with_a_tiny_result_is_zero() raises:
+    """A tiny answer rounds to zero; it is not an overflow."""
+    testing.assert_equal(
+        String(power(Dec128("0.5"), Dec128("100.5"))),
+        "0.0000000000000000000000000000",
+    )
+    testing.assert_equal(
+        String(power(Dec128("0.5"), Dec128("1000.5"))),
+        "0.0000000000000000000000000000",
+    )
+    with testing.assert_raises():
+        _ = power(Dec128("2"), Dec128("100.5"))
+
+
+def test_power_of_zero_with_a_fractional_exponent() raises:
+    testing.assert_equal(String(power(Dec128(0), Dec128("0.7"))), "0")
+    testing.assert_equal(String(power(Dec128("-0"), Dec128("0.5"))), "0")
+    with testing.assert_raises():
+        _ = power(Dec128(0), Dec128("-0.7"))
+
+
+def test_sqrt_of_a_zero_keeps_its_sign() raises:
+    """As in Python's `decimal`: the sign stays, the scale halves."""
+    testing.assert_equal(String(Dec128("-0").sqrt()), "-0")
+    testing.assert_equal(String(Dec128("-0.00").sqrt()), "-0.0")
+    testing.assert_equal(String(Dec128("0.000").sqrt()), "0.00")
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()

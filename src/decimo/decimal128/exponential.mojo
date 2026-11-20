@@ -199,6 +199,17 @@ def power(base: Decimal128, exponent: Decimal128) raises -> Decimal128:
         except e:
             raise e^
 
+    # CASE: A zero base. Its logarithm does not exist, but the power does:
+    # zero for a positive exponent, a division by zero for a negative one.
+    # This comes before the negative-base case so that `-0` gets it too.
+    if base.is_zero():
+        if exponent.is_negative():
+            raise ZeroDivisionError(
+                message="Zero cannot be raised to a negative power.",
+                function="power()",
+            )
+        return Decimal128.ZERO()
+
     # CASE: For negative bases, only integer exponents are supported
     if base.is_negative():
         raise ValueError(
@@ -239,6 +250,10 @@ def power(base: Decimal128, exponent: Decimal128) raises -> Decimal128:
     # the answer, and multiplying a 28-digit logarithm by ten thousand
     # magnifies its last digit by that much.
     var narrow = _real_power_at[38](base, exponent)
+    if narrow[0].is_zero():
+        # The base is positive, so a zero here is an answer below half of
+        # `1E-28`. It rounds to zero at the finest scale, as `exp` does.
+        return Decimal128.from_uint128(UInt128(0), UInt32(28))
     var decided = narrow[0].to_decimal_decided(narrow[1])
     if decided:
         return decided.value()
@@ -278,6 +293,10 @@ def _real_power_at[
     var argument = logarithm[0] * WideValue[WIDTH].from_decimal(exponent)
 
     if argument.compare_absolute(_exp_ceiling_at[WIDTH]()) > 0:
+        if argument.sign:
+            # `e**-66.54` is below half of `1E-28`, so the answer rounds to
+            # zero. This is exact, not an estimate.
+            return (WideValue[WIDTH](), UInt256(0))
         raise OverflowError(
             message=(
                 "The result is too large for Decimal128. Consider using"
@@ -601,13 +620,17 @@ def sqrt(x: Decimal128) raises -> Decimal128:
         half-way mode would otherwise read a tie that is not there. The same
         argument as `BigDecimal.sqrt`.
     """
+    if x.is_zero():
+        # The root of a zero keeps its sign and half its scale, rounded up,
+        # as in Python's `decimal`: `sqrt(-0.00)` is `-0.0`.
+        return Decimal128.from_uint128(
+            UInt128(0), UInt32((Int(x.scale()) + 1) // 2), x.is_negative()
+        )
     if x.is_negative():
         raise ValueError(
             message="Cannot compute square root of a negative number.",
             function="sqrt()",
         )
-    if x.is_zero():
-        return Decimal128.ZERO()
 
     var coefficient = x.coefficient()
     var scale = Int(x.scale())
@@ -717,6 +740,11 @@ def exp(x: Decimal128) raises -> Decimal128:
             ),
             function="exp()",
         )
+    if x < Decimal128.from_int(value=-6654, scale=UInt32(2)):
+        # `e**-66.54` is below half of `1E-28`, so the answer rounds to zero.
+        # The table of `e**(2**k)` stops at `e**64`, which is all a positive
+        # argument needs, so a larger magnitude must not reach it.
+        return Decimal128.from_uint128(UInt128(0), UInt32(28))
 
     var narrow = _exp_at[38](x)
     var decided = narrow[0].to_decimal_decided(narrow[1])
