@@ -2,6 +2,24 @@
 
 This is a list of changes for the Decimo package (formerly DeciMojo).
 
+## Unreleased (v0.17.0)
+
+### ⭐️ New in v0.17.0
+
+1. `Decimal128(x)` takes any integral scalar, such as `Int64` or `UInt8` (PR #404).
+
+### 🩹 Fixed in v0.17.0
+
+1. `Decimal128`'s `//`, `%` and `divmod` were wrong when the quotient rounded up: `(MAX - 1) // MAX` gave `1` (PR #403).
+1. A tiny `Decimal128` power raised an overflow, and `0 ** 0.7` raised (PR #403).
+1. `Decimal128.exp(x)` crashed for `x <= -128` (PR #403).
+1. `Decimal128`'s `compare_total` put `1.0` before `1.00`. It now orders equal values as Python does (PR #403).
+1. `Decimal128` from an infinite or NaN float raises (PR #403).
+1. `sqrt(-0)` returns `-0` instead of raising, in `Decimal128` and `BigDecimal` (PR #403).
+1. A `Decimal128` string with more than 38 digits is read correctly. Digits past the 38th before the point were dropped, so `"1" + 40 zeros + "e-20"` gave `1e17`. A nonzero digit past the 38th is no longer ignored when it breaks a tie (PR #404).
+1. A `Decimal128` string is rounded once. A number with a very small exponent was rounded twice, so `0.000…45|4999|5` ended in `46` instead of `45` (PR #404).
+1. A `Decimal128` string whose coefficient times its exponent exceeds 128 bits raises. It wrapped around, so `"3402823669209384635e20"` gave `36625392568231788544` (PR #404).
+
 ## 20261024 (v0.16.0)
 
 Decimo v0.16.0 makes `BigFloat` pure Mojo. `BigFloat` was a wrapper over the GNU MPFR library, but it is now a type of decimo's own, with no dependency to install. `BigDecimal`'s transcendental functions are now worked out with that float underneath and converted back, rather than in decimal digits.

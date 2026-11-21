@@ -688,5 +688,74 @@ def test_from_float_scalar_rejects_infinity_and_nan() raises:
             _ = Decimal128.from_float_scalar(v)
 
 
+def test_from_string_skipped_digits_keep_their_place() raises:
+    """Digits past the 38th before the point still scale the value."""
+    var zeros40 = String("0") * 40
+    testing.assert_equal(
+        String(Dec128("1" + zeros40 + "e-20")),
+        "100000000000000000000.00000000",
+    )
+    testing.assert_equal(
+        String(Dec128("123" + String("0") * 37 + "e-15")),
+        "1230000000000000000000000.0000",
+    )
+    # Still too large once the skipped digits are counted.
+    with testing.assert_raises():
+        _ = Dec128("1" + String("0") * 39 + "e5")
+
+
+def test_from_string_skipped_nonzero_digit_breaks_tie() raises:
+    """A nonzero digit past the 38th means the value is above the tie."""
+    var tie = "1.2345678901234567890123456788" + "5" + String("0") * 10
+    testing.assert_equal(String(Dec128(tie)), "1.2345678901234567890123456788")
+    testing.assert_equal(
+        String(Dec128(tie + "1")), "1.2345678901234567890123456789"
+    )
+    testing.assert_equal(
+        String(Dec128("-" + tie + "1")), "-1.2345678901234567890123456789"
+    )
+
+
+def test_from_string_rounds_once() raises:
+    """Fitting the coefficient and capping the scale is one rounding."""
+    # Rounding twice would give `...2346`.
+    testing.assert_equal(
+        String(Dec128("0.000" + "1234567890123456789012345" + "49995")),
+        "0.0001234567890123456789012345",
+    )
+    testing.assert_equal(
+        String(Dec128("0.000" + "1234567890123456789012345" + "4999500000000")),
+        "0.0001234567890123456789012345",
+    )
+
+
+def test_from_string_positive_exponent_overflow() raises:
+    """A coefficient times the exponent beyond 96 bits raises, not wraps."""
+    with testing.assert_raises():
+        _ = Dec128("99999999999999999999e19")
+    # The old code wrapped this around to 36625392568231788544.
+    with testing.assert_raises():
+        _ = Dec128("3402823669209384635e20")
+    with testing.assert_raises():
+        _ = Dec128("79228162514264337593543950336e0")
+    testing.assert_equal(
+        String(Dec128("7922816251426433759354395033e1")),
+        "79228162514264337593543950330",
+    )
+
+
+def test_init_from_integral_scalar() raises:
+    """`Dec128(x)` takes any integral scalar."""
+    testing.assert_equal(String(Dec128(Int64(-5))), "-5")
+    testing.assert_equal(String(Dec128(UInt8(255))), "255")
+    testing.assert_equal(String(Dec128(UInt64.MAX)), "18446744073709551615")
+    testing.assert_equal(
+        String(Dec128(Int128(-12345678901234567890123))),
+        "-12345678901234567890123",
+    )
+    with testing.assert_raises():
+        _ = Dec128(Int128.MAX)
+
+
 def main() raises:
     testing.TestSuite.discover_tests[__functions_in_module()]().run()
