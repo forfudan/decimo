@@ -2213,7 +2213,8 @@ problem, such as an `OverflowError`.
 
 An integer scalar other than `Int`, such as `Int64` or `UInt128`, goes through
 `from_integral_scalar()`. It raises `OverflowError` above `Dec128.MAX()`,
-which only 128-bit and 256-bit scalars can reach.
+which only 128-bit and 256-bit scalars can reach. *To be in v0.17.0:* <!-- [forthcoming] -->
+`Dec128(Int64(-5))` does the same.
 
 #### From an integer literal <!-- omit from toc -->
 

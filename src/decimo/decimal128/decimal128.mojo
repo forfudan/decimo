@@ -311,6 +311,25 @@ struct Decimal128(
         self = Decimal128.from_int(value)
 
     @always_inline
+    def __init__[
+        dtype: DType, //
+    ](out self, value: Scalar[dtype]) raises where dtype.is_integral():
+        """Initializes a Decimal128 from an integral scalar, such as `Int64`
+        or `UInt8`. See `from_integral_scalar()` for more information.
+
+        Parameters:
+            dtype: The data type of the scalar.
+
+        Args:
+            value: The integral scalar to convert.
+
+        Raises:
+            OverflowError: If the magnitude exceeds the 96-bit coefficient,
+                which only 128- and 256-bit scalars can do.
+        """
+        self = Decimal128.from_integral_scalar(value)
+
+    @always_inline
     @implicit
     def __init__[
         v: __mlir_type.`!pop.int_literal`
@@ -790,6 +809,11 @@ struct Decimal128(
         var scale: UInt32 = 0
         var raw_exponent: UInt32 = 0
         var num_mantissa_digits: UInt32 = 0
+        # Digits past the 38th do not fit in `coef`. Those before the decimal
+        # point still count towards the magnitude, and any nonzero one makes
+        # the value lie strictly between two coefficients.
+        var num_skipped_integral_digits: UInt32 = 0
+        var skipped_nonzero_digit = False
 
         for code in value_bytes:
             # HOT PATH: digit '0'-'9' (ASCII 48-57). Checked first so the
@@ -820,6 +844,10 @@ struct Decimal128(
                 # Mantissa part
                 # Skip the digit if mantissa is too long.
                 if num_mantissa_digits > Decimal128.MAX_NUM_DIGITS + 8:  # 37
+                    if d != 0:
+                        skipped_nonzero_digit = True
+                    if not decimal_point_read:
+                        num_skipped_integral_digits += 1
                     continue
 
                 mantissa_sign_read = True
@@ -937,6 +965,17 @@ struct Decimal128(
                 function="Decimal128.from_string()",
             )
 
+        # A skipped integral digit multiplies the value by ten, like one more
+        # unit of positive exponent.
+        if num_skipped_integral_digits > 0:
+            if not exponent_sign:
+                raw_exponent += num_skipped_integral_digits
+            elif raw_exponent >= num_skipped_integral_digits:
+                raw_exponent -= num_skipped_integral_digits
+            else:
+                raw_exponent = num_skipped_integral_digits - raw_exponent
+                exponent_sign = False
+
         if raw_exponent != 0:
             # If exponent is negative, increase the scale
             if exponent_sign:
@@ -953,11 +992,32 @@ struct Decimal128(
                     # from the rodata blob (and may even silently parse to
                     # a wrong value if the garbage happens to fit in 96
                     # bits). Bail out with a clean OverflowError instead.
-                    if exponent_delta > Decimal128.MAX_NUM_DIGITS:
+                    if (
+                        exponent_delta > Decimal128.MAX_NUM_DIGITS
+                        and num_skipped_integral_digits == 0
+                    ):
                         raise OverflowError(
                             message=String(
                                 "Exponent is too large to fit in Decimal128: {}"
                             ).format(raw_exponent),
+                            function="Decimal128.from_string()",
+                        )
+                    # With scale zero there is no digit to round away, so a
+                    # coefficient beyond the maximum cannot fit. Checking
+                    # before the multiplication also keeps it from wrapping.
+                    if (
+                        exponent_delta > Decimal128.MAX_NUM_DIGITS
+                        or coef
+                        > Decimal128.MAX_AS_UINT128
+                        // decimal128_utility.power_of_10_unsafe[DType.uint128](
+                            exponent_delta
+                        )
+                    ):
+                        raise OverflowError(
+                            message=(
+                                "Cannot fit Decimal128 coefficient without"
+                                " removing integral digits."
+                            ),
                             function="Decimal128.from_string()",
                         )
                     coef = coef * decimal128_utility.power_of_10_unsafe[
@@ -965,8 +1025,12 @@ struct Decimal128(
                     ](exponent_delta)
                     scale = 0
 
-        # TODO: The following part can be written into a function
-        # because it is used in many cases
+        # Skipped digits only exist when `coef` holds 38 digits, so at least
+        # nine are rounded away below. Setting the lowest bit then turns an
+        # exact tie into "above the tie" and changes nothing else.
+        if skipped_nonzero_digit:
+            coef |= 1
+
         if coef <= Decimal128.MAX_AS_UINT128:
             if scale > UInt32(Decimal128.MAX_SCALE):
                 coef = decimal128_utility.round_coefficient(
@@ -994,12 +1058,13 @@ struct Decimal128(
                 )
             var scale_of_truncated_coef = scale - truncated_digits
 
+            # If the scale is still too large, round the original coefficient
+            # once by the larger count. Rounding the fitted one again would
+            # round twice: `…45|4999|5` would become `…45|5000`, then `…46`.
             if scale_of_truncated_coef > UInt32(Decimal128.MAX_SCALE):
                 truncated_coef = decimal128_utility.round_coefficient(
-                    truncated_coef,
-                    ndigits_to_remove=Int(
-                        scale_of_truncated_coef - UInt32(Decimal128.MAX_SCALE)
-                    ),
+                    coef,
+                    ndigits_to_remove=Int(scale - UInt32(Decimal128.MAX_SCALE)),
                 )
                 scale_of_truncated_coef = UInt32(Decimal128.MAX_SCALE)
 
