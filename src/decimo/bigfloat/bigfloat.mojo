@@ -20,8 +20,8 @@
 A value is `(-1)^sign * significand * 2^exponent`, with the significand an
 integer holding exactly `precision` bits. The precision is a property of the
 value, in bits, and every operation rounds once to the precision of its
-destination -- the model MPFR uses, and what `docs/plans/api_roadmap.md`
-calls decimo's MPFR layer.
+destination -- the model MPFR uses, and what
+`docs/internal/plans/api_roadmap.md` calls decimo's MPFR layer.
 
 Unlike the decimal types, this one carries infinities and a NaN. A binary
 float is expected to have them, and the reference it is checked against has

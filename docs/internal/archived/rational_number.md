@@ -1,5 +1,8 @@
 # Rational Number Plan
 
+> **Archived 2026-11-22.** The open items left in this plan are in
+> `docs/internal/todo.md`; statuses below are as of the last edit.
+
 > Date of initial planning: 2025-07-15
 > Author: Yuhao Zhu
 > Scope: A first-class exact rational number type `Rational`

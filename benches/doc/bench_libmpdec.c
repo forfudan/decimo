@@ -8,7 +8,7 @@
  * in CPython's `decimal` and what every decimo `BigDecimal` operation does.
  *
  * The in-place section is measured but not rendered into the document. It
- * feeds the note in docs/internal/internal_notes.md about how much of the
+ * feeds the note in docs/internal/notes.md about how much of the
  * per-operation cost is allocation.
  *
  * Emits JSON on stdout.

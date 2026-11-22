@@ -1,6 +1,7 @@
 # Decimo API Roadmap
 
-> Started 2026-02-23, rewritten 2026-08-30.
+> Started 2026-02-23, rewritten 2026-08-30, open items moved to `todo.md`
+> 2026-11-22.
 > Author: Yuhao Zhu
 > Scope: `BigDecimal` (`Decimal`) and `BigInt` (`BInt`).
 
@@ -52,10 +53,10 @@ Two rounds of work closed most of the original list, and the details are in
 - **The `decimal` surface.** `BigDecimal` carries the whole method surface a
   `decimal` program touches, including the `logical_*` family, `rotate`,
   `shift`, `next_plus`, `next_minus`, `next_toward`, `number_class`,
-  `remainder_near`, `logb`, `max_mag`, `min_mag`, `to_integral_exact` and the
-  predicates. They live in `src/decimo/bigdecimal/spec.mojo` and are bound to
-  Python. Every one is cross-checked against `decimal` in
-  `python/tests/test_decimo.py`.
+  `remainder_near`, `logb`, `max_mag`, `min_mag` and the predicates. They live
+  in `src/decimo/bigdecimal/spec.mojo` and are bound to Python, where
+  `to_integral_exact` and `to_integral_value` are added on top. Every one is
+  cross-checked against `decimal` in `python/tests/test_decimo.py`.
 - **Dunders.** Arithmetic, reflected, in-place, comparison, conversion,
   `__divmod__`, `__round__`, `__hash__`, `__format__` and the pickle protocol
   are all present.
@@ -69,25 +70,8 @@ Two rounds of work closed most of the original list, and the details are in
 
 ## What is open
 
-Ranked. Nothing here blocks a release.
-
-1. **Accessors for `BigDecimal`'s internal state.** `scale`, `coefficient` and
-   `sign` are public fields. An `exponent()` and a `significand()` method would
-   let the representation change without breaking callers. `is_negative()`
-   already covers the sign.
-2. **`signum()` and `clamp()` on `BigDecimal` and `BigInt`.** Both exist on
-   `Decimal128` and neither exists on the arbitrary-precision types.
-3. **`is_integer()`, `as_integer_ratio()` and `conjugate()` on `BigInt`.**
-   `as_integer_ratio()` exists in the Python layer only.
-4. **`is_close(other, rel_tol, abs_tol)`.** Useful in tests and numerical code,
-   and it has no `decimal` counterpart to copy, so the signature is a design
-   question.
-5. **`from_fraction(numerator, denominator, precision)`.** Now that `Rational`
-   exists, this is the conversion between the two.
-6. **`numbers.Number` registration in the Python package**, which puts
-   `Decimal` into Python's numeric tower.
-7. **A `divide()` alias for `true_divide()`.** Cosmetic; `true_divide` is named
-   after `__truediv__` and is not wrong.
+The open items are in `docs/internal/todo.md`, under "API". None blocks a
+release.
 
 ## Ergonomics still worth considering
 
