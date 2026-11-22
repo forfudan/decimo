@@ -28,16 +28,15 @@ arithmetic as a public type.
 
 ## 2. Where we stand
 
-Phase 0 is done (#321-#323, Python in #337), and `BigFloat` carries the same
-set in binary.
+Phase 0 is done (#321-#323, Python in #337), and `BigFloat` carries the same set in binary.
 
-| group        | have                                                           |
-| ------------ | -------------------------------------------------------------- |
-| powers       | `sqrt`, `cbrt`, `root`, `power`, `exp`, `expm1`                 |
-| logarithms   | `ln`, `log10`, `log(x, b)`, `log1p`                             |
-| circular     | `sin`, `cos`, `tan`, `sec`, `csc`, `cot`, their inverses, `arctan2` |
-| hyperbolic   | `sinh`, `cosh`, `tanh` and their inverses                       |
-| other        | `hypot`, `factorial`, `permutation`, `pi`, `e`                  |
+| group      | have                                                                |
+| ---------- | ------------------------------------------------------------------- |
+| powers     | `sqrt`, `cbrt`, `root`, `power`, `exp`, `expm1`                     |
+| logarithms | `ln`, `log10`, `log(x, b)`, `log1p`                                 |
+| circular   | `sin`, `cos`, `tan`, `sec`, `csc`, `cot`, their inverses, `arctan2` |
+| hyperbolic | `sinh`, `cosh`, `tanh` and their inverses                           |
+| other      | `hypot`, `factorial`, `permutation`, `pi`, `e`                      |
 
 | group      | missing                                                  |
 | ---------- | -------------------------------------------------------- |
@@ -52,39 +51,21 @@ set in binary.
 
 Getting the order wrong means writing the same functions twice.
 
-1. **Complex before special functions.** Most of what makes the gamma and zeta
-   families worth having is their behaviour off the real line. A real-only
-   `gamma` is rewritten when `BigComplex` arrives.
+1. **Complex before special functions.** Most of what makes the gamma and zeta families worth having is their behaviour off the real line. A real-only `gamma` is rewritten when `BigComplex` arrives.
 
-2. **An internal working type. Decided: binary.** A special function costs
-   tens to hundreds of elementary operations per result, and `BigDecimal` is
-   immutable, so a decimal series allocates per term. The kernels now run on
-   `BigFloat`, which needs no system library, and convert at the boundary
-   (#374-#383).
+2. **An internal working type. Decided: binary.** A special function costs tens to hundreds of elementary operations per result, and `BigDecimal` is immutable, so a decimal series allocates per term. The kernels now run on `BigFloat`, which needs no system library, and convert at the boundary (#374-#383).
 
-3. **One error framework. Done.** `BigFloat`'s Ziv loop (#338) carries the
-   error bound and decides whether the interval rounds to one answer; the
-   `BigDecimal` functions reach it through the binary kernels.
+3. **One error framework. Done.** `BigFloat`'s Ziv loop (#338) carries the error bound and decides whether the interval rounds to one answer; the `BigDecimal` functions reach it through the binary kernels.
 
 ## 4. Phases
 
-The items themselves are tracked in `docs/internal/todo.md`. This section
-keeps the method.
+The items themselves are tracked in `docs/internal/todo.md`. This section keeps the method.
 
 - **Phase 0 — the elementary set.** Done.
 - **Phase 1 — the foundation.** Done; see prerequisites 2 and 3.
-- **Phase 2 — complex.** `BigComplex` over two `BigDecimal`s: arithmetic,
-  comparison, parsing, formatting, then the elementary set over it.
-- **Phase 3 — special functions, by value.** `gamma` and `lgamma` by Lanczos
-  or Spouge with a rigorous bound, after which a non-integer `factorial`
-  follows. `erf` and `erfc` by series for small arguments and continued
-  fraction for large. `beta` and incomplete gamma. `digamma` and `zeta` by
-  Euler-Maclaurin, one engine for both. Then decide on a `pFq` evaluator:
-  Bessel, Airy and elliptic are cheaper on top of one than written out
-  separately, which is how mpmath covers them.
-- **Phase 4 — numerics.** `findroot` (Newton with a bracketing fallback),
-  tanh-sinh quadrature (the right default at high precision), and the series
-  acceleration the above need.
+- **Phase 2 — complex.** `BigComplex` over two `BigDecimal`s: arithmetic, comparison, parsing, formatting, then the elementary set over it.
+- **Phase 3 — special functions, by value.** `gamma` and `lgamma` by Lanczos or Spouge with a rigorous bound, after which a non-integer `factorial` follows. `erf` and `erfc` by series for small arguments and continued fraction for large. `beta` and incomplete gamma. `digamma` and `zeta` by Euler-Maclaurin, one engine for both. Then decide on a `pFq` evaluator: Bessel, Airy and elliptic are cheaper on top of one than written out separately, which is how mpmath covers them.
+- **Phase 4 — numerics.** `findroot` (Newton with a bracketing fallback), tanh-sinh quadrature (the right default at high precision), and the series acceleration the above need.
 
 ## 5. Verification
 

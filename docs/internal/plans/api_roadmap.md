@@ -1,7 +1,6 @@
 # Decimo API Roadmap
 
-> Started 2026-02-23, rewritten 2026-08-30, open items moved to `todo.md`
-> 2026-11-22.
+> Started 2026-02-23, rewritten 2026-08-30, open items moved to `todo.md` 2026-11-22.
 > Author: Yuhao Zhu
 > Scope: `BigDecimal` (`Decimal`) and `BigInt` (`BInt`).
 
@@ -50,13 +49,7 @@ Two rounds of work closed most of the original list, and the details are in
 - **Naming.** The comparison free functions are `equal`, `not_equal`, `less`,
   `greater`, `less_equal`, `greater_equal` on both types; the old longer
   spellings are gone.
-- **The `decimal` surface.** `BigDecimal` carries the whole method surface a
-  `decimal` program touches, including the `logical_*` family, `rotate`,
-  `shift`, `next_plus`, `next_minus`, `next_toward`, `number_class`,
-  `remainder_near`, `logb`, `max_mag`, `min_mag` and the predicates. They live
-  in `src/decimo/bigdecimal/spec.mojo` and are bound to Python, where
-  `to_integral_exact` and `to_integral_value` are added on top. Every one is
-  cross-checked against `decimal` in `python/tests/test_decimo.py`.
+- **The `decimal` surface.** `BigDecimal` carries the whole method surface a `decimal` program touches, including the `logical_*` family, `rotate`, `shift`, `next_plus`, `next_minus`, `next_toward`, `number_class`, `remainder_near`, `logb`, `max_mag`, `min_mag` and the predicates. They live in `src/decimo/bigdecimal/spec.mojo` and are bound to Python, where `to_integral_exact` and `to_integral_value` are added on top. Every one is cross-checked against `decimal` in `python/tests/test_decimo.py`.
 - **Dunders.** Arithmetic, reflected, in-place, comparison, conversion,
   `__divmod__`, `__round__`, `__hash__`, `__format__` and the pickle protocol
   are all present.
@@ -70,8 +63,7 @@ Two rounds of work closed most of the original list, and the details are in
 
 ## What is open
 
-The open items are in `docs/internal/todo.md`, under "API". None blocks a
-release.
+The open items are in `docs/internal/todo.md`, under "API". None blocks a release.
 
 ## Ergonomics still worth considering
 

@@ -1,27 +1,16 @@
 # Notes
 
-What was measured and what was learned, grouped by topic, including the
-results that turned out negative, which are easy to lose and expensive to
-rediscover. To-dos are in `todo.md`; designs are in `plans/`.
+What was measured and what was learned, grouped by topic, including the results that turned out negative, which are easy to lose and expensive to rediscover. To-dos are in `todo.md`; designs are in `plans/`.
 
-Current figures are not kept here. They are generated into
-`docs/benchmarks.md` by `pixi run benchdoc`; numbers quoted below are dated and
-may have moved.
+Current figures are not kept here. They are generated into `docs/benchmarks.md` by `pixi run benchdoc`; numbers quoted below are dated and may have moved.
 
 ## Goals
 
-Two targets, both about being competitive with the established libraries
-rather than beating them everywhere.
+Two targets, both about being competitive with the established libraries rather than beating them everywhere.
 
-**1. `pi(10^6)` within 1.2x of mpmath+GMP.** It was 2.6x in October 2026
-(720 ms against 275 ms). Newton reciprocal division was dropped (see "Settled
-by measurement" below), so the lever left is multiplication: at 10^6 digits
-`BigInt` multiply is 3.8x GMP, and the Chudnovsky splitting is built from it.
+**1. `pi(10^6)` within 1.2x of mpmath+GMP.** It was 2.6x in October 2026 (720 ms against 275 ms). Newton reciprocal division was dropped (see "Settled by measurement" below), so the lever left is multiplication: at 10^6 digits `BigInt` multiply is 3.8x GMP, and the Chudnovsky splitting is built from it.
 
-**2. Beat CPython's `decimal` on small numbers. Met (20260827).** Natively
-every operation but divide and parse wins at 9 digits, and both are within
-1.3x. Through the Python binding the gap is the extension build itself; see
-`todo.md`.
+**2. Beat CPython's `decimal` on small numbers. Met (20260827).** Natively every operation but divide and parse wins at 9 digits, and both are within 1.3x. Through the Python binding the gap is the extension build itself; see `todo.md`.
 
 ## Inconsistencies between libraries
 
@@ -408,12 +397,7 @@ Measured at 104 200 words (10^6 digits), against a same-size multiply:
 | divmod 2n / n       | 15.69 ms | 2.69         | 4.90         |
 | base 2^k -> decimal | 33.71 ms | 5.78         | 8.50         |
 
-Two things to take from this. GMP's division is 2.69x a multiply *with* all of
-its Newton-reciprocal machinery, so 2.7x is the realistic floor for a Newton
-reciprocal division — not
-the ~2.1x the textbook operation count suggests. And our raw multiply is
-24.0 ms against GMP's 5.83, a 4.1x gap that is pure constant factor: same
-algorithm class, thirty years of tuning apart.
+Two things to take from this. GMP's division is 2.69x a multiply *with* all of its Newton-reciprocal machinery, so 2.7x is the realistic floor for a Newton reciprocal division — not the ~2.1x the textbook operation count suggests. And our raw multiply is 24.0 ms against GMP's 5.83, a 4.1x gap that is pure constant factor: same algorithm class, thirty years of tuning apart.
 
 ### Where the last of a 1000-digit division goes (20260826)
 
@@ -769,71 +753,26 @@ now.
 
 ## Settled by measurement (2026-08 to 2026-09)
 
-Each was measured, and the answer was no or done. Kept so the idea is not
-tried again from scratch.
+Each was measured, and the answer was no or done. Kept so the idea is not tried again from scratch.
 
-- **Newton reciprocal division: dropped (20260902).** A 2n-by-n division now
-  costs 1.6-3.3 same-size multiplications (1.70 at 1 000 digits, 3.25 at
-  10^6). A one-shot Barrett divide costs 4-5, and only ~2 when the divisor is
-  reused, which `pi()`'s splitting never does. Division is built from
-  multiplication; that is the lever.
-- **Radix-4 NTT: dropped (20260902).** For our prime `2^48` is a fourth root
-  of unity, so the multiply becomes a shift. The shift path is slower: 2.61 ns
-  against 2.18 serial, 0.75 against 0.70 in throughput, because `mul` and
-  `umulh` pipeline. The butterfly is not memory-bound either (2^15 to 2^19
-  words costs 9% more per butterfly), so fewer passes buy little.
-- **Shoup twiddles: impossible here.** The remainder lives in `[0, 2P)`, and
-  with `P` this close to `2^64` that overflows a `UInt64` in 25% of cases. The
-  trick needs `P < 2^63`.
-- **Branchless `mod_add` / `mod_sub` in the NTT: neutral.** The compiler
-  already emits `CSEL`.
-- **The NTT butterfly is near its floor.** About 4.7 cycles at an IPC of 4.5;
-  94% of a 10^6-digit multiply is the three transforms. GMP is faster because
-  Schönhage-Strassen multiplies by a root of unity with a bit shift.
-- **The 64-bit limb (20260828).** Predicted 2x for schoolbook and Knuth D,
-  1.5x for Karatsuba, ~1x for the transform. Measured 1.86-1.99x on division,
-  1.18x on a 1 000-digit multiply, 1.04x at 10^6.
-- **Splitting the add carry chain: done (20260902).** Four interleaved
-  segments, stitched afterwards: 1.75 to ~1.05 cycles a word, where GMP's
-  `ADCS` chain runs. Four separate loops would not work; the reorder window
-  does not span a segment. The gain does not reach multiply or divide (under
-  3%, noise).
-- **`subtract_inplace()` copied its right operand to flip a sign: fixed
-  (20260902).** Subtraction now costs what addition costs, 3.3x faster at 100
-  digits, where the copy reached the allocator.
-- **`math.sqrt` on an integer is a software root,** 21 ns against 0.45 for the
-  `Float64` one. `decimo.utility.isqrt_uint64()` takes the float root and
-  corrects it; the correction is needed because `Float64` rounds values just
-  under `2^64` up to `2^64`.
-- **Kept the `UInt128` phase of `_sqrt_precision_doubling_fast()`.** The
-  128-bit divide is a software helper, but the word-list path it would fall
-  back to is slower: 100-digit `sqrt` 155 ns to 204 without it.
-- **A branchless borrow in Knuth D: slower.** It puts the loaded word in the
-  loop-carried chain; the branch is worth 1.38x at 1 000 digits.
-- **A `UInt128` accumulator for the paired add and subtract: slower.** It does
-  not become `ADDS`/`ADCS`; add at 10 000 digits went 279 ns to 391.
-- **A precomputed reciprocal for Knuth D's quotient estimate: slower with a
-  32-bit limb only.** 64-by-32 is one `UDIV`. With a 64-bit limb, 128-by-64
-  has no instruction and the reciprocal becomes the only fast way.
-- **A constant divisor is not a software call.** LLVM turns
-  `UInt128 // <constant>` into a multiply-high: 0.40 ns for `// 10^18`, and a
-  hand-written Möller-Granlund reciprocal is slower (0.50).
-- **`floor_divide()` does not slow down across Burnikel-Ziegler blocks
-  (20260826).** Crossing a block boundary costs 3.9%, because the first block
-  only takes the dividend's real top slice.
-- **The Python extension is ~2.8x slower than the same code in a plain shared
-  library (20260902).** It lands on memory: arithmetic without the heap is
-  1.28x, a parse that allocates 2.84x, and the extension is 1.48 MB against
-  108 KB. Ruled out: optimization level, the `decimo.mojoc` boundary, the
-  per-call binding, the context global, the tuple access, the `try`, the block
-  pool, and the constructor overload.
-- **The Mojo compile cache never evicts.** 81 GB built up locally in eight
-  days. `mojo --clear-cache -f` empties it; a CI cache of it needs a rolling
-  key or pruning.
-- **conda-forge: not now (20260902).** Mojo itself is not on conda-forge, so
-  a feedstock cannot build the extension. The library is already a conda
-  package on `modular-community`, and the wheel works inside conda. Revisit if
-  Mojo reaches conda-forge.
+- **Newton reciprocal division: dropped (20260902).** A 2n-by-n division now costs 1.6-3.3 same-size multiplications (1.70 at 1 000 digits, 3.25 at 10^6). A one-shot Barrett divide costs 4-5, and only ~2 when the divisor is reused, which `pi()`'s splitting never does. Division is built from multiplication; that is the lever.
+- **Radix-4 NTT: dropped (20260902).** For our prime `2^48` is a fourth root of unity, so the multiply becomes a shift. The shift path is slower: 2.61 ns against 2.18 serial, 0.75 against 0.70 in throughput, because `mul` and `umulh` pipeline. The butterfly is not memory-bound either (2^15 to 2^19 words costs 9% more per butterfly), so fewer passes buy little.
+- **Shoup twiddles: impossible here.** The remainder lives in `[0, 2P)`, and with `P` this close to `2^64` that overflows a `UInt64` in 25% of cases. The trick needs `P < 2^63`.
+- **Branchless `mod_add` / `mod_sub` in the NTT: neutral.** The compiler already emits `CSEL`.
+- **The NTT butterfly is near its floor.** About 4.7 cycles at an IPC of 4.5; 94% of a 10^6-digit multiply is the three transforms. GMP is faster because Schönhage-Strassen multiplies by a root of unity with a bit shift.
+- **The 64-bit limb (20260828).** Predicted 2x for schoolbook and Knuth D, 1.5x for Karatsuba, ~1x for the transform. Measured 1.86-1.99x on division, 1.18x on a 1 000-digit multiply, 1.04x at 10^6.
+- **Splitting the add carry chain: done (20260902).** Four interleaved segments, stitched afterwards: 1.75 to ~1.05 cycles a word, where GMP's `ADCS` chain runs. Four separate loops would not work; the reorder window does not span a segment. The gain does not reach multiply or divide (under 3%, noise).
+- **`subtract_inplace()` copied its right operand to flip a sign: fixed (20260902).** Subtraction now costs what addition costs, 3.3x faster at 100 digits, where the copy reached the allocator.
+- **`math.sqrt` on an integer is a software root,** 21 ns against 0.45 for the `Float64` one. `decimo.utility.isqrt_uint64()` takes the float root and corrects it; the correction is needed because `Float64` rounds values just under `2^64` up to `2^64`.
+- **Kept the `UInt128` phase of `_sqrt_precision_doubling_fast()`.** The 128-bit divide is a software helper, but the word-list path it would fall back to is slower: 100-digit `sqrt` 155 ns to 204 without it.
+- **A branchless borrow in Knuth D: slower.** It puts the loaded word in the loop-carried chain; the branch is worth 1.38x at 1 000 digits.
+- **A `UInt128` accumulator for the paired add and subtract: slower.** It does not become `ADDS`/`ADCS`; add at 10 000 digits went 279 ns to 391.
+- **A precomputed reciprocal for Knuth D's quotient estimate: slower with a 32-bit limb only.** 64-by-32 is one `UDIV`. With a 64-bit limb, 128-by-64 has no instruction and the reciprocal becomes the only fast way.
+- **A constant divisor is not a software call.** LLVM turns `UInt128 // <constant>` into a multiply-high: 0.40 ns for `// 10^18`, and a hand-written Möller-Granlund reciprocal is slower (0.50).
+- **`floor_divide()` does not slow down across Burnikel-Ziegler blocks (20260826).** Crossing a block boundary costs 3.9%, because the first block only takes the dividend's real top slice.
+- **The Python extension is ~2.8x slower than the same code in a plain shared library (20260902).** It lands on memory: arithmetic without the heap is 1.28x, a parse that allocates 2.84x, and the extension is 1.48 MB against 108 KB. Ruled out: optimization level, the `decimo.mojoc` boundary, the per-call binding, the context global, the tuple access, the `try`, the block pool, and the constructor overload.
+- **The Mojo compile cache never evicts.** 81 GB built up locally in eight days. `mojo --clear-cache -f` empties it; a CI cache of it needs a rolling key or pruning.
+- **conda-forge: not now (20260902).** Mojo itself is not on conda-forge, so a feedstock cannot build the extension. The library is already a conda package on `modular-community`, and the wheel works inside conda. Revisit if Mojo reaches conda-forge.
 
 ## Traps worth remembering
 
