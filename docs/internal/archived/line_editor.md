@@ -1,5 +1,8 @@
 # Limo — line editor for Mojo
 
+> **Archived 2026-11-22.** The open items left in this plan are in
+> `docs/internal/todo.md`; statuses below are as of the last edit.
+
 > Date of initial planning: 2026-04-15 Author: Yuhao Zhu Scope: A lightweight,
 > reusable line-editing library for Mojo REPL applications Location:
 > `src/cli/limo/` (internal package, parallel to `src/cli/calculator/`) Future:
@@ -350,7 +353,7 @@ Features that would make limo competitive as a standalone library.
 
 Limo currently uses `Int`-only signatures for `tcgetattr`, `tcsetattr`, and
 `read` to match argmojo's `external_call` declarations and avoid LLVM IR
-conflicts (see [user_manual_limo.md](../user_manual_limo.md), "FFI Signature
+conflicts (see [user_manual_limo.md](../../user_manual_limo.md), "FFI Signature
 Convention"). This works but is a workaround — the root cause is that Mojo's
 `external_call` produces flat C-level symbols whose type signatures must be
 globally consistent across all packages.

@@ -1,5 +1,8 @@
 # BigDecimal Enhancement Plan
 
+> **Archived 2026-11-22.** The open items left in this plan are in
+> `docs/internal/todo.md`; statuses below are as of the last edit.
+
 > **Date**: 2026-02-21 (created), 2026-04-30 (last consolidated)
 > **Target**: decimo >=0.9.0
 > **Mojo Version**: >=1.0.0

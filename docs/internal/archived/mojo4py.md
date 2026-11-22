@@ -1,5 +1,8 @@
 # mojo4py: Exposing decimo to Python via Mojo Bindings
 
+> **Archived 2026-11-22.** The open items left in this plan are in
+> `docs/internal/todo.md`; statuses below are as of the last edit.
+
 > Initial date of planning: 2026-03-02
 >
 > I use "mojo4py" as the name of this document - it refers to a package

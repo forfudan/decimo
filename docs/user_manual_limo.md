@@ -657,8 +657,7 @@ alongside limo, this table maps between the two naming conventions:
 
 ## Phase Roadmap
 
-Limo is developed in phases. See `docs/plans/line_editor.md` for the full task
-list with status checkboxes.
+Limo is developed in phases. The original plan is archived in `docs/internal/archived/line_editor.md`, and open items are in `docs/internal/todo.md`.
 
 **Phase 1 (current) — Core Line Editor:**
 All essential editing features are implemented: arrow keys, Home/End, Backspace,

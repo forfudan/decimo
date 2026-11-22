@@ -150,7 +150,7 @@ def main() raises -> None:
         )
     print("  },")
 
-    # --- In place. Measured but not rendered; feeds internal_notes. ---
+    # --- In place. Measured but not rendered; feeds docs/internal/notes.md. ---
     var small_a = BigDecimal("12345.6789")
     var small_b = BigDecimal("9876.54321")
     var best_add_inplace = 1.0e30
