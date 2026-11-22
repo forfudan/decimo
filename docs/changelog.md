@@ -6,10 +6,29 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 
 ### ⭐️ New in v0.17.0
 
+1. The user manual is online at [decimo.mojo-lang.com](https://decimo.mojo-lang.com). It has a new front page, an installation page, a `Decimal128` part, and the APIs it was missing (PRs #399, #400, #401, #402, #405).
+1. Every type takes an integer literal of any size. `BigInt`, `BigUInt`, `BigDecimal` and `BigFloat` keep it exactly. `Decimal128` takes one up to its largest value, and a larger one is a compile-time error (PR #398).
+1. `BigFloat(n)`, `BigFloat(1.5)` and `BigFloat("1.5")` build a `BigFloat`, each with an optional precision and rounding mode. A literal works on either side of an operator, and the in-place operators work (PR #392).
+1. `BigFloat.from_bigint_exactly()` keeps every bit of a `BigInt`. `BigFloat(n)` uses it, so it is exact for an `Int`, a literal and a `BigInt` alike (PR #398).
+1. `BigFloat` has the trigonometric and hyperbolic functions as methods. Every function method takes an optional precision and rounding mode: `x.sin()` keeps the precision of `x`, and `x.sin(200, mode)` works like the free function (PR #391).
+1. `BigFloat` conforms to `Numeric`. `zero()` and `one()` give 53-bit values, and `one(precision)` is new (PR #391).
 1. `Decimal128(x)` takes any integral scalar, such as `Int64` or `UInt8` (PR #404).
+
+### 🦋 Changed in v0.17.0
+
+1. `log`, `power`, `hypot` and `arctan2` take the other value by keyword, in `BigFloat` and `BigDecimal`: `x.log(base=b)`, `x.log(200, base=b)`. A positional `Int` is always a precision. The positional form still works with a deprecation warning, and goes in v0.18.0 (PRs #393, #394).
+1. `**` on `BigDecimal` gives the same result as `power()` (PR #397).
 
 ### 🩹 Fixed in v0.17.0
 
+1. An integer literal wider than `Int` was cut to 64 bits without an error, so `var x: BInt = 2**100` was wrong (PR #398).
+1. A `BigDecimal` scale could overflow `Int` and wrap: `BigDecimal("1E18446744073709551916")` read as `1E+300`. The parser, `multiply`, `true_divide` and `power` raise `OverflowError` beyond `MAX_SCALE`, a quarter of `Int.MAX`. `BigInt` and `BigFloat` share the parser (PR #395).
+1. `1E+9223372036854775807 + 1` aborted the process. A rounded `BigDecimal` sum of far-apart operands no longer builds the exact sum (PR #395).
+1. `2 ** 1E+12` is right in its last digit, and `(-1) ** n` and `10 ** n` answer for a whole `n` of 1e9 or more (PR #395).
+1. `BigFloat`'s `hypot`, `exp10`, and `arctan2` with a very small ratio gave a wrong last digit in the directed modes (PR #396).
+1. Some `BigFloat` calls raised where the answer is well defined, such as `sin(pi(800))`, `root(3^100, 100)` and `power(-1, n)` for a large whole `n` (PR #396).
+1. `BigDecimal` raised in the directed modes when the answer is exactly one, a power of ten, or very close to one, such as `1 ** 1E-10` and `expm1(-1000)`. `hypot(1, 1E-1000000000)` ran out of memory (PR #397).
+1. The CLI rounded twice, so `-P 5 -R down "1-10^-20"` printed `1.0000` instead of `0.99999` (PR #397).
 1. `Decimal128`'s `//`, `%` and `divmod` were wrong when the quotient rounded up: `(MAX - 1) // MAX` gave `1` (PR #403).
 1. A tiny `Decimal128` power raised an overflow, and `0 ** 0.7` raised (PR #403).
 1. `Decimal128.exp(x)` crashed for `x <= -128` (PR #403).
@@ -19,6 +38,10 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 1. A `Decimal128` string with more than 38 digits is read correctly. Digits past the 38th before the point were dropped, so `"1" + 40 zeros + "e-20"` gave `1e17`. A nonzero digit past the 38th is no longer ignored when it breaks a tie (PR #404).
 1. A `Decimal128` string is rounded once. A number with a very small exponent was rounded twice, so `0.000…45|4999|5` ended in `46` instead of `45` (PR #404).
 1. A `Decimal128` string whose coefficient times its exponent exceeds 128 bits raises. It wrapped around, so `"3402823669209384635e20"` gave `36625392568231788544` (PR #404).
+
+### 💥 Breaking in v0.17.0
+
+1. `BigFloat.zero(precision, sign)` requires the precision. `BigFloat.zero()` without arguments gives 53 bits (PR #391).
 
 ## 20261024 (v0.16.0)
 

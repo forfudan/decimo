@@ -107,6 +107,7 @@ The source is on [GitHub](https://github.com/forfudan/decimo), and the
   - [Appendix A — Import Paths](#appendix-a--import-paths)
   - [Appendix B — Traits Implemented](#appendix-b--traits-implemented)
   - [Appendix C — Complete API Tables](#appendix-c--complete-api-tables)
+  - [Appendix D — Internals](#appendix-d--internals)
 
 <!-- mdbook: end skip -->
 
@@ -212,13 +213,11 @@ type — the Mojo-native equivalent of Python's `int`. It supports
 unlimited-precision integer arithmetic, bitwise operations, and number-theoretic
 functions.
 
-| Property          | Value                        |
-| ----------------- | ---------------------------- |
-| Full name         | `BigInt`                     |
-| Alias             | `BInt`                       |
-| Internal base     | 2^64 (binary representation) |
-| Word type         | `UInt64` (little-endian)     |
-| Python equivalent | `int`                        |
+| Property          | Value    |
+| ----------------- | -------- |
+| Full name         | `BigInt` |
+| Alias             | `BInt`   |
+| Python equivalent | `int`    |
 
 <!-- mdbook: page file="bigint/construction.md" -->
 ### Construction (BigInt)
@@ -296,20 +295,8 @@ Accepts any integral scalar type (`Int8` through `Int256`, `UInt8` through
 | `BInt.from_string(value)`          | Explicit factory from string (raises)  |
 | `BInt.from_biguint(value, sign)`   | From a base-10^18 magnitude and a sign |
 
-#### Unsafe constructors <!-- omit from toc -->
-
-These constructors skip validation for performance-sensitive code. The caller
-must ensure the data is valid.
-
-| Constructor                            | Description                               |
-| -------------------------------------- | ----------------------------------------- |
-| `BInt(uninitialized_capacity=n)`       | Empty words list with reserved capacity   |
-| `BInt(raw_words=Magnitude, sign=Bool)` | From raw words, no leading-zero stripping |
-
-`Magnitude` is `BInt`'s word storage, exported from `decimo`. Its words are
-`UInt64` and its base is 2^64; before v0.14.0 this was a `List[UInt32]` in
-base 2^32, so a literal is now `[UInt64(1)]`, and an existing `List` goes in
-as `BInt(raw_words=Magnitude(words^), sign=False)`.
+Constructors that skip validation are in
+[Appendix D](#appendix-d--internals).
 
 <!-- mdbook: page file="bigint/operators.md" -->
 ### Operators (BigInt)
@@ -444,9 +431,8 @@ BigInt supports two division conventions:
 
 `/` on a `BInt` is integer division, not a promotion to a decimal type. It
 follows Mojo's own `Int`, where `Int(7) / Int(-2)` is `-3`: the quotient stays
-in the type and rounds toward zero. It is therefore a different operator from
-`//`, not a synonym, and the two disagree exactly when the operands have
-opposite signs.
+in the type and rounds toward zero. So `/` is not the same as `//`: they
+differ when the signs differ and the division is not exact.
 
 The difference matters for negative operands:
 
@@ -727,13 +713,12 @@ Python's `decimal.Decimal`. It can represent numbers with unlimited digits and
 decimal places, making it suitable for financial modeling, scientific computing,
 and applications where floating-point errors are unacceptable.
 
-| Property          | Value                                     |
-| ----------------- | ----------------------------------------- |
-| Name              | `Decimal`                                 |
-| Aliases           | `BigDecimal`, `BDec`                      |
-| Internal base     | Base-10^18 (each word stores ≤ 18 digits) |
-| Default precision | 28 significant digits                     |
-| Python equivalent | `decimal.Decimal`                         |
+| Property          | Value                 |
+| ----------------- | --------------------- |
+| Name              | `Decimal`             |
+| Aliases           | `BigDecimal`, `BDec`  |
+| Default precision | 28 significant digits |
+| Python equivalent | `decimal.Decimal`     |
 
 `Decimal`, `BigDecimal`, and `BDec` are all the same type. We recommend
 `Decimal` for consistency with Python's `decimal.Decimal`.
@@ -857,12 +842,10 @@ float actually holds, not the literal that was written to produce it:
 Note that not all decimal numbers can be represented exactly as binary
 floating-point. You may lose precision without awareness.
 
-To make the conversion from float to `Decimal` more explicit so that you are
-aware of the potential precision issues, the `Decimal()` constructor does not
-accept floating-point numbers directly. Instead, to create a `Decimal` from a
-float, you must use the `from_float_scalar()` factory method. It accepts any
-floating-point width — `Float16`, `BFloat16`, `Float32`, `Float64` and the
-8-bit formats — since every one of them widens to `Float64` exactly.
+`Decimal()` does not take a float, so that a float's rounding error never
+slips in unnoticed. Use `from_float_scalar()` instead. It takes any float
+width: `Float16`, `BFloat16`, `Float32`, `Float64` and the 8-bit formats, as
+each of them widens to `Float64` exactly.
 
 Consider never using `Decimal.from_float_scalar()` in performance-sensitive
 code, but use string construction instead.
@@ -907,16 +890,8 @@ var b = Decimal(py=py_dec)  # Alternative keyword-only syntax
 | `Decimal.from_string(value)`          | Explicit factory from string        |
 | `Decimal.from_python_decimal(py_obj)` | From Python `Decimal` (raises)      |
 
-#### Unsafe Decimal constructors <!-- omit from toc -->
-
-These constructors skip validation for performance-sensitive code. The caller
-must ensure the data is valid.
-
-| Constructor                                               | Description                                  |
-| --------------------------------------------------------- | -------------------------------------------- |
-| `Decimal(coefficient: BigUInt, scale: Int, sign: Bool)`   | From raw components                          |
-| `Decimal.from_raw_components(words, scale=0, sign=False)` | From raw `List[BigUInt.Word]` words (unsafe) |
-| `Decimal.from_raw_components(word, scale=0, sign=False)`  | From a single `BigUInt.Word` (unsafe)        |
+Constructors that skip validation are in
+[Appendix D](#appendix-d--internals).
 
 <!-- mdbook: page file="decimal/arithmetic.md" -->
 ### Arithmetic (Decimal)
@@ -1263,18 +1238,16 @@ print(Decimal("0.5").arctanh(precision=30))  # 0.549306144334054845697622618461
 <!-- mdbook: page file="decimal/near-zero.md" -->
 ### Functions Near Zero (Decimal)
 
-Each trigonometric function of `Decimal` comes to a simple value as its
-argument goes to nought: the sine to the argument itself, the cosine to one, the cosecant to
-one over the argument. Every one of those is a value the destination holds
-exactly, and that is awkward for a function that decides its rounding rather
-than assuming it. Deciding means evaluating wider than asked until every
-value the error allows rounds the same way, and an answer that lands on a
-value the destination holds has values on both sides of it that round
-differently, however wide the evaluation goes.
+Near zero, each trigonometric function of `Decimal` comes very close to a
+simple value: the sine to the argument itself, the cosine to one, the cosecant
+to one over the argument. These values are usually exact in the result's
+precision.
+The functions add digits until the rounding is certain, but here the true
+value is so close to an exact value that no practical number of digits shows
+which side it is on.
 
-The three nearest modes do not notice, since the answer is that value either
-way. The four directed modes do, because they have to say which side of it
-the truth lies on.
+The three nearest modes give the same answer on either side. The four directed
+modes need to know the side.
 
 ```mojo
 from decimo import Decimal, RoundingMode
@@ -1288,16 +1261,13 @@ print(tiny.cos(precision=20, rounding_mode=RoundingMode.ROUND_DOWN))
 # 0.99999999999999999999 -- the cosine is below one
 ```
 
-So such an argument is answered from the sign of the function's own first
-correction term, which is all the rounding needs: `sin(x) = x - x^3/6` is
-below `x` and `tan(x) = x + x^3/3` is above it, and neither correction can be
-computed at `1E-500` by any width a loop would reach.
+So for such an argument, the side comes from the sign of the next term:
+`sin(x) = x - x^3/6` is below `x`, and `tan(x) = x + x^3/3` is above it. At
+`1E-500`, adding digits would never get far enough to see that term.
 
-A small argument is not the only place this happens. Wherever a function's
-value is a whole number, an argument a hair away from that point has an
-answer a hair away from a value the destination holds, and the same thing
-goes wrong. `log10(1000)` is three exactly; `log10` of a thousand plus
-`1E-500` is three plus a correction five hundred digits down.
+The same happens near any point where a function's value is a whole number.
+`log10(1000)` is exactly 3, and `log10(1000 + 1E-500)` is 3 plus a correction
+500 digits down.
 
 ```mojo
 from decimo import Decimal, RoundingMode
@@ -1463,11 +1433,10 @@ Many methods mirror Python's `decimal.Decimal` API:
 ### Overview (BigFloat)
 
 `BigFloat` is an arbitrary-precision binary floating-point type, written in
-Mojo with nothing to install. Where `Decimal` keeps digits and a scale,
-`BigFloat` keeps a significand and a power of two, which is what makes it the
-right type for scientific work: a square root, an exponential or a sine has
-no exact decimal answer, so the question is not whether it rounds but whether
-it rounds correctly. Every function here does.
+Mojo with nothing to install. `Decimal` stores digits and a scale; `BigFloat`
+stores a significand and a power of two. Use it for scientific work. A square
+root, an exponential or a sine is rarely exact, so the result has to be
+rounded, and every function here rounds correctly.
 
 | Property       | Value                                                |
 | -------------- | ---------------------------------------------------- |
@@ -1528,7 +1497,9 @@ print(BigFloat(1 << 62).precision)              # 53
 
 An integer literal wider than `Int` and a `BigInt` are exact too, by the same rule: `var x: BigFloat = 123456789012345678901234567890` has 96 bits. With a precision, `BigFloat(2**100 + 1, 10)` rounds the whole literal, and `BigFloat(n, p, mode)` for a `BigInt` is `from_bigint`. The exact conversion has its own name, `from_bigint_exactly(n)`; `from_bigint(n)` rounds to 53 bits.
 
-The `Int` and the `Float64` constructors are implicit, so a literal can stand on either side of an operator, and in-place operators work too. Each operator rounds half to even at the wider of the two precisions, as described in the [overview](#part-iii--bigfloat-bflt). A literal has at least 53 bits, so it lifts a narrower float to 53 bits: with a 24-bit `x`, `x * 2` has 53. Mojo has no reflected comparisons, so in a comparison the literal goes on the right: `x < 2` works and `2 > x` does not compile.
+The `Int` and `Float64` constructors are implicit, so a literal can be on either side of an operator, and the in-place operators work too. Each operator rounds half to even at the wider of the two precisions (see the [overview](#part-iii--bigfloat-bflt)). A literal has at least 53 bits, so it widens a narrower float: with a 24-bit `x`, `x * 2` has 53 bits.
+
+Mojo has no reflected comparisons, so in a comparison the literal goes on the right: `x < 2` works, but `2 > x` does not compile.
 
 A `Float64` literal is the double it stands for, not the decimal: `x * 0.1` multiplies by the double nearest a tenth. For the decimal, write `x * BigFloat("0.1", p)`, or `x / 10`.
 
@@ -1542,23 +1513,21 @@ x *= 2
 print(x)                                        # 5
 ```
 
-`from_float64` is exact in both directions where there is room for it: a
-`Float64` is a binary float of 53 bits, so at 53 bits or more nothing is lost
-either way and every double round-trips bit for bit. Two things qualify that.
-Asking for fewer bits rounds, like any other conversion — `from_float64(0.1,
-24)` is not `0.1`. And a NaN does not survive: this type keeps one canonical
-NaN, so a sign or a payload goes in and does not come out.
+A `Float64` is a 53-bit binary float, so at 53 bits or more, every double
+goes in and comes back out bit for bit. Asking for fewer bits rounds, so
+`from_float64(0.1, 24)` is not `0.1`. And there is only one NaN, so a NaN's
+sign and payload are lost.
 
 `from_string` and `from_bigdecimal` round, because almost no decimal is a
-binary float, and they round correctly in whichever mode is asked for.
+binary float. They round correctly in any mode.
 
 <!-- mdbook: page file="bigfloat/rounding.md" -->
 ### How Rounding Works (BigFloat)
 
-Every function takes a precision and a rounding mode, and returns the float of
-that precision nearest the true value, with the mode settling which side when
-the true value sits between two. That is a stronger promise than "accurate to
-the last bit or so", and the difference shows in the directed modes:
+Every function takes a precision and a rounding mode. It returns the float of
+that precision nearest the true value, and the mode decides which side when
+the true value is between two floats. This is stronger than "accurate to the
+last bit or so", and the difference shows in the directed modes:
 
 ```mojo
 from decimo.bigfloat import sqrt
@@ -1570,11 +1539,10 @@ print(sqrt(two, 53, RoundingMode.ROUND_UP))        # away from zero
 print(sqrt(two, 53, RoundingMode.ROUND_HALF_EVEN)) # the default
 ```
 
-For a transcendental function the true value cannot be computed, only
-approached, so the answer is decided rather than assumed: the function is
-evaluated wider than asked, and the rounding is only returned when every value
-the error allows rounds the same way. If they do not, the width grows and it is
-tried again. This is Ziv's method, and it is why the last bit can be trusted.
+A function such as `exp` or `sin` cannot be computed exactly. So it is
+computed with extra bits, and the result is returned only when the remaining
+error cannot change the rounding. If it could, the function tries again with
+more bits. This is why the last bit can be trusted.
 
 <!-- mdbook: page file="bigfloat/math.md" -->
 ### Mathematical Functions (BigFloat)
@@ -1617,12 +1585,10 @@ print(ln(BigFloat.from_int(2), 120))
 print(sin(BigFloat.from_string("1e10", 60), 53))
 ```
 
-That last one is worth a word. Reducing an argument of `10^10` by `pi/2` has
-to cancel its leading bits against pi, so the number of bits of pi needed is
-counted from the argument rather than fixed — `sin(2^300)` fetches three
-hundred bits of pi before the first bit of its answer is right. An argument
-whose leading bit sits beyond what a precision may be is refused rather than
-answered badly.
+For a large argument, such as `1e10` in the last line, the sine needs more
+bits of pi, so the number of bits grows with the argument. `sin(2^300)` uses
+about 300 bits of pi. An argument with more integer bits than the largest
+allowed precision raises an error.
 
 *To be in v0.17.0:* <!-- [forthcoming] --> each function except the constants and the four arithmetic ones is also a method. `fma`, `remainder` and `fmod` always take a precision, as they do as functions. The rest come in two forms. Without a precision it keeps this value's own precision and rounds half to even. With a precision, and optionally a rounding mode, it behaves like the free function asked for those:
 
@@ -1641,17 +1607,14 @@ print(BigFloat.from_int(27, 53).log(200, base=3).precision)  # 200
 <!-- mdbook: page file="bigfloat/bases.md" -->
 ### Other Bases and Exact Results (BigFloat)
 
-`log2`, `log10`, `log`, `exp2` and `exp10` have something the natural
-exponential and logarithm do not: arguments whose answers a float holds
-exactly. `log2(8)` is three, and three is a float.
+`log2`, `log10`, `log`, `exp2` and `exp10` have exact answers for some
+arguments: `log2(8)` is exactly 3.
 
-That matters because a correctly rounded transcendental function works by
-deciding its rounding rather than assuming it — evaluating wider than asked
-until every value the error allows rounds the same way. An answer sitting
-exactly on a representable value can never be decided that way, however wide
-the evaluation goes, because there are values on both sides of it that round
-differently. So those arguments are recognized first, from the integer
-significand, and answered exactly:
+The retrying described in [How Rounding Works](#how-rounding-works-bigfloat)
+cannot settle such an answer. However many bits it uses, the true value stays
+exactly on a float, and the values just above and below it round to
+different results. So these arguments are detected first and answered
+exactly:
 
 ```mojo
 from decimo.bigfloat import exp2, log, log10, log2
@@ -1663,52 +1626,39 @@ print(log(BigFloat.from_int(3), BigFloat.from_int(9), 53))    # exactly 0.5
 print(exp2(BigFloat.from_int(10), 53))             # exactly 1024
 ```
 
-Which arguments those are has an exact answer in each case, and each is worth
-knowing:
+The exact cases are:
 
-- `log2(x)` is exact exactly when `x` is a power of two, which is every
-  argument whose significand is a single bit, at any exponent.
-- `log10(x)` is exact exactly when `x` is `10^k` for a `k` at nought or above.
-  A negative power of ten is not a binary float at all — a fifth is not a
-  dyadic rational — so `log10` of the float nearest a thousandth is
-  irrational and a hair away from `-3`, and it is answered by the series.
-- `log(x, base)` is exact whenever the answer is exactly representable, which
-  includes `log(3, 9) = 0.5` and not only the whole answers. An answer that is
-  exact but not representable, like `log(9, 27) = 2/3`, goes through the
-  series and comes back correctly rounded like any other.
-- `exp2(x)` is exact exactly when `x` is a whole number, and `exp10(x)` when
-  `x` is a whole number at nought or above and `10^x` still fits the precision
-  asked for. Past that `10^x` is not representable, so the series settles on
-  it.
-- `expm1` and `log1p` are exact only at zero, where both are zero with the
-  sign of the argument, and `expm1(-Infinity)` which is exactly minus one.
+- `log2(x)`, when `x` is a power of two.
+- `log10(x)`, when `x` is `10^k` with `k >= 0`. A negative power of ten is not
+  a binary float, so `log10` of the float nearest `0.001` is not exactly `-3`.
+  It is computed and rounded as usual.
+- `log(x, base)`, when the answer is a float, such as `log(3, 9) = 0.5`. An
+  exact answer that is not a float, such as `log(9, 27) = 2/3`, is computed
+  and rounded as usual.
+- `exp2(x)`, when `x` is a whole number, and `exp10(x)`, when `x` is a whole
+  number, zero or more, and `10^x` fits in the precision.
+- `expm1` and `log1p`, only at zero, where both return zero with the sign of
+  the argument, and at `-Infinity`, where `expm1` is `-1`.
 
 <!-- mdbook: page file="bigfloat/hypot-arctan2.md" -->
 ### `hypot` and `arctan2` (BigFloat)
 
 `hypot(x, y, precision, mode)` is the length of the point and
 `arctan2(y, x, precision, mode)` is its angle, with `x.hypot(other=y)` and
-`y.arctan2(other=x)` over them. Together they turn a pair of coordinates into polar
+`y.arctan2(other=x)` as methods. Together they turn a point `(x, y)` into polar
 form.
 
-`hypot` forms `x*x + y*y` exactly, in integers, and never as two roundings
-that could each be wrong. Both squares are integers — a significand is one —
-so the sum over their common exponent is an integer too, and the integer
-square root of it brackets the answer with its remainder as the sticky bit.
-So `hypot(3, 4)` is `5`, in every mode, which a pair of rounded squares and a
-rounded root could not promise.
+`hypot` computes `x*x + y*y` exactly, with integers, and rounds only once, at
+the end. So `hypot(3, 4)` is exactly `5` in every mode. Rounding the squares
+and the root separately could not promise that.
 
-A leg far below the other contributes nothing but a sticky bit, and the
-answer is then the larger leg moved by a hair — not the larger leg itself,
-which is the mistake that would make `hypot(x, tiny)` wrong in the directed
-modes.
+When one side is far smaller than the other, the true value is the larger
+side plus a tiny amount. The nearest modes return the larger side, but
+`ROUND_UP` returns the next float above it.
 
-`arctan2` is where signed zeros earn their keep. `arctan2(0, -1)` is `pi` and
-`arctan2(-0, -1)` is `-pi`: the two zeros lie on opposite shores of the cut
-along the negative axis, and the sign is the only thing that says which one a
-point on the cut came from. The argument order is the one every other
-language uses — the second coordinate first, because the function inverts a
-tangent and a tangent is a rise over a run.
+`arctan2` uses the sign of zero: `arctan2(0, -1)` is `pi` and
+`arctan2(-0, -1)` is `-pi`. The sign tells which side of the negative x-axis
+the point is on. As in other languages, `y` comes first.
 
 ```mojo
 from decimo.bigfloat import arctan2, hypot
@@ -1727,58 +1677,32 @@ def main() raises:
 `root(x, degree, precision, mode)` and `cbrt(x, precision, mode)`, also
 `x.root(n)` and `x.cbrt()`, take any positive degree.
 
-They need no series and no deciding loop, because a root is algebraic. The
-integer `degree`-th root of a scaled significand brackets the true root
-between two consecutive integers, and whether it landed on the lower one
-exactly is the sticky bit; one rounding then finishes the job in each of the
-seven modes. So an exact root comes out exact — `root(8, 3)` is `2` in every
-mode, including the directed ones, where a function that evaluated and then
-rounded would have to pick a side and both sides would be wrong.
+A root is computed with an integer root and rounded once, with no retrying.
+So an exact root is exact: `root(8, 3)` is `2` in every mode, including the
+directed ones.
 
-Dividing the exponent is the whole of the scaling. `x` is
-`s * 2^(q * degree + r)` with `r` below the degree, so the factor of `2^r`
-moves into the significand and the root sits at `2^q`. The product is never
-formed again, which is what keeps a value near the bottom of the exponent
-range from leaving it.
-
-A negative value has a real root only at an odd degree, and gives a NaN at an
-even one, the way `sqrt` does. A nought keeps its sign at an odd degree and
-loses it at an even one. A degree of nought or less is refused rather than
-answered.
+A negative value has a real root only for an odd degree. An even degree gives
+NaN, as `sqrt` does. A zero keeps its sign for an odd degree and loses it for
+an even one. A degree of zero or less raises an error.
 
 <!-- mdbook: page file="bigfloat/power.md" -->
 ### Power (BigFloat)
 
 `power(x, y, precision, mode)`, also `x.power(exponent=y)` and `x ** y`, raises one
-value to another. It ends in `exp(y ln x)`, and almost nothing about it is
-that line.
+value to another. In general it computes `exp(y * ln(x))`.
 
-The reason is the same one [the other bases](#other-bases-and-exact-results-bigfloat) have, only more so. A power sits
-on an exactly representable answer constantly: `2 ** 10` is `1024`, which
-every directed mode has to return and no bracket around it can prove. What
-is less obvious is that a *fractional* exponent does it too — `4 ** 0.5` is
-exactly `2`, and `16 ** 0.25` is as well — so recognizing the whole
-exponents is not enough.
+Many powers are exact: `2 ** 10` is `1024`, and `4 ** 0.5` is `2`. As with
+[the other bases](#other-bases-and-exact-results-bigfloat), these are found
+first and answered exactly:
 
-Three kinds of exact answer are found before any series runs.
+- A whole exponent, when the result is short enough: the power is computed
+  with integers and rounded once. A negative whole exponent is one correctly
+  rounded division.
+- A base that is a power of two, when the result is a power of two too.
+- A fractional exponent `a / 2^b`, when `b` square roots of the base are all
+  exact. The result is then a whole power of the last root.
 
-A whole exponent is a power of the significand. `x` is `s * 2^e`, so `x^n` is
-`s^n * 2^(en)`, and `s^n` is an integer however large; it is formed while it
-is short enough to be worth forming, and one rounding finishes it. A
-negative whole exponent is one correctly rounded division of exact operands.
-
-A base that is a power of two answers any exponent leaving a whole result:
-`2^m` to the `a / 2^b` is `2^(ma / 2^b)`, exact exactly when `2^b` divides
-`m`.
-
-Anything else with a fractional exponent — and every binary float is `a / 2^b`
-for some `a` and `b` — is `b` square roots followed by a whole power. A
-square root is exact only when the significand is a perfect square, and each
-exact root halves the bits, so the question answers itself within a few steps
-or not at all.
-
-What reaches the series is therefore known to be irrational, where the loop
-settles.
+Every other power is computed as `exp(y * ln(x))` and rounded correctly.
 
 ```mojo
 from decimo.bigfloat import power
@@ -1793,33 +1717,31 @@ def main() raises:
                 RoundingMode.ROUND_DOWN))        # 1.4142135623730949
 ```
 
-The special values follow IEEE 754's `pow`, which answers two cases before it
-looks at anything else: a nought exponent gives one for every base, a NaN
-included, and a base of one gives one for every exponent, a NaN included.
-A negative base with a fractional exponent gives a NaN, there being no real
-answer. There is no overflow to an infinity for finite arguments — this
-type's exponent is as wide as an `Int`, and an answer asking for more is
-refused rather than answered with an infinity it did not earn.
+Special values follow IEEE 754's `pow`. An exponent of zero gives one for
+every base, even NaN, and a base of one gives one for every exponent, even
+NaN. A negative base with a fractional exponent gives NaN, as there is no real
+answer. A finite result never overflows to infinity: the exponent is as wide
+as an `Int`, and a result beyond that raises an error.
 
 <!-- mdbook: page file="bigfloat/near-zero.md" -->
 ### Functions Near Zero (BigFloat)
 
-`expm1` is `exp(x) - 1` and `log1p` is `ln(1 + x)`, and both exist because the
-expressions they are named after throw their answers away for a small
-argument. `exp(2^-100)` rounds to one, so the difference is nought where the
-answer is `2^-100`; `1 + 2^-100` rounds to one, so the logarithm is nought
-too. These two compute the difference and the logarithm directly:
+`expm1(x)` is `exp(x) - 1` and `log1p(x)` is `ln(1 + x)`. For a small `x`,
+the plain expressions lose the answer. `exp(2^-100)` rounds to one, so
+subtracting one gives zero instead of about `2^-100`. `1 + 2^-100` also rounds
+to one, so its logarithm is zero. These two functions compute the result
+directly:
 
 ```mojo
 from decimo.bigfloat import expm1, log1p
 
 var tiny = BigFloat.power_of_two(-100000)
-print(expm1(tiny, 53).internal_representation())   # 2^-100000, not nought
-print(log1p(tiny, 53).internal_representation())   # and a hair under it
+print(expm1(tiny, 53).internal_representation())   # 2^-100000, not zero
+print(log1p(tiny, 53).internal_representation())   # just under 2^-100000
 ```
 
-They are also what the hyperbolic functions are built on, which is why
-`sinh(2^-100000)` is `2^-100000` rather than zero.
+The hyperbolic functions use them, so `sinh(2^-100000)` is `2^-100000`, not
+zero.
 
 <!-- mdbook: page file="bigfloat/special-values.md" -->
 ### Special Values (BigFloat)
@@ -1833,31 +1755,27 @@ from decimo.bigfloat.trigonometric import arctan, sin
 
 print(sqrt(BigFloat.from_int(-4), 53).is_nan())      # True, not an error
 print(ln(BigFloat.zero(), 53))                        # -Infinity
-print(sin(BigFloat.infinity(), 53).is_nan())          # True: it settles nowhere
-print(arctan(BigFloat.infinity(), 53))                # pi/2: this one settles
+print(sin(BigFloat.infinity(), 53).is_nan())          # True: no limit
+print(arctan(BigFloat.infinity(), 53))                # pi/2: the limit
 ```
 
 Three methods tell the kinds apart: `x.is_nan()`, `x.is_infinite()` and
 `x.is_finite()`. A NaN is neither infinite nor finite.
 
-A NaN is unordered, so every comparison with it is False except `!=`, and that
-holds for a NaN against itself. The two zeros compare equal. Sorting therefore
-needs an order that covers them, and `compare_total(x, y)` is it (import it
-from `decimo.bigfloat.comparison`): it runs from
-`-Infinity` up to the NaN and separates values that are numerically equal by
-their precision.
+A NaN is unordered, so every comparison with it is False except `!=`, even
+against itself. The two zeros compare equal. For sorting, use
+`compare_total(x, y)` from `decimo.bigfloat.comparison`. It orders every value
+from `-Infinity` up to NaN, and orders equal values by their precision.
 
-There is no overflow to an infinity for a finite argument. The exponent is as
-wide as an `Int`, so an operation that asks for more — `exp` of anything from
-about `6.4e18` up — raises rather than returning an infinity it did not earn.
+A finite argument never gives infinity by overflow. The exponent is as wide
+as an `Int`, and a result beyond that raises an error. For example, `exp(x)` raises
+for `x` from about `6.4e18` up.
 
 <!-- mdbook: page file="bigfloat/ieee754.md" -->
 ### IEEE 754 Functions (BigFloat)
 
-Beyond the arithmetic and the functions, IEEE 754 asks a format for a set of
-small operations that numerical code reaches for constantly. They are in
-`decimo.bigfloat.ieee`, which is where they are imported from, and each one is
-also a method on the value:
+IEEE 754 also defines a set of small operations that numerical code often
+needs. They are in `decimo.bigfloat.ieee`, and each one is also a method:
 
 | Function                             | What it gives                               |
 | ------------------------------------ | ------------------------------------------- |
@@ -1890,11 +1808,9 @@ print(remainder(BigFloat.from_float64(5.0), BigFloat.from_float64(3.0), 53))
 # -1: six is nearer to five than three is. `fmod` of the same pair is 2.
 ```
 
-`fma` is the one with substance. `x * y + z` written out rounds the product
-before the addition sees it, and a product that nearly cancels with `z` loses
-exactly the bits the answer is made of. Here the product is formed exactly —
-it is an integer times a power of two, so there is nothing to round — and only
-the sum is rounded:
+`fma` matters most. Written out, `x * y + z` rounds the product first. If the
+product nearly cancels `z`, the bits lost in that rounding were the answer.
+`fma` computes the product exactly and rounds only the sum:
 
 ```mojo
 var above = next_plus(one, 53)             # 1 + 2^-52
@@ -1903,26 +1819,22 @@ print(product + (-product))                 # 0: the two-step answer
 print(fma(above, above, -product, 53))      # 2^-104: what the rounding dropped
 ```
 
-Two of these differ from a double, and both follow from the type rather than
-from a choice. `number_class` never answers `+Subnormal` or `-Subnormal`: a
-significand here always holds its full precision, so every finite non-zero
-value is normal. And `next_plus` and `next_minus` step through an exponent
-range as wide as an `Int`, so the ends they reach are not a double's —
-`next_plus(BigFloat.zero(), 53)` is `2^(Int.MIN + 52)` where a double answers
-`2^-1074`. Within that range the two agree bit for bit, which is how these are
-tested.
+Two of these differ from a double. `number_class` never gives `+Subnormal` or
+`-Subnormal`, because the significand always has its full precision, so every
+finite non-zero value is normal. And `next_plus` and `next_minus` work in an
+exponent range as wide as an `Int`: `next_plus(BigFloat.zero(), 53)` is
+`2^(Int.MIN + 52)`, where a double gives `2^-1074`. Inside a double's range
+they agree bit for bit.
 
-`logb` returns a `BigInt` rather than an `Int` because the position of the
-leading bit is `exponent + precision - 1`, and that sum can be outside an
-`Int` while the value itself is an ordinary one. It has no answer for a zero,
-an infinity or a NaN, where the standard's answers are infinities and a NaN,
-and raises instead.
+`logb` returns a `BigInt`, because the position of the leading bit,
+`exponent + precision - 1`, can be outside the range of an `Int`. It raises
+for zero, infinity and NaN, where IEEE 754 returns infinities and NaN.
 
 <!-- mdbook: page file="bigfloat/decimal-conversion.md" -->
 ### Decimal Conversion (BigFloat)
 
-Every binary float is exactly a decimal, because `2^-k` is `5^k / 10^k`, so
-the conversion out loses nothing and only the number of digits is a choice:
+Every binary float is exactly a decimal, because `2^-k` is `5^k / 10^k`. So
+converting to a decimal loses nothing, and you only choose how many digits:
 
 ```mojo
 var tenth = BigFloat.from_float64(0.1)
@@ -1932,23 +1844,19 @@ print(tenth)                            # as many digits as 53 bits are worth
 print(tenth.internal_representation())  # the significand, exponent, precision
 ```
 
-A digit count costs what the digits cost. The digits asked for are taken by
-scaling the value by a power of ten, so a deep exponent is no longer a reason
-to wait: a value whose exact expansion runs to 301,031 digits still gives
-twenty of them at once, and the smallest and largest values a `BigFloat` can
-hold print like any other.
+The time depends on the number of digits asked for, not on the exponent. A
+value whose exact expansion has 301,031 digits still gives 20 of them at once,
+and the smallest and largest `BigFloat` values print like any other.
 
 ```mojo
 var deep = BigFloat.power_of_two(-1000000)
 print(deep.to_string(20))               # 1.0100340591980302247E-301030
 ```
 
-`to_bigdecimal()` is the one to ask when every digit is wanted, and it is the
-only one whose cost follows the exponent, because the answer does.
+Only `to_bigdecimal()`, which gives every digit, takes longer for a larger
+exponent.
 
-Coming in costs what the precision is, in the same way and for the same
-reason. A decimal exponent of nine or eighteen figures is a decimal nobody
-could write out, and it parses at once:
+Parsing is fast at any exponent too. The time depends on the precision:
 
 ```mojo
 var deep = BigFloat.from_string("1.5e-1000000", 53)
@@ -1957,12 +1865,13 @@ print(BigFloat.from_string("7e1000000000", 53).to_string(17))
 # 6.9999999999999999E+1000000000
 ```
 
-The second one is seven to a billion powers of ten, which has no exact
-rendering in 53 bits — the digits shown are the float's own.
+`7e1000000000` is not exactly a 53-bit float, so the second line shows the
+digits of the nearest one.
 
-Going the other way rounds. `to_float64()` is exact for a normal double but
-rounds a second time when the answer is subnormal, since a subnormal has fewer
-bits than 53: converting from a wider precision avoids it.
+`to_float64()` is exact for a 53-bit value in the normal range of a double.
+A subnormal double has fewer than 53 bits, so there the value is rounded
+again, and that second rounding can be one step off. Converting from a wider
+precision avoids that.
 
 <!-- mdbook: page file="bigfloat/choosing.md" -->
 ### BigFloat, Decimal, or MPF
@@ -1973,12 +1882,10 @@ digits are the point, anything that has to agree with Python's
 precision, where binary is the natural base and the question is whether the
 last bit is right.
 
-`MPF`, the MPFR-backed float that used to carry the name `BigFloat`, is still
-in the source at `decimo.mpf.mpf.MPF`. It is not exported and carries no
-promise of a stable interface, and using it means installing MPFR and linking
-a C wrapper. It is kept as a second implementation to test the traits against,
-as the baseline the Mojo one is measured against, and for anyone who was
-relying on it.
+`MPF`, a float that wraps the MPFR library, is in the source at
+`decimo.mpf.mpf.MPF`. It is not exported and its interface may change. Using
+it needs MPFR and a C wrapper. It is kept to test and benchmark `BigFloat`
+against.
 
 <!-- mdbook: page file="rational/index.md" -->
 ## Part IV — Rational (`Frac`)
@@ -2654,13 +2561,15 @@ table the presets do not cover.
 
 #### Digit budget <!-- omit from toc -->
 
-A reading is always written out in full, so its cost is set by the *written*
-length of the number, not by how compactly the value was given —
-`Decimal("1E+1000000000")` is a few characters of input and a billion digits
-of output. Conversions therefore take a `max_digits` budget, defaulting to
-`MAX_CHINESE_NUMERAL_DIGITS` (10 000), and raise a `ValueError` past it. The
-check happens before the digits are expanded, so an absurd magnitude costs
-nothing:
+A Chinese numeral is always written out in full, so the cost depends on the
+written length of the number, not on how short the input is.
+`Decimal("1E+1000000000")` is a few characters of input but a billion digits
+of output.
+
+So the conversions take a `max_digits` limit, by default
+`MAX_CHINESE_NUMERAL_DIGITS` (10 000), and raise a `ValueError` beyond it. The
+check happens before the digits are written out, so a huge number fails at
+once:
 
 ```mojo
 _ = Decimal("1E+1000000000").to_chinese()          # raises ValueError
@@ -2819,35 +2728,44 @@ from decimo.expression import tokenize, parse_to_rpn, evaluate_rpn
 <!-- mdbook: page file="appendix/traits.md" -->
 ### Appendix B — Traits Implemented
 
-All of these come from the Mojo standard library except **`Numeric`**, **`Parsable`** and **`Rootable`**, which Decimo defines in `decimo.traits`. `BigInt`, `BigDecimal`, `BigFloat` and `Decimal128` conform to all three, and `Rational` to `Numeric` and `Parsable`. Mojo checks conformance nominally, which is why the traits live in Decimo rather than in the consumer.
+Most of these traits come from the Mojo standard library. Three are defined
+by Decimo, in `decimo.traits`: **`Numeric`**, **`Parsable`** and
+**`Rootable`**. `BigInt`, `BigDecimal`, `BigFloat` and `Decimal128` conform to
+all three, and `Rational` to `Numeric` and `Parsable`. Mojo checks conformance
+by name, so these traits have to be defined in Decimo, not in the code that
+uses them.
 
-`Numeric` gathers `zero()`, `one()`, `-x`, `+`, `-`, `*` and `/`, so a generic routine — a matrix or polynomial library, say — can be written once against `T: Numeric` and run over any of them.
+`Numeric` covers `zero()`, `one()`, `-x`, `+`, `-`, `*` and `/`. A generic
+routine, such as a matrix or polynomial library, can be written once for
+`T: Numeric` and work with any of these types.
 
-`Parsable` requires the static `from_string(value)`, so the same generic
-routine can also fill itself from text. The two are separate because the
-capabilities are: the MPFR-backed `MPF`, which is in the source but outside
-the public interface, parses but is `Movable` without being `Copyable`, so it
-can never be `Numeric`. Ask for `T: Numeric & Parsable` to get both.
+`Parsable` requires a static `from_string(value)`, so generic code can also
+build values from text. Use `T: Numeric & Parsable` to get both. The two
+traits are separate because some types have only one: `MPF` (in the source,
+not exported) can parse, but it is not `Copyable`, so it can never be
+`Numeric`.
 
-`Rootable` requires `sqrt()`, the one operation a Cholesky or QR factorisation needs beyond arithmetic. It is separate for the same reason, and here the evidence is sharper: `BigUInt` has a square root but is unsigned, so it has no `__neg__` and can never be `Numeric` either. Its supertraits are `Deinitable` and `Movable` and no more — `Copyable` is pointedly absent, so that `MPF` can conform. `MPF` and `BigUInt` therefore conform to `Rootable` as well, six types in all. Ask for `T: Numeric & Rootable` in a routine that needs both. What the root means stays the implementing type's business: on an integral type it truncates, so `BigInt("10").sqrt()` is `3`, exactly as `/` truncates there. So does what a negative value does — the four exact types raise, while `BigFloat` and `MPF` return a NaN, as they do for every other function outside their domain.
+`Rootable` requires `sqrt()`, which is what a Cholesky or QR factorization
+needs beyond arithmetic. Use `T: Numeric & Rootable` to get both. It is
+separate for the same reason: `BigUInt` has a square root but no negation, so
+it can never be `Numeric`. `Rootable` does not require `Copyable`, so `MPF`
+conforms too, which makes six types in all.
 
-`Hashable` gives `hash(x)`, and with it a key in a `Dict`. `BigUInt`,
+Each type decides what its root means. On an integer type it truncates, so
+`BigInt("10").sqrt()` is `3`, just as `/` truncates there. For a negative
+value, the four exact types raise, while `BigFloat` and `MPF` return NaN.
+
+`Hashable` gives `hash(x)`, so a value can be a `Dict` key. `BigUInt`,
 `BigInt`, `BigDecimal`, `BigFloat`, `Rational` and `Decimal128` all conform.
-The rule a hash has to keep is that equal values hash alike, and each of
-these types holds values that are equal without being written the same way,
-so each has something to see through. A decimal drops the trailing zeros it
-was written with, which is why `1.0` and `1.00` reach the same entry. A
-binary float shifts its significand down to an odd number, which is why a
-half at fifty-three bits and a half at five hundred reach the same entry. A
-zero is one key whatever sign it carries. The converse is not promised: two
-different numbers may land on the same sixty-four bits, as they may under
-any hash, and the dictionary settles that with `==`.
+Equal values have equal hashes, even when they are stored differently: `1.0`
+and `1.00` hash alike, a half at 53 bits and a half at 500 bits hash alike,
+and `0` and `-0` hash alike. Different values may still share a hash, as with
+any hash; the dictionary then tells them apart with `==`.
 
-Every one of these types also answers `String(x)` and `repr(x)`. Neither
-needs a trait of its own here: `String(x)` and `print(x)` come from
-`Writable`, and `repr(x)` from the type's own `__repr__`. Mojo 1.2 has no
-`Stringable` or `Representable` to ask for, so generic code that wants to
-print its argument asks for `Writable`.
+Every type also supports `String(x)` and `repr(x)`. `String(x)` and
+`print(x)` come from `Writable`, and `repr(x)` from the type's own
+`__repr__`. Mojo 1.2 has no `Stringable` or `Representable` trait, so generic
+code that prints a value should ask for `Writable`.
 
 #### BigInt <!-- omit from toc -->
 
@@ -2913,20 +2831,19 @@ print its argument asks for `Writable`.
 | `Rootable`   | `x.sqrt()` in generic code            |
 | `Writable`   | `print(x)`, `String(x)`               |
 
-`Parsable` asks for a `from_string(text)` of one argument, and a binary float
-has to be told how many bits to keep, so there are two: the one the trait
-needs, which lands at the default precision of fifty-three bits, and
-`from_string(text, precision, rounding_mode)` for everything else. Generic
-code bounded on `T: Parsable` therefore gets a float at a double's precision,
-which is the only precision it could have asked for without saying so.
+`Parsable` needs a `from_string(text)` with one argument, but a binary float
+also needs a precision. So `BigFloat` has two forms: the one-argument form
+gives 53 bits, and `from_string(text, precision, rounding_mode)` gives any
+other. Generic code with `T: Parsable` gets 53-bit floats.
 
-`Comparable` is conformed to with the one reservation IEEE 754 asks for: a
-NaN is unordered, so `<`, `<=`, `>`, `>=` and `==` are all False for it and
-`!=` is True, which breaks the law that exactly one of less, equal and
-greater holds. `compare_total(x, y)`, a function in `decimo.bigfloat.comparison`,
-is there for code that needs a total order.
+`Comparable` follows IEEE 754 for NaN: `<`, `<=`, `>`, `>=` and `==` are all
+False and `!=` is True. So for NaN, none of less, equal and greater holds. For
+a total order, use `compare_total(x, y)` from `decimo.bigfloat.comparison`.
 
-`Numeric` asks for `zero()` and `one()` without arguments, so those two give values of fifty-three bits; `zero(precision, sign)` and `one(precision)` give any other. The operators keep the wider of the two precisions and round half to even, so generic code works at the precision of the values it is handed.
+`Numeric` needs `zero()` and `one()` without arguments, so these give 53-bit
+values; `zero(precision, sign)` and `one(precision)` give other precisions.
+The operators keep the wider of the two precisions and round half to even, so
+generic code works at the precision of its inputs.
 
 #### Rational <!-- omit from toc -->
 
@@ -2962,8 +2879,8 @@ The free functions and their modules are listed in
 | ------------------------------------------- | -------------------------------------------- |
 | `a + b`, `a - b`                            | At the wider precision, half to even         |
 | `a * b`, `a / b`, `a ** b`                  | The same                                     |
-| `BigFloat(text)`, `BigFloat(x)`             | At fifty-three bits; a `Float64` is exact    |
-| `BigFloat(n)`                               | Exact, at fifty-three bits or more           |
+| `BigFloat(text)`, `BigFloat(x)`             | At 53 bits; a `Float64` is exact             |
+| `BigFloat(n)`                               | Exact, at 53 bits or more                    |
 | `BigFloat(v, p, mode)`                      | At `p` bits, in `mode`                       |
 | `1 + a`, `2 * a`, `2 ** a`, and the rest    | The literal converts, then as `a + b`        |
 | `a += b`, `a -= b`, `a *= b`, `a /= b`      | As `a + b` and the rest                      |
@@ -2989,7 +2906,7 @@ The free functions and their modules are listed in
 | `a.sinh()`, `a.cosh()`, `a.tanh()`          | The same                                     |
 | `a.arcsinh()`, `a.arccosh()`, `a.arctanh()` | The same                                     |
 | `a.exp(p)`, `a.exp(p, mode)`                | `sqrt`, and `exp` to `arctanh`, at `p` bits  |
-| `BigFloat.zero()`, `BigFloat.one()`         | At fifty-three bits                          |
+| `BigFloat.zero()`, `BigFloat.one()`         | At 53 bits                                   |
 | `a.to_bigdecimal()`                         | The exact decimal expansion                  |
 | `a.to_bigdecimal_rounded(n)`                | `n` significant digits                       |
 | `a.to_float64()`                            | The nearest double                           |
@@ -3079,3 +2996,37 @@ take a `rounding_mode`, half to even by default.
 | `a.to_integer()`, `a.to_int()`     | Truncated toward zero                         |
 | `a.to_float()`                     | The nearest double                            |
 | `a.to_bigdecimal(precision)`       | A `Decimal`, rounded once                     |
+
+<!-- mdbook: page file="appendix/internals.md" -->
+### Appendix D — Internals
+
+Most code never needs this page. It shows how `BigInt` and `Decimal` store
+their values, and the constructors that skip validation. For `BigFloat` and
+`Decimal128`, see the tables in their overviews.
+
+| Type      | Stored as                                                                          |
+| --------- | ---------------------------------------------------------------------------------- |
+| `BigInt`  | A sign and a `Magnitude` of `UInt64` words in base 2^64, least significant first   |
+| `Decimal` | A sign, a scale and a `BigUInt` coefficient of words in base 10^18, 18 digits each |
+
+The constructors below do not check their input. The caller must make sure
+the data is valid.
+
+#### BigInt <!-- omit from toc -->
+
+| Constructor                            | Description                               |
+| -------------------------------------- | ----------------------------------------- |
+| `BInt(uninitialized_capacity=n)`       | Empty words list with reserved capacity   |
+| `BInt(raw_words=Magnitude, sign=Bool)` | From raw words, no leading-zero stripping |
+
+`Magnitude` is exported from `decimo`. A literal is `[UInt64(1)]`, and an
+existing `List[UInt64]` goes in as
+`BInt(raw_words=Magnitude(words^), sign=False)`.
+
+#### Decimal <!-- omit from toc -->
+
+| Constructor                                               | Description                                  |
+| --------------------------------------------------------- | -------------------------------------------- |
+| `Decimal(coefficient: BigUInt, scale: Int, sign: Bool)`   | From raw components                          |
+| `Decimal.from_raw_components(words, scale=0, sign=False)` | From raw `List[BigUInt.Word]` words (unsafe) |
+| `Decimal.from_raw_components(word, scale=0, sign=False)`  | From a single `BigUInt.Word` (unsafe)        |
