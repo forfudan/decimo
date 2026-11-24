@@ -2,13 +2,10 @@
 
 Decided work only, one item each with the reason. Measurements and settled questions are in `notes.md`; designs for larger work are in `plans/`; finished plans are in `archived/`. Updated at each release.
 
-Last updated 2026-11-22.
+Last updated 2026-11-23.
 
 ## Performance
 
-- **`BigInt` subtraction: break the borrow chain.** `_subtract_words()` still runs one chain. Splitting `_add_words()` into four segments made addition 1.5x faster above 125 words, and subtraction has the same shape.
-- **`BigInt.power()`: a dedicated `square()`.** Squaring needs about half the word products of a general multiply.
-- **`BigInt`: measure `CUTOFF_KARATSUBA`.** It is 64 words (~1200 digits); GMP switches near 500 digits. Our Comba base case is fast, so measure rather than assume.
 - **Large multiplication.** At 10^6 digits we are 3.8x GMP, and division and `sqrt` inherit it. Lazy reduction in the NTT (~1.15x) is the cheap idea left; Schönhage-Strassen is the one that would close the gap.
 - **Audit 128-bit and 256-bit divisions by a runtime value** in `decimal128/`, `rational/` and `bigint/exponential.mojo`. Each one is a software helper costing 20-40 ns. A constant divisor is fine.
 - **`true_divide` keeps 90 digits to answer 28.** With a long divisor the `+2` guard words keep five base-10^18 words. Argue any cut against the tie-detection fallback.

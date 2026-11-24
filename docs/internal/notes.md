@@ -751,7 +751,7 @@ What was left in division was that a 28-digit value took four base-10^9 words
 here and two in libmpdec. Base 10^18 (20260828) closed that; the words match
 now.
 
-## Settled by measurement (2026-08 to 2026-09)
+## Settled by measurement (2026-08 to 2026-11)
 
 Each was measured, and the answer was no or done. Kept so the idea is not tried again from scratch.
 
@@ -762,6 +762,9 @@ Each was measured, and the answer was no or done. Kept so the idea is not tried 
 - **The NTT butterfly is near its floor.** About 4.7 cycles at an IPC of 4.5; 94% of a 10^6-digit multiply is the three transforms. GMP is faster because Schönhage-Strassen multiplies by a root of unity with a bit shift.
 - **The 64-bit limb (20260828).** Predicted 2x for schoolbook and Knuth D, 1.5x for Karatsuba, ~1x for the transform. Measured 1.86-1.99x on division, 1.18x on a 1 000-digit multiply, 1.04x at 10^6.
 - **Splitting the add carry chain: done (20260902).** Four interleaved segments, stitched afterwards: 1.75 to ~1.05 cycles a word, where GMP's `ADCS` chain runs. Four separate loops would not work; the reorder window does not span a segment. The gain does not reach multiply or divide (under 3%, noise).
+- **Splitting the subtract borrow chain: done (20261123).** The same four segments as addition. `a - b` is 1.4x faster at 128 words and 1.55-1.7x from 256 to 4 096; nothing changes below 32 words, and at 16 384 memory dominates.
+- **A dedicated square: done (20261123).** `x * x` is 1.3-1.7x faster than `x * y` of the same size, from schoolbook (half the word products) to the transform (two transforms instead of three). Squaring needs no NTT cost model of its own: Toom-3 against the transform gives the same ratio for a square as for a product, within 5% from 1 024 to 8 192 words.
+- **`CUTOFF_KARATSUBA` re-measured: still 64 (20261123).** 48 ties up to 128 words and loses 4-6% at 192; 96 and 128 lose 10-27%. The square's own cutoff is 96.
 - **`subtract_inplace()` copied its right operand to flip a sign: fixed (20260902).** Subtraction now costs what addition costs, 3.3x faster at 100 digits, where the copy reached the allocator.
 - **`math.sqrt` on an integer is a software root,** 21 ns against 0.45 for the `Float64` one. `decimo.utility.isqrt_uint64()` takes the float root and corrects it; the correction is needed because `Float64` rounds values just under `2^64` up to `2^64`.
 - **Kept the `UInt128` phase of `_sqrt_precision_doubling_fast()`.** The 128-bit divide is a software helper, but the word-list path it would fall back to is slower: 100-digit `sqrt` 155 ns to 204 without it.

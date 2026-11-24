@@ -18,6 +18,8 @@ This is a list of changes for the Decimo package (formerly DeciMojo).
 
 1. `log`, `power`, `hypot` and `arctan2` take the other value by keyword, in `BigFloat` and `BigDecimal`: `x.log(base=b)`, `x.log(200, base=b)`. A positional `Int` is always a precision. The positional form still works with a deprecation warning, and goes in v0.18.0 (PRs #393, #394).
 1. `**` on `BigDecimal` gives the same result as `power()` (PR #397).
+1. `BigInt` squares faster: `x * x` and `power()` take a squaring path that is 1.3-1.7x faster than a general product of the same size. `BigFloat` gets it too, since it is built on `BigInt` (PR #407).
+1. `BigInt` subtraction is 1.4-1.7x faster between 128 and 4 096 words (about 2 500 to 79 000 digits) (PR #407).
 
 ### 🩹 Fixed in v0.17.0
 
