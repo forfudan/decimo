@@ -662,7 +662,7 @@ def _multiply_magnitudes(a: Magnitude, b: Magnitude) -> Magnitude:
         var zero: Magnitude = [UInt64(0)]
         return zero^
 
-    # The same words twice: 
+    # The same words twice:
     # a square, which needs about half the work with `_square_magnitudes`.
     if len_a == len_b and a.unsafe_ptr() == b.unsafe_ptr():
         return _square_magnitudes(a.as_span())
