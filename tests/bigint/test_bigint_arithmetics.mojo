@@ -4,12 +4,15 @@ negation, multiplication, floor division, and truncate division.
 
 Reuses TOML test data from the BigInt10 test suite, since the test cases
 use decimal string representations that are valid for both BigInt10 and BigInt.
+The last section checks addition and subtraction across the four-chain split
+against a one-chain reference.
 """
 
 from std import testing
 from std.python import Python
 
-from decimo.bigint.bigint import BigInt
+from decimo.bigint.arithmetics import _subtract_magnitudes_inplace
+from decimo.bigint.bigint import BigInt, Magnitude
 from decimo.bigint10.bigint10 import BigInt10
 from decimo.tests import TestCase, load_test_cases, parse_file
 
@@ -740,6 +743,239 @@ def test_bigint_add_subtract_carry_chains() raises:
         )
         accumulator -= ones
         testing.assert_equal(String(accumulator), String(py_ones), "-=" + label)
+
+
+# ===----------------------------------------------------------------=== #
+# The four-chain split in addition and subtraction
+# ===----------------------------------------------------------------=== #
+
+# From 32 words up, `_add_words()` and `_subtract_words()` cut the operands into
+# four segments, run each segment's carry or borrow chain on its own, and then
+# let the carry or borrow out of one segment ripple into the next. A mistake
+# there shows only when a carry or borrow crosses a segment boundary, or ripples
+# through a run of all-ones or zero words, so ordinary random values almost
+# never find it. The words below lean towards 0, 1, `UInt64.MAX - 1` and
+# `UInt64.MAX`; the sizes cover every length up to 140 words and each `4k - 1`,
+# `4k` and `4k + 1` beyond it. The oracle is a one-chain loop written out here.
+
+
+struct _Rng(Movable):
+    """Xorshift64, so every run checks the same values."""
+
+    var state: UInt64
+
+    def __init__(out self, seed: UInt64):
+        self.state = seed
+
+    def next(mut self) -> UInt64:
+        var x = self.state
+        x ^= x << 13
+        x ^= x >> 7
+        x ^= x << 17
+        self.state = x
+        return x
+
+    def word(mut self) -> UInt64:
+        """A word that is often 0 or all ones, so chains ripple."""
+        var pick = self.next() % 5
+        if pick == 0:
+            return 0
+        if pick == 1:
+            return 1
+        if pick == 2:
+            return UInt64.MAX - 1
+        if pick == 3:
+            return UInt64.MAX
+        return self.next()
+
+
+def _chain_sizes() -> List[Int]:
+    var out = List[Int]()
+    for n in range(1, 141):
+        out.append(n)
+    for k in range(36, 160, 11):
+        out.append(4 * k - 1)
+        out.append(4 * k)
+        out.append(4 * k + 1)
+    return out^
+
+
+def _stripped(var words: List[UInt64]) -> List[UInt64]:
+    while len(words) > 1 and words[len(words) - 1] == 0:
+        _ = words.pop()
+    if len(words) == 0:
+        words.append(0)
+    return words^
+
+
+def _ref_add(a: List[UInt64], b: List[UInt64]) -> List[UInt64]:
+    """`a + b` with one carry chain, any lengths."""
+    var n = max(len(a), len(b))
+    var out = List[UInt64](capacity=n + 1)
+    var carry = UInt64(0)
+    for i in range(n):
+        var x = a[i] if i < len(a) else UInt64(0)
+        var y = b[i] if i < len(b) else UInt64(0)
+        var s = x + y
+        var t = s + carry
+        carry = UInt64(s < x) | UInt64(t < s)
+        out.append(t)
+    out.append(carry)
+    return _stripped(out^)
+
+
+def _ref_sub(a: List[UInt64], b: List[UInt64]) -> List[UInt64]:
+    """`a - b` with one borrow chain; `a >= b` is the caller's job."""
+    var out = List[UInt64](capacity=len(a))
+    var borrow = UInt64(0)
+    for i in range(len(a)):
+        var x = a[i]
+        var y = b[i] if i < len(b) else UInt64(0)
+        var d = x - y
+        var t = d - borrow
+        borrow = UInt64(x < y) | UInt64(d < borrow)
+        out.append(t)
+    return _stripped(out^)
+
+
+def _to_bigint(words: List[UInt64]) -> BigInt:
+    return BigInt(raw_words=Magnitude(_stripped(words.copy())), sign=False)
+
+
+def _assert_words(got: BigInt, want: List[UInt64], context: String) raises:
+    var same = len(got.words) == len(want)
+    if same:
+        for i in range(len(want)):
+            if got.words[i] != want[i]:
+                same = False
+                break
+    testing.assert_true(same, context)
+
+
+def _check_pair(a: List[UInt64], b: List[UInt64], context: String) raises:
+    """Checks `a + b`, `a - b` (with `a > b` above) and their in-place forms."""
+    var x = _to_bigint(a)
+    var y = _to_bigint(b)
+
+    var sum_want = _ref_add(a, b)
+    _assert_words(x + y, sum_want, "add " + context)
+    var acc = x.copy()
+    acc += y
+    _assert_words(acc, sum_want, "add in place " + context)
+
+    var diff_want = _ref_sub(a, b)
+    _assert_words(x - y, diff_want, "subtract " + context)
+    var dec = x.copy()
+    dec -= y
+    _assert_words(dec, diff_want, "subtract in place " + context)
+
+    # Karatsuba and Toom-3 subtract through this helper rather than `-`.
+    var m = x.words.copy()
+    _subtract_magnitudes_inplace(m, y.words)
+    _assert_words(
+        BigInt(raw_words=m^, sign=False),
+        diff_want,
+        "subtract magnitudes in place " + context,
+    )
+
+
+def test_bigint_add_subtract_random_words_at_every_size() raises:
+    var rng = _Rng(0x9E3779B97F4A7C15)
+    for n in _chain_sizes():
+        for trial in range(3):
+            # `a` has one more word than `b`, with a nonzero top, so
+            # `a > b` and the borrow out of `b`'s words must be absorbed.
+            var a = List[UInt64](capacity=n + 1)
+            var b = List[UInt64](capacity=n)
+            for _ in range(n):
+                a.append(rng.word())
+                b.append(rng.word())
+            a.append(rng.next() | 1)
+            _check_pair(a, b, "n=" + String(n) + " trial=" + String(trial))
+
+
+def test_bigint_add_subtract_equal_lengths() raises:
+    var rng = _Rng(0xD1B54A32D192ED03)
+    for n in _chain_sizes():
+        var a = List[UInt64](capacity=n)
+        var b = List[UInt64](capacity=n)
+        for _ in range(n):
+            a.append(rng.word())
+            b.append(rng.word())
+        # Make the top word decide the order, then put the larger first.
+        a[n - 1] = a[n - 1] | (UInt64(1) << 63)
+        b[n - 1] = b[n - 1] & ~(UInt64(1) << 63)
+        _check_pair(a, b, "equal lengths n=" + String(n))
+
+
+def _zeros(n: Int) -> List[UInt64]:
+    var out = List[UInt64](capacity=n)
+    for _ in range(n):
+        out.append(0)
+    return out^
+
+
+# In the three tests below both operands have `n + 1` words and a nonzero top
+# word. A `BigInt` never keeps leading zeros, so a short operand padded with
+# zeros would shrink back and miss the split path.
+
+
+def test_bigint_borrow_through_every_segment() raises:
+    """`2^(64n) * 2 - (2^(64n) + 1)`: one borrow crosses every segment."""
+    for n in _chain_sizes():
+        var a = _zeros(n + 1)
+        a[n] = 2
+        var b = _zeros(n + 1)
+        b[0] = 1
+        b[n] = 1
+        _check_pair(a, b, "borrow through n=" + String(n))
+
+
+def test_bigint_carry_through_every_segment() raises:
+    """`(2^(64n) * 2 - 1) + (2^(64n) + 1)`: one carry crosses every segment."""
+    for n in _chain_sizes():
+        var a = List[UInt64](capacity=n + 1)
+        for _ in range(n):
+            a.append(UInt64.MAX)
+        a.append(1)
+        var b = _zeros(n + 1)
+        b[0] = 1
+        b[n] = 1
+        _check_pair(a, b, "carry through n=" + String(n))
+
+
+def test_bigint_borrow_that_starts_at_each_segment() raises:
+    """A borrow born at a segment's first word, into zero words above it."""
+    for n in _chain_sizes():
+        var m = n + 1
+        if m < 32:
+            continue
+        var size = m >> 2
+        for start in [0, size - 1, size, 2 * size, 3 * size, n - 1]:
+            var a = _zeros(m)
+            a[n] = 2
+            var b = _zeros(m)
+            b[start] = 1
+            b[n] = 1
+            _check_pair(
+                a,
+                b,
+                "borrow at " + String(start) + " n=" + String(n),
+            )
+
+
+def test_bigint_value_minus_itself_across_the_split() raises:
+    var rng = _Rng(0x2545F4914F6CDD1D)
+    for n in _chain_sizes():
+        var a = List[UInt64](capacity=n)
+        for _ in range(n):
+            a.append(rng.word())
+        a[n - 1] = a[n - 1] | 1
+        var x = _to_bigint(a)
+        testing.assert_true((x - x).is_zero(), "x - x n=" + String(n))
+        var dec = x.copy()
+        dec -= x
+        testing.assert_true(dec.is_zero(), "x -= x n=" + String(n))
 
 
 def main() raises:

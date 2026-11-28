@@ -4,9 +4,10 @@ Characterization tests for the large-operand code paths of BigInt.
 These exercise the algorithms that only engage above the size cutoffs in
 `bigint/arithmetics.mojo`, and which no other test in the suite reaches:
   - packed base-2^64 schoolbook (len_a * len_b >= CUTOFF_PACK_64_AREA = 1024)
-  - Karatsuba multiplication (len_max > CUTOFF_KARATSUBA = 256 words)
-  - Toom-3 multiplication (len_max > CUTOFF_TOOM3 = 768 words)
+  - Karatsuba multiplication (len_max > CUTOFF_KARATSUBA = 64 words)
+  - Toom-3 multiplication (len_max > CUTOFF_TOOM3 = 256 words)
   - Burnikel-Ziegler division (len_b > CUTOFF_BURNIKEL_ZIEGLER = 96 words)
+  - the squaring ladder, checked against the multiply ladder
 
 Keep the sizes here in step with those constants. A cutoff that moves up past
 a fixture leaves the test passing while covering a path it no longer reaches.
@@ -18,12 +19,22 @@ below and just above the boundary. Generated with seed 20260812.
 
 from std import testing
 
+from decimo.bigint.arithmetics import (
+    _multiply_magnitudes,
+    _multiply_magnitudes_slices,
+    _square_magnitudes,
+    _square_magnitudes_karatsuba,
+    _square_magnitudes_schoolbook,
+    _square_magnitudes_toom3,
+    power,
+)
 import decimo.bigint.arithmetics as bigint_arithmetics
-from decimo.bigint.bigint import BigInt
+from decimo.bigint.bigint import BigInt, Magnitude
+from decimo.bigint.ntt import square_magnitude_ntt
 
 
 # ===----------------------------------------------------------------=== #
-# Karatsuba multiplication (> 256 words = > 8192 bits)
+# Karatsuba multiplication (> 64 words = > 4096 bits)
 # ===----------------------------------------------------------------=== #
 
 
@@ -604,7 +615,7 @@ def test_divide_bz_block_padding_sizes() raises:
 
 
 # ===----------------------------------------------------------------=== #
-# Toom-3 multiplication (> 384 words = > 12288 bits)
+# Toom-3 multiplication (> 256 words = > 16384 bits)
 # ===----------------------------------------------------------------=== #
 
 
@@ -924,6 +935,262 @@ def test_exact_divide_by_three_round_trips() raises:
                 + " at "
                 + String(n_words)
                 + " words",
+            )
+
+
+# ===----------------------------------------------------------------=== #
+# Squaring
+# ===----------------------------------------------------------------=== #
+
+# When both operands of a multiplication are the same words, the multiply
+# ladder hands over to a squaring ladder (`_square_magnitudes()`) with a rung of
+# its own for each of schoolbook, Karatsuba, Toom-3 and the transform. The
+# oracle is the multiply ladder itself, given a copy of the operand so that it
+# cannot take the squaring path. Each rung is also called directly, at sizes
+# outside the range its dispatch gives it, so the tests do not depend on where
+# the cutoffs are tuned. The words lean towards 0 and all ones, which make the
+# doubled cross products and the carries out of them largest.
+
+
+struct _Rng(Movable):
+    """Xorshift64, so every run checks the same values."""
+
+    var state: UInt64
+
+    def __init__(out self, seed: UInt64):
+        self.state = seed
+
+    def next(mut self) -> UInt64:
+        var x = self.state
+        x ^= x << 13
+        x ^= x >> 7
+        x ^= x << 17
+        self.state = x
+        return x
+
+    def word(mut self) -> UInt64:
+        var pick = self.next() % 4
+        if pick == 0:
+            return 0
+        if pick == 1:
+            return UInt64.MAX
+        return self.next()
+
+
+def _random_magnitude(mut rng: _Rng, n: Int) -> Magnitude:
+    var words = Magnitude(capacity=n)
+    for _ in range(n - 1):
+        words.append(rng.word())
+    words.append(rng.next() | 1)
+    return words^
+
+
+def _all_ones(n: Int) -> Magnitude:
+    var words = Magnitude(capacity=n)
+    for _ in range(n):
+        words.append(UInt64.MAX)
+    return words^
+
+
+def _same(a: Magnitude, b: Magnitude) -> Bool:
+    if len(a) != len(b):
+        return False
+    for i in range(len(a)):
+        if a[i] != b[i]:
+            return False
+    return True
+
+
+def _square_oracle(a: Magnitude) -> Magnitude:
+    """`a * a` through the multiply ladder, on a copy so it really multiplies.
+    """
+    var copy = a.copy()
+    return _multiply_magnitudes(a, copy)
+
+
+def _square_sizes() -> List[Int]:
+    var out = List[Int]()
+    for n in range(1, 100):
+        out.append(n)
+    for n in [127, 128, 129, 191, 192, 193, 255, 256, 257, 258, 300, 384, 511]:
+        out.append(n)
+    for n in [512, 513, 769, 1000, 1023, 1024, 1025, 1500]:
+        out.append(n)
+    return out^
+
+
+def test_square_ladder_at_every_size() raises:
+    var rng = _Rng(0x9E3779B97F4A7C15)
+    for n in _square_sizes():
+        var a = _random_magnitude(rng, n)
+        testing.assert_true(
+            _same(_square_magnitudes(a.as_span()), _square_oracle(a)),
+            "random n=" + String(n),
+        )
+        var ones = _all_ones(n)
+        testing.assert_true(
+            _same(_square_magnitudes(ones.as_span()), _square_oracle(ones)),
+            "all ones n=" + String(n),
+        )
+
+
+def test_square_ladder_into_the_transform() raises:
+    var rng = _Rng(0xD1B54A32D192ED03)
+    for n in [2304, 3072, 4100]:
+        var a = _random_magnitude(rng, n)
+        testing.assert_true(
+            _same(_square_magnitudes(a.as_span()), _square_oracle(a)),
+            "random n=" + String(n),
+        )
+    var ones = _all_ones(2304)
+    testing.assert_true(
+        _same(_square_magnitudes(ones.as_span()), _square_oracle(ones)),
+        "all ones n=2304",
+    )
+
+
+def test_square_each_rung_directly() raises:
+    var rng = _Rng(0x2545F4914F6CDD1D)
+    for n in [2, 3, 5, 17, 64, 65, 130, 257, 300, 700]:
+        var a = _random_magnitude(rng, n)
+        var want = _square_oracle(a)
+        var context = " n=" + String(n)
+        if n <= 300:
+            testing.assert_true(
+                _same(_square_magnitudes_schoolbook(a.as_span()), want),
+                "schoolbook" + context,
+            )
+        testing.assert_true(
+            _same(_square_magnitudes_karatsuba(a.as_span()), want),
+            "karatsuba" + context,
+        )
+        testing.assert_true(
+            _same(_square_magnitudes_toom3(a.as_span()), want),
+            "toom3" + context,
+        )
+        testing.assert_true(
+            _same(square_magnitude_ntt(a.as_span()), want),
+            "transform" + context,
+        )
+
+
+def test_square_toom3_when_a_of_minus_one_is_zero() raises:
+    """With `a1 = a0 + a2` the value at -1 is zero, and its square is the one
+    point value that can vanish while the operand does not."""
+    var rng = _Rng(0xBF58476D1CE4E5B9)
+    for m in [86, 100, 234]:
+        var a = Magnitude(capacity=3 * m)
+        for _ in range(m):
+            a.append(rng.next() >> 1)
+        for _ in range(m):
+            a.append(0)
+        for _ in range(m):
+            a.append((rng.next() >> 1) | 1)
+        # Every word is below 2^63, so `a0 + a2` adds word by word, no carry.
+        for i in range(m):
+            a[m + i] = a[i] + a[2 * m + i]
+        testing.assert_true(
+            _same(_square_magnitudes_toom3(a.as_span()), _square_oracle(a)),
+            "a(-1) = 0, m=" + String(m),
+        )
+
+
+def test_square_rungs_accept_zero_top_words() raises:
+    """Each rung called directly on a span with zero words on top."""
+    var rng = _Rng(0x853C49E6748FEA9B)
+    for n in [130, 300, 700]:
+        var a = _random_magnitude(rng, n)
+        var want = _square_oracle(a)
+        var padded = a.copy()
+        for _ in range(n // 3 + 1):
+            padded.append(0)
+        var context = " n=" + String(n)
+        testing.assert_true(
+            _same(_square_magnitudes_schoolbook(padded.as_span()), want),
+            "schoolbook" + context,
+        )
+        testing.assert_true(
+            _same(_square_magnitudes_karatsuba(padded.as_span()), want),
+            "karatsuba" + context,
+        )
+        testing.assert_true(
+            _same(_square_magnitudes_toom3(padded.as_span()), want),
+            "toom3" + context,
+        )
+
+
+def test_square_through_the_slice_multiply() raises:
+    """`_multiply_magnitudes_slices()` also hands the same span given twice to
+    the square."""
+    var rng = _Rng(0xDA942042E4DD58B5)
+    for n in [1, 2, 70, 130, 300]:
+        var a = _random_magnitude(rng, n)
+        testing.assert_true(
+            _same(
+                _multiply_magnitudes_slices(a.as_span(), a.as_span()),
+                _square_oracle(a),
+            ),
+            "slices n=" + String(n),
+        )
+
+
+def test_square_zero_words_inside_and_on_top() raises:
+    """Zero limbs reach the sub-squares as zero spans; zero top words must be
+    trimmed before the transform, which needs a nonzero operand."""
+    for n in [70, 300, 1100, 2500]:
+        # 2^(64 * (n - 1)): every limb below the top one is zero.
+        var power_of_word = Magnitude(capacity=n)
+        for _ in range(n - 1):
+            power_of_word.append(0)
+        power_of_word.append(1)
+        testing.assert_true(
+            _same(
+                _square_magnitudes(power_of_word.as_span()),
+                _square_oracle(power_of_word),
+            ),
+            "power of the word n=" + String(n),
+        )
+        # A small value padded with zero words on top.
+        var padded = Magnitude(capacity=n)
+        padded.append(12345)
+        padded.append(UInt64.MAX)
+        for _ in range(n - 2):
+            padded.append(0)
+        var want: Magnitude = [UInt64(12345), UInt64.MAX]
+        testing.assert_true(
+            _same(_square_magnitudes(padded.as_span()), _square_oracle(want)),
+            "padded n=" + String(n),
+        )
+
+
+def test_square_of_an_all_zero_span_is_zero() raises:
+    """The transform needs a nonzero operand, so zero words are trimmed
+    first."""
+    for n in [1, 2, 100, 3000]:
+        var zeros = Magnitude(capacity=n)
+        for _ in range(n):
+            zeros.append(0)
+        var got = _square_magnitudes(zeros.as_span())
+        testing.assert_true(
+            len(got) == 1 and got[0] == 0, "zeros n=" + String(n)
+        )
+
+
+def test_square_x_times_x_and_power() raises:
+    var rng = _Rng(0x94D049BB133111EB)
+    for n in [1, 2, 40, 100, 400, 2400]:
+        var x = BigInt(raw_words=_random_magnitude(rng, n), sign=True)
+        var copy = x.copy()
+        var want = x * copy
+        var square = x * x
+        testing.assert_true(square == want, "x * x n=" + String(n))
+        testing.assert_true(
+            not square.sign, "x * x is non-negative n=" + String(n)
+        )
+        testing.assert_true(power(x, 2) == want, "power 2 n=" + String(n))
+        if n <= 400:
+            testing.assert_true(
+                power(x, 5) == want * want * copy, "power 5 n=" + String(n)
             )
 
 

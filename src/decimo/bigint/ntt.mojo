@@ -693,3 +693,48 @@ def multiply_magnitudes_ntt(
         plan.chunk_bits,
         len(a) + len(b),
     )
+
+
+def square_magnitude_ntt(a: ImmSpan[UInt64, _]) -> Magnitude:
+    """Squares a magnitude through a number-theoretic transform.
+
+    `multiply_magnitudes_ntt()` with one operand: it is packed and transformed
+    once, and each point is squared, so a square costs two transforms where a
+    product costs three. The caller guarantees the operand is non-zero.
+
+    Args:
+        a: The magnitude (little-endian UInt64 words).
+
+    Returns:
+        The square as a new word list.
+    """
+    var bits = _bit_length(a)
+    var plan = _plan(bits, bits)
+    var length = plan.length
+
+    var forward_twiddles = List[UInt64]()
+    var inverse_twiddles = List[UInt64]()
+    build_twiddles(plan.log_length, forward_twiddles, inverse_twiddles)
+
+    var values = List[UInt64](capacity=length)
+    values.resize(unsafe_uninit_length=length)
+    var values_ptr = values.unsafe_ptr()
+    unsafe_memset_zero(ptr=values_ptr, count=length)
+    _pack(values_ptr, a, plan.coefficients_a, plan.chunk_bits)
+
+    transform_forward(
+        values_ptr, length, plan.log_length, forward_twiddles.unsafe_ptr()
+    )
+    for i in range(length):
+        var value = values_ptr[unsafe_offset=i]
+        values_ptr[unsafe_offset=i] = mod_mul(value, value)
+    transform_inverse(
+        values_ptr, length, plan.log_length, inverse_twiddles.unsafe_ptr()
+    )
+
+    return _unpack(
+        values_ptr,
+        2 * plan.coefficients_a - 1,
+        plan.chunk_bits,
+        2 * len(a),
+    )

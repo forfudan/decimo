@@ -45,14 +45,16 @@ from decimo.utility import alias_as_immutable_source
 
 
 # Karatsuba cutoff: operands with this many words or fewer use schoolbook.
-# Tuned for Apple Silicon arm64. Adjust if benchmarking shows a better value.
+# Tuned for Apple Silicon arm64 (MacBook Pro M4 Pro).
+# Adjust if benchmarking shows a better value.
 #
 # It was 256 while a word was 32 bits, and fell to 64 with the wider word --
 # which is a bigger move than the halving of the word count alone accounts
 # for. Schoolbook pays twice per word product now (`MUL` plus `UMULH`, and a
 # column that no longer fits one accumulator), while what Karatsuba adds on
 # top is additions and shifts, and those got cheaper per bit. So the crossover
-# moved down in digits as well as in words. Best of five (microseconds):
+# moved down in digits as well as in words. Measured on 2026-08-27, best of
+# five (microseconds):
 #
 #     words          64     96    128    192    256    384    512    768
 #     cutoff  64   1.56   3.15   5.50  10.54  17.64  33.15  54.58  102.1
@@ -61,6 +63,19 @@ from decimo.utility import alias_as_immutable_source
 #
 # 96 ties with 64 and 48 is worse at every width above 64, so this is the
 # bottom of a shallow basin rather than a peak.
+#
+# Measured again on 2026-11-23, after the hot loops changed how they read
+# words. Two passes, best of seven within each (microseconds):
+#
+#     words          64     80     96    128    192    256    384    512    768
+#     cutoff  48   1.51   2.15   3.02   4.81   9.71  15.23  27.60  42.23  81.10
+#     cutoff  64   1.51   2.13   2.91   4.82   9.32  15.18  27.60  41.91  81.72
+#     cutoff  96   1.51   2.34   3.41   4.85  10.21  15.28  27.70  46.42  82.92
+#     cutoff 128   1.52   2.34   3.40   6.15  10.67  17.63  31.08  46.21  89.92
+#
+# 64 still wins. 48 ties it except at 96 and 192 words, where it is 4% behind;
+# 96 is 10-17% behind at 80, 96, 192 and 512 words, and 128 is 1.27x behind at
+# 128.
 comptime RADIX = UInt128(1) << 64
 """The base of the magnitude representation, where it has to be written down.
 
@@ -93,6 +108,25 @@ comptime CUTOFF_KARATSUBA: Int = 64
 comptime CUTOFF_TOOM3: Int = 256
 """The minimum number of words above which Toom-3 multiplication is used."""
 
+# Squaring has its own ladder (`_square_magnitudes()`), and its rungs cross
+# over at their own sizes. The schoolbook square forms about half the word
+# products of the schoolbook multiply, so it stays ahead for longer: 96 beats
+# 64 by 3-6% from 160 to 768 words and is never behind it, and 128 and 160 are
+# no better. Best of seven, `x * x` (microseconds):
+#
+#     words           96    160    256    384    512    768
+#     cutoff  64    1.9    4.7    9.8   18.6   29.0   54.9
+#     cutoff  96    1.8    4.4    9.5   17.6   27.8   52.8
+#     cutoff 128    1.8    4.3    9.9   18.4   28.0   54.7
+#
+# For Toom-3 the square and the product agree: 192, 384 and 512 are each within
+# about 2% of 256 at every size from 192 to 2048 words.
+comptime CUTOFF_KARATSUBA_SQUARE: Int = 96
+"""The minimum number of words above which Karatsuba squaring is used."""
+
+comptime CUTOFF_TOOM3_SQUARE: Int = 256
+"""The minimum number of words above which Toom-3 squaring is used."""
+
 # Burnikel-Ziegler cutoff: divisors with this many words or fewer use
 # Knuth D (schoolbook). Must be even for the recursive halving to work.
 #
@@ -119,7 +153,7 @@ comptime CUTOFF_BURNIKEL_ZIEGLER: Int = 96
 
 
 comptime _ADD_SEGMENT_MIN: Int = 32
-"""Words below which `_add_words()` keeps its single carry chain.
+"""Words below which `_add_words()` and `_subtract_words()` keep one chain.
 
 Under this the four-way split costs more in setup and stitching than the
 shorter dependency chain buys back.
@@ -143,6 +177,25 @@ def _propagate_carry[
             rp[unsafe_offset=i] = word + 1
             return 0
         rp[unsafe_offset=i] = 0
+    return 1
+
+
+@always_inline
+def _propagate_borrow[
+    o: Origin[mut=True]
+](rp: Pointer[UInt64, o], start: Int, end: Int, borrow: UInt64) -> UInt64:
+    """Subtracts `borrow` at `start`, rippling while it meets zero words.
+
+    Returns what leaves `end`. The mirror of `_propagate_carry()`.
+    """
+    if borrow == 0:
+        return 0
+    for i in range(start, end):
+        var word = rp[unsafe_offset=i]
+        if word != 0:
+            rp[unsafe_offset=i] = word - 1
+            return 0
+        rp[unsafe_offset=i] = UInt64.MAX
     return 1
 
 
@@ -278,6 +331,65 @@ def _subtract_words[
     Returns:
         The borrow out of the highest word, 0 or 1.
     """
+    # Four interleaved borrow chains, stitched afterwards; see
+    # `_add_words()` for why. An incoming borrow travels only while it meets
+    # zero words, so the stitch is about as cheap as the carry one.
+    if n >= _ADD_SEGMENT_MIN:
+        var size = n >> 2
+        var o1 = size
+        var o2 = size * 2
+        var o3 = size * 3
+        var b0 = UInt64(0)
+        var b1 = UInt64(0)
+        var b2 = UInt64(0)
+        var b3 = UInt64(0)
+
+        for i in range(size):
+            var x0 = ap[unsafe_offset=i]
+            var y0 = bp[unsafe_offset=i]
+            var d0 = x0 - y0
+            var t0 = d0 - b0
+            rp[unsafe_offset=i] = t0
+            b0 = UInt64(x0 < y0) | UInt64(d0 < b0)
+
+            var x1 = ap[unsafe_offset=o1 + i]
+            var y1 = bp[unsafe_offset=o1 + i]
+            var d1 = x1 - y1
+            var t1 = d1 - b1
+            rp[unsafe_offset=o1 + i] = t1
+            b1 = UInt64(x1 < y1) | UInt64(d1 < b1)
+
+            var x2 = ap[unsafe_offset=o2 + i]
+            var y2 = bp[unsafe_offset=o2 + i]
+            var d2 = x2 - y2
+            var t2 = d2 - b2
+            rp[unsafe_offset=o2 + i] = t2
+            b2 = UInt64(x2 < y2) | UInt64(d2 < b2)
+
+            var x3 = ap[unsafe_offset=o3 + i]
+            var y3 = bp[unsafe_offset=o3 + i]
+            var d3 = x3 - y3
+            var t3 = d3 - b3
+            rp[unsafe_offset=o3 + i] = t3
+            b3 = UInt64(x3 < y3) | UInt64(d3 < b3)
+
+        # The last segment takes whatever `n` did not divide by four.
+        for i in range(o3 + size, n):
+            var x = ap[unsafe_offset=i]
+            var y = bp[unsafe_offset=i]
+            var difference = x - y
+            var total = difference - b3
+            rp[unsafe_offset=i] = total
+            b3 = UInt64(x < y) | UInt64(difference < b3)
+
+        # Stitch. A segment that borrowed on its own cannot borrow again
+        # from the incoming 1, so `|` is exact, as in `_add_words()`.
+        var borrow = borrow_in
+        borrow = b0 | _propagate_borrow(rp, 0, o1, borrow)
+        borrow = b1 | _propagate_borrow(rp, o1, o2, borrow)
+        borrow = b2 | _propagate_borrow(rp, o2, o3, borrow)
+        return b3 | _propagate_borrow(rp, o3, n, borrow)
+
     var borrow = borrow_in
     for i in range(n):
         var x = ap[unsafe_offset=i]
@@ -549,6 +661,11 @@ def _multiply_magnitudes(a: Magnitude, b: Magnitude) -> Magnitude:
     if len_b == 1 and b[0] == 0:
         var zero: Magnitude = [UInt64(0)]
         return zero^
+
+    # The same words twice:
+    # a square, which needs about half the work with `_square_magnitudes`.
+    if len_a == len_b and a.unsafe_ptr() == b.unsafe_ptr():
+        return _square_magnitudes(a.as_span())
 
     if len_a == 1:
         return _multiply_magnitude_by_word(b.as_span(), a[0])
@@ -1046,6 +1163,40 @@ def _multiply_magnitudes_toom3(
     var v_m1_negative = a_at_m1_negative != b_at_m1_negative
     var v2 = _multiply_magnitudes(a_at_2, b_at_2)
 
+    return _toom3_interpolate(
+        v0^, v1^, v_m1^, v_m1_negative, v2^, v_inf^, m, len_a + len_b
+    )
+
+
+def _toom3_interpolate(
+    var v0: Magnitude,
+    var v1: Magnitude,
+    var v_m1: Magnitude,
+    v_m1_negative: Bool,
+    var v2: Magnitude,
+    var v_inf: Magnitude,
+    m: Int,
+    result_len: Int,
+) -> Magnitude:
+    """Turns Toom-3's five point values into the product.
+
+    Shared by `_multiply_magnitudes_toom3()` and
+    `_square_magnitudes_toom3()`, which differ only in how the five values are
+    formed.
+
+    Args:
+        v0: The product at 0.
+        v1: The product at 1.
+        v_m1: The magnitude of the product at -1.
+        v_m1_negative: Whether the product at -1 is negative.
+        v2: The product at 2.
+        v_inf: The product at infinity.
+        m: The limb size in words.
+        result_len: The words the product can take, `len_a + len_b`.
+
+    Returns:
+        The product magnitude, normalized.
+    """
     # ---- Interpolation -------------------------------------------------- #
     #
     # With r(t) = w0 + w1*t + w2*t^2 + w3*t^3 + w4*t^4:
@@ -1107,7 +1258,6 @@ def _multiply_magnitudes_toom3(
     # the product, so `k*m + len(w_k)` never exceeds `len_a + len_b` and each
     # `_add_at_offset_inplace()` stays inside the buffer.
 
-    var result_len = len_a + len_b
     var result = Magnitude(capacity=result_len)
     result.resize(unsafe_uninit_length=result_len)
     unsafe_memset_zero(ptr=result.unsafe_ptr(), count=result_len)
@@ -1128,6 +1278,221 @@ def _multiply_magnitudes_toom3(
 
     _strip_leading_zeros_inplace(result)
     return result^
+
+
+# ===----------------------------------------------------------------------=== #
+# Squaring
+# ===----------------------------------------------------------------------=== #
+
+
+def _square_magnitudes(a: ImmSpan[UInt64, _]) -> Magnitude:
+    """Squares a magnitude, dispatching to the best algorithm.
+
+    The ladder of `_multiply_magnitudes()`, with every rung specialised to a
+    single operand: the schoolbook forms each cross product once and doubles
+    it, Karatsuba and Toom-3 square their parts, and the transform runs one
+    forward pass instead of two. The multiply ladders come here when both
+    operands are the same words, so `x * x` takes this path on its own.
+
+    Args:
+        a: The magnitude; leading zero words are allowed.
+
+    Returns:
+        The square as a new, normalized word list.
+    """
+    var n = len(a)
+    while n > 0 and a[n - 1] == 0:
+        n -= 1
+    if n == 0:
+        var zero: Magnitude = [UInt64(0)]
+        return zero^
+    if n == 1:
+        var product = UInt128(a[0]) * UInt128(a[0])
+        var result: Magnitude = [UInt64(product), UInt64(product >> 64)]
+        _strip_leading_zeros_inplace(result)
+        return result^
+    var trimmed = a[:n]
+    if n <= CUTOFF_KARATSUBA_SQUARE:
+        return _square_magnitudes_schoolbook(trimmed)
+    if n > CUTOFF_TOOM3_SQUARE:
+        # A square runs two transforms where a product runs three, but Toom-3
+        # saves about as much on a square, so the product's cost model
+        # decides: the two ratios agree within 5% from 1024 to 8192 words.
+        if bigint_ntt.should_multiply_ntt(n, n):
+            return bigint_ntt.square_magnitude_ntt(trimmed)
+        return _square_magnitudes_toom3(trimmed)
+    return _square_magnitudes_karatsuba(trimmed)
+
+
+def _square_magnitudes_schoolbook(a: ImmSpan[UInt64, _]) -> Magnitude:
+    """Product-scanning (Comba) squaring.
+
+    Column `k` of `a * a` is `sum(a[i] * a[k - i])`, in which every product
+    with `i != k - i` appears twice. So each is formed once, for `i < k - i`,
+    the column's accumulators are doubled, and on an even column the square
+    `a[k/2]^2` is added: about half the word products of
+    `_multiply_magnitudes_schoolbook()`, whose split accumulators this keeps.
+
+    Doubling cannot overflow them: a column has at most `n/2` cross products
+    and each half is below `2^64`, so a doubled sum is below `n * 2^64`.
+
+    Args:
+        a: The magnitude; leading zero words are allowed.
+
+    Returns:
+        The square as a new, normalized word list.
+    """
+    var n = len(a)
+    if n == 0:
+        var zero: Magnitude = [UInt64(0)]
+        return zero^
+
+    comptime LOW_HALF = UInt128(0xFFFF_FFFF_FFFF_FFFF)
+
+    var ap = a.unsafe_ptr()
+    var result_len = 2 * n
+    var result = Magnitude(capacity=result_len)
+    result.resize(unsafe_uninit_length=result_len)
+    var rp = result.unsafe_ptr()
+
+    var carry = UInt128(0)
+    for k in range(result_len - 1):
+        # The cross products of column k: `i < k - i`, and `k - i < n`.
+        var i_low = 0 if k < n else k - n + 1
+        var i_high = (k - 1) >> 1
+
+        var low0 = UInt128(0)
+        var high0 = UInt128(0)
+        var low1 = UInt128(0)
+        var high1 = UInt128(0)
+
+        var i = i_low
+        while i + 1 <= i_high:
+            var product0 = UInt128(ap[unsafe_offset=i]) * UInt128(
+                ap[unsafe_offset=k - i]
+            )
+            low0 += product0 & LOW_HALF
+            high0 += product0 >> 64
+            var product1 = UInt128(ap[unsafe_offset=i + 1]) * UInt128(
+                ap[unsafe_offset=k - i - 1]
+            )
+            low1 += product1 & LOW_HALF
+            high1 += product1 >> 64
+            i += 2
+        if i <= i_high:
+            var product = UInt128(ap[unsafe_offset=i]) * UInt128(
+                ap[unsafe_offset=k - i]
+            )
+            low0 += product & LOW_HALF
+            high0 += product >> 64
+
+        var low = (low0 + low1) << 1
+        var high = (high0 + high1) << 1
+        if k & 1 == 0:
+            var word = UInt128(ap[unsafe_offset=k >> 1])
+            var diagonal = word * word
+            low += diagonal & LOW_HALF
+            high += diagonal >> 64
+        low += carry
+        rp[unsafe_offset=k] = UInt64(low & LOW_HALF)
+        carry = high + (low >> 64)
+
+    rp[unsafe_offset=result_len - 1] = UInt64(carry & LOW_HALF)
+
+    _strip_leading_zeros_inplace(result)
+    return result^
+
+
+def _square_magnitudes_karatsuba(a: ImmSpan[UInt64, _]) -> Magnitude:
+    """Karatsuba squaring, from three half-size squares:
+
+        a = x1 * B^m + x0
+        z0 = x0^2,  z2 = x1^2,  z1 = (x0 + x1)^2 - z0 - z2 = 2 * x0 * x1
+        a^2 = z2 * B^(2m) + z1 * B^m + z0
+
+    Args:
+        a: The magnitude; leading zero words are allowed.
+
+    Returns:
+        The square as a new, normalized word list.
+    """
+    var n = len(a)
+    if n <= CUTOFF_KARATSUBA_SQUARE:
+        return _square_magnitudes_schoolbook(a)
+
+    var m = n // 2
+    var z0 = _square_magnitudes_karatsuba(a[:m])
+    var z2 = _square_magnitudes_karatsuba(a[m:])
+    var x0_plus_x1 = _add_slices(a[:m], a[m:])
+    var z1 = _square_magnitudes_karatsuba(x0_plus_x1.as_span())
+    _subtract_magnitudes_inplace(z1, z2)
+    _subtract_magnitudes_inplace(z1, z0)
+
+    var result_len = 2 * n
+    var result = Magnitude(capacity=result_len)
+    result.resize(unsafe_uninit_length=result_len)
+    unsafe_memset_zero(ptr=result.unsafe_ptr(), count=result_len)
+    _add_at_offset_inplace(result, z0, 0)
+    _add_at_offset_inplace(result, z1, m)
+    _add_at_offset_inplace(result, z2, 2 * m)
+
+    _strip_leading_zeros_inplace(result)
+    return result^
+
+
+def _square_magnitudes_toom3(a: ImmSpan[UInt64, _]) -> Magnitude:
+    """Toom-Cook 3-way squaring.
+
+    `_multiply_magnitudes_toom3()` with one operand: it is evaluated once, the
+    five point values are squared, and the interpolation is shared. `a(-1)`
+    is squared, so its sign does not matter and only its magnitude is formed.
+
+    Args:
+        a: The magnitude. Leading zero words are allowed.
+
+    Returns:
+        The square as a new, normalized word list.
+    """
+    var n = len(a)
+    if n <= CUTOFF_TOOM3_SQUARE:
+        return _square_magnitudes_karatsuba(a)
+
+    var m = (n + 2) // 3  # ceil(n / 3)
+    var a0 = _subspan(a, 0, m)
+    var a1 = _subspan(a, m, 2 * m)
+    var a2 = _subspan(a, 2 * m, n)
+
+    var a0_plus_a2 = _add_slices(a0, a2)
+    _strip_leading_zeros_inplace(a0_plus_a2)
+
+    # a(1) = (a0 + a2) + a1
+    var a_at_1 = a0_plus_a2.copy()
+    _add_from_slice_inplace(a_at_1, a1)
+
+    # |a(-1)| = |(a0 + a2) - a1|
+    var a1_words = _normalized_copy(a1)
+    var a_at_m1: Magnitude
+    if _compare_word_lists(a0_plus_a2, a1_words) >= 0:
+        a_at_m1 = a0_plus_a2^
+        _subtract_magnitudes_inplace(a_at_m1, a1_words)
+    else:
+        a_at_m1 = a1_words^
+        _subtract_magnitudes_inplace(a_at_m1, a0_plus_a2)
+
+    # a(2) = a0 + 2*a1 + 4*a2, by Horner.
+    var a_at_2 = _normalized_copy(a2)
+    _double_inplace(a_at_2)
+    _add_from_slice_inplace(a_at_2, a1)
+    _double_inplace(a_at_2)
+    _add_from_slice_inplace(a_at_2, a0)
+
+    var v0 = _square_magnitudes(a0)
+    var v_inf = _square_magnitudes(a2)
+    var v1 = _square_magnitudes(a_at_1.as_span())
+    var v_m1 = _square_magnitudes(a_at_m1.as_span())
+    var v2 = _square_magnitudes(a_at_2.as_span())
+
+    return _toom3_interpolate(v0^, v1^, v_m1^, False, v2^, v_inf^, m, 2 * n)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -1858,6 +2223,8 @@ def _multiply_magnitudes_slices(
     if len_a <= 0 or len_b <= 0:
         var zero: Magnitude = [UInt64(0)]
         return zero^
+    if len_a == len_b and a.unsafe_ptr() == b.unsafe_ptr():
+        return _square_magnitudes(a)
     if len_a == 1:
         return _multiply_magnitude_by_word(b, a[0])
     if len_b == 1:
@@ -3238,7 +3605,7 @@ def power(base: BigInt, exponent: Int) raises -> BigInt:
             result_words = _multiply_magnitudes(result_words, base_words)
         exp >>= 1
         if exp > 0:
-            base_words = _multiply_magnitudes(base_words, base_words)
+            base_words = _square_magnitudes(base_words.as_span())
 
     return BigInt(raw_words=result_words^, sign=result_sign)
 
