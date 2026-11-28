@@ -52,7 +52,8 @@ from decimo.utility import alias_as_immutable_source
 # for. Schoolbook pays twice per word product now (`MUL` plus `UMULH`, and a
 # column that no longer fits one accumulator), while what Karatsuba adds on
 # top is additions and shifts, and those got cheaper per bit. So the crossover
-# moved down in digits as well as in words. Best of five (microseconds):
+# moved down in digits as well as in words. Measured on 2026-08-27, best of
+# five (microseconds):
 #
 #     words          64     96    128    192    256    384    512    768
 #     cutoff  64   1.56   3.15   5.50  10.54  17.64  33.15  54.58  102.1
@@ -62,9 +63,18 @@ from decimo.utility import alias_as_immutable_source
 # 96 ties with 64 and 48 is worse at every width above 64, so this is the
 # bottom of a shallow basin rather than a peak.
 #
-# Measured again in 2026-11, after the hot loops changed how they read words:
-# 64 still wins. 48 ties it up to 128 words and loses 4-6% at 192; 96 is 10-17%
-# behind at 80, 96 and 192 words, and 128 is 1.27x behind at 128.
+# Measured again on 2026-11-23, after the hot loops changed how they read
+# words. Two passes, best of seven within each (microseconds):
+#
+#     words          64     80     96    128    192    256    384    512    768
+#     cutoff  48   1.51   2.15   3.02   4.81   9.71  15.23  27.60  42.23  81.10
+#     cutoff  64   1.51   2.13   2.91   4.82   9.32  15.18  27.60  41.91  81.72
+#     cutoff  96   1.51   2.34   3.41   4.85  10.21  15.28  27.70  46.42  82.92
+#     cutoff 128   1.52   2.34   3.40   6.15  10.67  17.63  31.08  46.21  89.92
+#
+# 64 still wins. 48 ties it except at 96 and 192 words, where it is 4% behind;
+# 96 is 10-17% behind at 80, 96, 192 and 512 words, and 128 is 1.27x behind at
+# 128.
 comptime RADIX = UInt128(1) << 64
 """The base of the magnitude representation, where it has to be written down.
 
@@ -1436,7 +1446,7 @@ def _square_magnitudes_toom3(a: ImmSpan[UInt64, _]) -> Magnitude:
     is squared, so its sign does not matter and only its magnitude is formed.
 
     Args:
-        a: The magnitude, normalized.
+        a: The magnitude. Leading zero words are allowed.
 
     Returns:
         The square as a new, normalized word list.

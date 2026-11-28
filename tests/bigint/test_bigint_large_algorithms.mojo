@@ -4,8 +4,8 @@ Characterization tests for the large-operand code paths of BigInt.
 These exercise the algorithms that only engage above the size cutoffs in
 `bigint/arithmetics.mojo`, and which no other test in the suite reaches:
   - packed base-2^64 schoolbook (len_a * len_b >= CUTOFF_PACK_64_AREA = 1024)
-  - Karatsuba multiplication (len_max > CUTOFF_KARATSUBA = 256 words)
-  - Toom-3 multiplication (len_max > CUTOFF_TOOM3 = 768 words)
+  - Karatsuba multiplication (len_max > CUTOFF_KARATSUBA = 64 words)
+  - Toom-3 multiplication (len_max > CUTOFF_TOOM3 = 256 words)
   - Burnikel-Ziegler division (len_b > CUTOFF_BURNIKEL_ZIEGLER = 96 words)
   - the squaring ladder, checked against the multiply ladder
 
@@ -21,6 +21,7 @@ from std import testing
 
 from decimo.bigint.arithmetics import (
     _multiply_magnitudes,
+    _multiply_magnitudes_slices,
     _square_magnitudes,
     _square_magnitudes_karatsuba,
     _square_magnitudes_schoolbook,
@@ -33,7 +34,7 @@ from decimo.bigint.ntt import square_magnitude_ntt
 
 
 # ===----------------------------------------------------------------=== #
-# Karatsuba multiplication (> 256 words = > 8192 bits)
+# Karatsuba multiplication (> 64 words = > 4096 bits)
 # ===----------------------------------------------------------------=== #
 
 
@@ -614,7 +615,7 @@ def test_divide_bz_block_padding_sizes() raises:
 
 
 # ===----------------------------------------------------------------=== #
-# Toom-3 multiplication (> 384 words = > 12288 bits)
+# Toom-3 multiplication (> 256 words = > 16384 bits)
 # ===----------------------------------------------------------------=== #
 
 
@@ -1070,6 +1071,66 @@ def test_square_each_rung_directly() raises:
         testing.assert_true(
             _same(square_magnitude_ntt(a.as_span()), want),
             "transform" + context,
+        )
+
+
+def test_square_toom3_when_a_of_minus_one_is_zero() raises:
+    """With `a1 = a0 + a2` the value at -1 is zero, and its square is the one
+    point value that can vanish while the operand does not."""
+    var rng = _Rng(0xBF58476D1CE4E5B9)
+    for m in [86, 100, 234]:
+        var a = Magnitude(capacity=3 * m)
+        for _ in range(m):
+            a.append(rng.next() >> 1)
+        for _ in range(m):
+            a.append(0)
+        for _ in range(m):
+            a.append((rng.next() >> 1) | 1)
+        # Every word is below 2^63, so `a0 + a2` adds word by word, no carry.
+        for i in range(m):
+            a[m + i] = a[i] + a[2 * m + i]
+        testing.assert_true(
+            _same(_square_magnitudes_toom3(a.as_span()), _square_oracle(a)),
+            "a(-1) = 0, m=" + String(m),
+        )
+
+
+def test_square_rungs_accept_zero_top_words() raises:
+    """Each rung called directly on a span with zero words on top."""
+    var rng = _Rng(0x853C49E6748FEA9B)
+    for n in [130, 300, 700]:
+        var a = _random_magnitude(rng, n)
+        var want = _square_oracle(a)
+        var padded = a.copy()
+        for _ in range(n // 3 + 1):
+            padded.append(0)
+        var context = " n=" + String(n)
+        testing.assert_true(
+            _same(_square_magnitudes_schoolbook(padded.as_span()), want),
+            "schoolbook" + context,
+        )
+        testing.assert_true(
+            _same(_square_magnitudes_karatsuba(padded.as_span()), want),
+            "karatsuba" + context,
+        )
+        testing.assert_true(
+            _same(_square_magnitudes_toom3(padded.as_span()), want),
+            "toom3" + context,
+        )
+
+
+def test_square_through_the_slice_multiply() raises:
+    """`_multiply_magnitudes_slices()` also hands the same span given twice to
+    the square."""
+    var rng = _Rng(0xDA942042E4DD58B5)
+    for n in [1, 2, 70, 130, 300]:
+        var a = _random_magnitude(rng, n)
+        testing.assert_true(
+            _same(
+                _multiply_magnitudes_slices(a.as_span(), a.as_span()),
+                _square_oracle(a),
+            ),
+            "slices n=" + String(n),
         )
 
 
