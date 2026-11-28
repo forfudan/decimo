@@ -10,6 +10,8 @@ The same library is packaged for Python as a near drop-in for the standard libra
 [![Mojo](https://img.shields.io/badge/mojo-1.2.0-orange)](https://docs.modular.com/mojo/manual/)
 [![License](https://img.shields.io/github/license/forfudan/decimo)](https://github.com/forfudan/decimo/blob/main/LICENSE)
 [![Manual](https://img.shields.io/badge/user%20manual-decimo.mojo--lang.com-green)](https://decimo.mojo-lang.com)
+[![Used by](https://mojourney.dev/badge/forfudan/decimo/used-by.svg)](https://mojourney.dev/repos/forfudan/decimo#used-by)
+[![Mojo version](https://mojourney.dev/badge/forfudan/decimo/mojo.svg)](https://mojourney.dev/repos/forfudan/decimo)
 
 [![pixi](https://img.shields.io/badge/pixi%20add-decimo-purple)](https://prefix.dev/channels/modular-community/packages/decimo)
 [![PyPI](https://img.shields.io/badge/pip%20install-decimo-blue)](https://pypi.org/project/decimo/)
