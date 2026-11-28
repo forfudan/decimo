@@ -45,7 +45,8 @@ from decimo.utility import alias_as_immutable_source
 
 
 # Karatsuba cutoff: operands with this many words or fewer use schoolbook.
-# Tuned for Apple Silicon arm64. Adjust if benchmarking shows a better value.
+# Tuned for Apple Silicon arm64 (MacBook Pro M4 Pro).
+# Adjust if benchmarking shows a better value.
 #
 # It was 256 while a word was 32 bits, and fell to 64 with the wider word --
 # which is a bigger move than the halving of the word count alone accounts
